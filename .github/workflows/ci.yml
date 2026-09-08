@@ -227,19 +227,17 @@ jobs:
         with:
           go-version: '1.26.7'
 
-      # Enforce the format gate AGENTS.md documents (`gofmt -l .`). Formatting is
+      # Enforce the format gate AGENTS.md documents, by INVOKING it rather than
+      # restating it. The target resolves gofmt from the toolchain go.mod
+      # declares, so this job and the developer's pre-push run are the same gate
+      # judged by the same binary; the inline copy that used to live here read
+      # whichever gofmt was on PATH, and diverged from the developer's the moment
+      # their machine moved ahead of the pin (iss-2609081953452204). Formatting is
       # platform-independent, so run it once on the ubuntu leg to avoid duplicate
-      # work; any file gofmt lists needs `gofmt -w` and fails the job.
+      # work; any file it lists needs `make fmt` and fails the job.
       - name: Format (gofmt)
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          set -euo pipefail
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "gofmt: these files are not formatted (run gofmt -w .):" >&2
-            echo "$unformatted" >&2
-            exit 1
-          fi
+        run: make fmt-check
 
       # Unconditional on ubuntu, because tests assert against the live record;
       # the macos leg is the cross-platform second opinion a record change does

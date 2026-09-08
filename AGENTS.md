@@ -79,7 +79,8 @@ make preflight      # the pre-push gate: lint-reviews + lint-issues +
                     # then build + vet +
                     # test + race (internal)
 make build          # cross-compiles bin/abcd-<goos>-<arch> (there is no plain bin/abcd)
-gofmt -l .          # format gate: any output names a file needing `gofmt -w`
+make fmt-check      # format gate, run through the go.mod toolchain's gofmt
+make fmt            # rewrite what fmt-check names, with that same gofmt
 go vet ./...        # static checks
 go test ./...       # unit tests
 go test ./internal/core/                 # a single package
@@ -105,9 +106,9 @@ in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on macOS + Linux — build,
-vet, test and the race-enabled internal tests on both, with the `gofmt -l .`
-format gate, the record-lint and docs-lint steps and the site-render gate on
-the Linux leg alone. Separate jobs run the reviews-charter check
+vet, test and the race-enabled internal tests on both, with the `make
+fmt-check` format gate, the record-lint and docs-lint steps and the site-render
+gate on the Linux leg alone. Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS003) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
@@ -211,8 +212,13 @@ irreversible; guessing downward costs nothing.**
   `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The eval
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each costs about five seconds.
-- `gofmt -l .` reports nothing. The format gate is CI's own step, outside
-  `make preflight`, so run it before pushing.
+- `make fmt-check` reports nothing. The format gate is CI's own step, outside
+  `make preflight`, so run it before pushing. It resolves gofmt from the
+  toolchain `go.mod` declares rather than from PATH, because gofmt's rules move
+  between releases and a bare `gofmt` on a newer machine names files CI
+  considers correctly formatted (iss-2609081953452204); `make fmt` rewrites what
+  it names, with that same binary. If the pinned toolchain cannot be fetched the
+  target refuses and names the skew — it never falls back to the local gofmt.
 - Every new behaviour has a test watched fail before the change and pass after.
 - **A user-facing change is accompanied by a RECORD, not by a hand-written
   CHANGELOG entry.** The changelog is derived: `launch ship` composes the dated

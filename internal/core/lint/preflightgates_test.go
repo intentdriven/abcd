@@ -327,3 +327,208 @@ func TestIssueResolutionGateScopesToStatusDirs(t *testing.T) {
 			got, want)
 	}
 }
+
+// TestFormatGateResolvesThroughTheDeclaredToolchain holds the format gate to one
+// definition, resolved through the toolchain go.mod declares
+// (iss-2609081953452204).
+//
+// The gate used to be a bare `gofmt -l .`, written out by hand in three places:
+// CI's own step, AGENTS.md's command table, and CONTRIBUTING.md's local-gates
+// paragraph. A bare `gofmt` is whatever the caller has on PATH, and gofmt's
+// rules move between releases — go 1.27 re-indents a multi-value return whose
+// operands are composite literals, which this tree contains at
+// internal/core/ahoy/remote.go:419. So on a go1.27 machine the documented gate
+// named that file against an unmodified checkout of main, while CI's pinned
+// 1.26.7 gofmt called the same bytes correct. The developer "fixes" the file
+// the gate names and pushes something CI then rejects in the other direction,
+// and neither direction is visible: the output names a file and never says
+// which toolchain judged it.
+//
+// Three properties, and each is a way the trap comes back. CI must invoke the
+// Makefile target rather than carry its own copy of the command, so there is one
+// definition to pin the toolchain in
+// (.abcd/development/principles/one-canonical-primitive.md). That target must
+// resolve gofmt from the version go.mod declares, read from go.mod rather than
+// spelled again in the Makefile — a second spelling is a second thing to bump.
+// And no developer-facing surface may instruct a bare `gofmt` invocation, which
+// is the form that reads PATH.
+//
+// The target name is DERIVED from CI's step rather than written here: CI is what
+// actually runs, so a rename that reaches the workflow drags the Makefile and
+// every prose surface along with it instead of failing on a literal this test
+// would have to hold too.
+func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	// The CI step is the authority on what the gate command is.
+	step, ok := workflowStepBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), "Format (gofmt)")
+	if !ok {
+		t.Fatal(".github/workflows/ci.yml defines no `Format (gofmt)` step; the format gate is the " +
+			"one gate outside `make preflight`, and a CI job that stops running it leaves nothing enforcing it")
+	}
+	m := regexp.MustCompile(`\bmake ([a-z][a-z-]*)\b`).FindStringSubmatch(step)
+	if m == nil {
+		t.Fatalf("the `Format (gofmt)` step in .github/workflows/ci.yml runs no `make <target>`:\n\n%s\n\n"+
+			"CI carrying its own copy of the gate command is how the developer's gate and CI's gate "+
+			"came to be resolved through different toolchains. One definition, invoked from both.", step)
+	}
+	target := m[1]
+
+	if bare := bareGofmtInvocation(step); bare != "" {
+		t.Errorf("the `Format (gofmt)` step in .github/workflows/ci.yml still invokes a bare gofmt (%q); "+
+			"a bare gofmt is whichever one is on PATH, which is the skew this gate exists to close", bare)
+	}
+
+	// The Makefile must declare that target, and resolve gofmt from go.mod.
+	makefile := readRepoFile(t, root, "Makefile")
+	recipe, ok := makeRecipe(makefile, target)
+	if !ok {
+		t.Fatalf("CI's format step runs `make %s`, and the Makefile declares no `%s:` target; "+
+			"a workflow calling a target that does not exist fails the job with a make error "+
+			"rather than a format report", target, target)
+	}
+	if !strings.Contains(recipe, "GOTOOLCHAIN=go") {
+		t.Errorf("the `%s:` recipe does not resolve a pinned toolchain (no GOTOOLCHAIN=go...):\n\n%s\n\n"+
+			"gofmt must come from the toolchain go.mod declares, or the gate judges the tree "+
+			"by whatever version the caller happens to have", target, recipe)
+	}
+	if bare := bareGofmtInvocation(recipe); bare != "" {
+		t.Errorf("the `%s:` recipe invokes a bare gofmt (%q); it must run the gofmt inside the "+
+			"resolved toolchain's GOROOT, not the one on PATH", target, bare)
+	}
+
+	// The declared version is READ from go.mod, not spelled again in the Makefile.
+	goMod := readRepoFile(t, root, "go.mod")
+	dm := regexp.MustCompile(`(?m)^go ([0-9][0-9.]*)$`).FindStringSubmatch(goMod)
+	if dm == nil {
+		t.Fatal("go.mod declares no `go <version>` line; the format gate has no toolchain to resolve")
+	}
+	declared := dm[1]
+	if !strings.Contains(makefile, "go.mod") {
+		t.Errorf("the Makefile never reads go.mod, so the format gate's toolchain is not derived from "+
+			"the declaration; go.mod says go %s", declared)
+	}
+	if strings.Contains(makefile, declared) {
+		t.Errorf("the Makefile spells the Go version %q itself; it must read it out of go.mod, or the "+
+			"gate keeps judging the tree by the old toolchain after the declaration moves", declared)
+	}
+
+	// No developer-facing surface may still instruct a bare gofmt, and each must
+	// name the target CI runs — otherwise the human runs a different gate.
+	for _, rel := range []string{
+		"AGENTS.md",                        // the command table and the definition-of-done list
+		"CLAUDE.md",                        // AGENTS.md's committed mirror
+		"CONTRIBUTING.md",                  // the local-gates paragraph
+		".github/PULL_REQUEST_TEMPLATE.md", // the verification prompt
+	} {
+		t.Run(rel, func(t *testing.T) {
+			prose := readRepoFile(t, root, rel)
+			if bare := bareGofmtInvocation(prose); bare != "" {
+				t.Errorf("%s instructs a bare gofmt invocation (%q).\n\n"+
+					"That command reads the developer's PATH, so on a machine newer than go %s it "+
+					"names a file CI considers correctly formatted — and the 'fix' it invites is a "+
+					"file CI then rejects the other way.", rel, bare, declared)
+			}
+			if !strings.Contains(prose, "make "+target) {
+				t.Errorf("%s documents the format gate but never names `make %s`, the command CI runs; "+
+					"a documented gate that differs from the enforced one is the drift this closes",
+					rel, target)
+			}
+		})
+	}
+}
+
+// bareGofmtInvocation returns the first unqualified `gofmt <flag>` invocation in
+// text, or "" if there is none. Qualified is the point: `"$GOROOT/bin/gofmt" -l`
+// names a specific binary, `gofmt -l` names whatever PATH resolves. Prose that
+// merely mentions the word (a step name, an error prefix) carries no flag after
+// it and does not match.
+func bareGofmtInvocation(text string) string {
+	m := regexp.MustCompile(`(?:^|[^/\w.-])(gofmt +-[a-zA-Z]+[^\n]*)`).FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	return strings.TrimSpace(m[1])
+}
+
+// makeRecipe returns one Makefile target's recipe: every tab-indented line under
+// `<target>:`. Hand-parsed for the reason preflightPrereqs is — this repository
+// carries no Makefile parser and adds none for one target.
+func makeRecipe(makefile, target string) (string, bool) {
+	lines := strings.Split(makefile, "\n")
+	at := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, target+":") {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return "", false
+	}
+	var body []string
+	for i := at + 1; i < len(lines); i++ {
+		if !strings.HasPrefix(lines[i], "\t") {
+			break
+		}
+		body = append(body, lines[i])
+	}
+	// A `define`d block invoked by the recipe is part of what the target runs, so
+	// fold every define in the file into what is inspected: the resolution logic
+	// lives there when two targets share it.
+	for _, l := range body {
+		for _, name := range regexp.MustCompile(`\$\(call ([a-z_]+)`).FindAllStringSubmatch(l, -1) {
+			if block, ok := makeDefine(makefile, name[1]); ok {
+				body = append(body, block)
+			}
+		}
+	}
+	return strings.Join(body, "\n"), true
+}
+
+// makeDefine returns the body of a `define <name> ... endef` block.
+func makeDefine(makefile, name string) (string, bool) {
+	lines := strings.Split(makefile, "\n")
+	at := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "define "+name) {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return "", false
+	}
+	for i := at + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "endef") {
+			return strings.Join(lines[at+1:i], "\n"), true
+		}
+	}
+	return "", false
+}
+
+// workflowStepBlock returns one step's block from a workflow: the `- name: <n>`
+// line and everything under it up to the next step at the same indent.
+func workflowStepBlock(workflow, name string) (string, bool) {
+	lines := strings.Split(workflow, "\n")
+	at, indent := -1, ""
+	stepName := regexp.MustCompile(`^(\s*)- name: "?` + regexp.QuoteMeta(name) + `"?\s*$`)
+	for i, l := range lines {
+		if m := stepName.FindStringSubmatch(l); m != nil {
+			at, indent = i, m[1]
+			break
+		}
+	}
+	if at < 0 {
+		return "", false
+	}
+	next := regexp.MustCompile(`^` + indent + `- `)
+	end := len(lines)
+	for i := at + 1; i < len(lines); i++ {
+		if next.MatchString(lines[i]) {
+			end = i
+			break
+		}
+	}
+	return strings.Join(lines[at:end], "\n"), true
+}

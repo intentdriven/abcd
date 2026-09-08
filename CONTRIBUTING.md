@@ -20,7 +20,7 @@ inbound = outbound statement is the whole of it.
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
-  Linux leg alone adds the `gofmt -l .` format gate, the record-lint and
+  Linux leg alone adds the `make fmt-check` format gate, the record-lint and
   docs-lint steps, and the site-render gate; separate jobs run the
   reviews-charter and issue-resolution checks (RS001–RS003), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
@@ -52,7 +52,9 @@ inbound = outbound statement is the whole of it.
   record-lint,
   docs-lint and site-render gates and both tagged eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles
-  neither) — but not gofmt, so run `gofmt -l .` before pushing. The repository
+  neither) — but not the format gate, so run `make fmt-check` before pushing
+  (it runs the gofmt from the toolchain `go.mod` declares, which is the one CI
+  runs; `make fmt` applies it). The repository
   ships its hooks in [`.githooks/`](.githooks/); they are per-machine opt-in —
   run `git config core.hooksPath .githooks` once per clone to arm the
   pre-commit name guard and the pre-push preflight.
