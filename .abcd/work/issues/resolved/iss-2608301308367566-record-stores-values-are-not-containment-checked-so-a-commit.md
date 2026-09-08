@@ -7,6 +7,8 @@ category: "security"
 source: "user-observation"
 found_during: "itd-189-round-2-security"
 found_at: "internal/core/lint/config.go"
+resolution: "Containment is now checked at config-load time: parseConfig refuses every configured repo-relative path that is absolute, unclean, backslashed, or climbs out with '..', through the canonical fsutil.ValidRelPath rather than a second predicate. record_stores and its fifteen sibling path fields (roots, issues_dir, commands_dir, skills_dir, registry, snapshot, target, receipts_dir, runbook, workflow, glossary_dir, baseline, changelog, intents_root, agents_dir, intents_dir, specs_dir and the index_drift doc/dir pairs) are all swept, so a value that escapes never reaches a filepath.Join."
+impact: fix
 ---
 
 record_stores values are not containment-checked so a committed config walks the record gate outside the repository
@@ -38,3 +40,7 @@ Sibling: iss-2608301203521317 (the store walk's raw os.ReadFile). Both are the
 same underlying shape -- the GATE reads attacker-influenceable paths without
 the guard the repo already owns -- and `fsutil.ReadGuarded` closes the read
 half of both at one call site.
+
+## Grounds
+
+- pursued: a gate at the config door cannot be forgotten by a field added later, where the six per-site containedRepoPath guards were opt-in and silent when omitted; the anti-vacuity guard (this repository's own record-lint.json and docs-lint.json still load) is what would show the predicate too strict, and a managed repo whose legitimate config spells a path uncleanly ('./docs') being refused is what would show the strictness misjudged.
