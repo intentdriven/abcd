@@ -183,7 +183,12 @@ th{font-family:"Bricolage Grotesque",sans-serif;font-weight:650;font-size:.82rem
 .card .portrait-lg{width:120px;height:120px;border-radius:50%;margin-bottom:14px;box-shadow:var(--shadow)}
 .card .icon{width:64px;height:64px;margin-bottom:12px}
 .card .icon svg{width:64px;height:64px;display:block}
-.svgasset{display:block}
+/* An inlined drawing is markup from a committed file, so the span it lands in
+   is also its box: paint containment clips it to that box and makes the span
+   the containing block for anything inside that positions itself. The build's
+   attribute allowlist is what keeps a drawing from trying (assets.go); this is
+   the second line, and it costs the legitimate drawings nothing. */
+.svgasset{display:block;contain:paint}
 .svgasset svg{width:100%;height:auto;display:block}
 th .th-portrait{display:block;width:72px;height:72px;border-radius:50%;margin:0 auto 8px;box-shadow:var(--shadow)}
 th:has(.th-portrait){text-align:center;vertical-align:bottom}
