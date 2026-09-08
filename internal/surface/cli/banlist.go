@@ -33,7 +33,7 @@ func newBanlistCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist", err)
 			}
@@ -68,7 +68,7 @@ func newBanlistListCommand(asJSON *bool) *cobra.Command {
 		Short: "Render the banlist layers; private entries render by key only",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist list", err)
 			}
@@ -122,7 +122,7 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 		Short: "Add one banned-name entry to the named layer (pattern `-` reads one line from stdin)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist add", err)
 			}
@@ -178,7 +178,7 @@ func newBanlistRemoveCommand(asJSON *bool) *cobra.Command {
 		Short: "Remove one banned-name entry from the named layer",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist remove", err)
 			}
@@ -513,7 +513,7 @@ const maxPatternBytes = 8 << 10
 // banlist.InheritedPrivate — the same primary-checkout resolution the committed
 // pre-commit guard makes, kept in lockstep so the board and the guard cannot
 // disagree about which entries are in force.
-func banlistRoot() (string, error) {
+func banlistRoot(w io.Writer) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
@@ -521,7 +521,7 @@ func banlistRoot() (string, error) {
 	if top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
 		return top, nil
 	}
-	return rulesRoot(cwd), nil
+	return rulesRoot(cwd, w), nil
 }
 
 // readPatternFromStdin reads the pattern as EXACTLY one line. It is the recommended

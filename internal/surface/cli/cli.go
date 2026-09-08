@@ -1103,7 +1103,7 @@ func newHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
-			root := rulesRoot(cwd)
+			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			rs, err := rules.Load(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -1460,7 +1460,7 @@ renders bare and carries "source": "bundled". Read-only.`,
 			if err != nil {
 				return err
 			}
-			rs, err := rules.Load(rulesRoot(cwd))
+			rs, err := rules.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -3797,8 +3797,16 @@ func captureRoot(cwd string) string {
 // above the working tree govern the session (GHSA-vvqc-3mv2-5p49). The
 // resolution lives in core (rules.ResolveRoot) because it is behaviour, not
 // formatting; this front door only hands it cwd.
-func rulesRoot(cwd string) string {
-	return rules.ResolveRoot(cwd)
+// notes carries the resolver's own diagnostics (the ownership refusal, an
+// ignored trust declaration) out of band on w — stderr, never the injected
+// context — because a resolution that declined to read a repository's own
+// configuration must not be silent about it.
+func rulesRoot(cwd string, w io.Writer) string {
+	res := rules.Resolve(cwd)
+	for _, note := range res.Notes {
+		fmt.Fprintf(w, "abcd %s\n", note)
+	}
+	return res.Root
 }
 
 func repoRootSHA() (string, error) {

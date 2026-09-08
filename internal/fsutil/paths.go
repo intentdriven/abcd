@@ -440,3 +440,33 @@ func ModuleRoot(start string) (string, error) {
 		dir = parent
 	}
 }
+
+// ErrOwnerUnknown is OwnerUID's sentinel for a path that exists but whose owning
+// uid the platform did not report. abcd builds only darwin and linux, where
+// os.FileInfo.Sys() always carries a *syscall.Stat_t, so it cannot arise there —
+// it exists so a fail-closed caller has a named condition to refuse on rather
+// than an "ok" it never earned.
+var ErrOwnerUnknown = errors.New("fsutil: owning uid unavailable")
+
+// OwnerUID reports the uid that owns path, following symlinks (the caller has
+// usually resolved the path already, and a link's own uid is not the uid that
+// controls its content). It is the canonical ownership lookup: code asking "is
+// this directory mine?" compares this against os.Getuid() instead of reaching
+// for syscall.Stat_t itself, so exactly one place knows the platform's stat
+// shape.
+//
+// The error is returned rather than folded into a boolean because ownership is
+// a fail-closed question: a caller that cannot learn the owner must be able to
+// tell that from learning the owner is itself, and a (uid, bool) shape makes the
+// two look alike at the call site.
+func OwnerUID(path string) (uint32, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, ErrOwnerUnknown
+	}
+	return uint32(st.Uid), nil
+}
