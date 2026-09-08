@@ -49,17 +49,30 @@ import (
 // stage one could (iss-96 tracks the entropy residue). The rule is wide
 // enough for a pasted, indented, quoted, diffed or line-numbered block.
 //
-// Two more, one on each side of the line. The same-line pattern's `open`
-// alternative (patterns.go) takes a short final padding chunk only where it
-// ENDS the line, so a one-line key rendering with no END marker that is
-// followed by prose keeps that chunk — "… QQQ= and then prose" stores "QQQ=".
-// And the evidence rule over-claims in the other direction: pemBodyOpened
-// accepts ANY single run of 16+ base64-alphabet characters carrying an
-// alphanumeric byte, so a header that is merely MENTIONED still opens a block
-// when one long single-token line follows within the window — a CamelCase
-// identifier alone inside a fenced snippet is enough — and the run can end
-// mid-fence and orphan the closing marker. Both shapes belong to
-// iss-2609020127210042; neither is fixed here.
+// One more. The same-line pattern's `open` alternative (patterns.go) takes a
+// short final padding chunk only where it ENDS the line, so a one-line key
+// rendering with no END marker that is followed by prose keeps that chunk —
+// "… QQQ= and then prose" stores "QQQ=". That is residual (a) of
+// iss-2609020127210042 and is not fixed here.
+//
+// The over-claim on the other side of the line — sub-residual (b) of that
+// record — IS fixed here, and the shape of the fix is the point. The opener
+// used to accept ANY run of 16+ base64-alphabet characters on a line in the
+// window, which is a length threshold an ordinary identifier clears: a
+// mentioned header followed by "CertificateRotationPolicy" alone in a fenced
+// snippet opened a block, and the consumer spliced the fence, the identifier
+// and the closing fence out of a committed record, silently, leaving an
+// orphaned fence that broke the site render. A mention is not a block, so the
+// opener now asks for one of three things instead of a bare length
+// (pemBodyOpened, pemBodyRunPair): an armour header, a run at a key body's
+// CHARACTERISTIC WIDTH, or two CONSECUTIVE body-shaped lines that each carry a
+// key-material run. Raising a bar on a redactor loosens a security control, so
+// the second and third exist to keep the loosening from costing coverage — see
+// pemOpenerRunRe and pemBodyRunPair for what each is holding. What survives is
+// narrower and named: a single identifier of 40+ characters, alone on a line
+// within two lines of a mentioned header, still opens a block, and so do two
+// such lines of 16+ back to back. Only the entropy rule iss-96 tracks can tell
+// those from key material by looking at the bytes.
 
 // maxPEMBodyLines bounds the lines one block consumer may take after the
 // header. A PGP private-key block with several subkeys runs to a few hundred
@@ -78,6 +91,16 @@ var (
 	// material — the SAME rule the same-line pattern applies before it reaches
 	// past a header (patterns.go).
 	pemBase64RunRe = regexp.MustCompile(`[A-Za-z0-9+/=]{16,}`)
+	// pemOpenerRunRe is a run at a key body's characteristic width: what one
+	// line of a rendered PEM body looks like, as against what a long word looks
+	// like. Every generator that writes these blocks wraps the body wider than
+	// this — RFC 7468 mandates 64, OpenSSH writes 70, MIME-wrapped armour 76 —
+	// so no canonically rendered body line falls under the bar, while an
+	// identifier a person types into a sentence or a list almost never reaches
+	// it. 40 characters is 30 bytes of material, and the margin below 64 is
+	// there for the re-wrapping a mail client or a narrow terminal does to a
+	// pasted block on its way into a transcript.
+	pemOpenerRunRe = regexp.MustCompile(`[A-Za-z0-9+/=]{40,}`)
 	// pemArmourRe is an armour header at the head of a line, behind the same
 	// optional gutter pemBodyLineRe allows.
 	pemArmourRe = regexp.MustCompile(`^[\s\d+\-|>:"'` + "`" + `│]*(?:Proc-Type|DEK-Info|Version|Comment|Charset|Hash|MessageID):`)
@@ -88,16 +111,45 @@ var (
 // after one blank line; nothing further out is a block this consumer opened.
 const pemEvidenceWindow = 2
 
-// pemBodyOpened reports whether a line carries positive evidence that a key
-// body opened on it: a base64 run long enough to be key material, or a PEM/PGP
-// armour header. A run of pure padding ("====…", a setext underline) is not
-// evidence — base64 padding is at most two bytes and never stands alone — so
-// the run must carry at least one alphanumeric byte.
+// pemBodyOpened reports whether a line ALONE carries positive evidence that a
+// key body opened on it: a PEM/PGP armour header, or a base64 run at a key
+// body's characteristic width (pemOpenerRunRe). One line is a small amount of
+// evidence, so what it takes to be conclusive on one line is a lot: the old
+// bar of 16 characters is a length an ordinary word clears, and reading a
+// mentioned header plus one long identifier as a key deleted the identifier
+// and the fence around it from a record nobody was warned about. A run of pure
+// padding ("====…", a setext underline) is not evidence either — base64
+// padding is at most two bytes and never stands alone — so the run must carry
+// at least one alphanumeric byte.
 func pemBodyOpened(line string) bool {
-	if pemArmourRe.MatchString(line) {
-		return true
+	return pemArmourRe.MatchString(line) || pemKeyRun(line, pemOpenerRunRe)
+}
+
+// pemBodyRunPair reports whether lines[j] and the line after it are BOTH
+// body-shaped and both carry a run long enough to be key material. This is the
+// other way to be conclusive, and it is why raising the single-line bar to a
+// characteristic width costs no coverage: a block re-wrapped narrower than
+// that width — hard-wrapped in a mail quote, folded by a viewer — shows two
+// such lines back to back where prose, which is what the bar is meant to
+// spare, shows at most one. Both members must be body-shaped, since a line
+// pemBlockEnd would refuse to consume is no evidence about a block it would
+// not have taken.
+func pemBodyRunPair(lines []string, j int) bool {
+	if j+1 >= len(lines) {
+		return false
 	}
-	for _, run := range pemBase64RunRe.FindAllString(line, -1) {
+	for _, k := range [2]int{j, j + 1} {
+		if !pemBodyLineRe.MatchString(lines[k]) || !pemKeyRun(lines[k], pemBase64RunRe) {
+			return false
+		}
+	}
+	return true
+}
+
+// pemKeyRun reports whether line carries a run matched by re that holds at
+// least one alphanumeric byte.
+func pemKeyRun(line string, re *regexp.Regexp) bool {
+	for _, run := range re.FindAllString(line, -1) {
 		if strings.ContainsFunc(run, isBase64Alnum) {
 			return true
 		}
@@ -116,13 +168,18 @@ func isBase64Alnum(r rune) bool {
 // an issue record — used to consume the lines after it and could leave an
 // unbalanced fence where a fenced block had been. Evidence is required before
 // anything is taken; a line that is not even body-shaped ends the search.
+//
+// Either form of evidence counts, on any line the window reaches. The pair
+// form is read from a line in the window, so its second member may sit one
+// line past the window's edge: the window bounds where a body may START, not
+// how much of it must be visible from the header.
 func pemBodyEvidence(lines []string, h int) bool {
 	last := h + pemEvidenceWindow
 	if last >= len(lines) {
 		last = len(lines) - 1
 	}
 	for j := h + 1; j <= last; j++ {
-		if pemBodyOpened(lines[j]) {
+		if pemBodyOpened(lines[j]) || pemBodyRunPair(lines, j) {
 			return true
 		}
 		if !pemBodyLineRe.MatchString(lines[j]) {
