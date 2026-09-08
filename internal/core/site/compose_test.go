@@ -213,3 +213,152 @@ func writeSourceFile(t *testing.T, dir, rel, body string) {
 		t.Fatal(err)
 	}
 }
+
+// auditIsMet reads the intent's `## Audit Notes` rollup — the audit's own
+// machine-readable verdict — and nothing else. Two things it used to read
+// besides: a rollup line quoted inside a fenced block, which is an example of
+// the shape rather than a verdict about this intent, and a negative count,
+// which no audit writes and which lets one rollup line cancel another. Either
+// one alone can put an intent whose acceptance is NOT met on the homepage as
+// the record's own evidence that the process works.
+func TestAuditIsMetReadsOnlyTheUnfencedAuditNotes(t *testing.T) {
+	const fence = "```"
+	cases := []struct {
+		name string
+		doc  string
+		want bool
+	}{
+		{"a met rollup features", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+		}, "\n")), true},
+
+		{"a not-met rollup does not", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 2 · MET_WITH_CONCERNS 0 · NOT_MET 1 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		{"a fenced negative cannot cancel a real NOT_MET", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 2 · MET_WITH_CONCERNS 0 · NOT_MET 1 · INCONCLUSIVE 0",
+			"",
+			"The line the auditor writes, for reference:",
+			"",
+			fence,
+			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 0 · NOT_MET -1 · INCONCLUSIVE 0",
+			fence,
+		}, "\n")), false},
+
+		// The half a negative-refusal alone does not reach: no negative
+		// anywhere, and the fenced line is additive rather than cancelling.
+		{"a fenced MET cannot lift a concerns-only rollup", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0",
+			"",
+			"The template this was filled in from:",
+			"",
+			fence,
+			"Acceptance rollup: MET 1",
+			fence,
+		}, "\n")), false},
+
+		// The half fence-awareness alone does not reach: both lines are real
+		// Audit Notes prose, and the second cancels the first.
+		{"a negative count cancels nothing", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 1 · INCONCLUSIVE 0",
+			"",
+			"A correction nobody should be able to write:",
+			"",
+			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 0 · NOT_MET -1 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		{"a rollup in another section is not the audit", auditedIntent(strings.Join([]string{
+			"## Notes for the auditor",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		{"a rollup in the frontmatter is not the audit", strings.Join([]string{
+			"---",
+			"id: itd-7",
+			"slug: an-audited-intent",
+			"note: \"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0\"",
+			"---",
+			"",
+			"# An Audited Intent",
+			"",
+			"## Audit Notes",
+			"",
+			"The audit has not run yet.",
+			"",
+		}, "\n"), false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSourceFile(t, dir, "itd-7.md", tc.doc)
+			c := &composer{root: mustOpenRoot(t, dir)}
+			if got := c.auditIsMet("itd-7.md"); got != tc.want {
+				t.Errorf("auditIsMet = %v, want %v, for:\n%s", got, tc.want, tc.doc)
+			}
+		})
+	}
+}
+
+// auditedIntent wraps an Audit Notes section (or whatever stands in for one) in
+// the rest of a shipped intent, so each case differs only in the part the
+// rollup scan reads.
+func auditedIntent(tail string) string {
+	return strings.Join([]string{
+		"---",
+		"id: itd-7",
+		"slug: an-audited-intent",
+		"---",
+		"",
+		"# An Audited Intent",
+		"",
+		"## Press Release",
+		"",
+		"> **Somebody wrote this.** It is prose, not the mint placeholder.",
+		"",
+		"## Acceptance Criteria",
+		"",
+		"- Given the audited intent, when the audit runs, then it writes a rollup.",
+		"",
+		tail,
+		"",
+	}, "\n")
+}
+
+// The anti-vacuity guard: a rollup scan narrowed until it reads nothing would
+// satisfy every refusal above and leave the homepage with no feature block at
+// all, because there would be no shipped intent left whose audit reads MET.
+// This repository's own record must still supply them.
+func TestAuditIsMetOnTheCommittedIntents(t *testing.T) {
+	const shipped = ".abcd/development/intents/shipped"
+	entries, err := os.ReadDir(filepath.Join(repoRoot(), filepath.FromSlash(shipped)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := &composer{root: mustOpenRoot(t, repoRoot())}
+	var met []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		if c.auditIsMet(shipped + "/" + e.Name()) {
+			met = append(met, e.Name())
+		}
+	}
+	if len(met) == 0 {
+		t.Fatalf("no shipped intent under %s reads MET; the feature block has nothing to quote", shipped)
+	}
+	t.Logf("%d of %d shipped intents read MET:\n%s", len(met), len(entries), strings.Join(met, "\n"))
+}

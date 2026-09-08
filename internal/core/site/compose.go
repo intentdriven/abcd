@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
@@ -1285,29 +1286,70 @@ func plainPressReleaseText(body string) string {
 // met, and none not met. The rollup line is the audit's own machine-readable
 // summary (`internal/core/intent`), so this reads what the auditor wrote rather
 // than re-grading anything.
+//
+// Two things it reads narrowly, and both matter, because between them they are
+// the whole difference between quoting an intent the audit passed and quoting
+// one it did not.
+//
+// It reads the `## Audit Notes` SECTION, through the same fence-aware walk
+// every other reader of these files uses, and only the prose of it. A rollup
+// line elsewhere in the document — in the frontmatter, in another section, or
+// quoted inside a fenced block as an example of the shape — is not a verdict
+// about this intent, and a whole-file substring scan cannot tell the difference.
+// A fenced `Acceptance rollup: MET 1` needs no negative to do damage: it lifts a
+// concerns-only rollup, whose notMet is already 0, straight past the met > 0
+// test.
+//
+// And it refuses a negative count outright. No audit writes one, `%d` accepts
+// one, and one negative NOT_MET cancels a real one — so a rollup carrying a
+// negative anywhere is malformed, and a malformed rollup is not evidence that
+// the criteria were met.
 func (c *composer) auditIsMet(rel string) bool {
 	data, err := fsutil.ReadGuardedInRoot(c.root, rel, maxPageBytes)
 	if err != nil {
 		return false
 	}
+	body, consumed := StripFrontmatter(string(data))
+	secs, err := Sections(rel, body, consumed)
+	if err != nil {
+		return false
+	}
 	met, notMet := 0, 0
-	for _, line := range strings.Split(string(data), "\n") {
-		_, after, ok := strings.Cut(line, "Acceptance rollup:")
-		if !ok {
+	for _, s := range secs {
+		if s.Title != "Audit Notes" {
 			continue
 		}
-		for _, part := range strings.Split(after, "·") {
-			fields := strings.Fields(part)
-			if len(fields) != 2 {
+		fence := false
+		for _, line := range strings.Split(s.Body, "\n") {
+			if isFenceLine(line) {
+				fence = !fence
 				continue
 			}
-			n := 0
-			fmt.Sscanf(fields[1], "%d", &n)
-			switch fields[0] {
-			case "MET":
-				met += n
-			case "NOT_MET":
-				notMet += n
+			if fence {
+				continue
+			}
+			_, after, ok := strings.Cut(line, "Acceptance rollup:")
+			if !ok {
+				continue
+			}
+			for _, part := range strings.Split(after, "·") {
+				fields := strings.Fields(part)
+				if len(fields) != 2 {
+					continue
+				}
+				n, err := strconv.Atoi(fields[1])
+				if err != nil {
+					continue
+				}
+				if n < 0 {
+					return false
+				}
+				switch fields[0] {
+				case "MET":
+					met += n
+				case "NOT_MET":
+					notMet += n
+				}
 			}
 		}
 	}
