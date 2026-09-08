@@ -101,7 +101,7 @@ func readIdeatePayload(cmd *cobra.Command, spec string) ([]byte, error) {
 // renderIdeateResult is the human view of a recorded verdict. Every value in it is
 // core-owned (a validated slug, a registered verdict, counts, and paths this
 // binary built), so nothing here needs sanitising — the untrusted prose stayed in
-// the record, where the renderer escaped it.
+// the record, where the core's redactor scanned it and the renderer escaped it.
 func renderIdeateResult(res ideate.Result) string {
 	out := fmt.Sprintf("ideate verdict recorded — %s\n", res.Slug)
 	out += fmt.Sprintf("  verdict:   %s\n", res.Verdict)
@@ -119,6 +119,13 @@ func renderIdeateResult(res ideate.Result) string {
 		out += "  rejected:  none, recorded explicitly\n"
 	} else {
 		out += fmt.Sprintf("  rejected:  %d alternative(s) recorded\n", res.RejectedAlternatives)
+	}
+	// Loud-staging: the record was rewritten before it was written, and a composer
+	// that is not told cannot know it just pasted a credential into a durable
+	// record. The count is core-owned; the spans themselves are never echoed.
+	if res.Redactions > 0 {
+		out += fmt.Sprintf("  redacted:  %d secret/PII span(s) rewritten out of the verdict text before it was recorded\n",
+			res.Redactions)
 	}
 	if res.Graduates {
 		out += "  next:      the idea may graduate to a draft intent — `abcd intent \"<text>\"`\n"
