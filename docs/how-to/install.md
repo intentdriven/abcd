@@ -58,22 +58,30 @@ attempts the bootstrap itself, silently and at most once per ten-minute window.
 Session end is the deliberate exception: it resolves the plugin root then
 `PATH` but never downloads, because a fetch there would race the host's
 shutdown and lose the very transcript it exists to capture — so it says in one
-line if the transcript was not captured rather than blocking on a bootstrap. A
-session where provisioning cannot succeed degrades loudly rather than noisily:
-each affected hook says in one line what is inactive (the rules loader, the
-shell guard, the transcript capture) and that the [install](#cli) one-liner
-restores it — after which the hooks resolve the `PATH` binary with no session
-restart needed.
+line if the transcript was not captured rather than blocking on a bootstrap.
+Session start is the other exception, in the other direction: it resolves the
+plugin root alone, and when that is empty it fails closed rather than reaching
+for `PATH` at all. A session where provisioning cannot succeed degrades loudly
+rather than noisily: each affected hook says in one line what is inactive (the
+rules loader, the shell guard, the transcript capture) and that the
+[install](#cli) one-liner restores it — after which the hooks resolve the
+`PATH` binary with no session restart needed, because that install also records
+the binary as this machine's own.
 
-That `PATH` rung is narrow on purpose. A hook takes an `abcd` from `PATH` only
-when the lookup yields an absolute path, in a directory outside the one the
-session is working in, that is not world-writable — which is what the
-[install](#cli) one-liner's `~/.local/bin` is, and what a `.` entry, a
-vendored directory inside a checkout, or a shared world-writable directory is
-not. Anything else is ignored with one line naming the binary and the reason,
-and the hook takes its degraded path instead: a repository you have merely
-cloned does not get to supply the shell guard or the rules loader for the
-session that is reading it.
+That `PATH` rung is narrow on purpose, and it is owned-only. A hook takes an
+`abcd` from `PATH` only when the lookup yields an absolute path, in a directory
+outside the one the session is working in, that is not world-writable, **and**
+`~/.abcd/path-entry` records that exact path as the `abcd` installed on this
+machine. The [install](#cli) one-liner writes that record, and so does abcd's
+own install verb; a binary nothing recorded is ignored with one line naming it
+and the reason, and the hook takes its degraded path instead. The rule is what
+stands between the session and a plausible `abcd` earlier on `PATH` than yours:
+a `.` entry, a vendored directory inside a checkout, a shared world-writable
+directory, or simply a file someone else put there. For `PreToolUse` the
+degraded path is the loud `UNGUARDED` line and a refusal, never an approval —
+a binary abcd cannot vouch for is never given the guard's verdict to answer
+with. A repository you have merely cloned does not get to supply the shell
+guard or the rules loader for the session that is reading it.
 
 That covers the hooks. For the `abcd` command in your own terminal, keep the
 [install](#cli) below, or put the plugin-root binary on your `PATH` by
@@ -110,13 +118,13 @@ single-user location.
 ### macOS
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; grep " $b$" checksums.txt | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; "$HOME/.local/bin/abcd" version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" version'
 ```
 
 ### Linux
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; grep " $b$" checksums.txt | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; "$HOME/.local/bin/abcd" version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" version'
 ```
 
 ### Windows
@@ -134,7 +142,10 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 The one-liners above take no options — they always install to `~/.local/bin`
-and print no `PATH` warning. `abcd ahoy` reports the same gap as a named
+and print no `PATH` warning — and they record that install as this machine's
+`abcd` in `~/.abcd/path-entry`, replacing whatever the record named before, so
+run the one-liner only for the install you want the hooks to use. `abcd ahoy`
+reports the same gap as a named
 finding with the same one-line fix, and the `install` sub-verb it points at
 writes its own `PATH` entry to `~/.local/bin` unless you point it elsewhere
 with `--bin-dir`. abcd never escalates privileges: a
@@ -148,12 +159,16 @@ not own.
 
 Prefer to inspect before running? The command is exactly what it says: two
 downloads from [the latest release](https://github.com/intentdriven/abcd/releases/latest),
-a checksum verification, and a copy into a directory you own. You can do the
-same by hand — grab the binary for your platform plus `checksums.txt` from the
-releases page, run `shasum -a 256 -c` (or `sha256sum -c`) against the matching
-line, and copy the binary anywhere on your `PATH`. Every release is built and
-published by CI from the exact tagged commit, with the checksums generated
-over the same bytes that are uploaded.
+a checksum verification, a copy into a directory you own, and one two-line
+record in `~/.abcd/path-entry` naming what it just installed and that binary's
+SHA-256. The record is what the plugin's hooks read before they will run an
+`abcd` off your `PATH`. You can do the same by hand — grab the binary for your
+platform plus `checksums.txt` from the releases page, run `shasum -a 256 -c`
+(or `sha256sum -c`) against the matching line, and copy the binary anywhere on
+your `PATH`; write the same two lines yourself (`path=<where you put it>` and
+`binary_sha256=<its digest>`) if you want the hooks to accept it as well as
+your terminal. Every release is built and published by CI from the exact tagged
+commit, with the checksums generated over the same bytes that are uploaded.
 
 To move a `~/.local/bin` install to a later release, run `abcd update`; `abcd
 version --check` reports whether one is available and names the command your

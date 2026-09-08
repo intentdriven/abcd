@@ -83,6 +83,16 @@ func hookRun(t *testing.T, event, root, pathDir string) (string, string, int) {
 // is what every pre-existing caller wants.
 func hookRunIn(t *testing.T, event, root, pathDir, dir string) (string, string, int) {
 	t.Helper()
+	return hookRunHome(t, event, root, pathDir, dir, "")
+}
+
+// hookRunHome is hookRunIn with an explicit HOME. The PATH rung's ownership
+// check reads `$HOME/.abcd/path-entry`, so a test that vouches for a planted
+// binary has to control the home the shim reads. An empty home gets a fresh
+// temporary one, which carries no record — the shape every caller that predates
+// the ownership rung wants.
+func hookRunHome(t *testing.T, event, root, pathDir, dir, home string) (string, string, int) {
+	t.Helper()
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh unavailable")
 	}
@@ -90,12 +100,15 @@ func hookRunIn(t *testing.T, event, root, pathDir, dir string) (string, string, 
 	if pathDir != "" {
 		pathEnv = pathDir + ":" + pathEnv
 	}
+	if home == "" {
+		home = t.TempDir()
+	}
 	cmd := exec.Command("sh", "-c", hookCommand(t, event))
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(`{"session_id":"s1"}`)
 	cmd.Env = []string{
 		"PATH=" + pathEnv,
-		"HOME=" + t.TempDir(),
+		"HOME=" + home,
 		"CLAUDE_PLUGIN_ROOT=" + root,
 		"ABCD_CALLS=" + filepath.Join(root, "calls.log"),
 	}
@@ -325,42 +338,128 @@ func TestSessionEndNeverBootstraps(t *testing.T) {
 	}
 }
 
-// TestBinaryHooksFallBackToAPathBinary: the hooks carry the command surface's
-// resolution ladder — plugin root first, PATH second — so a machine where the
-// one-line install has run is rescued even when the plugin root cannot be
-// provisioned at all.
-func TestBinaryHooksFallBackToAPathBinary(t *testing.T) {
+// The PATH rung is the shims' last resort, and it is OWNED-ONLY
+// (GHSA-gx3m-3224-qqcv, CWE-426): a hook takes an `abcd` from PATH only when
+// `~/.abcd/path-entry` records that exact path as the binary this machine
+// installed. Before the ownership rule the rung ran whatever `command -v abcd`
+// resolved, so a hijack directory early on PATH became the session's rules
+// loader and — through PreToolUse, which passes the guard's 0/1/2 verdict
+// straight through — an approver of every shell command it was asked about.
+// Three shapes are refused before ownership is even consulted, because the
+// documented install never produces them: a binary the working tree itself
+// controls, a relative resolution, and a binary in a world-writable directory.
+// Every refusal degrades to the shim's existing loud line, plus one line saying
+// which binary was ignored and why; for PreToolUse that is UNGUARDED and exit
+// 1, never a silent 0. SessionStart has no PATH rung at all and still fails
+// closed. The install one-liners write the record, which is what keeps the
+// documented rescue through ~/.local/bin working.
+
+// writeHookPathEntry vouches for target as this machine's installed abcd, in
+// the shape ahoy's writePathEntry produces (path + binary_sha256, plugin_root
+// optional). The digest is never read by the shim — adr-46 keeps hashing off
+// the hook fast path — but a record without one is not a record the binary
+// itself would accept, so the fixture carries a well-formed one.
+func writeHookPathEntry(t *testing.T, home, target string) {
+	t.Helper()
+	dir := filepath.Join(home, ".abcd")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "path=" + target + "\nbinary_sha256=" + strings.Repeat("a", 64) + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "path-entry"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestBinaryHooksRunAnOwnedPathBinary: the documented rescue still works. With
+// the plugin root unprovisionable and `~/.abcd/path-entry` naming the abcd that
+// PATH resolves, every binary-invoking hook runs it.
+func TestBinaryHooksRunAnOwnedPathBinary(t *testing.T) {
 	for _, h := range binaryHooks {
 		t.Run(h.event, func(t *testing.T) {
 			root := hookRoot(t, failingBootstrap, false)
 			pathDir := t.TempDir()
-			stub := "#!/bin/sh\ncat >/dev/null\nprintf '%s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\nexit 0\n"
-			if err := os.WriteFile(filepath.Join(pathDir, "abcd"), []byte(stub), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			_, stderr, code := hookRun(t, h.event, root, pathDir)
+			home := t.TempDir()
+			pathStub(t, pathDir)
+			writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
+			_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
 			if code != 0 {
-				t.Fatalf("%s exit = %d with an abcd on PATH; stderr: %s", h.event, code, stderr)
+				t.Fatalf("%s exit = %d with an owned abcd on PATH; stderr: %s", h.event, code, stderr)
 			}
 			if !strings.Contains(callLog(t, filepath.Join(root, "calls.log")), h.verb) {
-				t.Fatalf("%s did not run the PATH binary with verb %q; stderr: %s", h.event, h.verb, stderr)
+				t.Fatalf("%s did not run the owned PATH binary with verb %q; stderr: %s", h.event, h.verb, stderr)
+			}
+			if strings.Contains(stderr, "ignoring the abcd found on PATH") {
+				t.Fatalf("%s refused the abcd its own path-entry vouches for; stderr: %s", h.event, stderr)
 			}
 		})
 	}
 }
 
-// The PATH rung is the shims' last resort, and until GHSA-gx3m-3224-qqcv's
-// design fork is settled it stays open to any `abcd` the operator's PATH
-// resolves. Two shapes need no decision to refuse, because the documented
-// install never produces them: a binary the working tree itself controls (a
-// `.` or in-checkout PATH entry, so a hostile clone becomes the guard and the
-// rules loader for the session reading it) and a binary in a world-writable
-// directory (any local user's to replace). Both degrade to the shim's existing
-// loud line, plus one line saying which binary was ignored and why. The full
-// owned-only rung — refusing every PATH binary that `~/.abcd/path-entry` does
-// not vouch for — is the parent record's open decision and is NOT attempted
-// here; the documented rescue through an ordinary directory such as
-// ~/.local/bin keeps working, which TestBinaryHooksFallBackToAPathBinary pins.
+// TestBinaryHooksRefuseAnUnrecordedPathBinary is the advisory itself: a hijack
+// directory first on PATH, a plausible `abcd` inside it, no plugin-root binary,
+// and no ownership record. The planted binary must never run — and PreToolUse
+// must report UNGUARDED and exit 1 rather than pass the planted exit 0 through
+// as an approval.
+func TestBinaryHooksRefuseAnUnrecordedPathBinary(t *testing.T) {
+	for _, h := range binaryHooks {
+		t.Run(h.event, func(t *testing.T) {
+			root := hookRoot(t, failingBootstrap, false)
+			pathDir := t.TempDir()
+			pathStub(t, pathDir)
+			_, stderr, code := hookRunIn(t, h.event, root, pathDir, t.TempDir())
+			assertPathBinaryRefused(t, h, root, stderr, code,
+				[]string{filepath.Join(pathDir, "abcd")},
+				[]string{pathRefusalUnowned})
+		})
+	}
+}
+
+// TestBinaryHooksRefuseAPathBinaryTheRecordDoesNotName: a record exists, but it
+// vouches for a different file — the shape a hijack directory inserted ahead of
+// the real ~/.local/bin install produces. Ownership is the recorded path, not
+// the presence of a record.
+func TestBinaryHooksRefuseAPathBinaryTheRecordDoesNotName(t *testing.T) {
+	for _, h := range binaryHooks {
+		t.Run(h.event, func(t *testing.T) {
+			root := hookRoot(t, failingBootstrap, false)
+			hijack := t.TempDir()
+			home := t.TempDir()
+			pathStub(t, hijack)
+			writeHookPathEntry(t, home, filepath.Join(home, ".local", "bin", "abcd"))
+			_, stderr, code := hookRunHome(t, h.event, root, hijack, t.TempDir(), home)
+			assertPathBinaryRefused(t, h, root, stderr, code,
+				[]string{filepath.Join(hijack, "abcd")},
+				[]string{pathRefusalUnowned})
+		})
+	}
+}
+
+// TestSessionStartHasNoPathRungAndFailsClosed: SessionStart is the loud primary
+// provisioner and resolves the plugin root only. The ownership rung changes
+// nothing there — not even an abcd that path-entry vouches for is run, because
+// the event has no PATH rung to reach it.
+func TestSessionStartHasNoPathRungAndFailsClosed(t *testing.T) {
+	command := hookCommand(t, "SessionStart")
+	if strings.Contains(command, "command -v abcd") {
+		t.Fatalf("SessionStart grew a PATH rung: %q", command)
+	}
+	root := hookRoot(t, failingBootstrap, false)
+	pathDir := t.TempDir()
+	home := t.TempDir()
+	pathStub(t, pathDir)
+	writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
+	_, stderr, code := hookRunHome(t, "SessionStart", root, pathDir, t.TempDir(), home)
+	if log := callLog(t, filepath.Join(root, "calls.log")); log != "" {
+		t.Fatalf("SessionStart ran a PATH binary: %q", log)
+	}
+	if code == 0 || code == 127 {
+		t.Fatalf("SessionStart exit = %d without a plugin-root binary; want a non-zero, non-exec-failure exit; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "not installed") || !strings.Contains(stderr, "#install") {
+		t.Fatalf("SessionStart dropped its fail-closed line: %q", stderr)
+	}
+}
 
 // pathStub writes the recording stub binary into dir.
 func pathStub(t *testing.T, dir string) {
@@ -380,7 +479,13 @@ var pathRefusalReasons = []string{
 	"it did not resolve to an absolute path",
 	"its directory could not be resolved",
 	"its directory is world-writable",
+	pathRefusalUnowned,
 }
+
+// pathRefusalUnowned is the ownership refusal — the rung's last gate and the
+// one GHSA-gx3m-3224-qqcv turns on. It is spelled once here and asserted
+// against the shipped manifest's own wording.
+const pathRefusalUnowned = "~/.abcd/path-entry does not record it as the abcd installed here"
 
 // assertPathBinaryRefused: the stub never ran, the shim still failed loudly with
 // its own remedy line, and one line names the ignored PATH binary AND the reason
@@ -424,6 +529,12 @@ func assertPathBinaryRefused(t *testing.T, h binaryHook, root, stderr string, co
 	}
 	if h.event == "PreToolUse" && !strings.Contains(stderr, "UNGUARDED") {
 		t.Fatalf("PreToolUse must still say UNGUARDED when it refuses the PATH binary; stderr: %s", stderr)
+	}
+	// The guard's exit code is the whole advisory: the harness reads 0 as
+	// "approved". A refused PATH binary must leave the fence at 1, and never
+	// at the 0 the planted binary itself exited with.
+	if h.event == "PreToolUse" && code != 1 {
+		t.Fatalf("PreToolUse exit = %d after refusing the PATH binary; want exactly 1; stderr: %s", code, stderr)
 	}
 }
 

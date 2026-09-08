@@ -226,13 +226,18 @@ Steps, run in parallel where independent:
    non-SessionStart shims attempt `hooks/bootstrap.sh` when the plugin-root
    binary is missing (throttled by a `.bootstrap.attempt` marker within a
    10-minute window), then fall back to a PATH-resolved `abcd` before failing
-   loudly. The PATH rung accepts only an absolute resolution out of a
-   directory that is neither under the shim's working directory nor
-   world-writable — the shapes the documented install never produces — and
-   says in one line which binary it ignored and why before degrading
-   (iss-2609012039117381); whether a PATH binary should have to be vouched
-   for by `~/.abcd/path-entry` at all is the open question in
-   GHSA-gx3m-3224-qqcv. A missing or
+   loudly. The PATH rung is OWNED-ONLY (GHSA-gx3m-3224-qqcv, CWE-426): it
+   accepts only an absolute resolution out of a directory that is neither
+   under the shim's working directory nor world-writable — the shapes the
+   documented install never produces (iss-2609012039117381) — and only when
+   `~/.abcd/path-entry` records that exact path as this machine's installed
+   binary. The record is a `path=` string comparison and no hashing, because
+   adr-46 keeps the fast path at one file test; the install one-liners and
+   `ahoy install` both write it. Anything else is ignored with one line
+   naming the binary and the reason, and the shim degrades — for the
+   `PreToolUse` guard that is the UNGUARDED line and exit 1, never the exit 0
+   the harness reads as an approval. SessionStart carries no PATH rung at all
+   and fails closed. A missing or
    malformed manifest surfaces as a non-resolvable `plugin-owned` diagnostic
    gap. Neither install nor uninstall ever mutates `hooks.json` — the manifest
    is plugin-static per spc-14 T7.

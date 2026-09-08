@@ -65,6 +65,15 @@ func fakePluginRoot(t *testing.T, script string) string {
 // running these tests may itself carry a real `abcd` there.
 func runShim(t *testing.T, command, pluginRoot, pathDir string) (stderr string, code int) {
 	t.Helper()
+	return runShimHome(t, command, pluginRoot, pathDir, t.TempDir())
+}
+
+// runShimHome is runShim with an explicit HOME. The PATH rung is owned-only —
+// it reads `$HOME/.abcd/path-entry` and runs a PATH binary only when that record
+// names it — so a test that means to exercise the rung's ACCEPT branch has to
+// own the home the shim reads.
+func runShimHome(t *testing.T, command, pluginRoot, pathDir, home string) (stderr string, code int) {
+	t.Helper()
 	pathEnv := "/usr/bin:/bin"
 	if pathDir != "" {
 		pathEnv = pathDir + ":" + pathEnv
@@ -92,7 +101,7 @@ func runShim(t *testing.T, command, pluginRoot, pathDir string) (stderr string, 
 		// would strip it — hermetic against the developer's PATH, not against the
 		// test's own fixture.
 		"PATH="+pathEnv,
-		"HOME="+t.TempDir(),
+		"HOME="+home,
 		"CLAUDE_PLUGIN_ROOT="+pluginRoot)
 	cmd.Stdin = strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"ls"}}`)
 	var se strings.Builder
@@ -187,23 +196,51 @@ func TestGuardShimPropagatesRealDecisions(t *testing.T) {
 	}
 }
 
-// TestGuardShimFallsBackToPATH pins the resolution ladder's second rung: an empty
-// plugin root with an abcd on PATH still guards the session — a block stays a
+// TestGuardShimFallsBackToAnOwnedPathBinary pins the resolution ladder's second
+// rung: an empty plugin root with THIS MACHINE'S abcd on PATH — the one
+// `~/.abcd/path-entry` records — still guards the session, so a block stays a
 // block and no UNGUARDED warning prints. (iss-275: without a controlled PATH the
 // binary-absent case above exercised this rung by accident on any machine that
 // dogfoods the install, instead of proving the shim fails open.)
-func TestGuardShimFallsBackToPATH(t *testing.T) {
+func TestGuardShimFallsBackToAnOwnedPathBinary(t *testing.T) {
 	_, command := preToolUseGuardCommand(t)
 	pathDir := t.TempDir()
+	home := t.TempDir()
 	stub := filepath.Join(pathDir, "abcd")
 	if err := os.WriteFile(stub, []byte("#!/bin/sh\necho \"blocked\" >&2\nexit 2\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	stderr, code := runShim(t, command, t.TempDir(), pathDir)
+	writeHookPathEntry(t, home, stub)
+	stderr, code := runShimHome(t, command, t.TempDir(), pathDir, home)
 	if code != 2 {
 		t.Errorf("the PATH rung must guard the session; exit = %d (stderr %q)", code, stderr)
 	}
 	if strings.Contains(stderr, "UNGUARDED") {
 		t.Errorf("a session guarded via PATH must not warn UNGUARDED; stderr = %q", stderr)
+	}
+}
+
+// TestGuardShimRefusesAnUnrecordedPathBinary is GHSA-gx3m-3224-qqcv at the
+// guard's own surface: an `abcd` nothing recorded, planted first on PATH and
+// exiting 0, must not become the session's guard. The exit 0 it offers is the
+// harness's word for "approved", so the only safe reading of an unvouched
+// binary is not to run it — UNGUARDED and exit 1, the same degraded path a
+// missing binary takes.
+func TestGuardShimRefusesAnUnrecordedPathBinary(t *testing.T) {
+	_, command := preToolUseGuardCommand(t)
+	pathDir := t.TempDir()
+	stub := filepath.Join(pathDir, "abcd")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\ncat >/dev/null\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stderr, code := runShim(t, command, t.TempDir(), pathDir)
+	if code != 1 {
+		t.Errorf("an unrecorded PATH binary must not decide the command; exit = %d (stderr %q)", code, stderr)
+	}
+	if !strings.Contains(stderr, "UNGUARDED") {
+		t.Errorf("a refused PATH binary leaves the session unguarded and must say so; stderr = %q", stderr)
+	}
+	if !strings.Contains(stderr, pathRefusalUnowned) {
+		t.Errorf("the refusal must name the ownership reason; stderr = %q", stderr)
 	}
 }
