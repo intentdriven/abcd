@@ -1,6 +1,14 @@
 package site
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/changelog"
+)
 
 // The header and footer forge links are labelled with the forge's declared
 // interface name, not the owner/repo handle — a reader who has never heard of
@@ -103,5 +111,105 @@ func TestForgeHost(t *testing.T) {
 		if got := forgeHost(in); got != want {
 			t.Fatalf("forgeHost(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// releaseOf stamps the featured record with the release that credits it, and a
+// credit is the record's OWN handle: `itd-1990` in a newer section names a
+// different record, not a longer spelling of `itd-199`. A substring match walks
+// newest-first and returns the first line the id merely sits inside, so every
+// short handle inherits the release of the first longer one above it — and a
+// superstring landing in a future section silently restamps the featured id.
+func TestReleaseOfMatchesTheHandleAtAWordBoundary(t *testing.T) {
+	dir := t.TempDir()
+	writeSourceFile(t, dir, "CHANGELOG.md", strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"## [0.9.0] - 2026-09-01",
+		"",
+		"### Added",
+		"",
+		"- A later promise, delivered. (itd-1990)",
+		"",
+		"## [0.3.0] - 2026-05-01",
+		"",
+		"### Added",
+		"",
+		"- The promise this release delivered. (itd-199)",
+		"",
+	}, "\n"))
+
+	c := &composer{root: mustOpenRoot(t, dir)}
+	cases := map[string]string{
+		// Its own section, even though a NEWER one spells a superstring of it.
+		"itd-199": "0.3.0",
+		// The longer handle still finds the line that actually names it.
+		"itd-1990": "0.9.0",
+		// A handle nothing credits is stamped with nothing, rather than
+		// borrowing the section of the first line it is a substring of.
+		"itd-19": "",
+		"itd-1":  "",
+		// A different family sharing the number is a different record.
+		"spc-199": "",
+	}
+	for id, want := range cases {
+		if got := c.releaseOf(id); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+// The anti-vacuity guard: the boundary rule run against the changelog this
+// repository actually ships, where the short handles are the ones that
+// inherited. Before the fix releaseOf("itd-1") returned 0.7.1 — the release
+// that credits itd-130 — and releaseOf("itd-9") returned 0.4.1 off the itd-93
+// credit, neither of which names its record at all.
+func TestReleaseOfOnTheCommittedChangelog(t *testing.T) {
+	c := &composer{root: mustOpenRoot(t, repoRoot())}
+	short := c.releaseOf("itd-1")
+	if short == "" {
+		t.Fatal("the committed changelog credits no itd-1 at all, so this guard proves nothing")
+	}
+	if long := c.releaseOf("itd-130"); short == long {
+		t.Errorf("itd-1 and itd-130 were both stamped %q; the short handle inherited the longer one's section", short)
+	}
+	if !committedChangelogSectionNames(t, short, "itd-1") {
+		t.Errorf("itd-1 was stamped v%s, a release whose section never names itd-1", short)
+	}
+}
+
+// committedChangelogSectionNames reports whether the dated section for version
+// in the committed changelog names id at a word boundary. It splits the file
+// on its own rather than through releaseOf, so the guard above is a second
+// opinion and not a restatement of the thing under test.
+func committedChangelogSectionNames(t *testing.T, version, id string) bool {
+	t.Helper()
+	re := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(id) + `\b`)
+	in := false
+	for _, line := range strings.Split(readFile(t, filepath.Join(repoRoot(), "CHANGELOG.md")), "\n") {
+		if changelog.IsDatedHeading(line) {
+			in = strings.Contains(line, "["+version+"]") || strings.Contains(line, "[v"+version+"]")
+			continue
+		}
+		if in && re.MatchString(line) {
+			return true
+		}
+	}
+	return false
+}
+
+// writeSourceFile writes one composed source file into a bare directory, for a
+// test that reads through a composer's containment root without building the
+// whole fixture repository around it.
+func writeSourceFile(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	abs := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

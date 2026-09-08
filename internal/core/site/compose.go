@@ -1318,13 +1318,22 @@ func (c *composer) auditIsMet(rel string) bool {
 // changelog is the record of what shipped when, and the intent id is how an
 // entry says which promise it delivered, so the version is a lookup rather than
 // a thing anyone types onto the page.
+//
+// A credit is the record's OWN handle, matched at a word boundary: `itd-1990`
+// names a different record, not a longer spelling of `itd-199`. A substring
+// test cannot tell the two apart, and because the walk takes the newest dated
+// section first, the answer it gave a short handle was whichever longer handle
+// happened to sit above it — `itd-1` stamped with the release that credits
+// itd-130, `itd-9` with the one that credits itd-93. Worse than wrong once: a
+// superstring landing in a FUTURE section restamps the featured record without
+// anything about that record changing.
 func (c *composer) releaseOf(id string) string {
 	data, err := fsutil.ReadGuardedInRoot(c.root, "CHANGELOG.md", changelog.MaxChangelogBytes)
 	if err != nil {
 		return ""
 	}
 	version := ""
-	low := strings.ToLower(id)
+	want := normalizeHandle(id)
 	for _, line := range strings.Split(string(data), "\n") {
 		if changelog.IsDatedHeading(line) {
 			if _, after, ok := strings.Cut(line, "["); ok {
@@ -1333,9 +1342,44 @@ func (c *composer) releaseOf(id string) string {
 			}
 			continue
 		}
-		if version != "" && strings.Contains(strings.ToLower(line), low) {
+		if version != "" && creditsHandle(line, want) {
 			return version
 		}
 	}
 	return ""
+}
+
+// creditsHandle reports whether a changelog line names want — an already
+// normalised handle — as a handle in its own right.
+//
+// The boundary comes from bodyHandleRe, this package's one definition of a
+// record handle as it appears in prose: every handle on the line is read out
+// and compared whole. bodyHandleRe knows the four record families the graph
+// exports, and a family it does not know would find no credit at all — which
+// fails closed, with the page carrying no version stamp, rather than open, with
+// the page carrying somebody else's.
+func creditsHandle(line, want string) bool {
+	for _, m := range bodyHandleRe.FindAllString(line, -1) {
+		if normalizeHandle(m) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeHandle lower-cases a record handle and strips the leading zeros from
+// its number, so `ITD-007` and `itd-7` are the same record — the same
+// normalisation the record.json mentions pass applies to a handle it finds in
+// prose. A value that is not a handle is returned lower-cased and otherwise
+// untouched, and so matches only itself.
+func normalizeHandle(h string) string {
+	m := bodyHandleRe.FindStringSubmatch(h)
+	if m == nil || m[0] != h {
+		return strings.ToLower(h)
+	}
+	n := strings.TrimLeft(m[2], "0")
+	if n == "" {
+		n = "0"
+	}
+	return strings.ToLower(m[1]) + "-" + n
 }
