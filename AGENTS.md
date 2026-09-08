@@ -253,6 +253,23 @@ irreversible; guessing downward costs nothing.**
   inflates the contributor graph). There is no DCO: contributions are inbound =
   outbound MIT, so no `Signed-off-by:` is required (adr-43). The human is the
   author of record, responsible for all AI-assisted output. See `CONTRIBUTING.md`.
+- **Every commit is authored by a human, and the gate refuses a machine.** The
+  contributor graph is built from the author and committer fields, so a machine
+  there asserts an authorship it does not hold — and a squash merge re-appends a
+  mis-identified branch author as a co-author, inflating the graph again on every
+  squash. `scripts/check-attribution.sh commits` reads the identity of every
+  commit in a range, merge commits included, and refuses one on a structural
+  signal: the forge's own `[bot]` name suffix, a bot mailbox
+  (`NNNN+name[bot]@users.noreply.github.com`), a vendor noreply address, or a
+  vendor name standing alone. It is refuse-machines, not an allowlist of names:
+  this repository takes outside contributions (`.abcd/work/intake.md`), and a
+  person's forge privacy address (`1234+name@users.noreply.github.com`) is a
+  human's and passes — the `[bot]` marker in the mailbox is the discriminator,
+  never the `users.noreply.github.com` host. The forge as COMMITTER
+  (`GitHub <noreply@github.com>`) is how every web-UI merge and squash is stamped
+  on a human's click, and passes in that role alone. **The consequence is
+  deliberate: a dependabot pull request is not mergeable as authored, so a
+  dependency bump is landed by a human.**
 - **A human-only change declares itself: `Assisted-by: None`.** The convention is
   disclosure, and work no AI touched has nothing to disclose — but silence cannot
   say so, because an absent trailer and a forgotten one are the same bytes. The
