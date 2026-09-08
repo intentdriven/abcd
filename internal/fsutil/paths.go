@@ -52,6 +52,25 @@ func ValidRelPath(p string) bool {
 	return true
 }
 
+// InsideGitDir reports whether the repo-relative path p names the git directory
+// or anything under it.
+//
+// ValidRelPath accepts ".git/config" — it is clean, relative, and inside the
+// containment root — so a configuration value that arrives as data and is then
+// READ AND PUBLISHED needs this second gate on top of it: .git/config carries a
+// credential-bearing remote URL (on a CI runner, the checkout token in an
+// `http.…extraheader` line), and nothing under .git is ever a legitimate source
+// of rendered text. The first segment is compared case-insensitively, because a
+// case-folding filesystem reaches the same .git through ".GIT" (iss-150).
+//
+// Only the leading segment is examined, so ".github/workflows/ci.yml" and
+// ".gitignore" — different directories that merely start with the same bytes —
+// are not caught.
+func InsideGitDir(p string) bool {
+	first, _, _ := strings.Cut(p, "/")
+	return strings.EqualFold(first, ".git")
+}
+
 // CaseFoldingFS reports whether the platform's default filesystem folds case.
 // macOS (APFS/HFS+ default) and Windows do; abcd assumes this default rather
 // than probing each volume, and the only cost of a false assumption is a
