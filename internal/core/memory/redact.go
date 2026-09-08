@@ -291,6 +291,75 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 	return newIngestError("refusing to write: a map key in %s carries %d blocking span(s) [%s]; a key cannot be redacted without renaming the field it names, so repair the source", label, len(resid), strings.Join(kinds, ", "))
 }
 
+// judgeFilename is the PAGE FILENAME rule (iss-2609020321100138). A page's name
+// is host-supplied — a distiller returns `slug`, slugRe admits
+// [A-Za-z0-9_-] and pageNameRe admits <type>_<domain>_<slug>.md — and no
+// value-side or key-side pass can see it: the filename is not a leaf of the
+// frontmatter, and the registry back-link that carries it is deliberately
+// excluded from the leaf walk (redactRegistryLeaves, the pruneOrphans
+// data-loss fix). So a slug of `ghp_<40 chars>` reached the committed tree
+// four times over — as the file's own name, in index.md, in log.md, and as the
+// back-link — with every other write-side detector green.
+//
+// Refused, never rewritten, for judgeKey's reason: a page name is the identity
+// the store resolves, so renaming it is not a redaction — it makes a different
+// page, and the back-link that names the old one then points at nothing.
+//
+// The BAR is narrower than every other write-side rule's, and that is the
+// point. redactText and judgeKey refuse on scanner.BlockingResidual, which
+// promotes any identity-or-network span to blocking whatever its severity so a
+// warn-level hostname heuristic cannot slip through stage two. A filename is
+// not free text: it is prose-shaped by construction, and
+// `topic_home_migrating-off-the-nas.md` matches net_device_hostname at warn on
+// the hyphen boundary — at BlockingResidual's bar every such ordinary page
+// would be refused. This rule therefore selects on the scanner's own severity
+// vocabulary alone, scanner.SeverityHardFail, which within a filename's
+// charset is exactly the credential class: no '/', '@', ':' or '.' can appear
+// inside a page name, so the address kinds and the home-path kinds are
+// unreachable there and what remains at hard_fail is a secret pattern, the
+// caller's own local username, or a banned real name.
+//
+// The components are judged as well as the joined name because '_' is a word
+// character: `\bghp_...` has no word boundary after `topic_auth_`, so the
+// joined form hides in the scanner exactly the token the slug carries plainly.
+func (r *storeRedactor) judgeFilename(filename string) error {
+	texts := []string{filename}
+	if typ, domain, slug, ok := ParsePageFilename(filename); ok {
+		texts = append(texts, typ, domain, slug)
+	}
+	seen := map[string]bool{}
+	var kinds []string
+	for _, text := range texts {
+		for _, f := range r.hardFailResidue(text, filename) {
+			if seen[f.Kind] {
+				continue
+			}
+			seen[f.Kind] = true
+			kinds = append(kinds, f.Kind)
+		}
+	}
+	if len(kinds) == 0 {
+		return nil
+	}
+	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", filename, len(kinds), strings.Join(kinds, ", "))
+}
+
+// hardFailResidue is judgeFilename's narrow bar: the scanner's own hard_fail
+// severity and nothing else. It is deliberately NOT scanner.BlockingResidual
+// (see judgeFilename) and deliberately NOT a second severity notion — the
+// selection is on scanner.SeverityHardFail, the level the scanner already
+// defines. The literal-home backstop residue applies is skipped too: a home
+// path cannot appear in a page name, which holds no '/'.
+func (r *storeRedactor) hardFailResidue(text, label string) []scanner.Finding {
+	var out []scanner.Finding
+	for _, f := range r.sc.ScanText(text, label) {
+		if f.Severity == scanner.SeverityHardFail {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // judgeLeaf is redactLeaves' one leaf rule: unchanged from current, keep it;
 // otherwise it is this write's and goes through redactText.
 func (r *storeRedactor) judgeLeaf(current any, leaf, label string) (string, error) {
