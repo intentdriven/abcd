@@ -130,11 +130,21 @@ It writes `.abcd/development/research/notes/<date>-ideate-<slug>.md` — the ide
 three legs, the verdict, and the rejected alternatives, rendered for a human —
 and appends one dated pointer line to `.abcd/work/DECISIONS.md`.
 
+Both are committed, so every free-text field of the verdict is scanned and
+redacted before either is written: a token, an email, or an absolute home path in
+the idea, a claim, a note, a kill attempt, or a rejected alternative is rewritten
+to a placeholder, and the count comes back as `redactions`. A repository whose
+scanner config cannot be read refuses the run outright rather than record under a
+detector it cannot trust — nothing is written, and the same payload records once
+the config is repaired.
+
 Exit codes:
 
 - **0** — recorded. Report the `verdict`, the `path`, and the `cited_records`
   (the ids the grill cited, every one proved to resolve). Show the user the
-  written record.
+  written record. If `redactions` is non-zero, say so — the record no longer
+  matches what was composed, and whoever composed it needs to know a credential
+  or an identity was in the text.
 - **2** — refused, and **nothing was written**. Relay the diagnostic: an
   unresolvable citation names the id, a payload fault names the field, and a
   verdict record that already exists under today's date is refused rather than
