@@ -25,6 +25,17 @@ const ManifestRelPath = ".abcd/site.json"
 // maxManifestBytes bounds the manifest read. It is configuration, not content.
 const maxManifestBytes = 256 * 1024
 
+// pageRootPrefixes are the only directories a composed page may come from, the
+// same closed set assetRootPrefix is for pictures and for the same reason: the
+// build INLINES what it reads here into `index.html`, so a page path that is
+// merely a valid repo-relative path reaches `.git/config` (a credential-bearing
+// remote URL, and on a CI runner the checkout token in an `http.…extraheader`
+// line), `.env`, and the gitignored `.abcd/.work.local/` tier — and publishes
+// whichever it names. `docs/` is the documentation the landing page is composed
+// from; `site-src/` is the site's own static input. Nothing else is prose the
+// site was built to render (iss-2609081940475662).
+var pageRootPrefixes = []string{"docs/", "site-src/"}
+
 // ErrManifestInvalid is returned for a manifest the build cannot act on.
 var ErrManifestInvalid = errors.New("site: manifest is invalid")
 
@@ -226,11 +237,23 @@ func (m Manifest) validate() error {
 	if !fsutil.ValidRelPath(m.Identity.File) {
 		return bad("identity.file %q is not a repo-relative path", m.Identity.File)
 	}
+	// identity.file is a heading extract rather than a whole-file page source,
+	// so it keeps its home in the durable record outside docs/ — but a heading
+	// extract out of .git/config is still a quote out of .git/config.
+	if err := refuseGitDir(bad, "identity.file", m.Identity.File); err != nil {
+		return err
+	}
 	if m.UIStrings == "" || !fsutil.ValidRelPath(m.UIStrings) {
 		return bad("ui_strings %q is not a repo-relative path", m.UIStrings)
 	}
+	if err := refuseGitDir(bad, "ui_strings", m.UIStrings); err != nil {
+		return err
+	}
 	if m.Home.Hero.Page == "" || !fsutil.ValidRelPath(m.Home.Hero.Page) {
 		return bad("home.hero.page %q is not a repo-relative path", m.Home.Hero.Page)
+	}
+	if err := refusePageSource(bad, "home.hero.page", m.Home.Hero.Page); err != nil {
+		return err
 	}
 	if m.Home.Hero.Figure != "" && m.Home.Hero.Figure != figureFirstImage {
 		return bad("home.hero.figure %q is not a figure rule (want %q)", m.Home.Hero.Figure, figureFirstImage)
@@ -250,6 +273,9 @@ func (m Manifest) validate() error {
 		letters[ch.Letter] = true
 		if !fsutil.ValidRelPath(ch.Page) {
 			return bad("%s.page %q is not a repo-relative path", where, ch.Page)
+		}
+		if err := refusePageSource(bad, where+".page", ch.Page); err != nil {
+			return err
 		}
 		switch ch.Layout {
 		case LayoutCardsFromH2, LayoutLeadInCards, LayoutProse, LayoutInstall:
@@ -324,8 +350,14 @@ func (m Manifest) validateDeferred(bad func(string, ...any) error) error {
 		{"docs.index", m.Docs.Index},
 		{"docs.cli", m.Docs.CLI},
 	} {
-		if f.path != "" && !fsutil.ValidRelPath(f.path) {
+		if f.path == "" {
+			continue
+		}
+		if !fsutil.ValidRelPath(f.path) {
 			return bad("%s %q is not a repo-relative path", f.key, f.path)
+		}
+		if err := refuseGitDir(bad, f.key, f.path); err != nil {
+			return err
 		}
 	}
 	// DEFERRED to spc-38's pages half (the contributors page).
@@ -334,15 +366,58 @@ func (m Manifest) validateDeferred(bad func(string, ...any) error) error {
 		if !fsutil.ValidRelPath(policy.File) {
 			return bad("record_pages.contributors.policy.file %q is not a repo-relative path", policy.File)
 		}
+		// A one-bullet quote, not a whole-file page source, so the attribution
+		// policy stays quotable from CONTRIBUTING.md at the repository root —
+		// but not from inside .git.
+		if err := refuseGitDir(bad, "record_pages.contributors.policy.file", policy.File); err != nil {
+			return err
+		}
 		if policy.Heading == "" {
 			return bad("record_pages.contributors.policy.heading is empty; the page quotes a span selected by heading")
 		}
 	}
 	// DEFERRED to `abcd site check`.
-	if b := m.Checks.UnresolvedReferenceBaseline; b != "" && !fsutil.ValidRelPath(b) {
-		return bad("checks.unresolved_reference_baseline %q is not a repo-relative path", b)
+	if b := m.Checks.UnresolvedReferenceBaseline; b != "" {
+		if !fsutil.ValidRelPath(b) {
+			return bad("checks.unresolved_reference_baseline %q is not a repo-relative path", b)
+		}
+		if err := refuseGitDir(bad, "checks.unresolved_reference_baseline", b); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// refuseGitDir refuses a manifest path that names the git directory. EVERY path
+// field passes it, deferred ones included: each names a file the build reads and
+// renders some span of, and fsutil.ValidRelPath accepts ".git/config" because it
+// is a clean, relative, in-root path. The refusal is fsutil.InsideGitDir, shared
+// with the positioning registry's identical gate (iss-150) so the two cannot
+// drift — a case-fold or a segment rule fixed in one is fixed in both.
+func refuseGitDir(bad func(string, ...any) error, key, p string) error {
+	if fsutil.InsideGitDir(p) {
+		return bad("%s %q is inside .git, which is not a composition source", key, p)
+	}
+	return nil
+}
+
+// refusePageSource is the gate on the two WHOLE-FILE page sources —
+// home.hero.page and home.chapters[].page. loadPage composes everything the
+// named file holds into `index.html`, so the selection is closed to the page
+// roots rather than merely denied the worst known destination: a denylist of
+// .git and .env leaves the gitignored local tier, the private record, and every
+// file a future contributor adds still reachable.
+func refusePageSource(bad func(string, ...any) error, key, p string) error {
+	if err := refuseGitDir(bad, key, p); err != nil {
+		return err
+	}
+	for _, prefix := range pageRootPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return nil
+		}
+	}
+	return bad("%s %q is outside %s — a composed page is inlined whole into the published site, so it comes from the documentation or the site's own source",
+		key, p, strings.Join(pageRootPrefixes, " or "))
 }
 
 // FeatureWants reports whether a chapter's feature block quotes the named part.

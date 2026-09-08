@@ -239,9 +239,10 @@ func (s Surface) validate(i int) error {
 		// the containment root — but a surface pointed there would quote the
 		// git directory (a credential-bearing remote URL in .git/config) into
 		// identity output. Nothing under .git is a rendered positioning surface.
-		// The first segment is compared case-insensitively because a
-		// case-folding filesystem reaches the same .git through ".GIT" (iss-150).
-		if first, _, _ := strings.Cut(f, "/"); strings.EqualFold(first, ".git") {
+		// The refusal itself lives in fsutil, shared with the site composer's
+		// manifest gate, which faces the same threat from the same primitive
+		// (iss-150, iss-2609081940475662).
+		if fsutil.InsideGitDir(f) {
 			return fmt.Errorf("%w: %s.files entry %q is inside .git", ErrConfigInvalid, where, f)
 		}
 	}
