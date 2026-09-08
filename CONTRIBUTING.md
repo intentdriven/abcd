@@ -80,6 +80,16 @@ disclosure, and never an authorship assertion for a tool. The rules:
   they submit and is responsible for all AI-assisted output — its correctness, its
   licensing, and its fit for the project. AI assistance never transfers that
   responsibility.
+- **Commit as yourself.** The gate reads the git author AND committer of every
+  commit in a pull request, merge commits included, and refuses a machine
+  identity: the forge's own `[bot]` name suffix, a bot mailbox
+  (`NNNN+name[bot]@users.noreply.github.com`), or an assistant vendor's noreply
+  address. Your forge privacy address (`1234+you@users.noreply.github.com`) is
+  yours and passes — the `[bot]` marker is what marks a machine, not the
+  `users.noreply.github.com` host. Set `user.name` and `user.email` to a human
+  before you commit; the assistant belongs in the trailer, never in the identity
+  fields the contributor graph reads. An automated dependency bump is therefore
+  landed by a human rather than merged as the bot authored it.
 - **Disclosure by trailer, not co-authorship.** AI-assisted commits carry an
   `Assisted-by: <Agent>:<model-version>` trailer (the kernel format) —
   disclosure only. abcd never uses `Co-Authored-By:` for AI: it asserts an

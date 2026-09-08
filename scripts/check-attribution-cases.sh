@@ -563,10 +563,124 @@ commits_case reject "another vendor's AI author, compliant message"
 commit_as 'Claudette Martin' claudette@example.invalid 'Claudette Martin' claudette@example.invalid "$MSG_OK"
 commits_case accept "human name containing an AI name"
 
-# The bot exemption still holds: dependabot writes no trailer and stays exempt.
+# --- Machines are refused; humans are not (iss-2609082001204831) ---------------
+# The rule the maintainer states is refuse-machines-allow-humans, NOT an allowlist
+# of one name: this repository takes outside contributions (.abcd/work/intake.md)
+# and already carries a commit from an outside human. A commit is authored by a
+# human and machine assistance is disclosed by the trailer alone, so the signal
+# has to be STRUCTURAL — the forge's own `[bot]` name suffix and the bot mailbox
+# shape it stamps — rather than a roster of tool names, which only ever grows.
+#
+# The exemption these cases replace was the second of the two holes: a machine
+# identity that is not an AI VENDOR matched neither identity list, so three
+# dependabot[bot] commits authored dependency bumps directly into main. The
+# exemption's own reasoning ("failing its PRs would train the maintainer to
+# discount a red gate") is answered by the consequence rather than by the gate: a
+# dependency bump is landed by a human, and the gate is correct to be red until
+# one does.
 commit_as 'dependabot[bot]' '49699333+dependabot[bot]@users.noreply.github.com' \
 	'GitHub' 'noreply@github.com' 'chore(deps): bump something'
-commits_case accept "bot author without trailer (exemption)"
+commits_case reject "bot author, forge bot mailbox"
+
+# The `[bot]` suffix is the signal, not the name that carries it — a second
+# automation appears in the right place without an edit here.
+commit_as 'renovate[bot]' 'renovate[bot]@users.noreply.github.com' \
+	REPPL human@example.invalid "$MSG_OK"
+commits_case reject "another bot author, compliant message"
+
+# A machine COMMITTER on a human-authored commit is refused too. The graph reads
+# authorship, but a bot that commits on a human's behalf is a route back to the
+# same place, and the existing AI-committer case already settled the principle.
+commit_as REPPL human@example.invalid \
+	'dependabot[bot]' '49699333+dependabot[bot]@users.noreply.github.com' "$MSG_OK"
+commits_case reject "human author, bot committer"
+
+# THE DISCRIMINATOR, and the case most worth getting right: a forge PRIVACY
+# address is a PERSON'S address. `1234+name@users.noreply.github.com` is how the
+# overwhelming majority of this repository's own commits are authored — the host
+# says noreply, the mailbox is the account. `[bot]` in the mailbox is what makes
+# `49699333+dependabot[bot]@users.noreply.github.com` a machine, never the host.
+# Reading the host instead would refuse every human here.
+commit_as 'Ada Lovelace' '1234+ada@users.noreply.github.com' \
+	'Ada Lovelace' '1234+ada@users.noreply.github.com' "$MSG_OK"
+commits_case accept "human at a forge privacy address"
+
+# The older form of the same address, with no numeric prefix — the outside
+# contributor this repository already carries commits from.
+commit_as 'Ethan Hawkes' 'ethanhawkes-gif@users.noreply.github.com' \
+	'Ethan Hawkes' 'ethanhawkes-gif@users.noreply.github.com' "$MSG_OK"
+commits_case accept "outside human contributor, forge address"
+
+# Two different humans in one range is the ordinary shape of an accepted
+# contribution, and an allowlist of one name would refuse it.
+commit_as REPPL human@example.invalid REPPL human@example.invalid "$MSG_OK"
+commit_as 'Ada Lovelace' '1234+ada@users.noreply.github.com' \
+	'Ada Lovelace' '1234+ada@users.noreply.github.com' "$MSG_OK"
+commits_case accept "two different human authors"
+
+# The forge as COMMITTER is not a machine author: every merge and squash made
+# through the web UI is committed by `GitHub <noreply@github.com>` on a human's
+# click, and 638 commits in this repository's main are shaped exactly so.
+# Refusing a `noreply@` mailbox in the committer role would turn the whole
+# history red — which is why the mailbox rule is asymmetric between the roles.
+commit_as 'Alex Reppel' '77722411+REPPL@users.noreply.github.com' \
+	'GitHub' 'noreply@github.com' "$MSG_OK"
+commits_case accept "forge committer on a human-authored commit"
+
+# --- Merge commits carry an identity too (iss-2609082001204831) ----------------
+# The first hole: the commits arm walked `--no-merges`, so a merge commit's
+# identity was never read at all. 23f0a891 stands in main today, authored AND
+# committed as `Claude <noreply@anthropic.com>` — a merge made by an autonomous
+# round running with the tool's own git identity, which is precisely the shape
+# the identity check exists to refuse and the one shape it could not see.
+#
+# merge_as <author-name> <author-email> <committer-name> <committer-email> <msg>
+# builds a real two-parent merge on top of $base and leaves HEAD on the trunk.
+#
+# The two side commits carry DIFFERENT messages, and that is not cosmetic: an
+# empty commit is fully determined by its tree, parent, message, identity and
+# timestamp, so two identical ones made in the same second are the SAME OBJECT.
+# With one message the branches converged on a single sha, `--no-ff` had nothing
+# to merge, and the case silently tested a fast-forward — a green merge case that
+# contained no merge.
+mainb="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
+merge_as() {
+	git -C "$repo" checkout -q -B side "$base"
+	commit_as REPPL human@example.invalid REPPL human@example.invalid "on the branch
+
+Assisted-by: Claude:claude-opus-5"
+	git -C "$repo" checkout -q "$mainb"
+	commit_as REPPL human@example.invalid REPPL human@example.invalid "on the trunk
+
+Assisted-by: Claude:claude-opus-5"
+	GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" \
+		GIT_COMMITTER_NAME="$3" GIT_COMMITTER_EMAIL="$4" \
+		git -C "$repo" merge -q --no-ff -m "$5" side || {
+		echo "FAIL: could not create the scratch merge" >&2
+		exit 1
+	}
+	# A merge case that contains no merge proves nothing; assert the shape.
+	if [ "$(git -C "$repo" show -s --format='%P' HEAD | wc -w)" -lt 2 ]; then
+		echo "FAIL: the scratch merge is not a merge commit" >&2
+		exit 1
+	fi
+}
+
+merge_as Claude noreply@anthropic.com Claude noreply@anthropic.com 'Merge branch side'
+commits_case reject "merge commit authored by an AI identity (23f0a891)"
+
+merge_as 'dependabot[bot]' '49699333+dependabot[bot]@users.noreply.github.com' \
+	'GitHub' 'noreply@github.com' 'Merge branch side'
+commits_case reject "merge commit authored by a bot"
+
+# A merge commit's MESSAGE is still exempt, and that exemption is now the only
+# one left: `Merge pull request #N from …` is composed by the forge and carries
+# no trailer of its own, so checking its text would turn every merge in this
+# repository red. Identity and message are separable, and only the message half
+# was ever generated elsewhere.
+merge_as 'Alex Reppel' '77722411+REPPL@users.noreply.github.com' \
+	'GitHub' 'noreply@github.com' 'Merge pull request #1 from intentdriven/side'
+commits_case accept "forge merge commit, human author, no trailer"
 
 # --- The human-only declaration -----------------------------------------------
 # A change no AI touched discloses that positively; silence stays refused,
