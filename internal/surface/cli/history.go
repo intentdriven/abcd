@@ -149,11 +149,24 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// store never had: before staging existed, "absent from the store" spanned
 	// never-ended, ended-before-the-store-existed and ended-and-lost, and nothing
 	// could tell them apart. A staged entry says exactly one thing.
-	historyCmd.AddCommand(&cobra.Command{
+	var stagedAllRepos bool
+	stagedCmd := &cobra.Command{
 		Use:   "staged",
 		Short: "List transcripts that ended but are not yet redacted into the store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// --all-repos answers the question no per-repo listing can
+			// (iss-2609090722466403): the repository whose raw transcripts grow
+			// without bound is the one nobody opens, so the verb that reports
+			// the backlog must have a form that does not need the operator to
+			// be standing in it. It is a survey — counts, sizes, names — and
+			// never another repository's session ids or paths.
+			//
+			// It resolves no root SHA at all, which is deliberate: run from
+			// anywhere, including outside a git repository, it still answers.
+			if stagedAllRepos {
+				return renderBacklogSurvey(cmd, *asJSON)
+			}
 			rootSHA, err := repoRootSHA()
 			if err != nil {
 				return err
@@ -161,6 +174,21 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			staged, err := history.ListStaged(rootSHA)
 			if err != nil {
 				return err
+			}
+			// Quarantined transcripts are raw bytes on the same disk under the
+			// same 0o700, so a listing that omitted them would under-report
+			// exactly the transcripts that will never leave on their own.
+			quarantined, qerr := history.ListQuarantined(rootSHA)
+			if qerr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"abcd history: the quarantine directory is unreadable (%s)\n",
+					termsafe.Sanitize(fsutil.RedactHome(qerr.Error())))
+			}
+			for k := range quarantined {
+				quarantined[k].Path = fsutil.RedactHome(quarantined[k].Path)
+				quarantined[k].SidecarPath = fsutil.RedactHome(quarantined[k].SidecarPath)
+				quarantined[k].ReasonPath = fsutil.RedactHome(quarantined[k].ReasonPath)
+				quarantined[k].Reason = fsutil.RedactHome(quarantined[k].Reason)
 			}
 			// The gap marker is the answer to a question an empty listing
 			// cannot: a harness that fires SubagentStop without an
@@ -197,7 +225,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 							gap.FirstSeen.Format("2006-01-02T15:04:05Z"))
 					}
 				}()
-				if len(staged) == 0 {
+				if len(staged) == 0 && len(quarantined) == 0 {
 					fmt.Fprintln(w, "abcd history — nothing staged; every ended session is stored")
 					return
 				}
@@ -210,16 +238,51 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 						}
 					}
 					state := "awaiting redaction"
+					if s.Overdue {
+						// The age is stated on the entry rather than only in
+						// the summary, because the reader deciding what to do
+						// needs to know WHICH file has been sitting there.
+						state = "OVERDUE (staged more than " + history.StagedTTL.String() + " ago), awaiting redaction"
+					}
 					if s.Err != "" {
 						state = "NOT DRAINABLE: " + termsafe.Sanitize(s.Err)
 					}
 					fmt.Fprintf(w, "%s  %s  %d bytes  %s\n",
 						s.StagedAt.Format("2006-01-02T15:04:05Z"), who, s.Bytes, state)
 				}
-				fmt.Fprintf(w, "\n%d staged transcript(s) hold UNREDACTED text until drained; run `abcd history drain`.\n", len(staged))
+				if len(staged) > 0 {
+					fmt.Fprintf(w, "\n%d staged transcript(s) hold UNREDACTED text until drained; run `abcd history drain`.\n", len(staged))
+				}
+				if len(quarantined) == 0 {
+					return
+				}
+				// Quarantine is reported as its own block and in its own
+				// words. A quarantined transcript is NOT waiting for anything:
+				// no drain will retry it, no age will clear it, and the only
+				// thing that changes its state is a person deciding. Folding it
+				// into the staged list above would file it under "awaiting
+				// redaction", which is the one thing it is not.
+				fmt.Fprintf(w, "\nQUARANTINED — these can never be redacted; nothing will retry them:\n")
+				var qbytes int64
+				for _, q := range quarantined {
+					who := termsafe.Sanitize(q.SessionID)
+					if q.AgentID != "" {
+						who += " agent " + termsafe.Sanitize(q.AgentID)
+					}
+					reason := termsafe.Sanitize(orDefault(q.Reason, q.Err))
+					fmt.Fprintf(w, "%s  %s  %d bytes  %s\n    %s\n",
+						q.QuarantinedAt.Format("2006-01-02T15:04:05Z"), who, q.Bytes,
+						termsafe.Sanitize(filepath.Base(q.Path)), reason)
+					qbytes += q.Bytes
+				}
+				fmt.Fprintf(w, "\n%d quarantined transcript(s) hold %d bytes of UNREDACTED text indefinitely. Read one, then remove it deliberately with `abcd history discard <file> --yes`.\n",
+					len(quarantined), qbytes)
 			})
 		},
-	})
+	}
+	stagedCmd.Flags().BoolVar(&stagedAllRepos, "all-repos", false,
+		"survey every repository in the store, not just this one")
+	historyCmd.AddCommand(stagedCmd)
 
 	// drain — finish the capture SessionStart bounded. Unbudgeted by design: the
 	// interactive budget exists to protect a session start, and this verb is the
@@ -317,9 +380,115 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
+	// discard — the ONE door in abcd that destroys a transcript nothing has
+	// stored (iss-2609090722466403).
+	//
+	// It exists because quarantine without an exit is a room with no door: a
+	// transcript the fail-closed scanner will never pass would otherwise sit
+	// unredacted on disk forever with no legitimate way to be rid of it, and an
+	// operator with no sanctioned removal reaches for `rm` on a directory whose
+	// neighbouring files (the sidecar, the reason note, the lock) they have no
+	// reason to know about.
+	//
+	// The confirmation lives HERE and not in core, and that is the whole shape
+	// of the boundary: core.Discard deletes whatever it is told to delete and
+	// neither prompts nor prints, and this verb is where the human decision is
+	// taken and refused without --yes. Nothing in abcd calls Discard except a
+	// person typing this.
+	var discardYes bool
+	discardCmd := &cobra.Command{
+		Use:   "discard <staged-filename>",
+		Short: "Permanently delete one staged or quarantined raw transcript (requires --yes)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rootSHA, err := repoRootSHA()
+			if err != nil {
+				return err
+			}
+			if !discardYes {
+				// Named, not merely refused: the operator is being asked to
+				// confirm the destruction of the only copy of something, and a
+				// refusal that did not say WHAT would be confirmed is not a
+				// confirmation.
+				return fmt.Errorf("history discard: %q holds the only copy of an unredacted transcript and deleting it is irreversible; pass --yes to confirm (`abcd history staged` shows what each file is)",
+					termsafe.Sanitize(args[0]))
+			}
+			res, err := history.Discard(rootSHA, args[0])
+			if err != nil {
+				return err
+			}
+			res.Path = fsutil.RedactHome(res.Path)
+			for k := range res.Removed {
+				res.Removed[k] = fsutil.RedactHome(res.Removed[k])
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd history discard — deleted %d bytes of unredacted transcript, unrecoverably\n", res.Bytes)
+				for _, r := range res.Removed {
+					fmt.Fprintf(w, "  removed: %s\n", termsafe.Sanitize(r))
+				}
+			})
+		},
+	}
+	discardCmd.Flags().BoolVar(&discardYes, "yes", false, "confirm the irreversible deletion of an unredacted transcript")
+	historyCmd.AddCommand(discardCmd)
+
 	historyCmd.AddCommand(newHistoryMigrateCommand(asJSON))
 	historyCmd.AddCommand(newHistoryIngestCommand(asJSON))
 	historyCmd.AddCommand(newHistoryReconstructCommand(asJSON))
 
 	return historyCmd
+}
+
+// renderBacklogSurvey renders `history staged --all-repos`: every repository in
+// the store that is holding unredacted transcript text.
+//
+// It reports COUNTS, SIZES and repository NAMES and nothing else. The reader is
+// standing in one repository and being told about others, and a store whose
+// premise is that transcripts are redacted before they are readable should not
+// spill one repository's session ids into another repository's terminal to make
+// a summary richer. Whoever needs the detail runs the verb in that repository.
+func renderBacklogSurvey(cmd *cobra.Command, asJSON bool) error {
+	repos, err := history.SurveyBacklog()
+	if err != nil {
+		return err
+	}
+	if repos == nil {
+		repos = []history.RepoBacklog{}
+	}
+	return render(cmd.OutOrStdout(), asJSON, repos, func(w io.Writer) {
+		if len(repos) == 0 {
+			fmt.Fprintln(w, "abcd history — no repository in this store is holding unredacted transcript text")
+			return
+		}
+		var total int64
+		var overdue, quarantined int
+		for _, b := range repos {
+			name := termsafe.Sanitize(b.Name)
+			if name == "" {
+				name = "(unregistered)"
+			}
+			line := fmt.Sprintf("%s  %s  %d staged (%s)", b.RootSHA[:12], name, b.Staged, humanBytes(int(b.StagedBytes)))
+			if b.Overdue > 0 {
+				line += fmt.Sprintf("  %d OVERDUE", b.Overdue)
+			}
+			if b.Quarantined > 0 {
+				line += fmt.Sprintf("  %d quarantined (%s)", b.Quarantined, humanBytes(int(b.QuarantinedBytes)))
+			}
+			if !b.OldestStagedAt.IsZero() {
+				line += "  oldest " + b.OldestStagedAt.Format("2006-01-02")
+			}
+			fmt.Fprintln(w, line)
+			total += b.Total()
+			overdue += b.Overdue
+			quarantined += b.Quarantined
+		}
+		fmt.Fprintf(w, "\n%d repositor(y/ies) hold %s of UNREDACTED transcript text.\n", len(repos), humanBytes(int(total)))
+		if overdue > 0 {
+			fmt.Fprintf(w, "%d staged transcript(s) are past the %s limit. A drain only runs in the repository that owns them: open a session there, or run `abcd history drain` from it.\n",
+				overdue, history.StagedTTL)
+		}
+		if quarantined > 0 {
+			fmt.Fprintf(w, "%d transcript(s) can never be redacted and will never leave on their own; `abcd history discard` is the only thing that removes them.\n", quarantined)
+		}
+	})
 }

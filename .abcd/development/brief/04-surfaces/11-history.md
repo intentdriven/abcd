@@ -29,8 +29,39 @@ bytes as well as count, so a truncated pass stores the part that makes the rest
 legible.
 
 Staging is the one place abcd holds unredacted transcript text on purpose: mode
-`0o700`, files `0o600`, and each file lives only until the next session drains
-it. Each staged transcript carries a `.stage.json` sidecar holding its session
+`0o700`, files `0o600`. How long a staged file lives is a question the store
+answered wrongly for its first weeks — the code claimed "only until the next
+session starts", and the drain ran from a hook of the repository the file
+belongs to, so a repository nobody opened again kept its raw transcripts for as
+long as the disk lasted (iss-2609090722466403). Four such files, thirteen
+megabytes, the oldest a fortnight old, were found on the author's own machine.
+Three mechanisms now bound it, and a fourth names the case none of them can
+clear:
+
+- **A drain runs while a session is LIVE**, not only at its start:
+  `abcd hook prompt-router` (`UserPromptSubmit`) drains one entry and at most
+  half a megabyte per prompt, so a session that spawns sub-agents redacts its own
+  branches as it goes. Everything it says goes to stderr, never to the hook's
+  stdout, which is model context.
+- **`StagedTTL` (seven days) is the maximum staged age.** Past it an entry is
+  OVERDUE: it sorts to the front of every drain and is named in every notice. Age
+  buys priority and volume, and nothing else — an overdue transcript is never
+  deleted, never redacted down, never degraded. Losing the only copy is worse
+  than keeping it, which is the premise staging is built on.
+- **Session start reports EVERY repository in the store**, not just the one the
+  operator is standing in, and `abcd history staged --all-repos` is the
+  read-only verb behind the same survey. A per-repo listing is blind to exactly
+  the pile that grows: the one nobody opens. The survey carries counts, sizes and
+  repository names — never another repository's session ids.
+- **A transcript the fail-closed scanner will never pass is QUARANTINED**, not
+  retried forever. A `*RedactionResidualError` is a property of the transcript's
+  own bytes, so every future drain reaches the same refusal; such an entry moves
+  to `quarantine/` (also `0o700`/`0o600`) with a written reason and leaves the
+  queue. It is still raw, and nothing removes it but a person running
+  `abcd history discard <file> --yes`. A retryable failure — an unwritable store
+  path, a corrupt sidecar an operator can repair — stays staged and stays queued.
+
+Each staged transcript carries a `.stage.json` sidecar holding its session
 and its lineage, so nothing is ever encoded in the filename; a staged file
 written before the sidecar existed has none and drains as a main-thread
 transcript, which is what it is. The stage handshake is locked and keyed on
@@ -54,6 +85,7 @@ went unnoticed.
 | Verb | Bucket | Status |
 |---|---|---|
 | `capture` | — | shipped |
+| `discard` | — | shipped |
 | `drain` | — | shipped |
 | `ingest` | — | shipped |
 | `list` | — | shipped |

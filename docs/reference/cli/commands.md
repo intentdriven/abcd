@@ -563,6 +563,18 @@ Redact and store a raw session transcript (reads a file or stdin)
       --session string   session id for the record (default: transcript filename; required for stdin)
 ```
 
+#### `abcd history discard`
+
+Permanently delete one staged or quarantined raw transcript (requires --yes)
+
+**Usage:** `abcd history discard <staged-filename> [flags]`
+
+**Flags:**
+
+```
+      --yes   confirm the irreversible deletion of an unredacted transcript
+```
+
 #### `abcd history drain`
 
 Redact and store every staged transcript for this repo
@@ -625,7 +637,13 @@ Show one stored transcript's metadata and redacted body
 
 List transcripts that ended but are not yet redacted into the store
 
-**Usage:** `abcd history staged`
+**Usage:** `abcd history staged [flags]`
+
+**Flags:**
+
+```
+      --all-repos   survey every repository in the store, not just this one
+```
 
 ### `abcd ideate`
 

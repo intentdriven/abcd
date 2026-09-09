@@ -15,8 +15,29 @@ package history
 // The store's invariant is untouched: every transcript in transcripts/ is still
 // redacted on write, because staging is NOT the store. Staged bytes are raw, so
 // this directory is the one place in abcd that holds unredacted transcript text
-// on purpose. It is created 0o700 and its files 0o600, it holds each transcript
-// only until the next session starts, and nothing reads it but Drain.
+// on purpose. It is created 0o700 and its files 0o600, and nothing reads it but
+// Drain, Discard and the read-only listings.
+//
+// HOW LONG A STAGED FILE LIVES. This comment used to say "only until the next
+// session starts". That was false, and the falsehood was load-bearing
+// (iss-2609090722466403): the drain runs from a hook of the repository the
+// staged file belongs to, so a repository nobody opens again keeps its raw
+// transcripts for as long as the disk lasts. Four files, thirteen megabytes,
+// the oldest a fortnight old, were on the author's own machine when this was
+// found. What is true now:
+//
+//   - Every prompt of a LIVE session drains a little (a one-entry budget on
+//     UserPromptSubmit), so a session that spawns sub-agents redacts its own
+//     branches as it goes rather than leaving them for a start that may never
+//     come.
+//   - Every session start reports the backlog of EVERY repository in the store,
+//     not just the one the operator is standing in, so a quiet repository's pile
+//     is visible from wherever work is actually happening (SurveyBacklog).
+//   - Past StagedTTL an entry is OVERDUE: it sorts to the front of every drain
+//     and is named in the notices. Age alone never deletes and never degrades —
+//     the only copy of a transcript is not discarded to make a warning go away.
+//   - A transcript the fail-closed scanner will never pass is QUARANTINED rather
+//     than retried forever, and only an explicit operator Discard removes bytes.
 //
 // A staged file is also the outcome record the store never had. Before this,
 // "absent from the store" spanned never-ended, ended-before-the-store-existed,
@@ -100,6 +121,12 @@ type Staged struct {
 	// SidecarPath is the .stage.json beside Path; empty on a legacy entry.
 	SidecarPath string `json:"sidecar_path,omitempty"`
 
+	// Overdue is true once the entry has been staged longer than StagedTTL. It
+	// is a REPORTING fact and a queue-ordering one, never a licence to delete:
+	// the entry sorts to the front of the next drain and is named in the
+	// session notices, and nothing else about it changes.
+	Overdue bool `json:"overdue,omitempty"`
+
 	// Err is set when the entry cannot be trusted — a sidecar that is present
 	// but unreadable or unparseable. Such an entry is NOT drained: falling back
 	// to the filename would read a sub-agent's key as a session id and file the
@@ -163,13 +190,34 @@ type StageResult struct {
 }
 
 // DrainFailure is one staged transcript that could not be captured. The staged
-// file is deliberately LEFT in place: a failure here is recoverable by hand, and
-// deleting the only copy abcd holds would convert a reported problem into the
-// silent permanent loss this whole mechanism exists to end.
+// bytes are never deleted by a failure: a failure here is recoverable by hand,
+// and deleting the only copy abcd holds would convert a reported problem into
+// the silent permanent loss this whole mechanism exists to end.
+//
+// The two kinds of failure are NOT the same fact, and reporting them alike was
+// its own defect (iss-2609090722466403). A store path that is momentarily
+// unwritable, a lock a peer holds, a source file that vanished — those are
+// RETRYABLE: the next drain may well succeed, so the entry stays staged and
+// stays queued. A transcript the fail-closed scanner refuses to pass is
+// DETERMINISTIC: the same bytes will be refused by every future drain, forever,
+// so leaving it queued buys nothing and costs a re-read and a re-scan of
+// unredacted text on every pass while its raw copy sits there anyway. Permanent
+// marks the second kind; such an entry is moved out of the drain queue into
+// quarantine/ and reported there until an operator decides what becomes of it.
 type DrainFailure struct {
 	SessionID string `json:"session_id"`
 	Path      string `json:"path"`
 	Err       string `json:"error"`
+	// Permanent is true when the refusal is a property of the transcript's own
+	// bytes rather than of the environment — today, exactly a
+	// *RedactionResidualError. A permanent failure is never retried.
+	Permanent bool `json:"permanent,omitempty"`
+	// Quarantined records that the staged bytes were moved into quarantine/ as
+	// a consequence, and where they went. False on every retryable failure, and
+	// false on a permanent one whose move itself failed (which is reported in
+	// Err rather than swallowed).
+	Quarantined    bool   `json:"quarantined,omitempty"`
+	QuarantinePath string `json:"quarantine_path,omitempty"`
 }
 
 // DrainResult reports one drain pass.
@@ -186,6 +234,11 @@ type DrainResult struct {
 	// non-zero one is the count of transcripts that would otherwise have been
 	// stored short.
 	Extended int `json:"extended"`
+	// Overdue counts the entries this pass SAW that were already past
+	// StagedTTL, whether or not the pass reached them. It is the number a
+	// notice must be able to say out loud: an overdue entry is unredacted text
+	// that has outlived the guarantee staging makes about it.
+	Overdue int `json:"overdue"`
 }
 
 // stagingDirPath returns ~/.abcd/history/<rootSHA>/staging.
@@ -555,6 +608,7 @@ func listStaged(sdir string) ([]Staged, error) {
 				s.StagedAt = side.StagedAt.UTC()
 			}
 		}
+		s.Overdue = overdue(s.StagedAt)
 		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
@@ -638,6 +692,15 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 	}
 	ordered := drainOrder(staged)
 	var res DrainResult
+	// Counted over EVERY entry the pass saw, before the budget can cut the loop
+	// short: an overdue entry the budget did not reach is still unredacted text
+	// past its guaranteed lifetime, and a count that only reported the ones a
+	// pass happened to touch would go quiet exactly when the backlog was worst.
+	for _, s := range ordered {
+		if s.Overdue {
+			res.Overdue++
+		}
+	}
 	var consumed int64
 	attempted := 0
 	for i, s := range ordered {
@@ -663,7 +726,7 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 		}
 		cr, err := Capture(repoRoot, rootSHA, body, s.captureMeta())
 		if err != nil {
-			res.Failed = append(res.Failed, DrainFailure{SessionID: s.SessionID, Path: s.Path, Err: err.Error()})
+			res.Failed = append(res.Failed, classifyDrainFailure(sdir, rootSHA, s, stagedBytes, err))
 			continue
 		}
 		// Stored (or already stored): the staged copy has done its job, and it is
@@ -685,7 +748,8 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 	return res, nil
 }
 
-// drainOrder puts main-thread entries before sub-agent ones, each half keeping
+// drainOrder puts OVERDUE entries before fresh ones, and within each of those
+// halves main-thread entries before sub-agent ones, every quarter keeping
 // listStaged's chronological order.
 //
 // A session's main thread stages LAST, because it ends last, so a chronological
@@ -693,19 +757,27 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 // the one transcript that makes the branches legible. Whatever a truncated pass
 // stores should be the part the rest can be read against.
 //
+// The overdue split sits ABOVE that one and is the reason a budgeted drain
+// eventually finishes at all. Ordering by arrival alone, a busy repository
+// whose sessions stage faster than one pass drains can starve its own oldest
+// entry indefinitely — and the oldest entry is precisely the raw text that has
+// been on disk longest, which is the privacy fact, not a scheduling one. Age
+// therefore buys priority. It buys nothing else: an overdue entry is drained
+// through the same fail-closed Capture as any other, and is never deleted or
+// degraded for being old.
+//
 // An entry whose sidecar could not be read sorts with the main-thread half; it
 // is reported rather than captured either way, and reporting it early is what a
 // budgeted pass should spend an attempt on.
 func drainOrder(staged []Staged) []Staged {
 	out := make([]Staged, 0, len(staged))
-	for _, s := range staged {
-		if s.AgentID == "" {
-			out = append(out, s)
-		}
-	}
-	for _, s := range staged {
-		if s.AgentID != "" {
-			out = append(out, s)
+	for _, wantOverdue := range []bool{true, false} {
+		for _, wantMain := range []bool{true, false} {
+			for _, s := range staged {
+				if s.Overdue == wantOverdue && (s.AgentID == "") == wantMain {
+					out = append(out, s)
+				}
+			}
 		}
 	}
 	return out

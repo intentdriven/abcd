@@ -1,7 +1,7 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, and reconstruct renders one session as an artefact plus telemetry. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
-argument-hint: "list | show <session-id-or-filename> | staged | drain | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
+description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
+argument-hint: "list | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
 ---
 
 # `/abcd:history` — session-transcript store
@@ -25,6 +25,19 @@ content per session and agent: a re-fired hook carrying identical bytes is a
 no-op, one carrying different bytes replaces the staged copy, so each has one
 staged copy and the newer snapshot wins. `staged` shows what has ended but is
 not yet stored; `drain` finishes it without waiting for another session.
+
+How long a staged file lives is bounded on four fronts, because for a while it
+was not bounded at all: the drain ran only from a hook of the repository the
+file belongs to, so a repository nobody opened again kept its raw transcripts
+indefinitely. A small drain now also runs on **every prompt of a live session**,
+so a session redacts its own sub-agent transcripts as it goes. A staged file
+older than **seven days** is reported OVERDUE and drained first — age buys
+priority and nothing else, and no transcript is ever deleted or degraded for
+being old. A **session start reports every repository in the store**, and
+`staged --all-repos` is the read-only verb behind the same survey, so a pile in
+a repository nobody is standing in is still visible. A transcript the
+fail-closed scanner will never pass is **quarantined** rather than retried
+forever, and `discard` is the only thing that removes it.
 
 ## List
 
@@ -61,7 +74,21 @@ alike. Report `session_id`, `staged_at` and `bytes`, plus `agent_id` and
 text** until drained, so say so whenever the list is non-empty. The text render
 also carries a note when the host has fired a sub-agent stop without handing
 over a transcript path: on such a host no sub-agent transcript can be captured
-at all, so an empty sub-agent corpus is the host and not the sessions.
+at all, so an empty sub-agent corpus is the host and not the sessions. An entry
+past the seven-day limit renders as OVERDUE; a quarantined transcript is listed
+in its own block, and is not awaiting anything — nothing will retry it.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history staged --all-repos --json
+```
+
+Survey **every** repository in the store rather than this one, reporting each
+one's `root_sha`, `name`, staged count and bytes, overdue count, and quarantined
+count and bytes. This is the only form that can see the case that actually goes
+wrong — a pile of raw transcripts in a repository nobody opens, which no
+per-repository listing can reach. It resolves no root SHA, so it answers from
+anywhere. Report the totals and the named repositories; the survey deliberately
+carries no session ids or paths from another repository.
 
 ## Drain
 
@@ -75,6 +102,30 @@ verb runs the backlog to completion. A staged file is removed **only** once its
 transcript is in the store: anything that fails to capture is reported in
 `failed` and its raw copy is deliberately kept, because it is then the only copy
 abcd holds. Exits non-zero when anything failed.
+
+A failure reports whether it is `permanent`. A transient one — an unwritable
+store path, a sidecar an operator can repair — stays staged and stays queued. A
+`permanent` one is a transcript the fail-closed scanner refuses over its own
+bytes, so every future drain would reach the same answer; it is moved to
+`quarantine/` (reported as `quarantined` with its `quarantine_path`) and nothing
+retries it. Say which kind a failure is: they ask for different actions.
+
+## Discard
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history discard <staged-filename> --yes --json
+```
+
+Permanently delete ONE staged or quarantined raw transcript, named by its bare
+filename, together with its sidecar and quarantine note. This is the only path
+in abcd that destroys a transcript nothing has stored, and it is irreversible.
+It exists because a quarantined transcript will never be redacted and never
+leaves on its own; without a sanctioned removal an operator would reach for `rm`
+in a directory whose neighbouring files they have no reason to know about.
+
+**Never run this on the user's behalf.** Run `history staged` first, show the
+user what the file is, and let them say the word; the verb refuses without
+`--yes` for the same reason. Never guess a filename.
 
 ## Capture
 

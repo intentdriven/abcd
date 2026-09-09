@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -1114,6 +1115,26 @@ func newHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
+			// The LIVE drain (iss-2609090722466403). Everything else in this
+			// verb is the rules loader; this is transcript capture, and it runs
+			// HERE because UserPromptSubmit is the only hook that fires while a
+			// session is still going. Before it, the drain ran at session start
+			// alone, which meant a repository nobody opened again kept its raw
+			// transcripts for as long as the disk lasted — and sub-agent
+			// capture stages DURING a session, so the raw text of a session now
+			// sits on disk while that same session is still running.
+			//
+			// It is placed before the rules work, not after, so that a
+			// rules.json this repository cannot load — the error path below,
+			// which returns early — does not also switch off transcript
+			// redaction. Two unrelated subsystems share this hook; neither may
+			// disable the other.
+			//
+			// Nothing it produces goes to stdout. A UserPromptSubmit hook's
+			// stdout is injected into the session's context, and this drain's
+			// strings are transcript paths and capture errors, which are the
+			// least appropriate text in the program to hand to a model.
+			drainWhileLive(cmd, cwd)
 			root := rulesRoot(cwd)
 			rs, err := rules.Load(root)
 			if err != nil {
@@ -1284,6 +1305,10 @@ func newHookCommand() *cobra.Command {
 				}
 			}
 			var notices []string
+			// currentSHA is remembered so the cross-repository survey below can
+			// leave this repository out: the drain reports it entry by entry,
+			// and a summary line repeating it would say the same backlog twice.
+			var currentSHA string
 			// Drain first: SessionEnd only stages the raw transcript, because
 			// redaction at exit loses the race with the host's shutdown
 			// cancellation (iss-2608230817034768). This is where the previous
@@ -1295,6 +1320,7 @@ func newHookCommand() *cobra.Command {
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+				currentSHA = det.RootSHA
 				// Record which store this session belongs to while a real
 				// working directory is still available to say so. A sub-agent
 				// given its own worktree loses that directory when the harness
@@ -1306,9 +1332,20 @@ func newHookCommand() *cobra.Command {
 				}
 				if dr, err := history.Drain(captureRoot(cwd), det.RootSHA, sessionStartDrainBudget); err == nil {
 					for _, f := range dr.Failed {
+						// Rendered by the shared helper so the permanent and
+						// the retryable failure keep saying different things
+						// here and on the live drain both.
+						notices = append(notices, drainFailureNotice(f))
+					}
+					if dr.Overdue > 0 {
+						// Age is reported, never acted on: an overdue entry is
+						// drained through the same fail-closed path as any
+						// other, and nothing deletes it for being old. What the
+						// age buys is this sentence and a place at the front of
+						// the queue.
 						notices = append(notices, fmt.Sprintf(
-							"abcd: session %s ended but could not be stored (%s). Its raw transcript is kept at %s — capture it by hand or delete it; it is unredacted.",
-							termsafe.Sanitize(f.SessionID), termsafe.Sanitize(fsutil.RedactHome(f.Err)), termsafe.Sanitize(fsutil.RedactHome(f.Path))))
+							"abcd: %d staged transcript(s) in this repo are older than %s and still hold UNREDACTED text. They are drained first; `abcd history drain` finishes now.",
+							dr.Overdue, history.StagedTTL))
 					}
 					if dr.Remaining > 0 {
 						// The second sentence is the privacy fact, not a
@@ -1326,6 +1363,13 @@ func newHookCommand() *cobra.Command {
 						termsafe.Sanitize(err.Error())))
 				}
 			}
+			// The CROSS-REPOSITORY backlog. Everything above answers for this
+			// repository, which is the one repository whose staged files are
+			// certainly being drained — a session is starting in it. The pile
+			// that grows without bound is in the repository nobody opens, and
+			// until this line nothing in abcd could see it from anywhere
+			// (iss-2609090722466403).
+			notices = append(notices, backlogNotices(currentSHA)...)
 			// history.transcripts_missing is emitted only when cwd is a git repo
 			// (a root SHA resolved) AND this repo's transcripts dir is absent —
 			// exactly the state in which session-end would silently capture
@@ -1442,6 +1486,164 @@ const maxTranscriptBytes = 64 << 20 // 64 MiB
 // without throttling the ordinary case. Anything left is reported, never
 // dropped — `abcd history drain` finishes it without waiting for a new session.
 var sessionStartDrainBudget = history.DrainBudget{MaxEntries: 32, MaxBytes: 4 << 20}
+
+// livePromptDrainBudget bounds the drain that runs on every prompt of a live
+// session. It is deliberately TINY: one entry and half a megabyte, which is
+// roughly a third of a second of redaction in the worst case and nothing at all
+// in the ordinary one, because the staging directory is usually empty and the
+// pass then costs a directory listing.
+//
+// One entry, not four, because the cost here is paid by a human waiting to be
+// answered, and it is paid on EVERY prompt rather than once at a session start.
+// A session that spawns sub-agents stages one transcript per completion, and a
+// prompt-by-prompt drain of one entry keeps pace with that comfortably: an
+// agent that delegates four times has four prompts' worth of drains to get
+// through four transcripts, and anything it does not reach is drained by the
+// next prompt, the session's end, or `abcd history drain`. The budget's job is
+// to bound a stall, not to clear a backlog in one go.
+var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 10}
+
+// drainWhileLive runs one small drain pass from the UserPromptSubmit hook and
+// reports it out of band.
+//
+// It resolves the repository's key with gitutil.RootCommit rather than
+// ahoy.Detect. Detect is the right call at a session start, where it also
+// answers install-state questions and its cost is paid once; on a per-prompt
+// hook it would run a dozen gap probes to obtain one field. RootCommit is the
+// single git call that field actually needs.
+//
+// EVERY output goes to stderr and nothing to stdout — see the call site. A
+// failure to drain is never a failure of the prompt: this function returns
+// nothing and the hook exits 0 whatever happened here, because a transcript
+// backlog must not be able to wedge a session.
+func drainWhileLive(cmd *cobra.Command, cwd string) {
+	if cwd == "" {
+		return
+	}
+	rootSHA := gitutil.RootCommit(cwd)
+	if rootSHA == "" {
+		return // not a git repo with commits: nothing here has a store
+	}
+	// Look before spending: the ordinary prompt has nothing staged, and this
+	// listing is one readdir of a usually-empty directory. Going straight to
+	// Drain would pay captureRoot's `git rev-parse` on every prompt of every
+	// session to discover the same nothing.
+	if staged, lerr := history.ListStaged(rootSHA); lerr == nil && len(staged) == 0 {
+		return
+	}
+	dr, err := history.Drain(captureRoot(cwd), rootSHA, livePromptDrainBudget)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"abcd history: could not drain staged transcripts this turn (%s); they hold UNREDACTED text until one succeeds.\n",
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return
+	}
+	for _, f := range dr.Failed {
+		fmt.Fprintln(cmd.ErrOrStderr(), drainFailureNotice(f))
+	}
+	if dr.Overdue > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"abcd history: %d staged transcript(s) here are older than %s and still hold UNREDACTED text; run `abcd history drain`.\n",
+			dr.Overdue, history.StagedTTL)
+	}
+	if len(dr.Captured) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
+	}
+}
+
+// drainFailureNotice renders one DrainFailure as the operator-facing sentence,
+// shared by the live drain and the session-start one so the two cannot drift.
+//
+// The permanent and the retryable case say DIFFERENT things because they ask
+// for different actions, which is the whole point of separating them
+// (iss-2609090722466403). A retryable failure asks the reader to wait or to
+// rerun. A permanent one asks them to decide: the transcript will never pass
+// redaction, nothing will retry it, and only `abcd history discard` removes the
+// raw bytes it is still holding.
+func drainFailureNotice(f history.DrainFailure) string {
+	who := termsafe.Sanitize(f.SessionID)
+	why := termsafe.Sanitize(fsutil.RedactHome(f.Err))
+	if f.Permanent && f.Quarantined {
+		return fmt.Sprintf(
+			"abcd: session %s can NEVER be stored — redaction leaves blocking spans in it (%s). Its raw transcript is quarantined at %s; nothing will retry it. Inspect it, then `abcd history discard` it when you are done: it is unredacted.",
+			who, why, termsafe.Sanitize(fsutil.RedactHome(f.QuarantinePath)))
+	}
+	if f.Permanent {
+		return fmt.Sprintf(
+			"abcd: session %s can NEVER be stored (%s), and its raw copy could not be quarantined, so it stays staged at %s and every drain will refuse it again. It is unredacted.",
+			who, why, termsafe.Sanitize(fsutil.RedactHome(f.Path)))
+	}
+	return fmt.Sprintf(
+		"abcd: session %s ended but could not be stored (%s). Its raw transcript is kept at %s — capture it by hand or delete it; it is unredacted.",
+		who, why, termsafe.Sanitize(fsutil.RedactHome(f.Path)))
+}
+
+// backlogNotices renders the CROSS-REPOSITORY backlog as session-start notices.
+//
+// This is the half no per-repo verb can reach (iss-2609090722466403). `abcd
+// history staged` answers for the repository the operator is standing in, which
+// is by construction a repository being used and therefore drained. The pile
+// that grows without bound is in the repository nobody has opened in a
+// fortnight, and it was invisible from everywhere.
+//
+// skipSHA is the current repository, already reported line by line by the drain
+// above; repeating it here would say the same backlog twice.
+//
+// The notice carries counts, sizes and a repository NAME, and no session ids or
+// paths from another repository: this text is read inside a session belonging to
+// a different repository, and a store that redacts transcripts should not leak
+// one repository's session identifiers into another's notices.
+func backlogNotices(skipSHA string) []string {
+	repos, err := history.SurveyBacklog()
+	if err != nil || len(repos) == 0 {
+		return nil
+	}
+	var others int
+	var bytesHeld int64
+	var overdue, quarantined int
+	var oldest time.Time
+	var names []string
+	for _, b := range repos {
+		if b.RootSHA == skipSHA {
+			continue
+		}
+		others++
+		bytesHeld += b.Total()
+		overdue += b.Overdue
+		quarantined += b.Quarantined
+		if !b.OldestStagedAt.IsZero() && (oldest.IsZero() || b.OldestStagedAt.Before(oldest)) {
+			oldest = b.OldestStagedAt
+		}
+		if b.Name != "" && len(names) < 5 {
+			names = append(names, termsafe.Sanitize(b.Name))
+		}
+	}
+	if others == 0 {
+		return nil
+	}
+	where := ""
+	if len(names) > 0 {
+		where = " (" + strings.Join(names, ", ")
+		if others > len(names) {
+			where += fmt.Sprintf(" and %d more", others-len(names))
+		}
+		where += ")"
+	}
+	age := ""
+	if !oldest.IsZero() {
+		age = fmt.Sprintf(" The oldest has been staged since %s.", oldest.Format("2006-01-02"))
+	}
+	extra := ""
+	if overdue > 0 {
+		extra += fmt.Sprintf(" %d are past the %s staging limit.", overdue, history.StagedTTL)
+	}
+	if quarantined > 0 {
+		extra += fmt.Sprintf(" %d can never be redacted and are quarantined, awaiting `abcd history discard`.", quarantined)
+	}
+	return []string{fmt.Sprintf(
+		"abcd: %d OTHER repositor(y/ies)%s are holding %s of UNREDACTED transcript text that no session here will ever drain — the drain runs per repository.%s%s Run `abcd history staged --all-repos` to see them.",
+		others, where, humanBytes(int(bytesHeld)), age, extra)}
+}
 
 // readTranscript reads the file named by the Stop payload's transcript_path.
 //

@@ -753,6 +753,19 @@
       ]
     },
     {
+      "path": "abcd history discard",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "yes",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd history drain",
       "hidden": false,
       "flags": []
@@ -837,7 +850,15 @@
     {
       "path": "abcd history staged",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "all-repos",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd hook",

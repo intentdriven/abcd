@@ -436,9 +436,19 @@ func TestHookSessionEndRefusesOverCapTranscript(t *testing.T) {
 //
 // The refusal now lands on the DRAIN, not on SessionEnd, because SessionEnd no
 // longer redacts. The guarantee is unchanged and so is its blast radius: what
-// reaches transcripts/ is still redacted or absent. The staged raw copy is kept
+// reaches transcripts/ is still redacted or absent. The raw copy is kept
 // deliberately — it is the only copy abcd holds, and discarding it would turn a
 // reported refusal into the silent permanent loss staging exists to end.
+//
+// Where it is kept changed with iss-2609090722466403. A surviving blocking span
+// is a property of the transcript's own bytes, so every future drain reaches
+// the same refusal; leaving it in staging meant an unredacted file re-read and
+// re-scanned on every pass forever, filed under "awaiting redaction" by every
+// listing. It now moves to quarantine/ — same bytes, same 0o700/0o600, out of
+// the queue, with a written reason — and only `abcd history discard` removes
+// it. The assertion below therefore tracks the transcript into quarantine
+// rather than expecting it in staging; what must NOT change, and is asserted,
+// is that the bytes still exist and the notice still says they are unredacted.
 func TestHookSessionEndRefusesResidualHardFail(t *testing.T) {
 	repo, rootSHA := sessionEndRepo(t)
 	cfgDir := filepath.Join(repo, ".abcd", "config")
@@ -458,8 +468,10 @@ func TestHookSessionEndRefusesResidualHardFail(t *testing.T) {
 
 	errlog := endThenStart(t, "residual", repo, tp)
 
-	if !strings.Contains(errlog, "could not be stored") {
-		t.Errorf("a surviving hard_fail span must be reported by the drain, got: %s", errlog)
+	// "NEVER", not "could not": the notice must distinguish a refusal that no
+	// retry can clear from one that a later drain might.
+	if !strings.Contains(errlog, "can NEVER be stored") {
+		t.Errorf("a surviving hard_fail span must be reported by the drain as permanent, got: %s", errlog)
 	}
 	recs, err := history.List(rootSHA)
 	if err != nil {
@@ -474,11 +486,28 @@ func TestHookSessionEndRefusesResidualHardFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("history.ListStaged: %v", err)
 	}
-	if len(staged) != 1 || staged[0].SessionID != "residual" {
-		t.Fatalf("a refused capture must keep its staged copy, got %+v", staged)
+	if len(staged) != 0 {
+		t.Errorf("a permanently unstorable transcript was left in the drain queue to be refused forever: %+v", staged)
+	}
+	quarantined, err := history.ListQuarantined(rootSHA)
+	if err != nil {
+		t.Fatalf("history.ListQuarantined: %v", err)
+	}
+	if len(quarantined) != 1 || quarantined[0].SessionID != "residual" {
+		t.Fatalf("a refused capture must keep its raw copy, got %+v", quarantined)
+	}
+	body, err := os.ReadFile(quarantined[0].Path)
+	if err != nil {
+		t.Fatalf("the kept copy is unreadable: %v", err)
+	}
+	if !strings.Contains(string(body), token) {
+		t.Error("the kept copy lost the transcript's bytes; a refusal must never destroy the only copy")
 	}
 	if !strings.Contains(errlog, "unredacted") {
 		t.Errorf("the notice must say the kept transcript is unredacted, got: %s", errlog)
+	}
+	if !strings.Contains(errlog, "discard") {
+		t.Errorf("the notice must name the only thing that removes the kept bytes, got: %s", errlog)
 	}
 }
 
