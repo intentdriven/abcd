@@ -18,8 +18,11 @@ itself and at what a fix would read like.
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> cell is verified against the committed command-tree snapshot in both
+> directions; the bucket cell is held to the closed adr-40 vocabulary, which the
+> snapshot does not record, so which bucket a verb sits in stays an editorial
+> claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
@@ -52,10 +55,19 @@ the surfaces held to it. It sits beside the repo's other per-concern
 configuration rather than under `.abcd/config/`, where `identity.json` already
 means the git commit-author pin.
 
+The severity is the whole family's weight, and it is the one knob that changes
+what a failed check costs. `warn`, the default, reports drift as a warning that
+does not fail the run. `blocker` promotes every positioning finding to an error,
+so a repo that wants its own strapline treated as load-bearing turns the
+advisory family into a hard `abcd lint` gate with one word.
+
 A registered surface names candidate files (the first that exists is checked, so
 one entry covers several manifest formats), how to locate the text inside one (a
-regexp with capture groups, or a top-level JSON field), which block fields it
-requires, and the template a proposal renders from. Leaving the surface list
+regular expression with exactly one capture group around the text to compare, or
+a top-level JSON field), which block fields it requires, and the template a
+proposal renders from. The single group is a rule, not a convention: a pattern
+carrying two makes the whole registry invalid and the check refuses to run,
+naming the pattern and the count it found. Leaving the surface list
 empty adopts the canonical three — the README strapline, the plugin manifest
 description, and the conventions-file opening; naming any replaces them, so
 nothing is ever registered silently.
@@ -79,12 +91,27 @@ are folded away, so a tagline bolded mid-sentence or wrapped across two lines is
 not drift, while a reworded one is. A drifted surface reports the file, the line,
 the exact text it says, and the canonical line it should carry.
 
+A surface can also come back **unlocatable**: the file is there, but the locator
+matches nothing in it, so the check cannot see the text at all. That is reported
+in its own right and in the same breath as drift, because the reader's real
+exposure is identical: a locator that has stopped matching is a surface nobody is
+watching, and it would otherwise read as a clean pass. There is nothing to
+propose for it, so `render` offers no diff; the fix is to correct the locator or
+to unregister the surface. A surface whose candidate files are all absent is
+skipped rather than reported, because a file that does not exist carries no
+drift.
+
 **Autonomous rewriting is permanently out of scope.** `render` proposes; the
 maintainer adopts. Changing the positioning deliberately is an edit to the block,
 after which the same proposal flow chases the surfaces.
 
-`init` never re-interviews a repo that already has a block — it adopts it — and
-refuses to repoint a registry that is already committed.
+`init` never re-interviews a repo that already has a block — it adopts it. Run
+again on an adopted repo with a new title, tagline or pitch, it refuses outright
+rather than overwrite the canon, and names the block to edit instead. Run again
+with only a new location for the block, it writes nothing and reports where the
+block is already recorded; the requested location is dropped without a line
+saying so, which is a rough edge rather than a design: repointing an adopted
+repo is a deliberate edit to the committed registry.
 
 ## The check
 

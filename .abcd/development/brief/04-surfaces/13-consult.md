@@ -58,12 +58,21 @@ discussed freely there.
 
 ## Guard wiring
 
-The rule is backed mechanically rather than trusted alone. The corpus ships two
-scripts: one maintains a generated block in the repo's untracked
-`.abcd/.work.local/private-names.txt`, which the repo's pre-commit guard reads;
-the other scans a document before it is committed or shared and exits non-zero
-when a confidential identifier is present, naming only the CSL key so the report
-itself is safe to relay.
+The rule is backed mechanically rather than trusted alone. The corpus ships
+three programs. The first is the registrar on the write side: it takes a source
+in, fixing its class at that moment and never afterwards. The second maintains a
+generated block in the repo's untracked `.abcd/.work.local/private-names.txt`,
+which the repo's pre-commit guard reads. The third scans a document before it is
+committed or shared and exits non-zero when a confidential identifier is
+present, naming only the CSL key so the report itself is safe to relay.
+
+Both guard programs refuse wholesale on a corpus whose classes disagree: if any
+entry's declared confidentiality does not match the folder it sits in, neither
+the sync nor the scan does any work, and each says which entries to repair
+first. That is the safe direction, and the failure to watch for is the quiet one:
+a refused sync leaves the generated block exactly as it was, so a newly added
+confidential source is not covered by it, and a refused scan clears nothing. Read
+the exit code, not the absence of complaint.
 
 **That file has two writers, and abcd is the other one.**
 `.abcd/.work.local/private-names.txt` is abcd's own private banlist layer
@@ -83,6 +92,14 @@ opted in the author names are held by the rule and by the reader applying it,
 and by no mechanical check at all. Set `ban_authors` on any entry whose
 authorship is itself identifying.
 
+**The opt-in buys banlist coverage only, and not the scan.** The sync honours
+`ban_authors` and puts the author names into the generated block, so the
+pre-commit guard catches them; the document scan matches on titles and aliases
+alone and reads no author field at all. A document naming a banned author and
+nothing else therefore passes the scan and reports clean, and is then caught at
+the commit. Treat a clean scan as covering what a source is called, never who
+wrote it.
+
 ## Acceptance
 
 - **Given** a present corpus, **when** a search returns a hit under
@@ -97,9 +114,13 @@ authorship is itself identifying.
   answers, **then** it says so and pads with nothing.
 - **Given** a corpus that does not exist, **when** `/abcd:consult` is invoked,
   **then** the command says so and stops: it never creates the corpus.
-- **Given** a repo with the guard installed, **when** a confidential source is
-  added, **then** the ban-list sync is run so the generated block in
-  `.abcd/.work.local/private-names.txt` covers it before the next commit.
+- **Given** a repo with the guard installed and a corpus whose classes agree,
+  **when** a confidential source is added, **then** the ban-list sync is run so
+  the generated block in `.abcd/.work.local/private-names.txt` covers it before
+  the next commit.
+- **Given** a corpus holding a class mismatch, **when** the ban-list sync is run,
+  **then** it writes nothing, names the entries to repair, and exits non-zero, so
+  the run is not mistaken for coverage.
 
 ## Composition
 

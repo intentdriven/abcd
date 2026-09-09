@@ -87,13 +87,23 @@ advice rather than a fault.
 
 Seven codes ship, in four families: per-page and cumulative quotation budgets
 with a diagnostic for the case where coverage cannot be computed (`MQ001`,
-`MQ002`, `MQ003`); source-class advisories for a single-class store and for a
-cross-class store with no weighting note (`MS001`, `MS002`); a missing licence
-on an external source (`ML001`); and secret or identity residue in stored text
-(`MR001`, the one blocker). `MR001` is the read side of the write-time
-redactor, run over every page, the source registry and each stored original: it
-names the kind and the line, never the span, and the lint never rewrites the
-store.
+`MQ002`, `MQ003`); source-class findings raised page by page, one where a page
+rests on a single class of source and one where a page mixes classes without
+saying how it weighs them against each other (`MS001`, `MS002`); a missing
+licence on an external source (`ML001`); and secret or identity residue in
+stored text (`MR001`). `MR001` is the read side of the write-time redactor, run
+over every page, the source registry and each stored original: it names the kind
+and the line, never the span, and the lint never rewrites the store.
+
+Four of the seven can stop the run. `MR001` is the sharpest: residue in the
+store is a fault, never advice. `ML001` and `MS002` join it, because a source
+with no licence and a page that silently blends trust levels are both defects in
+what the store claims rather than suggestions about how to curate it. `MQ002`
+blocks only in its strict form, when one source's quoted coverage passes the
+block threshold on unambiguous single-source attribution alone; the same
+coverage reached through passages attributable to several sources is capped at a
+warning, because that arithmetic cannot prove any one source was over-quoted.
+Everything else, `MS001` included, is advisory and leaves the exit code at zero.
 
 The quotation budget is applied as curation discipline at distil time and
 computed at lint time. Nothing enforces it at ingest.

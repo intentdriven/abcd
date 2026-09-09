@@ -51,8 +51,16 @@ The exit codes are the contract, and the asymmetry in them is deliberate. On the
 hook, only exit 2 stops anything; a warn exits 1 because a pre-tool-use hook that
 exits 0 has its stderr discarded, so a warn returning 0 would run as if allowed
 with nobody told (iss-231). A guard that cannot answer at all — an unparsable
-line, a registry that will not load — exits 1 on the hook and lets the command
-run, and exits 2 on `check` so that a script never reads silence as clearance.
+command line, a registry with nothing left to check against, a registry switched
+off — exits 1 on the hook and lets the command run, and exits 2 on `check` so
+that a script never reads silence as clearance.
+
+Either verb also speaks JSON, and that is the form the plugin page uses: a
+verdict, and with it the entry that fired, its tier, why the command is
+dangerous, and the safe successor. A `matches` list carries any further entries
+the same line tripped, so a command hazardous in two ways reports both rather
+than only the first; the rendered form says the same thing on an `also matched:`
+line.
 
 ## Fail-open-loud
 
@@ -68,6 +76,18 @@ calls is reachable, and whether a hazard registry is armed. A repo
 `.abcd/guard.json` that will not load drops the repo's own overrides while the
 bundled hazards stay armed, and that middle state is reported as itself rather
 than folded into either extreme.
+
+The two callers part company on exactly that file, deliberately. **On the hook,
+the session keeps its protection:** the repo's overrides are dropped with a
+notice on stderr, the bundled hazards still decide, and a hazardous command is
+still stopped. Even an allow is made loud in that state, because a silent pass
+would take the notice with it and nobody would learn the config is broken.
+**On `check`, the verb refuses:** it names the file and the parse error, checks
+nothing, and exits 2. The asymmetry follows from who is asking. The hook is
+protecting a live session that will run the command either way, so protecting it
+partly beats protecting it not at all; `check` is answering a person or a script
+that asked a question, and a verdict drawn from half the registry they thought
+they had is worse than being told the registry is broken.
 
 ## Turning it off is a diff
 
@@ -125,10 +145,14 @@ guess, over-blocking is the direction the guard takes.
 What an allow still does not see is a hazard that never reaches command position
 at all: one behind a wrapper flag the per-wrapper table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
-prefix; a payload inside a non-shell interpreter such as `python -c`, which is
-one opaque token and today a silent allow; and any dangerous form no entry
-describes. `abcd guard check --help` carries the same list, kept beside the code
-that implements it.
+prefix; a bare `$VAR` standing where the hazard would be inside a payload the
+guard does read, because the guard sees the variable and not what the shell will
+expand it to, and warning on every variable would bury the warnings that matter;
+a payload inside a non-shell interpreter such as `python -c`, which is one
+opaque token and today a silent allow; and any dangerous form no entry
+describes. `abcd guard check --help` is the fuller statement of the same list,
+kept beside the code that implements it, with a worked example for each and the
+near-misses that *are* read spelled out beside them.
 
 Coverage is what the registry names, and the registry grows from reality: someone
 who sees something frightening captures it, and recurring captures are promoted
