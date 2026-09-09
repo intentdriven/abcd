@@ -216,6 +216,59 @@ func TestReleaseOfDoesNotReadAHyphenCompoundAsACredit(t *testing.T) {
 	}
 }
 
+// The rollup reader reads its section fence-aware; the changelog walk read raw
+// lines, its only per-line branch being the dated-heading test. A handle inside
+// a fenced block — a shell example, a sample entry, a quoted diff — therefore
+// counted as a credit, and newest-first let a fenced mention in a newer section
+// stamp the featured record with that section's version instead of the one that
+// shipped it. A fenced dated heading moved the version cursor for the same
+// reason (iss-2609090951287232).
+func TestReleaseOfIgnoresAFencedMention(t *testing.T) {
+	const fence = "```"
+	dir := t.TempDir()
+	writeSourceFile(t, dir, "CHANGELOG.md", strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"## [0.9.0] - 2026-09-01",
+		"",
+		"### Added",
+		"",
+		"- The shape an entry takes, for the contributor writing one:",
+		"",
+		fence,
+		"- The promise this release delivered. (itd-199)",
+		"",
+		"## [9.9.9] - 2099-01-01",
+		fence,
+		"",
+		"- A promise this release really did deliver. (itd-250)",
+		"",
+		"## [0.3.0] - 2026-05-01",
+		"",
+		"### Added",
+		"",
+		"- The promise this release delivered. (itd-199)",
+		"",
+	}, "\n"))
+
+	c := &composer{root: mustOpenRoot(t, dir)}
+	cases := map[string]string{
+		// The fenced mention is an example of the shape, not a credit.
+		"itd-199": "0.3.0",
+		// The anti-vacuity half, twice over: the newer section's prose credit
+		// still stamps it, and the version it stamps is the section's own — the
+		// dated heading inside the fence moved no cursor.
+		"itd-250": "0.9.0",
+	}
+	for id, want := range cases {
+		if got := c.releaseOf(id); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
 // The anti-vacuity guard: the boundary rule run against the changelog this
 // repository actually ships, where the short handles are the ones that
 // inherited. Before the fix releaseOf("itd-1") returned 0.7.1 — the release

@@ -1387,6 +1387,14 @@ func (c *composer) auditIsMet(rel string) bool {
 // itd-130, `itd-9` with the one that credits itd-93. Worse than wrong once: a
 // superstring landing in a FUTURE section restamps the featured record without
 // anything about that record changing.
+//
+// And it is a credit in the changelog's PROSE. The walk tracks fences the way
+// every other reader of these files does, because a handle inside a fenced
+// block is a shell example, a sample entry or a quoted diff — an illustration
+// of the shape rather than a claim that this release delivered that promise.
+// The fence check comes first, ahead of the dated-heading test, so a fenced
+// heading moves no version cursor either: both failures are silent, rendering a
+// plausible wrong version rather than none (iss-2609090951287232).
 func (c *composer) releaseOf(id string) string {
 	data, err := fsutil.ReadGuardedInRoot(c.root, "CHANGELOG.md", changelog.MaxChangelogBytes)
 	if err != nil {
@@ -1394,7 +1402,15 @@ func (c *composer) releaseOf(id string) string {
 	}
 	version := ""
 	want := normalizeHandle(id)
+	fence := false
 	for _, line := range strings.Split(string(data), "\n") {
+		if isFenceLine(line) {
+			fence = !fence
+			continue
+		}
+		if fence {
+			continue
+		}
 		if changelog.IsDatedHeading(line) {
 			if _, after, ok := strings.Cut(line, "["); ok {
 				version, _, _ = strings.Cut(after, "]")
