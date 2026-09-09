@@ -293,18 +293,27 @@ irreversible; guessing downward costs nothing.**
   there asserts an authorship it does not hold — and a squash merge re-appends a
   mis-identified branch author as a co-author, inflating the graph again on every
   squash. `scripts/check-attribution.sh commits` reads the identity of every
-  commit in a range, merge commits included, and refuses one on a structural
-  signal: the forge's own `[bot]` name suffix, a bot mailbox
-  (`NNNN+name[bot]@users.noreply.github.com`), a vendor noreply address, or a
-  vendor name standing alone. It is refuse-machines, not an allowlist of names:
-  this repository takes outside contributions (`.abcd/work/intake.md`), and a
-  person's forge privacy address (`1234+name@users.noreply.github.com`) is a
-  human's and passes — the `[bot]` marker in the mailbox is the discriminator,
-  never the `users.noreply.github.com` host. The forge as COMMITTER
-  (`GitHub <noreply@github.com>`) is how every web-UI merge and squash is stamped
-  on a human's click, and passes in that role alone. **The consequence is
-  deliberate: a dependabot pull request is not mergeable as authored, so a
-  dependency bump is landed by a human.**
+  commit in a range, merge commits included, and refuses one on any of five
+  signals. Four are checked in both roles: an assistant vendor's name standing
+  alone as the identity name (`Claude`, `Copilot`, `Gemini` and their kin,
+  matched whole so a human named Claudette passes); an assistant vendor's mail
+  domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
+  and a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
+  `@dependabot.com`). The last two are structural rather than nominal, which is
+  why a second automation lands in the right place with no edit to the list. The
+  fifth signal is checked in the AUTHOR role only: **any** address whose mailbox
+  begins `noreply@` or `donotreply@` (with or without hyphens), whatever the host — it
+  is not scoped to a vendor, because an address named for not being read names
+  no person in the role that claims authorship. It is refuse-machines, not an
+  allowlist of names: this repository takes outside contributions
+  (`.abcd/work/intake.md`), and a person's forge privacy address
+  (`1234+name@users.noreply.github.com`) is a human's and passes — the `[bot]`
+  marker in the mailbox is the discriminator, never the
+  `users.noreply.github.com` host. The role asymmetry is what keeps the history
+  green: the forge as COMMITTER (`GitHub <noreply@github.com>`) is how every
+  web-UI merge and squash is stamped on a human's click, and passes in that role
+  alone. **The consequence is deliberate: a dependabot pull request is not
+  mergeable as authored, so a dependency bump is landed by a human.**
 - **A human-only change declares itself: `Assisted-by: None`.** The convention is
   disclosure, and work no AI touched has nothing to disclose — but silence cannot
   say so, because an absent trailer and a forgotten one are the same bytes. The
