@@ -1,110 +1,151 @@
-# Maritime Naming Convention
+# Naming Convention
 
-Commands and abcd-owned directories use ship/voyage metaphors where natural.
+A person who has typed one abcd verb should be able to guess the next. That is
+what the naming rules below buy, and it is the only reason they exist: a
+consistent namespace is a smaller thing to learn, and a bare verb that renders
+state means nobody has to remember a sub-command to find out where they stand.
+
+Commands and abcd-owned directories use ship/voyage metaphors where a maritime
+word teaches something. Where none does, the surface is exempt and says so on the
+record, so an exemption is a decision rather than an omission.
 
 | Path / command | Meaning |
 |---|---|
-| `/abcd:ahoy` | bare invocation — status + help: shows folder kind, install state, detected gaps, last install date. ZERO writes. |
-| `/abcd:ahoy install` | mutating sub-verb — applies detected gaps (skeleton, config-change, history-store, marker-block, PATH symlink, version stamp). Centralised per-category approval. |
-| `/abcd:ahoy uninstall` | reversible removal — strips the marker block from the repo's conventions router and abcd's own `PATH` entry (`~/.local/bin/abcd` by default) if owned, together with the `~/.abcd/path-entry` provenance record that names it. Preserves the in-repo `.abcd/` and the user-scope stores under `~/.abcd/` (`history/`, `voyage/`). |
-| `/abcd:ahoy dry-run` | read-only emit of the `DetectionResult` envelope as JSON. ZERO writes. Drives the host command surface's two-pass approval protocol. |
-| `/abcd:ahoy doctor` | read-only audit — detection envelope plus user-scope history-store gaps across machines. ZERO writes. |
-| `/abcd:ahoy remote` | read-only report of the managed repo's GitHub secret-scanning settings; the `apply` sub-verb enables them and mirrors the desired state. |
-| `/abcd:ahoy identity-check` | read-only gate — exits non-zero when the git commit identity does not match `.abcd/config/identity.json`. ZERO writes. |
+| `/abcd:ahoy` | hail a project → install abcd into it, or report what is installed. The bare form and the read-only sub-verbs report; `install` and `uninstall` are the write paths. See [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md) |
 | `/abcd:disembark` | leave the ship → pack a lifeboat for the journey |
 | `/abcd:embark` | board a new ship → unpack the lifeboat |
 | `/abcd:launch` | put the (cleaned) ship to sea publicly |
-| `/abcd:dredge` | cross-corpus synthesis — surface latent patterns from accumulated captures (see itd-25 — a later phase). Maritime: dredging the seabed for what's settled. Pairs with `lifeboat` (per-project rescue) as the cross-corpus counterpart (latent-value rescue). |
-| `lifeboat` | the portable artefact (rescue from a sinking project). Written to an **operator-chosen destination** (`abcd disembark pack <repo> <dest>`), never back into the source repo — disembark is read-only and out-of-tree, per [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md). The in-tree `.abcd/lifeboat/` home is superseded. |
-| `~/.abcd/voyage/` | record of voyages — the operator-level, per-source-root operations namespace (`disembark/history.jsonl`, `embark/provenance.json`), keyed on the root-commit SHA and never committed. See the `voyage/` row in the reserved-vocabulary table below. |
+| `/abcd:dredge` | cross-corpus synthesis: surface latent patterns from accumulated captures (itd-25, a later phase). Maritime: dredging the seabed for what has settled. Pairs with `lifeboat` (per-project rescue) as the cross-corpus counterpart |
+| `lifeboat` | the portable artefact (rescue from a sinking project). Written to an **operator-chosen destination**, never back into the source repo, per [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md). The in-tree `.abcd/lifeboat/` home is superseded |
+| `~/.abcd/voyage/` | record of voyages: the operator-level, per-source-root operations namespace, keyed on the root-commit SHA and never committed. See the `voyage/` row in the reserved-vocabulary table below |
 
-**Sense disambiguation:** `/abcd:launch` uses the *nautical* sense (a ship's first entry to water, i.e. the public maiden voyage of the cleaned `*Dev` repo) — not the generic software sense of "run a program".
+**Sense disambiguation:** `/abcd:launch` uses the *nautical* sense (a ship's first
+entry to water, the public maiden voyage of a cleaned repo), not the generic
+software sense of "run a program".
 
-**Metaphor exemptions**, meta-development surfaces rather than voyage steps. The convention applies where a maritime cognate teaches; every other surface is exempt, and the register below is the complete list of what abcd names outside the metaphor.
+## What stays outside the metaphor
 
-The exemptions that carry a rationale of their own:
+Reach for a metaphor only when it teaches. The criterion is a natural maritime
+cognate that adds meaning — `dredge` literally raises settled material, `loot`
+carries a licence-check reflex — and everything else stays exempt, because a
+stretched metaphor obscures the verb it names.
 
-- `/abcd:intent`: product-framing surface (press-release-shaped roadmap capture). "Intent" does semantic work the brief depends on; no maritime word carries that meaning.
-- `/abcd:capture`: issue-capture surface (see itd-4). "Capture" is deliberately neutral so the verb doesn't pre-commit to whether a finding is bug, nitpick, or systemic pattern; the synthesist (in a later phase) decides later.
-- `grill`: Socratic-questioning register, borrowed from prior art ([Pocock skills](https://github.com/mattpocock/skills)), signalling adversarial interrogation directly; no maritime word carries that meaning. It ships as the second leg of `/abcd:ideate`'s three-leg admission gauntlet, not as a sub-verb of any other command. `/abcd:intent grill` is **staged** (itd-27, in `planned/`), and no `intent grill` sub-verb is registered on the binary.
-- `/abcd:audit`: formal verification surface (**staged**, see itd-16). Reserved; not metaphor-mapped, dignified register.
-- `/abcd:reflect`: phase-retrospective surface (**staged**, see itd-24). Not metaphor-mapped, soft register.
-- `/abcd` (bare, top-level): where-am-i status board (see itd-20). Not metaphor-mapped. The namespace root refuses any positional that is not a record id, so `status` is not a registered command; `abcd help` prints the root help, which is a different render from the bare status board.
+The exemptions carrying a rationale of their own:
 
-The remaining nineteen surfaces are exempt for the plain reason that no maritime cognate adds meaning: `banlist`, `changelog`, `consult`, `decide`, `docs`, `guard`, `history`, `ideate`, `identity`, `ingest`, `lint`, `memory`, `prepare-this-repo`, `reading`, `rules`, `site`, `spec`, `update`, `version`. They are registered here so the exemption is a decision on the record rather than an omission (`consult`, `ingest` and `prepare-this-repo` are host command surfaces under `commands/`; the rest are binary verbs).
+- `/abcd:intent`: product-framing surface. "Intent" does semantic work the brief
+  depends on, and no maritime word carries that meaning.
+- `/abcd:capture`: issue-capture surface (itd-4). "Capture" is deliberately
+  neutral so the verb does not pre-commit to whether a finding is a bug, a
+  nitpick, or a systemic pattern.
+- `grill`: Socratic-questioning register, borrowed from prior art
+  ([Pocock skills](https://github.com/mattpocock/skills)), signalling adversarial
+  interrogation directly. It ships as the second leg of `/abcd:ideate`'s
+  admission gauntlet, not as a sub-verb of any command: `/abcd:intent grill` is
+  **staged** (itd-27), and no `intent grill` sub-verb is registered.
+- `/abcd:audit`: formal verification surface, **staged** (itd-16). Reserved, not
+  metaphor-mapped, dignified register.
+- `/abcd:reflect`: phase-retrospective surface, **staged** (itd-24). Not
+  metaphor-mapped, soft register.
+- `/abcd` (bare, top-level): where-am-i status board (itd-20). The namespace root
+  refuses any positional that is not a record id, so `status` is not a registered
+  command; `abcd help` prints the root help, a different render from the bare
+  board.
 
-**Reserved meta-development commands** (later phases; named now to prevent collisions):
+The remaining surfaces are exempt for the plain reason that no maritime cognate
+adds meaning: `banlist`, `changelog`, `consult`, `decide`, `docs`, `guard`,
+`history`, `ideate`, `identity`, `ingest`, `lint`, `memory`,
+`prepare-this-repo`, `reading`, `rules`, `site`, `spec`, `update`, and
+`version`. They are registered here so the exemption is on the record.
 
-> **Note:** `/abcd:audit` appears in BOTH this table AND the "Metaphor exemptions" list above. The two listings encode two distinct contracts: the exemptions list says the verb is *exempt from the maritime convention*; this table says it is *reserved for a later-phase intent*. Both are true simultaneously, so both listings are kept.
+**Reserved meta-development commands** (later phases; named now to prevent
+collisions):
+
+> **Note:** `/abcd:audit` appears both here and in the exemptions above. The two
+> listings encode two distinct contracts: the exemptions say the verb is exempt
+> from the maritime convention; this table says it is reserved for a later-phase
+> intent. Both are true, so both are kept.
 
 | Path / command | Meaning |
 |---|---|
-| `/abcd:dredge` | cross-corpus synthesis (see itd-25 — a later phase). Maritime: dredging the seabed. Pairs with `lifeboat` as the cross-corpus counterpart to per-project rescue. |
-| `/abcd:loot` | OSS-vendor-with-provenance — clone selected files from public repos into `vendor/<source>/`, record origin / licence / SHA / rationale in `.abcd/development/loot/<source>.md` (see itd-26 — a later phase). Maritime: raid the open ocean for outside cargo. Pairs with `dredge` (own corpus, salvage-frame) as the public-corpus counterpart (raid-frame). The pirate connotation is feature-not-bug — the verb itself prompts a licence-check reflex. |
-| `/abcd:audit` | formal verification surface — hash-chain / Merkle audit trails, fidelity checks (see itd-16 — a later phase). Reserved; not metaphor-mapped, dignified register. |
+| `/abcd:dredge` | cross-corpus synthesis (itd-25, a later phase). Maritime: dredging the seabed. Pairs with `lifeboat` as the cross-corpus counterpart to per-project rescue |
+| `/abcd:loot` | OSS-vendor-with-provenance: clone selected files from public repos, recording origin, licence, SHA and rationale (itd-26, a later phase). Maritime: raid the open ocean for outside cargo. The pirate connotation is feature rather than bug — the verb itself prompts a licence-check reflex |
+| `/abcd:audit` | formal verification surface: hash-chain and Merkle audit trails, fidelity checks (itd-16, a later phase). Reserved, not metaphor-mapped, dignified register |
 
-Technical files (`config.json`, `corpus.json`, `rules.json`) are exempt — no metaphor needed.
+Technical files (`config.json`, `corpus.json`, `rules.json`) are exempt — no
+metaphor needed.
 
-**Retired maritime names.** `.abcd/logbook/` was the maritime name for per-run logs, state and reports. It is retired and must not be re-minted: run output goes to the local ephemeral tier (`.abcd/.work.local/logs/`), and the operator-level voyage record to `~/.abcd/voyage/<source-root-sha>/`. `TestNoRetiredLogbookLocationInSource` in `internal/adapter/scanner` fails the build if any Go source names the retired location (iss-73).
+**Retired maritime names.** `.abcd/logbook/` was the maritime name for per-run
+logs, state and reports. It is retired and must not be re-minted: run output goes
+to the local ephemeral tier, and the operator-level voyage record to
+`~/.abcd/voyage/<source-root-sha>/`. `TestNoRetiredLogbookLocationInSource` in
+`internal/adapter/scanner` fails the build if any Go source names the retired
+location (iss-73).
 
-**Metaphor-vs-exempt criterion (added post-audit 2026-05-07):** apply a maritime metaphor when the verb has a **natural maritime cognate that adds meaning** (e.g., `dredge` literally raises settled material; `loot` carries the licence-check reflex). Otherwise stay exempt — neutral verbs (`intent`, `capture`, `grill`, `audit`, `reflect`) signal meta-development surfaces and avoid stretched metaphors that obscure the verb's intent. Reach for a metaphor only when it teaches; not just because the convention exists.
+## Bare invocation renders, sub-verbs earn their place
 
-**Bare-command-as-render discipline (added post-audit 2026-05-08):** every `/abcd:<verb>` command MUST treat the bare invocation (no args) as **status + help + render of current state** for that verb's namespace. Sub-verbs MUST earn their existence by doing something the bare invocation cannot: mutating state, taking a positional argument, scoping to a different time-axis or granularity, or performing an action distinct from rendering.
+Every `/abcd:<verb>` treats the bare invocation as status plus help plus a render
+of that namespace's current state. A sub-verb earns its existence by doing
+something the bare invocation cannot: mutating state, taking a positional
+argument, scoping to a different time-axis or granularity, or performing an
+action distinct from rendering.
 
-**Conformance is partial, and the gap is the shipped surface's, not the discipline's.** Fourteen of the twenty-three registered verbs render current state on a bare call: `abcd` itself, `ahoy`, `banlist`, `capture`, `changelog`, `identity`, `intent`, `lint`, `memory`, `reading`, `rules`, `site`, `spec`, `version`. Six render only their help text, with no state: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`. Three do something else entirely: bare `launch` exits 1 with a refusal (`pass --dry-run to preview the bundle`), `decide` has no bare form (it requires a quoted title), and `update` is a mutating fetch-verify-swap rather than a render. The discipline stands as decided; the verbs that do not meet it are unfinished against it, and a bare call that only prints cobra's help is the shape to fix.
+That is what gives abcd its discoverability — type the verb, see where you stand.
+A sub-verb that just renames "show me the state" obscures it instead, so
+`<verb> show`, `<verb> stats`, `<verb> view` and a plain unfiltered `<verb> list`
+are **forbidden** at design time rather than argued about in review. Lint code
+`SD001` is reserved for the check; no implementation exists, so the discipline is
+held by review.
 
-**Earned sub-verbs** (do something bare cannot). Every sub-verb registered on the binary, and the ground on which it earns its place:
+**Conformance is partial, and the gap is the shipped surface's rather than the
+discipline's.** Several parents print usage with no state, two verbs refuse
+instead of rendering, and `history` breaks the rule from both ends at once: bare
+`abcd history` renders nothing while `history list` and `history show` exist,
+which is exactly the shape the rule forbids. The one enumeration of where the
+convention holds and where it does not lives in
+[`../04-surfaces/README.md`](../04-surfaces/README.md#bare-invocation); the
+per-verb inventory of registered sub-verbs is the machine-checked `## Sub-verbs`
+table in each surface chapter, so neither is restated here.
 
-| Verb | Sub-verbs | Ground |
-|---|---|---|
-| `ahoy` | `install`, `uninstall`, `remote apply` | mutate install state |
-| `ahoy` | `dry-run`, `doctor`, `remote`, `identity-check` | distinct renders (a JSON envelope, a cross-machine audit, remote settings) and an exit-code gate |
-| `banlist` | `add`, `remove` | mutate a named layer |
-| `banlist` | `list --private\|--public` | filtered query, distinct from the bare both-layer render |
-| `capture` | `disposition`, `promote`, `resolve`, `wontfix` | mutate the ledger (`promote` mints an intent draft and stamps the issue's `promoted_to`, with the draft's `promoted_from` as the reciprocal edge) |
-| `capture` | `list --open\|--resolved\|--wontfix\|--all` | filtered query; one filter flag is required, so it can never collapse to bare |
-| `disembark` | `pack`, `graveyard`, `press-release`, `principles`, `review`, `coverage` | write a lifeboat or validate a delegated payload into one |
-| `disembark` | `probe`, `plan` | read-only reports over a positional repo or lifeboat |
-| `docs` | `cite`, `lint` | maintain the citation baseline; run the lint |
-| `embark` | `from` | writes record families into a target repo |
-| `embark` | `probe` | read-only report over a positional lifeboat |
-| `guard` | `check`, `hook` | decide a candidate command, from an argument or a host hook payload |
-| `history` | `capture`, `drain` | redact and store a transcript |
-| `history` | `staged` | scopes to transcripts not yet in the store |
-| `ideate` | `record` | validates a host-composed verdict and writes the record |
-| `identity` | `init` | records the identity block |
-| `identity` | `render` | emits the correction diff, distinct from the bare drift render |
-| `intent` | `"<text>"` | canonical create: bare quoted text mints a draft (predecessor spc-30, itd-46) |
-| `intent` | `plan`, `link`, `new` (deprecated alias) | mutate the lifecycle |
-| `intent` | `audit`, `ready` | act on a positional intent (re-emit or ingest a verdict; exit non-zero when not ready) |
-| `launch` | `scaffold`, `ship` | write the release workflows; cut a release |
-| `memory` | `ingest`, `ask`, `lint` | add a source; query; health-check the store |
-| `reading` | `assemble`, `ingest` | produce a reading's input; validate and write its output |
-| `site` | `build`, `check` | render the site; gate the built output |
-| `spec` | `close` | moves a spec to `closed/` and ships its linked intent |
+Sub-verbs that are **staged**, named to hold the shape: `/abcd:audit chain` and
+`/abcd:audit lifeboat` (itd-16); `/abcd:intent grill <itd-N>` (itd-27); and
+`/abcd:oracle ask <prompt>` — `oracle` is the model-access seam per adr-25, and
+no `oracle` verb is registered.
 
-Sub-verbs that are **staged**, named here to hold the shape: `/abcd:audit chain` and `/abcd:audit lifeboat` (different application targets, itd-16); `/abcd:intent grill <itd-N>` (adversarial interview, itd-27); `/abcd:oracle ask <prompt>` (invoke the oracle — `oracle` is the model-access seam per adr-25, and no `oracle` verb is registered).
-
-**Forbidden sub-verbs** (collapse to bare): `<verb> show`, `<verb> stats`, `<verb> list` (plain, no filters), `<verb> view`. These name what bare already does. Lint code (reserved): `SD001` — sub-verb names what bare renders; no `SpecLinter` implementation exists, so the discipline is enforced by review.
-
-Two shipped sub-verbs break it: `history list` (no filter flags at all) and `history show`. Bare `abcd history` renders no state, so the pair breaks the discipline from both ends at once — the state moved into sub-verbs the discipline forbids because bare stopped rendering it.
-
-**Rationale:** the bare convention is what gives abcd its discoverability ("type the verb, see what it does"). Sub-verbs that just rename "show me the state" obscure the discoverability instead of enhancing it. The discipline rules `show`/`stats`/`list`/`view` out of the namespace at design time, not in review.
-
-**Brief-is-current-state discipline (per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md)):** the brief reflects the project's *current* state. No version label on the brief; no `archive/<NN>/` directory inside `brief/`; no version-changelog blobs in `brief/README.md`. History lives in `git log brief/`; inflection-point rationale lives in [`../../decisions/adrs/`](../../decisions/adrs); forensic snapshots come from `/abcd:disembark` (logged in `~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl` at the operator level, per [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)).
+**Brief-is-current-state discipline** (per
+[adr-5](../../decisions/adrs/0005-brief-is-current-state.md)): the brief reflects
+the project's *current* state. No version label on the brief, no `archive/`
+directory inside it, no version-changelog blobs in its README. History lives in
+`git log`; inflection-point rationale lives in
+[`../../decisions/adrs/`](../../decisions/adrs); forensic snapshots come from
+`/abcd:disembark`.
 
 ## Vocabulary-registration requirement (HARD from the start)
 
-Every term introduced in any spec's `## Modification Grammar > Ripple > Vocabulary delta` sub-bullet (per itd-37) MUST be registered in the same spec, in whichever of the two registries below fits it. Lint code (reserved): `VR001` — vocabulary delta term not registered; no `SpecLinter` implementation exists yet, so today registration is enforced by review, not by lint.
+Every term introduced in a spec's `## Modification Grammar > Ripple > Vocabulary
+delta` sub-bullet (per itd-37) MUST be registered in the same spec, in whichever
+of the two registries below fits it. Lint code `VR001` is reserved for the check;
+no implementation exists, so registration is enforced by review.
 
-**Why hard from the start, not soft.** A discipline that ships with "soft initially, hard once stable" is structurally weaker than itd-1 (acceptance gates) and itd-5 (prompt-quality additions), both of which ship hard from day one. Cost of hard enforcement: ~30 seconds per new term. Cost of soft enforcement: vocabulary drift compounds; the cross-document fidelity reviewer (Role 2) finds drift post-hoc that should have been blocked at design time.
+**Why hard from the start, not soft.** A discipline that ships as "soft
+initially, hard once stable" is structurally weaker than itd-1 and itd-5, both of
+which ship hard from day one. Hard enforcement costs about thirty seconds per new
+term. Soft enforcement costs compounding vocabulary drift, found post-hoc by the
+cross-document fidelity reviewer instead of blocked at design time.
 
-**Which registry.** The project keeps two, and they hold different kinds of thing.
+**Which registry.** The project keeps two, holding different kinds of thing.
 
-- **The glossary** — [`../glossary/`](../glossary) — is the one canonical glossary, and the only place a *glossary* lives. It holds cross-cutting natural-language vocabulary as one file per term per bounded context, each declaring its aliases and forbidden synonyms, and it is what the `GL002` forbidden-synonym rule reads. A vocabulary-delta term that names a concept the record uses in prose is registered there.
-- **This file** — `02-constraints/04-naming.md` — is the naming-convention and reserved-vocabulary register. It holds the maritime convention table (a `/abcd:<verb>` command or `.abcd/<directory>` artefact with a maritime cognate), the metaphor-exemptions list (a meta-development surface), and the "Reserved vocabulary" table below (a controlled enum or a spec-pinned reserved name). These are closed vocabularies tied to a named spec, not glossary terms; this file is not a glossary and holds no term files.
+- **The glossary** at [`../glossary/`](../glossary) is the one canonical
+  glossary and the only place a glossary lives. It holds cross-cutting
+  natural-language vocabulary, one file per term per bounded context, each
+  declaring its aliases and forbidden synonyms, and it is what the `GL002`
+  forbidden-synonym rule reads. A term naming a concept the record uses in prose
+  is registered there.
+- **This file** is the naming-convention and reserved-vocabulary register: the
+  maritime table, the exemptions, and the reserved-vocabulary table below. These
+  are closed vocabularies tied to a named spec rather than glossary terms; this
+  file is not a glossary and holds no term files.
 
-The reviewer Role 2 cross-document audit verifies registration on every plan-review.
+The Role 2 cross-document audit verifies registration on every plan-review.
 
 **Reserved vocabulary** (controlled enums, PR-to-extend).
 
