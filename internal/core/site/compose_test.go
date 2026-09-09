@@ -161,6 +161,61 @@ func TestReleaseOfMatchesTheHandleAtAWordBoundary(t *testing.T) {
 	}
 }
 
+// The word boundary the pattern ends in closes the handle against a word
+// character, and `-` is not one — so `fix/itd-199-cleanup`, `iss-0100-*.md` and
+// every other branch name, file stem and run id of that shape still yields the
+// short handle. Newest-section-first then lets such a mention out-stamp the
+// release that actually credits the record. A handle glued to a hyphen is part
+// of a compound token, on either side of it, and is not a credit
+// (iss-2609090951280114).
+func TestReleaseOfDoesNotReadAHyphenCompoundAsACredit(t *testing.T) {
+	dir := t.TempDir()
+	writeSourceFile(t, dir, "CHANGELOG.md", strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"## [0.9.0] - 2026-09-01",
+		"",
+		"### Changed",
+		"",
+		"- The branch `fix/itd-199-cleanup` was renamed while landing this. (itd-250)",
+		"- The `notes-itd-201` fixture moved with it. (itd-251)",
+		"- A hand-added `iss-0100-*.md` beside `iss-100-*.md` read as two ids. (itd-252)",
+		"",
+		"## [0.3.0] - 2026-05-01",
+		"",
+		"### Added",
+		"",
+		"- The promise this release delivered. (itd-199)",
+		"- And the one beside it. (itd-201)",
+		"- And the issue it closed. (iss-100)",
+		"",
+	}, "\n"))
+
+	c := &composer{root: mustOpenRoot(t, dir)}
+	cases := map[string]string{
+		// A hyphen SUFFIX: the compound names a branch, not this record.
+		"itd-199": "0.3.0",
+		// A hyphen PREFIX closes the token from the other side, and the leading
+		// `\b` no more sees it than the trailing one does.
+		"itd-201": "0.3.0",
+		// Zero-padding normalises, so the glob stem would have credited the
+		// newer section for a record it only spells.
+		"iss-100": "0.3.0",
+		// The anti-vacuity half: the newer section's OWN credits are still
+		// credits, so this is not a rule that reads nothing.
+		"itd-250": "0.9.0",
+		"itd-251": "0.9.0",
+		"itd-252": "0.9.0",
+	}
+	for id, want := range cases {
+		if got := c.releaseOf(id); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
 // The anti-vacuity guard: the boundary rule run against the changelog this
 // repository actually ships, where the short handles are the ones that
 // inherited. Before the fix releaseOf("itd-1") returned 0.7.1 — the release

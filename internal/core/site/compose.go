@@ -1418,11 +1418,30 @@ func (c *composer) releaseOf(id string) string {
 // exports, and a family it does not know would find no credit at all — which
 // fails closed, with the page carrying no version stamp, rather than open, with
 // the page carrying somebody else's.
+//
+// That pattern ends in `\b`, which closes the handle against a word character
+// — and `-` is not one, so a hyphen COMPOUND still yields the short handle:
+// `fix/itd-199-cleanup` returns itd-199, and `iss-0100-*.md` returns iss-100
+// once the zero-padding normalises. Branch names, file stems and run ids of
+// exactly that shape are ordinary changelog prose, and because releaseOf walks
+// newest-first, one of them in a newer section out-stamps the release that
+// actually credits the record — silently, with a plausible wrong version rather
+// than none. So a hyphen on EITHER side disqualifies the match: the leading
+// `\b` no more sees a hyphen than the trailing one does, and a handle glued to
+// one is part of a longer token whichever end it is glued at
+// (iss-2609090951280114).
 func creditsHandle(line, want string) bool {
-	for _, m := range bodyHandleRe.FindAllString(line, -1) {
-		if normalizeHandle(m) == want {
-			return true
+	for _, at := range bodyHandleRe.FindAllStringIndex(line, -1) {
+		if normalizeHandle(line[at[0]:at[1]]) != want {
+			continue
 		}
+		if at[0] > 0 && line[at[0]-1] == '-' {
+			continue
+		}
+		if at[1] < len(line) && line[at[1]] == '-' {
+			continue
+		}
+		return true
 	}
 	return false
 }
