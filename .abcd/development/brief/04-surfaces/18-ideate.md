@@ -34,7 +34,7 @@ never decides whether an idea is any good.
 | # | Leg | What it produces |
 |---|---|---|
 | 1 | Primary-source research | A claims table: each load-bearing claim, the **primary** source it was checked against, and the finding (`verified` / `falsified` / `unverifiable`) |
-| 2 | Record grill | Hits on the existing record (brief, intents in every bucket, ADRs, principles), each cited by record id with a relation (`covered` / `contradicted` / `superseded`) |
+| 2 | Record grill | Hits on the existing record, each cited by a record id the binary proves resolves, carrying a relation (`covered` / `contradicted` / `superseded`). The citation grammar admits four families and no more: `adr-N`, `itd-N`, `iss-N`, `spc-N`. The brief, the principles, the research notes and the decision log carry no citable id, so a hit on one of those rides in the `note` field of the nearest citable record |
 | 3 | Adversarial review | Kill attempts, each with an outcome (`survived` / `partial` / `fatal`) |
 
 The order is validated, not assumed: the legs travel as an ordered array and a
@@ -57,10 +57,13 @@ hand-off.
 abcd ideate record <idea-slug> --verdict-json <file|-> --json
 ```
 
-`--verdict-json` is **required**. Unlike the `disembark` synthesis verbs there is
-no deterministic fallback mode: those can fall back because a packed lifeboat's
-own files carry evidence, and there is no evidence-only verdict an idea could
-have. A binary that invented one would be doing the judging.
+`--verdict-json` is **required**, exactly as `disembark graveyard
+--lessons-json` is. Three of `disembark`'s four synthesis verbs do carry a
+deterministic fallback: `press-release`, `principles` and `review` each run
+evidence-only when their `--*-json` is absent, because a packed lifeboat's own
+files carry the evidence they need. `graveyard` has none, and neither has this
+verb: there is no evidence-only verdict an idea could have, and a binary that
+invented one would be doing the judging.
 
 The verb writes two things:
 
@@ -95,6 +98,8 @@ recordable or it is not.
 
 | Refusal | Why |
 |---|---|
+| A payload with no `schema_version`, or one this build does not support | The gate is three-branched: absent, too new for this build, and otherwise unsupported are each their own refusal, so a reader is told which of the three happened |
+| A payload with no semver `prompt_version` | The verdict is the output of a named prompt at a named version; an unstamped payload cannot be tied back to the definition that produced it, and `commands/ideate.md` carries both fields in its payload block |
 | A cited record id that does not resolve in the repository | A grill hit on a record that does not exist is a hit on nothing. The refusal names every offending id |
 | A cited value that is not a record id at all | Bounded before it is matched or echoed |
 | Legs missing, reordered, or duplicated; a leg carrying another leg's evidence | The gauntlet is exactly three legs, in order |
