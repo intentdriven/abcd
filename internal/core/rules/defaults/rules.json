@@ -85,6 +85,7 @@
         "Loud staging: a stage that no-ops or degrades must say so; never manufacture a false green — see .abcd/development/principles/loud-staging.md.",
         "Script-first MVP: earn each tool rung; the smallest documented protocol is the MVP before automation — see .abcd/development/principles/script-first-mvp.md.",
         "Memory graduates to the record: a lesson whose 'why' is a correction any agent should receive belongs in the repo's committed record — the AGENTS.md conventions section, a custom domain in .abcd/rules.json, or a ledger capture — never only in one user's local agent memory, which is for facts about that user and machine; a memory item recalled twice is a graduation candidate — see .abcd/development/principles/memory-graduates-to-record.md.",
+        "The user's directory is theirs: a tool never creates directories beside the user's projects or anywhere the user did not hand over; session and agent scratch (a worktree, a verifier's copy, an export) goes under ~/.abcd/ keyed on the root-commit SHA, or the checkout's .abcd/.work.local/ tier — see .abcd/development/principles/the-users-directory-is-theirs.md.",
         "The full set of opinionated conventions lives in .abcd/development/principles/ — read the relevant file rather than guessing the convention."
       ]
     }
