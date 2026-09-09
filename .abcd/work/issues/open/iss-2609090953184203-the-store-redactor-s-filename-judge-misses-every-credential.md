@@ -1,0 +1,14 @@
+---
+schema_version: 1
+id: "iss-2609090953184203"
+slug: "the-store-redactor-s-filename-judge-misses-every-credential"
+severity: "major"
+category: "security"
+source: "agent-finding"
+found_during: "adversarial-review"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "internal/core/memory/redact.go"
+---
+
+The store redactor's filename judge misses every credential whose own prefix straddles a page-name separator. judgeFilename judges the joined filename and, separately, the type, domain and slug that pageNameRe parses out of it, the components being judged because an underscore is a word character and an anchored token pattern therefore finds no boundary after a prefix like topic_auth_. But the component split is itself on underscore, and a credential prefix ends in one, so a name whose separator falls inside the token is invisible to both passes at once. topic_ghp_ followed by thirty-six alphanumerics parses as type topic, domain ghp, slug of thirty-six: the joined form has no word boundary before ghp, the domain alone is three letters, and the slug alone carries no prefix, so nothing matches and the write is accepted. A stripe live key splits the other way into domain sk and slug live_ plus its body, and an sk-ant- key splits on an underscore inside its own body. The consequence is the defect the filename judge was added to close, left open for every spelling that straddles a separator: the token reaches the committed tree as the file's own name, in index.md, and as the registry back-link, with every write-side gate green, and the read-side MR001 lint is blind to the stored bytes for the same missing-boundary reason, so nothing downstream reports it either. Re-joining adjacent components does not close it, because slugRe admits an underscore and a token can therefore begin at an underscore inside the slug, a position no pair of parsed components starts at. Nor can the separators be normalised away, because the prefixes ghp_, sk_live_ and github_pat_ contain the very character that would be removed. The fix is to judge every position at which an anchored pattern could match if the underscore were a boundary, the joined name together with every suffix beginning after an underscore, rather than trusting a split that falls exactly where the missing word boundary is. This is a question of where the patterns are matched and not of which severities count: the bar stays scanner.SeverityHardFail, whose own width is a separate record and a separate decision. Detector: a page named topic_ghp_ plus thirty-six alphanumerics and one spelling a stripe live key across the domain and slug boundary must both be refused with the refusal naming the page and no file, index line, log event or back-link left behind, the topic_auth_ghp_ control must stay refused, and an ordinary page whose domain is a short real word such as api, git, or ghp itself must still write.
