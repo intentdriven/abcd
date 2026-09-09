@@ -76,52 +76,36 @@ func resolveRoots(repoRoot, issuesRoot string) (string, string, error) {
 	return rr, ir, nil
 }
 
-// ErrNoLedgerRoot is LedgerRoot's refusal: there is no checkout whose ledger the
-// caller's working directory belongs to, so there is no ledger to address. A
-// surface maps it to an exit code and its own wording; core never prints.
-var ErrNoLedgerRoot = errors.New("no ledger root")
+// LedgerName is the noun the ledger's root refusals are phrased with. It is the
+// ledger's half of gitutil.CheckoutRoot's contract — the resolution and the
+// refusal policy are shared, and only the noun is this store's.
+const LedgerName = "the issue ledger"
 
 // LedgerRoot answers the question every front door has to ask before it touches
 // the ledger: which checkout's ledger does a caller standing in cwd address?
 //
-// It is the ONE resolution for that question, and it exists because the CLI used
-// to skip asking it — every capture verb handed its working directory to
-// resolveRoots as an explicit repo root, so the discovery below was never
-// reached and a verb run from a subdirectory addressed a ledger that was not
-// there: a read reported open 0 against a populated checkout, and a write minted
-// a second ledger under the subdirectory and reported success with a
-// repo-relative path that looked ordinary (iss-2609090951291524).
+// It is the ledger's door onto gitutil.CheckoutRoot and holds no resolution of
+// its own. The question is not ledger-specific — the decision store asked it
+// next, and reached the same failure one directory further out
+// (iss-2609091707224329) — so the three-state answer, git's toplevel or one of
+// two refusals, is resolved once there and named here. What is ledger-specific
+// is the noun the refusals carry, which is all this function supplies.
 //
-// Three outcomes, and only the first is a root:
+// It exists because the CLI used to skip asking at all: every capture verb
+// handed its working directory to resolveRoots as an explicit repo root, so the
+// discovery below was never reached and a verb run from a subdirectory addressed
+// a ledger that was not there — a read reported open 0 against a populated
+// checkout, and a write minted a second ledger under the subdirectory and
+// reported success with a repo-relative path that looked ordinary
+// (iss-2609090951291524).
 //
-//   - git names a toplevel: that is the answer, whoever owns the checkout.
-//   - git will not answer for a repo-SHAPED tree (git absent from PATH, a
-//     corrupt .git, an ownership refusal under the isolated env): REFUSED,
-//     naming that git could not answer. This deliberately does not fall
-//     through to discoverRepoRoot's marker walk, which accepts any directory
-//     merely carrying the name and grew neither the shape check nor the
-//     ownership gate its rules-root sibling has (iss-2609090947359464). That
-//     walk is unreachable in shipped code, and routing the front doors through
-//     it would be the one change that makes it live. A ledger addressed by a
-//     guess is the defect this function closes, one directory further out.
-//   - nothing repo-shaped anywhere above: REFUSED. Minting a ledger in whatever
-//     directory the caller stood in is not a lenient fallback — the records
-//     would sit outside any checkout, committed by nothing and read by nothing,
-//     which is the same lost trail this resolution exists to prevent. The ledger
-//     is per-repository by definition.
+// The resolution deliberately does not fall through to discoverRepoRoot's marker
+// walk, which accepts any directory merely carrying the name and grew neither
+// the shape check nor the ownership gate its rules-root sibling has
+// (iss-2609090947359464). That walk is unreachable in shipped code, and routing
+// the front doors through it would be the one change that makes it live.
 func LedgerRoot(cwd string) (string, error) {
-	if top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
-		return top, nil
-	}
-	// Neither message carries the working directory: an error envelope never
-	// leaks an absolute local path (iss-76), and the caller already knows where
-	// they are standing.
-	if gitutil.RepoShapedRoot(cwd) != "" {
-		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, or its ownership refused), and the ledger is never guessed at",
-			ErrNoLedgerRoot)
-	}
-	return "", fmt.Errorf("%w: the working directory is not inside a git repository, and the issue ledger is per-repository: run this from a checkout",
-		ErrNoLedgerRoot)
+	return gitutil.CheckoutRoot(cwd, LedgerName)
 }
 
 // discoverRepoRoot returns the git worktree root containing start, or "".

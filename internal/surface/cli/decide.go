@@ -19,6 +19,8 @@ import (
 	"os"
 
 	"github.com/intentdriven/abcd/internal/core/decide"
+	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -47,11 +49,11 @@ func newDecideCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := decideStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			d, err := decide.Create(cwd, args[0])
+			d, err := decide.Create(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "decide: " + scrubPaths(err)}
 			}
@@ -61,6 +63,45 @@ func newDecideCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// decideStoreRoot is the front door's first step: the checkout whose decision
+// store the mint writes into, resolved from the working directory rather than
+// taken to BE it.
+//
+// The verb used to hand os.Getwd() straight to decide.Create, which joins the
+// store's relative directory onto whatever it is given and creates the tree. Run
+// from a subdirectory that laid a SECOND store beneath it; run outside every
+// repository it exited 0 and laid a complete ADR store in a plain directory,
+// reporting a repo-relative path that reads exactly like the checkout store's
+// (iss-2609091707224329). A decision filed either way reaches no gate, no
+// release cut and no reader, and the durable record is the family where that
+// costs most: the decision the record holds was never written anywhere else.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals — the same one the
+// capture verbs resolve their ledger through, with only the store's noun
+// differing. Refusing is the whole point outside a checkout: there is no
+// decision store to address, and laying one where the caller stood is the defect
+// rather than a lenient fallback. Nothing is written on a refusal, because the
+// core is never reached.
+//
+// The stray-store note rides the same step, on stderr, exactly as the ledger's
+// does: a resolution that silently steps over a store the defect already laid
+// would leave those decisions where nothing will ever look again. It REPORTS and
+// moves nothing.
+func decideStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the decision store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd decide: " + err.Error() + " (nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, decide.ADRsRelDir, "decision store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd decide: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
 }
 
 // renderDecision is the human view of a minted decision. Every value in it is

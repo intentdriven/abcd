@@ -19,18 +19,24 @@ and the status the record lands with. Exit 0 when the record lands, exit 2 for
 an operand fault — no title, or a title with nothing slug-able in it — with
 nothing written.
 
-**The path is relative to the working directory, not to the repository root.**
-The verb passes the process's current directory straight to the core, which
-joins the store's relative directory onto it and creates the tree; it never
-resolves a repository root, and it never requires one. Run from a subdirectory
-it mints a second store there, and run outside a repository altogether it
-exits 0 and creates `.abcd/development/decisions/adrs/` wherever it stands,
-with a JSON `path` that reads exactly like the repository store's. This is a
-divergence from `capture`, which resolves the root and writes to
-`<root>/.abcd/work/issues/open/` from anywhere in the tree, and it is a defect
-rather than a design choice: neither this chapter, `abcd decide --help`, nor
-`commands/decide.md` names the condition. Until it is closed, invoke the verb
-from the repository root.
+**The path is relative to the repository root, from anywhere in the tree.** The
+front door resolves the checkout root before it builds the request, so a mint
+from a package directory lands in the checkout's own store and no second store
+appears beneath the caller. The resolution is
+[`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go), the same one
+`capture` addresses its ledger through — git's toplevel where git will name one,
+and a refusal in the two remaining states rather than a guess: a repo-shaped tree
+git will not answer for, and no repository above at all. Outside a checkout the
+verb therefore exits **2** and writes nothing, because there is no decision store
+to address and laying one where the caller stood is what a lost record looks like
+one directory further out. It deliberately does not fall through to a marker
+walk, which would accept any directory carrying the name (iss-2609090947359464).
+
+A decision store found **below** the checkout root, on the chain between the
+caller and it, is named on stderr and left untouched — the deposit an
+unresolved front door leaves behind, reported to the person standing over it
+rather than stepped over in silence. The note states what is there; moving a
+record is a judgement no verb makes.
 
 The title is one quoted operand. It reaches the committed filename by way of the
 derived slug, so it passes the canonical scanner before anything is derived from
