@@ -1291,8 +1291,18 @@ func plainPressReleaseText(body string) string {
 // the whole difference between quoting an intent the audit passed and quoting
 // one it did not.
 //
-// It reads the `## Audit Notes` SECTION, through the same fence-aware walk
-// every other reader of these files uses, and only the prose of it. A rollup
+// It reads THE `## Audit Notes` section — the first one, and only where there
+// is exactly one. An intent has one audit, so a second section of that title,
+// at any heading level, is not a second verdict; it is evidence that the file is
+// not the shape it claims. Accumulating across every matching section instead
+// let a duplicate reading `MET 1` lift an honest concerns-only rollup, whose
+// notMet is already zero, straight onto the homepage: the fenced-line failure
+// below, reached by duplication rather than by fencing, and no harder to write
+// (iss-2609090951277880). A duplicate is refused on the same ground a negative
+// count is — a malformed record is not evidence that the criteria were met.
+//
+// It reads that section through the same fence-aware walk every other reader of
+// these files uses, and only the prose of it. A rollup
 // line elsewhere in the document — in the frontmatter, in another section, or
 // quoted inside a fenced block as an example of the shape — is not a verdict
 // about this intent, and a whole-file substring scan cannot tell the difference.
@@ -1314,42 +1324,50 @@ func (c *composer) auditIsMet(rel string) bool {
 	if err != nil {
 		return false
 	}
-	met, notMet := 0, 0
+	notes, found := Section{}, false
 	for _, s := range secs {
 		if s.Title != "Audit Notes" {
 			continue
 		}
-		fence := false
-		for _, line := range strings.Split(s.Body, "\n") {
-			if isFenceLine(line) {
-				fence = !fence
+		if found {
+			return false
+		}
+		notes, found = s, true
+	}
+	if !found {
+		return false
+	}
+	met, notMet := 0, 0
+	fence := false
+	for _, line := range strings.Split(notes.Body, "\n") {
+		if isFenceLine(line) {
+			fence = !fence
+			continue
+		}
+		if fence {
+			continue
+		}
+		_, after, ok := strings.Cut(line, "Acceptance rollup:")
+		if !ok {
+			continue
+		}
+		for _, part := range strings.Split(after, "·") {
+			fields := strings.Fields(part)
+			if len(fields) != 2 {
 				continue
 			}
-			if fence {
+			n, err := strconv.Atoi(fields[1])
+			if err != nil {
 				continue
 			}
-			_, after, ok := strings.Cut(line, "Acceptance rollup:")
-			if !ok {
-				continue
+			if n < 0 {
+				return false
 			}
-			for _, part := range strings.Split(after, "·") {
-				fields := strings.Fields(part)
-				if len(fields) != 2 {
-					continue
-				}
-				n, err := strconv.Atoi(fields[1])
-				if err != nil {
-					continue
-				}
-				if n < 0 {
-					return false
-				}
-				switch fields[0] {
-				case "MET":
-					met += n
-				case "NOT_MET":
-					notMet += n
-				}
+			switch fields[0] {
+			case "MET":
+				met += n
+			case "NOT_MET":
+				notMet += n
 			}
 		}
 	}
@@ -1369,6 +1387,14 @@ func (c *composer) auditIsMet(rel string) bool {
 // itd-130, `itd-9` with the one that credits itd-93. Worse than wrong once: a
 // superstring landing in a FUTURE section restamps the featured record without
 // anything about that record changing.
+//
+// And it is a credit in the changelog's PROSE. The walk tracks fences the way
+// every other reader of these files does, because a handle inside a fenced
+// block is a shell example, a sample entry or a quoted diff — an illustration
+// of the shape rather than a claim that this release delivered that promise.
+// The fence check comes first, ahead of the dated-heading test, so a fenced
+// heading moves no version cursor either: both failures are silent, rendering a
+// plausible wrong version rather than none (iss-2609090951287232).
 func (c *composer) releaseOf(id string) string {
 	data, err := fsutil.ReadGuardedInRoot(c.root, "CHANGELOG.md", changelog.MaxChangelogBytes)
 	if err != nil {
@@ -1376,7 +1402,15 @@ func (c *composer) releaseOf(id string) string {
 	}
 	version := ""
 	want := normalizeHandle(id)
+	fence := false
 	for _, line := range strings.Split(string(data), "\n") {
+		if isFenceLine(line) {
+			fence = !fence
+			continue
+		}
+		if fence {
+			continue
+		}
 		if changelog.IsDatedHeading(line) {
 			if _, after, ok := strings.Cut(line, "["); ok {
 				version, _, _ = strings.Cut(after, "]")
@@ -1400,11 +1434,30 @@ func (c *composer) releaseOf(id string) string {
 // exports, and a family it does not know would find no credit at all — which
 // fails closed, with the page carrying no version stamp, rather than open, with
 // the page carrying somebody else's.
+//
+// That pattern ends in `\b`, which closes the handle against a word character
+// — and `-` is not one, so a hyphen COMPOUND still yields the short handle:
+// `fix/itd-199-cleanup` returns itd-199, and `iss-0100-*.md` returns iss-100
+// once the zero-padding normalises. Branch names, file stems and run ids of
+// exactly that shape are ordinary changelog prose, and because releaseOf walks
+// newest-first, one of them in a newer section out-stamps the release that
+// actually credits the record — silently, with a plausible wrong version rather
+// than none. So a hyphen on EITHER side disqualifies the match: the leading
+// `\b` no more sees a hyphen than the trailing one does, and a handle glued to
+// one is part of a longer token whichever end it is glued at
+// (iss-2609090951280114).
 func creditsHandle(line, want string) bool {
-	for _, m := range bodyHandleRe.FindAllString(line, -1) {
-		if normalizeHandle(m) == want {
-			return true
+	for _, at := range bodyHandleRe.FindAllStringIndex(line, -1) {
+		if normalizeHandle(line[at[0]:at[1]]) != want {
+			continue
 		}
+		if at[0] > 0 && line[at[0]-1] == '-' {
+			continue
+		}
+		if at[1] < len(line) && line[at[1]] == '-' {
+			continue
+		}
+		return true
 	}
 	return false
 }
