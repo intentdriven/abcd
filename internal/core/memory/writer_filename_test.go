@@ -148,3 +148,138 @@ func TestOrdinaryFilenamesStillWrite(t *testing.T) {
 		t.Errorf("the registry back-link %v does not name %q", links, page)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// The separator-straddling spelling
+// ---------------------------------------------------------------------------
+
+// The component pass above judges the three fields pageNameRe parses out of the
+// name, and it closes the spelling it was written for — `topic_auth_ghp_<36>`,
+// where the whole token sits inside the slug. But THE SPLIT IS ITSELF ON
+// UNDERSCORE, and a credential prefix ends in one: `ghp_`, `sk_live_`. A name
+// whose separator falls inside the token is therefore invisible to both passes
+// at once. `topic_ghp_<36>.md` parses as type `topic`, domain `ghp`, slug
+// `<36>`; the joined form has no word boundary before `ghp` because '_' is a
+// word character, the domain alone is three letters, and the slug alone carries
+// no prefix. Nothing matches, and the token reaches the committed tree as the
+// file's own name, in index.md, and as the registry back-link.
+//
+// The tokens here are the same FAKE fixtures the leaf tests use — a prefix and
+// a run of literal 'A's. Nothing here is a live credential.
+
+const (
+	a36 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" // 36 — github_pat's {36,}
+	a24 = "AAAAAAAAAAAAAAAAAAAAAAAA"             // 24 — stripe_live's {20,}
+)
+
+// componentDistiller returns a distiller whose one page carries the given
+// component fields verbatim — each innocuous on its own, and the filename they
+// compose to is not.
+func componentDistiller(typ, domain, slug string) Distiller {
+	return func(_ string, sourceBlock map[string]any) ([]map[string]any, error) {
+		return []map[string]any{{
+			"type": typ, "domain": domain, "slug": slug,
+			"body": "# Token rotation\nRotate tokens every 24 hours.\n", "source": sourceBlock,
+		}}, nil
+	}
+}
+
+func TestWriteRefusesACredentialSplitAcrossTheSeparator(t *testing.T) {
+	cases := []struct {
+		name              string
+		typ, domain, slug string
+		token             string
+	}{
+		{
+			// The prefix ends the domain and the body is the whole slug.
+			name: "github pat straddling domain and slug",
+			typ:  "topic", domain: "ghp", slug: a36,
+			token: "ghp_" + a36,
+		},
+		{
+			// `sk_live_` splits the other way: the domain takes `sk` and the
+			// slug opens with the rest of the prefix.
+			name: "stripe live key straddling domain and slug",
+			typ:  "topic", domain: "sk", slug: "live_" + a24,
+			token: "sk_live_" + a24,
+		},
+		{
+			// slugRe admits '_', so the token can begin at an underscore INSIDE
+			// the slug — a position no pair of parsed components starts at.
+			// This is the case that separates scanning every underscore suffix
+			// from merely re-joining adjacent components.
+			name: "github pat beginning at an underscore inside the slug",
+			typ:  "topic", domain: "auth", slug: "x_ghp_" + a36,
+			token: "ghp_" + a36,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			t.Setenv("HOME", x46mHome)
+			page := tc.typ + "_" + tc.domain + "_" + tc.slug + ".md"
+			src := writeSource(t, repo, "notes.md", "Rotate tokens every 24 hours.\n")
+
+			_, err := Ingest(IngestRequest{
+				RepoRoot: repo, Source: src,
+				Distiller: componentDistiller(tc.typ, tc.domain, tc.slug), Now: fixedNow,
+			})
+			if err == nil {
+				t.Fatalf("a page FILENAME spelling %s across the separator was accepted into the store", tc.token)
+			}
+			if !strings.Contains(err.Error(), page) {
+				t.Errorf("the refusal does not name the refused page %q: %v", page, err)
+			}
+
+			mem := Dir(repo)
+			if _, statErr := os.Stat(filepath.Join(mem, page)); !os.IsNotExist(statErr) {
+				t.Errorf("the page file was written despite the refusal (%v)", statErr)
+			}
+			mustNotCarry(t, "index.md", filepath.Join(mem, "index.md"), tc.token)
+			mustNotCarry(t, "log.md", filepath.Join(mem, "log.md"), tc.token)
+			mustNotCarry(t, "sources registry", SourcesIndexPath(repo), tc.token)
+		})
+	}
+}
+
+// TestShortDomainsAreNotCredentials is the anti-vacuity guard for the split
+// rule, and it is load-bearing. `ghp` is three ordinary letters and `sk` is
+// two; a rule that refused on the PREFIX rather than on the whole credential
+// shape would refuse every one of these ordinary pages. The rule keys on the
+// scanner's own patterns, which carry a length floor ({36,} for a github PAT,
+// {20,} for a stripe key), so a short real word in the domain position writes
+// exactly as it did before.
+func TestShortDomainsAreNotCredentials(t *testing.T) {
+	for _, tc := range []struct{ domain, slug string }{
+		{"api", "rate-limits"},
+		{"git", "rebasing"},
+		{"sk", "notes"},
+		{"ghp", "reference"},       // the bypass prefix itself, as an honest domain
+		{"auth", "x_ghp_rotation"}, // an underscore-bearing slug that is not a token
+	} {
+		t.Run(tc.domain+"_"+tc.slug, func(t *testing.T) {
+			repo := t.TempDir()
+			t.Setenv("HOME", x46mHome)
+			page := "topic_" + tc.domain + "_" + tc.slug + ".md"
+			src := writeSource(t, repo, "notes.md", "Rotate tokens every 24 hours.\n")
+
+			res, err := Ingest(IngestRequest{
+				RepoRoot: repo, Source: src,
+				Distiller: componentDistiller("topic", tc.domain, tc.slug), Now: fixedNow,
+			})
+			if err != nil {
+				t.Fatalf("an ordinary page named %s was refused: %v", page, err)
+			}
+			if len(res.Pages) != 1 || res.Pages[0] != page {
+				t.Fatalf("the ingest wrote %v, want [%s]", res.Pages, page)
+			}
+			if _, serr := os.Stat(filepath.Join(Dir(repo), page)); serr != nil {
+				t.Fatalf("the page was not written under its own name: %v", serr)
+			}
+			if links := registryBackLinks(t, repo, res.ContentHash); len(links) != 1 || links[0] != page {
+				t.Errorf("the registry back-link %v does not name %q", links, page)
+			}
+		})
+	}
+}
