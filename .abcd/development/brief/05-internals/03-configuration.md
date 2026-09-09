@@ -112,9 +112,13 @@ review-queue entry snapshots the effective mode and budget at enqueue time, so a
 mid-loop edit cannot change an in-flight loop. The loop terminal and the gate
 belong in a drainer layer that does not exist.
 
-Schema versioning and cross-version migration come in a later phase: abcd stamps
-`schema_version: 1` everywhere, and migrators are added if a later phase changes
-the shape (itd-9).
+Schema versioning and cross-version migration come in a later phase: a
+configuration record carries `schema_version: 1`, and migrators are added if a
+later phase changes the shape (itd-9). The stamp is a convention rather than a
+held rule, and the tree is not uniform — eight of the thirteen committed records
+carry it, and five do not, the record-lint and docs-lint configuration among
+them. Nothing refuses an unstamped record, so a migration that arrives before the
+stamps do has no version to read on those five.
 
 ## The history store
 
@@ -146,7 +150,12 @@ The transcript corpus is a **sibling** user-scope store rather than a sub-tree o
 the registry, at `~/.abcd/transcripts/<root-sha>/`, holding redacted records and a
 staging area for raw transcripts awaiting redaction
 ([adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)).
-One package may lay out or judge its path.
+One package owns its layout: `internal/core/history` declares both the user-scope
+default and the opt-in per-repo location, and every resolver goes through it. The
+rule is a convention with nothing behind it, and it already has one exception —
+the cold-reading assembler repeats the per-repo path as a literal in its
+exclusion rows rather than reading the constant, so moving that store would leave
+the exclusion pointing at the old place.
 
 It is **self-creating**: the store bootstraps on first use, so no install step
 stands between a wired hook and a stored transcript (iss-95). Every level is
@@ -235,8 +244,10 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-staged worktree store, machine config defaults, user-scope memory for personal
-cross-project knowledge, and the `sources/` corpus `/abcd:ingest` and
+staged worktree store, machine config defaults (a later phase: every config read
+in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
+is read at all), user-scope memory for personal cross-project knowledge (a later
+phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/abcd:ingest` and
 `/abcd:consult` read (abcd never creates that one, and both verbs say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
@@ -247,7 +258,8 @@ the two are one list and must agree.
 **Repo scope, in-tree `.abcd/`** — this repository's record and working files: the
 three-tier layout below, the config file with its `meta` block, the rules
 overrides, the per-surface machine records under `config/`, the lint and site
-configuration records, and the native spec store. A `memory/` namespace is written
+configuration records, the identity and positioning registry, the citation
+baseline, and the native spec store. A `memory/` namespace is written
 where memory is curated. **The home for project work.** There is no in-tree
 lifeboat directory: the lifeboat is out-of-tree output at an operator-chosen
 destination. Two namespaces are not part of it either: `logbook/`, a retired name,
@@ -383,8 +395,9 @@ clone carries, because it is out-of-tree output.
 **Memory locations to keep straight.** Curated memory exists at both scopes, and
 there is one non-abcd location alongside them: the repo-scope `.abcd/memory/` is
 the **primary** store, holding the curated summaries `abcd memory ingest` writes
-and the canonical input for principle distillation; the user-scope `~/.abcd/memory/`
-holds personal preferences and cross-project principles with no single repo home;
+and the canonical input for principle distillation; the user-scope `~/.abcd/memory/` is a
+**later phase**, which will hold personal preferences and cross-project
+principles with no single repo home (nothing in the binary resolves it today);
 and a root-level `memory/` is the legacy snapshot abcd respects and never writes
 to. Which scope a curated page lands in is a routing decision — see
 [`07-memory.md`](07-memory.md). Retrieval across the two is not a flat union, which
@@ -462,7 +475,14 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/abcd/main.go                    # entrypoint — wires the CLI front door to the core
+├── cmd/                                # the shipped entrypoint plus four build-time binaries
+│   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
+│   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
+│   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
+│   ├── abcd-gen-surface/               #   writes the committed command-surface snapshot
+│   └── abcd-gen-cli-ref/               #   writes the generated CLI reference page
+│                                       #   The four are developer tooling, not user surface: they run
+│                                       #   from the Makefile or `go generate`, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
 │   │                                   #   (adr-23); each returns structured results
@@ -503,12 +523,15 @@ resolves the plugin root, then PATH, then says the transcript was not captured.
 
 **The plugin-internal development namespace** (committed in private repos,
 gitignored in public) holds, at its root, the config file and the per-surface
-machine records under `config/`, the rules overrides, and the lint and site
-configuration records. Under `development/` sit the durable record's families,
-flat by artefact type (adr-30): the chaptered brief with its glossary, the intents
+machine records under `config/`, the rules overrides, the lint and site
+configuration records, the identity and positioning registry the surfaces are
+held to, and the citation baseline `docs cite` maintains. Under `development/`
+sit the durable record's families, flat by artefact type (adr-30): the chaptered
+brief with its glossary, the intents
 store with directory-as-status, the principles, the decisions, the roadmap with its
 phases and RFCs, dated plans, the native spec store, the cold-reading ledger, the
-release surface declaration, the release gate's manifest, and research. Under
+release surface declaration, the release gate's manifest, research, and the
+persona roster a press-release quote must attribute to. Under
 `work/` sit the shared working files. The local tier is the third and is
 gitignored under every visibility.
 
