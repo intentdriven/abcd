@@ -35,7 +35,7 @@ PROBE
   - Compute sha256 of source content
   - Look up in .abcd/memory/.sources_index.json (the provenance substrate per
     itd-36/spc-38, the provenance capability; distinct from the
-    ahoy history store that keys session transcripts on the root-commit SHA)
+    session-transcript store that keys transcripts on the root-commit SHA)
   - If found: bump ingest_count, update last_ingest, return cached citation
   - If new: continue
     │

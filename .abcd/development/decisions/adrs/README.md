@@ -133,7 +133,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-26](0026-native-spec-layer-ccpm-backend.md) | A native minimal spec layer with the companion harness `ccpm` as the primary deeper backend | accepted | 2026-07-06 |
 | [adr-27](0027-autonomous-run-pluggable-seam.md) | The autonomous run is a pluggable seam, not a Ralph port (supersedes adr-16) | accepted | 2026-07-06 |
 | [adr-28](0028-single-repo-curated-release.md) | One repository, a curated release artifact — no dev→public mirror (supersedes adr-18) | accepted | 2026-07-06 |
-| [adr-29](0029-native-transcript-corpus.md) | A native local redacted transcript corpus | accepted | 2026-07-06 |
+| [adr-29](0029-native-transcript-corpus.md) | A native local redacted transcript corpus (superseded by adr-2609090717039680, which relocates the store and makes it create itself) | superseded | 2026-07-06 |
 | [adr-30](0030-record-information-architecture.md) | Design-record information architecture — flat artefact-type folders | accepted | 2026-07-06 |
 | [adr-31](0031-derived-versioning-from-intents.md) | The release version is derived from the intents in it, never authored (extends adr-19, adr-20) | accepted | 2026-07-07 |
 | [adr-32](0032-issue-ledger-is-working-tier-data.md) | The issue ledger is working-tier data, not authored record — move to `.abcd/work/issues/`, drop git-inferable timestamps, derive priority (supersedes adr-12) | accepted | 2026-07-08 |
@@ -158,3 +158,4 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-51](0051-intents-declare-mechanism-and-scope-conditions.md) | An intent can declare its mechanism claim and its scope conditions — optional sections, enforcement deferred | accepted | 2026-08-22 |
 | [adr-52](0052-the-semantic-gate-sits-on-the-wrong-side-of-the-tag.md) | The semantic release gate runs after tagging, so a refusal consumes the version rather than blocking it — problem and options recorded, no decision | proposed | 2026-08-23 |
 | [adr-55](0055-the-construal-stands-in-the-record-its-history-does-not.md) | The construal stands in the record; its history does not — refines adr-50 | accepted | 2026-08-28 |
+| [adr-2609090717039680](2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md) | The transcript corpus is a sibling store that creates itself, and the per-repo location is an opt-in pull (supersedes adr-29) | accepted | 2026-09-09 |

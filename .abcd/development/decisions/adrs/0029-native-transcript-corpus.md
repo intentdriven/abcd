@@ -1,10 +1,10 @@
 ---
 id: adr-29
 slug: native-transcript-corpus
-status: accepted
+status: superseded
 date: 2026-07-06
 supersedes: null
-superseded_by: null
+superseded_by: adr-2609090717039680
 related_intents: []
 related_rfcs: []
 related_adrs: [adr-22]
