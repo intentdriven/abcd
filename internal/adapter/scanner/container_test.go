@@ -796,8 +796,25 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 	}
 	start := time.Now()
 	res := scanOne(t, sc, "chunkbomb.png", abs)
-	if el := time.Since(start); el > 10*time.Second {
-		t.Fatalf("a chunk-count bomb took %s — the chunk loop is not bounded: %+v", el, res)
+	el := time.Since(start)
+
+	// The property is the refusal, not the clock. A bounded loop stops and says
+	// why; an unbounded one never reaches this line at all. Asserting the reason
+	// distinguishes a working bound from a slow machine, which a duration cannot
+	// (iss-2609091215552981).
+	why := res.ContentUnverifiedWhy["chunkbomb.png"]
+	if !strings.Contains(why, "compressed chunks") {
+		t.Fatalf("a chunk-count bomb was not refused by the chunk bound; reason %q: %+v", why, res)
+	}
+
+	// The clock stays as a runaway guard only, and its ceiling moves with the
+	// race detector, which costs this scan about fifteen times its plain run.
+	ceiling := 10 * time.Second
+	if raceEnabled {
+		ceiling = 90 * time.Second
+	}
+	if el > ceiling {
+		t.Fatalf("a chunk-count bomb took %s (ceiling %s): %+v", el, ceiling, res)
 	}
 }
 
