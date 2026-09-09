@@ -103,7 +103,7 @@ user-scope directory for machine-local state.
                                  root-commit SHA. ahoy owns it; it holds no transcripts
   transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
                                  registry, creating itself on first use
-                                 (adr-2609090717039680, superseding adr-29)
+                                 (adr-2609091248201071, superseding adr-2609090717039680)
   voyage/<root-sha>/             disembark/embark operations log, never committed
                                  (adr-35)
   worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout

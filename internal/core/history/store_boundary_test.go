@@ -18,8 +18,9 @@ import (
 // convention and by nothing else — internal/core/lint/scribecontract_test.go
 // scans the SCRIBE PROMPT for the same spellings, which is a different property
 // (what one agent definition may name), and nothing read the source tree at all.
-// adr-2609090717039680 rests its whole location argument on this test, twice, so
-// the claim had to become a fact or stop being made.
+// adr-2609091248201071 rests its whole location argument on this test, as
+// adr-2609090717039680 did before it, so the claim had to become a fact or stop
+// being made.
 //
 // What it holds: no Go source outside this package spells a path into the
 // session-transcript store as a string LITERAL. A package that needs the store
