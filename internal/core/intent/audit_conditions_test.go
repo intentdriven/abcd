@@ -33,12 +33,12 @@ func stampedCondition(id, text string) string {
 // section carries the given bullets, and returns the emitted receipt id.
 func shipWithConditions(t *testing.T, root string, bullets ...string) string {
 	t.Helper()
-	body := "---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n" +
+	body := "---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n" +
 		"# alpha\n\n## Scope Conditions\n\n" + strings.Join(bullets, "\n") +
 		"\n\n## Acceptance Criteria\n\n- ok\n\n## Audit Notes\n"
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", body)
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}

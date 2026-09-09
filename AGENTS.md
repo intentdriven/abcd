@@ -253,9 +253,11 @@ irreversible; guessing downward costs nothing.**
   runs it for you, and the omission is silent: `launch ship` composes the
   changelog from terminal folders only, so an intent whose code is on `main`
   with its spec still open ships with no changelog line and the cut exits 0.
-  The intent's `impact` must be set first (`intent_impact_valid` refuses the
-  move without one). Same shape as the issue rule above: the step that happens
-  after the merge is the one that gets forgotten.
+  The intent's `impact` decides the derived version, so `shipped/` requires one
+  and there is no default: a record that does not already declare it takes
+  `--impact additive|breaking|fix` on the close, and a close with neither is
+  refused before anything moves. Same shape as the issue rule above: the step
+  that happens after the merge is the one that gets forgotten.
 - **A `resolved_by.commit` stamp names a commit that is actually reachable.**
   `abcd capture resolve --commit` is shape-checked only, so a wrong sha reads
   exactly like a right one; RS002/RS003 check reachability instead. Note the

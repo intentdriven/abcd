@@ -965,7 +965,13 @@ Native spec store; bare invocation is read-only status
 
 Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)
 
-**Usage:** `abcd spec close <spc-N>`
+**Usage:** `abcd spec close <spc-N> [flags]`
+
+**Flags:**
+
+```
+      --impact string   product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)
+```
 
 ### `abcd update`
 

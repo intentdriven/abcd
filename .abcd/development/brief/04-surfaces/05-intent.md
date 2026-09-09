@@ -153,7 +153,8 @@ Until then, `kind_notes` is the free-text descriptor.
 3. Spec marked done in the native spec store   (standalone + bundle: work complete)
    ├─ a MANUAL step, run in the same change that lands the work: `abcd spec close <spc-N>` (CLI-only; no hook or
    │  gate runs it, and a planned intent whose code is on main is invisible to `launch ship`, which composes
-   │  only from terminal folders — the cut exits 0 without it; the intent's `impact` must be set first)
+   │  only from terminal folders — the cut exits 0 without it; the intent's `impact` is required, supplied by the
+   │  record or by `--impact additive|breaking|fix` on the close, and a close with neither is refused)
    ├─ native spec-store `spec close` close-hook (spc-36, predecessor store) → intent lifecycle reconcile (spc-28, predecessor store)
    └─ Moves intents/planned/itd-N-*.md → intents/shipped/itd-N-*.md (+ enqueues a review)
        (For bundles, all member intents move together when the shared spec closes.)
@@ -240,7 +241,7 @@ production_mode: hand-written # how the text was produced: hand-written | dictat
                               #   flag takes the repo's declared default from .abcd/config/identity.json.
 # Added later, not part of the seed skeleton:
 #   bundle: <id>                  — for kind: bundle-member, the bundle ID
-#   impact: additive|breaking|fix — the compatibility judgement the derived version is computed from. Never "internal" (a press-release-first intent is user-facing by definition), and required before the intent may move to shipped/. Optionally stamped at create time via the `--impact` flag, otherwise added later
+#   impact: additive|breaking|fix — the compatibility judgement the derived version is computed from. Never "internal" (a press-release-first intent is user-facing by definition), and required before the intent may move to shipped/. Optionally stamped at create time via the `--impact` flag, by `abcd spec close --impact` at the move, or added by hand in between
 #   surface_history: []           — appended when an intent's user-facing surface shape changes (e.g., skill → sub-verb, top-level command → sub-verb, command → flag) WITHOUT changing kind. Distinct from reclassification_history. Schema: { date, from, to, reason }
 ---
 

@@ -323,6 +323,7 @@ is the spec store's close, which ships the linked intent as its close-hook:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --json    # open/ -> closed/, and planned/ -> shipped/
+"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --impact fix --json   # …stamping the judgement the record lacks
 ```
 
 Run it in the **same change** that lands the intent's work — the commit or
@@ -333,8 +334,15 @@ folders, and a planned intent is not a refusal, it is simply not seen. An
 intent whose code is on `main` but whose spec is still open ships with no
 changelog line and exits 0 doing so; two intents delivering a breaking CLI
 change were caught that way only by a reviewer. The close needs the intent's
-`impact` set (the `intent_impact_valid` gate refuses a move to `shipped/`
-without one), and `spec close` is CLI-only — there is no `/abcd:spec` page.
+`impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
+there is no default, because the judgement decides the derived version. A
+record that already declares it needs nothing; a record that does not takes
+`--impact additive|breaking|fix` on the close, which stamps it before the move
+(`internal` is a category error on a press-release-first intent, and is
+refused). The close refuses rather than shipping a record with neither, and it
+refuses a `--impact` that disagrees with one already written down: a close does
+not revise a recorded judgement. `spec close` is CLI-only — there is no
+`/abcd:spec` page.
 Report the returned pair (the spec's new path, the intent's new path), then
 queue the audit below.
 
