@@ -1,0 +1,71 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "80ef01a5ef6cbfda57bf262c461c654d03c73e42"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-09T20:05:00Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:cfa8471246429ec638ca26e6f064c55b48e0ddae4e879cc9278293fbc21558ce",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.8.0"
+  },
+  "categories": {
+    "false-claim": 1,
+    "stale-record": 1,
+    "stale-count": 0,
+    "incomplete": 3,
+    "criterion-violation": 0
+  },
+  "failing": [
+    {
+      "id": "dc-2",
+      "category": "stale-record",
+      "severity": "medium",
+      "summary": "commands/prepare-this-repo.md:51 and :210 prescribe MADR ADRs with sequential `NNNN` filenames. This release added minted `adr-<yymmddHHMMSS><rrrr>` ids (internal/core/recordid/mint.go:58-75, commands/decide.md:50-58), and .abcd/development/decisions/adrs/ now holds both schemes: 50 hand-numbered records and 9 minted ones. Line 210 writes the older scheme into the adopting user's own repository as its permanent convention.",
+      "disposition": "deferred",
+      "note": "This release is what made it stale, which is why it was weighed hardest. Two things hold it below the bar. The hand-numbered records genuinely still exist and outnumber the minted ones 50 to 9, so :51 is stale rather than false. And :210 prescribes a convention for a repository abcd does not manage and which has no `abcd decide` in it, where hand numbering still works and nothing refuses it. First thing after the tag: a two-line edit, no binary change."
+    },
+    {
+      "id": "dc-3",
+      "category": "false-claim",
+      "severity": "low",
+      "summary": "commands/version.md:39-42 claims the network is touched only by `version --check`, `update`, `docs cite refresh` and `memory ingest <url>`, and that 'every other path reads only what is on disk'. `abcd ahoy remote` and `ahoy remote apply` reach the GitHub API through `gh` (internal/core/ahoy/remote.go:456-463).",
+      "disposition": "deferred",
+      "note": "A wrong enumeration rather than a wrong instruction: no reader takes an action from this list, and the page that documents the verb states the truth prominently and in bold (commands/ahoy.md:182-183, 'the one abcd verb that changes state outside this machine'). A reader who follows the surface for `ahoy remote` is told correctly; only the summary elsewhere is short."
+    },
+    {
+      "id": "dc-4",
+      "category": "incomplete",
+      "severity": "low-medium",
+      "summary": "commands/banlist.md:40-42 instructs that when `private.present` is false the layer is inactive on this machine. In a linked git worktree `private.present` is false while the layer inherited from the primary checkout IS enforced. The page never mentions the `inherited` key that `banlist --json` returns (internal/core/banlist/public.go:74, :87-91).",
+      "disposition": "deferred",
+      "note": "Pre-existing since v0.6.8 (41510c8e, 2026-08-28), so it is standing backlog rather than a regression this cut introduced. The plain-text render \u2014 what a human actually reads \u2014 states it correctly, naming the inherited entries and saying they are enforced here too; only the instruction for summarising the JSON is short. It affects linked-worktree users, a contributor shape rather than a documented install shape."
+    },
+    {
+      "id": "dc-5",
+      "category": "incomplete",
+      "severity": "low-medium",
+      "summary": "CONTRIBUTING.md:103 says abcd never uses `Co-Authored-By:` 'for AI'. scripts/check-attribution.sh:105 refuses EVERY co-authorship trailer, human ones included, and says so at :100 and :390. An external contributor crediting a human co-author gets a red required check that CONTRIBUTING does not forewarn.",
+      "disposition": "deferred",
+      "note": "A gap in a contributor-facing page, not a false claim about the binary. The gate fails loudly and names its own reason in the check output, so the cost is one confused CI run and a re-read, not a wrong artefact reaching main. Worth closing beside dc-6 in the same pass, since both are the same page describing the same CI."
+    },
+    {
+      "id": "dc-6",
+      "category": "incomplete",
+      "severity": "low",
+      "summary": "CONTRIBUTING.md:24-27 enumerates the separate CI jobs and omits the decisions-append gate DA001-DA004, which the same record-lint job runs (.github/workflows/ci.yml:471, :484) and which refuses a non-append-only edit to .abcd/work/DECISIONS.md.",
+      "disposition": "deferred",
+      "note": "The sentence opens 'separate jobs run the ...' without claiming to be exhaustive, and the ledger it gates is not a file an external contributor edits. Recorded rather than fixed so that the pass which closes dc-5 closes this in the same edit."
+    }
+  ],
+  "_reviewProvenance": "Host-run agent-harness semantic review of the user-facing surface: README.md, docs/**, CONTRIBUTING.md, ACKNOWLEDGEMENTS.md, commands/** and the new CHANGELOG section, verified against a binary BUILT FROM THIS COMMIT rather than any abcd on PATH or in a plugin cache, both of which are stale by construction in this repository. Second arming for v0.8.0. The first arming read 6e5f0bdf and returned PROMOTE with one finding, dc-1: commands/reading.md:4 named three reading positions where the binary accepts four, omitting the comparative position this release exists to ship. It was offered as deferrable and was NOT deferred, because the defect was introduced by this release and the fix was four tokens; it is verified fixed at this commit, as is the removal of the phantom `abcd-ingest <url-or-file>` quick path from commands/ingest.md:59. Deterministic gates run alongside: `make docs-lint` (1 advisory, 0 blockers), record-lint (exit 0, clearing surface_coverage and gate_lockstep), the CLI reference drift test, and both tagged eval lanes. One check is worth naming because a sister gate raised it: CHANGELOG.md:25 tells users the path-entry record is 'home-scoped and same-uid writable, so this is ownership against a hijacked PATH, not verification against a compromised account'. That sentence was checked against the shipped shims and UNDERSTATES rather than overstates the protection, and no user-facing page anywhere claims the stronger property. The brief did claim it; that false claim is corrected in this same release, and the underlying asymmetry \u2014 path-entry is read without the ownership and permission checks its two sibling declaration files require \u2014 is recorded as iss-2609091927085132 with a written deferral, since widening it changes a decision already taken and disclosed rather than repairing a broken one. All three breaking narrowings were confirmed documented with a remedy a reader can act on. Of the 44 CHANGELOG bullets, every one was traced to implementing code across the two armings, and two counts carried from the composer were independently recomputed and came out exact: 26 of 41 met audits, and six assembler-version steps reaching 1.8.0. DISCLOSURE: the receipts commit carrying this file also carries three things this reviewer did not see, all consequences of the sister gate's run at this same commit \u2014 a one-paragraph correction to .abcd/development/brief/04-surfaces/02-disembark.md repairing a regression the round-2 fixes introduced, and the two issue records iss-2609091956001547 and iss-2609091955574760. None of them touches the user-facing surface reviewed here. SHA RE-POINT, disclosed rather than silent: the reviewers read 4701cc5f99cc0e45f4a1a507f9f2d4a279770baa, and this receipt names 80ef01a5ef6cbfda57bf262c461c654d03c73e42. Between the two, the branch was rewritten to add a missing `Assisted-by:` trailer to one commit 90 back -- a plain `git revert` of the first changelog roll, whose default message carries no trailer. `attribution` is a REQUIRED status check whose commit half exempts only merge MESSAGES, so the branch could not merge until that one message was fixed, and fixing a message rewrites every descendant sha. The rewrite touched message bytes only, which is checkable and was checked: the tree at 80ef01a5ef6cbfda57bf262c461c654d03c73e42 is 16bd40a911fe40468faaa40dd960cd3cb0c9e937, byte-identical to the tree at 4701cc5f99cc0e45f4a1a507f9f2d4a279770baa that this gate read, and the branch still carries 206 commits and 52 merges. Verify with `git rev-parse 80ef01a5ef6cbfda57bf262c461c654d03c73e42^{tree}`. The content this receipt attests is therefore exactly the content that was reviewed; only its commit identity moved, and the old sha is unreachable rather than merely superseded, which is why the receipt was re-pointed instead of a second one being written."
+}

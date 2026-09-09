@@ -206,9 +206,11 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   `.git`, whose internal bookkeeping is not the source of truth. Two mutations
   therefore sit outside the assertion's sight: a rewrite that preserves a file's
   size, and any write under `.git`. No path under the source repo is ever a
-  destination. *(The fingerprint is asserted for `probe`, `plan` and `pack`.
-  `review` takes and reads a source repo too, and no test fingerprints that one
-  yet: the rule covers it, the evidence does not.)*
+  destination. *(The fingerprint is asserted for `probe`, `plan` and `pack`,
+  which are the three sub-verbs that open the source at all. `review` also takes
+  a source repo, but only to check that it is a real directory and to take its
+  name for the attestation: the content is never read, so there is nothing for a
+  fingerprint to catch.)*
 - **Given** a corpus repo with an intent corpus, ADRs, and a memory backend
   present, **when** a full pack runs to completion, **then** the destination
   contains all sections in [§ 5](#5-output-shape) and the review returns a
