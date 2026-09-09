@@ -62,7 +62,7 @@ line if the transcript was not captured rather than blocking on a bootstrap.
 Session start is the other exception, in the other direction: it resolves the
 plugin root alone, and when that is empty it fails closed rather than reaching
 for `PATH` at all. A session where provisioning cannot succeed degrades loudly
-rather than noisily: each affected hook says in one line what is inactive (the
+rather than silently: each affected hook says in one line what is inactive (the
 rules loader, the shell guard, the transcript capture) and that the
 [install](#cli) one-liner restores it — after which the hooks resolve the
 `PATH` binary with no session restart needed, because that install also records
@@ -78,9 +78,15 @@ and the reason, and the hook takes its degraded path instead. The rule is what
 stands between the session and a plausible `abcd` earlier on `PATH` than yours:
 a `.` entry, a vendored directory inside a checkout, a shared world-writable
 directory, or simply a file someone else put there. For `PreToolUse` the
-degraded path is the loud `UNGUARDED` line and a refusal, never an approval —
-a binary abcd cannot vouch for is never given the guard's verdict to answer
-with. A repository you have merely cloned does not get to supply the shell
+degraded path is the loud `UNGUARDED` line and exit 1, which this hook protocol
+reads as non-blocking: the command you asked for still runs, unguarded, with
+that line in front of you. Exit 1 is the one status that both lets the command
+through and puts the warning where a human sees it, because a `PreToolUse` hook
+that exits 0 has its stderr discarded. What the degraded path never returns is
+that exit 0, the status the harness reads as the guard's own approval — a
+binary abcd cannot vouch for is never given the guard's verdict to answer with.
+Blocking is exit 2, and only a real `block` verdict from a resolved binary
+reaches it. A repository you have merely cloned does not get to supply the shell
 guard or the rules loader for the session that is reading it.
 
 The same principle bounds where those two read their configuration. The rules

@@ -142,7 +142,9 @@ The transcript corpus is a **sibling** user-scope store, not a sub-tree of the r
 ```
 ~/.abcd/transcripts/
   <root-sha>/
-    records/                  redacted transcript records (root-SHA-keyed, adr-29)
+    records/                  redacted transcript records (root-SHA-keyed; the
+                              store is adr-29's, this location and the
+                              self-creation are adr-2609090717039680's)
     staging/                  raw transcripts awaiting redaction (0o700, files 0o600)
 ```
 
@@ -231,7 +233,7 @@ Worktrees that already sit beside a checkout are outside the store by definition
 
 | Scope | Location | Holds |
 |---|---|---|
-| **user** | `~/.abcd/` | one per machine — **machine-local shared state only**: the root-SHA-keyed `history/` registry (`index.json` + per-root-SHA `meta.json`) and the root-SHA-keyed `transcripts/` corpus ([adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)), the root-SHA-keyed `voyage/` operations namespace ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)), the root-SHA-keyed `worktrees/` store for session and agent checkouts (design target — [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md), `intents/drafts/`; the rule is [adr-2609091014087993](../../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md)), machine `config.json` defaults, the user-scope `memory/` (personal, cross-project knowledge), and the caller-controlled declarations `path-entry` (the owned PATH copy), `trusted-roots` (foreign-uid configuration roots, below) and `local-transcript-roots` (checkouts whose transcripts are pulled into the checkout). **Never the design record.** |
+| **user** | `~/.abcd/` | one per machine — **machine-local shared state only**: the root-SHA-keyed `history/` registry (`index.json` + per-root-SHA `meta.json`) and the root-SHA-keyed `transcripts/` corpus ([adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)), the root-SHA-keyed `voyage/` operations namespace ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)), the root-SHA-keyed `worktrees/` store for session and agent checkouts (design target — [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md), `intents/drafts/`; the rule is [adr-2609091014087993](../../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md)), machine `config.json` defaults, the user-scope `memory/` (personal, cross-project knowledge), the `sources/` corpus `/abcd:ingest` and `/abcd:consult` read — **abcd never creates it**, and both verbs say so and stop when it is absent — and the caller-controlled declarations `path-entry` (the owned PATH copy), `trusted-roots` (foreign-uid configuration roots, below) and `local-transcript-roots` (checkouts whose transcripts are pulled into the checkout). **Never the design record.** The same inventory is drawn as a tree in [`../04-surfaces/01-ahoy.md § What abcd manages`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcd); the two are one list and must agree. |
 | **repo** | in-tree `.abcd/` | this repository's record and working files — the three-tier layout below, plus `config.json` (with its `meta` setup block), `rules.json`, and the `memory/`, native spec store, `logbook/`, `rp/` namespaces. **The home for project work.** There is **no in-tree `lifeboat/`**: the lifeboat is out-of-tree output at an operator-chosen destination (adr-35). |
 
 **The repo-scope three-tier working layout** (matching [`../02-constraints/01-platform.md`](../02-constraints/01-platform.md) and [`../01-product/02-context.md`](../01-product/02-context.md)):

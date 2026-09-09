@@ -21,12 +21,28 @@ abcd update [tag] [--yes] [--json]
 
 The dispatch is keyed on what actually runs — the first `abcd` PATH occupant,
 classified by the same ownership predicate detection and install use. Only a
-regular file proven to be abcd's by provenance (its digest appears in a
-published release's `checksums.txt`) is ever swapped; every other shape is a
-loud refusal naming its remedy: a plugin-root binary (the plugin update owns
-it — itd-108's one-cut coherence), the track-latest dev shim, a stranded
-owned entry (`ahoy install` heals it), a Homebrew Cellar-resolved install
-(`brew upgrade abcd`), a foreign occupant, or an empty PATH.
+regular file proven to be abcd's own is ever swapped, and there are **three
+proofs**, tried in that order:
+
+| Proof | What establishes it |
+|---|---|
+| `release-manifest` | the file's digest appears in a published release's `checksums.txt`. The strongest, and the only one that also DATES the file, so it is tried first |
+| `running-executable` | the file IS the executable this process runs from. Nothing else can be — the code asking the question was loaded out of those very bytes — so no forge object is consulted |
+| `path-entry-record` | `~/.abcd/path-entry` records this exact file as the copy abcd installed, and the bytes still hash to what was recorded. Written at install time by every install route |
+
+The last two exist because the first one dies with the release object
+(iss-2609012000222546): release assets are deletable, and an ownership proof
+resting on them stops proving the day they are deleted, stranding an install
+with no way forward. Both replacements are independent of what the forge still
+serves — one is a property of the running process, the other a claim abcd wrote
+on this machine — so a deleted release costs the receipt its VINTAGE and never
+its ownership. `abcd update --help` states all three.
+
+Every other shape is a loud refusal naming its remedy: a plugin-root binary
+(the plugin update owns it — itd-108's one-cut coherence), the track-latest dev
+shim, a stranded owned entry (`ahoy install` heals it), a Homebrew
+Cellar-resolved install (`brew upgrade abcd`), a foreign occupant, or an empty
+PATH.
 
 The transport is pinned: no proxy or CA overrides from the environment (set
 ones are ignored and named in the receipt), redirects only onto the release

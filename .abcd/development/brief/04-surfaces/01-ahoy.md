@@ -85,19 +85,39 @@ user-scope directory for machine-local state:
 
 ```
 ~/.abcd/                       USER SCOPE — one per machine (machine-local state only)
-  history/                       shared history store + index.json (identity/lineage,
-                                 keyed on root-commit SHA — adr-29)
+  history/                       the REGISTRY only: index.json (identity/lineage, keyed
+                                 on root-commit SHA) + per-repo <root-sha>/meta.json.
+                                 ahoy owns it; it holds no transcripts
+  transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
+                                 registry, creating itself on first use
+                                 (adr-2609090717039680, superseding adr-29)
+  voyage/<root-sha>/             disembark/embark operations log, never committed
+                                 (adr-35)
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+                                 (DESIGN TARGET, unbuilt — itd-2609091014076309; the
+                                 rule is adr-2609091014087993)
   config.json                    machine config.json defaults (a later phase)
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
-  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
-                                 (design target — itd-2609091014076309; the rule is
-                                 adr-2609091014087993)
+  sources/                       the local sources corpus /abcd:ingest and /abcd:consult
+                                 read. abcd NEVER creates it: absent means both verbs
+                                 say so and stop
+  path-entry                     the abcd copy this machine owns, the one PATH binary a
+                                 hook will run
+  trusted-roots                  foreign-uid configuration roots the caller vouches for
+  local-transcript-roots         checkouts whose transcripts are pulled in to
+                                 <repo>/.abcd/.work.local/transcripts/ instead
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
   CLAUDE.md                      marker block (stands alone)
 ```
+
+The same inventory is stated as a table under *The two `.abcd/` scopes* in
+[`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes);
+the two are one list and must agree. The three declaration files at the bottom
+are caller-controlled and line-oriented, honoured only when each is a regular
+file this uid owns that no one else can write.
 
 `/abcd:ahoy`'s detection pass **classifies `cwd`** into one of three kinds
 (`managed-repo` / `unmanaged-repo` / `unmanaged-folder` — see detection step 0
@@ -193,8 +213,11 @@ Steps, run in parallel where independent:
    (bootstrap gap if not)? Is the registered entry's `path` still accurate
    (mutable label — refresh if the repo moved)? There is **no gap for an absent
    transcript corpus**: `~/.abcd/transcripts/<root-sha>/` (abcd's native local
-   redacted transcript corpus, per
-   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)) creates
+   redacted transcript corpus — the store is
+   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)'s, and this
+   sibling location and its self-creation are
+   [adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)'s,
+   which supersedes it) creates
    itself on first use, so "absent" is the ordinary state of a repo that has not
    been captured yet, and a gap there would have the board assert that
    transcripts will not be captured, which is false (iss-95).
@@ -400,9 +423,12 @@ closes stdin and pre-answers: `abcd ahoy install --yes --refuse-adopt
    `index.json` with its `schema` + `description` header (see
    [`05-internals/03-configuration.md`](../05-internals/03-configuration.md)
    for the schema). Then open this repo's transcript store through
-   `internal/core/history` — the only package that lays out that path (abcd's
-   native local redacted transcript corpus, per
-   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)) — write the
+   `internal/core/history` — the only package that lays out that path, which is
+   the sibling `~/.abcd/transcripts/` store, not a sub-tree of this registry
+   ([adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md),
+   superseding [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md),
+   which settled the corpus itself and not where it sits). ahoy points the
+   `corpus` block at that store and never lays it out — write the
    per-repo `<root-sha>/meta.json` (`root_commit`, `name`, `github`, and a
    `corpus` block pointing at the resolved records directory), and register the repo in
    `index.json` by its immutable `root_commit`, refreshing the entry's mutable

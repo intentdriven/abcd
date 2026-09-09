@@ -24,9 +24,16 @@ can never assert where the machine's session record is kept; a declaration that
 is not a regular file this uid owns, or that anyone can write, is ignored and
 says so on stderr.
 
-A corpus at the earlier `~/.abcd/history/<root-sha>/transcripts/` location is
-moved into the store the first time any verb resolves it, reported on stderr,
-and a `transcripts.moved` tombstone is left at the old path naming the new one.
+A corpus at the earlier `~/.abcd/history/<root-sha>/` location is moved into the
+store the first time any verb resolves it, reported on stderr, and a
+`transcripts.moved` tombstone is left at the old path naming the new one. **Both
+leaves move**: the redacted records under `transcripts/`, and `staging/`, which
+holds raw text that has not been through the redactor yet. Leaving staging
+behind would strand unredacted transcripts at a path nothing reads any more.
+Files move one at a time, so a concurrent peer doing the same thing is harmless
+and the destination may be on another filesystem; a file that could not be
+moved is left where it is and counted in the notice, and the tombstone is
+withheld until nothing is left behind.
 
 Capture of a live session is split across two hooks. SessionEnd only **stages**
 the raw transcript, because redacting at exit costs roughly 0.7s per MB and the
