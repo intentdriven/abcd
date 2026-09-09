@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609091718566731](../../intents/planned/itd-2609091718566731-transcripts-already-on-disk-are-recovered-into-the-right-rep.md):
+[itd-2609091718566731](../../intents/shipped/itd-2609091718566731-transcripts-already-on-disk-are-recovered-into-the-right-rep.md):
 the corpus stops starting on the day it was fixed.
 
 Two verbs land, both recovery, both reporting by construction. **`history
@@ -22,7 +22,7 @@ under the pre-lineage composite session id, recovering the full parent session
 from each record's own body.
 
 Both rest on
-[itd-2609090559376002](../../intents/planned/itd-2609090559376002-sub-agent-transcript-capture.md):
+[itd-2609090559376002](../../intents/shipped/itd-2609090559376002-sub-agent-transcript-capture.md):
 the lineage fields, the widened idempotency key and the fail-closed `Capture`
 are that intent's, and this one adds no second write path beside them. The
 per-repo root-SHA keying of

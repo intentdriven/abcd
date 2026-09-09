@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609091718595846](../../intents/planned/itd-2609091718595846-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md):
+[itd-2609091718595846](../../intents/shipped/itd-2609091718595846-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md):
 a per-agent archive becomes a readable session.
 
 `history reconstruct <session-id>` emits two files — one Markdown artefact
@@ -19,7 +19,7 @@ a per-agent archive becomes a readable session.
 writes both into `--out`, or both to stdout.
 
 It reads the lineage
-[itd-2609090559376002](../../intents/planned/itd-2609090559376002-sub-agent-transcript-capture.md)
+[itd-2609090559376002](../../intents/shipped/itd-2609090559376002-sub-agent-transcript-capture.md)
 put on each record and adds no write path of its own, so the store of
 [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md) is untouched by
 it. Two things in the shipped shape are deliberate reversals of what was

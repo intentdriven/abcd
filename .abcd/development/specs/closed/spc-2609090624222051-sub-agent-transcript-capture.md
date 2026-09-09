@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609090559376002](../../intents/planned/itd-2609090559376002-sub-agent-transcript-capture.md):
+[itd-2609090559376002](../../intents/shipped/itd-2609090559376002-sub-agent-transcript-capture.md):
 the transcript corpus stops keeping the smaller half of the work.
 
 Two things land. **Capture** gains a `SubagentStop` hook that stages the
@@ -30,9 +30,9 @@ Two capabilities that were planned inside this spec are separately delivered
 and separately specced, because the landing order delivered them as independent
 steps: recovering transcripts already on disk and repairing the composite
 records is
-[itd-2609091718566731](../../intents/planned/itd-2609091718566731-transcripts-already-on-disk-are-recovered-into-the-right-rep.md),
+[itd-2609091718566731](../../intents/shipped/itd-2609091718566731-transcripts-already-on-disk-are-recovered-into-the-right-rep.md),
 and rendering a session as one artefact with telemetry is
-[itd-2609091718595846](../../intents/planned/itd-2609091718595846-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md).
+[itd-2609091718595846](../../intents/shipped/itd-2609091718595846-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md).
 Both consume the record schema and the fail-closed `Capture` this spec settles,
 so this spec is where that material stays.
 
