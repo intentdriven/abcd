@@ -1,11 +1,16 @@
 # `/abcd:identity` — Repo Positioning
 
-`/abcd:identity` holds every rendered surface of a repository to one canonical
-identity block. The bare and `render` forms are **strictly read-only**; `init` is
-the single write path, and it runs once, at onboarding.
+A project's tagline gets written once and copied four times: the README
+strapline, the plugin manifest, the conventions file, a string baked into the
+binary's banner. Then one of them is improved. `/abcd:identity` records the
+canonical wording in one place, tells the maintainer which surfaces have drifted
+away from it, and prints the exact diff that would bring each back.
 
-It answers a different question from `/abcd:lint`: `lint` reports whether the
-repo conforms to the working conventions as a whole, and runs the positioning
+The bare and `render` forms are **strictly read-only**. `init` is the single
+write path, and it runs once, at onboarding.
+
+It answers a different question from `/abcd:lint`. `lint` reports whether the
+repo conforms to the working conventions as a whole and runs the positioning
 check as one rule among them; `identity` is where a maintainer looks at the canon
 itself and at what a fix would read like.
 
@@ -21,10 +26,9 @@ itself and at what a fix would read like.
 | `init` | — | shipped |
 | `render` | audit | shipped |
 
-
 ## The identity block
 
-The canonical home is a markdown block in the repo's own record — markdown stays
+The canonical home is a markdown block in the repo's own record. Markdown stays
 the single source of truth, and the committed configuration records only where
 the block lives:
 
@@ -41,43 +45,33 @@ Title and tagline are required; the pitch is optional at onboarding and may wrap
 across lines. abcd's own block is the "Identity (canonical)" section of
 [`01-product/README.md`](../01-product/README.md).
 
-## The registry
+## What a repo registers
 
 `.abcd/positioning.json` records the block's location, the family severity, and
-the registered surfaces. It sits beside the repo's other per-concern
-configuration (`docs-lint.json`, `record-lint.json`, `rules.json`) rather than
-under `.abcd/config/`, where `identity.json` already means the git
-commit-author pin.
+the surfaces held to it. It sits beside the repo's other per-concern
+configuration rather than under `.abcd/config/`, where `identity.json` already
+means the git commit-author pin.
 
-| field | meaning |
-|---|---|
-| `schema_version` | `1`, and **required**: `Validate` refuses any other value, the absent field included |
-| `block` | `{file, heading}` — where the canonical block lives |
-| `severity` | `warn` (default: highlight, never gate) or `blocker` |
-| `surfaces[]` | `{id, files, kind, patterns \| field, requires, template}` |
+A registered surface names candidate files (the first that exists is checked, so
+one entry covers several manifest formats), how to locate the text inside one (a
+regexp with capture groups, or a top-level JSON field), which block fields it
+requires, and the template a proposal renders from. Leaving the surface list
+empty adopts the canonical three — the README strapline, the plugin manifest
+description, and the conventions-file opening; naming any replaces them, so
+nothing is ever registered silently.
 
-The registry is all-or-nothing: the loader decodes with unknown fields
-disallowed and validates every field before any of it is used, because each one
-arrives as committed data. A registry written without `schema_version` is
-refused as `schema_version must be 1, got 0`, and the positioning rule reports
-an unloadable registry as a warn-tier finding rather than as drift, so the
-symptom reads as a broken check rather than as a missing field. `abcd identity
-init` writes the field, which is why a registry the verb laid down never hits
-this.
-
-A surface names candidate `files` (the first that exists is checked, so one entry
-covers several manifest formats), a locator (`kind: "regexp"` with capture-group
-patterns, or `kind: "json_field"` with a top-level key), the block fields it
-`requires`, and the `template` a proposal renders from. An empty `surfaces` list
-means the three defaults; a non-empty one replaces them, so nothing is ever
-registered silently.
+The registry is all-or-nothing: it is decoded with unknown fields disallowed and
+validated in full before any of it is used, because every byte of it arrives as
+committed data. `schema_version` is required and must be `1`. An unloadable
+registry is reported as a warn-tier finding rather than as drift, so the symptom
+reads as a broken check rather than as a missing tagline.
 
 ## Behaviour
 
 ```bash
-abcd identity --json        # the block and every surface's verdict; exit 0
-abcd identity render        # a unified diff per drifted surface; writes nothing
-abcd identity init …        # record the block and the pointer to it
+abcd identity            # the block and every surface's verdict; read-only
+abcd identity render     # a unified diff per drifted surface; writes nothing
+abcd identity init …     # record the block and the pointer to it
 ```
 
 Comparison is by normalised containment: markup, dashes, line wrapping, and case
@@ -86,17 +80,18 @@ not drift, while a reworded one is. A drifted surface reports the file, the line
 the exact text it says, and the canonical line it should carry.
 
 **Autonomous rewriting is permanently out of scope.** `render` proposes; the
-maintainer adopts. A deliberate change of positioning is an edit to the block,
+maintainer adopts. Changing the positioning deliberately is an edit to the block,
 after which the same proposal flow chases the surfaces.
 
-`init` never re-interviews a repo that already has a block — it adopts it —
-and refuses to repoint a registry that is already committed.
+`init` never re-interviews a repo that already has a block — it adopts it — and
+refuses to repoint a registry that is already committed.
 
 ## The check
 
 The drift check runs as the `identity-positioning` rule on every `abcd lint`,
-Where-gated on a committed registry so an un-adopted repo is skipped rather than
-failed. Its acceptance corpus is [`iss-143`](../../../work/issues/resolved/iss-143-tagline-three-variant-drift.md),
+gated on a committed registry so an un-adopted repo is skipped rather than
+failed. Its acceptance corpus is
+[`iss-143`](../../../work/issues/resolved/iss-143-tagline-three-variant-drift.md),
 the recorded three-variant tagline drift this check exists to catch.
 
 ## References

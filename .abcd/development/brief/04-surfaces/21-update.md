@@ -1,26 +1,28 @@
 # `/abcd:update` — Complete a Chosen Update
 
-`/abcd:update` completes what `version --check` reports: it fetches the named
-release (or resolves the latest), verifies the platform binary against the same
-release's `checksums.txt`, and swaps the PATH-installed copy atomically. The
-verb is the explicit ask — abcd never checks for or applies updates on its own
-([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this
-verb and `version --check` are the only two **commands** that reach the release
-origin, each only when invoked ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md), spc-32).
+`abcd version --check` says a newer release exists. `/abcd:update` is the one
+command that acts on that: it fetches the release, verifies the platform binary
+against that release's own checksums, and swaps the installed copy atomically. A
+person types one verb and either has the new version or has a refusal that names
+the command that owns the file instead.
+
+The verb is the explicit ask. abcd never checks for or applies updates on its own
+([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb
+and `version --check` are the only two **commands** that reach the release origin,
+each only when invoked
+([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md),
+spc-32).
 
 They are not the only code paths to that origin. `hooks/bootstrap.sh` pins the
-same repository, resolves its `releases/latest` over the network, and downloads
-the checksum-verified asset — and the hook configuration fires it whenever the
-plugin root holds no binary, so it reaches the origin without the user naming a
-network action in that moment. adr-38 admits it as a tier of its own
-(provisioning completes a chosen update, it never discovers one), and
-`internal/core/update/update.go` says as much where it pins `releaseOrigin`:
-"the same origin `version --check` and hooks/bootstrap.sh resolve against,
-deliberately".
+same repository, resolves its latest release over the network, and downloads the
+checksum-verified asset — and the hook configuration fires it whenever the plugin
+root holds no binary, so it reaches the origin without the user naming a network
+action in that moment. adr-38 admits it as a tier of its own: provisioning
+completes a chosen update, it never discovers one.
 
 `version --check` hands over to this verb: when an update is available, its
-`next:` line names the command to type, chosen by the same on-disk
-classification this verb dispatches on ([`12-version.md`](12-version.md)).
+`next:` line names the command to type, chosen by the same on-disk classification
+this verb dispatches on ([`12-version.md`](12-version.md)).
 
 ## Behaviour
 
@@ -28,67 +30,61 @@ classification this verb dispatches on ([`12-version.md`](12-version.md)).
 abcd update [tag] [--yes] [--json]
 ```
 
-The dispatch is keyed on what actually runs — the first `abcd` PATH occupant,
-classified by the same ownership predicate detection and install use. Only a
-regular file proven to be abcd's own is ever swapped, and there are **three
-proofs**, tried in that order:
+The dispatch is keyed on what actually runs: the first `abcd` on `PATH`. Only a
+regular file proven to be abcd's own is ever swapped, and there are three proofs,
+tried in order:
 
 | Proof | What establishes it |
 |---|---|
-| `release-manifest` | the file's digest appears in a published release's `checksums.txt`. The strongest, and the only one that also DATES the file, so it is tried first |
-| `running-executable` | the file IS the executable this process runs from. Nothing else can be — the code asking the question was loaded out of those very bytes — so no forge object is consulted |
-| `path-entry-record` | `~/.abcd/path-entry` records this exact file as the copy abcd installed, and the bytes still hash to what was recorded. Written at install time by every install route |
+| `release-manifest` | the file's digest appears in a published release's checksums. The strongest, and the only one that also DATES the file, so it is tried first |
+| `running-executable` | the file IS the executable this process runs from. Nothing else can be, so no forge object is consulted |
+| `path-entry-record` | `~/.abcd/path-entry` records this exact file as the copy abcd installed, and the bytes still hash to what was recorded |
 
 The last two exist because the first one dies with the release object
-(iss-2609012000222546): release assets are deletable, and an ownership proof
-resting on them stops proving the day they are deleted, stranding an install
-with no way forward. Both replacements are independent of what the forge still
-serves — one is a property of the running process, the other a claim abcd wrote
-on this machine — so a deleted release costs the receipt its VINTAGE and never
-its ownership. `abcd update --help` states all three.
+(iss-2609012000222546). Release assets are deletable, and an ownership proof
+resting on them stops proving the day they are deleted, stranding an install with
+no way forward. Both replacements are independent of what the forge still serves —
+one is a property of the running process, the other a claim abcd wrote on this
+machine — so a deleted release costs the receipt its vintage and never its
+ownership.
 
-A resolved tag is named before the swap on a terminal only. Both the naming
-paths are TTY-gated: the `[y/N]` confirmation runs when the tag was resolved
-rather than typed and neither `--yes` nor a pipe is in play, and the progress
-reader needs a terminal on stderr. Under the invocation the plugin command
-issues (`abcd update --yes --json`) nothing is emitted until the receipt, so
-there the resolved tag is first named after the swap, in the receipt itself.
+Everything else on `PATH` is a loud refusal naming its remedy rather than a swap:
+a plugin-root binary belongs to the plugin update, a Homebrew-resolved install to
+`brew upgrade`, a stranded owned entry to `ahoy install`, and a foreign occupant
+to whoever put it there. A refusal never proposes deleting a file abcd does not
+own.
 
-Every other shape of PATH occupant is a loud refusal naming its remedy: a
-plugin-root binary (the plugin update owns it — itd-108's one-cut coherence),
-the track-latest dev shim, a stranded owned entry (`ahoy install` heals it), a
-Homebrew Cellar-resolved install (`brew upgrade abcd`), a foreign occupant, or
-an empty PATH.
+A tag abcd resolved rather than one the caller typed is confirmed on a terminal
+first, unless `--yes` is passed or the output is piped. Under the invocation the
+plugin command issues (`abcd update --yes --json`) nothing is emitted until the
+receipt, so there the resolved tag is first named in the receipt itself.
 
-The transport is pinned: no proxy or CA overrides from the environment (set
-ones are ignored and named in the receipt), redirects only onto the release
-origin's own hosts, every hop re-checked under the urlguard policy. The swap
-is atomic in the target's directory; a failed download or verification
-leaves no partial file. Progress renders on a TTY only; the receipt prints in
-both modes.
+The transport is pinned: no proxy or CA overrides from the environment (set ones
+are ignored and named in the receipt), redirects only onto the release origin's
+own hosts, every hop re-checked. The swap is atomic in the target's directory, so
+a failed download or verification leaves no partial file.
 
-Three terminal outcomes ship, and the receipt names which one happened in its
-`action` field:
+## The receipt
+
+Three terminal outcomes ship, and the receipt's `action` field names which one
+happened:
 
 | `action` | What it means |
 |---|---|
 | `swapped` | the file was replaced, and the render reads `updated <path>: <old> -> <tag>` |
-| `already-current` | the target's digest already equals the release's, so nothing is written; the render reads `already current: <path> is <tag> (verified against the release checksums)` |
+| `already-current` | the target's digest already equals the release's, so nothing is written |
 | `refused` | a dispatch or ownership refusal, naming its shape and its remedy |
 
-The receipt carries `origin`, `tag`, `asset`, `digest`, `target_path` (redacted
-to `~`), `action`, and `ownership` — the proof that allowed the swap. It also
-carries `env_ignored` when proxy or CA overrides were scrubbed, and `refusal`
-(shape, detail, remedy) on a refusal.
+Beside `action` the receipt carries the origin, the tag, the asset and its digest,
+the target path (redacted to `~`), and the ownership proof that allowed the swap.
+It carries `env_ignored` when proxy or CA overrides were scrubbed, and a refusal
+block naming shape, detail and remedy on a refusal.
 
-`old_version` → `new_version` is the receipt of a swap the release manifest
-dated. A file swapped under either of the two local proofs has no derivable old
-version, because no published release names those bytes any more: the receipt
-then reports `old_digest` instead and reads
-`updated <path>: an unpublished build -> <tag>`, with a `replaced: sha256
-<digest> — in no published release; <ownership prose>` line under it. That is
-the direct consequence of the three proofs above, so an absent `old_version` is
-the documented shape, never a broken receipt.
+An old version number is only derivable when a release manifest dated the file it
+replaced. A file swapped under either local proof has no published release naming
+those bytes, so the receipt reports the old digest instead and reads `updated
+<path>: an unpublished build -> <tag>`. An absent old version is therefore the
+documented shape, never a broken receipt.
 
 ## References
 
