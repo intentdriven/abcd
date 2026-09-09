@@ -420,6 +420,7 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 		"CLAUDE.md",                        // AGENTS.md's committed mirror
 		"CONTRIBUTING.md",                  // the local-gates paragraph
 		".github/PULL_REQUEST_TEMPLATE.md", // the verification prompt
+		".githooks/pre-push",               // the hook's header, which tells the developer what CI adds
 	} {
 		t.Run(rel, func(t *testing.T) {
 			prose := readRepoFile(t, root, rel)
@@ -435,6 +436,87 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 					rel, target)
 			}
 		})
+	}
+}
+
+// formatStepName is the name every format-gate step carries, in this repo's
+// workflows and in the one a managed repo is scaffolded. It is also the first
+// entry of the release-gate runbook's deterministic-gate list, which the
+// gate_lockstep rule holds to the workflow — so the name is load-bearing in two
+// directions and is spelled once here.
+const formatStepName = "Format (gofmt)"
+
+// TestNoShippedWorkflowRunsTheGofmtOnPATH extends the property above to the two
+// surfaces its hand-written roster never read (iss-2609091128354325).
+//
+// TestFormatGateResolvesThroughTheDeclaredToolchain names ci.yml and four prose
+// files. That left release.yml's `verify` job inlining `gofmt -l .` and telling
+// the reader to run `gofmt -w .` — the command the pinned target replaced — and
+// left the scaffold template carrying the identical block, which is the block
+// `abcd launch scaffold` writes into every managed repo. So a claim AGENTS.md
+// makes about the format gate as such was true of one of its three homes, and
+// the release lane — the one lane whose output people download — was the home it
+// was false of.
+//
+// The roster here is DERIVED: every workflow under .github/workflows and every
+// scaffold template. A workflow that grows a format step joins by existing,
+// which is what the hand-written list could not promise. Two floors make a
+// broken sweep fail rather than pass quietly — the roster must be non-empty, and
+// it must find at least the three format gates the tree carries (ci.yml,
+// release.yml, and the template both are checked against).
+//
+// A managed repo has no Makefile of ours to invoke, so "pinned" cannot mean
+// `make fmt-check` everywhere. What it means is the negative property the helper
+// already encodes: no gofmt resolved by PATH. The template satisfies it by
+// running the gofmt inside the GOROOT the module's own toolchain resolves to,
+// which is the same binary its `go build` step uses and which follows the go
+// directive with no workflow edit.
+func TestNoShippedWorkflowRunsTheGofmtOnPATH(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+
+	var roster []string
+	for _, dir := range []string{
+		".github/workflows",                       // what this repo runs
+		"internal/core/launch/scaffold/templates", // what every managed repo is handed
+	} {
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
+		if err != nil {
+			t.Fatalf("read %s: %v", dir, err)
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			switch filepath.Ext(e.Name()) {
+			case ".yml", ".yaml", ".tmpl":
+				roster = append(roster, dir+"/"+e.Name())
+			}
+		}
+	}
+	if len(roster) == 0 {
+		t.Fatal("the workflow/template sweep matched no files; it would pass by finding nothing")
+	}
+
+	gates := 0
+	for _, rel := range roster {
+		text := readRepoFile(t, root, rel)
+		if _, ok := workflowStepBlock(text, formatStepName); ok {
+			gates++
+		}
+		if bare := bareGofmtInvocation(text); bare != "" {
+			t.Errorf("%s invokes a bare gofmt (%q).\n\n"+
+				"That is whichever gofmt the runner's PATH resolves, which is the skew the "+
+				"format gate exists to close. This repo's workflows invoke `make fmt-check`; a "+
+				"scaffolded repo, which has no Makefile of ours, runs the gofmt under the GOROOT "+
+				"its own declared toolchain resolves to.", rel, bare)
+		}
+	}
+	const minFormatGates = 3 // ci.yml, release.yml, release.yml.tmpl
+	if gates < minFormatGates {
+		t.Fatalf("found %d %q steps across %d shipped workflows and templates, want at least %d; "+
+			"the step-name parser or the step name itself changed, and a sweep that cannot see the "+
+			"format gates cannot report an unpinned one",
+			gates, formatStepName, len(roster), minFormatGates)
 	}
 }
 

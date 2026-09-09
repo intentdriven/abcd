@@ -104,8 +104,8 @@ func stagingDirReal(repoRoot, rootSHA string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := ensureRealDir(store.Staging); err != nil {
-		return "", err
+	if err := fsutil.EnsureRealDir(store.Staging, storeDirPerm); err != nil {
+		return "", storeDirFault(store.Staging, err)
 	}
 	return store.Staging, nil
 }

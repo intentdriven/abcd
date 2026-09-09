@@ -745,7 +745,7 @@ func moveIntentToBucket(repoRoot, srcRel, dstBucket string) (string, error) {
 	dstRelDir := filepath.Join(IntentsRelDir, dstBucket)
 	dstRel := filepath.Join(dstRelDir, name)
 	dstAbs := filepath.Join(repoRoot, dstRel)
-	if err := ensureRealDir(filepath.Join(repoRoot, dstRelDir), dstRelDir); err != nil {
+	if err := ensureRecordDir(repoRoot, dstRelDir); err != nil {
 		return "", err
 	}
 	if _, err := os.Lstat(dstAbs); err == nil {
@@ -795,7 +795,7 @@ func Status(repoRoot string) (StatusView, error) {
 // readRepoFile reads a repo file behind the trust-boundary guards: refuse a
 // symlinked leaf, require a regular file, and cap the size. (Mirrors the spec
 // store's private guard; a shared read-guard is a flagged consolidation target
-// alongside ensureRealDir.)
+// alongside ensureRecordDir.)
 func readRepoFile(abs, rel string) ([]byte, error) {
 	fi, err := os.Lstat(abs)
 	if err != nil {
@@ -817,15 +817,22 @@ func readRepoFile(abs, rel string) ([]byte, error) {
 	return data, nil
 }
 
-// ensureRealDir creates dir if absent, refusing a symlinked leaf directory.
-// NOTE: a symlinked ANCESTOR (e.g. a symlinked intents/) is not caught here — a
-// low-severity follow-up under the trusted-worktree model (planting one needs
-// write access equal to editing the record directly).
-func ensureRealDir(dir, rel string) error {
-	if di, err := os.Lstat(dir); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("intent: %s is a symlink (refusing to follow)", rel)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+// recordDirPerm is the mode a record directory is created with. 0o755, not the
+// 0o700 the home-scoped stores use: these directories live in a shared worktree
+// and are committed, so they carry the mode a checkout of them would have.
+const recordDirPerm = 0o755
+
+// ensureRecordDir creates repoRoot/rel, proving every level it creates is a real
+// directory. It is a two-line adapter over fsutil.EnsureRealDirAll — the record
+// store's error wording, and nothing else. The create-and-prove sequence itself
+// used to live here, as one of three copies in the tree, and this one was the
+// weak copy: it lstat'd the leaf and then called os.MkdirAll, which follows a
+// symlinked ANCESTOR and creates the rest of the chain under its target. The
+// doc comment recorded that hole rather than closing it. Routing through the
+// canonical primitive closes it, because the walk proves each level as it goes
+// (iss-2609091128479544).
+func ensureRecordDir(repoRoot, rel string) error {
+	if err := fsutil.EnsureRealDirAll(repoRoot, filepath.ToSlash(rel), recordDirPerm); err != nil {
 		return fmt.Errorf("intent: creating %s: %w", rel, err)
 	}
 	return nil

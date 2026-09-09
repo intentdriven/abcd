@@ -5,11 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
+
+// voyageDirPerm is the mode the voyage store's own directories are created with.
+// 0o700 because ~/.abcd is the caller's private space and this ledger records
+// which repositories they packed and where they wrote them. An already-existing
+// directory keeps the mode the caller gave it.
+const voyageDirPerm = 0o700
 
 // rootSHARe is the operator-store key: a lowercase hex commit SHA, 40 chars for
 // git's SHA-1 object format or 64 for SHA-256. Accepting only 40 silently
@@ -55,13 +60,15 @@ func appendVoyage(lb Lifeboat, dest, manifestSHA string, files, bytesWritten int
 	// Create and verify the two top directories one level at a time, BEFORE any
 	// deeper mkdir, so a symlinked ~/.abcd or ~/.abcd/voyage is refused rather
 	// than traversed (a bare MkdirAll of the leaf would follow a symlinked base
-	// and create directories under its target first).
+	// and create directories under its target first). EnsureRealDir is that
+	// create-then-prove step, and it is the canonical one — this file used to
+	// carry its own copy (iss-2609091128479544).
 	abcdDir := filepath.Join(home, ".abcd")
 	base := filepath.Join(abcdDir, "voyage")
-	if err := ensureRealDir(abcdDir); err != nil {
+	if err := fsutil.EnsureRealDir(abcdDir, voyageDirPerm); err != nil {
 		return false, "failed: ~/.abcd is not a real directory (symlinked?)"
 	}
-	if err := ensureRealDir(base); err != nil {
+	if err := fsutil.EnsureRealDir(base, voyageDirPerm); err != nil {
 		return false, "failed: voyage directory is not a real directory (symlinked?)"
 	}
 
@@ -106,18 +113,4 @@ func appendVoyage(lb Lifeboat, dest, manifestSHA string, files, bytesWritten int
 		return false, "failed: cannot append to voyage ledger"
 	}
 	return true, ""
-}
-
-// ensureRealDir makes dir if it is absent (as a single, non-following Mkdir) and
-// verifies it is a real directory — not a symlink or a file. A symlink at dir is
-// refused rather than followed, so voyage never creates or writes through a
-// redirected ~/.abcd or ~/.abcd/voyage.
-func ensureRealDir(dir string) error {
-	if err := os.Mkdir(dir, 0o700); err != nil && !os.IsExist(err) {
-		return err
-	}
-	if !fsutil.IsRealDir(dir) {
-		return &os.PathError{Op: "ensureRealDir", Path: dir, Err: syscall.ELOOP}
-	}
-	return nil
 }

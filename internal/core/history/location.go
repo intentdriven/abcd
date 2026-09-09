@@ -31,7 +31,7 @@ package history
 // is safe to do here because it needs no authority the caller does not already
 // hold: every level is under the caller's own home (or, opted in, their own
 // checkout). What the store still refuses is what `ownedDirsReal` was
-// protecting — creating or writing THROUGH a planted symlink. ensureRealDir
+// protecting — creating or writing THROUGH a planted symlink. EnsureRealDir
 // walks the chain top-down, creates each level itself (never MkdirAll, which
 // would create the whole chain without judging any of it), and re-verifies every
 // level as a real directory on EVERY call, so a parent swapped between calls is
@@ -154,8 +154,8 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 	res.Staging = filepath.Join(res.Base, rootSHA, stagingDirName)
 	chain = append(chain, filepath.Join(res.Base, rootSHA), res.Records)
 	for _, d := range chain {
-		if err := ensureRealDir(d); err != nil {
-			return Resolution{}, err
+		if err := fsutil.EnsureRealDir(d, storeDirPerm); err != nil {
+			return Resolution{}, storeDirFault(d, err)
 		}
 	}
 
@@ -165,21 +165,23 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 	return res, nil
 }
 
-// ensureRealDir creates one level of the store chain and proves it is a real
-// directory afterwards.
-//
-// 0o700 because the store is private: records are redacted but still a verbatim
-// account of the caller's sessions, and staging holds them unredacted. An
-// already-existing level keeps whatever mode it has — this never widens or
+// storeDirPerm is the mode a store directory is created with. 0o700 because the
+// store is private: records are redacted but still a verbatim account of the
+// caller's sessions, and staging holds them unredacted. An already-existing
+// level keeps whatever mode it has — fsutil.EnsureRealDir never widens or
 // narrows a directory the caller made themselves.
-func ensureRealDir(p string) error {
-	if err := os.Mkdir(p, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return &StorePathError{Path: p, Msg: "cannot create the store directory: " + err.Error()}
-	}
-	if !fsutil.IsRealDir(p) {
+const storeDirPerm = 0o700
+
+// storeDirFault maps a fault from the canonical directory primitive onto the
+// store's own typed refusal, so a caller still gets a *StorePathError and the
+// message this store's contract promises. It shapes an error and nothing else:
+// the create and the proof both live in fsutil.EnsureRealDir, which is where the
+// three copies of that sequence were consolidated (iss-2609091128479544).
+func storeDirFault(p string, err error) *StorePathError {
+	if errors.Is(err, fsutil.ErrNotRealDir) {
 		return &StorePathError{Path: p, Msg: "not a real directory (a symlink or a non-directory occupies it); refusing"}
 	}
-	return nil
+	return &StorePathError{Path: p, Msg: "cannot create the store directory: " + err.Error()}
 }
 
 // localDeclared reports whether the caller has pulled this repo's transcripts
@@ -306,7 +308,7 @@ func migrateLegacy(home, rootSHA string, dst Resolution) string {
 		movedRecords, leftRecords = moveAll(legacyRecords, dst.Records, ".md")
 	}
 	if fsutil.IsRealDir(legacyStaging) {
-		if err := ensureRealDir(dst.Staging); err == nil {
+		if err := fsutil.EnsureRealDir(dst.Staging, storeDirPerm); err == nil {
 			movedStaged, leftStaged = moveAll(legacyStaging, dst.Staging, stagedSuffix)
 		} else {
 			// The staging leaf could not be opened, so how much is still at the

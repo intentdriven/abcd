@@ -10,9 +10,18 @@ import (
 
 // nonCanonicalPrimitiveRe matches a private redefinition of a durable-write or
 // real-dir primitive — the exact names iss-32 consolidates. The canonical home
-// is internal/fsutil (exported WriteFileAtomic / IsRealDir); any lowercase
-// redefinition elsewhere is a divergent copy.
-var nonCanonicalPrimitiveRe = regexp.MustCompile(`func\s+(writeFileAtomic|durableWrite|isRealDir|createExclusiveIn)\b`)
+// is internal/fsutil (exported WriteFileAtomic / IsRealDir / EnsureRealDir); any
+// lowercase redefinition elsewhere is a divergent copy.
+//
+// ensureRealDir joins the list in iss-2609091128479544. The principle names
+// directory validation and forbids a third copy, and three had accumulated —
+// lifeboat's, intent's, and history's, added in the release that introduced
+// this line — precisely because the name that the copies actually used was not
+// one this regex looked for. "Create it, then prove it is a real directory" is
+// the same primitive whether the caller spells the predicate or the whole
+// two-step; the two-step is the one that can be got wrong, so it is the one
+// worth naming here.
+var nonCanonicalPrimitiveRe = regexp.MustCompile(`func\s+(writeFileAtomic|durableWrite|isRealDir|ensureRealDir|createExclusiveIn)\b`)
 
 // TestNoNonCanonicalAtomicWritePrimitives is the one-canonical-primitive
 // detector: no package under internal/ (other than fsutil) may declare its own
