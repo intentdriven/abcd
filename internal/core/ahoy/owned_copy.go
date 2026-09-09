@@ -175,6 +175,18 @@ func isOwnedCopyFile(target string) bool {
 	return ok && got == rec.sha
 }
 
+// IsOwnedPathCopy reports whether target is the regular file abcd installed as
+// this machine's PATH entry: ~/.abcd/path-entry names that very entry and the
+// bytes still hash to the recorded value. It is the exported face of the same
+// predicate `ahoy` classifies with, published for `abcd update`, which needs a
+// proof of ownership that no release deletion can revoke (iss-2609012000222546,
+// and the itd-130 fidelity audit's ac-1 concern (b): the record was re-stamped
+// after a swap but never consulted as a proof before one). It reads two local
+// files and touches no network.
+func IsOwnedPathCopy(target string) bool {
+	return isOwnedCopyFile(target)
+}
+
 // ownedCopySourceReady reports whether a verified cache artefact exists to copy
 // from — the precondition for installing (or healing to) an owned copy. When it
 // does not hold, install degrades loudly to the spc-21 pinned symlink. The data
