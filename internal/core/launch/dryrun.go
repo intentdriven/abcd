@@ -160,10 +160,19 @@ func scanRefusals(scan scanner.ScanResult) []string {
 	// byte-scanned with the secret, harness-leak and long-literal identity
 	// rules, no format decoded, so their plaintext regions are covered and
 	// their findings arrive through HardFails like any other
-	// (GHSA-9wv7-88w3-f77m). Compressed formats (scan.ContentUnverified) got
-	// the same byte scan but are NOT content-verified and do not refuse on
-	// their own — that scope decision is iss-2608291832160371; the gate row
-	// names them instead.
+	// (GHSA-9wv7-88w3-f77m). A container format abcd decodes
+	// (scan.ContentDecoded) was opened as well and its entries scanned with
+	// the same rules, so a token inside a gzip member, a zip entry or a PNG
+	// zTXt chunk arrives through HardFails too. What remains
+	// (scan.ContentUnverified) is what the decoder could not account for: a
+	// format it cannot read (a JPEG entropy stream, a PDF, an mp4 box), a
+	// stream a decode bound refused, or a file whose STRUCTURE did not add up
+	// — an archive whose entries do not tile it, a tar entry padded with
+	// something other than zeros, a header field carrying a member nothing
+	// read. Those got the byte scan alone and, per iss-2608291832160371, do
+	// not refuse on their own. The gate row counts that tier apart from the decoded
+	// one rather than folding the two into a single green, and the scan
+	// result carries each unverified path's reason and detected format.
 	for _, p := range scan.Unscanned {
 		reason := "unscanned payload file (fail-closed coverage gap): " + p
 		if why := scan.UnscannedWhy[p]; why != "" {
@@ -211,6 +220,7 @@ func scanDetail(scan scanner.ScanResult) string {
 	}
 	return "scanned " + itoa(scan.FilesScanned) + " files with the full rule set, " +
 		itoa(len(scan.ScannedBinary)) + " binary (byte rules only), " +
+		itoa(len(scan.ContentDecoded)) + " decoded (entries scanned), " +
 		itoa(len(scan.ContentUnverified)) + " compressed (not content-verified), " +
 		itoa(scan.HardFails) + " hard-fails"
 }
