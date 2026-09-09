@@ -1528,10 +1528,17 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			// Quoted text (no sub-verb) files a new draft — the symmetric create path
 			// (itd-46). Bare invocation stays read-only status + help (never mutates).
 			if len(args) > 0 {
-				// Guard: a mistyped subcommand (e.g. `intent lnk itd-5`) must not be
+				// Guard: a subcommand call (e.g. `intent lnk itd-5`) must not be
 				// swallowed as draft text and filed. Mirrors the capture guard
 				// (unrecognized-input-never-writes, iss-29); genuine prose still files.
-				if sug, ok := suspectedTypoedSubcommand(cmd, args); ok {
+				// A far miss names no sub-verb, so the refusal lists them all rather
+				// than filing the words as a draft title (iss-2609091647589392).
+				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
+					if sug == "" {
+						return &exitError{Code: 2, Msg: fmt.Sprintf(
+							"unknown intent subcommand %q; the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
+							args[0], strings.Join(subverbNames(cmd), ", "))}
+					}
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
 						"unknown intent subcommand %q; did you mean %q? (nothing created — reword the text if you meant to file a draft)",
 						args[0], sug)}
@@ -2661,12 +2668,18 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				})
 			}
 			// Guard: a mistyped subcommand (e.g. `capture resovle iss-1 …`)
-			// must not be swallowed as free text and filed. When args[0] is a
-			// near-miss to a real subverb and the shape looks like a subcommand
-			// call — a lone token, or a token followed by an issue id — refuse
-			// with a did-you-mean and write nothing (unrecognized-input-never-
-			// writes, iss-29). Genuine prose still files.
-			if sug, ok := suspectedTypoedSubcommand(cmd, args); ok {
+			// must not be swallowed as free text and filed. When the shape looks
+			// like a subcommand call — a lone token, or a token followed by an
+			// issue id — refuse and write nothing (unrecognized-input-never-
+			// writes, iss-29): with a did-you-mean when a real sub-verb is near,
+			// and with the sub-verb list when none is, because a far miss is a
+			// subcommand call too (iss-2609091647589392). Genuine prose still files.
+			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
+				if sug == "" {
+					return &exitError{Code: 2, Msg: fmt.Sprintf(
+						"unknown capture subcommand %q; the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
+						args[0], strings.Join(subverbNames(cmd), ", "))}
+				}
 				return &exitError{Code: 2, Msg: fmt.Sprintf(
 					"unknown capture subcommand %q; did you mean %q? (nothing captured — reword the text if you meant to file it)",
 					args[0], sug)}
@@ -3151,7 +3164,7 @@ var issIDRe = regexp.MustCompile(`^iss-[0-9]+$`)
 var readingItemIDRe = regexp.MustCompile(`^rdi-[0-9]+$`)
 
 // recordIDRe matches any abcd record id (issue, intent, or spec). It is used
-// only by suspectedTypoedSubcommand's shape check — distinct from issIDRe, which
+// only by unrecognizedSubverb's shape check — distinct from issIDRe, which
 // validates a real iss-only --blocked-by token — so the typo guard recognises a
 // subcommand call in either verb family (capture's iss-N ids, intent's itd/spc
 // ids) without loosening iss-id validation elsewhere.
@@ -3166,42 +3179,79 @@ var retiredSubverbs = map[string]map[string]string{
 	"intent": {"review": "audit"}, // spc-28 (adr-40)
 }
 
-// suspectedTypoedSubcommand reports the nearest real subverb when args[0] is a
-// near-miss for one (edit distance 1–2) — or a retired spelling of one — and
-// the invocation shape resembles a subcommand call rather than free-text
-// prose: a lone token, or a token followed by a record id. It is deliberately
-// high-precision so it never refuses a legitimate free-text create whose first
-// word merely resembles a verb — those carry no trailing record id and are
-// multi-word.
-func suspectedTypoedSubcommand(parent *cobra.Command, args []string) (string, bool) {
+// unrecognizedSubverb reports whether a free-text create verb's positionals
+// must be refused as a sub-verb call rather than filed as prose, and names the
+// nearest real sub-verb when one is close enough to suggest ("" when none is).
+//
+// The SHAPE decides, not the suggestion. An invocation shaped like a
+// subcommand call — a single whitespace-free token followed by a record id —
+// is refused whether or not any registered sub-verb lies within an edit
+// distance of two. The earlier form returned "no refusal" once its
+// did-you-mean search came up empty, so a far miss (`intent grill itd-5`) was
+// filed as the title of a durable record by a guard that had already concluded
+// the input was a subcommand call (iss-2609091647589392). A refusal with no
+// name to suggest lists the registered sub-verbs instead; the callers format
+// that, since only they know what "nothing created" is called on their path.
+//
+// Two shapes deliberately stay outside this test. Free-text prose — several
+// words, or one argument carrying whitespace — is never a sub-verb call, so a
+// legitimate create whose first word merely resembles a verb still files. And a
+// LONE unknown token is left to loneBareToken below, whose message is written
+// for exactly that shape; a near-miss lone token is still named here first.
+func unrecognizedSubverb(parent *cobra.Command, args []string) (string, bool) {
 	if len(args) == 0 {
 		return "", false
 	}
+	// A first word carrying whitespace is prose the shell handed over whole
+	// (`abcd intent "widen the public api"`), never a sub-verb spelling.
+	if strings.IndexFunc(args[0], unicode.IsSpace) >= 0 {
+		return "", false
+	}
+	idShaped := len(args) > 1 && recordIDRe.MatchString(args[1])
 	if successor, ok := retiredSubverbs[parent.Name()][args[0]]; ok {
 		// A retired spelling is refused in every shape a subcommand call takes:
 		// a lone token, a token before a record id, or the retired verb followed
 		// by one of the SUCCESSOR's own registered sub-verbs (`review ingest`
 		// must refuse just as `review itd-N` does — the pre-rename two-word
-		// invocation may never be swallowed as free text and filed).
-		if len(args) == 1 || recordIDRe.MatchString(args[1]) || isSubverbOf(parent, successor, args[1]) {
+		// invocation may never be swallowed as free text and filed). It is
+		// resolved before the distance search, so a retired verb keeps naming
+		// its successor rather than falling into the far-miss listing.
+		if len(args) == 1 || idShaped || isSubverbOf(parent, successor, args[1]) {
 			return successor, true
 		}
 	}
-	shapedLikeSubcommand := len(args) == 1 || recordIDRe.MatchString(args[1])
-	if !shapedLikeSubcommand {
+	if len(args) > 1 && !idShaped {
 		return "", false
 	}
 	best, bestDist := "", 3 // accept edit distances 1 and 2
+	for _, name := range subverbNames(parent) {
+		if d := levenshtein(args[0], name); d > 0 && d < bestDist {
+			best, bestDist = name, d
+		}
+	}
+	if best != "" {
+		return best, true
+	}
+	// Far miss. The token+record-id shape is a subcommand call whatever the
+	// distance, so it is refused with no name to offer; the lone-token shape
+	// falls through to loneBareToken.
+	return "", idShaped
+}
+
+// subverbNames lists parent's registered sub-verbs in cobra's own order,
+// dropping hidden commands and the generated help/completion pair — the set the
+// distance search measures against, and the set a far-miss refusal names so the
+// caller learns what the verb actually has.
+func subverbNames(parent *cobra.Command) []string {
+	var names []string
 	for _, c := range parent.Commands() {
 		name := c.Name()
 		if c.Hidden || name == "help" || name == "completion" {
 			continue
 		}
-		if d := levenshtein(args[0], name); d > 0 && d < bestDist {
-			best, bestDist = name, d
-		}
+		names = append(names, name)
 	}
-	return best, best != ""
+	return names
 }
 
 // loneBareToken reports whether the positional is one whitespace-free word — the
@@ -3209,9 +3259,11 @@ func suspectedTypoedSubcommand(parent *cobra.Command, args []string) (string, bo
 // sub-verb call. `abcd capture nosuchthing` and `abcd capture resolve` are the
 // same shape; only the second happens to reach cobra's dispatcher first, so the
 // first was swallowed as issue text and minted a durable record at exit 0
-// (iss-2608221328552172). suspectedTypoedSubcommand catches a lone token NEAR a
+// (iss-2608221328552172). unrecognizedSubverb catches a lone token NEAR a
 // real sub-verb (edit distance 1–2); this catches every other lone token, which
-// is the half that had no guard at all.
+// is the half that had no guard at all. The far-miss branch there deliberately
+// leaves this shape alone, so the message below — written for a lone word — is
+// the one a lone word gets.
 //
 // Prose is unambiguous and still files. The canonical create path passes ONE
 // argument carrying whitespace — the shell has already eaten the quotes around

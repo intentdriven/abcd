@@ -1080,3 +1080,53 @@ func TestCapturePromoteReadingItemRefusesGrounds(t *testing.T) {
 		t.Fatalf("a refused promote minted %d draft(s), want 0", len(entries))
 	}
 }
+
+// iss-2609091647589392: capture shares the sub-verb guard (unrecognizedSubverb) with intent,
+// so it carried the same far-miss hole — `capture nosuchverb iss-1` is judged
+// subcommand-shaped and then filed as issue text because no sub-verb is near
+// enough to suggest.
+
+// TestCaptureFarMissSubcommandNeverWrites is the capture half of the headline.
+func TestCaptureFarMissSubcommandNeverWrites(t *testing.T) {
+	repo := captureLedgerRepo(t)
+
+	out, err := runCLIErr(t, "capture", "nosuchverb", "iss-1", "clear the flake")
+	if err == nil {
+		t.Fatalf("expected an error for the far-missed subcommand, got success:\n%s", out)
+	}
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("far-missed subcommand exited %d, want 2 (usage): %v", code, err)
+	}
+	for _, sub := range []string{"list", "resolve", "promote", "wontfix"} {
+		if !strings.Contains(err.Error(), sub) {
+			t.Fatalf("expected the refusal to list the sub-verb %q, got: %v", sub, err)
+		}
+	}
+	if n := ledgerIssueCount(t, repo); n != 0 {
+		t.Fatalf("a far-missed subcommand filed %d issue(s); it must write nothing", n)
+	}
+}
+
+// TestCaptureNearMissKeepsDidYouMean pins capture's unchanged near-miss half.
+func TestCaptureNearMissKeepsDidYouMean(t *testing.T) {
+	_ = captureLedgerRepo(t)
+
+	_, err := runCLIErr(t, "capture", "resovle", "iss-1", "clear the flake")
+	if err == nil {
+		t.Fatalf("expected an error for the near-missed subcommand")
+	}
+	if !strings.Contains(err.Error(), "did you mean") || !strings.Contains(err.Error(), `"resolve"`) {
+		t.Fatalf("expected a did-you-mean naming resolve, got: %v", err)
+	}
+}
+
+// TestCaptureFarMissProseStillWrites is capture's precision half: the same
+// unknown first token followed by prose still files an issue.
+func TestCaptureFarMissProseStillWrites(t *testing.T) {
+	repo := captureLedgerRepo(t)
+
+	runCLI(t, "capture", "nosuchverb", "the", "release", "gate", "before", "cutting")
+	if n := ledgerIssueCount(t, repo); n != 1 {
+		t.Fatalf("prose after an unknown first word wrote %d issue(s), want 1", n)
+	}
+}
