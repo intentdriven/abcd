@@ -17,11 +17,17 @@ var (
 	visibilityChoices    = []string{"private", "public"}
 	docsTargetChoices    = []string{"claude_md", "agents_md", "both", "skip"}
 	oracleBackendChoices = []string{"host-delegated", "native", "cli", "api", "mcp"}
+	// scan.deep is a boolean, but it is collected and overridden as a string
+	// through the same choice-set seam as the enums above, so its vocabulary is
+	// declared once here rather than restated at each of the three sites that
+	// judge it (collect-missing, override, would-change).
+	scanDeepChoices = []string{"true", "false"}
 )
 
 const (
 	docsTargetDefault    = "both"
 	oracleBackendDefault = "host-delegated"
+	scanDeepDefault      = "false"
 )
 
 // Detect runs the full detection pass over cwd and returns the canonical
