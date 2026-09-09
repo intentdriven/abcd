@@ -48,13 +48,11 @@ func sessionEndRepo(t *testing.T) (repo, rootSHA string) {
 	}
 	rootSHA = strings.TrimSpace(string(out))
 
-	// Hermetic store: HOME drives ~/.abcd/history. Capture requires the
-	// transcripts dir to exist already (abcd ahoy install creates it).
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", rootSHA, "transcripts"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	// Hermetic store: HOME drives ~/.abcd/transcripts/, and nothing is created
+	// here. The store bootstraps itself on first use, so this harness is also
+	// the "machine where `abcd ahoy install` never ran" case (iss-95): every
+	// test built on it captures from a home holding nothing at all.
+	t.Setenv("HOME", t.TempDir())
 	return repo, rootSHA
 }
 
@@ -103,7 +101,7 @@ func TestHookSessionEndCapturesTranscript(t *testing.T) {
 
 	errlog := endThenStart(t, "sess-1", repo, tp)
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("history.List: %v (stderr: %s)", err, errlog)
 	}
@@ -130,7 +128,7 @@ func TestHookSessionEndIsIdempotent(t *testing.T) {
 	runHook(t, in, "hook", "session-end")
 	runHook(t, startPayload("sess-2-next", repo), "hook", "session-start")
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +157,7 @@ func TestHookSessionEndOneRecordPerSession(t *testing.T) {
 	}
 	endThenStart(t, "grown-session", repo, tp)
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +211,7 @@ func TestHookSessionEndNeverBlocksTheHost(t *testing.T) {
 			if strings.TrimSpace(errlog) == "" {
 				t.Error("a rejected payload must report its reason on stderr, got nothing")
 			}
-			recs, err := history.List(rootSHA)
+			recs, err := history.List(repo, rootSHA)
 			if err != nil {
 				t.Fatalf("history.List: %v", err)
 			}
@@ -249,7 +247,7 @@ func TestHookSessionEndRedactsOnThisPath(t *testing.T) {
 
 	endThenStart(t, "redacts", repo, tp)
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil || len(recs) != 1 {
 		t.Fatalf("want 1 record, got %d (err %v)", len(recs), err)
 	}
@@ -259,7 +257,7 @@ func TestHookSessionEndRedactsOnThisPath(t *testing.T) {
 	if recs[0].HomePaths == 0 {
 		t.Error("the absolute home path was not counted as redacted on the hook path")
 	}
-	_, stored, err := history.Read(rootSHA, "redacts")
+	_, stored, err := history.Read(repo, rootSHA, "redacts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,14 +302,14 @@ func TestHistoryCaptureFromSubdirHonoursRepoPiiConfig(t *testing.T) {
 
 	runCLI(t, "history", "capture", tp, "--session", "subdir-cfg")
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil || len(recs) != 1 {
 		t.Fatalf("want 1 record, got %d (err %v)", len(recs), err)
 	}
 	if recs[0].Secrets == 0 {
 		t.Error("the custom-pattern secret was not redacted — capture used the subdirectory, not the repo root, for pii.json (B12)")
 	}
-	_, stored, err := history.Read(rootSHA, "subdir-cfg")
+	_, stored, err := history.Read(repo, rootSHA, "subdir-cfg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +382,7 @@ func TestHookSessionEndDoesNotBlockOnIrregularFiles(t *testing.T) {
 			if strings.TrimSpace(res.stderr) == "" {
 				t.Error("a rejected transcript must report its reason on stderr, got nothing")
 			}
-			recs, err := history.List(rootSHA)
+			recs, err := history.List(repo, rootSHA)
 			if err != nil {
 				t.Fatalf("history.List: %v", err)
 			}
@@ -418,7 +416,7 @@ func TestHookSessionEndRefusesOverCapTranscript(t *testing.T) {
 	if !strings.Contains(errlog, "over the") || !strings.Contains(errlog, "cap") {
 		t.Errorf("an over-cap transcript must report the size cap on stderr, got: %s", errlog)
 	}
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("history.List: %v", err)
 	}
@@ -461,7 +459,7 @@ func TestHookSessionEndRefusesResidualHardFail(t *testing.T) {
 	if !strings.Contains(errlog, "could not be stored") {
 		t.Errorf("a surviving hard_fail span must be reported by the drain, got: %s", errlog)
 	}
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("history.List: %v", err)
 	}
@@ -470,7 +468,7 @@ func TestHookSessionEndRefusesResidualHardFail(t *testing.T) {
 	}
 	// The raw copy survives a refusal, and the notice must name it so the
 	// unredacted bytes are not left silently on disk.
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("history.ListStaged: %v", err)
 	}
@@ -504,7 +502,7 @@ func TestHookSessionEndRefusesSymlinkedTranscript(t *testing.T) {
 	if !strings.Contains(errlog, "not a readable regular file") {
 		t.Errorf("a symlinked transcript must be refused as non-regular, got: %s", errlog)
 	}
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("history.List: %v", err)
 	}
@@ -582,7 +580,7 @@ func TestHookSessionEndReStageKeepsNewerBytes(t *testing.T) {
 	}
 	_, startLog, _ := runSessionStart(startPayload("sess-restage-next", repo), "hook", "session-start")
 
-	_, stored, err := history.Read(rootSHA, "sess-restage")
+	_, stored, err := history.Read(repo, rootSHA, "sess-restage")
 	if err != nil {
 		t.Fatalf("history.Read: %v (session-start stderr: %s)", err, startLog)
 	}

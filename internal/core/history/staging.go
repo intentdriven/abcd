@@ -8,11 +8,11 @@ package history
 // this repo's own ended sessions were absent from its store before this existed.
 //
 // Staging splits the work across the two hooks that can each afford their half.
-// SessionEnd copies the raw bytes into ~/.abcd/history/<rootSHA>/staging/ at
-// write speed and returns; the next SessionStart drains that directory through
-// the same fail-closed Capture path, where there is a real time budget.
+// SessionEnd copies the raw bytes into the store's staging/ lane at write speed
+// and returns; the next SessionStart drains that directory through the same
+// fail-closed Capture path, where there is a real time budget.
 //
-// The store's invariant is untouched: every transcript in transcripts/ is still
+// The store's invariant is untouched: every transcript in records/ is still
 // redacted on write, because staging is NOT the store. Staged bytes are raw, so
 // this directory is the one place in abcd that holds unredacted transcript text
 // on purpose. It is created 0o700 and its files 0o600, it holds each transcript
@@ -96,39 +96,18 @@ type DrainResult struct {
 	Remaining int            `json:"remaining"` // staged entries not attempted, budget exhausted
 }
 
-// stagingDirPath returns ~/.abcd/history/<rootSHA>/staging.
-func stagingDirPath(rootSHA string) (string, error) {
-	root, err := historyRoot()
+// stagingDirReal resolves the store (creating it when absent, and refusing any
+// level that is not a real directory) and creates the staging leaf under it.
+// 0o700 throughout, because a staged transcript is unredacted.
+func stagingDirReal(repoRoot, rootSHA string) (string, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, rootSHA, "staging"), nil
-}
-
-// stagingDirReal verifies the owned path down to staging/ and creates the leaf
-// if absent. The parents are NOT created: the store proper is bootstrapped by
-// `abcd ahoy install`, and staging into a repo that was never installed would
-// accumulate raw transcripts nothing would ever drain.
-func stagingDirReal(rootSHA string) (string, error) {
-	root, err := historyRoot()
-	if err != nil {
+	if err := ensureRealDir(store.Staging); err != nil {
 		return "", err
 	}
-	repoDir := filepath.Join(root, rootSHA)
-	for _, d := range []string{root, repoDir} {
-		if !fsutil.IsRealDir(d) {
-			return "", &StorePathError{Path: d, Msg: "not a real directory (absent or symlink); run `abcd ahoy install` to bootstrap the store"}
-		}
-	}
-	sdir := filepath.Join(repoDir, "staging")
-	// 0o700: staged transcripts are unredacted.
-	if err := os.Mkdir(sdir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return "", &StorePathError{Path: sdir, Msg: "cannot create staging dir: " + err.Error()}
-	}
-	if !fsutil.IsRealDir(sdir) {
-		return "", &StorePathError{Path: sdir, Msg: "staging path is not a real directory (symlink?); refusing"}
-	}
-	return sdir, nil
+	return store.Staging, nil
 }
 
 // stagedFilename is <compact-utc>-<session-id>.raw, matching recordFilename's
@@ -164,7 +143,7 @@ func sessionIDFromStaged(name string) string {
 // because a re-fired SessionEnd carrying different bytes is the later snapshot
 // of the same session, and the fresher end-of-session bytes are the ones worth
 // keeping. Either way one session has one staged file, whatever fires.
-func Stage(rootSHA, sessionID string, raw []byte) (StageResult, error) {
+func Stage(repoRoot, rootSHA, sessionID string, raw []byte) (StageResult, error) {
 	if !rootSHARe.MatchString(rootSHA) {
 		return StageResult{}, errors.New(rootSHAErrMsg)
 	}
@@ -174,7 +153,7 @@ func Stage(rootSHA, sessionID string, raw []byte) (StageResult, error) {
 	if len(raw) == 0 {
 		return StageResult{}, errors.New("history: refusing to stage an empty transcript")
 	}
-	sdir, err := stagingDirReal(rootSHA)
+	sdir, err := stagingDirReal(repoRoot, rootSHA)
 	if err != nil {
 		return StageResult{}, err
 	}
@@ -292,15 +271,12 @@ func listStaged(sdir string) ([]Staged, error) {
 
 // ListStaged returns the transcripts awaiting redaction for this repo, oldest
 // first. An absent staging dir is not an error: it means nothing is pending.
-func ListStaged(rootSHA string) ([]Staged, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return nil, errors.New(rootSHAErrMsg)
-	}
-	sdir, err := stagingDirPath(rootSHA)
+func ListStaged(repoRoot, rootSHA string) ([]Staged, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return nil, err
 	}
-	return listStaged(sdir)
+	return listStaged(store.Staging)
 }
 
 // Drain captures every staged transcript into the store and removes the ones it
@@ -322,13 +298,11 @@ func ListStaged(rootSHA string) ([]Staged, error) {
 // pass, and the fresher transcript is never lost. Any failure leaves the file
 // where it is.
 func Drain(repoRoot, rootSHA string, budget int) (DrainResult, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return DrainResult{}, errors.New(rootSHAErrMsg)
-	}
-	sdir, err := stagingDirPath(rootSHA)
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return DrainResult{}, err
 	}
+	sdir := store.Staging
 	staged, err := listStaged(sdir)
 	if err != nil {
 		return DrainResult{}, err

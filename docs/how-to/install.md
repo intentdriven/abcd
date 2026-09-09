@@ -129,6 +129,34 @@ path. A plugin root provisioned from the cache carries no root-local
 cached provenance you control if you want a hand-built binary to stop reporting
 a release it did not come from.
 
+## Where your session transcripts are kept
+
+Session transcripts go into one store on your machine, at
+`~/.abcd/transcripts/`, filed under each repository's root-commit id so one
+repository's sessions are never mixed with another's. Nothing has to be set up
+first: the store is created the first time a session ends, so a repository where
+you have only enabled the plugin still records. Every stored transcript is
+redacted on write — no live secret and no absolute home path survives into a
+record — and `abcd history list`, `show` and `staged` read it back.
+
+If you would rather one checkout kept its own transcripts with it, say so once,
+from your own home directory:
+
+```sh
+mkdir -p ~/.abcd && printf '%s\n' '/path/to/checkout' >> ~/.abcd/local-transcript-roots
+```
+
+One absolute path per line; `#` starts a comment. That checkout then keeps its
+transcripts at `.abcd/.work.local/transcripts/` inside itself — a directory
+git ignores, so they are never a commit candidate. As with `trusted-roots`
+above, the declaration is read only from your home directory and only while
+that file is yours and not writable by others: a file inside a checkout can
+never decide where your session record is kept.
+
+If you have transcripts from an earlier abcd under `~/.abcd/history/`, they
+are moved into the store the first time abcd looks at it, with a line saying
+how many moved and a `transcripts.moved` note left at the old path.
+
 ## CLI
 
 One line, checksum-verified, no administrator rights. Pick your operating

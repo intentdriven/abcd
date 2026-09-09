@@ -162,7 +162,7 @@ disclosed as residue.
 | `agents` | directory | the instrument's own output is never its input | every position |
 | `evals` | directory | the instrument's own output is never its input | every position |
 | `internal/core/reading` | directory | the instrument's own output is never its input | every position |
-| `the session-transcript store` | unreachable path | the store sits outside the repository tree | every position |
+| `.abcd/.work.local/transcripts` | directory | the store is out of tree by default, and inside it only under .abcd/.work.local, which is excluded above | every position |
 | `.abcd/development/intents/drafts` | directory | a reading's object excludes what it exists to change | widening, comparative, detection |
 | `.abcd/development/intents/planned` | directory | a reading's object excludes what it exists to change | widening, comparative, detection |
 | `.abcd/development/intents/shipped` | directory | the widening object as the design documents state it | widening |

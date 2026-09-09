@@ -55,7 +55,7 @@ func TestHistoryCaptureAcceptsWhatTheHooksAccept(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("capturing a %d-byte transcript failed: %v (%s)", b.Len(), err, errb.String())
 	}
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
