@@ -11,9 +11,16 @@ It is a **host-delegated command**: no dedicated Go verb backs it and there is
 no bare-status render. The workflow runs in the host agent from the markdown in
 [`commands/prepare-this-repo.md`](../../../../commands/prepare-this-repo.md),
 invoking the binary's read-only `abcd lint --json` for the engine-backed
-conformance core and — in the adopt phase — `abcd identity init` (a write: it
-records the identity block pointer and `.abcd/positioning.json`), with
-`abcd identity render` and `abcd ahoy install` named as the follow-on surfaces.
+conformance core and, in the adopt phase, two writing verbs. `abcd identity
+init` writes both halves of the identity record: the block itself, as markdown
+in `.abcd/development/IDENTITY.md` or the `--file` target (markdown stays the
+source of truth, appended as a section to an existing file or created under a
+`# Identity` heading), and `.abcd/positioning.json`, the pointer recording where
+that block lives and which surfaces render from it. `abcd ahoy install` writes
+the commit gates, and runs a second time with `--attribution` where the user
+opts in. `abcd identity render` is the follow-on surface and writes nothing: it
+proposes a correction as a diff, and adopting it is always the maintainer's
+move.
 It takes no argument — it always operates on the current repository.
 
 ## What it does
@@ -26,10 +33,15 @@ It takes no argument — it always operates on the current repository.
   structure, documentation shape, decision and working-state hygiene,
   principles followed or violated, privacy) and presents it before adopting
   anything.
-- **Adopts the conventions.** The three-tier layout, a merged (never
+- **Adopts the conventions.** The three-tier layout; a merged (never
   overwritten) `AGENTS.md` with verified repo facts plus the marked
-  working-conventions block, and — where absent — a secrets + absolute-path
-  pre-commit gate. AI-attribution hooks are opt-in only.
+  working-conventions block; and, where absent, the commit gates the binary
+  embeds: the committed private name guard (`.githooks/pre-commit` and its
+  `pre-merge-commit` half), the gitignored local banlist stub, and the
+  `.gitattributes` line pinning the hooks to LF. No hook it scaffolds carries a
+  secret-pattern set or an absolute-path check. Absolute-path detection is the
+  binary's own `privacy-hygiene` lint rule, which phase 2 already runs through
+  `abcd lint`. AI-attribution hooks are opt-in only.
 
 ## Flow
 
@@ -48,12 +60,16 @@ Four phases, each gated on the one before:
 3. **Adopt** — create the three tiers with a repo-specific `CONTEXT.md`, migrate
    any historical `.work/` layout to the new tiers (propose then wait for sign-off;
    never leave a repo with both the old and new working-state homes), merge into
-   `AGENTS.md`, offer the commit gates, register the repo's **identity block**
-   (detect an existing block and adopt it via `abcd identity init --file`,
-   interview only where none exists — the one write the binary makes here;
-   `abcd identity render` then holds every surface to it), and — only where the
-   user says the repo requires AI disclosure — install the attribution hook
-   (opt-in).
+   `AGENTS.md`, scaffold the commit gates with `abcd ahoy install` (a committed
+   hook is not a running hook until `git config core.hooksPath .githooks` points
+   git at it, once per clone, and a declined config change is reported as
+   scaffolded-but-unarmed rather than passed over), register the repo's
+   **identity block** (detect an existing block and adopt it via `abcd identity
+   init --file`, interview only where none exists; `abcd identity render` then
+   holds every surface to it), and — only where the user says the repo requires
+   AI disclosure — install the attribution hook with `abcd ahoy install
+   --attribution` (opt-in). Three binary writes in this phase, not one:
+   `identity init`, `ahoy install`, and the attribution install.
 
 When abcd's own record has conflicting sources, the command trusts a fixed
 authority order: `AGENTS.md`, then `work/CONTEXT.md`'s live-constraints section,

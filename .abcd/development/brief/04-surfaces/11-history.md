@@ -5,11 +5,27 @@ archive of raw session transcripts, keyed on the repo's **root-commit SHA**. The
 store is **user-level** and lives outside every repo at
 `~/.abcd/transcripts/<root-sha>/records/`. ahoy's registry stays under
 `~/.abcd/history/`: `index.json` and the per-repo `meta.json`, whose corpus
-block points at the records directory. `list`, `show` and `staged` **perform
-zero writes**; the store has three write paths —
-the explicit `capture` sub-verb, the `drain` sub-verb, and the automatic
-`abcd hook session-start` drain — and all redact on write, so no live secret or
-absolute home path survives into a record.
+block points at the records directory. `list`, `show` and `staged` **add nothing
+to the corpus**: they record no transcript and change no stored record. They are
+not side-effect-free, and the distinction is worth holding. Every history verb
+reaches the store through one resolve seam, and that seam creates the store
+chain when it is absent and moves a corpus left at the legacy location into it
+(§ [Where a transcript lands](#where-a-transcript-lands)). So a `history list`
+on a fresh machine leaves the whole default chain behind it — `~/.abcd`,
+`~/.abcd/transcripts`, the root-SHA lane, and its `records/`, each created and
+re-verified as a real directory in turn — and a `history staged` on a machine
+carrying a legacy corpus leaves that corpus moved and a tombstone at the old
+path.
+
+The corpus has three write paths — the explicit `capture` sub-verb, the `drain`
+sub-verb, and the automatic `abcd hook session-start` drain — and all three
+redact on write, so no live secret or absolute home path survives into a record.
+The migration is the fourth path into `records/`, reached from every verb rather
+than from those three, and the one that does not redact: it moves bytes
+verbatim, because a record at the legacy path was redacted by the same
+redact-on-write engine when it was first stored, and a staged file moves into
+staging, where the next drain redacts it exactly as it would a freshly staged
+one. Relocating a corpus is not the moment to rewrite it.
 
 Automatic capture is **split across two hooks**. `abcd hook session-end` only
 **stages** the raw transcript beside the records at
@@ -154,4 +170,4 @@ across projects.
 
 - Plugin command: [`commands/history.md`](../../../../commands/history.md)
 - Store + redaction engine: `internal/core/history`
-- Install-time provisioning of the per-repo store: [`01-ahoy.md`](01-ahoy.md)
+- Install-time provisioning of the **registry**, not of the store: [`01-ahoy.md`](01-ahoy.md). Its step 7 lays out `~/.abcd/history/` (`index.json` and the per-repo `meta.json`) and opens this repo's store so a freshly installed machine has one on disk; the transcript corpus itself is `internal/core/history`'s to create, on first use, from any verb (iss-95)

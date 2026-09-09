@@ -15,7 +15,7 @@ abcd version --json
 ```
 
 emits `{ "name": "abcd", "version": "<version>", "vintage": "<revision>",
-"staleness": "<fresh|stale|unknown>" }`, plus `install_mode` when a PATH-entry
+"staleness": "<verdict>" }`, plus `install_mode` when a PATH-entry
 install mode is resolvable (the field is omitted when empty) and a `check`
 object (latest, source, verdict) when `--check` was passed. When the verdict is
 that an update is available, `check` also carries `next_step` and the plain
@@ -27,7 +27,18 @@ manager's own command for a Homebrew install) — chosen by the same disk-only
 classification the update verb dispatches on, so `--check` keeps its single
 sanctioned fetch ([`21-update.md`](21-update.md)). The plugin command
 (`commands/version.md`) reads the JSON and tells the user the `name`,
-`version`, `install_mode`, `vintage`, and `staleness`. Without `--json`, bare
+`version`, `install_mode`, `vintage`, and `staleness`.
+
+**`staleness` is prose, not a token enum.** The field carries the same words the
+plain render prints on its `staleness:` line, because one derivation serves both
+and a second spelling for the machine would be a second thing to keep true. A
+binary that matches its reference reads `up to date`; a binary with no reference
+to compare against reads `unknown`; a binary that has drifted reads `stale — `
+followed by the comparison and the reference, either `stale — behind the
+checkout tip (<rev>)` for the ancestry-guarded checkout comparison or `stale —
+differs from the <source> (<rev>)` for a version or pin comparison, which is
+string equality and therefore claims no direction. A consumer matches on the
+`stale` prefix and on `unknown` verbatim; there is no `fresh` token to match. Without `--json`, bare
 `abcd version` prints a short block — the version line (e.g. `abcd dev` in a
 development build) followed by `install:` (when resolvable), `vintage:`, and
 `staleness:` lines — not the version string alone, and it does **not** render

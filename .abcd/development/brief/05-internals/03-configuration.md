@@ -424,8 +424,9 @@ abcd/
 │                                       # STAGED: an mcp/ front door (adr-23's third door)
 ├── commands/                      # markdown command surfaces — <verb>.md, the gated list in
 │   └── <verb>.md                       #   ../04-surfaces/README.md (abcd.md is the bare /abcd board).
-│   # NOTE: the mapping to binary verbs is not one-to-one in either direction. `changelog`, `rules`
-│   # and `spec` are binary verbs with no command page; `consult`, `ingest` and `prepare-this-repo`
+│   # NOTE: the mapping to binary verbs is not one-to-one in either direction. `changelog`, `completion`,
+│   # `hook`, `rules` and `spec` are binary verbs with no command page (`hook` registered but hidden from
+│   # --help, reached from hooks.json); `consult`, `ingest` and `prepare-this-repo`
 │   # are command pages that invoke no binary verb (prepare-this-repo is an interim bridge until abcd
 │   # manages repositories directly). `uninstall` is a sub-verb of /abcd:ahoy, not a standalone
 │   # command: the ahoy page dispatches install, uninstall, dry-run, doctor, remote and
@@ -438,7 +439,12 @@ abcd/
 │   ├── scribe.md / security-reviewer.md
 │   └── sota-researcher.md              # plus per-agent fixtures/ dirs, README.md, CHANGELOG.md
 └── hooks/                              # Claude Code event hooks — every event command runs through a resolving shim
-    ├── bootstrap.sh                    # builds/refreshes the plugin-root binary; referenced by every event command
+    ├── bootstrap.sh                    # PROVISIONS the plugin-root binary; it never builds one. Either it copies a
+    │                                   #   re-verified artefact out of the persistent $CLAUDE_PLUGIN_DATA download cache,
+    │                                   #   or it resolves the latest release tag off a 302 and downloads the pinned asset,
+    │                                   #   verified against that release's own checksums.txt. Its two `go build` strings are
+    │                                   #   printed INSTRUCTIONS to the operator for the cases it cannot provision.
+    │                                   #   Referenced by four of the five event commands; SessionEnd is the exception below
     └── hooks.json                      # UserPromptSubmit → hook prompt-router; SessionStart → ONE chained command:
                                         #   bootstrap.sh, then session-start + prompt-router-reset, each fed a copy of the
                                         #   payload (siblings would run in parallel and share one stdin);

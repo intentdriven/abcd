@@ -46,9 +46,15 @@ machine-readable payload. The working verbs — `lint`, `cite refresh`, and
 (repo root, default the current working directory); the bare `cite` parent
 only routes to its sub-verbs and takes neither flag. So the refresh fetches
 exactly the set the gate demands receipts for. `docs lint` additionally accepts
-`--release-gate`, which promotes an overdue citation from a warning to a blocker;
-the flag is release machinery's, so an ordinary commit is never blocked by the
-calendar.
+`--release-gate`, which promotes an overdue citation from a warning to a blocker.
+The flag, not the committed config, is the trust root: a repo must not be able
+to defang its own release by editing `.abcd/docs-lint.json`, and an ordinary
+commit is never blocked by the calendar. **Arming it from a release is a design
+target.** Nothing in the release machinery passes the flag today: the release
+workflow's docs-currency step, CI's, and the `docs-lint` make target each run a
+bare `abcd docs lint`, the scaffolded release template names the verb nowhere,
+and `launch` computes its own citation preflight rather than shelling out. The
+promotion is reachable only by a human typing the flag.
 
 ## What it checks
 
@@ -62,7 +68,13 @@ calendar.
   tree.
 - **Stray root markdown** — no stray markdown at the repo root (it belongs under
   `docs/`; the allowed root files are the fixed set — README, CHANGELOG,
-  CONTRIBUTING, etc.).
+  CONTRIBUTING, etc.). A root markdown **symlink** is judged by its resolved
+  target's stem rather than by its own name, which is what lets the `CLAUDE.md`
+  and `GEMINI.md` bridges pass while appearing in no allowlist: both resolve to
+  the allowlisted `AGENTS.md`. The tradeoff is known and accepted, a stray name
+  pointed at an allowlisted target is exempt too, because creating that symlink
+  is as deliberate an act as adding the allowlisted file. A symlink whose target
+  does not resolve is itself a finding.
 - **Citations** — where a repo arms the rules: footnote markers and definitions
   in bijection, every crosswalk table row carrying a footnote, well-formed cited
   URLs and DOIs, refused source domains, and the committed baseline at
@@ -75,6 +87,16 @@ calendar.
   `harness/*` banned tokens (each a **blocker**) that catch such names, so the
   published surface stays host-agnostic; the `<!-- docs-lint: allow -->` escape
   covers the sanctioned exception (attribution).
+- **Harness leak**: a separate rule from the `harness/*` tokens above, armed
+  here as a **blocker**, refusing the two shapes a harness stamps onto text the
+  repository did not ask it to stamp, a live agent-session URL and a tool's own
+  "generated with …" attribution footer. It rides the same per-file walk as the
+  banned-token family, and the class is defined once in the scanner's canonical
+  pattern set and consulted from here, so the outbound scrub and this lint
+  cannot disagree about what a leak is. Two escapes: a fenced block is quoted
+  material a page must be able to show, and a line carrying the
+  `abcd-lint:allow` (or the older `abcd-audit:allow`) waiver is deliberately
+  illustrative.
 
 ## Output
 

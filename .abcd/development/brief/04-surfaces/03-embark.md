@@ -41,7 +41,7 @@
 Bare `/abcd:embark` prints dispatcher help only — never mutates state. The two **shipped** sub-verbs:
 
 - **`/abcd:embark from <path> [target]`** — unpack the lifeboat at `<path>` into `[target]`, which defaults to the working directory when omitted. `<path>` is required, and it is always an explicit path to a destination a disembark wrote — **there is no `home` shorthand** (adr-35: there is no in-tree lifeboat home to expand it to). The round-trip / self-test case is `disembark pack <repo> <dest>` followed by `embark from <dest>`. *(Design target, not yet shipped: the flag-shaped modifiers `--force` — override conflict refusal, `--archive` — copy input lifeboat verbatim to `~/.abcd/voyage/<source-root-sha>/embark/from/<timestamp>/` before unpacking, and `--refresh-audit` — re-run oracle product audit instead of trusting cached. The shipped `from` takes no flags.)*
-- **`/abcd:embark probe <path> [target]`** — inspect what the lifeboat at `<path>` would write into `[target]` (defaulting to the working directory) without unpacking: show what would land where, run schema/audit checks, write nothing.
+- **`/abcd:embark probe <path> [target]`** — inspect what the lifeboat at `<path>` would write into `[target]` (defaulting to the working directory) without unpacking: show what would land where, verify the lifeboat against its `manifest_sha256`, refuse a `schema_version` this build does not understand, write nothing. No product audit runs here: the oracle re-audit is the design-target `--refresh-audit` modifier above, and `audit/**` is read as a report-only path.
 
 Design-target sub-verb (not yet shipped):
 
@@ -75,7 +75,7 @@ Embark is a deterministic Go run: it reads the lifeboat, plans, refuses on any c
 1. **Plan.** Map each record file to its target path and classify it `create`, `unchanged` (byte-identical), or a conflict. On **any** conflict embark writes nothing and refuses ([§ 4](#4-conflict-ux)).
 2. **Write the record families verbatim** to their canonical target locations — ADRs to `.abcd/development/decisions/adrs/`, issues to `.abcd/work/issues/`, intents to `.abcd/development/intents/`, specs to `.abcd/development/specs/` — through two-layer containment (an `os.Root` boundary plus independent lexical path validation), skipping `unchanged` files. Bucketed families keep their source bucket (issues by state; intents into `drafts`/`planned`/`shipped`/`disciplines`/`superseded`; specs into `open`/`closed`). Terminology, docs, and `.abcd/memory/` are **not** embark families — they do not travel.
 3. **Re-inject the current abcd marker block** into the target `CLAUDE.md` between BEGIN/END markers (idempotent) — never AGENTS.md, and never a verbatim copy of lifeboat prose. The block is the modular-rules-loader block (per itd-3); principles surface through the rules loader's domain rules on demand by prompt-keyword recall.
-4. **Report** the outcome to the surface: the `written`/`unchanged` counts, the per-family counts, the marker action, the coverage blanks a human must answer, and the report-only files that informed the run but were not written.
+4. **Report** the outcome to the surface, blanks first: any pass the lifeboat declares exempt ([§ 5](#5-the-coverage-handoff)), the coverage blanks a human must answer, then `embarked <source> into <target>`, the `written`/`unchanged` counts with the per-family breakdown, and the marker action. The report-only files that informed the run are tallied by `embark probe` alone: the `ignored` slice rides on the result and is reachable through `--json`, but the rendered `from` report omits it, because a human reading the outcome of a write wants what landed, and the probe is where a human asks what a lifeboat holds.
 
 *(Design target, not yet shipped: write voyage provenance to `~/.abcd/voyage/<source-root-sha>/embark/provenance.json` — see [§ 7](#7-voyage-layout--embarkdisembark-provenance-and-history).)*
 
@@ -97,6 +97,36 @@ conflict kind (`exists-differs`) — not a per-family count roll-up.
 The conflict list is a value core hands back; if the operator wants it on disk, the surface writes it — core does not.
 
 *(Design target, not yet shipped: `embark from <path> --force` turns that bulk report into a single resolution prompt — keep target (skip everything in lifeboat that conflicts) / replace target (lifeboat wins everywhere) / merge where possible, prompt otherwise / abort (surface prints the conflict list; nothing is written) — and applies the chosen resolution uniformly. Single decision, transparent (shows scope before asking). The shipped `from` takes no flags and offers no resolution choice.)*
+
+## 5. The coverage handoff
+
+Both `probe` and `from` open on what a human still owes the record, before any
+write summary. Two things print there, in this order.
+
+**A declared pass exemption.** `_provenance.json` carries an optional
+`pass_b_exemption` object, whose one field is a `reason`. Pass B is the pass
+that mines chat transcripts for the rationale nobody wrote down; no source tier
+this build packs reads a transcript store, so `disembark` writes the
+declaration into every pack it produces, and embark carries it through to
+`CoverageHandoff.PassBExemption`. It renders as the first line of both reports:
+
+```
+pass B (transcripts): declared exempt — no transcript source was read for this package, so the rationale Pass B would have mined is absent rather than omitted
+```
+
+The declaration outlives the blanks below it, and that is the point of it being
+a declaration rather than a silent gap: a brief section Pass B would have
+grounded reads as a pass that never ran, not as work a human has been left. The
+field is an omitted pointer rather than a bool, so a package that predates it
+marshals exactly as it always did, and the branch that stops the declaration is
+exercised before any transcript adapter exists: an exemption that could not
+stop would become a false claim in a durable artefact the day Pass B ships.
+
+**The coverage blanks.** Past the exemption, an absent `coverage.json` prints
+nothing, a degraded one prints a one-line note, and a present one prints each
+unanswered brief section with the question that grounds it, human-owned
+sections marked as yours to write. A present coverage with no blanks prints
+nothing: there is nothing to answer.
 
 ## 6. Acceptance
 

@@ -19,6 +19,19 @@ and the status the record lands with. Exit 0 when the record lands, exit 2 for
 an operand fault — no title, or a title with nothing slug-able in it — with
 nothing written.
 
+**The path is relative to the working directory, not to the repository root.**
+The verb passes the process's current directory straight to the core, which
+joins the store's relative directory onto it and creates the tree; it never
+resolves a repository root, and it never requires one. Run from a subdirectory
+it mints a second store there, and run outside a repository altogether it
+exits 0 and creates `.abcd/development/decisions/adrs/` wherever it stands,
+with a JSON `path` that reads exactly like the repository store's. This is a
+divergence from `capture`, which resolves the root and writes to
+`<root>/.abcd/work/issues/open/` from anywhere in the tree, and it is a defect
+rather than a design choice: neither this chapter, `abcd decide --help`, nor
+`commands/decide.md` names the condition. Until it is closed, invoke the verb
+from the repository root.
+
 The title is one quoted operand. It reaches the committed filename by way of the
 derived slug, so it passes the canonical scanner before anything is derived from
 it, exactly as the intent store's quoted-text create does.
@@ -41,11 +54,22 @@ and smaller than every stamp, so the hand-numbered records sort first in both
 the lexical listing and the numeric index order.
 
 **`0001`–`0058` keep their ids and their filenames.** Nothing is renumbered, and
-every reader of an ADR id admits both vintages through one derivation
-(`recordid.CanonADRID` for a cited id, `recordid.ADRFileID` for a filename): the
-citation resolver, the `abcd <record-id>` dispatch, the `record_schema` gate, the
-context-citation-currency gate, the site's decisions index, and the lifeboat
-packer.
+every reader of an ADR id admits both vintages: dispatch on `adr-45` and on a
+stamped id both resolve, and the record gates pass over freshly minted stamped
+skeletons. What they do not share is one derivation. `recordid.CanonADRID` (for
+a cited id) and `recordid.ADRFileID` (for a filename) are the canonical pair,
+and only the citation resolver, the `abcd <record-id>` dispatch and `decide`
+itself call them. Three readers carry their own: the `record_schema` gate and
+the context-citation-currency gate share a locally defined handle regex and
+ADR-filename regex inside `internal/core/lint` (taking `recordid.FilenameNumRe`
+for itd, spc and iss but not for adr); the site's decisions index derives
+handles in `internal/core/site`, a package that does not import
+`core/recordid` at all; and the lifeboat re-implements the pair as
+`gvCanonADRID` / `gvADRIDFromFilename`, whose own comment records that it
+agrees with the other two by inspection. The lifeboat's native ADR source adds
+a fourth local filter for numbered filenames. Four parallel derivations agreeing
+by inspection is the shape a divergence hides in, and consolidating them is
+open work rather than a claim this chapter can make.
 
 ## What the verb does not do
 
