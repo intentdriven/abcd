@@ -159,6 +159,9 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepHistory()
 	ac.stepMarker(cfg)
 	ac.stepSymlink()
+	// After stepSymlink, never before: the record names the entry that step
+	// leaves on PATH, and the hooks read it before they will run that entry.
+	ac.stepPathEntry()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	ac.stepIdentityPin()
@@ -1027,12 +1030,28 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		a.refuse("could not write the PATH entry " + displayPath(target) + ": " + errText(err))
 		return
 	}
-	if err := writePathEntry(target, want, a.det.pluginRoot); err != nil {
-		// The copy is genuine and works; without the record it will classify
-		// foreign, so the failure is loud rather than latent.
-		a.refuse("the PATH entry was installed but its provenance record could not be written (" + errText(err) + "); re-run `abcd ahoy install` — without the record abcd will treat the entry as foreign.")
-	}
+	a.recordEntry(target, want)
 	a.note(target)
+}
+
+// recordEntry stamps ~/.abcd/path-entry for the entry abcd just installed at
+// target, and says so loudly when it cannot. It is the ONE install-time route
+// to writePathEntry: the record is what the hook shims read before they will
+// run an abcd off PATH, so a second writer would be a second answer to "is
+// this entry ours", which is the disagreement this whole mechanism exists to
+// prevent (one-canonical-primitive).
+func (a *applyCtx) recordEntry(target, shaHex string) {
+	if err := writePathEntry(target, shaHex, a.det.pluginRoot); err != nil {
+		// The entry is genuine and works; without the record every hook ignores
+		// it and abcd's own classification of a regular file turns foreign, so
+		// the failure is loud rather than latent.
+		a.refuse("the PATH entry was installed but its provenance record could not be written (" + errText(err) +
+			"); re-run `abcd ahoy install` — without the record the plugin's hooks ignore this abcd and abcd will treat the entry as foreign.")
+		return
+	}
+	if p := userPathEntryPath(); p != "" {
+		a.note(p)
+	}
 }
 
 // installDevShim writes the track-latest shim, replacing an owned pinned
@@ -1046,11 +1065,11 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 		if err := os.Remove(target); err != nil {
 			return
 		}
-		if kind == binTargetOwnedCopy {
-			// The provenance record vouches for bytes that are gone; keeping it
-			// would let a later foreign file inherit the ownership claim.
-			removePathEntry()
-		}
+		// The provenance record vouches for an entry that is gone; keeping it
+		// would let a later foreign file inherit the ownership claim. Both
+		// pinned shapes are recorded now, so both clear it — and stepPathEntry
+		// re-stamps the record for the shim written below.
+		removePathEntryFor(target)
 		a.echoChange("install_mode", "pinned", "dev")
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
@@ -1064,6 +1083,76 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 		return
 	}
 	a.note(target)
+}
+
+// stepPathEntry records the installed PATH entry in ~/.abcd/path-entry, for the
+// two shapes whose ownership does not already rest on that record: the spc-21
+// pinned symlink and the --dev shim. The owned copy stamps itself inside
+// installOwnedEntry — its very classification reads the record back, so it
+// cannot be recognised here before it has been recorded — and this step then
+// leaves it alone.
+//
+// It exists because the record is not a detail of the copy: it is the gate the
+// hook shims put in front of every PATH-resolved abcd (GHSA-gx3m-3224-qqcv).
+// An entry no record names is refused by every hook while `ahoy` reports a
+// healthy install, so the two shapes install.md and `--dev` actually produce
+// were unreachable from a hook. Recording them is not a widening of that gate:
+// the record is home-scoped and written only by an install the operator ran
+// themselves, which is exactly the distinction the gate draws — a checkout the
+// session merely reads may not supply the binary; a binary the operator
+// installed may.
+//
+// It runs AFTER stepSymlink, so it stamps whatever that step left behind, and
+// it stamps an entry stepSymlink did not touch — the machines the release
+// already produced, whose otherwise-clean install is why symlink.unrecorded is
+// a gap in its own right.
+func (a *applyCtx) stepPathEntry() {
+	if a.det.pluginRoot == "" || a.binTarget == "" || !a.approved[ConfigChange] {
+		return
+	}
+	target := a.binTarget
+	// A dangling entry runs nothing, so there is nothing to vouch for: the
+	// symlink.dangling gap carries that state and its own remedy.
+	if present, err := fsutil.Exists(target); err != nil || !present {
+		return
+	}
+	var digest string
+	switch classifyBinTarget(target, a.det.pluginRoot) {
+	case binTargetOwnedSymlink:
+		// A symlink holds no bytes of its own, so the digest records the binary
+		// the link RESOLVES to — "the digest abcd could prove for what this
+		// entry runs, when it recorded it". Nothing reads it back: the shims
+		// compare `path=` only, and classification takes the symlink branch
+		// before the copy predicate, so a digest gone stale under a plugin
+		// update is inert rather than wrong.
+		dest, err := filepath.EvalSymlinks(target)
+		if err != nil {
+			return
+		}
+		d, ok := fileSHA256Hex(dest)
+		if !ok {
+			a.refuse("the PATH entry " + displayPath(target) + " could not be hashed through to " + displayPath(dest) +
+				", so no provenance record was written and the plugin's hooks will ignore this abcd.")
+			return
+		}
+		digest = d
+	case binTargetDevShim:
+		d, ok := fileSHA256Hex(target)
+		if !ok {
+			a.refuse("the dev shim at " + displayPath(target) +
+				" could not be hashed, so no provenance record was written and the plugin's hooks will ignore this abcd.")
+			return
+		}
+		digest = d
+	default:
+		// Absent, foreign, or the owned copy: nothing of ours left to record.
+		return
+	}
+	if rec, ok := readPathEntry(); ok && sameEntry(rec.path, target) &&
+		rec.sha == digest && rec.pluginRoot == a.det.pluginRoot {
+		return // already recorded, exactly: an idempotent re-run writes nothing
+	}
+	a.recordEntry(target, digest)
 }
 
 // clearDanglingEntry removes an abcd-owned symlink at target whose destination
@@ -1292,6 +1381,7 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 			if err := os.Remove(target); err == nil {
 				receipt.Symlink.Removed = true
 				receipt.Symlink.Note = "removed dev shim"
+				removePathEntryFor(target)
 			} else {
 				receipt.Symlink.Note = "remove failed"
 			}
@@ -1299,7 +1389,7 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 			if err := os.Remove(target); err == nil {
 				receipt.Symlink.Removed = true
 				receipt.Symlink.Note = "removed owned copy"
-				removePathEntry()
+				removePathEntryFor(target)
 			} else {
 				receipt.Symlink.Note = "remove failed"
 			}
@@ -1316,6 +1406,11 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 		if classifyBinTarget(target, pluginRoot) == binTargetOwnedSymlink {
 			if err := os.Remove(target); err == nil {
 				receipt.Symlink.Removed = true
+				// The pinned symlink is recorded too, so its record goes with
+				// it: a record outliving the entry it names would hand the
+				// ownership claim to whatever occupies that path next, and
+				// every hook would then run it.
+				removePathEntryFor(target)
 			} else {
 				receipt.Symlink.Note = "remove failed"
 			}

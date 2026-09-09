@@ -150,6 +150,29 @@ func removePathEntry() {
 	}
 }
 
+// pathEntryNames reports whether the provenance record names target. It is the
+// `path=` string comparison the hook shims make against `command -v abcd` and
+// nothing more — adr-46 keeps hashing off the hook fast path — so it answers
+// the one question every entry shape can be asked, including the two whose
+// bytes ownership cannot rest on: a symlink (no bytes to hash) and the dev
+// shim (bytes that are ours but are not a release artefact).
+func pathEntryNames(target string) bool {
+	rec, ok := readPathEntry()
+	return ok && sameEntry(rec.path, target)
+}
+
+// removePathEntryFor drops the provenance record only when it names target.
+// Uninstall removes ONE entry, and the record is home-scoped: a blanket delete
+// would revoke the ownership of an install in another directory that this run
+// never touched. The guarded form is also the only safe one now that every
+// entry shape is recorded — a record left behind after its entry is gone would
+// hand the ownership claim to whatever occupies that path next.
+func removePathEntryFor(target string) {
+	if pathEntryNames(target) {
+		removePathEntry()
+	}
+}
+
 // fileSHA256Hex hashes a regular file through the guarded read (no symlink
 // leaf, no device, bounded size), or ok=false when it cannot.
 func fileSHA256Hex(path string) (string, bool) {
@@ -166,9 +189,20 @@ func fileSHA256Hex(path string) (string, bool) {
 // hash to the recorded value. A file that stopped matching was changed by
 // something else, so it classifies foreign — refreshing or removing it would
 // destroy work abcd cannot account for.
+//
+// The dev shim is excluded explicitly rather than by call order. Every entry
+// abcd installs is now recorded, the shim included, so "the record names it and
+// the bytes still match" no longer separates the copy from the shim — and this
+// predicate is exported as the ownership proof `abcd update` accepts as
+// permission to overwrite the file. Overwriting a shim the operator chose with
+// a release binary is a silent mode switch, so the copy predicate says what it
+// means: an owned copy is the verified release artefact, never the shim.
 func isOwnedCopyFile(target string) bool {
 	rec, ok := readPathEntry()
 	if !ok || !sameEntry(rec.path, target) {
+		return false
+	}
+	if isDevShimFile(target) {
 		return false
 	}
 	got, ok := fileSHA256Hex(target)

@@ -1,6 +1,8 @@
 package ahoy
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,7 +89,14 @@ func TestPluginDataDirResolvesEnvThenRootStamp(t *testing.T) {
 // untouched by these; they only refuse shapes the harness never produces.
 
 // assertCacheIgnored: the owned copy was not written from the cache, no
-// provenance record vouches for anything, and a note names the variable.
+// provenance record vouches for the untrusted artefact, and a note names the
+// variable.
+//
+// A record does now exist — install degraded to the pinned symlink, and every
+// entry abcd installs is recorded, because the hook shims run only a recorded
+// one. So the assertion is on WHAT it vouches for: the entry that was actually
+// written, carrying the digest of the plugin-root binary the link resolves to,
+// never the untrusted cache artefact's.
 func assertCacheIgnored(t *testing.T, target string, res InstallResult) {
 	t.Helper()
 	if fi, err := os.Lstat(target); err == nil && fi.Mode().IsRegular() {
@@ -95,8 +104,14 @@ func assertCacheIgnored(t *testing.T, target string, res InstallResult) {
 			t.Fatalf("install copied the cache artefact out of an untrusted data dir into %s", target)
 		}
 	}
-	if _, err := os.Stat(userPathEntryPath()); err == nil {
-		t.Fatalf("install recorded provenance for an untrusted cache; notes: %v", res.Notes)
+	if rec, ok := readPathEntry(); ok {
+		if !sameEntry(rec.path, target) {
+			t.Fatalf("install recorded %q, which is not the entry it wrote at %s; notes: %v", rec.path, target, res.Notes)
+		}
+		sum := sha256.Sum256(cacheArtefact)
+		if rec.sha == hex.EncodeToString(sum[:]) {
+			t.Fatalf("install recorded the untrusted cache artefact's digest as this machine's abcd; notes: %v", res.Notes)
+		}
 	}
 	said := false
 	for _, n := range res.Notes {
