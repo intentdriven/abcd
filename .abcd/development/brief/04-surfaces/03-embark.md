@@ -175,7 +175,7 @@ there is nothing to answer.
 None of the following is built. Each is described here as the intended design,
 and the acceptance criteria that name it are gated on it shipping.
 
-- **`embark scan`** would list lifeboat destinations — directories carrying a
+- **`embark scan`** would list lifeboat destinations: directories carrying a
   parseable `_provenance.json`, the same marker the destination safety gate keys
   on — ranked by modification time and presented as candidates, with no
   unpacking, and `--deep` for a wider walk. It is what a user reaches for before

@@ -131,7 +131,7 @@ meaningful.
 
 ## References
 
-- [`05-internals/07-memory.md`](../05-internals/07-memory.md) — substrate spec
-- [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md) — provenance and licence subsystem
-- [`../../intents/planned/itd-36-memory-unification.md`](../../intents/planned/itd-36-memory-unification.md) — full intent spec with acceptance criteria
-- [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory) — pattern source
+- [`05-internals/07-memory.md`](../05-internals/07-memory.md): substrate spec
+- [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md): provenance and licence subsystem
+- [`../../intents/planned/itd-36-memory-unification.md`](../../intents/planned/itd-36-memory-unification.md): the full intent spec with acceptance criteria
+- [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory): pattern source
