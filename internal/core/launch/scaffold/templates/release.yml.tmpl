@@ -118,20 +118,41 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '<% .GoVersion %>'
+          # The toolchain go.mod declares, read from the declaration itself. A literal
+          # beside it is a second spelling to bump, and the one that gets forgotten
+          # leaves a job compiling on a toolchain the format gate would reject.
+          go-version-file: go.mod
           # cache: false — this workflow is tag-triggered; module caching in a
           # release-triggering workflow is a cache-poisoning vector (zizmor).
           cache: false
 
       - name: Format (gofmt)
+<%- if .Abcd %>
+        # One definition of the gate, INVOKED rather than restated: the Makefile
+        # target resolves gofmt from the toolchain go.mod declares, so the release
+        # lane, the merge lane and the developer's pre-push run are one gate judged
+        # by one binary (.abcd/development/principles/one-canonical-primitive.md).
+        run: make fmt-check
+<%- else %>
+        # The gofmt inside the GOROOT this module's own toolchain resolves to, never
+        # whichever one PATH offers. gofmt's rules move between releases, so a runner
+        # whose preinstalled Go is newer than the go directive names files unformatted
+        # that the declared toolchain calls correct — and "fixing" those files produces
+        # a tree the declared toolchain then rejects in the other direction, with
+        # nothing in the output saying which gofmt judged it. `go env GOROOT` follows
+        # the go directive exactly as `go build` does, so the formatter and the
+        # compiler in this job are the same toolchain by construction.
         run: |
           set -euo pipefail
-          unformatted="$(gofmt -l .)"
+          goroot="$(go env GOROOT)"
+          unformatted="$("$goroot/bin/gofmt" -l .)"
           if [ -n "$unformatted" ]; then
-            echo "gofmt: these files are not formatted (run gofmt -w .):" >&2
+            echo "gofmt: these files are not formatted; rewrite them with the same binary:" >&2
+            echo "gofmt:   $goroot/bin/gofmt -w ." >&2
             echo "$unformatted" >&2
             exit 1
           fi
+<%- end %>
 
       - name: Build
         run: go build ./...
@@ -256,7 +277,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '<% .GoVersion %>'
+          # The toolchain go.mod declares, read from the declaration itself. A literal
+          # beside it is a second spelling to bump, and the one that gets forgotten
+          # leaves a job compiling on a toolchain the format gate would reject.
+          go-version-file: go.mod
           cache: false
 <%- if .SemanticGates %>
 
@@ -524,7 +548,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '<% .GoVersion %>'
+          # The toolchain go.mod declares, read from the declaration itself. A literal
+          # beside it is a second spelling to bump, and the one that gets forgotten
+          # leaves a job compiling on a toolchain the format gate would reject.
+          go-version-file: go.mod
           cache: false
 <%- if .SemanticGates %>
 

@@ -50,9 +50,14 @@ type Substitutions struct {
 	// DefaultBranch is the branch auto-release triggers on and the no-branch-commit
 	// tripwire guards — derived from the target repo, never hard-coded.
 	DefaultBranch string
-	// GoVersion is the setup-go version, patch-precise when the source go.mod
-	// declares one (e.g. "1.25.6"), else major.minor.
-	GoVersion string
+	// (There is deliberately no Go version here. The rendered workflows point
+	// setup-go at go.mod with `go-version-file`, so the go directive is the only
+	// place the toolchain is written — see the field's removal in
+	// iss-2609090951291799. A substituted literal was a scaffold-time snapshot of
+	// that directive, which went stale the moment the adopter bumped it, and it
+	// was a value derived from a file that had to be validated against an
+	// injection-safe allowlist before it could be written into YAML.)
+	//
 	// Abcd selects abcd-cli's full rendering: the extra deterministic verify gates,
 	// the semantic release gate, and the four-binary cross-compile + attest build.
 	// A bare managed repo sets it false and gets a generic Go build with no semantic

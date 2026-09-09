@@ -4,7 +4,7 @@ name: ci
 # work is covered by the pull_request trigger alone, so a PR push runs the matrix
 # once; the default-branch push keeps the merged tip checked. The check job
 # builds, vets and tests on macOS and Linux, with race-enabled internal tests on
-# both and the `gofmt -l .` format gate, record-lint, docs-lint and the
+# both and the `make fmt-check` format gate, record-lint, docs-lint and the
 # site-render gate on the ubuntu leg alone. Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, and the
@@ -246,7 +246,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          # The go directive in go.mod is the ONLY place the toolchain is written,
+          # here and in every other setup-go step in this repository. A literal
+          # beside it is a second spelling to bump, and the one that gets forgotten
+          # puts this lane on a different toolchain from the format gate below —
+          # which resolves go.mod's — so CI's two halves would disagree about which
+          # gofmt is correct (iss-2609090951291799).
+          go-version-file: go.mod
 
       # Enforce the format gate AGENTS.md documents, by INVOKING it rather than
       # restating it. The target resolves gofmt from the toolchain go.mod
@@ -472,7 +478,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          go-version-file: go.mod
       - name: Smoke every command
         run: make smoke
 
@@ -516,7 +522,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          go-version-file: go.mod
       - name: Falsify the cold-reading read-block
         run: make evals-cold-reading
 
@@ -551,6 +557,6 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          go-version-file: go.mod
       - name: Scan for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
