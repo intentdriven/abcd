@@ -86,11 +86,20 @@ The build reads the repository and nothing else — no network at any point. Its
 inputs are the composition declaration and the interface-string allowlist; the
 record itself, read through the record-lint engine's own frontmatter scan so there
 is one parser rather than two; the bibliography and the glossary through their own
-parsers; one pass of git history; `CHANGELOG.md`; and `docs/` with its committed
-assets. It writes the landing page, the record explorer, the machine-readable
+parsers; one pass of git history; `CHANGELOG.md`; the two root prose files whose
+text the site publishes, which are the acknowledgements behind the references page
+and the authorship section of the contribution guide behind the contributors page;
+and `docs/` with its committed assets. It writes the landing page, the record explorer, the machine-readable
 record export, the install script from its committed template, the redirect and
 header maps, the stylesheets and scripts, every referenced raster, and its own
 build marker. Nothing else, nowhere else.
+
+One input reaches past the durable record into the working tier, and it is off
+unless a repository asks for it. The composition declaration carries an
+issue-ledger switch: turned on, the explorer publishes the issue records
+alongside the record families the site always reads, and the bare board reports
+in a line of its own whether the ledger is published. Left alone, it is not, so a
+repository publishes its working tier only by deciding to.
 
 The explorer includes a **glossary page set** and the term links that reach it: the
 first use of a glossary term on a record page is a link to that term's entry, and
