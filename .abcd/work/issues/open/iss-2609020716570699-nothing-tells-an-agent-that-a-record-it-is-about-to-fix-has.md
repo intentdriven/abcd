@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues"
 promoted_to: itd-2609091034175565
+related_intents: [itd-2609091416295622, itd-2609091416304128]
 deferred_after: "v0.7.1"
 deferral_reason: "The remedy is a mechanism, not a patch, and it is now filed as one. Promoted to itd-2609091034175565 during this cycle: a session needs a way to see that a record is claimed before it starts work, and the shape of that signal is design rather than a change a bug-fix batch can carry honestly. The finding is real and current, having cost duplicated work twice in this session alone, which is why it is deferred against a filed intent rather than left as an open note."
 ---
