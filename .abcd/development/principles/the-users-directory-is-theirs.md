@@ -16,7 +16,7 @@ separate checkouts — and everything wrong by location; the objection was not
 a sudden full of stuff". Twenty-one spent worktrees had already been cleared by
 hand five days earlier (iss-2609020721142452). An agent works unattended on
 trust, and a surprise in the user's own directory is what spends it.
-[adr-2609091014087993](../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md)
+[adr-2609091248200336](../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
 records the ruling; this file carries the stance.
 
 **Bounds.**
