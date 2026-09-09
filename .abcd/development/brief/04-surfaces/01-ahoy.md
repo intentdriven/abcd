@@ -90,6 +90,9 @@ user-scope directory for machine-local state:
   config.json                    machine config.json defaults (a later phase)
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+                                 (design target — itd-2609091014076309; the rule is
+                                 adr-2609091014087993)
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
