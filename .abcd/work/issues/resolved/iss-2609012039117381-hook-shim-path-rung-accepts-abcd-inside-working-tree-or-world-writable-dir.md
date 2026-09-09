@@ -18,3 +18,37 @@ Sub-finding of GHSA-gx3m-3224-qqcv that does not need the design decision: the h
 ## Grounds
 
 - pursued: the documented install never puts the binary in a relative location, inside a checkout, or in a world-writable directory, so refusing those three shapes narrows the rung without touching the contract; requiring every PATH binary to be vouched for by ~/.abcd/path-entry would break the documented one-liner rescue and stays open on the parent record GHSA-gx3m-3224-qqcv (iss-2609012039107700)
+
+## Correction, 2026-09-09
+
+Two claims in this record were true when it was written and are false at this
+tip. Both concern the parent record's rung, not this record's own fix, which
+still stands exactly as the resolution describes it.
+
+The resolution's closing clause — "`TestBinaryHooksFallBackToAPathBinary` still
+pins the documented rescue through an ordinary directory" — names a test that no
+longer exists. `c637a734` ("fix: the hook shims run only the abcd this machine
+recorded") deleted it and put three tests in its place, which are what pins the
+rung now: `TestBinaryHooksRunAnOwnedPathBinary` (the documented rescue, through
+a directory `~/.abcd/path-entry` names), `TestBinaryHooksRefuseAnUnrecordedPathBinary`
+(the advisory's own reproduction) and `TestBinaryHooksRefuseAPathBinaryTheRecordDoesNotName`,
+all in `internal/surface/cli/hooks_selfprovision_test.go`. The three shapes this
+record closed — `TestBinaryHooksRefuseAPathBinaryInsideTheWorkingTree`,
+`TestBinaryHooksRefuseARelativePathEntry` and
+`TestBinaryHooksRefuseAWorldWritablePathBinary` — are untouched by that commit
+and still pin what this record fixed.
+
+The `## Grounds` bullet says requiring `~/.abcd/path-entry` to vouch for a PATH
+binary "would break the documented one-liner rescue and stays open on the parent
+record". Neither half holds. The parent record, iss-2609012039107700, was
+resolved by that same commit under its option A, and the rescue was not broken
+but rewritten: the install one-liners in `README.md` and both forms in
+`docs/how-to/install.md` now write `path=` and `binary_sha256=` into
+`~/.abcd/path-entry`, so a binary the one-liner installs is a binary the record
+names. The cost of that is stated on the parent, which is why it is `breaking`
+rather than `fix`: a PATH copy installed by an earlier one-liner carries no
+record and stops being accepted until the one-liner is re-run.
+
+Nothing here changes this record's disposition. Its own narrowing — absolute
+resolution, outside the shim's working directory, not world-writable — is the
+first half of the rung the parent's ownership check now sits behind.

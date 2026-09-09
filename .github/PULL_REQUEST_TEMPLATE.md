@@ -6,7 +6,7 @@
 
 ## Verification
 
-<!-- What you ran and what it showed: make preflight, gofmt -l ., new tests
+<!-- What you ran and what it showed: make preflight, make fmt-check, new tests
      watched fail before the change and pass after. -->
 
 <!-- REQUIRED — attribution disclosure, on its own line, exactly one of:

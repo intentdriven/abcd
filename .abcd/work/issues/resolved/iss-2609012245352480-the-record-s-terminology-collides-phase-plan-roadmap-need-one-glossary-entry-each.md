@@ -9,7 +9,7 @@ found_during: "design-interview-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/roadmap/phases/README.md"
-resolution: "Eight core glossary entries name every sense of phase, plan, roadmap, record, surface, ledger, construal, reading-position and loop, each with the one spelling for that sense and a repo-relative link to the chapter it lives in; phases/README.md and commands/intent.md each point at the entry for the word they use. Term-linking from the site export stays unbuilt: internal/core/site reads no glossary."
+resolution: "Nine core glossary entries name every sense of phase, plan, roadmap, record, surface, ledger, construal, reading-position and loop, each with the one spelling for that sense and a repo-relative link to the chapter it lives in; phases/README.md and commands/intent.md each point at the entry for the word they use. Term-linking from the site export stays unbuilt: internal/core/site reads no glossary."
 impact: additive
 resolved_by:
   commit: "5ddd96c8f634e76d3731e24c7c4ac71f0f344903"

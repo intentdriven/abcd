@@ -17,6 +17,7 @@ import (
 // characters it defends against.
 func TestMemoryIngestSanitizesLicence(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 
 	attacks := map[string]rune{

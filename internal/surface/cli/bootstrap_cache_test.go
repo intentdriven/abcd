@@ -857,3 +857,57 @@ func TestBootstrapCacheProvisionRecordsDataDirInRoot(t *testing.T) {
 		t.Errorf("a root provisioned from a freshly filled cache must record the data dir too; got %q (%v) (output %q)", got, err, out)
 	}
 }
+
+// TestBootstrapRefreshesAOneLinerInstalledPathCopy is the verification half of
+// iss-2609012111159045, which reported that a PATH copy installed by the README
+// one-liner "writes no ~/.abcd/path-entry provenance record", so nothing ever
+// refreshes it. The one-liners now write that record — two lines, `path=` and
+// `binary_sha256=`, and deliberately NO `plugin_root` — and this pins the
+// consequence the record doubted: a copy installed that way is refreshed by the
+// very block that refreshes an `ahoy install` copy, and gains the plugin_root
+// stamp in the process. The fixture's record shape is read off the SHIPPED
+// one-liner rather than hand-asserted, so changing the one-liner's output
+// breaks this test instead of silently retiring the route again.
+func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
+	const oneLinerRecord = `printf "path=%s\nbinary_sha256=%s\n"`
+	for _, page := range []string{"README.md", "docs/how-to/install.md"} {
+		if !strings.Contains(mustReadFile(t, bootstrapRepoFile(t, page)), oneLinerRecord) {
+			t.Fatalf("%s must install with a one-liner that writes the two-line path-entry record (%s); the refresh route is gated on it", page, oneLinerRecord)
+		}
+	}
+
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	old := []byte("#!/bin/sh\n# old release\nexit 0\n")
+	fresh := []byte("#!/bin/sh\n# new release\nexit 0\n")
+	seedBootstrapCache(t, data, "v9.9.8", old)
+	oldSum := sha256.Sum256(old)
+	home := t.TempDir()
+	pathDir := t.TempDir()
+	pathCopy := filepath.Join(pathDir, "abcd")
+	if err := os.WriteFile(pathCopy, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Exactly what the one-liner writes: no plugin_root line at all.
+	seedHomePathEntry(t, home, "path="+pathCopy+"\nbinary_sha256="+hex.EncodeToString(oldSum[:])+"\n")
+	fx := bootstrapServer(t, fresh, bootstrapManifest(fresh))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("a new release must install, got %d (output %q)", code, out)
+	}
+	if got, err := os.ReadFile(pathCopy); err != nil || string(got) != string(fresh) {
+		t.Fatalf("a one-liner-installed PATH copy must be refreshed to the new release; got %q (%v)", got, err)
+	}
+	if !strings.Contains(out, "was refreshed") {
+		t.Errorf("the refresh must say so on the notice: %q", out)
+	}
+	entryRaw := mustReadFile(t, homePathEntry(home))
+	freshSum := sha256.Sum256(fresh)
+	if !strings.Contains(entryRaw, hex.EncodeToString(freshSum[:])) {
+		t.Errorf("path-entry must record the refreshed hash; got %q", entryRaw)
+	}
+	if !strings.Contains(entryRaw, "plugin_root="+root+"\n") {
+		t.Errorf("the refresh must stamp the live plugin root onto a record that carried none; got %q", entryRaw)
+	}
+}

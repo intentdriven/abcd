@@ -4,7 +4,7 @@ name: ci
 # work is covered by the pull_request trigger alone, so a PR push runs the matrix
 # once; the default-branch push keeps the merged tip checked. The check job
 # builds, vets and tests on macOS and Linux, with race-enabled internal tests on
-# both and the `gofmt -l .` format gate, record-lint, docs-lint and the
+# both and the `make fmt-check` format gate, record-lint, docs-lint and the
 # site-render gate on the ubuntu leg alone. Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, and the
@@ -53,9 +53,30 @@ on:
 # it. Default-branch pushes all share a single group, so the cancel expression —
 # not the group key — is what keeps a merge from being cancelled mid-run by the
 # merge behind it.
+#
+# A MERGE-QUEUE run is exempt from both halves, and that exemption is load-bearing
+# rather than tidy (iss-2609020716560392). A queue entry runs on a temporary ref,
+# `refs/heads/gh-readonly-queue/main/pr-N-<base sha>`, which is never the default
+# branch — so the ref comparison alone armed cancellation there, and GitHub reads
+# a cancelled required check as a FAILED one: it drops the entry and disarms
+# auto-merge with nothing said on the pull request. One PR was removed four times
+# in a night this way.
+#
+# Both halves move, because each closes a different window:
+#
+#   - The cancel expression now excuses the merge_group event by name. Keying on
+#     the event rather than on the ref's prefix says what is meant, and holds if
+#     GitHub ever reshapes the queue ref.
+#   - The group key is the run id on that event, so a queue run shares its group
+#     with nothing at all. `cancel-in-progress: false` is not enough on its own:
+#     a run held PENDING on a busy group is cancelled outright when a third run
+#     arrives, and a re-queued entry at the same base sha carries the same ref as
+#     the run still finishing for its ejected predecessor. Unique-per-run is what
+#     removes that collision instead of ranking it. Same shape as attribution.yml,
+#     which falls through to github.run_id for the same reason.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
 permissions:
   contents: read
@@ -225,21 +246,25 @@ jobs:
         if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          # The go directive in go.mod is the ONLY place the toolchain is written,
+          # here and in every other setup-go step in this repository. A literal
+          # beside it is a second spelling to bump, and the one that gets forgotten
+          # puts this lane on a different toolchain from the format gate below —
+          # which resolves go.mod's — so CI's two halves would disagree about which
+          # gofmt is correct (iss-2609090951291799).
+          go-version-file: go.mod
 
-      # Enforce the format gate AGENTS.md documents (`gofmt -l .`). Formatting is
+      # Enforce the format gate AGENTS.md documents, by INVOKING it rather than
+      # restating it. The target resolves gofmt from the toolchain go.mod
+      # declares, so this job and the developer's pre-push run are the same gate
+      # judged by the same binary; the inline copy that used to live here read
+      # whichever gofmt was on PATH, and diverged from the developer's the moment
+      # their machine moved ahead of the pin (iss-2609081953452204). Formatting is
       # platform-independent, so run it once on the ubuntu leg to avoid duplicate
-      # work; any file gofmt lists needs `gofmt -w` and fails the job.
+      # work; any file it lists needs `make fmt` and fails the job.
       - name: Format (gofmt)
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          set -euo pipefail
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "gofmt: these files are not formatted (run gofmt -w .):" >&2
-            echo "$unformatted" >&2
-            exit 1
-          fi
+        run: make fmt-check
 
       # Unconditional on ubuntu, because tests assert against the live record;
       # the macos leg is the cross-platform second opinion a record change does
@@ -267,16 +292,41 @@ jobs:
       # findings surface in the log only.
       #
       # `-agent-diff` additionally arms agent_contract's unbumped-edit check,
-      # which needs a base revision to compare against. The base may still be
-      # absent (a merge_group event carries none; a force-pushed `before` is
-      # gone) — the guard then falls back to the unarmed run rather than
-      # failing, and every tree-shaped rule (the agent-prompt frontmatter, the
-      # canary, the changelog entry) runs either way. The fallback is loud: a
-      # downgrade nobody can see is a gate nobody knows is off.
+      # which needs a base revision to compare against.
+      #
+      # THE FALLBACK CHAIN, argued once here for the three range-scoped gates
+      # that share it (this step, and the RS001/RS002 and DA001-DA004 steps in
+      # the record-lint job). Each event this workflow triggers on names its base
+      # in a different field, and the chain must cover all three or a gate goes
+      # quiet on the event it does not cover — which is what happened to the
+      # merge queue (iss-2609091258115663). `merge_group.base_sha` is the base
+      # the queue entry was formed against, and reaching it matters more than the
+      # other two rungs: the queue entry is the run that actually GATES the
+      # merge, and the only run that sees the final base after a competing pull
+      # request merged ahead of it, which is exactly the race a range check
+      # exists to catch.
+      #
+      # The three fields are mutually exclusive — no event carries two — so the
+      # order cannot change which value is picked on any real run, and it states
+      # precedence rather than selecting between live values. It is written
+      # weakest-last all the same: `github.event.before` is the ONLY rung that
+      # can be present and wrong, because a force-push leaves it as the
+      # all-zeroes placeholder or a rewritten sha that resolves to nothing. The
+      # other two always name a real commit. A rung that can yield garbage never
+      # pre-empts one that yields a fact, and the pull-request rung stays first
+      # so the pull_request and push paths resolve exactly what they resolved
+      # before — the change is purely additive.
+      #
+      # The base can therefore still be unusable, and this step handles that
+      # rather than assuming it away: the guard falls back to the unarmed run
+      # rather than failing, and every tree-shaped rule (the agent-prompt
+      # frontmatter, the canary, the changelog entry) runs either way. The
+      # fallback is loud: a downgrade nobody can see is a gate nobody knows is
+      # off.
       - name: Record-lint (drift gate)
         if: matrix.os == 'ubuntu-latest'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           set -euo pipefail
           if [ -n "${BASE_SHA:-}" ] &&
@@ -398,10 +448,17 @@ jobs:
         run: bash scripts/check-issue-resolution.sh ledger HEAD
 
       # RS001/RS002 over the pull request's own range. On a push to main the
-      # base is the previous tip, so the range is the merge that just landed.
+      # base is the previous tip, so the range is the merge that just landed; on
+      # a merge-queue entry it is the base the entry was formed against, so the
+      # range is the would-be merge. That last rung is the one this check needs
+      # most and the one it lacked (iss-2609091258115663): a pull request whose
+      # base was clean when it was armed could merge a resolution that a
+      # competitor made terminal while it waited, because the only run that
+      # could have seen the collision was the one where the check skipped
+      # itself. The chain's order is argued at the record-lint step above.
       - name: Declared resolutions move the record (RS001/RS002)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             echo "issue-resolution: no usable base ref for this event — range checks skipped, RS003 above still ran."
@@ -421,10 +478,12 @@ jobs:
       # (DA003), and no commit introduced a NUL byte (DA004 — one NUL makes git
       # call the ledger binary, which would leave every rule above with no hunks
       # to read). Merges are checked, not skipped — a forged conflict resolution
-      # appears in no single-parent commit.
+      # appears in no single-parent commit — including the merge the QUEUE
+      # itself makes, which only a merge_group run has in range at all. Same
+      # chain as the two steps above, argued at the record-lint step.
       - name: Decisions ledger is append-only (DA001-DA004)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             echo "decisions-append: no usable base ref for this event — the range check is skipped."
@@ -453,7 +512,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          go-version-file: go.mod
       - name: Smoke every command
         run: make smoke
 
@@ -497,7 +556,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          go-version-file: go.mod
       - name: Falsify the cold-reading read-block
         run: make evals-cold-reading
 
@@ -532,6 +591,6 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26.7'
+          go-version-file: go.mod
       - name: Scan for known vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...

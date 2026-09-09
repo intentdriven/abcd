@@ -20,7 +20,7 @@ inbound = outbound statement is the whole of it.
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
-  Linux leg alone adds the `gofmt -l .` format gate, the record-lint and
+  Linux leg alone adds the `make fmt-check` format gate, the record-lint and
   docs-lint steps, and the site-render gate; separate jobs run the
   reviews-charter and issue-resolution checks (RS001–RS003), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
@@ -52,7 +52,9 @@ inbound = outbound statement is the whole of it.
   record-lint,
   docs-lint and site-render gates and both tagged eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles
-  neither) — but not gofmt, so run `gofmt -l .` before pushing. The repository
+  neither) — but not the format gate, so run `make fmt-check` before pushing
+  (it runs the gofmt from the toolchain `go.mod` declares, which is the one CI
+  runs; `make fmt` applies it). The repository
   ships its hooks in [`.githooks/`](.githooks/); they are per-machine opt-in —
   run `git config core.hooksPath .githooks` once per clone to arm the
   pre-commit name guard and the pre-push preflight.
@@ -78,6 +80,24 @@ disclosure, and never an authorship assertion for a tool. The rules:
   they submit and is responsible for all AI-assisted output — its correctness, its
   licensing, and its fit for the project. AI assistance never transfers that
   responsibility.
+- **Commit as yourself.** The gate reads the git author AND committer of every
+  commit in a pull request, merge commits included, and refuses a machine
+  identity on any of five signals. Four apply to both roles: an assistant
+  vendor's name standing alone (`Claude`, `Copilot`, `Gemini` and their kin,
+  matched whole, so a human named Claudette passes); an assistant vendor's mail
+  domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
+  and a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
+  `@dependabot.com`). The fifth applies to the AUTHOR role only: **any** address
+  whose mailbox begins `noreply@` or `donotreply@`, with or without hyphens and
+  whatever the host, not just a vendor's. Your forge privacy address
+  (`1234+you@users.noreply.github.com`) is yours and passes — the `[bot]` marker
+  in the mailbox is what marks a machine, not the `users.noreply.github.com`
+  host — and the forge's own `GitHub <noreply@github.com>` committer stamp on a
+  web-UI merge passes too, which is why the fifth signal is author-only. Set
+  `user.name` and `user.email` to a human before you commit; the assistant
+  belongs in the trailer, never in the identity fields the contributor graph
+  reads. An automated dependency bump is therefore landed by a human rather than
+  merged as the bot authored it.
 - **Disclosure by trailer, not co-authorship.** AI-assisted commits carry an
   `Assisted-by: <Agent>:<model-version>` trailer (the kernel format) —
   disclosure only. abcd never uses `Co-Authored-By:` for AI: it asserts an

@@ -180,7 +180,7 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	var created Intent
 	err = withIntentMintLock(repoRoot, func() error {
 		draftsDirAbs := filepath.Join(repoRoot, IntentsRelDir, BucketDrafts)
-		if err := ensureRealDir(draftsDirAbs, filepath.Join(IntentsRelDir, BucketDrafts)); err != nil {
+		if err := ensureRecordDir(repoRoot, filepath.Join(IntentsRelDir, BucketDrafts)); err != nil {
 			return err
 		}
 		// Minted under the lock, so the presence check inside mintIntentID and
@@ -463,7 +463,7 @@ func titleLine(text string) string {
 // the spec store's mint lock). O_NOFOLLOW refuses a symlinked intents/.
 func withIntentMintLock(repoRoot string, fn func() error) error {
 	intentsDir := filepath.Join(repoRoot, IntentsRelDir)
-	if err := ensureRealDir(intentsDir, IntentsRelDir); err != nil {
+	if err := ensureRecordDir(repoRoot, IntentsRelDir); err != nil {
 		return err
 	}
 	fd, err := syscall.Open(intentsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)

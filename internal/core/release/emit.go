@@ -87,6 +87,9 @@ const (
 	RefusalStaleIntent RefusalKind = "stale-intent"
 	// RefusalSurfaceGuard: the surface guardrail failed or could not compare.
 	RefusalSurfaceGuard RefusalKind = "surface-guard"
+	// RefusalUnfixedFinding: a consequential finding this cycle captured is
+	// still open, with no recorded decision to defer it.
+	RefusalUnfixedFinding RefusalKind = "unfixed-finding"
 	// RefusalEmptyCut: nothing user-facing shipped, so there is no release.
 	RefusalEmptyCut RefusalKind = "empty-cut"
 )
@@ -133,6 +136,11 @@ type Cut struct {
 	Removed []Entry `json:"removed"`
 	// Guard is the surface-break guardrail's verdict on this cut.
 	Guard changelog.SurfaceGuard `json:"guard"`
+	// Findings is the unfixed-findings guardrail's verdict: what this cycle
+	// captured and has not answered. It travels on a PASSING cut too, because a
+	// waived finding is only consciously deferred if the release report says
+	// what was deferred and why.
+	Findings changelog.FindingGuard `json:"findings"`
 	// Refusals is every reason the cut cannot proceed, in the order they are
 	// checked. All of them are reported, not just the first: an operator fixing
 	// a release should see the whole list in one pass.
@@ -193,6 +201,15 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 			Reason: guard.Reason,
 		})
 	}
+
+	findings, err := changelog.GuardFindings(root, derivation.BaseTag)
+	if err != nil {
+		return Cut{}, err
+	}
+	cut.Findings = findings
+	if findings.Status != changelog.FindingGuardPassed {
+		cut.Refusals = append(cut.Refusals, unfixedRefusal(findings))
+	}
 	if !derivation.Bumped {
 		cut.Refusals = append(cut.Refusals, Refusal{
 			Kind: RefusalEmptyCut,
@@ -240,6 +257,17 @@ func derivationRefusal(d changelog.Derivation) Refusal {
 		}
 	default:
 		ref.Kind = RefusalKind(d.RefusalKind)
+	}
+	return ref
+}
+
+// unfixedRefusal carries the guardrail's verdict into the cut's vocabulary,
+// naming the blocking records in Records so a front door can act on the refusal
+// without parsing its prose — the same shape the unlabelled-record refusal takes.
+func unfixedRefusal(g changelog.FindingGuard) Refusal {
+	ref := Refusal{Kind: RefusalUnfixedFinding, Reason: g.Reason}
+	for _, f := range g.Unfixed {
+		ref.Records = append(ref.Records, f.ID)
 	}
 	return ref
 }

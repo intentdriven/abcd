@@ -320,7 +320,7 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 		return fmt.Errorf("intent: receipt id %q is malformed; refusing to build a request path", rcp)
 	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
-	if err := ensureRealDir(dir, reviewsRelDir); err != nil {
+	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return err
 	}
 	ac := strings.TrimSpace(sectionBody(content, acHeadingRe))
@@ -645,7 +645,7 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 		return IngestVerdictResult{}, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
 	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
-	if err := ensureRealDir(dir, reviewsRelDir); err != nil {
+	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return IngestVerdictResult{}, err
 	}
 	dlRel := filepath.Join(reviewsRelDir, rcp+".deadletter.json")

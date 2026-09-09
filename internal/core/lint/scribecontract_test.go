@@ -356,8 +356,16 @@ func TestScribeInputsAreLedgerOnly(t *testing.T) {
 
 // transcriptStoreNeedles are the spellings of the session-transcript store's
 // path. Invariant 15 reserves that store to an enumerated consumer list the
-// scribe is not on, so the definition names no path into it at all.
-var transcriptStoreNeedles = []string{".abcd/history", "history/transcripts"}
+// scribe is not on, so the definition names no path into it at all. Both
+// vintages are held: the store the corpus lives in now, its per-repo pull-in,
+// and the location it was moved out of, because a definition that names a path
+// the corpus has left still declares an access this scribe may not have.
+var transcriptStoreNeedles = []string{
+	".abcd/transcripts",
+	".work.local/transcripts",
+	".abcd/history",
+	"history/transcripts",
+}
 
 // scribeTranscriptStoreFindings reports every named path into the store.
 func scribeTranscriptStoreFindings(prompt string) []string {
@@ -379,9 +387,15 @@ func TestScribeDeclaresNoTranscriptStoreAccess(t *testing.T) {
 			"list the scribe is not on, and adding it there is an invariant change, never a code change",
 			scribePromptRel, f)
 	}
-	hostile := scribeConformingBase + "\n- `~/.abcd/history/aaaa/transcripts/` — prior sessions.\n"
-	if len(scribeTranscriptStoreFindings(hostile)) == 0 {
-		t.Fatal("the transcript-store check admits a store path; it is not armed")
+	for _, path := range []string{
+		"~/.abcd/transcripts/aaaa/records/",
+		"repo/.abcd/.work.local/transcripts/aaaa/records/",
+		"~/.abcd/history/aaaa/transcripts/",
+	} {
+		hostile := scribeConformingBase + "\n- `" + path + "` — prior sessions.\n"
+		if len(scribeTranscriptStoreFindings(hostile)) == 0 {
+			t.Fatalf("the transcript-store check admits %s; it is not armed for that spelling", path)
+		}
 	}
 }
 

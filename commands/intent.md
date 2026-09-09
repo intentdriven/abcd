@@ -20,6 +20,18 @@ invocation **performs zero writes**.
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
 and the intent↔spec links. Nothing is created or moved by this invocation.
 
+**Every `intent` verb addresses the checkout's store, from anywhere in the
+tree.** The verb resolves the repository root before it reads or writes, so the
+counts are the checkout's and a reported `path` is relative to that root, not to
+the directory you happen to be standing in. Outside a repository there is no
+intent store to address, and the verb refuses (exit 2) rather than reading an
+empty one or laying a new one where it stands — a draft filed outside every
+checkout is committed by nothing, read by nothing, and its spec can never be
+closed against it. Resolving is a question, not a write, so bare invocation still
+performs zero writes. If an intent store also exists below the repository root,
+the verb names it on stderr and leaves it alone; relay that line, because records
+sitting there reach no gate and no release cut.
+
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:
@@ -67,7 +79,12 @@ planning interview below — before the draft can be planned.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
-real sub-verb is refused the same way, with the correction named.
+real sub-verb is refused the same way, with the correction named. So is a word
+followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by
+shape whatever the word is, so it is refused whether or not any sub-verb is
+close enough to suggest, and a refusal with nothing to suggest lists the
+sub-verbs the verb has. What still files is prose: several words, or one quoted
+argument carrying a space.
 
 `--impact` is optional: a draft is "not judged yet", so an unset impact writes
 no field. When you do set it, the value is validated (one of `additive`,
@@ -123,8 +140,10 @@ Before implementing ANY `itd-N` — or whenever the user asks you to "build",
   "`<itd-N>` is not specced, so it cannot be implemented yet", present each
   failing check's `detail` and `remedy` from the JSON, and **offer the
   planning interview** below.
-- **Exit 2 (fault):** the id is malformed, the intent is unknown, or a record
-  is unreadable — report the diagnostic; there is nothing to gate.
+- **Exit 2 (fault):** the id is malformed, the intent is unknown, a record is
+  unreadable, or the working directory has no repository above it (or one git
+  will not answer for), so there is no intent store to address — report the
+  diagnostic; there is nothing to gate.
 
 ## Grounds: why this is being pursued
 
@@ -323,6 +342,7 @@ is the spec store's close, which ships the linked intent as its close-hook:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --json    # open/ -> closed/, and planned/ -> shipped/
+"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --impact fix --json   # …stamping the judgement the record lacks
 ```
 
 Run it in the **same change** that lands the intent's work — the commit or
@@ -333,8 +353,20 @@ folders, and a planned intent is not a refusal, it is simply not seen. An
 intent whose code is on `main` but whose spec is still open ships with no
 changelog line and exits 0 doing so; two intents delivering a breaking CLI
 change were caught that way only by a reviewer. The close needs the intent's
-`impact` set (the `intent_impact_valid` gate refuses a move to `shipped/`
-without one), and `spec close` is CLI-only — there is no `/abcd:spec` page.
+`impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
+there is no default, because the judgement decides the derived version. A
+record that already declares it needs nothing; a record that does not takes
+`--impact additive|breaking|fix` on the close, which stamps it before the move
+(`internal` is a category error on a press-release-first intent, and is
+refused). The close refuses rather than shipping a record with neither, and it
+refuses a `--impact` that disagrees with one already written down: a close does
+not revise a recorded judgement. `spec close` is CLI-only — there is no
+`/abcd:spec` page.
+Both spec verbs — the close and the bare `abcd spec` status render — resolve the
+repository root first, so they address the checkout's spec store from anywhere in
+the tree and refuse with exit **2** outside a repository, where there is no spec
+store to address; a spec store found below the repository root is named on
+stderr and left alone.
 Report the returned pair (the spec's new path, the intent's new path), then
 queue the audit below.
 

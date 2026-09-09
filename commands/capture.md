@@ -11,6 +11,16 @@ The lightweight write side of the structured issue ledger under
 frontmatter, and folder-as-status (`open/`, `resolved/`, `wontfix/`). Bare
 invocation **performs zero writes**.
 
+Every verb here addresses the CHECKOUT's ledger, whichever directory of the
+working tree it runs in: the repository root is resolved from the working
+directory, never taken to be it. Outside a git checkout there is no ledger to
+address, so every verb exits 2 and writes nothing — the ledger is per-repository,
+and a record filed outside one is committed by nothing and read by nothing. When
+a ledger also sits between the working directory and the checkout root, the verb
+names it on stderr and leaves it exactly where it is; report that line to the
+user, because the records under it reach no gate and no release cut, and only
+they can tell a deliberate fixture store from one a stray capture left behind.
+
 ## Status (bare)
 
 To render recent captures and counts:
@@ -98,7 +108,10 @@ catches implausible hand edits, not all of them.
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as issue text. A near-miss of a real
 sub-verb is refused the same way, with the correction named, so a two-word input
-containing a space is not automatically safe.
+containing a space is not automatically safe. Neither is a word followed by an
+issue id — `abcd capture closeit iss-1 "…"` is a sub-verb call by shape whatever
+the word is, so it is refused whether or not any sub-verb is close enough to
+suggest, and a refusal with nothing to suggest lists the sub-verbs the verb has.
 
 Priority is **derived, never stored**: an issue is ranked lower while any of its
 `--blocked-by` targets is still open, and `blocked_by` records the dependency in

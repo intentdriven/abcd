@@ -96,7 +96,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
-			reg, err := loadGuardRegistry()
+			reg, err := loadGuardRegistry(cmd.ErrOrStderr())
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
@@ -213,7 +213,7 @@ func newGuardHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
-			reg, err := guard.Load(rulesRoot(cwd))
+			reg, err := guard.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
 			// A repo-layer error is fail-SAFE, not fail-open: guard.Load returns the
 			// bundled defaults alongside the error, so the built-in hazards stay
 			// armed even though the repo's own overrides were dropped. We check
@@ -323,12 +323,12 @@ func guardCandidate(cmd *cobra.Command, flag string) (string, error) {
 // does — the nearest .abcd directory inside the git working tree, never one
 // planted above it — so `.abcd/guard.json` is honoured from any nested working
 // directory, kill switch included, and only the repo's own file can throw it.
-func loadGuardRegistry() (guard.Registry, error) {
+func loadGuardRegistry(w io.Writer) (guard.Registry, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return guard.Registry{}, err
 	}
-	return guard.Load(rulesRoot(cwd))
+	return guard.Load(rulesRoot(cwd, w))
 }
 
 // guardHealthLine renders ahoy's one-line guard-health verdict. A guard that

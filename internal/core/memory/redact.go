@@ -291,6 +291,130 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 	return newIngestError("refusing to write: a map key in %s carries %d blocking span(s) [%s]; a key cannot be redacted without renaming the field it names, so repair the source", label, len(resid), strings.Join(kinds, ", "))
 }
 
+// judgeFilename is the PAGE FILENAME rule (iss-2609020321100138). A page's name
+// is host-supplied — a distiller returns `slug`, slugRe admits
+// [A-Za-z0-9_-] and pageNameRe admits <type>_<domain>_<slug>.md — and no
+// value-side or key-side pass can see it: the filename is not a leaf of the
+// frontmatter, and the registry back-link that carries it is deliberately
+// excluded from the leaf walk (redactRegistryLeaves, the pruneOrphans
+// data-loss fix). So a slug of `ghp_<40 chars>` reached the committed tree
+// four times over — as the file's own name, in index.md, in log.md, and as the
+// back-link — with every other write-side detector green.
+//
+// Refused, never rewritten, for judgeKey's reason: a page name is the identity
+// the store resolves, so renaming it is not a redaction — it makes a different
+// page, and the back-link that names the old one then points at nothing.
+//
+// The BAR is narrower than every other write-side rule's, and that is the
+// point. redactText and judgeKey refuse on scanner.BlockingResidual, which
+// promotes any identity-or-network span to blocking whatever its severity so a
+// warn-level hostname heuristic cannot slip through stage two. A filename is
+// not free text: it is prose-shaped by construction, and
+// `topic_home_migrating-off-the-nas.md` matches net_device_hostname at warn on
+// the hyphen boundary — at BlockingResidual's bar every such ordinary page
+// would be refused. This rule therefore selects on the scanner's own severity
+// vocabulary alone, scanner.SeverityHardFail, which within a filename's
+// charset is exactly the credential class: no '/', '@', ':' or '.' can appear
+// inside a page name, so the address kinds and the home-path kinds are
+// unreachable there and what remains at hard_fail is a secret pattern, the
+// caller's own local username, or a banned real name.
+//
+// The components are judged as well as the joined name because '_' is a word
+// character: `\bghp_...` has no word boundary after `topic_auth_`, so the
+// joined form hides in the scanner exactly the token the slug carries plainly.
+// The underscore SUFFIXES are judged for the same reason carried one step
+// further — see filenameJudgeTexts.
+func (r *storeRedactor) judgeFilename(filename string) error {
+	seen := map[string]bool{}
+	var kinds []string
+	for _, text := range filenameJudgeTexts(filename) {
+		for _, f := range r.hardFailResidue(text, filename) {
+			if seen[f.Kind] {
+				continue
+			}
+			seen[f.Kind] = true
+			kinds = append(kinds, f.Kind)
+		}
+	}
+	if len(kinds) == 0 {
+		return nil
+	}
+	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", filename, len(kinds), strings.Join(kinds, ", "))
+}
+
+// filenameJudgeTexts is the set of strings judgeFilename scans for one page
+// name: the joined name, the three components pageNameRe parses out of it, and
+// every SUFFIX that begins immediately after an '_'.
+//
+// The suffixes are what close the separator-straddling spelling. Judging the
+// parsed components was a fix for the missing word boundary, but the component
+// split is ITSELF on underscore and a credential prefix ends in one, so a
+// credential whose own prefix ends one component and whose body begins the next
+// hides from both earlier passes at once: `topic_ghp_<36>.md` parses as type
+// `topic`, domain `ghp`, slug `<36>`, and the joined form has no boundary
+// before `ghp`, the domain alone is three letters, and the slug alone carries
+// no prefix. `sk_live_` splits the other way, into domain `sk` and a slug
+// opening with the rest of the prefix.
+//
+// Suffixes rather than re-joined adjacent components, because slugRe admits
+// '_': a token can begin at an underscore INSIDE the slug
+// (`topic_auth_x_ghp_<36>.md`), a position no pair of parsed components starts
+// at. And suffixes rather than normalising the separators away, because the
+// prefixes this is hunting — `ghp_`, `sk_live_`, `github_pat_` — contain the
+// very character such a normalisation would remove or replace, so it would
+// destroy the tokens it was meant to expose.
+//
+// The set is COMPLETE for the class, not a longer list of guesses. Within a
+// page name's charset the word characters are [A-Za-z0-9_], so a `\b`-anchored
+// pattern can match at the string start, after a '-', or after a '.' — all
+// three of which are real boundaries the joined pass already sees — or at a
+// position the joined pass cannot see, which is exactly a position preceded by
+// '_'. One suffix per underscore therefore covers every position where an
+// anchored pattern could match if the underscore were a boundary.
+//
+// The components are kept alongside the suffixes rather than replaced by them.
+// A suffix carries the rest of the name after its component, so a pattern with
+// a TRAILING anchor that matches a component standing alone need not match it
+// inside a suffix; dropping the component pass could therefore narrow the bar,
+// and the bar is not this function's business. Widening it is not either: this
+// changes only WHERE the patterns are matched, never which severities count —
+// hardFailResidue still selects on scanner.SeverityHardFail alone.
+//
+// Offsets do not survive a suffix, and nothing downstream needs them to. Each
+// scan is labelled with the whole `filename`, and judgeFilename reports the
+// page by name and the findings by kind, never by position, so a suffix's
+// shifted offsets cannot corrupt the refusal's ability to name the page.
+// Indexing by byte is safe for the same reason it is exact: '_' is ASCII, so a
+// split after one never lands inside a multi-byte rune.
+func filenameJudgeTexts(filename string) []string {
+	texts := []string{filename}
+	if typ, domain, slug, ok := ParsePageFilename(filename); ok {
+		texts = append(texts, typ, domain, slug)
+	}
+	for i := 0; i < len(filename); i++ {
+		if filename[i] == '_' {
+			texts = append(texts, filename[i+1:])
+		}
+	}
+	return texts
+}
+
+// hardFailResidue is judgeFilename's narrow bar: the scanner's own hard_fail
+// severity and nothing else. It is deliberately NOT scanner.BlockingResidual
+// (see judgeFilename) and deliberately NOT a second severity notion — the
+// selection is on scanner.SeverityHardFail, the level the scanner already
+// defines. The literal-home backstop residue applies is skipped too: a home
+// path cannot appear in a page name, which holds no '/'.
+func (r *storeRedactor) hardFailResidue(text, label string) []scanner.Finding {
+	var out []scanner.Finding
+	for _, f := range r.sc.ScanText(text, label) {
+		if f.Severity == scanner.SeverityHardFail {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // judgeLeaf is redactLeaves' one leaf rule: unchanged from current, keep it;
 // otherwise it is this write's and goes through redactText.
 func (r *storeRedactor) judgeLeaf(current any, leaf, label string) (string, error) {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,11 +54,11 @@ func TestRulesRootWalksUpToDotAbcd(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantRepo := realPath(t, repo)
-	if got := realPath(t, rulesRoot(sub)); got != wantRepo {
+	if got := realPath(t, rulesRoot(sub, io.Discard)); got != wantRepo {
 		t.Errorf("rulesRoot(%q) = %q, want the .abcd-bearing ancestor %q", sub, got, wantRepo)
 	}
 	// From the repo root itself, rulesRoot returns it unchanged.
-	if got := realPath(t, rulesRoot(repo)); got != wantRepo {
+	if got := realPath(t, rulesRoot(repo, io.Discard)); got != wantRepo {
 		t.Errorf("rulesRoot(repo root) = %q, want %q", got, wantRepo)
 	}
 }
@@ -81,10 +82,10 @@ func TestRulesRootStopsAtGitToplevel(t *testing.T) {
 	wantInner := realPath(t, inner)
 
 	// No .abcd inside the tree: the toplevel, not the planted ancestor.
-	if got := realPath(t, rulesRoot(sub)); got != wantInner {
+	if got := realPath(t, rulesRoot(sub, io.Discard)); got != wantInner {
 		t.Errorf("rulesRoot(%q) = %q, escaped the git working tree %q", sub, got, wantInner)
 	}
-	if got := realPath(t, rulesRoot(inner)); got != wantInner {
+	if got := realPath(t, rulesRoot(inner, io.Discard)); got != wantInner {
 		t.Errorf("rulesRoot(%q) = %q, escaped the git working tree %q", inner, got, wantInner)
 	}
 
@@ -92,7 +93,7 @@ func TestRulesRootStopsAtGitToplevel(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(inner, ".abcd"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := realPath(t, rulesRoot(sub)); got != wantInner {
+	if got := realPath(t, rulesRoot(sub, io.Discard)); got != wantInner {
 		t.Errorf("rulesRoot(%q) = %q, want the repo's own .abcd at %q", sub, got, wantInner)
 	}
 
@@ -101,7 +102,7 @@ func TestRulesRootStopsAtGitToplevel(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sub, ".abcd"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := realPath(t, rulesRoot(sub)), realPath(t, sub); got != want {
+	if got, want := realPath(t, rulesRoot(sub, io.Discard)), realPath(t, sub); got != want {
 		t.Errorf("rulesRoot(%q) = %q, want the nearest .abcd inside the tree %q", sub, got, want)
 	}
 }
@@ -118,7 +119,7 @@ func TestRulesRootNonGitDoesNotWalk(t *testing.T) {
 	if err := os.MkdirAll(plain, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := rulesRoot(plain); got != plain {
+	if got := rulesRoot(plain, io.Discard); got != plain {
 		t.Errorf("rulesRoot(%q) = %q, want cwd itself (a non-git directory must not walk to an ancestor's .abcd)", plain, got)
 	}
 }

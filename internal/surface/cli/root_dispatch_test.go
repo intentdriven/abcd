@@ -14,8 +14,7 @@ import (
 // TestRootDispatchJSONContract is the spc-26 surface AC: `abcd <id> --json`
 // renders the Description fields for a record found in its store.
 func TestRootDispatchJSONContract(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	capOut := runCLI(t, "capture", "a dispatchable observation", "--json")
 	var minted struct {
@@ -50,8 +49,7 @@ func TestRootDispatchJSONContract(t *testing.T) {
 // TestRootDispatchUnknownIDFaults: a shape-matching id in no store exits
 // non-zero with a diagnostic naming the id, and never renders success.
 func TestRootDispatchUnknownIDFaults(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 	out, err := runCLIErr(t, "itd-42")
 	if err == nil {
 		t.Fatalf("dispatch of an absent id must fail:\n%s", out)
@@ -65,8 +63,7 @@ func TestRootDispatchUnknownIDFaults(t *testing.T) {
 // not match the record-id shape reproduces the pre-change unknown-command
 // error byte-for-byte, exit code 2.
 func TestRootNonIDPositionalUnchanged(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 	for _, arg := range []string{"nonsense", "status", "iss-", "itd-x", "plan-3", "adr-40-slug"} {
 		_, err := runCLIErr(t, arg)
 		if err == nil {
@@ -86,8 +83,7 @@ func TestRootNonIDPositionalUnchanged(t *testing.T) {
 // TestRootDispatchZeroWrites: describing a record performs zero writes — the
 // tree is byte-identical after the run.
 func TestRootDispatchZeroWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	capOut := runCLI(t, "capture", "watch for stray writes", "--json")
 	var minted struct {
 		ID string `json:"id"`

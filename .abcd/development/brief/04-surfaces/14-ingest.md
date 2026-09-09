@@ -1,75 +1,87 @@
 # `/abcd:ingest` — Register a Source in the Corpus
 
-`/abcd:ingest` registers a URL or local document in the personal sources corpus
-(the user-level home's sources store, default `~/.abcd/sources/`), with extracted
-reference metadata, real keywords, a confidentiality class, and a text-quality
-check. It is the write side of the corpus; `/abcd:consult` is the read side and
-the provenance recorder.
+Hand over a link or a document and get it into the corpus as a real, findable
+source: clean reference metadata, keywords worth searching on, a
+confidentiality class, and a stored text body someone can actually read later.
+The cost is a few judgement calls the person handing it over is best placed to
+make, and the payoff is that [`/abcd:consult`](13-consult.md) can find the
+source months later without anyone remembering it exists.
 
-It is a **host-delegated command** — a markdown workflow that runs in the host
-agent. **No Go verb backs it**: there is no top-level `abcd ingest` verb, no
-bare-status render, and no CLI flags of its own. (The `reading ingest` and
-`memory ingest` sub-verbs belong to other verbs and validate other inputs — a
-reading's returned output, a source distilled into memory — never this corpus.) The determinism it relies on
-lives in the corpus's own `bin/add-source` registrar; the command supplies the
-judgment half (clean metadata, real keywords, confidentiality, quality check).
+It is the write side of the corpus at `~/.abcd/sources/`; `/abcd:consult` is
+the read side and the provenance recorder.
+
+It is a **host-delegated command**: a markdown workflow that runs in the host
+agent, with **no Go verb** behind it. There is no top-level `abcd ingest` verb,
+no bare-status render, and no CLI flags of its own. The `reading ingest`,
+`memory ingest` and `intent audit ingest` sub-verbs belong to other verbs and
+validate other inputs, never this corpus.
+
+**Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
+on an unknown command, and because a command page of that name exists, the binary
+adds its stale-surface note, reading that page as proof a newer build carries the
+verb and telling the person to rebuild or update. For a host-delegated command
+that advice can never come true, because there is no Go verb for a rebuild to
+bring in. Every host-delegated page has the same shape, `/abcd:consult` and
+`/abcd:prepare-this-repo` alongside this one. What the note should say is that the
+command runs in the host agent rather than at the CLI.
 
 ## What it does
 
-The corpus is split by a division of labour: the `add-source` script does the
-deterministic half (fetch, convert, store, guard the ledger); the agent does the
-judgment half. `/abcd:ingest` drives that agent side through five steps:
+The work is split. The corpus's own registrar script does the deterministic
+half: fetch, convert, store, guard the ledger. The command supplies the
+judgement half, in five steps.
 
-1. **Read the document first** — WebFetch a URL (or Read a local file) for
-   judgment, then extract the exact title, authors (`Family, Given`), year, venue,
-   canonical URL, and CSL type (`article-journal`, `webpage`, `book`, `report`,
-   `motion_picture`).
-2. **Decide class and key** — web content is `public` by default; the signals for
-   `--confidential` are the user's own unpublished work, internal or NDA material,
-   AI-generated content, or a private repo's documentation. The key is
-   `<authorfamily><year><distinctiveword>`, uniqueness checked against
-   `sources.json`.
-3. **Register** — invoke `~/.abcd/sources/bin/add-source` with the extracted flags;
-   the URL-only path lets the script fetch and store the page.
-4. **Quality-check the extraction** — inspect the stored `text.md` for sane word
-   count and real prose, repairing the known failure modes (`.mhtml` stubs,
-   HTML-escaped SPA wrappers) by hand.
-5. **Close out** — sync the ban-list into every guarded repo the session touched,
-   keep any derived summary inside the source's own folder, record an influence
-   edge if a live decision motivated the ingest, and tell the user the key and
-   class.
+1. **Read the document first**, then extract the exact title, authors
+   (`Family, Given`), year, venue, canonical URL, and CSL type.
+2. **Decide class and key.** Web content is public by default; the signals for
+   confidential are the user's own unpublished work, internal or NDA material,
+   AI-generated content, and a private repo's documentation. The key is
+   `<authorfamily><year><distinctiveword>`, checked for uniqueness against the
+   corpus metadata.
+3. **Register** through the corpus registrar. A URL alone is enough: the script
+   fetches and stores the page.
+4. **Quality-check the extraction.** Inspect the stored text for a sane word
+   count and real prose, and repair the known failure modes by hand rather than
+   leaving a stub that reads as a source.
+5. **Close out.** Sync the ban-list into every guarded repo the session
+   touched, keep any derived summary inside the source's own folder so it
+   inherits the class by location, record an influence edge if a live decision
+   motivated the ingest, and tell the user the key and class.
+
+If the corpus is absent, the command says so and stops. It never creates it.
 
 ## Confidentiality contract
 
-The confidentiality hard rule from `/abcd:consult` applies here in full. Titles of
-confidential entries become banned phrases (whole title, whitespace-flexible), so
-an internal artifact whose natural title reads like ordinary prose is registered
-under a distinctive title instead. A confidential ingest ends by running
-`bin/sync-banlist <repo-root>` in every guarded repo, so the new banned phrases
+The hard rule from [`/abcd:consult`](13-consult.md) applies here in full. The
+title of a confidential entry becomes a banned phrase, whitespace-flexible over
+the whole title, so an internal artefact whose natural title reads like ordinary
+prose is registered under a distinctive title instead. A confidential ingest
+ends by syncing the ban-list in every guarded repo, so the new banned phrases
 propagate before anything else is written.
 
 ## Acceptance
 
-- **Given** a present corpus, **when** the user hands over a public URL, **then**
-  a new entry is registered under a `<authorfamily><year>word` key with clean
-  metadata, 5–10 real keywords, and a stored `text.md` that passes the
-  word-count/prose check.
+- **Given** a present corpus, **when** the user hands over a public URL,
+  **then** a new entry is registered under a `<authorfamily><year>word` key with
+  clean metadata, 5–10 real keywords, and a stored text body that passes the
+  word-count and prose check.
 - **Given** the user's own unpublished paper, **when** it is ingested, **then**
-  it is registered `--confidential` with a permission status and its title added
-  to the ban-list, and `sync-banlist` is run in each guarded repo.
+  it is registered confidential with a permission status and its title added to
+  the ban-list, and the ban-list is synced in each guarded repo.
 - **Given** a corpus that does not exist, **when** `/abcd:ingest` is invoked,
-  **then** the command says so and stops — it never creates the corpus.
+  **then** the command says so and stops.
 
 ## Composition
 
 `/abcd:ingest` and `/abcd:consult` are the two halves of one corpus surface:
-ingest writes sources in, consult reads them out and records which decisions they
-influenced. Both share the confidentiality guard and the `~/.abcd/sources/` store.
-The command prefers explicit `add-source` flags because it has better metadata
-in hand. (The `abcd-ingest <url-or-file>` human quick path `commands/ingest.md`
-names is **not a demonstrable surface** — no binary sub-verb, repo-shipped
-script, or corpus-store wrapper provides it; where it exists it is an
-operator-local convenience outside the corpus contract.)
+ingest writes sources in, consult reads them out and records which decisions
+they influenced. Both share the confidentiality guard and the store.
+
+The command prefers explicit registrar flags because it has better metadata in
+hand than a bare fetch would. There is **no one-argument quick path** into the
+registrar: no binary sub-verb and no repo-shipped script provides one, so where
+a reader finds such a command it is an operator-local convenience outside the
+corpus contract. The plugin page said otherwise until v0.8.0 and now says this.
 
 ## References
 

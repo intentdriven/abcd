@@ -1103,7 +1103,7 @@ func newHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
-			root := rulesRoot(cwd)
+			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			rs, err := rules.Load(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -1221,7 +1221,15 @@ func newHookCommand() *cobra.Command {
 			// dense sessions most worth keeping (iss-2608230817034768). Staging is
 			// one write, so this hook's cost no longer scales with the transcript;
 			// the next SessionStart drains it through the same fail-closed Capture.
-			res, err := history.Stage(det.RootSHA, in.SessionID, raw)
+			// Resolve first, so the store's own diagnostics — a corpus migrated
+			// off the legacy location, an opt-in declaration that was not
+			// honoured — reach stderr rather than being discarded inside Stage.
+			if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
+				for _, n := range st.Notes {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
+				}
+			}
+			res, err := history.Stage(captureRoot(cwd), det.RootSHA, in.SessionID, raw)
 			if err != nil {
 				return warn("staging failed (%v); this session was not captured", err)
 			}
@@ -1281,6 +1289,20 @@ func newHookCommand() *cobra.Command {
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+				// Resolving bootstraps the store for this repo — the reason a
+				// machine that never ran `ahoy install` still captures (iss-95)
+				// — and carries out any migration off the legacy location. Its
+				// notes are user-visible facts about where their transcripts
+				// now are, so they are notices, not stderr chatter.
+				if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
+					for _, n := range st.Notes {
+						notices = append(notices, "abcd "+termsafe.Sanitize(n))
+					}
+				} else {
+					notices = append(notices, fmt.Sprintf(
+						"abcd: the transcript store could not be opened (%s); this session will not be captured.",
+						termsafe.Sanitize(fsutil.RedactHome(err.Error()))))
+				}
 				if dr, err := history.Drain(captureRoot(cwd), det.RootSHA, sessionStartDrainBudget); err == nil {
 					for _, f := range dr.Failed {
 						notices = append(notices, fmt.Sprintf(
@@ -1298,21 +1320,10 @@ func newHookCommand() *cobra.Command {
 						termsafe.Sanitize(err.Error())))
 				}
 			}
-			// history.transcripts_missing is emitted only when cwd is a git repo
-			// (a root SHA resolved) AND this repo's transcripts dir is absent —
-			// exactly the state in which session-end would silently capture
-			// nothing. A non-repo cwd never carries this gap, so we stay silent
-			// there: no `ahoy install` would make a non-repo capturable. A
-			// detection that errored tells us nothing: never nag on uncertainty.
-			if det, err := ahoy.Detect(cwd); err == nil {
-				for _, g := range det.Gaps {
-					if g.ID == "history.transcripts_missing" {
-						notices = append(notices,
-							"abcd: session transcripts will not be captured — the history store is not set up for this repo. Run `/abcd:ahoy install` (or `abcd ahoy install`) to start recording.")
-						break
-					}
-				}
-			}
+			// There is no "the store is not set up for this repo" notice any
+			// more, and there must not be one: the store creates itself on the
+			// line above, so a notice telling the user to run `ahoy install`
+			// before transcripts are captured would now be false (iss-95).
 			// The skew notice is a plugin-root fact, not a repo one, so it stands
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
@@ -1460,7 +1471,7 @@ renders bare and carries "source": "bundled". Read-only.`,
 			if err != nil {
 				return err
 			}
-			rs, err := rules.Load(rulesRoot(cwd))
+			rs, err := rules.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -1499,6 +1510,51 @@ renders bare and carries "source": "bundled". Read-only.`,
 	}
 }
 
+// intentStoreRoot is the shared front-door step for every `intent` verb: the
+// checkout whose intent store the verb addresses, resolved from the working
+// directory rather than taken to BE it.
+//
+// Every verb below used to hand os.Getwd() straight to the core, which joins the
+// store's relative directory onto whatever it is given and reads or creates the
+// tree there. A verb run from a subdirectory then addressed a store that was not
+// there, silently in both directions: `abcd intent` reported drafts 0 against a
+// checkout holding one, and `abcd intent "<text>"` minted a SECOND store beneath
+// the subdirectory and reported success with a repo-relative path that reads
+// exactly like the checkout store's. Outside every repository it exited 0 and
+// laid the whole intent skeleton in whatever plain directory the caller stood in
+// (iss-2609091729516940). A draft filed either way is invisible to every gate,
+// to the release cut and to whoever filed it — and its spec can never be closed
+// against it, because the reconcile step looks in the checkout.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals — the same one the
+// capture verbs resolve their ledger through and `decide` its decision store,
+// with only the store's noun differing. Refusing is the whole point outside a
+// checkout: there is no intent store to address, and laying one where the caller
+// stood is the defect rather than a lenient fallback.
+//
+// Resolving is a QUESTION, not a write, so the bare read-only status board stays
+// read-only: nothing here creates a directory, and on a refusal the core is
+// never reached at all.
+//
+// The stray-store note rides the same step, on stderr, exactly as the ledger's
+// and the decision store's do: a resolution that silently steps over a store the
+// defect already laid would leave those drafts where nothing will ever look
+// again. It REPORTS and moves nothing.
+func intentStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the intent store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd intent: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, intent.IntentsRelDir, "intent store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
 // newIntentCommand builds the `intent` verb — the front door onto
 // internal/core/intent (itd-80). Bare `abcd intent` renders the read-only
 // lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
@@ -1510,17 +1566,24 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Intent lifecycle; bare invocation is read-only status, quoted text files a draft",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			// Quoted text (no sub-verb) files a new draft — the symmetric create path
 			// (itd-46). Bare invocation stays read-only status + help (never mutates).
 			if len(args) > 0 {
-				// Guard: a mistyped subcommand (e.g. `intent lnk itd-5`) must not be
+				// Guard: a subcommand call (e.g. `intent lnk itd-5`) must not be
 				// swallowed as draft text and filed. Mirrors the capture guard
 				// (unrecognized-input-never-writes, iss-29); genuine prose still files.
-				if sug, ok := suspectedTypoedSubcommand(cmd, args); ok {
+				// A far miss names no sub-verb, so the refusal lists them all rather
+				// than filing the words as a draft title (iss-2609091647589392).
+				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
+					if sug == "" {
+						return &exitError{Code: 2, Msg: fmt.Sprintf(
+							"unknown intent subcommand %q; the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
+							args[0], strings.Join(subverbNames(cmd), ", "))}
+					}
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
 						"unknown intent subcommand %q; did you mean %q? (nothing created — reword the text if you meant to file a draft)",
 						args[0], sug)}
@@ -1537,9 +1600,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
 						args[0])}
 				}
-				return createIntentFromText(cmd, cwd, strings.Join(args, " "), intentImpact, intentProductionMode, *asJSON)
+				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intentImpact, intentProductionMode, *asJSON)
 			}
-			v, err := intent.Status(cwd)
+			v, err := intent.Status(repoRoot)
 			if err != nil {
 				return err
 			}
@@ -1577,7 +1640,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Deprecated alias for `abcd intent \"<text>\"` (files a draft from the text)",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -1586,7 +1649,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.ErrOrStderr(),
 				"WARNING: `abcd intent new` is deprecated; use `abcd intent \"<text>\"` (quoted text is the create signal).")
-			return createIntentFromText(cmd, cwd, strings.Join(args, " "), "", "", *asJSON)
+			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), "", "", *asJSON)
 		},
 	})
 
@@ -1597,17 +1660,17 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			// The mode belongs to the SPEC this mints; the intent's own stamp was
 			// written when its draft was created and is never rewritten.
-			mode, err := resolveProductionMode(cwd, planProductionMode)
+			mode, err := resolveProductionMode(repoRoot, planProductionMode)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Plan(cwd, args[0], mode)
+			res, err := intent.Plan(repoRoot, args[0], mode)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
@@ -1650,7 +1713,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Report whether an intent is ready to implement (planned + AC + claims + written spec + recorded grounds); exit 1 when not",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -1660,7 +1723,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if perr != nil {
 					return &exitError{Code: 2, Msg: "abcd intent ready: " + perr.Error() + " (nothing recorded)"}
 				}
-				rec, rerr := intent.RecordGrounds(cwd, args[0], g)
+				rec, rerr := intent.RecordGrounds(repoRoot, args[0], g)
 				if rerr != nil {
 					return &exitError{Code: 2, Msg: "abcd intent ready: " + rerr.Error()}
 				}
@@ -1674,7 +1737,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// fault that emits no envelope.
 				emitGroundsReceipt(cmd, *asJSON, rec)
 			}
-			res, err := intent.Ready(cwd, args[0])
+			res, err := intent.Ready(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent ready: " + err.Error()}
 			}
@@ -1733,11 +1796,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Link a planned intent to an existing spec (writes the intent's spec_id)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Link(cwd, args[0], args[1])
+			res, err := intent.Link(repoRoot, args[0], args[1])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent link: " + err.Error()}
 			}
@@ -1783,7 +1846,7 @@ const ideateRoutingRule = "  a big, unproven idea? `abcd ideate` runs the option
 // It is deliberately NOT used by the ledger transitions: a resolve or wontfix
 // that declares no mode must leave the record's existing stamp alone, and
 // defaulting there would silently overwrite it.
-func resolveProductionMode(cwd, flag string) (string, error) {
+func resolveProductionMode(repoRoot, flag string) (string, error) {
 	if flag != "" {
 		m, err := provenance.ParseMode(flag)
 		if err != nil {
@@ -1791,7 +1854,7 @@ func resolveProductionMode(cwd, flag string) (string, error) {
 		}
 		return string(m), nil
 	}
-	m, err := identity.DeclaredProductionMode(cwd)
+	m, err := identity.DeclaredProductionMode(repoRoot)
 	if err != nil {
 		return "", &exitError{Code: 2, Msg: "abcd: " + err.Error() + " (nothing written)"}
 	}
@@ -1804,12 +1867,12 @@ var productionModeFlagHelp = "how this record's text was produced: " + provenanc
 	" (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
 
 // this surface stays a thin marshaller.
-func createIntentFromText(cmd *cobra.Command, cwd, text, impact, productionMode string, asJSON bool) error {
-	mode, err := resolveProductionMode(cwd, productionMode)
+func createIntentFromText(cmd *cobra.Command, repoRoot, text, impact, productionMode string, asJSON bool) error {
+	mode, err := resolveProductionMode(repoRoot, productionMode)
 	if err != nil {
 		return err
 	}
-	it, err := intent.CreateFromText(cwd, text, impact, mode)
+	it, err := intent.CreateFromText(repoRoot, text, impact, mode)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}
@@ -1831,11 +1894,11 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.ReEmitAudit(cwd, args[0])
+			res, err := intent.ReEmitAudit(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
 			}
@@ -1852,14 +1915,14 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		Short: "Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			if verdictJSON == "" {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: --verdict-json <path> is required"}
 			}
-			res, err := intent.IngestVerdict(cwd, verdictJSON)
+			res, err := intent.IngestVerdict(repoRoot, verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
 			}
@@ -1894,6 +1957,45 @@ type specStatusView struct {
 	Specs  []spec.Spec `json:"specs"`
 }
 
+// specStoreRoot is the spec front door's first step: the checkout whose spec
+// store the verb addresses, resolved from the working directory rather than
+// taken to BE it.
+//
+// Both verbs handed os.Getwd() to a core that joins the store's relative
+// directory onto whatever it is given, so from a subdirectory bare `spec`
+// reported `open 0 · closed 0` against a populated checkout and `spec close`
+// refused with "spec spc-N not found" for a spec sitting right there
+// (iss-2609091729516940). Neither answer looks wrong: a zero count and a
+// missing record are both ordinary facts about a repository, which is what
+// makes the read the more dangerous half — the refusal at least stops the
+// caller, while the count is believed.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals — the same one the
+// capture and decide front doors resolve through, with only the store's noun
+// differing. Refusing outside a checkout is the whole point: `spec` is
+// per-repository, and answering `open 0 · closed 0` for a directory that has no
+// spec store is a statement about a repository that is not there. Nothing is
+// read and nothing is written on a refusal, because the core is never reached.
+//
+// The stray-store note rides the same step, on stderr, exactly as the ledger's
+// and the decision store's do: a resolution that silently steps over a store an
+// unresolved door already laid would leave those records where nothing will ever
+// look again. It REPORTS and moves nothing, and the bare board stays read-only.
+func specStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the spec store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd spec: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, spec.SpecsRelDir, "spec store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd spec: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
 // newSpecCommand builds the `spec` verb — the front door onto internal/core/spec
 // (itd-80). Bare `abcd spec` renders the read-only spec-store status; the `close`
 // sub-verb closes a spec AND reconciles its linked intent (planned -> shipped)
@@ -1904,11 +2006,11 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		Short: "Native spec store; bare invocation is read-only status",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			store, err := spec.Load(cwd)
+			store, err := spec.Load(repoRoot)
 			if err != nil {
 				return err
 			}
@@ -1931,16 +2033,24 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 
 	// close <spc-N> — closes the spec AND reconciles the linked intent
 	// (planned -> shipped). Fail-closed and idempotent (see intent.Reconcile).
-	specCmd.AddCommand(&cobra.Command{
+	//
+	// --impact is the judgement the shipped intent carries. It is optional
+	// because a record that already declares one needs nothing here, and it
+	// exists because shipped/ is the one bucket intent_impact_valid requires an
+	// impact in: without it the ship verb could only either move an impactless
+	// record into the bucket that refuses it or refuse forever, with no way for
+	// the tool to supply the missing judgement (iss-126).
+	var closeImpact string
+	closeCmd := &cobra.Command{
 		Use:   "close <spc-N>",
 		Short: "Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Reconcile(cwd, args[0])
+			res, err := intent.Reconcile(repoRoot, args[0], closeImpact)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
 			}
@@ -1961,7 +2071,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 				}
 			})
 		},
-	})
+	}
+	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)")
+	specCmd.AddCommand(closeCmd)
 
 	return specCmd
 }
@@ -2460,6 +2572,108 @@ func (p *stdinPrompter) Prompt(key string, choices []string, def string) string 
 	return line
 }
 
+// captureLedgerRoot is the shared front-door step for every `capture` verb: the
+// checkout whose ledger the verb acts on, resolved from the working directory
+// rather than taken to BE it.
+//
+// Every verb below used to build its request with `RepoRoot: cwd`, which the
+// core reads as an explicit root and therefore never resolves. A verb run from a
+// subdirectory then addressed a ledger that was not there — silently in both
+// directions: a read reported open 0 against a populated checkout, and a write
+// minted a second ledger under the subdirectory and reported success with a
+// repo-relative path nothing about which looked unusual. Records filed that way
+// are invisible to every gate that reads the real ledger, to the release cut,
+// and to whoever filed them (iss-2609090951291524). capture.LedgerRoot owns the
+// resolution and owns the refusals; this is the door that calls it, the way the
+// reading verbs already resolve their toplevel before they call.
+//
+// The stray-ledger note rides the same step, on stderr, for the reason
+// historyStore prints its own diagnostics there: a resolution that silently
+// steps over a store the defect already minted would leave those records where
+// nothing will ever look again. It REPORTS and moves nothing — no verb here
+// migrates a record, and the bare board stays read-only.
+func captureLedgerRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := capture.LedgerRoot(cwd)
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd capture: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, capture.LedgerRelPath, "ledger") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
+// strayStoreNotes names a record store sitting BELOW the checkout root, between
+// the caller and it — the exact deposit an unresolved front door leaves behind
+// (iss-2609090951291524 for the ledger, iss-2609091707224329 for the decision
+// store), and the one place a front door can name with certainty and at no cost.
+//
+// It is one walk for every store: `relPath` is the store's repo-relative
+// directory and `noun` is what it is called in the note, because the shape of
+// the deposit and what is owed the person standing over it do not vary by
+// family.
+//
+// The walk is bounded to the chain from cwd up to (not including) the root, so
+// it fires for the person who created the stray store, on their next run from
+// the directory that created it. A sweep of the whole checkout would find stray
+// stores this walk cannot see; that belongs to a lint rule that reads the tree,
+// not to a verb that has one directory to look at.
+//
+// The note STATES what is there and never accuses: a checkout can hold a store
+// below its root on purpose (this repository's own cold-reading eval fixtures
+// hold a ledger), and only the person standing in it can tell a fixture from an
+// orphan. What the note owes them is the fact that two stores exist and which
+// one the verb just used.
+func strayStoreNotes(cwd, root, relPath, noun string) []string {
+	dir, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		dir = filepath.Clean(cwd)
+	}
+	top, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		top = filepath.Clean(root)
+	}
+	var notes []string
+	for dir != top {
+		store := filepath.Join(dir, filepath.FromSlash(relPath))
+		if fi, statErr := os.Stat(store); statErr == nil && fi.IsDir() {
+			rel, relErr := filepath.Rel(top, store)
+			if relErr != nil {
+				rel = store
+			}
+			notes = append(notes, indefiniteArticle(noun)+" "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
+				" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return notes
+}
+
+// indefiniteArticle picks the article for a store noun the note names. It exists
+// because the note is composed from a caller-supplied noun and "a intent store"
+// is what a bare "a " produces for the intent family. The rule is the written
+// one — the vowel-letter test — which is exact over the closed set of nouns this
+// package passes ("ledger", "decision store", "intent store", "research store")
+// and is not asked to judge prose it has never been given.
+func indefiniteArticle(noun string) string {
+	if noun == "" {
+		return "a"
+	}
+	switch noun[0] {
+	case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U':
+		return "an"
+	}
+	return "a"
+}
+
 // newCaptureCommand builds the `capture` sub-tree — the write side of the issue
 // ledger. Bare `capture` renders read-only status; a free-text positional
 // appends an issue; list/resolve/wontfix/promote are thin consumers of capture
@@ -2472,13 +2686,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Capture issues to the ledger; bare invocation is read-only status",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
 			// Bare invocation: read-only status render (never mutates).
 			if len(args) == 0 {
-				st, err := capture.Status(capture.StatusRequest{RepoRoot: cwd})
+				st, err := capture.Status(capture.StatusRequest{RepoRoot: repoRoot})
 				if err != nil {
 					return err
 				}
@@ -2486,7 +2700,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				// SAME function the lint rule calls, not a second scan: an item
 				// nobody has answered has no state to sit in, and two readings of
 				// that one question would be two answers to it.
-				board, err := captureBoardOf(cwd, st)
+				board, err := captureBoardOf(repoRoot, st)
 				if err != nil {
 					return err
 				}
@@ -2561,12 +2775,18 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				})
 			}
 			// Guard: a mistyped subcommand (e.g. `capture resovle iss-1 …`)
-			// must not be swallowed as free text and filed. When args[0] is a
-			// near-miss to a real subverb and the shape looks like a subcommand
-			// call — a lone token, or a token followed by an issue id — refuse
-			// with a did-you-mean and write nothing (unrecognized-input-never-
-			// writes, iss-29). Genuine prose still files.
-			if sug, ok := suspectedTypoedSubcommand(cmd, args); ok {
+			// must not be swallowed as free text and filed. When the shape looks
+			// like a subcommand call — a lone token, or a token followed by an
+			// issue id — refuse and write nothing (unrecognized-input-never-
+			// writes, iss-29): with a did-you-mean when a real sub-verb is near,
+			// and with the sub-verb list when none is, because a far miss is a
+			// subcommand call too (iss-2609091647589392). Genuine prose still files.
+			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
+				if sug == "" {
+					return &exitError{Code: 2, Msg: fmt.Sprintf(
+						"unknown capture subcommand %q; the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
+						args[0], strings.Join(subverbNames(cmd), ", "))}
+				}
 				return &exitError{Code: 2, Msg: fmt.Sprintf(
 					"unknown capture subcommand %q; did you mean %q? (nothing captured — reword the text if you meant to file it)",
 					args[0], sug)}
@@ -2597,7 +2817,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			req := capture.CaptureRequest{
-				RepoRoot:    cwd,
+				RepoRoot:    repoRoot,
 				Text:        text,
 				Severity:    capture.Severity(orDefault(severity, "minor")),
 				Category:    capture.Category(orDefault(category, "observation")),
@@ -2608,7 +2828,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				LapsedAt:    lapsedAt,
 				BlockedBy:   blocked,
 			}
-			if req.ProductionMode, err = resolveProductionMode(cwd, captureProductionMode); err != nil {
+			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
 			}
 			// --lapsed-at has NO default, and this is where the caller learns it: a
@@ -2661,7 +2881,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "List issues by state (one of --open/--resolved/--wontfix/--all required)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2669,7 +2889,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := capture.List(capture.ListRequest{RepoRoot: cwd, State: state})
+			res, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: state})
 			if err != nil {
 				return err
 			}
@@ -2701,7 +2921,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2709,7 +2929,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Resolve(capture.ResolveRequest{
-				RepoRoot: cwd, ID: args[0], Resolution: args[1], Impact: resolveImpact,
+				RepoRoot: repoRoot, ID: args[0], Resolution: args[1], Impact: resolveImpact,
 				ByIntent: resolveByIntent, BySpec: resolveBySpec, ByCommit: resolveByCommit,
 				ShippedIn: resolveShippedIn, Grounds: resolveGrounds,
 				ProductionMode: resolveModeRestamp,
@@ -2760,7 +2980,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2776,12 +2996,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			// The mode belongs to the DRAFT this mints; stamp-only mode mints
 			// nothing, so it carries none.
-			mode, err := resolveProductionMode(cwd, promoteProductionMode)
+			mode, err := resolveProductionMode(repoRoot, promoteProductionMode)
 			if err != nil {
 				return err
 			}
 			res, err := capture.Promote(capture.PromoteRequest{
-				RepoRoot: cwd, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
+				RepoRoot: repoRoot, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
 				ProductionMode: mode,
 			})
 			if err != nil {
@@ -2824,7 +3044,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Answer one reading item (a separate record, keyed to the item)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2833,7 +3053,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Disposition(capture.DispositionRequest{
-				RepoRoot: cwd, Item: args[0], State: dispState,
+				RepoRoot: repoRoot, Item: args[0], State: dispState,
 				Grounds: dispGrounds, ExitCondition: dispExit,
 				Supersedes: dispSupersedes, Recurs: recurs,
 				HoldFrameLocation: dispHoldFrame, HoldMoscow: dispHoldMoscow,
@@ -2880,12 +3100,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Record an explicit non-action decision (open/ -> wontfix/)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
 			res, err := capture.Wontfix(capture.WontfixRequest{
-				RepoRoot: cwd, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
+				RepoRoot: repoRoot, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
 				ProductionMode: wontfixProductionMode,
 			})
 			if err != nil {
@@ -3051,7 +3271,7 @@ var issIDRe = regexp.MustCompile(`^iss-[0-9]+$`)
 var readingItemIDRe = regexp.MustCompile(`^rdi-[0-9]+$`)
 
 // recordIDRe matches any abcd record id (issue, intent, or spec). It is used
-// only by suspectedTypoedSubcommand's shape check — distinct from issIDRe, which
+// only by unrecognizedSubverb's shape check — distinct from issIDRe, which
 // validates a real iss-only --blocked-by token — so the typo guard recognises a
 // subcommand call in either verb family (capture's iss-N ids, intent's itd/spc
 // ids) without loosening iss-id validation elsewhere.
@@ -3066,42 +3286,79 @@ var retiredSubverbs = map[string]map[string]string{
 	"intent": {"review": "audit"}, // spc-28 (adr-40)
 }
 
-// suspectedTypoedSubcommand reports the nearest real subverb when args[0] is a
-// near-miss for one (edit distance 1–2) — or a retired spelling of one — and
-// the invocation shape resembles a subcommand call rather than free-text
-// prose: a lone token, or a token followed by a record id. It is deliberately
-// high-precision so it never refuses a legitimate free-text create whose first
-// word merely resembles a verb — those carry no trailing record id and are
-// multi-word.
-func suspectedTypoedSubcommand(parent *cobra.Command, args []string) (string, bool) {
+// unrecognizedSubverb reports whether a free-text create verb's positionals
+// must be refused as a sub-verb call rather than filed as prose, and names the
+// nearest real sub-verb when one is close enough to suggest ("" when none is).
+//
+// The SHAPE decides, not the suggestion. An invocation shaped like a
+// subcommand call — a single whitespace-free token followed by a record id —
+// is refused whether or not any registered sub-verb lies within an edit
+// distance of two. The earlier form returned "no refusal" once its
+// did-you-mean search came up empty, so a far miss (`intent grill itd-5`) was
+// filed as the title of a durable record by a guard that had already concluded
+// the input was a subcommand call (iss-2609091647589392). A refusal with no
+// name to suggest lists the registered sub-verbs instead; the callers format
+// that, since only they know what "nothing created" is called on their path.
+//
+// Two shapes deliberately stay outside this test. Free-text prose — several
+// words, or one argument carrying whitespace — is never a sub-verb call, so a
+// legitimate create whose first word merely resembles a verb still files. And a
+// LONE unknown token is left to loneBareToken below, whose message is written
+// for exactly that shape; a near-miss lone token is still named here first.
+func unrecognizedSubverb(parent *cobra.Command, args []string) (string, bool) {
 	if len(args) == 0 {
 		return "", false
 	}
+	// A first word carrying whitespace is prose the shell handed over whole
+	// (`abcd intent "widen the public api"`), never a sub-verb spelling.
+	if strings.IndexFunc(args[0], unicode.IsSpace) >= 0 {
+		return "", false
+	}
+	idShaped := len(args) > 1 && recordIDRe.MatchString(args[1])
 	if successor, ok := retiredSubverbs[parent.Name()][args[0]]; ok {
 		// A retired spelling is refused in every shape a subcommand call takes:
 		// a lone token, a token before a record id, or the retired verb followed
 		// by one of the SUCCESSOR's own registered sub-verbs (`review ingest`
 		// must refuse just as `review itd-N` does — the pre-rename two-word
-		// invocation may never be swallowed as free text and filed).
-		if len(args) == 1 || recordIDRe.MatchString(args[1]) || isSubverbOf(parent, successor, args[1]) {
+		// invocation may never be swallowed as free text and filed). It is
+		// resolved before the distance search, so a retired verb keeps naming
+		// its successor rather than falling into the far-miss listing.
+		if len(args) == 1 || idShaped || isSubverbOf(parent, successor, args[1]) {
 			return successor, true
 		}
 	}
-	shapedLikeSubcommand := len(args) == 1 || recordIDRe.MatchString(args[1])
-	if !shapedLikeSubcommand {
+	if len(args) > 1 && !idShaped {
 		return "", false
 	}
 	best, bestDist := "", 3 // accept edit distances 1 and 2
+	for _, name := range subverbNames(parent) {
+		if d := levenshtein(args[0], name); d > 0 && d < bestDist {
+			best, bestDist = name, d
+		}
+	}
+	if best != "" {
+		return best, true
+	}
+	// Far miss. The token+record-id shape is a subcommand call whatever the
+	// distance, so it is refused with no name to offer; the lone-token shape
+	// falls through to loneBareToken.
+	return "", idShaped
+}
+
+// subverbNames lists parent's registered sub-verbs in cobra's own order,
+// dropping hidden commands and the generated help/completion pair — the set the
+// distance search measures against, and the set a far-miss refusal names so the
+// caller learns what the verb actually has.
+func subverbNames(parent *cobra.Command) []string {
+	var names []string
 	for _, c := range parent.Commands() {
 		name := c.Name()
 		if c.Hidden || name == "help" || name == "completion" {
 			continue
 		}
-		if d := levenshtein(args[0], name); d > 0 && d < bestDist {
-			best, bestDist = name, d
-		}
+		names = append(names, name)
 	}
-	return best, best != ""
+	return names
 }
 
 // loneBareToken reports whether the positional is one whitespace-free word — the
@@ -3109,9 +3366,11 @@ func suspectedTypoedSubcommand(parent *cobra.Command, args []string) (string, bo
 // sub-verb call. `abcd capture nosuchthing` and `abcd capture resolve` are the
 // same shape; only the second happens to reach cobra's dispatcher first, so the
 // first was swallowed as issue text and minted a durable record at exit 0
-// (iss-2608221328552172). suspectedTypoedSubcommand catches a lone token NEAR a
+// (iss-2608221328552172). unrecognizedSubverb catches a lone token NEAR a
 // real sub-verb (edit distance 1–2); this catches every other lone token, which
-// is the half that had no guard at all.
+// is the half that had no guard at all. The far-miss branch there deliberately
+// leaves this shape alone, so the message below — written for a lone word — is
+// the one a lone word gets.
 //
 // Prose is unambiguous and still files. The canonical create path passes ONE
 // argument carrying whitespace — the shell has already eaten the quotes around
@@ -3272,6 +3531,47 @@ func orDefault(v, def string) string {
 	return v
 }
 
+// memoryStoreRoot is the memory front door's first step: the checkout whose
+// substrate the verb addresses, resolved from the working directory rather than
+// taken to BE it.
+//
+// Every verb below built its request with the raw working directory, which the
+// core reads as an explicit root and therefore never resolves
+// (iss-2609091729516940). Both halves failed, and quietly. From a subdirectory
+// bare `memory` reported "store not present" against a checkout whose store
+// holds pages — a sentence that reads as a true fact about the repository — and
+// `memory lint` read that absent store, reported a clean bill of health for
+// pages it never opened, and wrote its run log under the caller. `memory ingest`
+// went further: it exited 0 and laid a COMPLETE second substrate — pages, index,
+// registry, log — under the subdirectory, and outside every repository it laid
+// one in whatever plain directory the caller stood in. Pages filed that way are
+// read by no ask, no lint, and nobody looking for them.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals, the same ones the
+// capture, decide and spec front doors ask for. Refusing outside a checkout is
+// the whole point: the substrate is per-repository, and a store laid where the
+// caller stood is the defect rather than a lenient fallback. Nothing is read and
+// nothing is written on a refusal, because the core is never reached.
+//
+// The stray-store note rides the same step, on stderr: a resolution that
+// silently steps over a substrate the defect already laid would leave those
+// pages where nothing will ever look again. It REPORTS and moves nothing, and
+// the bare board stays read-only.
+func memoryStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the memory store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd memory: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, memory.RelDir, "memory store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
 // newMemoryCommand builds the `memory` sub-tree over internal/core/memory. Bare
 // `memory` renders read-only store status; ingest/ask/lint are the mutating and
 // diagnostic verbs (04-surfaces/07). The distiller (ingest) and synthesizer
@@ -3283,11 +3583,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Curated knowledge substrate; bare invocation is read-only status",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			st, err := memory.Bare(cwd)
+			st, err := memory.Bare(repoRoot)
 			if err != nil {
 				return err
 			}
@@ -3323,12 +3623,12 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Distil an external source into cited memory pages (https URLs only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			res, err := memory.Ingest(memory.IngestRequest{
-				RepoRoot:     cwd,
+				RepoRoot:     repoRoot,
 				Source:       args[0],
 				KeepOriginal: keepOriginalFlag,
 				Distiller:    pagesJSONDistiller(cmd, pagesJSON),
@@ -3379,11 +3679,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Query memory and synthesise a cited answer",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			req := memory.AskRequest{RepoRoot: cwd, Question: strings.Join(args, " "), TopN: topN}
+			req := memory.AskRequest{RepoRoot: repoRoot, Question: strings.Join(args, " "), TopN: topN}
 			if fileBack {
 				page, err := readPageJSON(cmd, pageJSON)
 				if err != nil {
@@ -3415,11 +3715,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Curator health-check over the whole memory store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := memory.Lint(memory.LintRequest{RepoRoot: cwd})
+			res, err := memory.Lint(memory.LintRequest{RepoRoot: repoRoot})
 			if err != nil {
 				return err
 			}
@@ -3544,7 +3844,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Redact and store a raw session transcript (reads a file or stdin)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
@@ -3567,11 +3867,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if sess == "" {
 				return fmt.Errorf("history capture: --session <id> is required when reading from stdin")
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := history.Capture(captureRoot(cwd), rootSHA, sess, raw, orDefault(kind, "native"))
+			res, err := history.Capture(repoRoot, rootSHA, sess, raw, orDefault(kind, "native"))
 			if err != nil {
 				return err
 			}
@@ -3602,11 +3898,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "List stored transcripts for this repo, newest first",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			records, err := history.List(rootSHA)
+			records, err := history.List(repoRoot, rootSHA)
 			if err != nil {
 				return err
 			}
@@ -3644,11 +3940,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "List transcripts that ended but are not yet redacted into the store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			staged, err := history.ListStaged(rootSHA)
+			staged, err := history.ListStaged(repoRoot, rootSHA)
 			if err != nil {
 				return err
 			}
@@ -3680,15 +3976,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Redact and store every staged transcript for this repo",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := history.Drain(captureRoot(cwd), rootSHA, 0)
+			res, err := history.Drain(repoRoot, rootSHA, 0)
 			if err != nil {
 				return err
 			}
@@ -3734,11 +4026,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Show one stored transcript's metadata and redacted body",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			rec, body, err := history.Read(rootSHA, args[0])
+			rec, body, err := history.Read(repoRoot, rootSHA, args[0])
 			if err != nil {
 				return err
 			}
@@ -3788,6 +4080,36 @@ func captureRoot(cwd string) string {
 	return cwd
 }
 
+// historyStore is the shared front-door step for every `history` verb: resolve
+// this repo's root-commit SHA and its transcript store, and print the store's
+// own out-of-band diagnostics on stderr.
+//
+// Resolving here is what makes the store exist for a machine that never ran
+// `abcd ahoy install` (iss-95), and it is also where a corpus at the legacy
+// location is migrated. The notes are printed rather than swallowed for the
+// reason rulesRoot prints its own: a resolution that moved a corpus, or that
+// declined to honour an opt-in the caller wrote, must not be silent about it.
+// stderr, never stdout — the JSON envelope on stdout stays machine-readable.
+func historyStore(cmd *cobra.Command) (string, string, error) {
+	rootSHA, err := repoRootSHA()
+	if err != nil {
+		return "", "", err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", err
+	}
+	repoRoot := captureRoot(cwd)
+	store, err := history.Resolve(repoRoot, rootSHA)
+	if err != nil {
+		return "", "", err
+	}
+	for _, n := range store.Notes {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
+	}
+	return repoRoot, rootSHA, nil
+}
+
 // rulesRoot resolves the repo root the modular-rules loader (and the shell
 // guard, which shares it) must read: the nearest directory holding a .abcd,
 // searched from cwd upward but never past the git working tree, and cwd itself
@@ -3797,8 +4119,16 @@ func captureRoot(cwd string) string {
 // above the working tree govern the session (GHSA-vvqc-3mv2-5p49). The
 // resolution lives in core (rules.ResolveRoot) because it is behaviour, not
 // formatting; this front door only hands it cwd.
-func rulesRoot(cwd string) string {
-	return rules.ResolveRoot(cwd)
+// notes carries the resolver's own diagnostics (the ownership refusal, an
+// ignored trust declaration) out of band on w — stderr, never the injected
+// context — because a resolution that declined to read a repository's own
+// configuration must not be silent about it.
+func rulesRoot(cwd string, w io.Writer) string {
+	res := rules.Resolve(cwd)
+	for _, note := range res.Notes {
+		fmt.Fprintf(w, "abcd %s\n", note)
+	}
+	return res.Root
 }
 
 func repoRootSHA() (string, error) {

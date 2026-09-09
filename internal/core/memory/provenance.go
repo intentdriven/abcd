@@ -32,8 +32,14 @@ var wordRe = regexp.MustCompile(`\w+`)
 // Store paths
 // ---------------------------------------------------------------------------
 
+// RelDir is the store's repo-relative directory, slash-separated. It is what a
+// front door names when it has a checkout root and no store path yet — the
+// stray-store walk a resolving front door makes reports a substrate sitting
+// below the checkout root, and it has only the relative shape to look for.
+const RelDir = ".abcd/memory"
+
 // Dir returns the canonical store path <repoRoot>/.abcd/memory.
-func Dir(repoRoot string) string { return filepath.Join(repoRoot, ".abcd", "memory") }
+func Dir(repoRoot string) string { return filepath.Join(repoRoot, filepath.FromSlash(RelDir)) }
 
 // SourcesIndexPath returns .abcd/memory/.sources_index.json.
 func SourcesIndexPath(repoRoot string) string {

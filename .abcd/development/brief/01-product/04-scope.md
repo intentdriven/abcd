@@ -16,7 +16,7 @@ The scope this brief covers is bounded by what is bundled into the eight planned
 - `/abcd` — top-level where-am-i status board (per itd-20) — see [`04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md)
 - `/abcd:reflect` — phase retrospective (per itd-24) — see [`04-surfaces/09-reflect.md`](../04-surfaces/09-reflect.md)
 
-**Operator-internal commands** (wiring under `commands/`, NOT part of the user-facing surface above): `/abcd:run` — the itd-29 autonomous-run operator surface (`status`/`pause`/`resume`/`preflight`; read-mostly over the pluggable autonomous-run seam ([adr-27](../../decisions/adrs/0027-autonomous-run-pluggable-seam.md)), v1 never starts or kills the loop). See [`04-surfaces/README.md`](../04-surfaces/README.md) for the user-facing-vs-operator-internal boundary.
+**Operator-internal commands** (wiring rather than user-facing surface): `/abcd:run` — the itd-29 autonomous-run operator surface (`status`/`pause`/`resume`/`preflight`; read-mostly over the pluggable autonomous-run seam ([adr-27](../../decisions/adrs/0027-autonomous-run-pluggable-seam.md)), v1 never starts or kills the loop) — is a **design target**: itd-29 sits in `intents/planned/`, and no `run` verb or `commands/run.md` is on any shipped surface. The operator-internal verbs the binary does register are `changelog`, `completion`, `hook`, `rules` and `spec`, and the class is defined by the absence of a `commands/` file rather than by the presence of one. See [`04-surfaces/README.md`](../04-surfaces/README.md) for the user-facing-vs-operator-internal boundary and the record that delivered each.
 
 **Phased intents — derived, never hand-counted here.** The intents each phase
 bundles are named in that phase doc's `## Scope` section — the single source of
@@ -33,7 +33,7 @@ acceptance gates on every other spec per the three-kinds taxonomy in
 
 See [`phases/README.md`](../../roadmap/phases/README.md) for the phase plan and each phase's intent scope, and [`intents/README.md`](../../intents/README.md) for the intent index. Capture history lives in `git log` and each intent file's own provenance, never in this page (per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md)).
 
-**Plumbing infrastructure** (16 agents — the canonical roster is the catalog in [`05-internals/01-agents.md`](../05-internals/01-agents.md) — 11 adapters, harness shim, prompt-quality stack, hooks): see [`05-internals/`](../05-internals).
+**Plumbing infrastructure** (fifteen agents — the canonical roster is the catalog in [`05-internals/01-agents.md`](../05-internals/01-agents.md) — 11 adapters, harness shim, prompt-quality stack, hooks): see [`05-internals/`](../05-internals).
 
 ## What comes in a later phase
 
@@ -41,6 +41,6 @@ See [`phases/README.md`](../../roadmap/phases/README.md) for the phase plan and 
 
 The later-phase bench is the live `drafts/` corpus (per adr-34 no phase-scoped intent lives there, so nothing is subtracted); it is enumerated — and kept non-drifting via a filesystem-derived command rather than a hand-count — in the canonical [`06-delivery/03-out-of-scope.md`](../06-delivery/03-out-of-scope.md). itd-31 and itd-32 are superseded (preserved as historical record in `intents/superseded/`).
 
-Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>` and to `shipped/` via `/abcd:intent ship <itd-N>` (or automatically when the linked spec closes).
+Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>`. It reaches `shipped/` when its linked spec is closed: closing the spec is what ships the intent, and there is no separate ship command.
 
 The brief does not get re-versioned. What has shipped is defined by which phases are complete and which intents are in `shipped/`; this brief stays the canonical current-state design record.
