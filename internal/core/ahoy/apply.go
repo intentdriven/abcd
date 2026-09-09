@@ -487,7 +487,17 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		}
 	}
 	if ic.Visibility == "private" && onPath("trufflehog") && ic.ScanDeep == nil {
-		v := a.resolveValue("scan_deep", []string{"true", "false"}, "false") == "true"
+		// The prompter returns the typed line verbatim, so the answer is re-checked
+		// against the choice set exactly as the three slots above are. Comparing it
+		// to "true" instead would fold every other spelling into false: a person who
+		// answered "yes" to deep secret scanning would get it switched OFF, silently
+		// — an unparseable answer must never resolve to a WEAKER scan than the one
+		// the operator asked for. An explicit "false" still disables it deliberately.
+		ans := a.resolveValue("scan_deep", scanDeepChoices, scanDeepDefault)
+		if !inSet(ans, scanDeepChoices) {
+			return nil // no valid scan_deep => partial (never persist a typo)
+		}
+		v := ans == "true"
 		ic.ScanDeep = &v
 	}
 
@@ -593,7 +603,7 @@ func (a *applyCtx) applyScanDeepOverride(ic *InstallConfig) bool {
 		return false
 	}
 	v, ok := a.overrides["scan_deep"]
-	if !ok || (v != "true" && v != "false") {
+	if !ok || !inSet(v, scanDeepChoices) {
 		return false
 	}
 	want := v == "true"
@@ -637,7 +647,7 @@ func overridesWouldChange(cwd string, overrides map[string]string) bool {
 		differs("oracle_backend", oracleBackendChoices, ic.OracleBackend) {
 		return true
 	}
-	if v, ok := overrides["scan_deep"]; ok && (v == "true" || v == "false") && ic.ScanDeep != nil {
+	if v, ok := overrides["scan_deep"]; ok && inSet(v, scanDeepChoices) && ic.ScanDeep != nil {
 		if *ic.ScanDeep != (v == "true") {
 			return true
 		}

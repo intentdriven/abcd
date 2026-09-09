@@ -9,11 +9,11 @@ found_during: "2026-07-08 multi-agent review"
 found_at: "internal/core/ahoy/apply.go"
 ---
 
-RE-SCOPED 2026-09-09 against the shipped tree. Three of the four instances in the
-original acceptance corpus were fixed elsewhere and are struck below; two things
-survive, and only one of them is what the record was mostly about.
+RE-SCOPED 2026-09-09 against the shipped tree. Every instance in the original
+acceptance corpus but one is fixed and struck below; the single survivor is what
+the record was mostly about.
 
-SURVIVING — `ahoy.Status` is silent dead scaffolding. `internal/core/ahoy/apply.go:1352`
+SURVIVING — `ahoy.Status` is silent dead scaffolding. `internal/core/ahoy/apply.go:1362`
 declares `func Status(cwd string) (string, error)`, the bare-command human summary,
 and NOTHING calls it: not the CLI, not the plugin surface, not a test. The
 original record said "zero callers outside tests"; the true state is stronger —
@@ -24,24 +24,16 @@ among the sub-verbs that ship on the CLI while `abcd ahoy status` exits 2, which
 Either the verb gets a front door or the function and the chapter line go; what
 is not tenable is an exported renderer nothing can reach.
 
-SURVIVING (narrower than recorded) — the `scan_deep` answer is still coerced,
-on the collect-missing path only. `apply.go:490` reads
-`v := a.resolveValue("scan_deep", []string{"true", "false"}, "false") == "true"`,
-so any answer that is not the literal `true` becomes `false` with no diagnostic.
-`resolveValue` (`apply.go:531`) hands the choice set to the prompter but does not
-enforce it, and `stdinPrompter.Prompt` (`internal/surface/cli/cli.go:2462`)
-returns the typed line verbatim — so a user who answers `yes` at the
-`scan_deep (true/false) [false]:` prompt gets the deep secret scanner switched
-OFF, having said to switch it on. The asymmetry is the point: the three
-neighbouring slots re-validate what the prompter returned and abandon the install
-rather than persist a typo — `apply.go:473`, `:479`, `:485` each test
-`inSet(value, choices)` and `return nil`, the partial-install path. `scan_deep`
-alone skips that check. The override path is already validated
-(`applyScanDeepOverride`, `apply.go:591`, ignores anything but `true`/`false`),
-so the gap is the interactive/collect-missing route.
-
 FIXED ELSEWHERE, struck from the corpus:
 
+- The `scan_deep` half of the persist-unvalidated claim, split out as
+  `iss-2609090642031172` and resolved with it. The collect-missing slot re-checks
+  the prompter's answer through `inSet(ans, scanDeepChoices)` and takes the
+  partial-install path on anything else, so an answer outside the choice set —
+  `yes` to a question about deep secret scanning — can no longer persist a weaker
+  scan than the operator asked for. `scanDeepChoices` and `scanDeepDefault` sit
+  beside the three enum choice sets in `detect.go`, and the override path and the
+  would-change probe read the same set rather than restating `true`/`false`.
 - The `docs_target` and `oracle_backend` halves of the persist-unvalidated claim.
   6cf0df8a (2026-07-15) added the `inSet` re-validation; `apply.go:478-481` now
   carries the comment `// no valid docs target => partial (never persist a typo)`
@@ -49,7 +41,7 @@ FIXED ELSEWHERE, struck from the corpus:
   answer outside its choice set.
 - `registerRepo` is neither untested nor silent. `internal/core/ahoy/lockrace_test.go`
   drives it directly through two concurrent registrations, and c88c94b4
-  (2026-08-28) replaced the swallowed error with a change-note: `apply.go:825`
+  (2026-08-28) replaced the swallowed error with a change-note: `apply.go:835`
   appends `history registration for <sha> skipped (<err>)` on a lock failure, and
   the lineage-conflict branch below it reports its own refusal (iss-128).
 - `doctor` and `dry-run` have behavioural tests against a real temporary repo.
