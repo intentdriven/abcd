@@ -8,7 +8,7 @@ Every `AskUserQuestion` (or equivalent harness call) shows:
 
 1. **Current state** ("Current: private")
 2. **Consequence of each option** ("Switching to public removes the `.abcd/` namespace (design record, native spec store, memory) from tracking")
-3. **The question + how to change later** ("Keep private? — change later with `abcd config set repo.visibility public`")
+3. **The question + how to change later** ("Keep private? — change later by re-running `abcd ahoy install --visibility public`")
 
 No silent defaults. No surprises.
 
@@ -54,12 +54,16 @@ All inter-agent data is JSON; markdown is a render step at the end of each pass.
 
 ## 5. Reports as JSON + MD pairs
 
-Every command emits `<command>-report.json` (full structured detail) and `<command>-report.md` (human skim summary, rendered from JSON). Both stored in `.abcd/logbook/<command>/<timestamp>/`.
+**A design target: no shipped verb writes such a pair yet.** Every command emits `<command>-report.json` (full structured detail) and `<command>-report.md` (human skim summary, rendered from JSON). Both stored in `.abcd/.work.local/logs/<command>/<timestamp>/`.
 
-## 6. `.abcd/logbook/` layout
+What ships today is narrower. Most verbs write no report at all: `lint`, `capture`, `intent`, `guard`, `version`, `changelog`, `rules`, `spec`, `identity`, `banlist` and `docs lint` are read-only renders, and `abcd lint` in particular is documented as performing zero writes. Where run output exists it lands in the local ephemeral tier under `.abcd/.work.local/logs/<area>/<run>/`, which is the shape the pattern generalises.
+
+## 6. `.abcd/.work.local/logs/` layout
+
+**Also a design target, and one already relocated once.** The tree below is what the tier is designed to hold rather than what a checkout holds today. Its root was once `.abcd/logbook/`; a 2026-07-12 adjudication moved run output to the local ephemeral tier and retired that name, which must not be re-minted and is held retired by an armed detector (iss-73, [`02-constraints/04-naming.md`](../02-constraints/04-naming.md)). What the tier actually holds today is narrower and differently shaped: the memory lint's run output at `logs/memory/`, and the scan and audit-history directories the privacy scanner skips over.
 
 ```
-.abcd/logbook/
+.abcd/.work.local/logs/
 ├── ahoy/<timestamp>/
 │   ├── ahoy-report.json
 │   ├── ahoy-report.md
@@ -84,23 +88,25 @@ Every command emits `<command>-report.json` (full structured detail) and `<comma
 │   └── report.{json,md}          # sub-tier ∈ {review, spec-mg, consistency, shape, chain, lifeboat}:
 │                                 #   audit/review-<ts>/      (Role 1 itd-1 pass / /abcd:intent audit,        itd-1)
 │                                 #   audit/spec-mg-<ts>/     (Role 1 MG004 pass / itd-37 boilerplate receipt, itd-37)
-│                                 #   audit/consistency-<ts>/ (Role 2 / /abcd:intent consistency,   itd-48 — superseded itd-31; live as of spc-29)
-│                                 #   audit/shape-<ts>/       (Role 3 / /abcd:intent shape,         itd-34)
+│                                 #   audit/consistency-<ts>/ (Role 2 / /abcd:intent consistency,   itd-48 — superseded itd-31; a later phase, spc-29 predecessor store, not yet a sub-verb)
+│                                 #   audit/shape-<ts>/       (Role 3 / /abcd:intent shape,         itd-34, later phase)
 │                                 #   audit/chain-<ts>/       (default app of /abcd:audit chain,    itd-16, later phase)
 │                                 #   audit/lifeboat-<ts>/    (sibling app of /abcd:audit lifeboat, itd-35, later phase)
 │                                 # Directory name (audit/) reflects "this is the on-disk audit trail"
 │                                 # regardless of which verb produced it; sub-tier prefix names the verb.
-│                                 # `chain` and `lifeboat` are sub-verbs of /abcd:audit umbrella;
-│                                 # `audit`, `consistency`, `shape` are sub-verbs of /abcd:intent.
+│                                 # `audit` (with its `ingest` child) is the one registered sub-verb
+│                                 # of /abcd:intent; `consistency` and `shape` are designed sub-verbs
+│                                 # of it, and `chain` and `lifeboat` of the /abcd:audit umbrella,
+│                                 # none of the four registered on the shipped surface.
 │                                 # Bare /abcd:audit and bare /abcd:intent are status+help only.
 ├── sota-audits/<date>.{json,md}  # periodic prompt SOTA audit findings (option D)
 └── phase/<phase-id>/             # validation cadence outputs per phase (Phase 0 study, Phase 1 acceptance, etc.)
     └── <test-name>.{json,md}
 ```
 
-**Note: `.abcd/logbook/` is for reports only.** Coordination state (file locks like `shape.lock`, multi-agent claims per itd-33) lives at `.abcd/coordination/` — a *sibling* of `logbook/` under `.abcd/`, not a subdirectory. See `04-surfaces/05-intent.md § 7` for the canonical lock-path contract (`.abcd/coordination/shape.lock`).
+**Note: `.abcd/.work.local/logs/` is for reports only.** Coordination state (file locks like `shape.lock`, multi-agent claims per itd-33) lives at `.abcd/coordination/` — its own directory under `.abcd/`, not a subdirectory of the log tier. See `04-surfaces/05-intent.md § 7` for the canonical lock-path contract (`.abcd/coordination/shape.lock`).
 
-**Later-phase additions to `.abcd/logbook/`** (appear when their parent intent ships):
+**Later-phase additions to `.abcd/.work.local/logs/`** (appear when their parent intent ships):
 - `dredge/<timestamp>/` — cross-corpus synthesis output (itd-25)
 - `frontier/<timestamp>/` — per-run frontier-mapping events (Frontier Awareness; idea-4)
 - `doc-fidelity/<input_fingerprint>/` — the doc-fidelity anti-drift pass planned under **draft intent itd-60** (`intents/planned/itd-60-doc-fidelity-anti-drift.md`; not yet built). **A planned EXCEPTION to the `<command>/<timestamp>/` convention above:** this tier is designed to be **content-addressed**, keyed by the run's `input_fingerprint` (a sha256 over the deterministic trust+reality inputs — receipts, target manifest, bundle manifest, prompts) rather than a timestamp, so an identical re-run reuses the same `report.json` + bound `decision.json` instead of accreting a fresh ts dir. A `decision.json` (approve/defer) binds to a fingerprint dir; `deferred.jsonl` sits directly under `doc-fidelity/` (not inside a fingerprint dir) so an open obligation stays discoverable after the gate clears. The **pre-fingerprint-failures/`<timestamp>/`** sibling is the one ts-keyed slice (a failure that occurs *before* a well-formed fingerprint can be computed — invalid config/manifest, intent-resolution conflict — has no reusable content-addressed report, so its diagnostics are ts-keyed and never reused). This layout contract is the design target for the tier's on-disk shape once itd-60 ships.
@@ -115,12 +121,12 @@ Every command emits `<command>-report.json` (full structured detail) and `<comma
 
 The pairing is load-bearing: a single self-closing comment cannot delimit a multi-line block, so itd-61/spc-75's derivation dedup needs a **matched** begin/end pair to exclude exactly the freshly-stamped lines and nothing else. `consumed_receipts_sha` is the sha256 over the sorted per-receipt **stable trust-and-reality digests** — the same `{spec_id, parse_error, rollup_agreement, criteria:[{criterion, verdict, detail_key}]}` digest the report's `input_fingerprint` uses (deterministic trust+reality fields only; no LLM-authored `detail` *value*, no timestamp). So the marker is reproducible across reviewer re-runs, does not churn on a forensic-prose rewording, but **does** change when a trust field changes. The grammar pins `origin=itd-60` and requires full lowercase sha256 widths (a short or foreign-origin marker is not valid coverage). **spc-75 will fail closed on any unmatched or legacy single-line marker.** The grammar will be owned by the planned doc-fidelity capability (`internal/core/docfidelity`), first created with the stamping under spc-74.3; the CI gate, the pre-commit advisory wrapper, and the spec-close preflight will all reference it rather than re-implement it.
 
-**Later-phase sibling additions under `.abcd/`** (NOT under logbook — operational state, not run reports):
+**Later-phase sibling additions under `.abcd/`** (NOT under the log tier: operational state, not run reports):
 - `.abcd/coordination/audit/<YYYY-MM-DD>.jsonl` — multi-agent coordination append-log (itd-33; JSONL, daily UTC rotation, committed). Sibling local-only state (gitignored): `.abcd/coordination/active-work.json` and `.abcd/coordination/*.lock`.
 
 Tracked alongside the rest of `.abcd/` per the visibility rule ([`03-configuration.md § 1`](03-configuration.md#1-visibility-driven-gitignore-policy)) — committed in private repos, gitignored in public. No special exception. Sensitivity is handled at launch time: the launch payload manifest ([`../04-surfaces/04-launch.md § 2`](../04-surfaces/04-launch.md#2-curated-release-artefact-default-deny)) excludes the entire `.abcd/` namespace from what ships publicly.
 
-**`logbook/` vs `voyage/` distinction:** `logbook/<command>/<timestamp>/` holds *per-run* command output (reports, prompts asked, forensic checkpoint state — abcd ships no resume sub-verb, so checkpoints are post-mortem only) — ephemeral relative to a single invocation. `~/.abcd/voyage/<source-root-sha>/` (operator level, per adr-35; see [`../04-surfaces/03-embark.md § 7`](../04-surfaces/03-embark.md#7-voyage-layout--embarkdisembark-provenance-and-history)) holds *cross-run* embark/disembark provenance and history that the project carries forward. Both are tracked under the visibility rule; they answer different questions ("what happened in this run?" vs "what is the lifeboat history of this repo?").
+**The log tier vs `voyage/`:** `.work.local/logs/<command>/<timestamp>/` holds *per-run* command output (reports, prompts asked, forensic checkpoint state — abcd ships no resume sub-verb, so checkpoints are post-mortem only) — ephemeral relative to a single invocation. `~/.abcd/voyage/<source-root-sha>/` (operator level, per adr-35; see [`../04-surfaces/03-embark.md § 7`](../04-surfaces/03-embark.md#7-voyage-layout--embarkdisembark-provenance-and-history)) holds *cross-run* embark/disembark provenance and history that the project carries forward. Both are tracked under the visibility rule; they answer different questions ("what happened in this run?" vs "what is the lifeboat history of this repo?").
 
 ## 7. Vendor-agnostic adapters with environment branching
 
@@ -154,7 +160,7 @@ abcd produces three classes of durable artefact, each with distinct curation rul
 | Class | Behaviour | Examples |
 |---|---|---|
 | **Regenerable** | Overwritten in place; regenerated from authoritative inputs on next run. Single canonical version at any time; history preserved separately if at all. | the lifeboat at `<dest>` (latest disembark snapshot only, out-of-tree per adr-35), `~/.abcd/voyage/<source-root-sha>/` cards, sota-audit findings, intent-fidelity audit reports |
-| **Append-only** | Never modified after creation; new entries accrete; old entries preserved verbatim. | `.abcd/logbook/<command>/<timestamp>/` per-run reports, `~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl`, capture issue-ledger entries (immutable post-create) |
+| **Append-only** | Never modified after creation; new entries accrete; old entries preserved verbatim. | `.abcd/.work.local/logs/<command>/<timestamp>/` per-run reports, `~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl`, capture issue-ledger entries (immutable post-create) |
 | **Compounding-curated** | Accumulates across sessions/runs; pages added, modified, contradicted, deprecated by curator. Carries provenance per entry; lint surfaces drift between curated form and source-of-truth. | `.abcd/memory/` (multi-upstream knowledge substrate per itd-36), `.abcd/work/` (shared working record — CONTEXT.md, DECISIONS.md, the `.abcd/work/issues/` ledger), the brief itself |
 
 **Why the taxonomy is load-bearing:** without it, "regenerable" and "compounding" get conflated, the curator agent (e.g., `principle-distiller` post-itd-36) loses its contract with consumers, and a pattern like itd-36's memory-unification looks like ceremony when it's actually a different lifecycle class than the lifeboat. Naming the three classes lets each artefact namespace declare its rules explicitly and lets cross-document fidelity audit (Role 2) catch drift.

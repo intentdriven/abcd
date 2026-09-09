@@ -47,8 +47,13 @@ core and the packaging boundary holds.
   per-surface records, applying the visibility-driven gitignore policy, injecting
   the conventions marker block and the rules loader (itd-3), and bootstrapping the
   user-scope history store. There is no `abcd init` and no config get/set pair:
-  install is the one write path, and the bare invocation, `doctor` and `dry-run`
-  are the read-only halves.
+  install is the write path a person reaches for, and the bare invocation,
+  `doctor`, `dry-run`, `identity-check` and a bare `remote` are the read-only
+  halves. Two further forms write: `uninstall` takes abcd back out again, and
+  `remote apply` turns on the forge's own secret scanning. The full surface is
+  the machine-checked table in
+  [`04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md); this milestone is what
+  install has to do, not the whole verb.
 - **Launch**: `/abcd:launch` prepares a **curated release** from the single repo
   ([adr-28](../../decisions/adrs/0028-single-repo-curated-release.md)) and never
   publishes one. `abcd launch --dry-run` previews the bundle read-only, `abcd
@@ -59,11 +64,14 @@ core and the packaging boundary holds.
 
 ## 2. Native history, capture, memory
 
-- **history seam**: the native local redacted transcript store
+- **history seam**: the native redacted transcript store
   ([adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)), keyed on the
-  repo's root commit, gitignored, and redacted on capture before anything lands on
-  disk. An external transcript tool is an opt-in import over the same store. This
-  is the research and benchmark corpus abcd studies its own flows against.
+  repo's root commit and redacted on capture before anything lands on disk. It
+  lives outside every checkout at the user level, so a repo tracks none of it;
+  pulling the store into a checkout, where the gitignored local tier holds it, is
+  a per-machine opt-in. An external transcript tool is an opt-in import over the
+  same store. This is the research and benchmark corpus abcd studies its own
+  flows against.
 - **capture**: the issue ledger (itd-4), so an observation reaches a durable
   record in one line.
 - **memory**: the curated knowledge substrate (itd-36); a vendor memory harvest
@@ -122,9 +130,10 @@ the planned-seams list, and the operator surface over it is itd-29, in
 
 - **probe before pack**: `abcd disembark probe` ships **before a packer exists at
   all** ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)).
-  It produces a coverage report over a corpus of repos of mixed record quality,
-  and the section list that survives that aggregate is what the packer is then
-  built to. A blank section is a first-class result rather than a failure.
+  It reports one repository per run, and `abcd disembark coverage` folds those
+  reports into the cross-repo table over a corpus of mixed record quality. The
+  section list that survives that aggregate is what the packer is then built to.
+  A blank section is a first-class result rather than a failure.
 - **disembark**: the pack reads the source repo's settled artefacts through the
   source readers, synthesises the lifeboat at the operator-chosen destination, and
   runs the host-delegated audit. The source repo is **never written to**, so a
@@ -139,14 +148,15 @@ the planned-seams list, and the operator surface over it is itd-29, in
 ## Validation cadence
 
 After **every milestone**, run disembark against each repo of the validation
-corpus, or the relevant read-only preview sub-verb: `probe` for the coverage
-report, `plan` for the full file set a pack would write without writing anything.
-There is no default destination and no in-tree home; the corpus repos are read,
-never written.
+corpus, or the relevant read-only preview sub-verb: `probe` for one repository's
+section coverage, `coverage` for the aggregate across them, `plan` for the full
+file set a pack would write without writing anything. There is no default
+destination and no in-tree home; the corpus repos are read, never written.
 
-Catch regressions early, and read the **coverage aggregate** across the corpus,
-which is the experiment's own readout (adr-35). Acceptance is recorded in the
-gitignored local tier, which a 2026-07-12 adjudication made the home for runtime
-output (iss-73). `.abcd/logbook/` is a retired location, held retired by an armed
-detector: `TestNoRetiredLogbookLocationInSource` fails the build if any non-test Go
-source under `internal/` so much as names it.
+Catch regressions early, and read the **coverage aggregate** that `coverage`
+folds those probe reports into, which is the experiment's own readout (adr-35).
+Acceptance is recorded in the gitignored local tier, which a 2026-07-12
+adjudication made the home for runtime output (iss-73). `.abcd/logbook/` is a
+retired location, held retired by an armed detector:
+`TestNoRetiredLogbookLocationInSource` fails the build if any non-test Go source
+under `internal/` so much as names it.
