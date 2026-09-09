@@ -32,10 +32,13 @@ repo whose stamp says it is current.
 
 
 Bare `/abcd:ahoy` shows read-only status and mutates nothing. The slash command
-dispatches every sub-verb, the write verbs included, and each announces that it
-writes before it runs. `status` is a plugin-page alias for the bare form and has
-no CLI sub-command behind it: `abcd ahoy status` is refused as an unknown
-command. Every other word ships on the CLI, and the table above is that set.
+dispatches every sub-verb but `identity-check`, the write verbs included, and
+each announces that it writes before it runs. `identity-check` is a plain
+command-line entrypoint, because its exit code is the whole point of it and its
+home is a pre-commit hook or CI rather than a conversation. `status` is a
+plugin-page alias for the bare form and has no CLI sub-command behind it: `abcd
+ahoy status` is refused as an unknown command. Every other word ships on the
+CLI, and the table above is that set.
 
 - **`install`** installs or updates abcd in this repo, covering first install
   and upgrade alike. It runs the detection pass, then an apply pass over the
@@ -43,7 +46,10 @@ command. Every other word ships on the CLI, and the table above is that set.
 - **`uninstall`** is reversible removal: the marker block, abcd's own `PATH`
   entry where abcd owns it, and the provenance record that proves that
   ownership. It leaves `.abcd/` entirely intact, never mutates the hook
-  manifest, and a later `install` re-installs cleanly.
+  manifest, and a later `install` re-installs cleanly. It finds the entry by
+  scanning `PATH`, so an entry that was installed into a directory `PATH` does
+  not carry is removed by naming that directory again: `--bin-dir <dir>`, the
+  same value the install was given.
 - **`dry-run`** renders the detection envelope as JSON and mutates nothing.
 - **`doctor`** runs the full detection pass plus a read-only audit pass. Its
   distinct contribution is the audit, and its distinct value in the text render
@@ -128,8 +134,13 @@ user-scope directory for machine-local state.
 The same inventory is stated as a table under *The two `.abcd/` scopes* in
 [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes);
 the two are one list and must agree. The three declaration files at the bottom
-are caller-controlled and line-oriented, honoured only when each is a regular
-file this uid owns that no one else can write.
+are caller-controlled and line-oriented. `trusted-roots` and
+`local-transcript-roots` are the two that widen what a session will trust, so
+each is honoured only when it is a regular file this uid owns that no one else
+can write, and a file failing either test is ignored with one line saying which
+test it failed. `path-entry` is read through the shared guarded read instead:
+a symlinked, non-regular or oversized file is refused, but its ownership and its
+permissions are not checked, and the hook shims that consult it check neither.
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd
@@ -144,16 +155,20 @@ The detection pass classifies the working directory into one of three kinds, and
 
 | Folder kind | Strong marker? | `.git/`? | What `install` does |
 |---|---|---|---|
-| `managed-repo` | yes | yes | the repo install flow, as an idempotent update |
+| `managed-repo` | yes | not consulted | the repo install flow, as an idempotent update |
 | `unmanaged-repo` | no | yes | the same flow, after `install` adopts it |
 | `unmanaged-folder` | no | no | nothing to act on: reports and stops |
 
 Classification keys on a **signal hierarchy**, and this is the part worth
-holding: abcd-owned markers decide managed against unmanaged, while `.git/` only
-disambiguates shape. A strong marker is a registry entry for this root-commit
-SHA, an in-tree `.abcd/` directory, or an abcd marker block in the conventions
-file. A `.git/` directory means the folder is *a* repo, not that it is
-*managed*: necessary, never sufficient.
+holding: abcd-owned markers decide managed against unmanaged, and they settle it
+before `.git/` is looked at, so `.git/` only separates the two unmanaged kinds
+from each other. A strong marker is a registry entry for this root-commit SHA or
+an abcd marker block in the conventions file. An in-tree `.abcd/` directory is
+recorded as a signal and reported, but it does not make a folder managed on its
+own (iss-88): a directory holding nothing but `.abcd/` reports as
+`unmanaged-folder`. A `.git/` directory means the folder is *a* repo, not that
+it is *managed*, and a folder carrying a marker block is treated as a managed
+repo whether or not it is a git checkout at all.
 
 Bare `/abcd:ahoy` **reports the kind and stops.** It never adopts an unmanaged
 repo; it names `install` as the way to do that. The two unmanaged kinds need
@@ -224,11 +239,18 @@ mutates it: the manifest is plugin-static. A missing or malformed manifest
 surfaces as a non-resolvable diagnostic.
 
 The shipped manifest wires five event types, and every event command is a
-resolving shim rather than a plain binary call. Four of them self-provision:
-`UserPromptSubmit`, `SessionStart`, `PreToolUse` and `PreCompact` each attempt
-`hooks/bootstrap.sh` when the plugin-root binary is missing, recording the try
-in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
-window. `SessionEnd` is the deliberate exception and downloads nothing: it fires
+resolving shim rather than a plain binary call. Four of them self-provision.
+`UserPromptSubmit`, `PreToolUse` and `PreCompact` each attempt
+`hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
+try in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
+window. `SessionStart` runs it once at the top of every session instead,
+whether or not the binary is already there, and relays whatever it says: with
+the binary in place the script's own fast path costs a file test and does the
+provisioning housekeeping that keeps the next plugin update served from the
+local cache rather than the network, and it is the one place a binary that no
+longer matches its provenance record is called out. It stamps the same marker,
+so the three throttled events see a recent try, and reads no throttle of its
+own. `SessionEnd` is the deliberate exception and downloads nothing: it fires
 as the session is going away, the host cancels a slow hook there rather than
 wait, and a mid-flight fetch loses the very transcript the hook exists to
 capture (iss-2608210934566223). It resolves the plugin root, then `PATH`, then
@@ -243,9 +265,10 @@ string comparison and no hashing, because adr-46 keeps the fast path at one file
 test. Both install routes write it, and `ahoy install` writes it for **every**
 entry shape it leaves on `PATH`: the owned copy, the pinned symlink it degrades
 to when there is no verified artefact to copy from, and the dev shim. An entry
-the record does not name is an install this rung refuses while the board reports
-it healthy, which is the one disagreement between the two surfaces that neither
-surface states (iss-2609091126475539).
+the record does not name is an install this rung refuses, and it is the one
+state where a filesystem test alone would call the install healthy while every
+hook quietly degrades, so the board raises it as a gap in its own right and
+names the fix (iss-2609091126475539).
 
 Recording the dev shim does not widen the rung. The record is home-scoped and
 written only by an install the operator ran themselves, which is exactly the

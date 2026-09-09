@@ -114,11 +114,15 @@ nothing on any conflict and exits non-zero.
 
 ```
 2 conflict(s) (nothing was written):
-  • .abcd/development/specs/open/spc-12.md  (exists-differs)
   • .abcd/work/issues/open/iss-7.md  (exists-differs)
+  • .abcd/development/specs/open/spc-12.md  (exists-differs)
 
 nothing was written — resolve the conflicts and re-run
 ```
+
+The order is the lifeboat's, not the target repo's: the planner walks the
+lifeboat in sorted order and the report keeps that order, so the same lifeboat
+always reports the same conflicts in the same sequence.
 
 The conflict list is a value the core hands back. If the operator wants it on
 disk, the surface writes it; the core does not.

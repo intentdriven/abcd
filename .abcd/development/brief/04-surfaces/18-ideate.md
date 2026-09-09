@@ -128,6 +128,14 @@ something a later reader depends on:
   written, so a run from a subdirectory reaches the checkout's own store rather
   than a second one beneath it.
 
+That resolution has a reporting half as well as a refusing one. If a second
+research store already exists somewhere below the checkout root, the run
+succeeds against the checkout's own store and names the stray one on the way
+past, saying that it was left untouched and that anything filed there reaches no
+gate and no release cut. It is a notice, not a refusal, and it moves nothing:
+records already sitting in a store nobody reads are the thing worth being told
+about, and stepping over it in silence is how they stay lost. Relay the line.
+
 The research directory itself is created when absent: nothing else in abcd
 establishes it, so refusing would fail the first run in every repository, after
 the three host legs have already been paid for. The create is exclusive, which is
