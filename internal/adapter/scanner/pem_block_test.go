@@ -21,6 +21,20 @@ func pemFixture() (header, body1, body2, tail, end string) {
 	return
 }
 
+// pemNarrowFixture returns the three body renderings iss-2609090932441377
+// reports as lost, and the identifier the opener must keep on refusing. Each
+// is assembled at run time like every other marker here, and each is a
+// REPEATED pattern rather than key material — deliberately, since the rule
+// under test reads the run's alphabet and not its entropy, so a fixture that
+// scanned as a key would be both unsafe and unnecessary.
+func pemNarrowFixture() (narrow32, tail26, narrow30, identifier string) {
+	narrow32 = strings.Repeat("Qq7Z", 8)         // 32 chars, carries a digit
+	tail26 = strings.Repeat("Q", 24) + "=" + "=" // 26 chars, carries the pad
+	narrow30 = strings.Repeat("Rr3", 10)         // 30 chars, carries a digit
+	identifier = "CertificateRotationPolicy"     // 25 chars, pure [A-Za-z]
+	return
+}
+
 func redactAllN(t *testing.T, text string) (string, int) {
 	t.Helper()
 	findings := ScanText(text, Identity{}, DefaultPatterns(), DefaultIdentitySeverities(), "t")
@@ -375,6 +389,7 @@ func TestRedactPEMMentionedHeaderDoesNotOpenOnAnIdentifier(t *testing.T) {
 func TestRedactPEMOpenerStillTakesEveryRealKeyShape(t *testing.T) {
 	header, body1, body2, tail, end := pemFixture()
 	narrow1, narrow2 := strings.Repeat("Q", 20), strings.Repeat("R", 20)
+	narrow32, tail26, narrow30, _ := pemNarrowFixture()
 	cases := map[string]struct {
 		block []string
 		leaks []string
@@ -383,11 +398,17 @@ func TestRedactPEMOpenerStillTakesEveryRealKeyShape(t *testing.T) {
 		"open block, 64-wide":     {[]string{header, body1, body2}, []string{body1, body2}},
 		"open block, blank first": {[]string{header, "", body1, body2}, []string{body1, body2}},
 		"open block, narrow wrap": {[]string{header, narrow1, narrow2, body1}, []string{narrow1, narrow2, body1}},
-		"armour header":           {[]string{header, "Proc-Type: 4,ENCRYPTED", "DEK-Info: AES-128-CBC,0123456789ABCDEF0123456789ABCDEF", "", body1, tail, end}, []string{body1, tail, end}},
-		"indented":                {[]string{"    " + header, "    " + body1, "    " + body2, "    " + tail, "    " + end}, []string{body1, body2, tail, end}},
-		"quoted":                  {[]string{`  "` + header + `",`, `  "` + body1 + `",`, `  "` + body2 + `",`, `  "` + tail + `",`, `  "` + end + `"`}, []string{body1, body2, tail, end}},
-		"diff-prefixed":           {[]string{"+" + header, "+" + body1, "-" + body2, "+" + tail, "+" + end}, []string{body1, body2, tail, end}},
-		"line-numbered":           {[]string{"  1\t" + header, "  2\t" + body1, "  3\t" + body2, "  4\t" + tail, "  5\t" + end}, []string{body1, body2, tail, end}},
+		// iss-2609090932441377: a block truncated or re-wrapped to ONE visible
+		// body line, which the pair rule cannot see and a width bar cannot
+		// reach.
+		"open block, one narrow line":     {[]string{header, narrow32}, []string{narrow32}},
+		"open block, padding tail":        {[]string{header, "", tail26}, []string{tail26}},
+		"open block, narrow then a blank": {[]string{header, narrow30, ""}, []string{narrow30}},
+		"armour header":                   {[]string{header, "Proc-Type: 4,ENCRYPTED", "DEK-Info: AES-128-CBC,0123456789ABCDEF0123456789ABCDEF", "", body1, tail, end}, []string{body1, tail, end}},
+		"indented":                        {[]string{"    " + header, "    " + body1, "    " + body2, "    " + tail, "    " + end}, []string{body1, body2, tail, end}},
+		"quoted":                          {[]string{`  "` + header + `",`, `  "` + body1 + `",`, `  "` + body2 + `",`, `  "` + tail + `",`, `  "` + end + `"`}, []string{body1, body2, tail, end}},
+		"diff-prefixed":                   {[]string{"+" + header, "+" + body1, "-" + body2, "+" + tail, "+" + end}, []string{body1, body2, tail, end}},
+		"line-numbered":                   {[]string{"  1\t" + header, "  2\t" + body1, "  3\t" + body2, "  4\t" + tail, "  5\t" + end}, []string{body1, body2, tail, end}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -398,6 +419,71 @@ func TestRedactPEMOpenerStillTakesEveryRealKeyShape(t *testing.T) {
 			for _, leak := range c.leaks {
 				if strings.Contains(out, leak) {
 					t.Errorf("%q… survived the block consumer:\n%s", leak[:8], out)
+				}
+			}
+			if !strings.HasPrefix(out, "before the key\n") || !strings.HasSuffix(out, "\nafter the key") {
+				t.Errorf("prose around the block was disturbed:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestRedactPEMNarrowOpenerDiscriminates is the one table that has to hold
+// both directions at once, because the two failures it stands between are the
+// same rule read from opposite ends. Raising the single-line opener to a key
+// body's characteristic width kept a mentioned header from eating an
+// identifier (eb7b6502) and, in the same stroke, stopped redacting a block
+// whose visible body is ONE line under that width — a key truncated by a log
+// rotation or re-wrapped narrow by a mail client, which the pair rule cannot
+// see because there is no second line (iss-2609090932441377). Width alone
+// cannot separate them: the identifier is 25 characters and the lost body is
+// 32, so any bar that clears one clears the other.
+//
+// The discriminator is therefore not width but two things width says nothing
+// about, and the table isolates each by holding the other fixed. A pasted
+// header is one whose marker ENDS its line, as a block pasted into a
+// transcript does behind whatever gutter or speaker prefix it carries; a
+// NAMED header has prose after it, because a sentence goes on. And a key
+// body's run carries at least one byte of the base64 alphabet that is not a
+// letter — a digit, '+', '/' or the '=' pad — where an identifier a person
+// types is letters and word structure. Rows four and five each fail exactly
+// one half, and each must be refused on that half alone.
+func TestRedactPEMNarrowOpenerDiscriminates(t *testing.T) {
+	pasted := "-----BEGIN " + "RSA PRIVATE KEY-----"
+	named := "We rotate on the " + pasted + " header, per:"
+	narrow32, tail26, narrow30, identifier := pemNarrowFixture()
+	underline := strings.Repeat("=", 24)
+
+	cases := map[string]struct {
+		block []string
+		body  string
+		taken bool
+	}{
+		"pasted header, one narrow run":         {[]string{pasted, narrow32}, narrow32, true},
+		"pasted header, padding tail":           {[]string{pasted, "", tail26}, tail26, true},
+		"pasted header, narrow run and a blank": {[]string{pasted, narrow30, ""}, narrow30, true},
+		"pasted header behind a gutter":         {[]string{`  "` + pasted + `",`, `  "` + narrow32 + `",`}, narrow32, true},
+		"pasted header, an identifier":          {[]string{pasted, identifier}, identifier, false},
+		"named header, one narrow run":          {[]string{named, narrow32}, narrow32, false},
+		"pasted header, a setext underline":     {[]string{pasted, underline}, underline, false},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			out := redactAll(t, "before the key\n"+strings.Join(c.block, "\n")+"\nafter the key")
+			collapsed := strings.Contains(out, "[redacted-pem-body")
+			if c.taken {
+				if !collapsed {
+					t.Errorf("no block was collapsed; a truncated body survives:\n%s", out)
+				}
+				if strings.Contains(out, c.body) {
+					t.Errorf("the body line %q… survived the block consumer:\n%s", c.body[:8], out)
+				}
+			} else {
+				if collapsed {
+					t.Errorf("a block was collapsed where none opened:\n%s", out)
+				}
+				if !strings.Contains(out, c.body) {
+					t.Errorf("the line %q… was consumed as key material:\n%s", c.body[:8], out)
 				}
 			}
 			if !strings.HasPrefix(out, "before the key\n") || !strings.HasSuffix(out, "\nafter the key") {
