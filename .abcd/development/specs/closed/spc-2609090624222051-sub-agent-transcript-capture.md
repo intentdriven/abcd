@@ -332,8 +332,11 @@ makes that ordinary rather than pathological, so four mechanisms bound it:
   nothing staged, exit 0.
 - **A degraded scanner.** Unchanged and untouched. Sub-agent capture runs
   through the same `Capture`, so the refusal on a degraded scanner or a surviving
-  blocking span applies by construction; the tests assert it on the sub-agent
-  path specifically rather than inferring it.
+  blocking span applies by construction. The blocking-span half is asserted on the
+  sub-agent path; the DEGRADED-SCANNER half is not asserted anywhere, on any path,
+  and holds by construction alone. The guard predates this work, so this delivery
+  inherits it rather than establishing it, and an unarmed guard is exactly the
+  shape this repository refuses to trust elsewhere.
 
 ### Surfaces
 
@@ -387,8 +390,10 @@ Each step left the tree green, and each had its own tests.
   `TestListForSessionReturnsMainThreadAndEverySubagent`,
   `TestReadResolvesFilenameThenAgentThenSession`,
   `TestSubagentRecordFilenameNamesTheAgent`.
-- **ac-4 (a degraded scanner refuses).** Unchanged `Capture`, asserted on the
-  sub-agent path: `TestLineageFieldsAreRedactedWithTheBody`,
+- **ac-4 (a degraded scanner refuses).** Unchanged `Capture`. The tests below
+  cover redaction and a surviving blocking span on the sub-agent path; NONE of
+  them degrades a scanner, so that refusal is unasserted:
+  `TestLineageFieldsAreRedactedWithTheBody`,
   `TestBlockingSpanInAgentTypeRefusesTheWrite`,
   `TestCaptureRejectsAMalformedLineageScalar`,
   `TestQuarantineHoldsUnredactedTextAtOwnerOnlyModes`.

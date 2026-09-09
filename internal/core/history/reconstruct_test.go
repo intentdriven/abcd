@@ -750,24 +750,192 @@ func TestReconstructCannotBeForgedByTranscriptText(t *testing.T) {
 		t.Fatalf("the transcript text must still be reproduced:\n%s", art)
 	}
 
-	own := linesOutsideFences(art)
-	for _, forged := range []string{
-		"## Agent `ffffffff`",
-		"### Turn 99 — assistant · claude-opus",
-		"> **[JOINED** agent `ffffffff` here — its result reached this thread at this turn. **]**",
-	} {
-		for _, ln := range own {
-			if ln == forged {
-				t.Errorf("transcript text forged the document's own structure: %q appears as a line of the artefact itself, not as contained content\n%s", forged, art)
-				break
-			}
-		}
-	}
+	assertNoForgedLines(t, art, "transcript text")
 
 	// Item 7 of the guide is what a reader acts on. It has to describe the
 	// renderer that shipped, not one in which text is the exception.
 	guide := art[strings.Index(art, "## How to read this document"):strings.Index(art, "\n## Completeness\n")]
 	if !strings.Contains(guide, "fence") {
 		t.Errorf("the guide must tell the reader that turn content is contained in fenced blocks; got:\n%s", guide)
+	}
+}
+
+// --------------------------------------------------------------------------
+// The metadata half of the same forgery class (iss-2609091913570877)
+// --------------------------------------------------------------------------
+
+// forgedLineShapes are the three lines the artefact asserts as its OWN
+// structure. A PREFIX match, not equality: `## Agent ...` at the head of a line
+// is a heading however much trailing junk follows it, so a check that only
+// compared whole lines would pass a payload with one character appended.
+var forgedLineShapes = []string{
+	"## Agent `ffffffff`",
+	"### Turn 99 — assistant · claude-opus",
+	"> **[JOINED** agent `ffffffff` here — its result reached this thread at this turn. **]**",
+}
+
+// assertNoForgedLines fails when any line the document asserts as its own
+// begins with one of the shapes only the document may emit.
+func assertNoForgedLines(t *testing.T, art, where string) {
+	t.Helper()
+	for _, ln := range linesOutsideFences(art) {
+		for _, forged := range forgedLineShapes {
+			if strings.HasPrefix(ln, forged) {
+				t.Errorf("%s forged the document's own structure: a line of the artefact itself begins %q\nline: %q\n\n%s",
+					where, forged, ln, art)
+			}
+		}
+	}
+}
+
+// TestReconstructCannotBeForgedByTranscriptMetadata is the other half of
+// TestReconstructCannotBeForgedByTranscriptText. Fencing contained the block
+// CONTENT and left the block and turn METADATA formatted straight into the
+// document: a tool call's name and id, a tool result's identifier, a turn's
+// model name, an unknown block's type, and the tool call id the agent header
+// reports for a spawn placed from the transcript. Every one of those is a
+// transcript-supplied string outside any fence, so a line break in it emits
+// lines of the document itself — the same forgery, through a door the text
+// test never opened.
+func TestReconstructCannotBeForgedByTranscriptMetadata(t *testing.T) {
+	_, home := setupStore(t)
+
+	enc := func(v map[string]any) string {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	// One transcript that plants the payload in every unfenced transcript-derived
+	// scalar the renderer interpolates.
+	body := strings.Join([]string{
+		// model, tool call name, tool call id.
+		enc(map[string]any{
+			"type": "assistant", "timestamp": "2026-09-01T10:00:00Z",
+			"message": map[string]any{
+				"id": "m1", "role": "assistant", "model": forgedStructure,
+				"content": []map[string]any{{
+					"type": "tool_use", "id": forgedStructure, "name": forgedStructure,
+					"input": map[string]any{"q": "x"},
+				}},
+			},
+		}),
+		// tool result identifier — and, because its text names the sub-agent,
+		// the id the agent header reports as the spawning tool call.
+		enc(map[string]any{
+			"type": "user", "timestamp": "2026-09-01T10:00:01Z",
+			"message": map[string]any{
+				"role": "user",
+				"content": []map[string]any{{
+					"type": "tool_result", "tool_use_id": forgedStructure,
+					"content": "Async agent launched. agentId: agentforge runs in the background.",
+				}},
+			},
+		}),
+		// an unknown block type, which the renderer names in its own prose.
+		enc(map[string]any{
+			"type": "assistant", "timestamp": "2026-09-01T10:00:02Z",
+			"message": map[string]any{
+				"id": "m2", "role": "assistant", "model": "claude-test-1",
+				"content": []map[string]any{{"type": forgedStructure, "text": "an unknown block"}},
+			},
+		}),
+	}, "\n") + "\n"
+
+	plantRecord(t, home, "20260901T100000.000000000Z-sess-forgemeta.md", []string{
+		"session_id: sess-forgemeta",
+		"captured_at: 2026-09-01T10:00:00Z",
+	}, body)
+	plantRecord(t, home, "20260901T100010.000000000Z-sess-forgemeta-agentforge.md", []string{
+		"session_id: sess-forgemeta",
+		"captured_at: 2026-09-01T10:00:10Z",
+		"agent_id: agentforge",
+		"agent_type: explorer",
+		"spawn_depth: 1",
+		"spawn_attribution: transcript",
+	}, `{"type":"assistant","timestamp":"2026-09-01T10:00:11Z","message":{"id":"a1","role":"assistant","model":"claude-test-1","content":[{"type":"text","text":"done"}]}}`+"\n")
+
+	res := reconstructFixture(t, ReconstructOptions{SessionID: "sess-forgemeta"})
+	art := string(res.Artefact)
+
+	// The header must actually have taken the transcript rung, or the spawn
+	// tool call site this test exists to cover was never rendered.
+	if !strings.Contains(art, "placed by the spawning transcript's own tool result") {
+		t.Fatalf("the fixture must place agentforge from the transcript, so the header renders the transcript-supplied tool call id:\n%s", art)
+	}
+	// Nothing is dropped: the payload is still reported, just not as structure.
+	if !strings.Contains(art, "ffffffff") {
+		t.Errorf("the metadata must still be reproduced, only contained:\n%s", art)
+	}
+	assertNoForgedLines(t, art, "transcript metadata")
+}
+
+// tableCells splits one Markdown table row on its UNESCAPED pipes, which is
+// what a reader's parser does. A cell that carries an escaped pipe is one cell.
+func tableCells(row string) []string {
+	var cells []string
+	var cur strings.Builder
+	esc := false
+	for _, c := range row {
+		switch {
+		case esc:
+			cur.WriteRune(c)
+			esc = false
+		case c == '\\':
+			esc = true
+		case c == '|':
+			cells = append(cells, cur.String())
+			cur.Reset()
+		default:
+			cur.WriteRune(c)
+		}
+	}
+	cells = append(cells, cur.String())
+	return cells
+}
+
+// TestReconstructTimelineCellsCannotBeForgedByRecordMetadata covers the same
+// class through the record door. A record's agent_type cannot carry a line
+// break — the frontmatter is parsed a line at a time, so one could never be
+// read back — but nothing stops it carrying a pipe or a backtick, and the
+// timeline table interpolates it into a cell. A pipe there invents columns and
+// shifts every later cell one place left, so the table that carries this
+// document's only statement about time reports spans against the wrong agents.
+func TestReconstructTimelineCellsCannotBeForgedByRecordMetadata(t *testing.T) {
+	_, home := setupStore(t)
+	plantRecord(t, home, "20260901T100000.000000000Z-sess-forgecell.md", []string{
+		"session_id: sess-forgecell",
+		"captured_at: 2026-09-01T10:00:00Z",
+	}, `{"type":"user","timestamp":"2026-09-01T10:00:00Z","message":{"role":"user","content":"go"}}`+"\n")
+	plantRecord(t, home, "20260901T100010.000000000Z-sess-forgecell-agentcell.md", []string{
+		"session_id: sess-forgecell",
+		"captured_at: 2026-09-01T10:00:10Z",
+		"agent_id: agentcell",
+		"agent_type: rev|iewer | 9 | `main thread`",
+		"spawn_depth: 1",
+		"spawn_attribution: unattributed",
+	}, `{"type":"assistant","timestamp":"2026-09-01T10:00:11Z","message":{"id":"c1","role":"assistant","model":"claude-test-1","content":[{"type":"text","text":"done"}]}}`+"\n")
+
+	res := reconstructFixture(t, ReconstructOptions{SessionID: "sess-forgecell"})
+	art := string(res.Artefact)
+
+	var header, row string
+	for _, ln := range strings.Split(art, "\n") {
+		if strings.HasPrefix(ln, "| agent | type |") {
+			header = ln
+			continue
+		}
+		if header != "" && strings.Contains(ln, "agentcell") {
+			row = ln
+			break
+		}
+	}
+	if header == "" || row == "" {
+		t.Fatalf("the timeline table must carry a row for agentcell:\n%s", art)
+	}
+	if got, want := len(tableCells(row)), len(tableCells(header)); got != want {
+		t.Errorf("a record's agent_type invented table columns: the row parses as %d cells, the header as %d\nheader: %s\nrow:    %s",
+			got, want, header, row)
 	}
 }

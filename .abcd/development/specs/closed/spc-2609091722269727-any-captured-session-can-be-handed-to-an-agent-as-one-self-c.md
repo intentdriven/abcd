@@ -155,9 +155,16 @@ still reproduced, because this is containment and not redaction.
 
 ### Self-containment and determinism
 
-Records are named by basename everywhere; the artefact carries no store path, no
-harness path and no absolute path of any kind, and the CLI additionally
-home-redacts every path it prints or marshals. The artefact carries **no
+Records are named by basename everywhere; the artefact carries no store path and
+no harness path of its own, and the CLI additionally home-redacts every path it
+prints or marshals. What the renderer EMITS carries no absolute path. What it
+REPRODUCES does: transcript text contains whatever paths the participants typed,
+and a real artefact of one session carries fourteen home-rooted and 1488
+temporary-directory occurrences inside quoted turns. They are kept deliberately.
+Stripping a path out of somebody's recorded words would falsify the record the
+artefact exists to preserve, and home paths were already redacted on the way into
+the store, so what remains is content rather than leakage. The self-containment
+test is scoped accordingly, to what the renderer emits. The artefact carries **no
 generation timestamp** — that lives on the telemetry alone — so the same records
 reconstruct to identical bytes. `TestReconstructionIsSelfContained` and
 `TestReconstructIsDeterministic` are the two detectors.

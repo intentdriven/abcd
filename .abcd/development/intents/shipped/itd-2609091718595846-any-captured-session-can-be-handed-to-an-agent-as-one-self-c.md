@@ -17,7 +17,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> **abcd renders one whole session — the main thread and every sub-agent it spawned — as a single file an agent can be handed as context, beside a machine-readable file describing what the work cost.** A session's transcripts are of interest as a set, not one at a time, and a corpus of scattered per-agent records is not a set until something assembles it. `abcd history reconstruct <session-id>` emits one Markdown artefact and one telemetry JSON. The artefact carries every turn, names each sub-agent twice in the thread that spawned it — spawned here, joined here — and leads with a timeline table so a reader can see which delegates overlapped instead of inferring an order the document never asserted. It names its records by basename and carries no absolute path, so it reads with the store gone. The telemetry reports span, turns, tokens, tool calls, models and agent types, per session and per agent, and states its own gaps.
+> **abcd renders one whole session — the main thread and every sub-agent it spawned — as a single file an agent can be handed as context, beside a machine-readable file describing what the work cost.** A session's transcripts are of interest as a set, not one at a time, and a corpus of scattered per-agent records is not a set until something assembles it. `abcd history reconstruct <session-id>` emits one Markdown artefact and one telemetry JSON. The artefact carries every turn, names each sub-agent twice in the thread that spawned it — spawned here, joined here — and leads with a timeline table so a reader can see which delegates overlapped instead of inferring an order the document never asserted. It names its records by basename and emits no path of its own, so it reads with the store gone, while the turns it quotes keep whatever paths were spoken in them, because editing somebody's recorded words to tidy a path would falsify the record. The telemetry reports span, turns, tokens, tool calls, models and agent types, per session and per agent, and states its own gaps.
 >
 > "Handing a model the session is the whole point — I want to ask what happened and have the answer be in the file, not in six places it cannot reach," said Maya, an autonomous-development practitioner. "And I want the numbers to be numbers. If the measurement cannot tell me what it was missing, I cannot compare two runs, and then it is decoration."
 
@@ -82,9 +82,91 @@ We expect reconstruction and telemetry to need no new instrumentation, because t
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-3b513d68dbd6 -->
-Fidelity review OWED (receipt rcp-3b513d68dbd6).
+<!-- abcd-review: INGESTED receipt=rcp-3b513d68dbd6 -->
+Fidelity review — receipt rcp-3b513d68dbd6 (verifier abcd:intent-auditor claude-opus-5[1m]).
 
+Provenance: abcd:intent-auditor@claude-opus-5[1m] · rubric_hash sha256:542ed2cd51ff938717a3f47b2b332e8d47910beec0ca7ecdfd238ae7edf5ced5 · prompt_hash sha256:1cac37e1eae2c1aaf9bd6d68cae2bd5982b0c8510b3e65abcc50e3fd7d354b3a
+Input attestations: diff:319da670..d751109c over internal/core/history/reconstruct{,_render,_test}.go and internal/surface/cli/history_reconstruct{,_test}.go (commit 9af9a30a principally, plus the anti-forgery part of d751109c)@sha256:7fae363926bc98ce56325a25fe491aef31e39411e0ad2ea2a9ac0b55f23cc4e7; run:read-only `history reconstruct` over the live store: sessions 14e2fa13 (55 records, 7.7 MB, 0.7s), 6d426540 (99 agents, 18.8 MB, 2.0s), db0f4683 (72 sub-agents), 33bd3e3c@-;
+
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: One artefact holds the main thread and every stored sub-agent, and each placed sub-agent is marked at the exact turn of the spawning thread that launched it (SPAWNED marker), at its join turn, in a per-agent provenance block and in the head timeline table; on session 14e2fa13 all 54 sub-agents were placed and 54 SPAWNED and 54 JOINED markers appear. The appended-rather-than-nested form satisfies the criterion AS WRITTEN — the words require the work to be ATTRIBUTABLE to the spawn point, not rendered at it, and the marker names that turn precisely. Concerns: (a) attribution is not universal — on session db0f4683, 28 of 72 sub-agents had no recoverable spawn point and were segregated under '## Unattributed sub-agents'; (b) for depth>1 agents the spawn turn is in the parent agent's thread, not 'the main thread' the criterion names; (c) the attribution structure itself is forgeable — a transcript's tool_use.name, tool_result.tool_use_id or message.model is interpolated OUTSIDE any fence, and a value carrying newlines emits '## Agent `ffffffff`', '### Turn 99 — assistant' and a '[JOINED …]' marker byte-for-byte as lines of the document (reproduced on a scratch copy of HEAD).
+  evidence: internal/core/history/reconstruct_render.go:282 — "fmt.Fprintf(b, "\n> **[SPAWNED** agent `%s` (%s) here — its transcript is in section \"Agent `%s`\". "+"
+  evidence: internal/core/history/reconstruct.go:801 — "func locateSpawn(host, sub *thread) (int, string, string) {"
+  evidence: internal/core/history/reconstruct_render.go:75 — "fmt.Fprintf(&body, "\n## Unattributed sub-agents\n\nThe %d agent(s) below belong to this "+"
+  evidence: internal/core/history/reconstruct_render.go:345 — "fmt.Fprintf(b, "\n**tool call** `%s`", orDash(blk.Name))"
+- ac-2 — MET: `<session>.telemetry.json` is written beside the artefact by the CLI and carries every measure the criterion names — tokens, wall_clock_seconds, turns, tool_calls keyed by tool name, models and agent_types — per session and again per agent, plus a completeness block; measured on session 14e2fa13 it reported tokens 374419512 over 1801 api_responses against 3711 usage_lines_seen, tool_calls {Bash:1613, Read:208, Agent:87, …}, models [< synthetic>, claude-opus-5, claude-sonnet-5] and 7 agent_types. Tokens are de-duplicated once per distinct message id inside a whole-thread map, not summed per line: the measured inflation the naive sum would have produced was 2.06x on 14e2fa13 and 2.00x / 1.91x / 1.78x on three further real sessions, confirming the factor varies per session and both counters are published side by side so a consumer can see the de-duplication happened.
+  evidence: internal/core/history/reconstruct.go:596 — "case seenUsage[key]:"
+  evidence: internal/core/history/reconstruct.go:608 — "t.tokens.APIResponses++"
+  evidence: internal/core/history/reconstruct.go:282 — "Turns TurnCounts `json:"turns"`"
+  evidence: internal/core/history/reconstruct.go:284 — "ToolCalls map[string]int `json:"tool_calls"`"
+  evidence: internal/surface/cli/history_reconstruct.go:111 — "if err := fsutil.WriteFileAtomic(telemetryPath, tel, 0o644); err != nil {"
+- ac-3 — MET_WITH_CONCERNS: The artefact inlines every turn of every stored thread, names records by BASENAME only, and leads with a header, a 'How to read this document' guide, a completeness block and a timeline, so a reader needs neither the store nor the harness to read it; the 7.7 MB artefact from session 14e2fa13 carries no store path and no store root, and it carries no generation timestamp so the same records render to identical bytes. The outcome the criterion states therefore holds. Concerns: (a) the intent's own ground for it is false of the delivered artefact — the press release says it 'carries no absolute path' and the spec repeats 'no absolute path of any kind', while the real artefact contains 14 '/Users/…' and 1488 '/private/…' occurrences inside reproduced transcript text (a defensible fidelity choice, but neither record states it, and no code comment records the reasoning either); (b) nothing detects the overclaim — TestReconstructionIsSelfContained asserts only the store root, the '.abcd/history'/'transcripts/' path shapes and record basenames; (c) the guide the self-explaining reader acts on states 'everything outside one is this document', which the metadata-forgery hole under ac-1 makes untrue.
+  evidence: internal/core/history/reconstruct.go:174 — "// Record is the record's BASENAME. Never a path: the artefact and its"
+  evidence: internal/core/history/reconstruct_render.go:133 — "b.WriteString("\n## How to read this document\n\n")"
+  evidence: internal/core/history/reconstruct_test.go:522 — "if strings.Contains(art, ".abcd/history") || strings.Contains(art, "transcripts/") {"
+  evidence: .abcd/development/specs/closed/spc-2609091722269727-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md:159 — "harness path and no absolute path of any kind, and the CLI additionally"
+
+Gap audit:
+- honoured:
+  - One wired verb emits one Markdown artefact and one telemetry JSON per session, from a core that writes nothing and knows no path
+    evidence: internal/surface/cli/history.go:437 — "historyCmd.AddCommand(newHistoryReconstructCommand(asJSON))"
+    evidence: internal/surface/cli/history_reconstruct.go:98 — "func writeReconstruction(dir string, res history.Reconstruction) ([]string, error) {"
+  - Tokens counted once per response, not once per transcript line, with both counts published so the de-duplication is visible
+    evidence: internal/core/history/reconstruct.go:587 — "t.tokens.UsageLinesSeen++"
+    evidence: internal/core/history/reconstruct.go:596 — "case seenUsage[key]:"
+  - Concurrency is represented rather than linearised: a timeline table carries the spans, section order asserts nothing about time, and a CONCURRENCY line counts the spawning turns that ran without the delegate's result
+    evidence: internal/core/history/reconstruct_render.go:193 — "| agent | type | depth | parent | spawned | started | ended | joined | turns | tokens |"
+    evidence: internal/core/history/reconstruct_render.go:222 — "- CONCURRENCY: %d turn(s) of `%s` ran between the spawn and the join, and none of them had this agent's result"
+  - A completeness block that states its own gaps — absent main thread, unplaceable agents, records found and not used, unparseable lines, un-de-duplicable usage, absent field names, elisions
+    evidence: internal/core/history/reconstruct.go:223 — "type Completeness struct {"
+    evidence: internal/core/history/reconstruct_render.go:166 — "- sub-agents with no recoverable spawn point: %d of %d"
+  - An agent nothing can place is listed separately and labelled, never placed by guess; a named-but-absent parent is not silently replaced by the main thread
+    evidence: internal/core/history/reconstruct.go:780 — "host = nil"
+    evidence: internal/core/history/reconstruct_render.go:75 — "## Unattributed sub-agents"
+  - Both size answers shipped and hold at the observed working scale: spine mode with counted gap markers and an 8 KiB per-block cap that marks and counts what it removes
+    evidence: internal/core/history/reconstruct_render.go:367 — "func (r *renderer) cap(s string) string {"
+    evidence: internal/surface/cli/history_reconstruct.go:35 — "const defaultMaxBlockBytes = 8 << 10"
+- diverged:
+  - Sub-agent sections nested at their spawn points by spawn_depth — delivered instead as a contiguous main thread with appended sections, twin inline markers and a timeline table. This is a signed-off reversal against the PLAN, argued from the corpus, and it does not diverge from ac-1's words, which ask for attributability rather than placement.
+    evidence: internal/core/history/reconstruct.go:12 — "// The spec calls for each sub-agent's section to be nested at its spawn point."
+    evidence: .abcd/development/specs/closed/spc-2609091722269727-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md:106 — "### The layout: appended sections, doubly marked — a reversal"
+  - 'Structure that transcript text cannot forge' — containment is applied uniformly to block CONTENT but not to block METADATA. tool_use.name, tool_result.tool_use_id and message.model are interpolated outside any fence; a value carrying newlines emits the document's own '## Agent `<id>`', '### Turn < n> — …' and '[JOINED …]' lines verbatim outside a fence, which is the exact class d751109c set out to close. Verified on a scratch copy of HEAD.
+    evidence: internal/core/history/reconstruct_render.go:345 — "fmt.Fprintf(b, "\n**tool call** `%s`", orDash(blk.Name))"
+    evidence: internal/core/history/reconstruct_render.go:352 — "fmt.Fprintf(b, "\n**tool result** for `%s`\n\n", orDash(blk.ToolUseID))"
+    evidence: internal/core/history/reconstruct_render.go:306 — "fmt.Fprintf(b, " · %s", t.model)"
+  - The reader-facing guide states an unconditional rule — 'Everything inside a fence is something somebody said; everything outside one is this document' — which is not the rule that shipped: the metadata fields above are outside every fence and are somebody's bytes.
+    evidence: internal/core/history/reconstruct_render.go:151 — ""**Everything inside a fence is something somebody said; everything outside one is this " +"
+  - 'It names its records by basename and carries no absolute path' — records are basenames, but the artefact does carry absolute paths inside reproduced transcript text (measured: 14 '/Users/…' and 1488 '/private/…' in the 14e2fa13 artefact). Neither the intent nor the spec records the fidelity reason for keeping them.
+    evidence: .abcd/development/intents/shipped/itd-2609091718595846-any-captured-session-can-be-handed-to-an-agent-as-one-self-c.md:20 — "It names its records by basename and emits no path of its own, so it reads with the store gone, while the turns it quotes keep whatever paths were spoken in them, because editing somebody's recorded words to tidy a path would falsify the record."
+    evidence: internal/core/history/reconstruct_render.go:337 — "writeFenced(b, "", blk.Text)"
+  - Reconstruct(rootSHA, sessionID) grew into an options struct carrying Mode and MaxBlockBytes — a documented, measured change of signature rather than a silent one.
+    evidence: internal/core/history/reconstruct.go:93 — "type ReconstructOptions struct {"
+- missing:
+  - No detector for the metadata-forgery class: TestReconstructCannotBeForgedByTranscriptText plants a forged structure only in a text block's text, so nothing exercises tool_use.name, tool_use.id, tool_result.tool_use_id, message.model or an unknown block's type.
+    evidence: internal/core/history/reconstruct_test.go:734 — ""content": []map[string]any{{"type": "text", "text": forgedStructure}},"
+  - No detector for the record's stated absolute-path property: the self-containment test bounds the store root and record basenames only, so the intent's and spec's 'no absolute path of any kind' claim is asserted by prose and checked by nothing.
+    evidence: internal/core/history/reconstruct_test.go:519 — "if strings.Contains(art, home) {"
+
+Scope-condition dispositions:
+- cond-2609091722267847 — survived: The telemetry carries token counters and no monetary or cost field, reconciles against nothing, and every total is paired with a completeness block that says what it was missing — descriptive of what the harness recorded, exactly as assumed.
+  evidence: internal/core/history/reconstruct.go:131 — "type TokenCounts struct {"
+  evidence: internal/core/history/reconstruct.go:969 — "if comp.UsageWithoutMessageID > 0 {"
+- cond-2609091722264112 — survived: Usage with no message id is counted rather than dropped, tallied into completeness.usage_without_message_id, and given a note stating the totals are an upper bound to that extent; the condition's stated exception is implemented and tested, though on all four real sessions I measured the counter was zero, so only the fixture exercised it.
+  evidence: internal/core/history/reconstruct.go:595 — "t.noMsgID++"
+  evidence: internal/core/history/reconstruct.go:971 — "%d response(s) carried usage with no message id, so their usage could not be de-duplicated; the token totals are an upper bound to that extent"
+- cond-2609091722262463 — survived: Measured at the top of the stated range: 55 records to a 7.7 MB artefact in 0.7s, and 99 agents to an 18.8 MB artefact in 2.0s — seconds rather than minutes, at roughly a hundred sub-agents.
+  evidence: internal/core/history/reconstruct.go:34 — "// A single unbounded artefact is not usable for the consumer it is for."
+  evidence: internal/surface/cli/history_reconstruct.go:162 — "fmt.Fprintf(w, " artefact: %s\n", humanBytes(res.ArtefactBytes))"
+- cond-2609091722266189 — narrowed: The document is Markdown for a model or a person and does state the containment rule in words, but the containment it states does not cover every byte the document places outside a fence: block metadata is interpolated raw, so the stated line between assertion and quotation is drawn in a different place from where the guide says it is.
+  narrowing: The containment rule holds for block CONTENT — text, thinking, tool input and tool result body, each in a dynamically sized fence — and not for block METADATA (tool_use.name, tool_use.id, tool_result.tool_use_id, message.model, an unknown block's type), which is written outside every fence and can therefore emit the document's own headings and markers.
+  evidence: internal/core/history/reconstruct_render.go:381 — "func writeFenced(b *strings.Builder, lang, body string) {"
+  evidence: internal/core/history/reconstruct_render.go:345 — "fmt.Fprintf(b, "\n**tool call** `%s`", orDash(blk.Name))"
+- cond-2609091722264395 — narrowed: Both rungs shipped and the fallback shipped with them — an agent neither rung places is listed under '## Unattributed sub-agents', labelled and counted, never placed by guess — but the recoverability the condition assumes is materially rarer than the intent's one measured session showed.
+  narrowing: Holds fully on sessions whose spawning tool call is stored or whose spawning transcript names the agent (0 of 54, 0 of 64 and 0 of 98 unplaceable on three sessions I ran); on session db0f4683 28 of 72 sub-agents had no recoverable spawn point at all, so for roughly two fifths of that session the condition's escape clause, not its assumption, is what carried the artefact.
+  evidence: internal/core/history/reconstruct.go:830 — "return cand.index, b.ToolUseID, "transcript""
+  evidence: internal/core/history/reconstruct_render.go:217 — "b.WriteString("- spawned at: NOT RECOVERABLE from what is stored\n")"
 ## Grounds
 
 - pursued: we expect reconstruction and telemetry to need no new instrumentation because the raw transcripts already carry per-response token usage, timestamps, models, agent attribution and tool calls, and we expect a contiguous main thread with appended, doubly-marked sub-agent sections to read more truthfully than sections spliced in at their spawn points, because the sub-agents a spawning transcript can place are the asynchronous ones whose spawn and join are many turns apart; it is shown wrong if the telemetry fields vary enough across harness versions that derived measures cannot be compared, if a real session's artefact is too large to be handed to a model even in its reduced form, or if spawn and join points cannot be recovered often enough for the timeline to be worth reading

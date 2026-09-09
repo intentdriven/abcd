@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // stamp is the timestamp format used everywhere in the artefact: second
@@ -111,14 +113,14 @@ func (s *session) render() []byte {
 // telemetry, where a changing value costs nothing.
 func (s *session) renderHeader(b *strings.Builder) {
 	tel := s.telemetry
-	fmt.Fprintf(b, "# Session %s\n\n", s.opts.SessionID)
+	fmt.Fprintf(b, "# Session %s\n\n", safeInline(s.opts.SessionID))
 	b.WriteString("One session, reconstructed from abcd's transcript store: the main thread and " +
 		"every sub-agent transcript stored for it, in one self-contained document.\n\n")
 
 	fmt.Fprintf(b, "- reconstruction schema: %d\n", reconstructSchemaVersion)
-	fmt.Fprintf(b, "- session: `%s`\n", s.opts.SessionID)
-	fmt.Fprintf(b, "- root commit: `%s`\n", s.rootSHA)
-	fmt.Fprintf(b, "- mode: %s\n", s.opts.Mode)
+	fmt.Fprintf(b, "- session: %s\n", inlineCode(s.opts.SessionID))
+	fmt.Fprintf(b, "- root commit: %s\n", inlineCode(s.rootSHA))
+	fmt.Fprintf(b, "- mode: %s\n", safeInline(string(s.opts.Mode)))
 	fmt.Fprintf(b, "- main thread: %s\n", presentAbsent(s.main != nil))
 	fmt.Fprintf(b, "- agents: %d (%d sub-agent transcript(s) besides the main thread)\n",
 		len(s.threads), len(s.subs))
@@ -128,7 +130,7 @@ func (s *session) renderHeader(b *strings.Builder) {
 	fmt.Fprintf(b, "- turns: %d (%d user, %d assistant)\n",
 		tel.Turns.Total, tel.Turns.User, tel.Turns.Assistant)
 	fmt.Fprintf(b, "- tokens: %d over %d API response(s)\n", tel.Tokens.Total, tel.Tokens.APIResponses)
-	fmt.Fprintf(b, "- telemetry: `%s`\n", s.opts.SessionID+telemetrySuffix)
+	fmt.Fprintf(b, "- telemetry: %s\n", inlineCode(s.opts.SessionID+telemetrySuffix))
 
 	b.WriteString("\n## How to read this document\n\n")
 	b.WriteString("1. The **main thread is contiguous**. Sub-agent sections are appended after it, " +
@@ -146,13 +148,21 @@ func (s *session) renderHeader(b *strings.Builder) {
 	b.WriteString("6. Everything here was redacted on the way into the store: secrets and absolute " +
 		"home paths were replaced before any of it was written.\n")
 	b.WriteString("7. Turn content is reproduced VERBATIM and INSIDE A FENCED BLOCK — text, " +
-		"thinking, tool calls and tool results alike — and each fence is longer than any run of " +
-		"backticks in the content it holds, so content cannot close the block it is in. " +
-		"**Everything inside a fence is something somebody said; everything outside one is this " +
-		"document.** That is what makes the structure trustworthy: the headings this document " +
-		"asserts are `## Completeness`, `## Agent timeline`, `## Main thread`, ``## Agent `<id>` `` " +
-		"and `## Unattributed sub-agents`, with `### Turn <n> — …` beneath them, plus the " +
-		"`[SPAWNED …]`/`[JOINED …]` markers — and a line of that shape INSIDE a fence is quoted " +
+		"thinking, tool call inputs and tool results alike — and each fence is longer than any run " +
+		"of backticks in the content it holds, so content cannot close the block it is in. " +
+		"Outside the fences this document also LABELS that content: a tool call's name and id, a " +
+		"turn's model, an agent's id and type, a record's filename. Those labels come from the " +
+		"transcript and the store too, so none of them is reproduced raw — every one is first " +
+		"reduced to a SINGLE LINE and capped (a line break becomes a space; control, bidi and " +
+		"zero-width characters are masked); where the document quotes one in backticks the quoting " +
+		"run is longer than any backtick inside it, and in the timeline table its pipes are escaped " +
+		"so it stays in its own cell. " +
+		"**Every line of this document therefore begins with words this document chose; nothing " +
+		"quoted from the session can begin one.** That is what makes the structure trustworthy: " +
+		"the headings this document asserts are `## Completeness`, `## Agent timeline`, " +
+		"`## Main thread`, ``## Agent `<id>` `` and `## Unattributed sub-agents`, with " +
+		"`### Turn <n> — …` beneath them, plus the `[SPAWNED …]`/`[JOINED …]` markers — and a line " +
+		"of that shape INSIDE a fence, or those words appearing mid-line inside a label, is quoted " +
 		"content, asserting nothing, however exactly it matches.\n")
 }
 
@@ -173,13 +183,13 @@ func (s *session) renderCompleteness(b *strings.Builder) {
 		c.LinesUnparseable)
 	fmt.Fprintf(b, "- responses whose usage could not be de-duplicated: %d\n", c.UsageWithoutMessageID)
 	if len(c.AbsentFields) > 0 {
-		fmt.Fprintf(b, "- measures no source line carried: %s\n", strings.Join(c.AbsentFields, ", "))
+		fmt.Fprintf(b, "- measures no source line carried: %s\n", safeInline(strings.Join(c.AbsentFields, ", ")))
 	}
 	for _, d := range c.DroppedRecords {
-		fmt.Fprintf(b, "- record NOT used: `%s` — %s\n", d.Record, d.Reason)
+		fmt.Fprintf(b, "- record NOT used: %s — %s\n", inlineCode(d.Record), safeInline(d.Reason))
 	}
 	for _, n := range c.Notes {
-		fmt.Fprintf(b, "- %s\n", n)
+		fmt.Fprintf(b, "- %s\n", safeInline(n))
 	}
 }
 
@@ -194,9 +204,9 @@ func (s *session) renderTimeline(b *strings.Builder) {
 	b.WriteString("|---|---|---|---|---|---|---|---|---:|---:|\n")
 	for _, t := range s.ordered() {
 		fmt.Fprintf(b, "| %s | %s | %d | %s | %s | %s | %s | %s | %d | %d |\n",
-			agentLabel(t), orDash(t.record.AgentType), t.record.SpawnDepth,
-			parentLabel(t), pointText(t.spawnedIn, t.spawnedAtTurn),
-			timeText(t.started), timeText(t.ended), pointText(t.spawnedIn, t.joinedAtTurn),
+			tableCell(agentLabel(t)), tableCell(orDash(t.record.AgentType)), t.record.SpawnDepth,
+			tableCell(parentLabel(t)), tableCell(pointText(t.spawnedIn, t.spawnedAtTurn)),
+			timeText(t.started), timeText(t.ended), tableCell(pointText(t.spawnedIn, t.joinedAtTurn)),
 			t.turnCount.Total, t.tokens.Total)
 	}
 	b.WriteString("\nA `spawned`/`joined` cell names a turn in the thread that spawned the agent. " +
@@ -206,36 +216,36 @@ func (s *session) renderTimeline(b *strings.Builder) {
 
 // renderAgentHeader writes one sub-agent section's provenance block.
 func (s *session) renderAgentHeader(b *strings.Builder, t *thread) {
-	fmt.Fprintf(b, "\n## Agent `%s`\n\n", t.record.AgentID)
-	fmt.Fprintf(b, "- type: %s\n", orDash(t.record.AgentType))
+	fmt.Fprintf(b, "\n## Agent %s\n\n", inlineCode(t.record.AgentID))
+	fmt.Fprintf(b, "- type: %s\n", orDash(safeInline(t.record.AgentType)))
 	fmt.Fprintf(b, "- spawn depth: %d\n", t.record.SpawnDepth)
 	fmt.Fprintf(b, "- spawned by: %s\n", parentLabel(t))
 	if t.spawnedAtTurn > 0 {
-		fmt.Fprintf(b, "- spawned at: %s (tool call `%s`, placed by the %s)\n",
-			pointText(t.spawnedIn, t.spawnedAtTurn), orDash(t.spawnToolUse), placedByText(t.placedBy))
+		fmt.Fprintf(b, "- spawned at: %s (tool call %s, placed by the %s)\n",
+			pointText(t.spawnedIn, t.spawnedAtTurn), inlineCode(orDash(t.spawnToolUse)), placedByText(t.placedBy))
 	} else {
 		b.WriteString("- spawned at: NOT RECOVERABLE from what is stored\n")
 	}
 	if t.joinedAtTurn > 0 {
 		fmt.Fprintf(b, "- joined at: %s\n", pointText(t.spawnedIn, t.joinedAtTurn))
 		if t.joinedAtTurn > t.spawnedAtTurn+1 {
-			fmt.Fprintf(b, "- CONCURRENCY: %d turn(s) of `%s` ran between the spawn and the join, and none of them had this agent's result\n",
-				t.joinedAtTurn-t.spawnedAtTurn-1, t.spawnedIn)
+			fmt.Fprintf(b, "- CONCURRENCY: %d turn(s) of %s ran between the spawn and the join, and none of them had this agent's result\n",
+				t.joinedAtTurn-t.spawnedAtTurn-1, inlineCode(t.spawnedIn))
 		}
 	} else {
 		b.WriteString("- joined at: NOT RECOVERABLE from what is stored\n")
 	}
-	fmt.Fprintf(b, "- lineage attribution: %s\n", orDash(t.record.SpawnAttribution))
+	fmt.Fprintf(b, "- lineage attribution: %s\n", orDash(safeInline(t.record.SpawnAttribution)))
 	fmt.Fprintf(b, "- span: %s\n", spanText(timePtr(t.started), timePtr(t.ended), secondsBetween(t.started, t.ended)))
 	fmt.Fprintf(b, "- turns: %d; tokens: %d over %d API response(s)\n",
 		t.turnCount.Total, t.tokens.Total, t.tokens.APIResponses)
-	fmt.Fprintf(b, "- record: `%s`\n\n", t.recordName)
+	fmt.Fprintf(b, "- record: %s\n\n", inlineCode(t.recordName))
 }
 
 // renderThread writes one thread's turns and returns how many it omitted.
 func (s *session) renderThread(b *strings.Builder, r *renderer, t *thread, spine bool) int {
 	if t.unreadable != "" {
-		fmt.Fprintf(b, "This record could not be read: %s\n", t.unreadable)
+		fmt.Fprintf(b, "This record could not be read: %s\n", safeInline(t.unreadable))
 		return 0
 	}
 	if len(t.turns) == 0 {
@@ -279,16 +289,16 @@ func (s *session) renderMarkers(b *strings.Builder, host *thread, idx int) {
 			continue
 		}
 		if sub.spawnedAtTurn == idx {
-			fmt.Fprintf(b, "\n> **[SPAWNED** agent `%s` (%s) here — its transcript is in section \"Agent `%s`\". "+
+			fmt.Fprintf(b, "\n> **[SPAWNED** agent %s (%s) here — its transcript is in section \"Agent %s\". "+
 				"Everything below this line up to its JOIN marker ran without its result. **]**\n",
-				sub.record.AgentID, orDash(sub.record.AgentType), sub.record.AgentID)
+				inlineCode(sub.record.AgentID), orDash(safeInline(sub.record.AgentType)), inlineCode(sub.record.AgentID))
 		}
 		if sub.joinedAtTurn == idx && sub.joinedAtTurn != sub.spawnedAtTurn {
-			fmt.Fprintf(b, "\n> **[JOINED** agent `%s` here — its result reached this thread at this turn. **]**\n",
-				sub.record.AgentID)
+			fmt.Fprintf(b, "\n> **[JOINED** agent %s here — its result reached this thread at this turn. **]**\n",
+				inlineCode(sub.record.AgentID))
 		} else if sub.joinedAtTurn == idx {
-			fmt.Fprintf(b, "\n> **[JOINED** agent `%s` here — spawned and joined in the same turn (synchronous). **]**\n",
-				sub.record.AgentID)
+			fmt.Fprintf(b, "\n> **[JOINED** agent %s here — spawned and joined in the same turn (synchronous). **]**\n",
+				inlineCode(sub.record.AgentID))
 		}
 	}
 }
@@ -301,9 +311,9 @@ type renderer struct {
 
 // renderTurn writes one turn: its heading and its blocks.
 func (r *renderer) renderTurn(b *strings.Builder, t turn) {
-	fmt.Fprintf(b, "\n### Turn %d — %s", t.index, t.role)
-	if t.model != "" {
-		fmt.Fprintf(b, " · %s", t.model)
+	fmt.Fprintf(b, "\n### Turn %d — %s", t.index, safeInline(t.role))
+	if m := safeInline(t.model); m != "" {
+		fmt.Fprintf(b, " · %s", m)
 	}
 	if !t.at.IsZero() {
 		fmt.Fprintf(b, " · %s", t.at.Format(stamp))
@@ -342,20 +352,20 @@ func (r *renderer) renderBlock(b *strings.Builder, blk rawBlock) {
 		b.WriteString("\n*thinking:*\n\n")
 		writeFenced(b, "", r.cap(blk.Thinking))
 	case "tool_use":
-		fmt.Fprintf(b, "\n**tool call** `%s`", orDash(blk.Name))
-		if blk.ID != "" {
-			fmt.Fprintf(b, " (`%s`)", blk.ID)
+		fmt.Fprintf(b, "\n**tool call** %s", inlineCode(orDash(blk.Name)))
+		if id := safeInline(blk.ID); id != "" {
+			fmt.Fprintf(b, " (%s)", inlineCode(id))
 		}
 		b.WriteString("\n\n")
 		writeFenced(b, "json", r.cap(compactJSON(blk.Input)))
 	case "tool_result":
-		fmt.Fprintf(b, "\n**tool result** for `%s`\n\n", orDash(blk.ToolUseID))
+		fmt.Fprintf(b, "\n**tool result** for %s\n\n", inlineCode(orDash(blk.ToolUseID)))
 		writeFenced(b, "", r.cap(blockText(blk)))
 	case "image":
 		b.WriteString("\n*(an image block was here; images are not carried into the artefact)*\n")
 	default:
 		if txt := strings.TrimSpace(blk.Text); txt != "" {
-			fmt.Fprintf(b, "\n*(%s)*\n\n", orDash(blk.Type))
+			fmt.Fprintf(b, "\n*(%s)*\n\n", orDash(safeInline(blk.Type)))
 			writeFenced(b, "", r.cap(blk.Text))
 		}
 	}
@@ -373,6 +383,96 @@ func (r *renderer) cap(s string) string {
 		r.onElide(elided)
 	}
 	return s[:r.maxBlock] + fmt.Sprintf("\n… [%d bytes elided by the per-block cap]", elided)
+}
+
+// ---------------------------------------------------------------------------
+// containment for scalars rendered OUTSIDE a fence
+// ---------------------------------------------------------------------------
+//
+// Fencing answers block CONTENT. It cannot answer the short labels this
+// document writes around that content — a tool call's name, a turn's model, an
+// agent's id and type, a record's filename — because fencing a label would put
+// a three-line block where a phrase belongs. Those labels are externally
+// supplied all the same: a transcript is written by the harness from whatever
+// the session did, and a record's frontmatter is only as good as the capture
+// that wrote it. So they are CONTAINED instead of fenced, by the three helpers
+// below, and every interpolation of a non-literal string outside a fence goes
+// through one of them. The rule is deliberately mechanical rather than a
+// per-site judgement about which value is trustworthy — the gap this closes
+// (iss-2609091913570877) was exactly such a judgement, made once and then not
+// revisited when new sites appeared.
+
+// maxLabelBytes caps one label. Nothing about a real tool name, model id, agent
+// id or record filename comes near it; a transcript that puts a megabyte in one
+// is capped for the same reason the per-block cap exists, and by the same
+// admission — a label the reader cannot scan is not a label.
+const maxLabelBytes = 512
+
+// safeInline reduces one externally supplied scalar to a single line.
+//
+// It is termsafe.CleanProseLine, which is this repository's canonical answer to
+// "an untrusted field is about to land in a file whose line structure is
+// machine-read" — the same primitive internal/core/lifeboat, release, ideate,
+// memory, reading and intent route through. Writing the rule again here is the
+// thing that opened this gap: the escaping that WAS in this file lived only in
+// writeFenced, so the sites that could not be fenced got no rule at all.
+//
+// What matters here is its first move: a line break becomes a space. Every
+// label site writes its value AFTER text this document chose, so a value that
+// cannot leave its line cannot begin one, and a line this document did not
+// begin cannot be a heading, a turn header or a SPAWNED/JOINED marker however
+// exactly its bytes match. The rest of what it does — masking C1, bidi and
+// zero-width runes, breaking an HTML opener, spacing a link's `](` so the
+// record gates still read the file — is protection this artefact wants and
+// would not have thought to write.
+//
+// It costs a little fidelity in return: a stray unpaired backtick comes back
+// backslash-escaped and a literal `<tag` comes back spaced. Neither shape
+// occurs in a real tool name or model id, and where one does occur it is
+// precisely the case worth altering.
+func safeInline(s string) string {
+	return termsafe.CleanProseLine(s, maxLabelBytes)
+}
+
+// inlineCode renders a scalar as a Markdown inline code span, widening the
+// delimiter past any backtick run inside it — the same trick writeFenced plays
+// on a block, played on a span. It is here rather than in termsafe because it
+// builds a span rather than cleaning one, and writeFenced, its block twin, is
+// three functions down.
+//
+// Without it a value carrying a backtick closes the span early and the rest of
+// the value renders as Markdown: not a forged LINE, since the line has already
+// begun with this document's own words, but emphasis and links in a place the
+// document promised was a quoted identifier. The padding space is CommonMark's
+// rule for a span whose content begins or ends with a backtick; one leading and
+// one trailing space are stripped by the reader, so the value survives.
+func inlineCode(s string) string {
+	s = safeInline(s)
+	delim := strings.Repeat("`", longestBacktickRun(s)+1)
+	pad := ""
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		pad = " "
+	}
+	return delim + pad + s + pad + delim
+}
+
+// tableCell renders one already-formatted cell of the timeline table.
+//
+// It cleans its argument as well as escaping the pipes, even though most cells
+// arrive already composed from cleaned parts. The cleaner is idempotent by its
+// own contract, so the redundant pass costs nothing — and it means no call site
+// can forget, which is the failure this whole change is repairing. (It caught
+// one already: the agent-type cell was reaching the table raw.)
+//
+// A pipe is the table's column separator and GFM honours it INSIDE a code span
+// too, so backticks are no protection here: an agent type carrying a pipe
+// invents columns and shifts every later cell one place left, and the table
+// that carries this document's only statement about time then reports spans
+// against the wrong agents. `\|` is the escape the table syntax defines, and it
+// is resolved before inline parsing, so the cell reads as the one literal pipe
+// it holds.
+func tableCell(s string) string {
+	return strings.ReplaceAll(safeInline(s), "|", `\|`)
 }
 
 // writeFenced writes a fenced block whose fence is longer than any backtick run
@@ -448,7 +548,7 @@ func agentLabel(t *thread) string {
 	if t.isMain() {
 		return "main thread"
 	}
-	return "`" + t.record.AgentID + "`"
+	return inlineCode(t.record.AgentID)
 }
 
 func parentLabel(t *thread) string {
@@ -456,7 +556,7 @@ func parentLabel(t *thread) string {
 		return "—"
 	}
 	if t.record.ParentAgentID != "" {
-		return "`" + t.record.ParentAgentID + "`"
+		return inlineCode(t.record.ParentAgentID)
 	}
 	if t.record.SpawnAttribution == "unattributed" || t.record.SpawnAttribution == "" {
 		return "unknown"
@@ -472,7 +572,7 @@ func pointText(in string, idx int) string {
 	if in == "main" {
 		return fmt.Sprintf("main turn %d", idx)
 	}
-	return fmt.Sprintf("`%s` turn %d", in, idx)
+	return fmt.Sprintf("%s turn %d", inlineCode(in), idx)
 }
 
 func placedByText(rung string) string {
