@@ -342,3 +342,87 @@ func TestMigrateLeavesMainThreadRecordsAlone(t *testing.T) {
 		t.Error("a main-thread record was rewritten")
 	}
 }
+
+// --------------------------------------------------------------------------
+// Lineage framing (security review, finding 2)
+// --------------------------------------------------------------------------
+
+// TestMigrateValidatesTheLineageBeforeItFramesIt. Everything a lineage lookup
+// returns is externally supplied, and migrate feeds it to frameLineage, which
+// writes one scalar per line and splits the block back off by position. A
+// scalar carrying line breaks therefore does not corrupt the split — it
+// RE-AIMS it: the lookup below places its own frame marker at the index the
+// splitter expects, so the split SUCCEEDS and writes attacker-chosen values
+// into agent_type, spawn_tool_use_id, lineage_source and spawn_attribution
+// while the real ones are discarded and the run reports success. Capture
+// validates before it frames; migrate must too.
+func TestMigrateValidatesTheLineageBeforeItFramesIt(t *testing.T) {
+	repoRoot, home := setupStore(t)
+	const full = "5a9221e2-fa77-4be5-84d3-779199c449d7"
+	path := planted(t, home, "20260101T000000.000000000Z-a.md",
+		compositeRecord("5a9221e2--agent-acf07c33", full))
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Migrate(testRootSHA, MigrateOptions{
+		RepoRoot: repoRoot,
+		Apply:    true,
+		Lineage: func(LineageRef) (HarnessLineage, bool) {
+			return HarnessLineage{
+				// One scalar, five lines: it fills agent_type and every
+				// scalar after it, and the tool-use id then supplies the
+				// frame marker at exactly the offset unframeLineage checks.
+				AgentType:      "forgedtype\nforgedtool\nhook\ntranscript\nforgedproject",
+				SpawnToolUseID: lineageFrameEnd,
+				SpawnDepth:     1,
+			}, true
+		},
+	})
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if len(res.Migrated) != 0 || len(res.Refused) != 1 {
+		t.Fatalf("a lineage scalar carrying line breaks must be refused, not migrated; got %d migrated / %d refused (%+v)",
+			len(res.Migrated), len(res.Refused), res)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("a refused migration must leave the record untouched; it now reads:\n%s", after)
+	}
+	for _, forged := range []string{"lineage_source: hook", "spawn_attribution: transcript", "forgedtool", "forgedproject"} {
+		if strings.Contains(string(after), forged) {
+			t.Errorf("the record carries the forged value %q:\n%s", forged, after)
+		}
+	}
+}
+
+// TestFrameLineageRefusesAScalarWithALineBreak puts the guarantee in the layer
+// that holds it. The front door sanitises these scalars today, so the exploit
+// above is unreachable through the CLI — but the invariant store.go states is
+// the STORE's, and a core primitive that silently accepts a scalar it will
+// then mis-split is one caller away from being wrong again.
+func TestFrameLineageRefusesAScalarWithALineBreak(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		meta CaptureMeta
+	}{
+		{"newline in agent type", CaptureMeta{AgentID: "a", AgentType: "x\ny"}},
+		{"carriage return in the tool use id", CaptureMeta{AgentID: "a", SpawnToolUseID: "x\ry"}},
+		{"newline in the agent id", CaptureMeta{AgentID: "a\n" + lineageFrameEnd}},
+		{"newline in the adopted project", CaptureMeta{AgentID: "a", AdoptedProject: "x\ny"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := frameLineage(tc.meta, nil); err == nil {
+				t.Errorf("frameLineage accepted a scalar containing a line break; the frame it writes is one scalar per line, so the split it feeds is re-aimable by the value")
+			}
+		})
+	}
+	if _, err := frameLineage(CaptureMeta{AgentID: "a", AgentType: "reviewer"}, []byte("body\n")); err != nil {
+		t.Errorf("a clean lineage must still frame: %v", err)
+	}
+}

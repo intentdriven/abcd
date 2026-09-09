@@ -6,9 +6,18 @@ package cli
 // It is built to the same shape as `hook session-end` — fail-closed, always
 // exit 0, diagnostics on stderr, stdout empty — with one difference that is not
 // cosmetic. SessionEnd's exit code is ignored by contract. SubagentStop's is
-// NOT: the event is BLOCKING, so a non-zero exit prevents the sub-agent from
-// stopping. Every path here therefore degrades to a diagnostic and returns nil.
-// The always-exit-0 rule is load-bearing, not tidiness.
+// NOT: exit code 2 is the host's BLOCKING status there, and it would stop the
+// sub-agent from finishing. Exit 2 is the ONLY blocking code; a general
+// non-zero exit is a visible diagnostic, not a stall.
+//
+// Every path here therefore returns nil, because a Go error returned from RunE
+// is what would put a code this hook must never emit on the table, and no
+// staging failure is worth risking the agent's completion over. That is a rule
+// about THIS binary's own exits, not about the launcher's: the `hooks.json`
+// wrapper's `exit 1` when no binary resolves is deliberately non-zero and
+// deliberately not 2 — it is the one signal a user gets that their transcripts
+// are not being captured, and silencing it to 0 would hide a real gap.
+// `TestSubagentStopNeverBootstraps` pins exactly that: not 2, not 0, not 127.
 //
 // The hook STAGES; it does not capture. Redaction costs roughly 0.7s per MB and
 // this event fires inside a live session, where a stall is felt directly. The
@@ -76,7 +85,7 @@ func newSubagentStopCommand() *cobra.Command {
 			// SubagentStop hook's stdout is not a place to speak to the model.
 			warn := func(format string, a ...any) error {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: "+format+"\n", a...)
-				return nil // never non-zero: this event BLOCKS the sub-agent
+				return nil // never an error: exit 2 is this event's BLOCKING code
 			}
 
 			in, err := readHookInput(cmd)

@@ -223,6 +223,16 @@ func migrateOne(sc *scanner.Scanner, opts MigrateOptions, r Record, prefix, agen
 			}
 		}
 	}
+	// VALIDATE FIRST, then redact — the order Capture uses, and the order that
+	// matters. The redaction pass frames these scalars one per line and splits
+	// the block back off by position, so a value carrying line breaks is not
+	// merely bad input to it: it re-aims the split, and a value that plants the
+	// frame marker at the expected offset comes back as a SUCCESSFUL split whose
+	// fields the supplier chose. Validating afterwards then inspects the forged
+	// values, not the ones the lookup actually returned.
+	if err := meta.validate(); err != nil {
+		return err
+	}
 	// Everything the lookup returned is externally supplied and lands in
 	// frontmatter, which the read path never scans. It goes through the same
 	// sanitise-then-verify pass a captured body does. The recovered session id
@@ -232,6 +242,9 @@ func migrateOne(sc *scanner.Scanner, opts MigrateOptions, r Record, prefix, agen
 	if err != nil {
 		return err
 	}
+	// Re-validated: redaction rewrites these scalars, and a rewrite that
+	// produced a value the store will not accept must be caught before it is
+	// written, not after.
 	if err := meta.validate(); err != nil {
 		return err
 	}
@@ -368,7 +381,10 @@ func forEachJSONLine(text string, fn func(transcriptLineIdentity)) {
 // unusable. A record whose BODY needs that coverage got it when it was
 // captured.
 func redactLineage(sc *scanner.Scanner, m CaptureMeta) (CaptureMeta, error) {
-	text := frameLineage(m, nil)
+	text, err := frameLineage(m, nil)
+	if err != nil {
+		return CaptureMeta{}, err
+	}
 	redacted, _ := scanner.Redact(text, sc.ScanText(text, "transcript"))
 	if home := scanner.CallerHome(); home != "" {
 		redacted = scanner.SweepCallerHome(redacted, home)

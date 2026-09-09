@@ -228,7 +228,10 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	// exactly the same sanitise-then-verify discipline as the body (the same
 	// detectors, the same caller-home backstop, the same fail-closed residual
 	// refusal) with no second code path to drift from this one.
-	text := frameLineage(meta, raw)
+	text, err := frameLineage(meta, raw)
+	if err != nil {
+		return CaptureResult{}, err
+	}
 	findings := sc.ScanText(text, "transcript")
 
 	// Opt-in deeper coverage (iss-96). Off by default: for a repo that has not
@@ -537,16 +540,29 @@ func applyLineageScalars(m CaptureMeta, s []string) CaptureMeta {
 
 // frameLineage prepends the lineage scalars, one per line, and the frame marker
 // to the raw transcript.
-func frameLineage(m CaptureMeta, raw []byte) string {
+//
+// A scalar carrying a line break is REFUSED here, not written and split back
+// later. One scalar per line is the whole contract with unframeLineage, so a
+// value holding its own newlines does not corrupt the split — it re-aims it: a
+// value that also supplies the frame marker at the offset the splitter checks
+// makes the split SUCCEED and hands every field after it a value the supplier
+// chose, silently discarding the real ones. CaptureMeta.validate refuses these
+// too and every caller is expected to run it first; this is the same refusal
+// held by the primitive that would be mis-split, so no caller can lose the
+// invariant by ordering its own checks wrongly.
+func frameLineage(m CaptureMeta, raw []byte) (string, error) {
 	var b strings.Builder
 	for _, s := range lineageScalars(m) {
+		if strings.ContainsAny(s, "\r\n") {
+			return "", errors.New("history: a lineage scalar contains a line break; the redaction frame is one scalar per line, so framing it would let the value re-aim the split")
+		}
 		b.WriteString(s)
 		b.WriteByte('\n')
 	}
 	b.WriteString(lineageFrameEnd)
 	b.WriteByte('\n')
 	b.Write(raw)
-	return b.String()
+	return b.String(), nil
 }
 
 // unframeLineage splits the redacted scalars back off the redacted body. A

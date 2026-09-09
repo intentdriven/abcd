@@ -233,9 +233,15 @@ func TestHookSubagentStopMarksAMissingPayloadField(t *testing.T) {
 	}
 }
 
-// TestHookSubagentStopAlwaysExitsZero is load-bearing, not tidiness. SubagentStop
-// is a BLOCKING event: a non-zero exit prevents the sub-agent from stopping, so
-// every failure here has to degrade to a diagnostic on stderr.
+// TestHookSubagentStopAlwaysExitsZero is load-bearing, not tidiness.
+// SubagentStop is the event whose exit code 2 BLOCKS — it stops the sub-agent
+// from finishing — and a Go error returned from this command is what would put
+// a non-zero code on the table at all. So every failure here degrades to a
+// diagnostic on stderr and exits 0, rather than leaning on "2 is the only code
+// that blocks" to stay safe. (The launcher's own `exit 1` when no binary
+// resolves is the deliberate exception: non-zero, not 2, and the only warning a
+// user gets that transcripts are going uncaptured — see
+// TestSubagentStopNeverBootstraps.)
 func TestHookSubagentStopAlwaysExitsZero(t *testing.T) {
 	repo, _ := sessionEndRepo(t)
 	dir := t.TempDir()
