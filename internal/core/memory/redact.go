@@ -322,14 +322,12 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 // The components are judged as well as the joined name because '_' is a word
 // character: `\bghp_...` has no word boundary after `topic_auth_`, so the
 // joined form hides in the scanner exactly the token the slug carries plainly.
+// The underscore SUFFIXES are judged for the same reason carried one step
+// further — see filenameJudgeTexts.
 func (r *storeRedactor) judgeFilename(filename string) error {
-	texts := []string{filename}
-	if typ, domain, slug, ok := ParsePageFilename(filename); ok {
-		texts = append(texts, typ, domain, slug)
-	}
 	seen := map[string]bool{}
 	var kinds []string
-	for _, text := range texts {
+	for _, text := range filenameJudgeTexts(filename) {
 		for _, f := range r.hardFailResidue(text, filename) {
 			if seen[f.Kind] {
 				continue
@@ -342,6 +340,63 @@ func (r *storeRedactor) judgeFilename(filename string) error {
 		return nil
 	}
 	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", filename, len(kinds), strings.Join(kinds, ", "))
+}
+
+// filenameJudgeTexts is the set of strings judgeFilename scans for one page
+// name: the joined name, the three components pageNameRe parses out of it, and
+// every SUFFIX that begins immediately after an '_'.
+//
+// The suffixes are what close the separator-straddling spelling. Judging the
+// parsed components was a fix for the missing word boundary, but the component
+// split is ITSELF on underscore and a credential prefix ends in one, so a
+// credential whose own prefix ends one component and whose body begins the next
+// hides from both earlier passes at once: `topic_ghp_<36>.md` parses as type
+// `topic`, domain `ghp`, slug `<36>`, and the joined form has no boundary
+// before `ghp`, the domain alone is three letters, and the slug alone carries
+// no prefix. `sk_live_` splits the other way, into domain `sk` and a slug
+// opening with the rest of the prefix.
+//
+// Suffixes rather than re-joined adjacent components, because slugRe admits
+// '_': a token can begin at an underscore INSIDE the slug
+// (`topic_auth_x_ghp_<36>.md`), a position no pair of parsed components starts
+// at. And suffixes rather than normalising the separators away, because the
+// prefixes this is hunting — `ghp_`, `sk_live_`, `github_pat_` — contain the
+// very character such a normalisation would remove or replace, so it would
+// destroy the tokens it was meant to expose.
+//
+// The set is COMPLETE for the class, not a longer list of guesses. Within a
+// page name's charset the word characters are [A-Za-z0-9_], so a `\b`-anchored
+// pattern can match at the string start, after a '-', or after a '.' — all
+// three of which are real boundaries the joined pass already sees — or at a
+// position the joined pass cannot see, which is exactly a position preceded by
+// '_'. One suffix per underscore therefore covers every position where an
+// anchored pattern could match if the underscore were a boundary.
+//
+// The components are kept alongside the suffixes rather than replaced by them.
+// A suffix carries the rest of the name after its component, so a pattern with
+// a TRAILING anchor that matches a component standing alone need not match it
+// inside a suffix; dropping the component pass could therefore narrow the bar,
+// and the bar is not this function's business. Widening it is not either: this
+// changes only WHERE the patterns are matched, never which severities count —
+// hardFailResidue still selects on scanner.SeverityHardFail alone.
+//
+// Offsets do not survive a suffix, and nothing downstream needs them to. Each
+// scan is labelled with the whole `filename`, and judgeFilename reports the
+// page by name and the findings by kind, never by position, so a suffix's
+// shifted offsets cannot corrupt the refusal's ability to name the page.
+// Indexing by byte is safe for the same reason it is exact: '_' is ASCII, so a
+// split after one never lands inside a multi-byte rune.
+func filenameJudgeTexts(filename string) []string {
+	texts := []string{filename}
+	if typ, domain, slug, ok := ParsePageFilename(filename); ok {
+		texts = append(texts, typ, domain, slug)
+	}
+	for i := 0; i < len(filename); i++ {
+		if filename[i] == '_' {
+			texts = append(texts, filename[i+1:])
+		}
+	}
+	return texts
 }
 
 // hardFailResidue is judgeFilename's narrow bar: the scanner's own hard_fail
