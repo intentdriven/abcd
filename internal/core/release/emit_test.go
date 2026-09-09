@@ -17,11 +17,12 @@ import (
 )
 
 const (
-	shippedDir  = ".abcd/development/intents/shipped/"
-	plannedDir  = ".abcd/development/intents/planned/"
-	resolvedDir = ".abcd/work/issues/resolved/"
-	specsOpen   = ".abcd/development/specs/open/"
-	specsClosed = ".abcd/development/specs/closed/"
+	shippedDir    = ".abcd/development/intents/shipped/"
+	plannedDir    = ".abcd/development/intents/planned/"
+	resolvedDir   = ".abcd/work/issues/resolved/"
+	openIssuesDir = ".abcd/work/issues/open/"
+	specsOpen     = ".abcd/development/specs/open/"
+	specsClosed   = ".abcd/development/specs/closed/"
 )
 
 // liveSurface is the surface every fixture reports as "current". Its exact
@@ -369,4 +370,93 @@ func treeDigest(t *testing.T, root string) string {
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	return hex.EncodeToString(sum[:])
+}
+
+// The unfixed-findings guardrail reaches the cut as a refusal that names its
+// records, and clears once the finding is answered.
+//
+// This is the composition half of the gate: core/changelog owns the judgement
+// and is exercised there; what has to hold HERE is that the verdict actually
+// stops a release rather than being computed and rendered beside a ready cut.
+// A gate whose verdict a caller can ignore is the phantom gate
+// enforcement-claims-are-facts refuses.
+func TestEmitRefusesACutStandingOverItsOwnFindings(t *testing.T) {
+	r := releasedRepo(t)
+	r.Write(shippedDir+"itd-73-derived-versioning.md",
+		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\nderived.\n")
+	r.Write(openIssuesDir+"iss-90-found-while-shipping.md",
+		"---\nid: \"iss-90\"\nseverity: \"major\"\n---\n\nfound while shipping the intent above.\n")
+	r.Commit("ship an intent and capture what shipping it turned up")
+
+	cut := emit(t, r)
+
+	if cut.Ready {
+		t.Fatalf("the cut is ready while standing over a major finding it captured itself")
+	}
+	if !contains(refusalKinds(cut), string(RefusalUnfixedFinding)) {
+		t.Fatalf("refusals = %v, want one of kind %q", refusalKinds(cut), RefusalUnfixedFinding)
+	}
+	for _, ref := range cut.Refusals {
+		if ref.Kind != RefusalUnfixedFinding {
+			continue
+		}
+		if !contains(ref.Records, "iss-90") {
+			t.Errorf("the refusal does not name iss-90 in Records (%v), so a front door has to "+
+				"parse its prose to act on it", ref.Records)
+		}
+	}
+	if cut.Findings.Status != changelog.FindingGuardFailed {
+		t.Errorf("Findings.Status = %q, want failed", cut.Findings.Status)
+	}
+	// A refused cut carries no derived version, exactly as the other refusals.
+	if cut.NextTag != "" || cut.Bumped {
+		t.Errorf("NextTag = %q bumped=%v on a refused cut", cut.NextTag, cut.Bumped)
+	}
+
+	// Answering it clears the gate, and the release proceeds.
+	r.Remove(openIssuesDir + "iss-90-found-while-shipping.md")
+	r.Write(resolvedDir+"iss-90-found-while-shipping.md",
+		"---\nid: \"iss-90\"\nseverity: \"major\"\nimpact: fix\n---\n\nfixed in this cut.\n")
+	r.Commit("fix it in the release it was found in")
+
+	cut = emit(t, r)
+
+	if !cut.Ready {
+		t.Fatalf("the cut is still refused after the finding was resolved: %+v", cut.Refusals)
+	}
+	if cut.Findings.Status != changelog.FindingGuardPassed {
+		t.Errorf("Findings.Status = %q, want passed", cut.Findings.Status)
+	}
+}
+
+// A finding deferred out loud lets the release through AND is carried on the
+// cut, so the release report says what was held over and why.
+func TestEmitCarriesADeferredFindingOntoAReadyCut(t *testing.T) {
+	r := releasedRepo(t)
+	r.Write(shippedDir+"itd-73-derived-versioning.md",
+		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\nderived.\n")
+	r.Write(openIssuesDir+"iss-90-found-while-shipping.md",
+		"---\nid: \"iss-90\"\nseverity: \"major\"\ndeferred_after: \"v0.4.0\"\n"+
+			"deferral_reason: \"the fix needs a schema migration\"\n---\n\nheld over.\n")
+	r.Commit("ship an intent and defer what shipping it turned up")
+
+	cut := emit(t, r)
+
+	if !cut.Ready {
+		t.Fatalf("a recorded deferral did not let the cut through: %+v", cut.Refusals)
+	}
+	if len(cut.Findings.Waived) != 1 || cut.Findings.Waived[0].ID != "iss-90" {
+		t.Fatalf("Findings.Waived = %+v, want the deferred iss-90 — a deferral the release "+
+			"report does not carry is indistinguishable from a finding nobody looked at",
+			cut.Findings.Waived)
+	}
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
 }

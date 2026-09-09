@@ -17,7 +17,10 @@ import (
 // and no separate release ledger is needed.
 const (
 	intentsShippedDir = ".abcd/development/intents/shipped"
-	issuesResolvedDir = ".abcd/work/issues/resolved"
+	// Derived from the ledger root rather than spelled again: two literals for
+	// one directory is how a gate ends up scanning a tree the writer no longer
+	// uses (see issuesLedgerDir).
+	issuesResolvedDir = issuesLedgerDir + "/resolved"
 )
 
 // recordPaths are the pathspecs handed to git ls-tree, in the order the sets are
@@ -275,28 +278,10 @@ func ShippedSince(root string, baseRef string) (RecordSet, error) {
 }
 
 // recordPathsAt lists the record files present in the terminal folders at ref,
-// keyed by repo-relative path. Non-record files (READMEs, notes) are dropped
-// here, so every later stage sees records only.
+// keyed by repo-relative path. Non-record files (READMEs, notes) are dropped by
+// the shared walk, so every later stage sees records only.
 func recordPathsAt(root string, ref string) (map[string]struct{}, error) {
-	args := append([]string{"ls-tree", "-r", "-z", "--name-only", ref, "--"}, recordPaths...)
-	// -z makes git emit raw NUL-separated paths, so a path containing a quote,
-	// a backslash, or a newline cannot be mangled by git's default path quoting
-	// or desync the split.
-	out, err := gitutil.Run(root, args...)
-	if err != nil {
-		return nil, fmt.Errorf("listing records at %s: %w", ref, err)
-	}
-	paths := map[string]struct{}{}
-	for _, p := range strings.Split(out, "\x00") {
-		if p == "" {
-			continue
-		}
-		if !recordFileRe.MatchString(path.Base(p)) {
-			continue
-		}
-		paths[p] = struct{}{}
-	}
-	return paths, nil
+	return recordPathsIn(root, ref, recordPaths...)
 }
 
 // maxRecordBytes caps the guarded blob read, in the same order as
