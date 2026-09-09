@@ -142,7 +142,9 @@ The transcript corpus is a **sibling** user-scope store, not a sub-tree of the r
 ```
 ~/.abcd/transcripts/
   <root-sha>/
-    records/                  redacted transcript records (root-SHA-keyed, adr-29)
+    records/                  redacted transcript records (root-SHA-keyed; the
+                              store is adr-29's, this location and the
+                              self-creation are adr-2609090717039680's)
     staging/                  raw transcripts awaiting redaction (0o700, files 0o600)
 ```
 
