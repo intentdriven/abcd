@@ -32,11 +32,13 @@ import (
 )
 
 // recordSchemaVersion is the frontmatter schema stamped into every record.
-// Version 2 added the lineage fields (adr-2609090636172016). Readers admit BOTH
-// versions: a schema-1 record carries no lineage keys at all, which parses as a
-// main-thread record with empty lineage, so everything already stored keeps
-// working and stays readable until a migration touches it.
-const recordSchemaVersion = 2
+// Version 2 added the lineage fields (adr-2609090636172016); version 3 added
+// adopted_project, which only an ingest adoption sets. Readers admit ALL of
+// them, because parsing is by field presence and every added key is optional: a
+// schema-1 record carries no lineage keys at all and parses as a main-thread
+// record with empty lineage, so everything already stored keeps working and
+// stays readable until a migration touches it.
+const recordSchemaVersion = 3
 
 // scanGitleaks is the OPT-IN gitleaks augmentation seam (iss-96). The default
 // wiring loads the per-repo .abcd/config/gitleaks.json and, ONLY when the repo
@@ -76,6 +78,14 @@ type Record struct {
 	SpawnToolUseID   string `json:"spawn_tool_use_id,omitempty"`
 	LineageSource    string `json:"lineage_source,omitempty"`
 	SpawnAttribution string `json:"spawn_attribution,omitempty"`
+
+	// AdoptedProject (schema 3) names the harness project directory this
+	// record was adopted from, on a transcript ingested into a repository that
+	// claims that name because the repository the transcript recorded no longer
+	// exists on disk. It is empty on everything else, and its presence is what
+	// makes an adoption a property of the artefact rather than of a run's
+	// output.
+	AdoptedProject string `json:"adopted_project,omitempty"`
 }
 
 // CaptureMeta is everything Capture stamps onto a record besides the bytes and
@@ -106,6 +116,11 @@ type CaptureMeta struct {
 	// agent's spawn point: sidecar | transcript | unattributed. Required on a
 	// sub-agent record, empty on the main thread.
 	SpawnAttribution string
+
+	// AdoptedProject names the harness project directory an ingested
+	// transcript was adopted from. Set only by an adoption; empty everywhere
+	// else.
+	AdoptedProject string
 }
 
 // CaptureResult reports the outcome of one capture.
@@ -267,6 +282,9 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	// From here on the meta carries the REDACTED scalars, never the caller's
+	// originals: a scalar whose redaction changed it is stored changed.
+	meta = applyLineageScalars(meta, scalars)
 
 	// Supersession: the unit of the store is one (session_id, agent_id), not one
 	// transcript. A harness fires its stop event on EVERY stop, so an agent
@@ -306,23 +324,22 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	}
 
 	rec := Record{
-		SessionID:    sessionID,
-		RootCommit:   rootSHA,
-		CapturedAt:   capturedAt,
-		SourceKind:   kind,
-		SourceSHA256: sourceSHA,
-		Path:         path,
-		Secrets:      secrets,
-		HomePaths:    homePaths,
-		// The REDACTED scalars, never the caller's originals: a scalar whose
-		// redaction changed it is stored changed.
-		AgentID:          scalars[0],
-		ParentAgentID:    scalars[1],
-		AgentType:        scalars[2],
-		SpawnToolUseID:   scalars[3],
-		LineageSource:    scalars[4],
-		SpawnAttribution: scalars[5],
+		SessionID:        sessionID,
+		RootCommit:       rootSHA,
+		CapturedAt:       capturedAt,
+		SourceKind:       kind,
+		SourceSHA256:     sourceSHA,
+		Path:             path,
+		Secrets:          secrets,
+		HomePaths:        homePaths,
+		AgentID:          meta.AgentID,
+		ParentAgentID:    meta.ParentAgentID,
+		AgentType:        meta.AgentType,
+		SpawnToolUseID:   meta.SpawnToolUseID,
+		LineageSource:    meta.LineageSource,
+		SpawnAttribution: meta.SpawnAttribution,
 		SpawnDepth:       meta.SpawnDepth,
+		AdoptedProject:   meta.AdoptedProject,
 	}
 	if err := fsutil.WriteFileAtomic(path, marshalRecord(rec, body), 0o644); err != nil {
 		return CaptureResult{}, fmt.Errorf("history: write record: %w", err)
@@ -503,7 +520,19 @@ const lineageFrameEnd = "abcd-history-lineage-frame-end"
 // Capture fills from it.
 func lineageScalars(m CaptureMeta) []string {
 	return []string{m.AgentID, m.ParentAgentID, m.AgentType, m.SpawnToolUseID,
-		m.LineageSource, m.SpawnAttribution}
+		m.LineageSource, m.SpawnAttribution, m.AdoptedProject}
+}
+
+// applyLineageScalars is lineageScalars' inverse: it writes the block back onto
+// a CaptureMeta in the order lineageScalars produced it. Both directions live
+// beside each other so a field added to one is a compile error in the other,
+// which is what keeps a record's fields from silently sliding one position
+// against the values the redaction pass returned.
+func applyLineageScalars(m CaptureMeta, s []string) CaptureMeta {
+	m.AgentID, m.ParentAgentID, m.AgentType = s[0], s[1], s[2]
+	m.SpawnToolUseID, m.LineageSource, m.SpawnAttribution = s[3], s[4], s[5]
+	m.AdoptedProject = s[6]
+	return m
 }
 
 // frameLineage prepends the lineage scalars, one per line, and the frame marker

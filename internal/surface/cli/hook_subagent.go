@@ -16,7 +16,6 @@ package cli
 // Capture.
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
@@ -27,7 +26,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/history"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -249,21 +247,7 @@ func readHarnessAgentSidecar(transcriptPath string) (harnessAgentSidecar, bool) 
 	if !strings.HasSuffix(transcriptPath, harnessTranscriptSuffix) {
 		return harnessAgentSidecar{}, false
 	}
-	path := strings.TrimSuffix(transcriptPath, harnessTranscriptSuffix) + harnessSidecarSuffix
-	data, err := fsutil.ReadGuarded(path, maxHarnessSidecarBytes)
-	if err != nil {
-		return harnessAgentSidecar{}, false
-	}
-	var side harnessAgentSidecar
-	if err := json.Unmarshal(data, &side); err != nil {
-		return harnessAgentSidecar{}, false
-	}
-	// A sub-agent is at depth 1 or deeper by definition. A sidecar that does not
-	// say so is not one this rung can read, whatever else it contains.
-	if side.SpawnDepth <= 0 {
-		return harnessAgentSidecar{}, false
-	}
-	return side, true
+	return parseHarnessAgentSidecar(strings.TrimSuffix(transcriptPath, harnessTranscriptSuffix) + harnessSidecarSuffix)
 }
 
 // readSettledTranscript reads a sub-agent transcript, re-reading a bounded

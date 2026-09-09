@@ -105,6 +105,7 @@ func (m CaptureMeta) validate() error {
 	for _, f := range []struct{ name, value string }{
 		{"agentType", m.AgentType},
 		{"spawnToolUseID", m.SpawnToolUseID},
+		{"adoptedProject", m.AdoptedProject},
 	} {
 		if strings.ContainsAny(f.value, "\r\n") {
 			return fmt.Errorf("history: %s must not contain a line break (record frontmatter is one scalar per line)", f.name)
@@ -240,6 +241,9 @@ const (
 	fmSpawnToolUseID   = "spawn_tool_use_id"
 	fmLineageSource    = "lineage_source"
 	fmSpawnAttribution = "spawn_attribution"
+
+	// Adoption (schema 3).
+	fmAdoptedProject = "adopted_project"
 )
 
 // marshalRecord renders a record file: YAML frontmatter then the redacted body.
@@ -263,6 +267,7 @@ func marshalRecord(r Record, body string) []byte {
 		{fmSpawnToolUseID, r.SpawnToolUseID},
 		{fmLineageSource, r.LineageSource},
 		{fmSpawnAttribution, r.SpawnAttribution},
+		{fmAdoptedProject, r.AdoptedProject},
 	} {
 		if f.value != "" {
 			fmt.Fprintf(&b, "%s: %s\n", f.key, f.value)
@@ -341,6 +346,7 @@ func parseRecord(data []byte) (Record, string, error) {
 	r.SpawnToolUseID = fields[fmSpawnToolUseID]
 	r.LineageSource = fields[fmLineageSource]
 	r.SpawnAttribution = fields[fmSpawnAttribution]
+	r.AdoptedProject = fields[fmAdoptedProject]
 	r.SpawnDepth, _ = strconv.Atoi(fields[fmSpawnDepth])
 	return r, body, nil
 }

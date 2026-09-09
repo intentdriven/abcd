@@ -22,9 +22,9 @@ func planted(t *testing.T, home, name, content string) string {
 
 // TestSchemaOneRecordReadsAsMainThread is the both-shapes guarantee. Every
 // record in the store was written under schema 1, which has no lineage fields
-// at all; a reader that admitted only schema 2 would lose the corpus. A
-// schema-1 record must parse as a main-thread record with empty lineage, and a
-// record written now must stamp schema 2.
+// at all; a reader that admitted only the current schema would lose the corpus.
+// A schema-1 record must parse as a main-thread record with empty lineage, and
+// a record written now must stamp the current version.
 func TestSchemaOneRecordReadsAsMainThread(t *testing.T) {
 	repoRoot, home := setupStore(t)
 
@@ -63,8 +63,8 @@ func TestSchemaOneRecordReadsAsMainThread(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(onDisk), "schema: 2") {
-		t.Errorf("a record written now must stamp schema 2, got:\n%s", onDisk)
+	if !strings.Contains(string(onDisk), "schema: 3") {
+		t.Errorf("a record written now must stamp the current schema, got:\n%s", onDisk)
 	}
 }
 

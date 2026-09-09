@@ -55,7 +55,9 @@ went unnoticed.
 |---|---|---|
 | `capture` | — | shipped |
 | `drain` | — | shipped |
+| `ingest` | — | shipped |
 | `list` | — | shipped |
+| `migrate` | — | shipped |
 | `show` | — | shipped |
 | `staged` | — | shipped |
 
@@ -87,6 +89,39 @@ went unnoticed.
   when anything failed. `session-start` drains a **bounded** number so it cannot
   stall the first prompt, and reports the remainder rather than dropping it; this
   verb runs the backlog to completion.
+
+- **`/abcd:history ingest [<path>...]`** — redact and store transcripts that are
+  already on disk and were never captured. The **destination repository is an
+  operand, never the working directory**: `--into <repo-root>` is REQUIRED and
+  has no default, and the run prints which repository it wrote into, so a
+  repository's own redaction configuration governs its own transcripts and can
+  never be applied to another's. `--into .` is a fine answer; an unasked
+  question is not. Sources are the paths given, or the `ingest_roots` declared in
+  `.abcd/config/history.json`; no vendor directory is ever assumed. The owning
+  repository is resolved from the `cwd` recorded inside the transcript lines,
+  **per session before per file** — a sub-agent handed a worktree that no longer
+  exists is placed by the session that spawned it — and the harness's project
+  directory name is never decoded, because that name is not reversible to a
+  path. A transcript owned elsewhere is skipped and its owner named by root SHA;
+  one recorded in two repositories is skipped rather than split. A transcript
+  whose repository is not on this machine is an **orphan: ignored, reported,
+  never guessed**, and adopted only when this repository claims its project name
+  in `adopt_projects` or `--adopt`; an adopted record carries
+  `adopted_project`. Setting `on_orphan` to `prompt` makes the CLI ask —
+  core never prompts. Ingesting the same material twice adds nothing.
+- **`/abcd:history migrate`** — repair the records filed under the pre-lineage
+  composite session id (`<truncated-parent>--agent-<agent>`). The full parent
+  session id is recovered from the record's **own body**, which still carries it
+  on every transcript line, and the stored prefix is only the check: a body that
+  disagrees leaves the record untouched and is reported. `source_sha256` and the
+  filename are not touched, so a migrated record still dedups and every path a
+  reader holds still resolves. It **reports by default and writes only under
+  `--apply`**, because the store holds the only copy of these records, and a
+  second run is a no-op. `--sidecar-root` (or the declared `ingest_roots`) names
+  where the harness's per-agent metadata is searched for, by filename; where it
+  answers, the record gains the agent type, spawn depth, spawning tool call and
+  parent agent, and where it does not the record says its lineage is unknown
+  through `spawn_attribution`.
 
 Bare `abcd history` prints command usage — it does **not** render a status board.
 The global `--json` flag emits machine-readable output for every sub-verb.

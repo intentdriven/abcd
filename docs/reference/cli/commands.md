@@ -569,11 +569,37 @@ Redact and store every staged transcript for this repo
 
 **Usage:** `abcd history drain`
 
+#### `abcd history ingest`
+
+Redact and store transcripts already on disk into a named destination repository
+
+**Usage:** `abcd history ingest [<path>...] [flags]`
+
+**Flags:**
+
+```
+      --adopt stringArray   project directory name to claim for this run, in addition to adopt_projects (repeatable)
+      --into string         destination repository root (REQUIRED, no default; its own redaction configuration governs everything stored)
+```
+
 #### `abcd history list`
 
 List stored transcripts for this repo, newest first
 
 **Usage:** `abcd history list`
+
+#### `abcd history migrate`
+
+Repair records filed under a composite session id (reports; writes only with --apply)
+
+**Usage:** `abcd history migrate [flags]`
+
+**Flags:**
+
+```
+      --apply                      write the repaired records (default: report only)
+      --sidecar-root stringArray   directory to search for the harness's per-agent metadata (repeatable; default: ingest_roots from .abcd/config/history.json)
+```
 
 #### `abcd history show`
 

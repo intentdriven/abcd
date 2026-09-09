@@ -1,7 +1,7 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture and drain are the redacting write paths. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
-argument-hint: "list | show <session-id-or-filename> | staged | drain | capture <transcript-file>"
+description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, and migrate repairs records in place. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
+argument-hint: "list | show <session-id-or-filename> | staged | drain | capture <transcript-file> | ingest [<path>...] | migrate"
 ---
 
 # `/abcd:history` — session-transcript store
@@ -90,6 +90,56 @@ session id defaults to the transcript filename; reading from stdin requires
 `specstory-import`). The write is idempotent on the source's content hash: an
 identical transcript already stored is a no-op. If any hard-fail secret or the
 caller's own home path survives redaction, capture refuses to write.
+
+## Ingest
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history ingest --into <repo-root> <path>... --json
+```
+
+Bring transcripts that are already on disk, and were never captured, into a
+store. **The destination repository is an operand, never the working
+directory**: `--into` is required and has no default, and the run reports which
+repository it wrote into. That is the whole point of the verb's shape — a transcript must be
+redacted under the configuration of the repository it is stored in, and an
+operator recovering a backlog is not standing in that repository. Never present
+the destination as an incidental.
+
+Sources are the paths given, or the `ingest_roots` declared in
+`.abcd/config/history.json`; nothing assumes where any host keeps its files. The
+owning repository is resolved from the `cwd` recorded **inside** the transcript
+lines, per session before per file, so a sub-agent whose isolated worktree is
+gone is placed by the session that spawned it. Report all four populations:
+`captured`, `skipped` (with its reason and, where one was resolved, the owning
+root SHA), `orphans`, and `failed`.
+
+An **orphan** — a transcript whose repository is not on this machine — is
+ignored and reported, never guessed at. It is stored only when this repository
+claims its project name, through `adopt_projects` in the configuration or
+`--adopt` for one run, and an adopted record carries `adopted_project` so the
+adoption is on the artefact. When the configuration sets `on_orphan` to
+`prompt`, the command asks before adopting anything. Ingesting the same material
+twice adds nothing.
+
+## Migrate
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history migrate --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" history migrate --apply
+```
+
+Repair the records written before the store had lineage fields, whose
+`session_id` is a composite of a truncated parent session and an agent id. The
+full session id is recovered from the record's **own body**, and a body that
+does not confirm the stored prefix leaves the record untouched and is reported.
+
+**It reports by default and writes only under `--apply`** — the store holds the
+only copy of these records, so present the report and let the user ask for the
+write. Re-running it is a no-op. `--sidecar-root` (or the declared
+`ingest_roots`) says where to look for the host's per-agent metadata; where it
+answers, the record gains its agent type, spawn depth, spawning tool call and
+parent agent, and where it does not, the record says its lineage is unknown
+rather than looking like a main-thread record.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
