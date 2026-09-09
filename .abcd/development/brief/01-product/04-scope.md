@@ -16,7 +16,7 @@ The scope this brief covers is bounded by what is bundled into the eight planned
 - `/abcd` — top-level where-am-i status board (per itd-20) — see [`04-surfaces/08-abcd.md`](../04-surfaces/08-abcd.md)
 - `/abcd:reflect` — phase retrospective (per itd-24) — see [`04-surfaces/09-reflect.md`](../04-surfaces/09-reflect.md)
 
-**Operator-internal commands** (wiring under `commands/`, NOT part of the user-facing surface above): `/abcd:run` — the itd-29 autonomous-run operator surface (`status`/`pause`/`resume`/`preflight`; read-mostly over the pluggable autonomous-run seam ([adr-27](../../decisions/adrs/0027-autonomous-run-pluggable-seam.md)), v1 never starts or kills the loop). See [`04-surfaces/README.md`](../04-surfaces/README.md) for the user-facing-vs-operator-internal boundary.
+**Operator-internal commands** (wiring rather than user-facing surface): `/abcd:run` — the itd-29 autonomous-run operator surface (`status`/`pause`/`resume`/`preflight`; read-mostly over the pluggable autonomous-run seam ([adr-27](../../decisions/adrs/0027-autonomous-run-pluggable-seam.md)), v1 never starts or kills the loop) — is a **design target**: itd-29 sits in `intents/planned/`, and no `run` verb or `commands/run.md` is on any shipped surface. The operator-internal verbs the binary does register are `changelog`, `completion`, `hook`, `rules` and `spec`, and the class is defined by the absence of a `commands/` file rather than by the presence of one. See [`04-surfaces/README.md`](../04-surfaces/README.md) for the user-facing-vs-operator-internal boundary and the record that delivered each.
 
 **Phased intents — derived, never hand-counted here.** The intents each phase
 bundles are named in that phase doc's `## Scope` section — the single source of
