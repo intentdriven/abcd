@@ -91,6 +91,50 @@ and manifest surface and compares it to the previous release. A removed or
 altered surface with no `breaking` intent in the release **fails the launch** —
 a mislabelled impact cannot ship a compatibility lie.
 
+**Unfixed-findings guardrail** (`internal/core/changelog.GuardFindings`, wired at
+`internal/core/release/emit.go`). `launch ship` and the read-only `changelog`
+preview both ask one further question of the cut: of the findings THIS CYCLE
+produced, is any of them consequential, still open, and unanswered? A cut that
+carries one is REFUSED, under the refusal kind `unfixed-finding`, and a refused
+cut carries no derived version at all. The gate fired on this release's own
+first cut, so it is live behaviour rather than a design target.
+
+- **What counts as this cycle's** is a set difference of issue-ledger membership
+  between the anchor tag's tree and `HEAD`, keyed on the record id across all
+  three status directories. The id survives a re-slug and a move to a terminal
+  folder, which a path does not, so a standing backlog record that merely moved
+  is never reported as newly captured. The standing backlog is out of scope by
+  construction: a gate that blocked on it would refuse every release until the
+  whole ledger was drained, which is how a gate gets switched off rather than
+  satisfied.
+- **What blocks** is a severity of `major` or `critical`, and also a severity
+  that is absent, misspelled, or outside the ledger's enum. An unreadable grade
+  has not been judged, and "not judged" must not read as "not serious".
+- **The waiver** is the frontmatter pair `deferred_after` + `deferral_reason`,
+  both schema-accepted keys (`internal/core/issueschema`). `deferred_after` names
+  the cut's ANCHOR tag, not the version being derived, which is what makes a
+  waiver single-use: the anchor moves at the next release and every waiver
+  written against the old one lapses, so a deferred finding is re-asked rather
+  than forgotten. Half a waiver does not stand: one field without the other, or
+  an anchor that is not this cut's, leaves the record blocking and reports why.
+- **What the render shows.** `renderCut` prints a `findings:` line on every
+  render of `abcd changelog` and `abcd launch ship` — the verdict, the count of
+  unfixed findings and the anchor they were measured from, and the count
+  deferred — then one `deferred:` line per waiver naming the record, its
+  severity and its stated reason. A deferral an operator cannot see in the
+  report they actually read is indistinguishable from having ignored the
+  finding, which is the thing the waiver exists to be the opposite of. The whole
+  verdict is on the `findings` key of the cut's JSON.
+- **The four routes out**, in the order the refusal itself states them: fix the
+  defect and resolve its record inside the cut; record the decision not to fix
+  it (`abcd capture wontfix`, which clears the gate with no special case,
+  because a wontfix carries a reason and is the cited non-action the rule asks
+  for); defer it out loud with the waiver pair; or re-grade the record honestly
+  when the severity was wrong in the first place. The gate asks only whether the
+  record is still in `open/` at `HEAD`, so deleting it outright clears the gate
+  as well — that is a hole, not a fifth route, and the honest answers are the
+  four above.
+
 `launch ship` is responsible for writing the version into **the selected
 version location**, never a hard-coded `plugin.json`. That location is read from
 the spc-77.1 (predecessor store) decision artifact
@@ -186,6 +230,8 @@ The first release cut of abcd itself is a manual `v*` tag + GitHub Release. Docu
 - **Given** at least one `impact: additive` intent and no `breaking` intent shipped since the last release, **when** `launch ship` runs, **then** the bump tier is **minor** (`v0.x.0`) and the launch report names the intents that drove it.
 - **Given** any `impact: breaking` intent shipped since the last release, **when** `launch ship` runs, **then** the bump tier is **major** (`vx.0.0`) and the launch report names the breaking intent(s).
 - **Given** a command, flag, or manifest surface removed or altered since the previous release with no `breaking` intent in the release, **when** `launch ship` runs, **then** the surface-diff guardrail **fails the launch** (adr-31) — the mislabel is reported, nothing is published.
+- **Given** an issue record captured since the anchor tag, graded `major` or `critical` (or carrying no readable grade), still in `open/` and carrying no standing waiver, **when** `launch ship` or `abcd changelog` runs, **then** the cut is REFUSED under the `unfixed-finding` kind, the refusal names every such record with its grade and path, no version is derived, and the render's `findings:` line says how many were counted and from which anchor.
+- **Given** the same record carrying `deferred_after` set to that cut's anchor tag and a non-empty `deferral_reason`, **when** the cut is emitted, **then** the gate PASSES and the render carries a `deferred:` line naming the record, its severity and its reason — and the same record blocks again at the next release, because the anchor has moved and the waiver has lapsed.
 - **Given** any `launch ship` run, **when** the release commit is written, **then** the commit message records the bump tier and its reason (e.g. `(minor: additive itd-40 shipped)`).
 - **Given** a documentation-auditor warn-fail, **when** `launch ship` runs without `--allow-doc-warnings`, **then** the user is shown the warnings and asked transparently whether to proceed.
 - **Given** a prior release of the same line (`vX.Y.(Z-1)`) exists, **when** `launch ship` publishes `vX.Y.Z`, **then** the superseded release's tag and GitHub Release + assets are removed, the removal is named in the launch report, and the last release of every *other* line is untouched.
