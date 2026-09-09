@@ -433,7 +433,133 @@ func parseConfig(data []byte) (Config, error) {
 	if err := cfg.validateRecordStores(); err != nil {
 		return Config{}, err
 	}
+	if err := cfg.validateConfiguredPaths(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// configuredPath is one repo-relative location the config names, paired with the
+// field that named it so a refusal can say which key to fix.
+type configuredPath struct {
+	field string
+	value string
+}
+
+// validateConfiguredPaths refuses every configured location that is not a plain
+// repo-relative path, at LOAD time — before any rule joins it onto the repository
+// root and reads what it finds.
+//
+// The config is a trust boundary the way LoadConfig's own read is: it is a
+// committed, cross-repo-clonable file, and a pull request that edits
+// `.abcd/record-lint.json` edits the gate that judges it. record_schema's store
+// walk joined `record_stores` onto the repo root with no rejection at all, so
+// `"adr": "../outside/decisions"` made the gate read `.md` frontmatter from
+// outside the checkout and echo it into the CI log
+// (iss-2608301308367566). Every OTHER repo-relative field the config carries is
+// joined the same way by its own rule, so gating one field would gate the
+// instance rather than the pattern.
+//
+// Containment is checked here rather than only at each use site because the
+// per-site guards (containedRepoPath + resolvedInsideRoot, which six of these
+// fields already carry) are opt-in: a field added later inherits nothing, and the
+// omission is silent — the rule reads the outside tree and reports on it at exit
+// 0. One gate at the door cannot be forgotten by a new field, and the six
+// per-site guards stay where they are: they also resolve symlinks, which a
+// lexical gate cannot see.
+//
+// fsutil.ValidRelPath is the canonical lexical guard for a path that arrives as
+// data (the site manifest and the positioning config both route through it), so
+// it is called rather than copied — a second containment predicate is the shape
+// the one-canonical-primitive principle refuses, and this one is strictly
+// stronger than the package's read-time check: it also refuses an unclean path
+// and a backslash, which `..\..\x` needs on the Windows binaries abcd
+// cross-compiles.
+//
+// An EMPTY value is not a path — it means the field is unset, and for a roots
+// entry it means the root the entry is relative to — so it passes, while "."
+// does not: ValidRelPath refuses a "." segment. The two spell the same location,
+// so the refusal has to say which one the config should carry, or the author
+// reads a message listing four causes and recognises none of them. The
+// *_paths/*_prefixes lists are deliberately not here: they are string prefixes
+// matched against repo-relative paths, never joined onto a root and never
+// opened, and the shipped config spells them with a trailing slash, which is a
+// prefix rather than a path.
+func (c Config) validateConfiguredPaths() error {
+	for _, root := range c.Roots {
+		if err := checkConfiguredPath(configuredPath{"roots entry", root}); err != nil {
+			return err
+		}
+	}
+	// Rules is a map, so a config with several faults must not report a different
+	// one per run: walk the rule ids, and each rule's stores, in sorted order.
+	ids := make([]string, 0, len(c.Rules))
+	for id := range c.Rules {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		rc := c.Rules[id]
+		fields := []configuredPath{
+			{"intents_dir", rc.IntentsDir},
+			{"specs_dir", rc.SpecsDir},
+			{"issues_dir", rc.IssuesDir},
+			{"registry", rc.Registry},
+			{"commands_dir", rc.CommandsDir},
+			{"skills_dir", rc.SkillsDir},
+			{"snapshot", rc.Snapshot},
+			{"target", rc.Target},
+			{"receipts_dir", rc.ReceiptsDir},
+			{"runbook", rc.Runbook},
+			{"workflow", rc.Workflow},
+			{"glossary_dir", rc.GlossaryDir},
+			{"baseline", rc.Baseline},
+			{"changelog", rc.Changelog},
+			{"intents_root", rc.IntentsRoot},
+			{"agents_dir", rc.AgentsDir},
+		}
+		// Every record_stores KEY the config wrote, sorted, rather than the engine's
+		// own store list: sorting keeps a config with several faulty stores reporting
+		// the same one, and walking what was written rather than what is known means
+		// this check does not depend on validateRecordStores having already refused an
+		// unknown prefix — a reordering of parseConfig would otherwise leave an
+		// unknown store's path unjudged.
+		prefixes := make([]string, 0, len(rc.RecordStores))
+		for prefix := range rc.RecordStores {
+			prefixes = append(prefixes, prefix)
+		}
+		sort.Strings(prefixes)
+		for _, prefix := range prefixes {
+			fields = append(fields, configuredPath{"record_stores " + quote(prefix), rc.RecordStores[prefix]})
+		}
+		for _, spec := range rc.Indexes {
+			fields = append(fields,
+				configuredPath{"index " + quote(spec.ID) + " doc", spec.Doc},
+				configuredPath{"index " + quote(spec.ID) + " dir", spec.Dir})
+		}
+		for _, f := range fields {
+			f.field = "rule " + id + ": " + f.field
+			if err := checkConfiguredPath(f); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkConfiguredPath is validateConfiguredPaths' single verdict, so every field
+// is judged by one predicate and the refusal always names the offending value —
+// a message that says only "a path escapes the repository" sends the reader
+// hunting through a config with two dozen path keys.
+func checkConfiguredPath(p configuredPath) error {
+	if p.value == "" || fsutil.ValidRelPath(p.value) {
+		return nil
+	}
+	return &configError{p.field + " " + quote(p.value) +
+		" is not a plain repo-relative path; it must be relative, already clean, and carry no \".\", \"..\" " +
+		"or backslash segment — an empty value, never \".\", is how a field names the root it is relative to; " +
+		"the rule joins it onto the repository root and reads what it finds, so a value that escapes " +
+		"reads files the repository does not own and echoes them into the lint output"}
 }
 
 // validateRecordStores refuses a record_stores key that names no store this
