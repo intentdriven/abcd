@@ -293,7 +293,8 @@ func readWaiver(fields map[string]frontmatter.Field, baseTag string) (reason, wa
 	return reason, "", true
 }
 
-// unfixedReason names every blocking record and both ways out, because
+// unfixedReason names every blocking record and all three ways out — fix and
+// resolve it, record the decision not to fix it, or defer it out loud — because
 // "findings are unfixed" on its own sends an operator hunting through a
 // 400-record ledger for them. Each finding gets its own line so a long list
 // stays readable in a terminal.

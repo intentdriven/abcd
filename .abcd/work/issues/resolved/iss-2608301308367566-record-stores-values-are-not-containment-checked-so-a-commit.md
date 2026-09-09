@@ -7,7 +7,7 @@ category: "security"
 source: "user-observation"
 found_during: "itd-189-round-2-security"
 found_at: "internal/core/lint/config.go"
-resolution: "Containment is now checked at config-load time: parseConfig refuses every configured repo-relative path that is absolute, unclean, backslashed, or climbs out with '..', through the canonical fsutil.ValidRelPath rather than a second predicate. record_stores and its fifteen sibling path fields (roots, issues_dir, commands_dir, skills_dir, registry, snapshot, target, receipts_dir, runbook, workflow, glossary_dir, baseline, changelog, intents_root, agents_dir, intents_dir, specs_dir and the index_drift doc/dir pairs) are all swept, so a value that escapes never reaches a filepath.Join."
+resolution: "Containment is now checked at config-load time: parseConfig refuses every configured repo-relative path that is absolute, unclean, backslashed, or climbs out with '..', through the canonical fsutil.ValidRelPath rather than a second predicate. Every configured path is swept, so a value that escapes never reaches a filepath.Join: the top-level roots list, each rule's sixteen path fields (intents_dir, specs_dir, issues_dir, registry, commands_dir, skills_dir, snapshot, target, receipts_dir, runbook, workflow, glossary_dir, baseline, changelog, intents_root, agents_dir), every record_stores key the config wrote, and each index_drift doc/dir pair."
 impact: fix
 ---
 
