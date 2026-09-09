@@ -374,7 +374,8 @@ abcd/
                                         # The four non-SessionStart event shims also self-provision: when $CLAUDE_PLUGIN_ROOT/abcd
                                         # is missing they attempt hooks/bootstrap.sh (throttled by a .bootstrap.attempt marker
                                         # within a 10-minute window), then fall back to a PATH-resolved abcd — absolute, outside the
-                                        # working directory, not world-writable, else ignored with a reason — before failing loudly
+                                        # working directory, not world-writable, and recorded in ~/.abcd/path-entry as this machine's
+                                        # own; else ignored with a reason — before failing loudly (SessionStart has no PATH rung)
 ```
 
 The core is organised one package per capability under `internal/core/`, and the

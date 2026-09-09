@@ -17,13 +17,17 @@ func TestBinaryHooksNeverRunAnLsFromThePathTheyAudit(t *testing.T) {
 		t.Run(h.event, func(t *testing.T) {
 			root := hookRoot(t, failingBootstrap, false)
 			pathDir := t.TempDir()
+			home := t.TempDir()
 			pathStub(t, pathDir)
+			// The stub is this machine's recorded abcd, so the rung reaches its
+			// accept branch — which is where an audited-PATH `ls` would run.
+			writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
 			marker := filepath.Join(pathDir, "ls-ran")
 			fakeLs := "#!/bin/sh\n: > \"" + marker + "\"\nexec /bin/ls \"$@\"\n"
 			if err := os.WriteFile(filepath.Join(pathDir, "ls"), []byte(fakeLs), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			_, stderr, code := hookRunIn(t, h.event, root, pathDir, t.TempDir())
+			_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
 			if _, err := os.Stat(marker); err == nil {
 				t.Fatalf("the %s shim ran the ls found on the PATH it was auditing (stderr %q, code %d)", h.event, stderr, code)
 			}
