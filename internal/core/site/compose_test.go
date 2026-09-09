@@ -278,6 +278,73 @@ func TestAuditIsMetReadsOnlyTheUnfencedAuditNotes(t *testing.T) {
 			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 0 · NOT_MET -1 · INCONCLUSIVE 0",
 		}, "\n")), false},
 
+		// The half fence-awareness and the negative refusal both miss: two
+		// sections with the SAME title, the honest one concerns-only and the
+		// second reading MET. Accumulating across every matching section lifts
+		// the intent onto the homepage on the strength of the duplicate, which
+		// is no harder to write than the fenced line was
+		// (iss-2609090951277880).
+		{"a second Audit Notes section cannot lift a concerns-only rollup", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0",
+			"",
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		// At ANY heading level: the section walk reads a title, not a depth.
+		{"a deeper second Audit Notes section cannot lift it either", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0",
+			"",
+			"### Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		// A document with two of them is malformed whichever way they read: an
+		// intent has one audit, so a second section of that title is not a
+		// second verdict but evidence that this file is not what it claims. The
+		// negative count is refused on the same ground.
+		{"a duplicate Audit Notes section is malformed even when both pass", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+			"",
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 2 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		// And malformed at any DEPTH, which is the case that separates refusing
+		// a duplicate from merely ignoring one: read-the-first alone would
+		// answer true here off the honest section above.
+		{"a duplicate at another heading level is malformed too", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+			"",
+			"### Audit Notes",
+			"",
+			"Acceptance rollup: MET 2 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+		}, "\n")), false},
+
+		// The anti-vacuity half of the rule above, in the same table: a title
+		// that merely CONTAINS the words is a different section, and the one
+		// honest rollup still features.
+		{"a similarly titled section is not a duplicate", auditedIntent(strings.Join([]string{
+			"## Audit Notes",
+			"",
+			"Acceptance rollup: MET 1 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0",
+			"",
+			"## Audit Notes for the reader",
+			"",
+			"Acceptance rollup: MET 0 · MET_WITH_CONCERNS 0 · NOT_MET 1 · INCONCLUSIVE 0",
+		}, "\n")), true},
+
 		{"a rollup in another section is not the audit", auditedIntent(strings.Join([]string{
 			"## Notes for the auditor",
 			"",

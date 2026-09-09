@@ -1291,8 +1291,18 @@ func plainPressReleaseText(body string) string {
 // the whole difference between quoting an intent the audit passed and quoting
 // one it did not.
 //
-// It reads the `## Audit Notes` SECTION, through the same fence-aware walk
-// every other reader of these files uses, and only the prose of it. A rollup
+// It reads THE `## Audit Notes` section — the first one, and only where there
+// is exactly one. An intent has one audit, so a second section of that title,
+// at any heading level, is not a second verdict; it is evidence that the file is
+// not the shape it claims. Accumulating across every matching section instead
+// let a duplicate reading `MET 1` lift an honest concerns-only rollup, whose
+// notMet is already zero, straight onto the homepage: the fenced-line failure
+// below, reached by duplication rather than by fencing, and no harder to write
+// (iss-2609090951277880). A duplicate is refused on the same ground a negative
+// count is — a malformed record is not evidence that the criteria were met.
+//
+// It reads that section through the same fence-aware walk every other reader of
+// these files uses, and only the prose of it. A rollup
 // line elsewhere in the document — in the frontmatter, in another section, or
 // quoted inside a fenced block as an example of the shape — is not a verdict
 // about this intent, and a whole-file substring scan cannot tell the difference.
@@ -1314,42 +1324,50 @@ func (c *composer) auditIsMet(rel string) bool {
 	if err != nil {
 		return false
 	}
-	met, notMet := 0, 0
+	notes, found := Section{}, false
 	for _, s := range secs {
 		if s.Title != "Audit Notes" {
 			continue
 		}
-		fence := false
-		for _, line := range strings.Split(s.Body, "\n") {
-			if isFenceLine(line) {
-				fence = !fence
+		if found {
+			return false
+		}
+		notes, found = s, true
+	}
+	if !found {
+		return false
+	}
+	met, notMet := 0, 0
+	fence := false
+	for _, line := range strings.Split(notes.Body, "\n") {
+		if isFenceLine(line) {
+			fence = !fence
+			continue
+		}
+		if fence {
+			continue
+		}
+		_, after, ok := strings.Cut(line, "Acceptance rollup:")
+		if !ok {
+			continue
+		}
+		for _, part := range strings.Split(after, "·") {
+			fields := strings.Fields(part)
+			if len(fields) != 2 {
 				continue
 			}
-			if fence {
+			n, err := strconv.Atoi(fields[1])
+			if err != nil {
 				continue
 			}
-			_, after, ok := strings.Cut(line, "Acceptance rollup:")
-			if !ok {
-				continue
+			if n < 0 {
+				return false
 			}
-			for _, part := range strings.Split(after, "·") {
-				fields := strings.Fields(part)
-				if len(fields) != 2 {
-					continue
-				}
-				n, err := strconv.Atoi(fields[1])
-				if err != nil {
-					continue
-				}
-				if n < 0 {
-					return false
-				}
-				switch fields[0] {
-				case "MET":
-					met += n
-				case "NOT_MET":
-					notMet += n
-				}
+			switch fields[0] {
+			case "MET":
+				met += n
+			case "NOT_MET":
+				notMet += n
 			}
 		}
 	}
