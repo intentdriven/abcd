@@ -1,0 +1,14 @@
+---
+schema_version: 1
+id: "iss-2609091126475539"
+slug: "ahoy-install-records-the-path-entry-on-one-of-three-install-paths"
+severity: "major"
+category: "bug"
+source: "agent-finding"
+found_during: "adversarial-review"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "internal/core/ahoy/apply.go"
+---
+
+The PATH rung of every hook shim is owned-only: it runs an abcd off PATH only when ~/.abcd/path-entry records the exact path `command -v abcd` printed, and two documents promise the install verb writes that record — the install guide says "the install one-liner writes that record, and so does abcd's own install verb", and the ahoy chapter says "the install one-liners and `ahoy install` both write it". It writes it on one of its three install paths. writePathEntry has a single install-time call site, inside the owned-copy branch, and that branch is reached only when a verified cache artefact exists to copy from; without one, install degrades — loudly, and by design — to the pinned symlink, which records nothing, and --dev writes its shim with no record either. Verified by grepping the writer's call sites and by installing along each path into a sandboxed home. The failure is silent in both directions, because the symlink is classified by its destination rather than by the record: ahoy reports a healthy pinned install while every hook prints "ignoring the abcd found on PATH ... ~/.abcd/path-entry does not record it as the abcd installed here" and takes its degraded route — no rules loader, no shell guard (the PreToolUse rung reports UNGUARDED and refuses rather than approving), no transcript capture. It matters because the degraded path is documented behaviour rather than an edge case: the install guide routes readers to it twice, so a user who did exactly what the guide said holds an install the board calls healthy and the hooks refuse, with nothing on either surface connecting the two — and the remedy those surfaces offer cannot run, since an install with zero actionable gaps returns already_up_to_date without ever building an apply context, so re-running the install verb on such a machine writes nothing. Fix direction: record every entry abcd installs, through the one existing writer — the symlink under the link's own path, which is the spelling command -v yields and the shim compares, and the dev shim on the same terms, since it is a documented verb leaving a usable binary in the same user directory abcd blesses; raise a gap for an owned entry no record names, so the advertised re-run has something to act on; and drop the record when uninstall drops the entry it names, or whatever occupies that path next inherits the ownership claim. Detector: after each install path that leaves a usable abcd on PATH, ~/.abcd/path-entry must record that entry under the spelling a hook shim's `command -v abcd` prints, and no install shape may classify healthy while the shims refuse it.
