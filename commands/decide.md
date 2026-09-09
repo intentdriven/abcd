@@ -48,7 +48,7 @@ listing is in decision order.
 
 The hand-numbered records `0001`–`0058` keep their ids and their filenames.
 Nothing is renumbered, and both vintages resolve everywhere a decision is cited —
-`abcd adr-58` and `abcd adr-2609012206053814` both answer.
+`abcd adr-58` and `abcd adr-2609021016286571` both answer.
 
 Exit codes:
 
