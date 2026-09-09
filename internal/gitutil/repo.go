@@ -256,6 +256,62 @@ func RepoShapedRoot(root string) string {
 	}
 }
 
+// ErrNoCheckoutRoot is CheckoutRoot's refusal: there is no checkout whose
+// record store the caller's working directory belongs to, so there is no store
+// to address. A surface maps it to an exit code and its own wording; this
+// package never prints.
+var ErrNoCheckoutRoot = errors.New("no checkout root")
+
+// CheckoutRoot answers the question every front door onto a repository-scoped
+// record store has to ask before it builds a request: which checkout's store
+// does a caller standing in cwd address?
+//
+// It is the ONE resolution for that question, and it exists because two front
+// doors skipped asking it and reached the same failure independently. The
+// capture verbs handed their working directory to the ledger core as an explicit
+// repo root, so a verb run from a subdirectory addressed a ledger that was not
+// there: a read reported open 0 against a populated checkout, and a write minted
+// a second ledger under the subdirectory and reported success with a
+// repo-relative path that looked ordinary (iss-2609090951291524). `decide` did
+// the same to the decision store, and one directory further out: run outside
+// every repository it exited 0 and laid a full ADR store in whatever plain
+// directory the caller stood in (iss-2609091707224329). The resolution is
+// store-agnostic, so it lives here rather than in either store's package, and
+// `store` — a noun phrase naming what is being addressed, "the issue ledger",
+// "the decision store" — is the ONLY thing that varies between callers.
+//
+// Three outcomes, and only the first is a root:
+//
+//   - git names a toplevel: that is the answer, whoever owns the checkout.
+//   - git will not answer for a repo-SHAPED tree (git absent from PATH, a
+//     corrupt .git, an ownership refusal under the isolated env): REFUSED,
+//     naming that git could not answer. RepoShapedRoot is read here as a
+//     CLASSIFIER and never as a root: it is a marker walk, which accepts any
+//     directory merely carrying the name and has neither the shape check nor
+//     the ownership gate the rules-root resolver grew (iss-2609090947359464),
+//     so returning its answer is the one change that would make that walk live.
+//     A store addressed by a guess is the defect this function closes, one
+//     directory further out.
+//   - nothing repo-shaped anywhere above: REFUSED. Laying a store in whatever
+//     directory the caller stood in is not a lenient fallback — the records
+//     would sit outside any checkout, committed by nothing and read by nothing,
+//     which is the same lost trail this resolution exists to prevent. Every
+//     store this resolves for is per-repository by definition.
+func CheckoutRoot(cwd, store string) (string, error) {
+	if top, err := Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
+		return top, nil
+	}
+	// Neither message carries the working directory: an error envelope never
+	// leaks an absolute local path (iss-76), and the caller already knows where
+	// they are standing.
+	if RepoShapedRoot(cwd) != "" {
+		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, or its ownership refused), and %s is never guessed at",
+			ErrNoCheckoutRoot, store)
+	}
+	return "", fmt.Errorf("%w: the working directory is not inside a git repository, and %s is per-repository: run this from a checkout",
+		ErrNoCheckoutRoot, store)
+}
+
 // TrackedFiles returns the repo-relative paths git tracks under root, NUL-safe
 // so a filename with a newline cannot desync the list. Outside anything
 // repo-shaped it returns no files and no error — a scan over committed files

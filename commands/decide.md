@@ -37,6 +37,15 @@ Report the `id` and the `path` from the JSON, then open the record and write the
 four sections with the user. Nothing else about the decision is the binary's to
 supply.
 
+**The record lands in the checkout's store, from anywhere in the tree.** The verb
+resolves the repository root before it mints, so the reported `path` is relative
+to that root and not to the directory you happen to be standing in. Outside a
+repository there is no decision store to write into, and the verb refuses rather
+than laying one where it stands — a decision filed outside every checkout is
+committed by nothing and read by nothing. If a decision store also exists below
+the repository root, the verb names it on stderr and leaves it alone; relay that
+line, because records sitting there reach no gate and no release cut.
+
 ## What the id looks like
 
 The id is `adr-<yymmddHHMMSS><rrrr>`: a UTC second stamp and four random digits,
@@ -54,8 +63,11 @@ Exit codes:
 
 - **0** — minted. Report the `id`, the `date` and the `path`, and show the user
   the written skeleton.
-- **2** — refused, and **nothing was written**. Relay the diagnostic: a missing
-  title and a title with no slug-able characters in it are the two operand faults.
+- **2** — refused, and **nothing was written**. Relay the diagnostic. A missing
+  title and a title with no slug-able characters in it are the two operand
+  faults; the third refusal is a working directory with no repository above it,
+  or one whose repository git will not answer for, where there is no decision
+  store to address at all.
 
 ## After the mint
 

@@ -2510,28 +2510,34 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 	if err != nil {
 		return "", &exitError{Code: 2, Msg: "abcd capture: " + err.Error() + " (nothing read, nothing written)"}
 	}
-	for _, note := range strayLedgerNotes(cwd, root) {
+	for _, note := range strayStoreNotes(cwd, root, capture.LedgerRelPath, "ledger") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: %s\n", termsafe.Sanitize(note))
 	}
 	return root, nil
 }
 
-// strayLedgerNotes names a ledger sitting BELOW the checkout root, between the
-// caller and it — the exact deposit iss-2609090951291524 left behind, and the
-// one place a front door can name with certainty and at no cost.
+// strayStoreNotes names a record store sitting BELOW the checkout root, between
+// the caller and it — the exact deposit an unresolved front door leaves behind
+// (iss-2609090951291524 for the ledger, iss-2609091707224329 for the decision
+// store), and the one place a front door can name with certainty and at no cost.
+//
+// It is one walk for every store: `relPath` is the store's repo-relative
+// directory and `noun` is what it is called in the note, because the shape of
+// the deposit and what is owed the person standing over it do not vary by
+// family.
 //
 // The walk is bounded to the chain from cwd up to (not including) the root, so
-// it fires for the person who created the stray store, on their next capture
-// from the directory that created it. A sweep of the whole checkout would find
-// stray stores this walk cannot see; that belongs to a lint rule that reads the
-// tree, not to a verb that has one directory to look at.
+// it fires for the person who created the stray store, on their next run from
+// the directory that created it. A sweep of the whole checkout would find stray
+// stores this walk cannot see; that belongs to a lint rule that reads the tree,
+// not to a verb that has one directory to look at.
 //
-// The note STATES what is there and never accuses: a checkout can hold a ledger
+// The note STATES what is there and never accuses: a checkout can hold a store
 // below its root on purpose (this repository's own cold-reading eval fixtures
-// do), and only the person standing in it can tell a fixture from an orphan.
-// What the note owes them is the fact that two stores exist and which one the
-// verb just used.
-func strayLedgerNotes(cwd, root string) []string {
+// hold a ledger), and only the person standing in it can tell a fixture from an
+// orphan. What the note owes them is the fact that two stores exist and which
+// one the verb just used.
+func strayStoreNotes(cwd, root, relPath, noun string) []string {
 	dir, err := filepath.EvalSymlinks(cwd)
 	if err != nil {
 		dir = filepath.Clean(cwd)
@@ -2542,14 +2548,14 @@ func strayLedgerNotes(cwd, root string) []string {
 	}
 	var notes []string
 	for dir != top {
-		ledger := filepath.Join(dir, filepath.FromSlash(capture.LedgerRelPath))
-		if fi, statErr := os.Stat(ledger); statErr == nil && fi.IsDir() {
-			rel, relErr := filepath.Rel(top, ledger)
+		store := filepath.Join(dir, filepath.FromSlash(relPath))
+		if fi, statErr := os.Stat(store); statErr == nil && fi.IsDir() {
+			rel, relErr := filepath.Rel(top, store)
 			if relErr != nil {
-				rel = ledger
+				rel = store
 			}
-			notes = append(notes, "a ledger also exists below the checkout root, at "+filepath.ToSlash(rel)+
-				" — this verb addressed the checkout's ledger and left that one untouched; records filed there reach no gate and no release cut")
+			notes = append(notes, "a "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
+				" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
