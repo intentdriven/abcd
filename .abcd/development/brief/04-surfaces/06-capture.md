@@ -44,7 +44,29 @@ implicit-default filtered list — bare `/abcd:capture` is what renders
 status and recent captures, closing with a three-way routing hint
 (capture vs intent, plus an ideate route for a big, unproven idea).
 
-## 2. Ledger structure
+## 2. Which ledger a verb addresses
+
+Every verb addresses the CHECKOUT's ledger, whichever directory of the working
+tree it runs in: the repository root is **resolved** from the working directory,
+never taken to be it. The front doors handed the working directory to the core
+as the repo root verbatim, so a verb run from a subdirectory read an empty
+ledger and a write minted a second one beneath that subdirectory — silently in
+both directions, and out of reach of every gate that reads the real ledger
+(iss-2609090951291524; the detectors are `internal/surface/cli/capture_root_test.go`).
+
+Two consequences follow, and both are stated to the caller rather than guessed:
+
+- **Outside a git checkout there is no ledger to address**, so every verb exits
+  2 and writes nothing. The ledger is per-repository: a record filed outside one
+  is committed by nothing, read by nothing, and reaches no gate and no release
+  cut. Refusing is the only answer that does not create that record.
+- **A ledger sitting between the working directory and the checkout root is
+  named on stderr and left exactly where it is.** It is reported rather than
+  stepped over silently, and rather than absorbed: a stray store is either a
+  deliberate fixture or the residue of the defect above, and only the caller can
+  tell those apart. Moving it would destroy the evidence of which it was.
+
+## 3. Ledger structure
 
 Frontmatter fields (per the issue ledger schema in `internal/core`):
 
@@ -108,23 +130,23 @@ whole pull request rather than the fix.
 
 Body is free-form: details, suggested fix, links to context.
 
-## 3. Legacy scratch migration
+## 4. Legacy scratch migration
 
 A later phase, not yet built — the migration rides the `abcd dev-sync work` surface ([`08-abcd.md`](08-abcd.md)); the shipped Go ledger engine reserves a migrator-only `ForceID` seam for it. On first run of `abcd dev-sync work` after install (or first `/abcd:ahoy` upgrade), the command parses a free-form scratch buffer under `.abcd/.work.local/` entry-by-entry and promotes each to a corresponding `.abcd/work/issues/open/iss-N-<slug>.md`. Idempotent. The original scratch buffer under `.abcd/.work.local/` is preserved as a staging buffer (still works for ad-hoc scribbles; subsequent entries promoted on the next `abcd dev-sync work`).
 
-## 4. Acceptance
+## 5. Acceptance
 
 - **Given** an abcd-installed repo, **when** the user runs `/abcd:capture "review nitpick: T7 cache_ttl_days dead-config alternative"`, **then** a new file `.abcd/work/issues/open/iss-N-<slug>.md` exists with frontmatter populated and the captured text in the body.
 - **Given** an existing issue at `.abcd/work/issues/open/iss-3-foo.md`, **when** the user runs `/abcd:capture resolve iss-3 "fixed in spc-7 task 4" --impact fix --grounds "pursued: the fix closes the reported path; a recurrence would show it wrong"` (`--impact` and `--grounds` are both required and have no default), **then** the file moves to `.abcd/work/issues/resolved/iss-3-foo.md` with the resolution recorded.
 - **Given** an existing issue in any status folder, **when** the user runs `/abcd:capture promote iss-N --grounds "pursued: <conjecture>"`, **then** one invocation files a new draft intent under `intents/drafts/` — slug reused, body a by-id pointer to the issue, `promoted_from: iss-N` in its frontmatter — and stamps the issue's `promoted_to` with the minted `itd-N`, the issue keeping its folder; an issue already promoted is refused with the existing `itd-N`, and a post-mint stamp failure names the orphan draft and the `--intent` repair.
-- **Given** a fresh `/abcd:ahoy` upgrade with an existing scratch buffer under `.abcd/.work.local/`, **when** `dev-sync` runs (a later phase, not yet built — § 3), **then** every entry in that scratch buffer is promoted to the structured ledger with provenance noting "migrated from `.abcd/.work.local/` scratch".
+- **Given** a fresh `/abcd:ahoy` upgrade with an existing scratch buffer under `.abcd/.work.local/`, **when** `dev-sync` runs (a later phase, not yet built — § 4), **then** every entry in that scratch buffer is promoted to the structured ledger with provenance noting "migrated from `.abcd/.work.local/` scratch".
 - **Given** a reading item at `.abcd/work/issues/readings/<run-id>/rdi-N.md` and no disposition for it, **when** the user runs `/abcd:capture disposition rdi-N --state accepted --grounds "<why>"`, **then** a record is written at `.abcd/work/issues/dispositions/rdi-N/dsp-M.md`; a second answer to the same item is refused unless it cites the standing one with `--supersedes`, an empty `--grounds` (or a `held` with an empty `--exit-condition`) is refused, and a state the item's position does not make available is refused with the availability rule named.
 - **Given** a reading item carrying no disposition, **when** the user runs `/abcd:capture promote rdi-N`, **then** the promote is refused and no intent draft is minted — acceptance is one record and the action it licenses is a separate admission. The same refusal covers a standing `rejected`, `declined` or `held`: only `accepted` licenses an action, and the result's `issue_status` carries that standing state rather than a status folder.
 - **Given** a ledger containing 5 open issues, **when** the user runs `/abcd:capture list --open` (the flag is explicit — there is no implicit default), **then** the output lists all 5 with id, state, severity, and slug, in derived-priority order — unblocked issues first, then severity (`critical` → `nitpick`); rows blocked by an open dependency are demoted and annotated with their open blockers.
 - **Given** a ledger with a mix of open, resolved, and wontfix issues, **when** the user runs `/abcd:capture list --all`, **then** every issue across all three states is listed; the equivalent unfiltered CLI form `abcd capture list` (no flag) instead exits 2 with a "choose a filter" message.
 - **Given** an abcd-installed repo, **when** the user runs bare `/abcd:capture` (no args), **then** the output is a read-only status render — counts (`open N · resolved N · wontfix N`), up to 10 most recent open issues, and a three-way routing hint (capture vs intent, plus an ideate route) — and no `iss-*.md` file is created, moved, or field-mutated by the invocation itself.
 
-## 5. Implementation status
+## 6. Implementation status
 
 - **Library primitives:** delivered by the predecessor's `spc-20-issue-ledger-primitives-iss-n-allocator` (predecessor store).
   The API the command surface consumes is the Go package
@@ -132,7 +154,7 @@ A later phase, not yet built — the migration rides the `abcd dev-sync work` su
   resolve, wontfix, list, status) — a port of the predecessor's `_issue_lib`
   and `issue_workflow` primitives.
 - **Command flow:** delivered by the predecessor's `spc-21-abcdcapture-command-flow-text-ingest` (predecessor store).
-- **Legacy `.abcd/.work.local/` scratch migration:** design target per the predecessor's `spc-22-workissuesmd-migration-promote-legacy` (predecessor store) — a later phase, not yet built (rides the `dev-sync` surface, § 3).
+- **Legacy `.abcd/.work.local/` scratch migration:** design target per the predecessor's `spc-22-workissuesmd-migration-promote-legacy` (predecessor store) — a later phase, not yet built (rides the `dev-sync` surface, § 4).
 - **intent-auditor cross-check:** delivered by the predecessor's `spc-23-intent-auditor-extension` (predecessor store); the reviewer surface ships as `agents/intent-auditor.md`.
 - **Reading records and dispositions (itd-180, spc-58):** the schemas live in
   `internal/core/issueschema`; `internal/core/capture/reading.go` is the writer

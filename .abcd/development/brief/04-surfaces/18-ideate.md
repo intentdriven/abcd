@@ -72,6 +72,21 @@ The verb writes two things:
 No new record family: a killed idea is a research outcome, and the research
 directory is where a session looks before re-proposing one.
 
+**Both writes are committed, so both are redacted before either is made.** The
+verb takes intent's fail-closed posture rather than capture's redact-and-report
+one: a repository whose scanner configuration cannot be read refuses the run
+outright, because recording under a detector the verb cannot trust is worse than
+not recording. The gate is two-stage. Stage one redacts the free-text FIELDS —
+the idea, every claim, note, kill attempt and rejected alternative — before the
+renderer sees them, so the redaction is applied to the inputs and the markdown
+escape stays the last transformation. Stage two re-scans the rendered record and
+its `DECISIONS.md` pointer line, and a span that survives is a whole refusal with
+nothing written, naming the kinds it found and never the text. A literal `$HOME`
+sweep runs after the scanner as defence in depth. The count comes back on the
+result as `redactions`, and a non-zero count is reported to the caller: a record
+that no longer says what its author wrote is a fact the author needs, and
+redacting in silence is how a redactor is discovered by its damage.
+
 Exit codes are the release-cut shape without the middle state: `0` recorded, `2`
 refused with nothing written. There is no exit 1, because a verdict is either
 recordable or it is not.
