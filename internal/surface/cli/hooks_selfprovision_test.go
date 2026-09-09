@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -335,6 +336,96 @@ func TestSessionEndNeverBootstraps(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "transcript was not captured") || !strings.Contains(stderr, "#install") {
 		t.Fatalf("SessionEnd stderr must keep the one-line transcript-not-captured remedy: %q", stderr)
+	}
+}
+
+// briefChapter locates a committed design-record chapter from this test file's
+// own on-disk position, the same way hooksManifest locates the manifest — so
+// the assertions below read the chapter that actually ships in the checkout.
+func briefChapter(t *testing.T, rel string) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed to locate the test source file")
+	}
+	path := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", rel))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading the committed chapter %s: %v", rel, err)
+	}
+	return string(data)
+}
+
+// bootstrapPassage returns the paragraph of a chapter that documents the
+// self-provisioning shims: the run of consecutive non-blank lines carrying the
+// `.bootstrap.attempt` throttle the salvage is keyed on. Scoping the assertions
+// to that paragraph is what keeps them about the claim under test rather than
+// about every sentence in a long chapter.
+func bootstrapPassage(t *testing.T, rel, body string) string {
+	t.Helper()
+	for _, para := range strings.Split(body, "\n\n") {
+		if strings.Contains(para, ".bootstrap.attempt") {
+			return para
+		}
+	}
+	t.Fatalf("%s no longer documents the .bootstrap.attempt throttle at all", rel)
+	return ""
+}
+
+// passageLine returns the first line of a passage containing needle, so a
+// failure quotes the sentence at fault rather than the whole chapter paragraph.
+func passageLine(passage, needle string) string {
+	for _, line := range strings.Split(passage, "\n") {
+		if strings.Contains(line, needle) {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+// TestTheBriefNamesSessionEndAsTheBootstrapException: the design record must
+// describe the salvage set the manifest actually wires, and SessionEnd is not
+// in it. The false universal has already been shipped once and corrected once —
+// the README carried it until iss-2608211432384091 — and it survived in the
+// brief, where 01-ahoy.md and 05-internals/03-configuration.md both called the
+// self-provisioning shims "the four non-SessionStart" ones. That set names
+// SessionEnd, which deliberately never downloads (iss-2608210934566223,
+// TestSessionEndNeverBootstraps above), so a reader following the brief would
+// reintroduce the field failure that lost session 8db3dbd6's transcript. The
+// salvage set is derived from the shipped manifest here rather than spelled
+// out, so a shim that gains or loses its bootstrap rung fails this test until
+// the chapter says so too.
+func TestTheBriefNamesSessionEndAsTheBootstrapException(t *testing.T) {
+	var salvages []string
+	for _, h := range binaryHooks {
+		if strings.Contains(hookCommand(t, h.event), "bootstrap.sh") {
+			salvages = append(salvages, h.event)
+		}
+	}
+	if slices.Contains(salvages, "SessionEnd") {
+		t.Fatal("SessionEnd grew a bootstrap rung; see TestSessionEndNeverBootstraps")
+	}
+	if len(salvages) == 0 {
+		t.Fatal("no binary-invoking hook self-provisions any more; the chapters below describe a salvage that no longer exists")
+	}
+	for _, rel := range []string{
+		".abcd/development/brief/04-surfaces/01-ahoy.md",
+		".abcd/development/brief/05-internals/03-configuration.md",
+	} {
+		t.Run(rel, func(t *testing.T) {
+			passage := bootstrapPassage(t, rel, briefChapter(t, rel))
+			if strings.Contains(passage, "non-SessionStart") {
+				t.Fatalf("%s describes the self-provisioning shims as the non-SessionStart ones; that set includes SessionEnd, which never bootstraps: %q", rel, passageLine(passage, "non-SessionStart"))
+			}
+			for _, event := range salvages {
+				if !strings.Contains(passage, event) {
+					t.Fatalf("%s does not name %s, which the shipped manifest does provision through bootstrap.sh", rel, event)
+				}
+			}
+			if !strings.Contains(passage, "SessionEnd") {
+				t.Fatalf("%s does not name SessionEnd as the exception, so nothing in the chapter says the transcript hook must not download", rel)
+			}
+		})
 	}
 }
 

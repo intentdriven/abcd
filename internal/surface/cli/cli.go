@@ -1931,7 +1931,15 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 
 	// close <spc-N> — closes the spec AND reconciles the linked intent
 	// (planned -> shipped). Fail-closed and idempotent (see intent.Reconcile).
-	specCmd.AddCommand(&cobra.Command{
+	//
+	// --impact is the judgement the shipped intent carries. It is optional
+	// because a record that already declares one needs nothing here, and it
+	// exists because shipped/ is the one bucket intent_impact_valid requires an
+	// impact in: without it the ship verb could only either move an impactless
+	// record into the bucket that refuses it or refuse forever, with no way for
+	// the tool to supply the missing judgement (iss-126).
+	var closeImpact string
+	closeCmd := &cobra.Command{
 		Use:   "close <spc-N>",
 		Short: "Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)",
 		Args:  cobra.ExactArgs(1),
@@ -1940,7 +1948,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := intent.Reconcile(cwd, args[0])
+			res, err := intent.Reconcile(cwd, args[0], closeImpact)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
 			}
@@ -1961,7 +1969,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 				}
 			})
 		},
-	})
+	}
+	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)")
+	specCmd.AddCommand(closeCmd)
 
 	return specCmd
 }

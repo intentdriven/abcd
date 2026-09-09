@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -487,11 +488,17 @@ func SetPromotedFrom(repoRoot, intentID, source string) (Intent, error) {
 // It fails closed with NO partial move when: the spec has no/empty intent link;
 // the named intent does not exist; the link is ambiguous (more than one spec
 // realises the intent); the intent's spec_id disagrees with this spec
-// (bidirectional drift); or the intent is in an unexpected bucket (e.g. still in
-// drafts — it was never planned). Every id is validated against the ^spc-/^itd-
-// regexes before any path is built. The intent's `## Audit Notes` are left
-// untouched (the fidelity audit is a later phase; the intent ships with them empty).
-func Reconcile(repoRoot, specID string) (ReconcileResult, error) {
+// (bidirectional drift); the intent is in an unexpected bucket (e.g. still in
+// drafts — it was never planned); or the intent would enter shipped/ without the
+// impact judgement that bucket requires (see resolveShipImpact). Every id is
+// validated against the ^spc-/^itd- regexes before any path is built. The
+// intent's `## Audit Notes` are left untouched (the fidelity audit is a later
+// phase; the intent ships with them empty).
+//
+// impact is the judgement `abcd spec close --impact` carries: empty means "the
+// record already carries its own", and a value is stamped onto a record that has
+// none. It is never a silent override — see resolveShipImpact.
+func Reconcile(repoRoot, specID, impact string) (ReconcileResult, error) {
 	if !recordid.ValidSpecID(specID) {
 		return ReconcileResult{}, fmt.Errorf("intent: spec id %q must match ^spc-[0-9]+$", specID)
 	}
@@ -549,12 +556,32 @@ func Reconcile(repoRoot, specID string) (ReconcileResult, error) {
 		return ReconcileResult{}, fmt.Errorf("intent: %s is in %s (linked by spec %s); expected planned or shipped — refusing to reconcile", intentID, it.Bucket, specID)
 	}
 
+	// Impact gate, ahead of every write: shipped/ is the one bucket
+	// intent_impact_valid requires an impact in, and this is the one verb that
+	// moves a record there. Resolving it here — not after the move — is what
+	// keeps abcd from producing, out of its own verbs alone, a record its own
+	// record-lint refuses (iss-126).
+	stamp := ""
+	if it.Bucket == BucketPlanned {
+		if stamp, err = resolveShipImpact(repoRoot, it, impact); err != nil {
+			return ReconcileResult{}, err
+		}
+	}
+
 	res := ReconcileResult{Spec: sp, Intent: it, From: it.Bucket, To: it.Bucket}
 	// 1. Advance the intent planned/ → shipped/ FIRST. Its (kind, spec_id) are
-	// already set (Plan wrote them), so the shipped record is lint-valid without
-	// touching frontmatter. If this fails, the spec stays open — the whole
-	// operation retries cleanly.
+	// already set (Plan wrote them), and its impact is either already recorded or
+	// stamped just below, so the shipped record is lint-valid. If this fails, the
+	// spec stays open — the whole operation retries cleanly.
 	if it.Bucket == BucketPlanned {
+		// The stamp is written while the record is still in planned/, where a
+		// valid impact is equally lint-legal, so a failure at the move leaves a
+		// consistent record and the retry finds the judgement already recorded.
+		if stamp != "" {
+			if err := stampIntentImpact(repoRoot, it, stamp); err != nil {
+				return ReconcileResult{}, err
+			}
+		}
 		dstRel, err := moveIntentToBucket(repoRoot, it.Path, BucketShipped)
 		if err != nil {
 			return ReconcileResult{}, err
@@ -589,6 +616,100 @@ func Reconcile(repoRoot, specID string) (ReconcileResult, error) {
 		}
 	}
 	return res, nil
+}
+
+// shipImpactValues is the vocabulary a shipping intent may declare, spelled for
+// a human reading a refusal. `internal` is legal on an issue and a category
+// error on an intent — an intent is press-release-first, so "invisible to
+// users" is not a judgement it can hold — which is exactly the rule
+// intent_impact_valid applies at shipped/ and CreateFromText applies at the
+// seed.
+const shipImpactValues = "additive|breaking|fix"
+
+// resolveShipImpact decides the impact a planned intent will carry into
+// shipped/, and returns the value to STAMP — empty when the record already
+// carries its own judgement and nothing needs writing.
+//
+// The judgement itself is a human's, never the tool's: there is no default,
+// because the impact decides the derived version of the release this intent
+// lands in. So the four cases are settled without ever guessing one:
+//
+//   - neither the record nor the caller has one → refuse, naming the flag. This
+//     is iss-126: without the refusal a seed that never got a judgement travels
+//     drafts → planned → shipped through abcd's own verbs and lands in the one
+//     bucket abcd's own record-lint refuses it in.
+//   - only the caller has one → stamp it, after the same validation the seed
+//     path applies, so the tool cannot write a value the gate would reject.
+//   - only the record has one → validate it and write nothing. A record
+//     carrying a misspelling or `internal` is refused here rather than moved
+//     into the bucket where the blocker would catch it as archaeology.
+//   - both → they must agree. A close is not the place to revise a recorded
+//     judgement: silently overwriting it would let `--impact` rewrite history
+//     as a side effect of shipping, so a disagreement is refused and the human
+//     edits the record they meant to change.
+func resolveShipImpact(repoRoot string, it Intent, supplied string) (string, error) {
+	abs := filepath.Join(repoRoot, it.Path)
+	data, err := readRepoFile(abs, it.Path)
+	if err != nil {
+		return "", err
+	}
+	recorded := frontmatter.Fields(strings.Split(string(data), "\n"))["impact"].Value
+	if frontmatter.IsNull(recorded) {
+		recorded = ""
+	}
+	supplied = strings.TrimSpace(supplied)
+
+	switch {
+	case recorded == "" && supplied == "":
+		return "", fmt.Errorf("intent: %s has no impact and none was supplied; shipped/ requires one of %s (it decides the derived version, and there is no default) — re-run with --impact, or record the judgement in %s first", it.ID, shipImpactValues, it.Path)
+	case supplied == "":
+		if err := validShipImpact(recorded); err != nil {
+			return "", fmt.Errorf("intent: %s records %w; refusing to ship a record its own record-lint would refuse", it.ID, err)
+		}
+		return "", nil
+	case recorded == "":
+		if err := validShipImpact(supplied); err != nil {
+			return "", fmt.Errorf("intent: --impact %w", err)
+		}
+		return supplied, nil
+	case recorded != supplied:
+		return "", fmt.Errorf("intent: %s already records impact %q but --impact says %q; a close does not revise a recorded judgement — edit %s if the judgement changed", it.ID, recorded, supplied, it.Path)
+	default:
+		if err := validShipImpact(recorded); err != nil {
+			return "", fmt.Errorf("intent: %s records %w; refusing to ship a record its own record-lint would refuse", it.ID, err)
+		}
+		return "", nil
+	}
+}
+
+// validShipImpact applies the shipped/ bar to one impact value: a legal member
+// of the changelog vocabulary, and not `internal`. It is the same pair of checks
+// CreateFromText makes at the seed, so a value either boundary accepts survives
+// unchanged into shipped/ and passes intent_impact_valid there.
+func validShipImpact(value string) error {
+	imp, err := changelog.ParseImpact(value)
+	if err != nil {
+		return fmt.Errorf("impact %q, which is not one of %s (lower-case, no surrounding whitespace)", value, shipImpactValues)
+	}
+	if imp == changelog.ImpactInternal {
+		return fmt.Errorf("impact internal, which an intent may not hold — a press-release-first intent is user-facing by definition; declare one of %s, or record the work as an issue instead", shipImpactValues)
+	}
+	return nil
+}
+
+// stampIntentImpact writes a resolved impact onto an intent record in place,
+// through the package's one writer.
+func stampIntentImpact(repoRoot string, it Intent, impact string) error {
+	abs := filepath.Join(repoRoot, it.Path)
+	data, err := readRepoFile(abs, it.Path)
+	if err != nil {
+		return err
+	}
+	updated, err := setFrontmatterFields(string(data), map[string]string{"impact": impact})
+	if err != nil {
+		return err
+	}
+	return writeIntentFile(abs, it.Path, updated)
 }
 
 // writeIntentFile is the one way this package writes an intent record — the

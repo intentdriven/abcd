@@ -363,9 +363,13 @@ func TestStatusCounts(t *testing.T) {
 }
 
 // plannedLinked is a planned intent already carrying both link sides (the shape
-// Plan leaves): kind + spec_id set, ready to ship.
+// Plan leaves): kind + spec_id set, ready to ship. It also declares an impact,
+// because shipped/ requires one and `spec close` refuses to move a record that
+// has neither its own judgement nor one on the flag (iss-126) — a fixture
+// without one is a fixture that cannot ship, which impact_test.go tests on
+// purpose and no other test here means to.
 func plannedLinked(id, slug, specID string) string {
-	return "---\nid: " + id + "\nslug: " + slug + "\nspec_id: " + specID + "\nkind: standalone\n---\n" +
+	return "---\nid: " + id + "\nslug: " + slug + "\nspec_id: " + specID + "\nkind: standalone\nimpact: fix\n---\n" +
 		"# " + slug + "\n\n## Scope Conditions\n\n" + NullityToken +
 		"\n\n## Acceptance Criteria\n\n- ok\n" + groundsSection + "\n## Audit Notes\n"
 }
@@ -380,7 +384,7 @@ func TestReconcileHappyPath(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,10 +433,10 @@ func TestReconcileIdempotent(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	if _, err := Reconcile(root, "spc-1"); err != nil {
+	if _, err := Reconcile(root, "spc-1", ""); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatalf("second reconcile must be a clean no-op: %v", err)
 	}
@@ -453,7 +457,7 @@ func TestReconcileClosesSpecWhenIntentAlreadyShipped(t *testing.T) {
 	writeFile(t, root, shippedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -470,7 +474,7 @@ func TestReconcileFailsNoIntentLink(t *testing.T) {
 	// A spec whose intent link is malformed cannot be minted by Create, so write a
 	// spec whose intent names a non-existent intent to exercise the missing-intent path.
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-99"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must fail closed when the named intent does not exist")
 	}
 	// No partial move: the spec is untouched (still open).
@@ -485,7 +489,7 @@ func TestReconcileFailsWrongBucket(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must refuse an intent still in drafts")
 	}
 	if _, err := os.Stat(filepath.Join(root, draftsDir, "itd-10-alpha.md")); err != nil {
@@ -502,7 +506,7 @@ func TestReconcileFailsBidirectionalDrift(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-2"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must refuse when the intent's spec_id disagrees with the spec")
 	}
 	if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); err != nil {
@@ -516,19 +520,19 @@ func TestReconcileFailsAmbiguousLink(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 	writeFile(t, root, specsOpen+"/spc-2-alpha.md", specNaming("spc-2", "alpha", "itd-10"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must refuse when more than one spec realises the intent")
 	}
 }
 
 func TestReconcileRejectsBadSpecID(t *testing.T) {
-	if _, err := Reconcile(t.TempDir(), "spc-../../etc"); err == nil {
+	if _, err := Reconcile(t.TempDir(), "spc-../../etc", ""); err == nil {
 		t.Fatal("Reconcile must reject a traversal spec id")
 	}
 }
 
 func TestReconcileFailsMissingSpec(t *testing.T) {
-	if _, err := Reconcile(t.TempDir(), "spc-9"); err == nil {
+	if _, err := Reconcile(t.TempDir(), "spc-9", ""); err == nil {
 		t.Fatal("Reconcile must fail when the spec does not exist")
 	}
 }
@@ -544,7 +548,10 @@ func TestFullCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	rr, err := Reconcile(root, pr.Spec.ID)
+	// draftWithAC seeds no impact, so the close carries the judgement — and the
+	// second close below re-runs with an empty one, over a record that now
+	// records it, which is the idempotent shape.
+	rr, err := Reconcile(root, pr.Spec.ID, "fix")
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -576,7 +583,7 @@ func TestFullCycle(t *testing.T) {
 	}
 
 	// Second reconcile is a clean no-op.
-	if _, err := Reconcile(root, pr.Spec.ID); err != nil {
+	if _, err := Reconcile(root, pr.Spec.ID, ""); err != nil {
 		t.Fatalf("second reconcile must be idempotent: %v", err)
 	}
 }
@@ -634,7 +641,7 @@ func TestReconcileToleratesSpecIDSpelling(t *testing.T) {
 			writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", specID))
 			writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-			res, err := Reconcile(root, "spc-1")
+			res, err := Reconcile(root, "spc-1", "")
 			if err != nil {
 				t.Fatalf("Reconcile must accept the lint-green spec_id %q: %v", specID, err)
 			}

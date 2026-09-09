@@ -174,7 +174,9 @@ func TestSpecCloseHappy(t *testing.T) {
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
 
-	out := runCLI(t, "spec", "close", "spc-1", "--json")
+	// The record declares no impact, so the close supplies it — the flag's
+	// end-to-end wiring, from the surface through Reconcile to the record.
+	out := runCLI(t, "spec", "close", "spc-1", "--impact", "fix", "--json")
 	var got struct {
 		Spec struct {
 			Status string `json:"status"`
@@ -210,7 +212,7 @@ func TestSpecCloseReconcileText(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
-		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
 
@@ -752,3 +754,28 @@ var (
 	cliNativeIntentIDRe = regexp.MustCompile(`^itd-[0-9]{16}$`)
 	cliNativeSpecIDRe   = regexp.MustCompile(`^spc-[0-9]{16}$`)
 )
+
+// TestSpecCloseRefusesAnImpactlessIntent is iss-126 at the surface: without a
+// judgement on the record and none on the flag, the close refuses rather than
+// moving the intent into the one bucket intent_impact_valid requires an impact
+// in. The refusal is what makes `--impact` more than decoration, so it is
+// asserted here and not only in the core package.
+func TestSpecCloseRefusesAnImpactlessIntent(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
+
+	out, err := runCLIErr(t, "spec", "close", "spc-1")
+	if err == nil {
+		t.Fatalf("spec close shipped an intent declaring no impact:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "impact") {
+		t.Fatalf("the refusal does not name the missing impact: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, ".abcd/development/intents/planned", "itd-10-alpha.md")); statErr != nil {
+		t.Fatalf("the refused close still moved the intent out of planned/: %v", statErr)
+	}
+}
