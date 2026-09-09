@@ -24,6 +24,13 @@ assembly and diff the result.
 | `assemble` | — | shipped |
 | `ingest` | gate | shipped |
 
+Bare `abcd reading` is a third form, and it is a **read-only status render**: the
+assembler's version and schema number, the include-row and exclusion-row counts,
+the charter path, the four position definitions the binary resolves, the staged
+runs in the local-tier run directory, and any orphaned ingest waiting to be
+swept. It writes nothing, and it is where an operator reads what the instrument
+currently is before commissioning anything through it.
+
 ## The invocation carries no free text
 
 `assemble` takes exactly two operands, both closed in shape: a position and a
@@ -112,6 +119,16 @@ land in
 `.abcd/.work.local/scratch/reading-runs/<run-id>/`. With `--dry-run` and no
 `--out`, nothing is written and the result is rendered only.
 
+**`--out` costs the run its ingest.** `ingest` resolves a run's manifest from
+exactly one place, `.abcd/.work.local/scratch/reading-runs/<run-id>/`, and
+`assemble` parks no copy there when `--out` sent the pair elsewhere. A run
+assembled to any other directory therefore refuses at ingest with "whose
+manifest is not parked at", and `abcd reading` does not list it among the staged
+runs either, because that listing reads the same one directory. `--out` is for a
+run whose artefacts are being inspected or archived, never for one that is meant
+to come back through `ingest`: for that, let the default run directory name
+itself.
+
 ## What a reading would cost
 
 Every assembly, `--dry-run` included, reports the size of the item text it
@@ -150,16 +167,34 @@ refused, which the definitions instruct and nothing else checks.
 
 Refusal has two granularities. An item-level violation refuses that item and
 lands the rest, naming the ordinal, the rule and the field. A list-level
-violation refuses the run, and **a refused run still leaves a durable record**:
-`refusal.json` carries the run metadata and the named reason and no items, so a
-rerun is a new run with a new run id rather than an amendment.
+violation refuses the run, and **a refused run leaves a durable record once the
+run's identity is proven**: `refusal.json` carries the run metadata and the named
+reason and no items, so a rerun is a new run with a new run id rather than an
+amendment.
 
-The regime gate has one layer, and it is structural. Each regime declares
-reserved names, and a reserved name is matched against the item's own KEYS — its
-declared fields, and the keys of any nested object the contract does not define —
-never against the words inside a value. A field naming one is refused with the
-licence stated. Keys are compared folded, so a reserved name respelled in code
-points that render the same refuses as itself.
+Identity is proven when the run id resolves to a manifest parked in the run
+directory whose content hash matches the payload's `manifest_sha256`, and until
+it does, nothing is written anywhere. A malformed envelope, a run id nothing is
+parked under, a hash disagreement, and a manifest naming another run or another
+position each refuse before that point and leave no `refusal.json` at all. This
+is deliberate: a refusal record is a record ABOUT a run, and a payload that has
+not yet shown which run it belongs to has nothing to be recorded against.
+
+The regime gate has one layer, and it is structural. A regime that declares
+reserved names has them matched against the item's own KEYS — its declared
+fields, and the keys of any nested object the contract does not define — never
+against the words inside a value. A field naming one is refused with the licence
+stated. Keys are compared folded, so a reserved name respelled in code points
+that render the same refuses as itself.
+
+**Three of the four regimes declare a row; `generative` declares none**, so no
+name is reserved at the generative position, which is the widening position's.
+That is a designed hole rather than an oversight: the generative body schema is
+two fields, so any other key is refused as an unknown field regardless, and the
+generative licence is the widest of the four, with its constraint falling at
+admission rather than at ingest. The shipped `reading ingest --help` states it
+outright. The consequence to hold is that at one of the four positions this
+gate performs no check of its own.
 
 **The gate refuses only a real decision field.** A reading REPORTS: it quotes
 the record's `disposition:` line, says what a clause settles, what a paper
@@ -177,11 +212,17 @@ Writes are staged. Nothing durable is written or deleted until the whole payload
 validates — a refusal after the run is proven leaves its refusal record and
 nothing else; the reading records land in the reading-record family; and the run
 metadata is written **last**, as the commit marker, so a run without one never
-happened. An ingest interrupted before that marker leaves a stage in the local
-tier. Every later invocation names the orphan; the next one whose payload
-validates rolls the run back and clears it, and a refused run reports the
-orphans it left in place — the sweep is a delete in the committed tier, and a
-refused run never reaches one.
+happened. An interrupted ingest leaves a stage in the local tier. Every later
+invocation names the orphan, and the next one whose payload validates sweeps it,
+in one of two ways decided by that run's own commit marker:
+
+| the orphaned run | what the sweep does |
+|---|---|
+| reached no commit marker | rolls the run back: its reading records come out of the committed ledger and its run directory goes, because the run never happened. The ids removed are reported as `rolled_back_records` |
+| reached its commit marker | leaves the run entirely alone and clears the stage only, because the stage is a leftover from a crash after the marker and the run is complete |
+
+A refused run reports the orphans it left in place instead of sweeping them: the
+sweep is a delete in the committed tier, and a refused run never reaches one.
 
 ## What this surface does not claim
 
