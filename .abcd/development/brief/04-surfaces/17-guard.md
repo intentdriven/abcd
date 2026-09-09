@@ -140,9 +140,15 @@ for the dropped repo layer, `guard.registry_empty` for an absent registry).
 
 The hazard entries are bundled in the binary and merged with a repo's
 `.abcd/guard.json` — a dedicated file rather than a rules-loader domain, so a
-rules kill switch can never silently disable a safety guard. An entry key
-overrides one field or declares a new hazard; `{"disabled": true}` switches the
-guard off.
+rules kill switch can never silently disable a safety guard. The file declares
+its schema: `guard.Load` requires an explicit `schema_version` of 1 and refuses
+a file without one, so `guard check` on a registry missing the field answers
+`guard: unsupported schema_version: .abcd/guard.json must declare
+schema_version 1, got 0` and exits 2. Past that, an entry key overrides one
+field or declares a new hazard, and `{"schema_version": 1, "disabled": true}`
+switches the guard off. The kill switch is the whole file's two lines, not the
+`disabled` key alone: a bare `{"disabled": true}` is a refused registry, not a
+disarmed one.
 
 There is **no flag, environment variable, or prompt** that disarms the guard for
 a session: the file is the only route, so the change lands in a diff. What the
@@ -199,8 +205,11 @@ as produced: `git pus? --force origin main` is the force push whenever a file
 called `push` exists, in a directory the guard cannot see, so it blocks. An
 unconstrained position is never compared, which is why `ls *` and `git add
 *.md` do not change; behind zsh's `noglob` nothing expands and the compare is
-literal. Negation is bash's spelling, not Go's: `git clea[!x] -fd` is the same
-force-delete and blocks. At a FLAG position the pattern must also be
+literal. Negation is bash's spelling, not Go's: `git clea[!x] -fd` is read as
+the same `git clean -fd`, and lands on the `git-clean` entry, whose tier is
+`warn` — so it warns rather than blocking, as every spelling of `git clean -fd`
+does. What the negation glob decides is which entry the line reaches, not the
+verdict that entry carries. At a FLAG position the pattern must also be
 flag-shaped — its own literal prefix begins with `-` — and the scan stops at a
 `--` operand terminator, because a flag constraint is offered every argument
 rather than one position: without that, a bare `*` matched every long
@@ -267,7 +276,11 @@ A wrapper's own arguments are stepped over with it, including the mandatory
 operand in `timeout DURATION COMMAND` (iss-148) and in `chrt PRIORITY`,
 `taskset MASK`, `flock FILE`, `chroot DIR`. The set is `sudo doas command env
 nohup time xargs timeout exec nice setsid stdbuf ionice eatmydata proxychains
-chrt taskset unshare nsenter flock chroot runuser busybox` — and it is an
+chrt taskset unshare nsenter flock chroot runuser busybox noglob nocorrect` —
+the last two being zsh's precommand modifiers, which take no options of their
+own, so the token after either is command position; missing from the set, a
+Tier-1 blocker behind `noglob rm -rf *` never reached command position and
+evaded to a mere warn (iss-2608270655497992). The set is an
 upgrade, not the safety property: every per-wrapper flag list is derived by
 probing the installed binary rather than by reading its `--help`, which
 contradicts its own parser often enough to have cost a live bypass (gh-299).
