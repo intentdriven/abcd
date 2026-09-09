@@ -97,6 +97,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-159` — the repo visibility model has a committed-record mode between private and public, with the matching fence-suppression (graduated from iss-223)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
 - `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091014087993; refines itd-118's worktree clause)
+- `itd-2609091034175565` — A record says who is working on it before anyone else starts: a session lease in the machine-scoped lane for the local case and a `claimed_by` stamp on the record for the pushed case, rendered first by `abcd <record-id>` and consulted by the write verbs (promoted from iss-2609020716570699; refines iss-2608220750029993; the maintainer's ruling widens the recorded remote-only design to cover co-located sessions)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
