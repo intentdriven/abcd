@@ -60,8 +60,18 @@ its object is a prior widening run's pre-admission output
 ([adr-2609021016272867](../../decisions/adrs/2609021016272867-the-comparative-reading-receives-one-widening-run-s-candidat.md)).
 The assembler selects the one committed widening run at the target whose items
 carry no disposition and no admission, and hands the reading that run's items
-projected to two body fields. Everything else in the readings store stays excluded
-there as at every other position, and the manifest asserts it family by family.
+projected to two body fields. "At the target" reaches one commit further back on
+purpose. A run also qualifies when its own target is an ancestor of the target
+and the only thing that moved in between is the readings store and the issue
+ledger. Without that reach the loop the design sequences cannot be run at all,
+because committing a widening run's own records — the step that falls between its
+ingest and the next reading — moves the commit the next assembly names. A run
+whose target is not an ancestor is not a run at this target and is not listed; a
+run across which anything else moved is listed and refused, naming the first such
+path, because the material it read is not the material this assembly names. That
+is a reading of the rule rather than the rule itself, and a maintainer's ruling on
+it is owed. Everything else in the readings store stays excluded there as at every
+other position, and the manifest asserts it family by family.
 None or more than one qualifying run refuses and lists what it looked at, so the
 failure is legible rather than silent. A run holding fewer than two candidates is
 an interpretation fixed in advance: the position is not exercised, and the assembly
@@ -125,6 +135,25 @@ reading would be handed is known before one is commissioned (itd-198). The estim
 is byte-derived rather than a tokenizer's count, and the render says so beside the
 number rather than letting a reader take it for a measurement.
 
+Three further lines sit beside the figures.
+
+- **The window this position declares.** The committed preset entry carries the
+  reading window it was calibrated for, and the report states that declaration
+  beside the measurement it was taken from, then says whether this run sits within
+  it or exceeds it. A preset file too old to carry a declaration says so, rather
+  than rendering a zero a reader would take for a bound.
+- **A standing size target, stated and never enforced.** Where the estimate runs
+  over the target the report names both figures and leaves the judgement with the
+  reader, whose own window decides whether the assembly is acceptable.
+- **What the exclusion floor never examined.** An item admitted by a row the floor
+  does not parse travels whole, and the report says how many did, with the manifest
+  carrying the same mark item by item. The line appears only above zero, because on
+  a run where nothing travelled unexamined there is nothing to disclose (itd-194).
+
+At the entailment position the report adds that reading's yield bound: How many of
+the projected intents carry a mechanism claim, how many state that they have none,
+and how many carry neither (readings companion 6.6). No other position renders it.
+
 ## `ingest` checks what the reading was licensed to produce
 
 `ingest` validates the JSON a reading returned and writes its reading records. It
@@ -140,6 +169,17 @@ compared against the output's own claim, with no operand and no configuration ke
 able to reach it. And **named provenance is enforced at every regime**: an item
 whose pattern field is empty or absent is refused, which the definitions instruct
 and nothing else checks.
+
+**Payload text is redacted before it becomes a record.** Every string the payload
+supplies that is bound for a durable record — a refused item's criterion, an
+unrecognised field name, the instrument's own identity — goes through the privacy
+scanner on the way in, so an absolute home path, a hostname or a person's name
+carried in a reading's output cannot reach the committed ledger. The verb already
+did this to an accepted item's body, and the refusal path now matches it, closing
+an asymmetry inside one command where a payload string was treated two ways
+depending only on whether the command accepted the item. Where the scanner runs
+without its full pattern set the render says so on a redaction line rather than
+degrading quietly.
 
 The regime gate has one layer, and it is structural. A regime that declares
 reserved names has them matched against the item's own **keys** — its declared

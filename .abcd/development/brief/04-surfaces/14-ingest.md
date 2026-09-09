@@ -16,6 +16,15 @@ no bare-status render, and no CLI flags of its own. The `reading ingest`,
 `memory ingest` and `intent audit ingest` sub-verbs belong to other verbs and
 validate other inputs, never this corpus.
 
+**Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
+on an unknown command, and because a command page of that name exists, the binary
+adds its stale-surface note, reading that page as proof a newer build carries the
+verb and telling the person to rebuild or update. For a host-delegated command
+that advice can never come true, because there is no Go verb for a rebuild to
+bring in. Every host-delegated page has the same shape, `/abcd:consult` and
+`/abcd:prepare-this-repo` alongside this one. What the note should say is that the
+command runs in the host agent rather than at the CLI.
+
 ## What it does
 
 The work is split. The corpus's own registrar script does the deterministic
