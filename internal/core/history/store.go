@@ -36,54 +36,12 @@ var validKinds = map[string]struct{}{
 	"specstory-import": {},
 }
 
-// historyRoot returns ~/.abcd/history. HOME is respected so tests can redirect.
-//
-// NOTE: internal/core/ahoy defines an identical unexported historyRoot for the
-// index/meta layer of the same store. The store root belongs in one place;
-// consolidating the two onto a shared definition is a flagged follow-up.
-func historyRoot() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".abcd", "history"), nil
-}
-
 // maxTranscriptBytes caps a single guarded record read from the store. It
 // matches the transcript-capture cap on the write side; a record grown past it
 // out of band is refused rather than read wholly into memory.
 const maxTranscriptBytes = 64 << 20 // 64 MiB
 
-// transcriptsDir returns ~/.abcd/history/<rootSHA>/transcripts.
-func transcriptsDir(rootSHA string) (string, error) {
-	root, err := historyRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, rootSHA, "transcripts"), nil
-}
-
-// ownedDirsReal verifies every owned directory on the store path is a real
-// directory (not a symlink) before a mutating call touches the leaf. Ports the
-// _ensure_history_root_owned / _ensure_root_sha_dir_owned discipline: a swapped
-// parent can redirect an O_NOFOLLOW leaf open, so the parents are re-checked on
-// every call, not just at bootstrap.
-func ownedDirsReal(rootSHA string) (string, error) {
-	root, err := historyRoot()
-	if err != nil {
-		return "", err
-	}
-	repoDir := filepath.Join(root, rootSHA)
-	tdir := filepath.Join(repoDir, "transcripts")
-	for _, d := range []string{root, repoDir, tdir} {
-		if !fsutil.IsRealDir(d) {
-			return "", &StorePathError{Path: d, Msg: "not a real directory (absent or symlink); run `abcd ahoy install` to bootstrap the store"}
-		}
-	}
-	return tdir, nil
-}
-
-// repoLock takes a per-<rootSHA> advisory lock on transcripts/.lock, disjoint
+// repoLock takes a per-<rootSHA> advisory lock on records/.lock, disjoint
 // from ahoy's index lock. The lock file is opened O_NOFOLLOW mode 0o600 so a
 // pre-planted lock-file symlink is refused. The returned release closes the fd
 // (which drops the flock). Ports the two-domain lock model from

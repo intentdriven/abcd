@@ -144,7 +144,11 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
   external-contribution runbook.
 - `.abcd/.work.local/` — **local ephemeral** (gitignored): `NEXT.md` handover,
   `scratch/`, `logs/`, `reviews/` (intent-audit receipts), `private-names.txt`
-  (per-machine banlist layer). Per-worktree, so it never merge-conflicts.
+  (per-machine banlist layer), and `transcripts/` when this checkout is declared
+  in `~/.abcd/local-transcript-roots` (session transcripts default to the
+  user-level `~/.abcd/transcripts/<root-sha>/records/` store, which creates
+  itself; the per-repo location is an opt-in pull). Per-worktree, so it never
+  merge-conflicts.
 
 **Default to the local tier when in doubt.** Any artefact whose home is unclear —
 tool exports, oracle/review output, traces, intermediate analysis — goes to

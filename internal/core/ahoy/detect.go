@@ -302,15 +302,12 @@ func detectHistoryStore(rootSHA string) []Gap {
 	if rootSHA == "" {
 		return gaps
 	}
+	// There is no gap for a missing transcript corpus. The store creates itself
+	// on first use — internal/core/history owns that path and bootstraps it —
+	// so "absent" is the ordinary state of a repo that has not been captured
+	// yet, not a gap install must close. Raising one would have this board
+	// assert that transcripts will not be captured, which is false (iss-95).
 	repoDir := filepath.Join(root, rootSHA)
-	if !fsutil.IsRealDir(filepath.Join(repoDir, "transcripts")) {
-		gaps = append(gaps, Gap{
-			ID: "history.transcripts_missing", Category: SafeAutocreate, Scope: "repo",
-			Title:   "history transcripts/ dir missing",
-			Detail:  "~/.abcd/history/" + shortSHA(rootSHA) + "/transcripts/ is absent or not a real directory.",
-			FixHint: "ahoy install creates the transcript directory.", Required: true, Resolvable: true,
-		})
-	}
 	if !fileExists(filepath.Join(repoDir, "meta.json")) {
 		gaps = append(gaps, Gap{
 			ID: "history.meta_missing", Category: UserState, Scope: "repo",

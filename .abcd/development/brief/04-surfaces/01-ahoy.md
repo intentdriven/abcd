@@ -186,12 +186,15 @@ Steps, run in parallel where independent:
    identity a commit would use against the committed `.abcd/config/identity.json`
    pin (iss-62), emitting a `git_identity.unpinned` / `.mismatch` / `.unset` /
    `.uncheckable` `config-change` gap.
-5. **History-store wiring** — does the `~/.abcd/history/` store (abcd's native
-   local redacted transcript corpus, per
-   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)) exist at all
-   (bootstrap gap if not)? Does the `<root-sha>/transcripts/` directory exist? Is
-   the registered entry's `path` still accurate (mutable label — refresh if the
-   repo moved)?
+5. **History-store wiring** — does the `~/.abcd/history/` registry exist at all
+   (bootstrap gap if not)? Is the registered entry's `path` still accurate
+   (mutable label — refresh if the repo moved)? There is **no gap for an absent
+   transcript corpus**: `~/.abcd/transcripts/<root-sha>/` (abcd's native local
+   redacted transcript corpus, per
+   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)) creates
+   itself on first use, so "absent" is the ordinary state of a repo that has not
+   been captured yet, and a gap there would have the board assert that
+   transcripts will not be captured, which is false (iss-95).
 6. **Visibility state** — compare current `.gitignore` allowlist entries
    against the visibility table in
    [`05-internals/03-configuration.md § 1`](../05-internals/03-configuration.md#1-visibility-driven-gitignore-policy).
@@ -393,11 +396,12 @@ closes stdin and pre-answers: `abcd ahoy install --yes --refuse-adopt
    does not exist, bootstrap it: create the directory and write an initial
    `index.json` with its `schema` + `description` header (see
    [`05-internals/03-configuration.md`](../05-internals/03-configuration.md)
-   for the schema). Then create the `~/.abcd/history/<root-sha>/transcripts/`
-   transcript directory (abcd's native local redacted transcript corpus, per
-   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)), write the
+   for the schema). Then open this repo's transcript store through
+   `internal/core/history` — the only package that lays out that path (abcd's
+   native local redacted transcript corpus, per
+   [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)) — write the
    per-repo `<root-sha>/meta.json` (`root_commit`, `name`, `github`, and a
-   `corpus` block pointing at `transcripts/`), and register the repo in
+   `corpus` block pointing at the resolved records directory), and register the repo in
    `index.json` by its immutable `root_commit`, refreshing the entry's mutable
    `path` if the repo moved. A remote URL recorded in either file carries no
    credential: it is scrubbed where the identity is derived, the index is

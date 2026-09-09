@@ -1221,7 +1221,15 @@ func newHookCommand() *cobra.Command {
 			// dense sessions most worth keeping (iss-2608230817034768). Staging is
 			// one write, so this hook's cost no longer scales with the transcript;
 			// the next SessionStart drains it through the same fail-closed Capture.
-			res, err := history.Stage(det.RootSHA, in.SessionID, raw)
+			// Resolve first, so the store's own diagnostics — a corpus migrated
+			// off the legacy location, an opt-in declaration that was not
+			// honoured — reach stderr rather than being discarded inside Stage.
+			if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
+				for _, n := range st.Notes {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
+				}
+			}
+			res, err := history.Stage(captureRoot(cwd), det.RootSHA, in.SessionID, raw)
 			if err != nil {
 				return warn("staging failed (%v); this session was not captured", err)
 			}
@@ -1281,6 +1289,20 @@ func newHookCommand() *cobra.Command {
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+				// Resolving bootstraps the store for this repo — the reason a
+				// machine that never ran `ahoy install` still captures (iss-95)
+				// — and carries out any migration off the legacy location. Its
+				// notes are user-visible facts about where their transcripts
+				// now are, so they are notices, not stderr chatter.
+				if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
+					for _, n := range st.Notes {
+						notices = append(notices, "abcd "+termsafe.Sanitize(n))
+					}
+				} else {
+					notices = append(notices, fmt.Sprintf(
+						"abcd: the transcript store could not be opened (%s); this session will not be captured.",
+						termsafe.Sanitize(fsutil.RedactHome(err.Error()))))
+				}
 				if dr, err := history.Drain(captureRoot(cwd), det.RootSHA, sessionStartDrainBudget); err == nil {
 					for _, f := range dr.Failed {
 						notices = append(notices, fmt.Sprintf(
@@ -1298,21 +1320,10 @@ func newHookCommand() *cobra.Command {
 						termsafe.Sanitize(err.Error())))
 				}
 			}
-			// history.transcripts_missing is emitted only when cwd is a git repo
-			// (a root SHA resolved) AND this repo's transcripts dir is absent —
-			// exactly the state in which session-end would silently capture
-			// nothing. A non-repo cwd never carries this gap, so we stay silent
-			// there: no `ahoy install` would make a non-repo capturable. A
-			// detection that errored tells us nothing: never nag on uncertainty.
-			if det, err := ahoy.Detect(cwd); err == nil {
-				for _, g := range det.Gaps {
-					if g.ID == "history.transcripts_missing" {
-						notices = append(notices,
-							"abcd: session transcripts will not be captured — the history store is not set up for this repo. Run `/abcd:ahoy install` (or `abcd ahoy install`) to start recording.")
-						break
-					}
-				}
-			}
+			// There is no "the store is not set up for this repo" notice any
+			// more, and there must not be one: the store creates itself on the
+			// line above, so a notice telling the user to run `ahoy install`
+			// before transcripts are captured would now be false (iss-95).
 			// The skew notice is a plugin-root fact, not a repo one, so it stands
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
@@ -3554,7 +3565,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Redact and store a raw session transcript (reads a file or stdin)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
@@ -3577,11 +3588,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if sess == "" {
 				return fmt.Errorf("history capture: --session <id> is required when reading from stdin")
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := history.Capture(captureRoot(cwd), rootSHA, sess, raw, orDefault(kind, "native"))
+			res, err := history.Capture(repoRoot, rootSHA, sess, raw, orDefault(kind, "native"))
 			if err != nil {
 				return err
 			}
@@ -3612,11 +3619,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "List stored transcripts for this repo, newest first",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			records, err := history.List(rootSHA)
+			records, err := history.List(repoRoot, rootSHA)
 			if err != nil {
 				return err
 			}
@@ -3654,11 +3661,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "List transcripts that ended but are not yet redacted into the store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			staged, err := history.ListStaged(rootSHA)
+			staged, err := history.ListStaged(repoRoot, rootSHA)
 			if err != nil {
 				return err
 			}
@@ -3690,15 +3697,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Redact and store every staged transcript for this repo",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := history.Drain(captureRoot(cwd), rootSHA, 0)
+			res, err := history.Drain(repoRoot, rootSHA, 0)
 			if err != nil {
 				return err
 			}
@@ -3744,11 +3747,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Show one stored transcript's metadata and redacted body",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			rec, body, err := history.Read(rootSHA, args[0])
+			rec, body, err := history.Read(repoRoot, rootSHA, args[0])
 			if err != nil {
 				return err
 			}
@@ -3796,6 +3799,36 @@ func captureRoot(cwd string) string {
 		return top
 	}
 	return cwd
+}
+
+// historyStore is the shared front-door step for every `history` verb: resolve
+// this repo's root-commit SHA and its transcript store, and print the store's
+// own out-of-band diagnostics on stderr.
+//
+// Resolving here is what makes the store exist for a machine that never ran
+// `abcd ahoy install` (iss-95), and it is also where a corpus at the legacy
+// location is migrated. The notes are printed rather than swallowed for the
+// reason rulesRoot prints its own: a resolution that moved a corpus, or that
+// declined to honour an opt-in the caller wrote, must not be silent about it.
+// stderr, never stdout — the JSON envelope on stdout stays machine-readable.
+func historyStore(cmd *cobra.Command) (string, string, error) {
+	rootSHA, err := repoRootSHA()
+	if err != nil {
+		return "", "", err
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", err
+	}
+	repoRoot := captureRoot(cwd)
+	store, err := history.Resolve(repoRoot, rootSHA)
+	if err != nil {
+		return "", "", err
+	}
+	for _, n := range store.Notes {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
+	}
+	return repoRoot, rootSHA, nil
 }
 
 // rulesRoot resolves the repo root the modular-rules loader (and the shell

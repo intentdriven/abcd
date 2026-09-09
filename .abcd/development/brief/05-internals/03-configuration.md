@@ -132,9 +132,23 @@ The history store is a **user-scope** artefact, shared across every abcd-managed
   index.json                  registry — root-SHA → repo entry
   <root-sha>/
     meta.json                 identity + lineage for one repo
-    transcripts/              native local redacted transcript store (root-SHA-keyed, adr-29)
     prompt-exports/           oracle-adapter ad-hoc review exports
 ```
+
+### The transcript corpus
+
+The transcript corpus is a **sibling** user-scope store, not a sub-tree of the registry, and `internal/core/history` is the only package that may lay out or judge its path:
+
+```
+~/.abcd/transcripts/
+  <root-sha>/
+    records/                  redacted transcript records (root-SHA-keyed, adr-29)
+    staging/                  raw transcripts awaiting redaction (0o700, files 0o600)
+```
+
+It is **self-creating**: the store bootstraps on first use, so no install step stands between a wired hook and a stored transcript (iss-95). Every level is created individually and re-verified as a real directory on every resolve, so the store never creates or writes through a symlink.
+
+A repo may **pull its transcripts in**, by declaring the checkout in the caller's own home — one absolute path per line in `~/.abcd/local-transcript-roots`, the `path-entry` / `trusted-roots` idiom (home-scoped, abcd-owned, line-oriented, honoured only when it is a regular file this uid owns that no one else can write). A declared checkout keeps its store at `<repo>/.abcd/.work.local/transcripts/<root-sha>/`, in the gitignored per-worktree local tier. A corpus left at the earlier `~/.abcd/history/<root-sha>/transcripts/` path is moved into the store on first resolve, reported, and tombstoned at the old path — see [`../04-surfaces/11-history.md`](../04-surfaces/11-history.md).
 
 ### `index.json`
 
@@ -199,7 +213,7 @@ Because the lifeboat lands out-of-tree, `embark` reads it from wherever disembar
 
 | Scope | Location | Holds |
 |---|---|---|
-| **user** | `~/.abcd/` | one per machine — **machine-local shared state only**: the root-SHA-keyed `history/` store (`index.json` + per-root-SHA transcript corpus, [adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)), the root-SHA-keyed `voyage/` operations namespace ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)), machine `config.json` defaults, the user-scope `memory/` (personal, cross-project knowledge), and the caller-controlled trust declarations `path-entry` (the owned PATH copy) and `trusted-roots` (foreign-uid configuration roots, below). **Never the design record.** |
+| **user** | `~/.abcd/` | one per machine — **machine-local shared state only**: the root-SHA-keyed `history/` registry (`index.json` + per-root-SHA `meta.json`) and the root-SHA-keyed `transcripts/` corpus ([adr-29](../../decisions/adrs/0029-native-transcript-corpus.md)), the root-SHA-keyed `voyage/` operations namespace ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)), machine `config.json` defaults, the user-scope `memory/` (personal, cross-project knowledge), and the caller-controlled declarations `path-entry` (the owned PATH copy), `trusted-roots` (foreign-uid configuration roots, below) and `local-transcript-roots` (checkouts whose transcripts are pulled into the checkout). **Never the design record.** |
 | **repo** | in-tree `.abcd/` | this repository's record and working files — the three-tier layout below, plus `config.json` (with its `meta` setup block), `rules.json`, and the `memory/`, native spec store, `logbook/`, `rp/` namespaces. **The home for project work.** There is **no in-tree `lifeboat/`**: the lifeboat is out-of-tree output at an operator-chosen destination (adr-35). |
 
 **The repo-scope three-tier working layout** (matching [`../02-constraints/01-platform.md`](../02-constraints/01-platform.md) and [`../01-product/02-context.md`](../01-product/02-context.md)):
@@ -251,7 +265,7 @@ Set by ahoy:
 
 Two artefacts are absent from this table by construction, not by exception:
 
-- The native local transcript store is **always** gitignored (user-scope `~/.abcd/history/`, local working data — adr-29), so it is not a repo directory.
+- The native local transcript store is **always** gitignored: user-scope `~/.abcd/transcripts/` by default (local working data — adr-29), so it is not a repo directory; and when a checkout is declared in `~/.abcd/local-transcript-roots`, the pulled-in store sits under `.abcd/.work.local/`, which the row above already gitignores.
 - **`voyage/` and the lifeboat are not repo directories either** (adr-35). Voyage is user-scope (`~/.abcd/voyage/`, § The voyage store) and the lifeboat is out-of-tree output at an operator-chosen destination, so **no gitignore rule applies to either under any visibility** — there is nothing in-tree to switch.
 
 ¹ New projects use `.abcd/memory/` (curated by `dev-sync memory`). `memory/` is the legacy `cp -r` snapshot pattern that some existing projects maintain manually — abcd respects it if present, but doesn't write to it.

@@ -1,19 +1,20 @@
 # `/abcd:history` — Session-Transcript Store
 
-`/abcd:history` manages the native session-transcript store — a per-repo,
-redact-on-write archive of raw session transcripts, keyed on the repo's
-**root-commit SHA**. The store lives outside the repo at
-`~/.abcd/history/<root-sha>/transcripts/`, with a per-repo `meta.json`
-(`root_commit`, `name`, `github`, and a corpus block) alongside it. `list`,
-`show` and `staged` **perform zero writes**; the store has three write paths —
+`/abcd:history` manages the native session-transcript store — a redact-on-write
+archive of raw session transcripts, keyed on the repo's **root-commit SHA**. The
+store is **user-level** and lives outside every repo at
+`~/.abcd/transcripts/<root-sha>/records/`. ahoy's registry stays under
+`~/.abcd/history/`: `index.json` and the per-repo `meta.json`, whose corpus
+block points at the records directory. `list`, `show` and `staged` **perform
+zero writes**; the store has three write paths —
 the explicit `capture` sub-verb, the `drain` sub-verb, and the automatic
 `abcd hook session-start` drain — and all redact on write, so no live secret or
 absolute home path survives into a record.
 
 Automatic capture is **split across two hooks**. `abcd hook session-end` only
-**stages** the raw transcript beside the store at
-`~/.abcd/history/<root-sha>/staging/`, because redaction costs roughly 0.7s per
-megabyte and the host cancels a shutdown hook rather than wait for it — so
+**stages** the raw transcript beside the records at
+`~/.abcd/transcripts/<root-sha>/staging/`, because redaction costs roughly 0.7s
+per megabyte and the host cancels a shutdown hook rather than wait for it — so
 redacting at exit silently dropped every transcript past a couple of megabytes,
 which is to say the long, dense sessions most worth keeping
 (iss-2608230817034768). `abcd hook session-start` drains staging into the store
@@ -30,6 +31,55 @@ it captured, so one session has one staged copy and a fresher copy is never lost
 record spanned "never ended", "ended before the store existed" and "ended and
 lost" alike, and nothing could tell them apart, which is why a week of losses
 went unnoticed.
+
+## Where a transcript lands
+
+**The default is user-level, and it exists by construction.** A transcript is an
+artefact of the machine's session, not a file of the checkout: it must survive
+the clone being deleted, must never be a candidate for `git add`, and is worth
+consulting as one corpus across every repo a person works in. The **root-commit
+SHA is the key** — the same immutable key ahoy's registry uses — because a
+checkout moves, is renamed, and is cloned twice on one machine, while its root
+commit does not change under any of that. The key is a directory, so each repo's
+lane is read directly and no cross-repo filter exists to get wrong.
+
+**The store creates itself.** `internal/core/history` owns the store path and
+bootstraps it on first use; no install step is a precondition of capture. This
+is the resolution of iss-95: when `abcd ahoy install` had to have run first,
+`hook session-end` on a machine where it had not logged a line to stderr, exited
+0 — a shutdown hook must — and stored nothing, so the store read as wired while
+the corpus never accrued. Creation needs no authority the caller does not
+already hold, and it keeps the discipline it replaces: every level of the chain
+is created individually and re-verified as a **real directory** on every resolve,
+so the store never creates or writes *through* a symlink.
+
+**The per-repo location is an opt-in pull.** `~/.abcd/local-transcript-roots`
+holds one absolute checkout path per line (`#` comments, blank lines ignored); a
+declared checkout keeps its transcripts at
+`<repo>/.abcd/.work.local/transcripts/<root-sha>/records/` — the gitignored,
+per-worktree local tier, so a pulled-in transcript is never a commit candidate
+and never merge-conflicts between concurrent sessions. The declaration is
+home-scoped and honoured only when it is a regular file this uid owns that no
+one else can write, following the `~/.abcd/path-entry` and
+`~/.abcd/trusted-roots` idiom: a file inside the checkout would let a cloned repo
+redirect the machine's transcripts into its own working tree, and an environment
+variable clears the letter of that bar and not its spirit, since a repo can ship
+the shell or task-runner configuration that sets it. A present declaration that
+is not honoured says so on stderr, because an ignored opt-in and one never
+written are otherwise the same silence.
+
+**A corpus at the earlier location is moved, not orphaned.** The first resolve
+after the relocation moves every record and staged file out of
+`~/.abcd/history/<root-sha>/{transcripts,staging}/` into the store, file by file
+(idempotent under a concurrent peer, and safe across filesystems, which the
+per-repo opt-in can be), reports the counts on stderr, and leaves a
+`transcripts.moved` tombstone at the old path naming the new one. Reading both
+locations was rejected: it leaves two stores diverging from the first capture
+onward. Refusing was rejected too — it re-opens iss-95 from the other end, since
+a machine that *had* installed would stop capturing until a remedy was run.
+Nothing is deleted except a source file whose bytes are already at the
+destination; a file that could not be moved is left where it is, counted in the
+notice, and withholds the tombstone.
 
 ## Sub-verbs
 

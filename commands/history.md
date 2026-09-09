@@ -1,16 +1,32 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture and drain are the redacting write paths. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
+description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture and drain are the redacting write paths. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
 argument-hint: "list | show <session-id-or-filename> | staged | drain | capture <transcript-file>"
 ---
 
 # `/abcd:history` — session-transcript store
 
 The native session-transcript store at
-`~/.abcd/history/<root-sha>/transcripts/`, keyed on this repo's root-commit
-SHA. `list`, `show` and `staged` **perform zero writes**; `capture` and `drain`
-are the write paths, and both redact on write — no live secret or absolute home
-path can survive into a record.
+`~/.abcd/transcripts/<root-sha>/records/`, keyed on this repo's root-commit SHA.
+The store is **user-level and self-creating**: it belongs to the machine rather
+than to any checkout, and the first capture makes it, so no install step stands
+between a wired hook and a stored transcript. `list`, `show` and `staged`
+**perform zero writes**; `capture` and `drain` are the write paths, and both
+redact on write — no live secret or absolute home path can survive into a
+record.
+
+A repo whose transcripts should stay with the repo instead is an **opt-in
+pull**, declared in the caller's own home — one absolute checkout path per line
+in `~/.abcd/local-transcript-roots`. A declared checkout keeps its transcripts
+at `<repo>/.abcd/.work.local/transcripts/<root-sha>/records/`, inside the
+gitignored per-worktree local tier. The declaration is home-scoped so a checkout
+can never assert where the machine's session record is kept; a declaration that
+is not a regular file this uid owns, or that anyone can write, is ignored and
+says so on stderr.
+
+A corpus at the earlier `~/.abcd/history/<root-sha>/transcripts/` location is
+moved into the store the first time any verb resolves it, reported on stderr,
+and a `transcripts.moved` tombstone is left at the old path naming the new one.
 
 Capture of a live session is split across two hooks. SessionEnd only **stages**
 the raw transcript, because redacting at exit costs roughly 0.7s per MB and the

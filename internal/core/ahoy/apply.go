@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
 )
 
@@ -668,8 +669,16 @@ func (a *applyCtx) stepVisibility(cfg *InstallConfig) {
 	}
 }
 
-// stepHistory bootstraps ~/.abcd/history/, creates the per-root-sha dirs, writes
-// meta.json, and registers/refreshes the repo entry.
+// stepHistory bootstraps ~/.abcd/history/ (the registry: index.json and the
+// per-repo meta.json), opens this repo's transcript store, and
+// registers/refreshes the repo entry.
+//
+// The transcript corpus itself is NOT ahoy's to lay out: it lives at
+// ~/.abcd/transcripts/<root-sha>/records/ (or, opted in, inside the repo) and is
+// created by internal/core/history, which is also the only package that may
+// judge that path. Install still opens it, so a freshly installed machine has
+// the store on disk and the receipt names it — but capture no longer depends on
+// install having run (iss-95).
 func (a *applyCtx) stepHistory() {
 	if !a.approved[UserState] && !a.approved[SafeAutocreate] {
 		return
@@ -690,19 +699,21 @@ func (a *applyCtx) stepHistory() {
 		return
 	}
 	repoDir := filepath.Join(root, sha)
-	transcripts := filepath.Join(repoDir, "transcripts")
-	if a.approved[SafeAutocreate] && !fsutil.IsRealDir(transcripts) {
-		if err := os.MkdirAll(transcripts, 0o755); err == nil {
-			a.note(transcripts)
-		}
+	store, storeErr := history.Resolve(a.cwd, sha)
+	if storeErr == nil && a.approved[SafeAutocreate] {
+		a.note(store.Records)
 	}
 	metaPath := filepath.Join(repoDir, "meta.json")
 	if a.approved[UserState] && !fileExists(metaPath) {
+		corpus := ""
+		if storeErr == nil {
+			corpus = fsutil.RedactHome(store.Records)
+		}
 		meta := map[string]any{
 			"root_commit": sha,
 			"name":        a.det.RepoIdentity.Name,
 			"github":      a.det.RepoIdentity.Github,
-			"corpus":      map[string]any{"transcripts": "transcripts/"},
+			"corpus":      map[string]any{"transcripts": corpus},
 		}
 		if err := writeJSON(metaPath, meta); err == nil {
 			a.note(metaPath)
