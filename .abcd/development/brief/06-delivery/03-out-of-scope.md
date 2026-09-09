@@ -96,6 +96,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-164` — Licence vetting at source admission: `docs cite refresh` records each source's licence verdict into the committed baseline, and the zero-network gate refuses a new entry without one (builds on itd-163)
 - `itd-159` — the repo visibility model has a committed-record mode between private and public, with the matching fence-suppression (graduated from iss-223)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
+- `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091014087993; refines itd-118's worktree clause)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
