@@ -50,19 +50,38 @@ ownership.
 
 Everything else on `PATH` is a loud refusal naming its remedy rather than a swap:
 a plugin-root binary belongs to the plugin update, a Homebrew-resolved install to
-`brew upgrade`, a stranded owned entry to `ahoy install`, and a foreign occupant
-to whoever put it there. A refusal never proposes deleting a file abcd does not
-own.
+`brew upgrade`, a stranded owned entry to `ahoy install`, a track-latest dev shim
+to a mode switch first, and a foreign occupant to whoever put it there, its
+remedy asking for that occupant to be removed or renamed. Two more answer the
+cases where there is nothing to act on at all: no `abcd` anywhere on `PATH`, and
+an entry whose install shape abcd cannot classify, which fails closed rather than
+fetching.
 
-A tag abcd resolved rather than one the caller typed is confirmed on a terminal
-first, unless `--yes` is passed or the output is piped. Under the invocation the
-plugin command issues (`abcd update --yes --json`) nothing is emitted until the
-receipt, so there the resolved tag is first named in the receipt itself.
+One further refusal arrives after the dispatch, once the release checksums are in
+hand: a regular file that none of the three proofs vouches for. That one
+deliberately does not ask for a deletion — removing the file would destroy the
+only tool able to fetch a replacement — and names the reinstall route that
+overwrites the entry in place instead.
+
+A tag abcd resolved rather than one the caller typed is confirmed before the
+fetch, unless `--yes` is passed. The question is only put where somebody is there
+to answer it: the input the answer is read from and the stream the question is
+written to both have to be a terminal, so a hooked or scripted run is never left
+blocking on a read. Under the invocation the plugin command issues (`abcd update
+--yes --json`) nothing is emitted until the receipt, so there the resolved tag is
+first named in the receipt itself.
 
 The transport is pinned: no proxy or CA overrides from the environment (set ones
 are ignored and named in the receipt), redirects only onto the release origin's
 own hosts, every hop re-checked. The swap is atomic in the target's directory, so
 a failed download or verification leaves no partial file.
+
+The target file is not quite the only thing the verb touches. Where this machine's
+install record names the very entry just refreshed, abcd re-stamps that record
+with the digest the release checksums proved, so the file it updated does not read
+as somebody else's binary the next time an install shape is judged. The re-stamp
+runs on an already-current outcome too, and it does nothing at all where no record
+names that path.
 
 ## The receipt
 
@@ -72,13 +91,15 @@ happened:
 | `action` | What it means |
 |---|---|
 | `swapped` | the file was replaced, and the render reads `updated <path>: <old> -> <tag>` |
-| `already-current` | the target's digest already equals the release's, so nothing is written |
+| `already-current` | the target's digest already equals the release's, so the binary is left untouched |
 | `refused` | a dispatch or ownership refusal, naming its shape and its remedy |
 
-Beside `action` the receipt carries the origin, the tag, the asset and its digest,
-the target path (redacted to `~`), and the ownership proof that allowed the swap.
-It carries `env_ignored` when proxy or CA overrides were scrubbed, and a refusal
-block naming shape, detail and remedy on a refusal.
+On a run that reached the release origin, the receipt carries beside `action` the
+origin, the tag, the asset and its digest, the target path (redacted to `~`), and
+the ownership proof that allowed the swap. It carries `env_ignored` when proxy or
+CA overrides were scrubbed. A refusal receipt is deliberately thinner: a refusal
+raised before any fetch carries the target path and a block naming shape, detail
+and remedy, and nothing else, because there is no release it could name.
 
 An old version number is only derivable when a release manifest dated the file it
 replaced. A file swapped under either local proof has no published release naming

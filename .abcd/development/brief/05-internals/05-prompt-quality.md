@@ -5,10 +5,14 @@ practice shifts, and it rots silently: a prompt that has quietly stopped working
 returns plausible output, which is the failure mode hardest to notice. The
 machinery here exists so that rot leaves a trace.
 
-What ships today makes four things impossible to do by accident: shipping a prompt
-with no version, changing one without a changelog entry, declaring that a prompt
-reads untrusted input without carrying a canary for it, and leaving the
-untrusted-input question unanswered. What ships does **not** run any prompt or
+What ships today makes three things impossible to do by accident: shipping a
+prompt with no version, declaring that a prompt reads untrusted input without
+carrying a canary for it, and leaving the untrusted-input question unanswered. A
+fourth — changing a prompt without a changelog entry — holds only in part: the
+tree alone catches a version with no entry, while catching a body edit that never
+bumped its version needs the check pointed at a diff range, which the
+continuous-integration caller supplies and cannot always resolve. What
+ships does **not** run any prompt or
 judge any output — checking that a prompt still works needs a test harness, and
 that harness is a design target.
 
@@ -92,9 +96,11 @@ gated on the research files besides, which do not exist for any shipped agent.
 
 ## The itd-5 additions
 
-- **`prompt_version` frontmatter (ships).** Every prompt carries a semver, initial
-  value `0.1.0`, and `agents/CHANGELOG.md` records each bump with a one-line
-  rationale. Bump rules, semver-adapted: MAJOR for a behaviour-breaking output
+- **`prompt_version` frontmatter (ships).** Every prompt carries a semver, and
+  `agents/CHANGELOG.md` records each bump with a one-line rationale. A new prompt
+  normally starts at `0.1.0`; the four review and research prompts enter the
+  changelog at `0.2.0` instead, the bump that first gave them the untrusted-input
+  contract. Bump rules, semver-adapted: MAJOR for a behaviour-breaking output
   schema change, MINOR for a behaviour change preserving the schema, PATCH for a
   typo or non-behavioural edit.
 - **The `0.x` calibration band (ships).** itd-81 amends itd-5 and governs over this
@@ -102,15 +108,19 @@ gated on the research files besides, which do not exist for any shipped agent.
   wired, honestly unmeasured; `1.0.0` means measured against a corpus and locked,
   and the lock must be earned. So the self-improvement outcome and the
   calibration delta are recorded at lock, not at each bump. Every shipped prompt
-  sits in the `0.x` band, and every changelog entry today records the delta as
-  unmeasured.
+  sits in the `0.x` band. Most changelog entries say so outright, recording the
+  delta as unmeasured either in the entry itself or in its dated section's
+  preamble; the entries for the five prompts hardened on 2026-08-19, and one
+  cold-reading bump, say it nowhere, which is a gap in the record rather than a
+  measurement somebody took.
 - **One-shot oracle self-improvement pre-flight (staged).** Before a prompt locks
   at `1.0.0`, the author submits it to a reviewer with a rewrite-for-clarity
   directive, runs the goldens against both variants, and accepts the reviewer's
   variant only if it scores at least as well and is more than 10% shorter. No agent
   has reached `1.0.0`, and the goldens the comparison needs are layer B, so the
-  gate has not fired for any shipped prompt: each records exactly that in its first
-  changelog entry.
+  gate has not fired for any shipped prompt. Most say exactly that in the
+  changelog, in their own entry or in its dated section's preamble; the four
+  review and research prompts say it nowhere.
 - **Injection-canary fixtures (ships, as a presence check).** Every agent reading
   untrusted input carries at least one fixture with a prompt-injection payload, and
   `agent_contract` refuses a prompt that declares `true` without a regular,
@@ -128,7 +138,10 @@ writes the prompt informed by it, and the audit checks alignment after the fact,
 the author keeps their freedom and the auditor gets ammunition.
 
 Three research files exist today, alongside a template and the directory's own
-README; none names a shipped agent, and no shipped prompt has one. The one general
+README. Two of them are written for agents that were never built. The third is
+written for the shipped intent auditor under the name it carried before it was
+renamed, so it is stranded under a stem the by-name lookup no longer reaches: in
+practice no shipped prompt has a research file it can find. The one general
 baseline that does ship is
 [`01-general-best-practices.md`](../../research/prompting/01-general-best-practices.md),
 covering cross-cutting prompting practice.
