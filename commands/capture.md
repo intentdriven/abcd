@@ -50,10 +50,12 @@ declared mode, else `hand-written`). Report the new `id`, `status`, and `path` f
 too whenever it is non-zero: it counts the spans rewritten before the text was
 written, and the user needs to know their wording was changed.
 
-`--category lapse` **requires** `--lapsed-at`: the flag has no default, and a
-lapse capture that omits it exits 2 and writes nothing. The instant the
-discipline gave way is the whole content of a lapse entry, and the only value
-that could be defaulted is the write-up time it exists to be distinguished from.
+`--category lapse` takes `--lapsed-at`, which has no default: a lapse capture
+that omits it records no instant, never the write-up time. The refusal on an
+omitted instant is parked (iss-2609091009111294) until the rethink of the reading
+work settles what a lapse record must carry; the instant the discipline gave way
+is still what the flag exists to record, and a value that is given must be an
+RFC 3339 instant.
 
 ## Disclosure: where a record came from and how its text was produced
 
@@ -130,10 +132,12 @@ closed — `pursued`, `deferred`, `declined` — and the text is free prose:
 --grounds "pursued: <what is expected, and what would show it wrong>"
 ```
 
-`promote <iss-N>` and `resolve` **require** it: they mint the value in the same
-call, so an absent `--grounds` exits 2 and writes nothing. So does a malformed
-one — an unknown token, a missing colon, or a text below the substance floor.
-Every grounds refusal is a usage error at exit 2, on all three routes.
+`promote <iss-N>` and `resolve` record it when it is given and write no entry
+when it is not: the refusal on an absent value is parked (iss-2609091009111294)
+until the rethink of the reading work settles what a human is asked for at a
+triage. A malformed value is still refused — an unknown token, a missing colon,
+or a text below the substance floor. Every grounds refusal is a usage error at
+exit 2, on all three routes.
 `promote <rdi-N>` is the one route that takes no grounds and refuses one handed
 to it: a reading item states its conjecture in its disposition, which promote
 already refuses to act without, so a second one here would reach no record.

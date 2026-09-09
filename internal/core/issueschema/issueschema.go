@@ -137,19 +137,15 @@ var (
 // record-lint gate hold it to exactly this shape.
 var SlugRe = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
-// CategoryLapse is the one category whose records must state WHEN the discipline
-// gave way. It is spelled once here because two gates ask the question — the
-// ledger reader (core/capture) and the committed-ledger gate (core/lint) — and a
-// second copy would let one of them go on accepting what the other refuses.
+// CategoryLapse is the category whose records may state WHEN the discipline
+// gave way, on lapsed_at. spc-60 obliged the value on this category; the
+// obligation is parked (iss-2609091009111294) until the rethink of the reading work
+// settles what a lapse record must carry, so lapsed_at is optional everywhere
+// and format-checked wherever it is present. It is spelled once here because
+// two gates read it — the ledger reader (core/capture) and the committed-ledger
+// gate (core/lint) — and a second copy would let one of them go on refusing
+// what the other accepts.
 const CategoryLapse = "lapse"
-
-// LapsedAtRequired reports whether a category obliges a lapsed_at value. The
-// property is optional for every category and required for exactly this one: a
-// lapse entry with no lapse time is retrospective reconstruction wearing the
-// evidence's clothes, which is the thing the lapse log exists to detect.
-func LapsedAtRequired(category string) bool {
-	return category == CategoryLapse
-}
 
 // ValidLapsedAt reports whether a non-empty lapsed_at value is well formed: an
 // RFC 3339 instant. A bare date names a day rather than a moment and free text

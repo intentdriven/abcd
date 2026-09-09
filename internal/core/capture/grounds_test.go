@@ -46,12 +46,18 @@ func theGround(t *testing.T, ir, issID string) string {
 // TestPromoteRefusesWithoutGrounds is itd-179's first acceptance criterion: a
 // capture routed to an intent draft is a conjecture being pursued, and triaging
 // it without saying why is exactly the evaporation the argument closes.
-func TestPromoteRefusesWithoutGrounds(t *testing.T) {
+func TestPromoteWithoutGroundsRecordsNone(t *testing.T) {
 	repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
 
-	if _, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID}); err == nil {
-		t.Fatal("Promote without grounds = nil error, want a refusal")
+	// Absent is allowed and records nothing (iss-2609091009111294 parks the
+	// refusal); a value that IS given is still held to the vocabulary and the floor.
+	if _, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID}); err != nil {
+		t.Fatalf("Promote without grounds = %v, want the promote to proceed", err)
 	}
+	if g := groundsBullets(t, ir, issID); len(g) != 0 {
+		t.Fatalf("a promote without grounds recorded grounds = %q", g)
+	}
+	repo, ir, issID = promoteFixture(t, "the loader drops rules silently when the config is stale")
 	for _, bad := range []string{"planned: out of vocabulary", "pursued: short", "pursued"} {
 		if _, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID, Grounds: bad}); err == nil {
 			t.Fatalf("Promote with grounds %q = nil error, want a refusal", bad)
@@ -59,23 +65,24 @@ func TestPromoteRefusesWithoutGrounds(t *testing.T) {
 	}
 }
 
-// TestPromoteWithoutGroundsWritesNothing: the refusal lands BEFORE the mint, so
-// a missing argument never leaves an orphan draft behind for somebody to clean
-// up — the residue the promote path already works hard to avoid.
-func TestPromoteWithoutGroundsWritesNothing(t *testing.T) {
+// TestPromoteWithoutGroundsStillPromotes: with the refusal parked
+// (iss-2609091009111294) the route completes as a promote with no grounds
+// entry — one draft minted, promoted_to stamped, and no `## Grounds` bullet
+// invented for the caller.
+func TestPromoteWithoutGroundsStillPromotes(t *testing.T) {
 	repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
 
-	if _, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID}); err == nil {
-		t.Fatal("want a refusal")
+	if _, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID}); err != nil {
+		t.Fatalf("Promote: %v", err)
 	}
-	if n := draftCount(t, repo); n != 0 {
-		t.Fatalf("a refused promote minted %d draft(s), want 0", n)
+	if n := draftCount(t, repo); n != 1 {
+		t.Fatalf("a promote without grounds minted %d draft(s), want 1", n)
 	}
-	if iss := readIssue(t, ir, issID); iss.PromotedTo != "" {
-		t.Fatalf("a refused promote stamped promoted_to = %q", iss.PromotedTo)
+	if iss := readIssue(t, ir, issID); iss.PromotedTo == "" {
+		t.Fatal("a promote without grounds did not stamp promoted_to")
 	}
 	if g := groundsBullets(t, ir, issID); len(g) != 0 {
-		t.Fatalf("a refused promote recorded grounds = %q", g)
+		t.Fatalf("a promote without grounds recorded grounds = %q", g)
 	}
 }
 
@@ -98,18 +105,22 @@ func TestPromoteStampsGrounds(t *testing.T) {
 	}
 }
 
-// TestResolveRefusesWithoutGrounds: resolving mints the grounds in the same
-// call and has no corpus to fix, so it refuses from the first commit.
-func TestResolveRefusesWithoutGrounds(t *testing.T) {
+// TestResolveWithoutGroundsRecordsNone: with the refusal parked
+// (iss-2609091009111294) a resolve without grounds moves the record and writes
+// no grounds entry; it never invents one.
+func TestResolveWithoutGroundsRecordsNone(t *testing.T) {
 	repo, ir, issID := promoteFixture(t, "a thing that will be fixed")
 
 	if _, err := Resolve(ResolveRequest{
 		RepoRoot: repo, IssuesRoot: ir, ID: issID, Resolution: "fixed", Impact: "fix",
-	}); err == nil {
-		t.Fatal("Resolve without grounds = nil error, want a refusal")
+	}); err != nil {
+		t.Fatalf("Resolve without grounds = %v, want the resolve to proceed", err)
 	}
-	if iss := readIssue(t, ir, issID); iss.Status != StateOpen {
-		t.Fatalf("a refused resolve moved the record to %s", iss.Status)
+	if iss := readIssue(t, ir, issID); iss.Status != StateResolved {
+		t.Fatalf("a resolve without grounds left the record %s", iss.Status)
+	}
+	if g := groundsBullets(t, ir, issID); len(g) != 0 {
+		t.Fatalf("a resolve without grounds recorded grounds = %q", g)
 	}
 }
 

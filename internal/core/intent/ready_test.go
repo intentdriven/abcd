@@ -325,11 +325,12 @@ func readyWithClaims(t *testing.T, mechanism, conditions string) ReadyResult {
 }
 
 // TestReadyScopeConditionsAbsent is itd-177's first criterion: no conditions and
-// no explicit nullity exits the gate non-zero, naming the missing field.
+// no explicit nullity is reported, naming the missing field. The row is advisory
+// (iss-2609091009111294), so the report names it and the verdict ignores it.
 func TestReadyScopeConditionsAbsent(t *testing.T) {
 	res := readyWithClaims(t, "", "")
-	if res.Ready {
-		t.Fatal("an intent with no context claim must not be ready")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: an intent with no context claim must not be ready is reported, not gated")
 	}
 	c := checkByName(t, res, "scope_conditions")
 	if c.OK || !strings.Contains(c.Detail, "## Scope Conditions") {
@@ -377,8 +378,8 @@ func TestReadyMechanismNullityPasses(t *testing.T) {
 // exits non-zero and names the section — write the claim or the token.
 func TestReadyMechanismEmptyFails(t *testing.T) {
 	res := readyWithClaims(t, "## Mechanism\n\n", "## Scope Conditions\n\n"+NullityToken+"\n\n")
-	if res.Ready {
-		t.Fatal("an empty mechanism section must not be ready")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: an empty mechanism section must not be ready is reported, not gated")
 	}
 	c := checkByName(t, res, "mechanism_claim")
 	if c.OK || !strings.Contains(c.Detail, "## Mechanism") {
@@ -402,8 +403,8 @@ func TestReadyMechanismAbsentPasses(t *testing.T) {
 func TestReadyConditionMarkerMissing(t *testing.T) {
 	res := readyWithClaims(t, "", "## Scope Conditions\n\n"+
 		"- stamped <!-- cond: cond-2608300102030405 -->\n- unstamped\n\n")
-	if res.Ready {
-		t.Fatal("an unidentified condition must not be ready")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: an unidentified condition must not be ready is reported, not gated")
 	}
 	c := checkByName(t, res, "scope_conditions")
 	if c.OK || !strings.Contains(c.Detail, "2") {
@@ -420,8 +421,8 @@ func TestReadyConditionMarkerDuplicated(t *testing.T) {
 	const id = "cond-2608300102030405"
 	res := readyWithClaims(t, "", "## Scope Conditions\n\n"+
 		"- one <!-- cond: "+id+" -->\n- two <!-- cond: "+id+" -->\n\n")
-	if res.Ready {
-		t.Fatal("a duplicated identity must not be ready")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: a duplicated identity must not be ready is reported, not gated")
 	}
 	c := checkByName(t, res, "scope_conditions")
 	if c.OK || !strings.Contains(c.Detail, id) {
@@ -550,8 +551,8 @@ func TestReadyScaffoldPromptIsNotAClaim(t *testing.T) {
 func TestReadyConditionCarryingTwoMarkers(t *testing.T) {
 	res := readyWithClaims(t, "", "## Scope Conditions\n\n"+
 		"- one condition <!-- cond: cond-2608300102030405 --> <!-- cond: cond-2608300102030406 -->\n\n")
-	if res.Ready {
-		t.Fatal("a bullet with two identities must not be ready")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: a bullet with two identities must not be ready is reported, not gated")
 	}
 	c := checkByName(t, res, "scope_conditions")
 	if c.OK || !strings.Contains(c.Detail, "1") || !strings.Contains(c.Detail, "more than one identity") {
@@ -575,8 +576,8 @@ func TestReadyReportsStructuralConditionFaults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res := readyWithClaims(t, "", tt.conditions)
-			if res.Ready {
-				t.Fatal("a structural fault must not be ready")
+			if !res.Ready {
+				t.Fatal("an advisory check must not withhold readiness: a structural fault must not be ready is reported, not gated")
 			}
 			c := checkByName(t, res, "scope_conditions")
 			if c.OK || !strings.Contains(c.Detail, tt.wantDetail) {
@@ -615,8 +616,8 @@ func TestReadyReportsADuplicatedSectionHeading(t *testing.T) {
 // is a dead end.
 func TestReadyNamesACommentedSection(t *testing.T) {
 	res := readyWithClaims(t, "", "## Scope Conditions\n\n- holds on POSIX\n\n<!--\n- parked\n-->\n\n")
-	if res.Ready {
-		t.Fatal("a section carrying a comment span must not be ready")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: a section carrying a comment span must not be ready is reported, not gated")
 	}
 	c := checkByName(t, res, "scope_conditions")
 	if c.OK || !strings.Contains(c.Detail, "comment") {
@@ -635,8 +636,8 @@ func TestReadyNamesACommentedSection(t *testing.T) {
 func TestReadyNamesADuplicateHiddenBehindANullity(t *testing.T) {
 	res := readyWithClaims(t, "", "## Scope Conditions\n\n"+NullityToken+"\n\n"+
 		"## Scope Conditions\n\n- holds only where a POSIX shell exists\n\n")
-	if res.Ready {
-		t.Fatal("a nullity in the first section must not hide a second one")
+	if !res.Ready {
+		t.Fatal("an advisory check must not withhold readiness: a nullity in the first section must not hide a second one is reported, not gated")
 	}
 	c := checkByName(t, res, "scope_conditions")
 	if c.OK || !strings.Contains(c.Detail, "more than one") {
@@ -772,6 +773,41 @@ func TestGroundsExemptionIsNotTheClaimExemption(t *testing.T) {
 		// than an empty one.
 		if !strings.Contains(got.Detail, "grounds") && !strings.Contains(got.Detail, "conjecture") {
 			t.Errorf("%s: the grounds row names neither grounds nor the conjecture: %q", bucket, got.Detail)
+		}
+	}
+}
+
+// TestReadyAdvisoryChecksNeverGate is iss-2609091009111294: the two claim checks
+// and the grounds check are evaluated and reported, remedy included, and none of
+// them withholds readiness. The four structural checks keep gating. A record
+// that fails all three advisory rows at once and nothing else is READY.
+func TestReadyAdvisoryChecksNeverGate(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
+			"## Mechanism\n\n"+ // present and empty: the gate fault the gradient names
+			"## Acceptance Criteria\n\n- ok\n") // no scope conditions, no grounds
+	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
+
+	res, err := Ready(root, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertShape(t, res)
+	if !res.Ready {
+		t.Fatalf("three failing advisory rows must leave the intent ready: %+v", res.Checks)
+	}
+	advisory := map[string]bool{CheckMechanismClaim: true, CheckScopeConditions: true, CheckGrounds: true}
+	for _, c := range res.Checks {
+		switch {
+		case advisory[c.Name]:
+			if c.OK || !c.Advisory || c.Remedy == "" {
+				t.Fatalf("%s = %+v, want a failing advisory row carrying its remedy", c.Name, c)
+			}
+		default:
+			if !c.OK || c.Advisory {
+				t.Fatalf("%s = %+v, want a passing structural row", c.Name, c)
+			}
 		}
 	}
 }
