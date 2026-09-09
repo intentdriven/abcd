@@ -1349,3 +1349,42 @@ Per hand-run, append:
   occupied, unlike the three preceding runs; the record has no comparable
   capability for any of them, which is consistent with the design documents
   having scheduled them for a later iteration.
+
+## 2026-09-09 — sub-agent transcript capture (itd-2609090559376002)
+
+- **Proposal:** the transcript store keeps only the top-level session
+  transcript, so every sub-agent transcript is missed. Measured on this
+  machine's corpus, that is roughly three quarters of all recorded bytes.
+- **Initial routing:** five parts. The capture capability to an intent; the
+  lineage representation (explicit fields for the spawning session and agent
+  kind, against the composite identifier already in hand-use) to an ADR
+  refining adr-29; the migration of existing composite records to the intent's
+  spec; a cross-repo ingest seam to its own record; and a candidate principle
+  about a record being reachable from the identifier a reader holds.
+- **Confirmed routing:** the product thinker adopted the SPLIT, then widened
+  the intent twice in the same session: reconstruction of a session as one
+  agent-readable artefact, and a telemetry file beside it. Both were folded
+  into the intent rather than split out, because neither is a separable
+  capability: an artefact nothing can read is not a reconstruction, and the
+  telemetry is derived from the same bytes in the same pass. The cross-repo
+  ingest seam, initially routed out as its own record, came back INTO the
+  intent when the product thinker specified that reconstruction is repo-wide
+  and covers the history already on disk. The candidate principle was not
+  filed; it reads as the ADR's rationale rather than a standing stance.
+- **Verdict:** SPLIT, but a narrower split than proposed. One intent
+  (capture, ingest, reconstruction, telemetry), one ADR (lineage), one issue
+  already filed as the source record. Typed links: `refines itd-59`,
+  `refines adr-29`.
+- **Notes:** the first run where the initial routing was too aggressive rather
+  than too coarse. Three of the five parts were re-merged into the intent by
+  the human, and the re-merge was correct each time: the parts were stages of
+  one user-visible capability, not separable capabilities, and splitting them
+  would have produced records that could not ship independently. The table
+  caught the one part that genuinely was a different record type (the lineage
+  decision), which is what it exists for. A reversal flag was raised and stands
+  advisory: itd-59 records interactive-session capture as already solved, which
+  the measurement contradicts for everything below the main thread. The orphan
+  case (transcripts whose repository no longer exists, about a quarter of the
+  projects here) surfaced only during the interview and not in the initial
+  routing, which is a gap in the pre-pass worth noting: the table asks where
+  each part lives, not what the part cannot represent.
