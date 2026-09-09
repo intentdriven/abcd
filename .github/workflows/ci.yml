@@ -292,16 +292,41 @@ jobs:
       # findings surface in the log only.
       #
       # `-agent-diff` additionally arms agent_contract's unbumped-edit check,
-      # which needs a base revision to compare against. The base may still be
-      # absent (a merge_group event carries none; a force-pushed `before` is
-      # gone) — the guard then falls back to the unarmed run rather than
-      # failing, and every tree-shaped rule (the agent-prompt frontmatter, the
-      # canary, the changelog entry) runs either way. The fallback is loud: a
-      # downgrade nobody can see is a gate nobody knows is off.
+      # which needs a base revision to compare against.
+      #
+      # THE FALLBACK CHAIN, argued once here for the three range-scoped gates
+      # that share it (this step, and the RS001/RS002 and DA001-DA004 steps in
+      # the record-lint job). Each event this workflow triggers on names its base
+      # in a different field, and the chain must cover all three or a gate goes
+      # quiet on the event it does not cover — which is what happened to the
+      # merge queue (iss-2609091258115663). `merge_group.base_sha` is the base
+      # the queue entry was formed against, and reaching it matters more than the
+      # other two rungs: the queue entry is the run that actually GATES the
+      # merge, and the only run that sees the final base after a competing pull
+      # request merged ahead of it, which is exactly the race a range check
+      # exists to catch.
+      #
+      # The three fields are mutually exclusive — no event carries two — so the
+      # order cannot change which value is picked on any real run, and it states
+      # precedence rather than selecting between live values. It is written
+      # weakest-last all the same: `github.event.before` is the ONLY rung that
+      # can be present and wrong, because a force-push leaves it as the
+      # all-zeroes placeholder or a rewritten sha that resolves to nothing. The
+      # other two always name a real commit. A rung that can yield garbage never
+      # pre-empts one that yields a fact, and the pull-request rung stays first
+      # so the pull_request and push paths resolve exactly what they resolved
+      # before — the change is purely additive.
+      #
+      # The base can therefore still be unusable, and this step handles that
+      # rather than assuming it away: the guard falls back to the unarmed run
+      # rather than failing, and every tree-shaped rule (the agent-prompt
+      # frontmatter, the canary, the changelog entry) runs either way. The
+      # fallback is loud: a downgrade nobody can see is a gate nobody knows is
+      # off.
       - name: Record-lint (drift gate)
         if: matrix.os == 'ubuntu-latest'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           set -euo pipefail
           if [ -n "${BASE_SHA:-}" ] &&
@@ -423,10 +448,17 @@ jobs:
         run: bash scripts/check-issue-resolution.sh ledger HEAD
 
       # RS001/RS002 over the pull request's own range. On a push to main the
-      # base is the previous tip, so the range is the merge that just landed.
+      # base is the previous tip, so the range is the merge that just landed; on
+      # a merge-queue entry it is the base the entry was formed against, so the
+      # range is the would-be merge. That last rung is the one this check needs
+      # most and the one it lacked (iss-2609091258115663): a pull request whose
+      # base was clean when it was armed could merge a resolution that a
+      # competitor made terminal while it waited, because the only run that
+      # could have seen the collision was the one where the check skipped
+      # itself. The chain's order is argued at the record-lint step above.
       - name: Declared resolutions move the record (RS001/RS002)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             echo "issue-resolution: no usable base ref for this event — range checks skipped, RS003 above still ran."
@@ -446,10 +478,12 @@ jobs:
       # (DA003), and no commit introduced a NUL byte (DA004 — one NUL makes git
       # call the ledger binary, which would leave every rule above with no hunks
       # to read). Merges are checked, not skipped — a forged conflict resolution
-      # appears in no single-parent commit.
+      # appears in no single-parent commit — including the merge the QUEUE
+      # itself makes, which only a merge_group run has in range at all. Same
+      # chain as the two steps above, argued at the record-lint step.
       - name: Decisions ledger is append-only (DA001-DA004)
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
           if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
             echo "decisions-append: no usable base ref for this event — the range check is skipped."
