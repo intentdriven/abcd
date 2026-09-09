@@ -803,6 +803,33 @@
       ]
     },
     {
+      "path": "abcd history reconstruct",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "max-block-bytes",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd history show",
       "hidden": false,
       "flags": []

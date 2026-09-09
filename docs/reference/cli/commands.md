@@ -601,6 +601,20 @@ Repair records filed under a composite session id (reports; writes only with --a
       --sidecar-root stringArray   directory to search for the harness's per-agent metadata (repeatable; default: ingest_roots from .abcd/config/history.json)
 ```
 
+#### `abcd history reconstruct`
+
+Render one session — the main thread and every sub-agent — as one artefact plus telemetry
+
+**Usage:** `abcd history reconstruct <session-id> [flags]`
+
+**Flags:**
+
+```
+      --max-block-bytes int   truncate one rendered tool input or result at this many bytes (0 disables); what is removed is marked and counted (default 8192)
+      --mode string           full (every turn of every agent) | spine (the main thread whole, each sub-agent reduced to its instruction and its conclusion) (default "full")
+      --out string            directory to write <session>.md and <session>.telemetry.json into, or - for stdout (default ".")
+```
+
 #### `abcd history show`
 
 Show one stored transcript's metadata and redacted body

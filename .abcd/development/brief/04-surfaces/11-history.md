@@ -58,6 +58,7 @@ went unnoticed.
 | `ingest` | — | shipped |
 | `list` | — | shipped |
 | `migrate` | — | shipped |
+| `reconstruct` | — | shipped |
 | `show` | — | shipped |
 | `staged` | — | shipped |
 
@@ -122,6 +123,41 @@ went unnoticed.
   answers, the record gains the agent type, spawn depth, spawning tool call and
   parent agent, and where it does not the record says its lineage is unknown
   through `spawn_attribution`.
+
+- **`/abcd:history reconstruct <session-id>`** — render one session as **one
+  self-contained artefact** (`<session>.md`) and **one telemetry file**
+  (`<session>.telemetry.json`), written into `--out` (default the working
+  directory) or to stdout with `--out -`. The artefact is Markdown because its
+  consumer is a model being handed the session as context; it names its records
+  by basename and carries no store path, so it reads with the store gone.
+
+  **The main thread stays contiguous and the sub-agent sections are appended**,
+  each marked twice in the thread that spawned it — spawned here, joined here —
+  with an agent timeline table at the head carrying every agent's spawn turn,
+  span and join turn. The spec asked for the sections to be nested at their
+  spawn points; the corpus refuted it. The agents whose id a spawning transcript
+  records are the ASYNCHRONOUS ones, and for those the spawn and the join are
+  many turns apart, so nesting puts a delegate's conclusions in front of
+  main-thread turns that ran before those conclusions existed. Concurrency is
+  read off the table; section order asserts nothing about time. An agent nothing
+  could place goes under **Unattributed sub-agents**, last and labelled.
+  `--mode spine` keeps the thread whole and reduces each delegate to its
+  instruction and its conclusion, for when the full artefact will not fit the
+  context it is read into; `--max-block-bytes` caps one rendered tool input or
+  result, marked where it happens and counted in the telemetry.
+
+  The telemetry file carries the span, turn counts, token usage, a per-tool
+  call count, the models and agent types seen, and the same breakdown per agent.
+  **Tokens are counted once per distinct response id, never once per transcript
+  line**: the host writes one line per content block and repeats the response's
+  usage on every one of them, which inflates a naive sum by a factor that varies
+  per session — 2.44x on one stored transcript, 5.28x across ten
+  (iss-2609090723027424). `api_responses` and `usage_lines_seen` are both
+  reported so a consumer can see that the de-duplication happened. A
+  `completeness` block says what is missing — an absent main thread, agents
+  nothing could place, records found and not used, truncated captures — because
+  a derived measure that cannot state its own gaps must not be compared across
+  runs.
 
 Bare `abcd history` prints command usage — it does **not** render a status board.
 The global `--json` flag emits machine-readable output for every sub-verb.

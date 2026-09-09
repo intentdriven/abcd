@@ -1,7 +1,7 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, and migrate repairs records in place. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
-argument-hint: "list | show <session-id-or-filename> | staged | drain | capture <transcript-file> | ingest [<path>...] | migrate"
+description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, and reconstruct renders one session as an artefact plus telemetry. The store is keyed on the repo's root-commit SHA and every stored transcript is redacted on write.
+argument-hint: "list | show <session-id-or-filename> | staged | drain | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
 ---
 
 # `/abcd:history` — session-transcript store
@@ -140,6 +140,56 @@ write. Re-running it is a no-op. `--sidecar-root` (or the declared
 answers, the record gains its agent type, spawn depth, spawning tool call and
 parent agent, and where it does not, the record says its lineage is unknown
 rather than looking like a main-thread record.
+
+## Reconstruct
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history reconstruct <session-id> --out <dir>
+"${CLAUDE_PLUGIN_ROOT}/abcd" history reconstruct <session-id> --mode spine --out -
+```
+
+Render one whole session — the main thread and every sub-agent transcript stored
+for it — as **one self-contained Markdown artefact** plus **one machine-readable
+telemetry file**, `<session>.md` and `<session>.telemetry.json`, written into
+`--out` (default the working directory) or to stdout with `--out -`. The
+artefact is meant to be handed to an agent as context and read with the store
+and the host's files gone, so it names its records by basename and carries no
+path.
+
+**The main thread stays contiguous.** Each sub-agent is marked twice in the
+thread that spawned it — where it was launched and where its result came back —
+and its own transcript is appended as its own section. Never describe a
+sub-agent's findings as available to the turns between those two markers: for an
+asynchronous agent they are many turns apart, and every turn in between ran
+without its result. The **Agent timeline** table at the head of the artefact is
+the only statement the document makes about time; agents whose spans overlap ran
+concurrently.
+
+`--mode spine` keeps the main thread whole and reduces each sub-agent to its
+opening instruction and its closing turn — the form to reach for when the full
+artefact would not fit the context it is being read into.
+`--max-block-bytes` caps one rendered tool input or result; what it removes is
+marked where it happens and counted in the telemetry.
+
+`--out` defaults to the working directory. In a repo that follows abcd's
+three-tier layout, write into `.abcd/.work.local/scratch/` rather than the repo
+root — a reconstruction is a derived artefact, and the root is not where derived
+artefacts belong.
+
+The telemetry file reports the session's span, turn counts, token usage, a
+tool-call count per tool, the models and agent types seen, and a per-agent
+breakdown of all of it. Two fields deserve reading together: `api_responses` is
+the number of distinct responses counted and `usage_lines_seen` is the number of
+transcript lines that carried a usage object. They differ because the host
+writes one line per content block and repeats the same usage on every line of a
+response — summing lines overstates a session's tokens by a factor that varies
+per session. **Always report the token total as it comes out of this file; never
+recompute one by summing transcript lines.**
+
+Report the `completeness` block whenever it is not empty. It says what is
+missing: a session whose main-thread record was never stored, sub-agents nothing
+could place, records found and not used, and truncated captures. A measure that
+cannot say what it was missing must not be compared across runs.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

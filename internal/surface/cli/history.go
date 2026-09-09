@@ -319,6 +319,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 
 	historyCmd.AddCommand(newHistoryMigrateCommand(asJSON))
 	historyCmd.AddCommand(newHistoryIngestCommand(asJSON))
+	historyCmd.AddCommand(newHistoryReconstructCommand(asJSON))
 
 	return historyCmd
 }
