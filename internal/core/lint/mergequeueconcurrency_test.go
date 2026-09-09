@@ -179,12 +179,18 @@ var mergeGroupContext = map[string]any{
 	"github.event.merge_group.head_ref":      mergeQueueRef,
 	"github.event.merge_group.base_ref":      "refs/heads/main",
 	"github.event.merge_group.head_sha":      "1c9a4f2d6b8e0a7c5d3f1b9e2a8c6d4f0e7b5a3c",
+	// The base the queue entry was formed against — the commit `head_sha` sits
+	// on top of. It is the one field on this event that names a base to diff
+	// against, which is what the range-scoped gates need (rangegatebase_test.go).
+	"github.event.merge_group.base_sha": mergeGroupBaseSHA,
 	// A merge_group payload carries no pull request, no inputs and no pushed
 	// branch. GitHub resolves a missing context property to null, and these are
 	// spelled out rather than left to the unknown-path error so that reading a
 	// PR field on this event is understood, not merely unresolvable.
 	"github.event.pull_request.number":   nil,
 	"github.event.pull_request.head.ref": nil,
+	"github.event.pull_request.base.sha": nil,
+	"github.event.before":                nil,
 	"github.event.number":                nil,
 	"inputs.tag":                         nil,
 	"inputs.mode":                        nil,
