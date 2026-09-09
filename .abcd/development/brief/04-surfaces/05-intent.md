@@ -96,6 +96,10 @@ slug: <kebab-case>
 kind: discipline
 kind_notes: "<free-text describing what kind of discipline this is — e.g.,
               'cross-cutting acceptance-criteria gate, applied via lint and auditor'>"
+suggested_kind: <null, or the advisory hint a human set>
+spec_id: null          # required: a discipline never gets a spec
+reclassification_history: []
+severity: <minor|major|critical>
 ---
 
 # <Headline — what rule this imposes on every spec>
@@ -119,8 +123,11 @@ the prior art (other projects' versions of this discipline).>
 
 ## Acceptance Criteria
 
-> _Required even for disciplines (per the itd-1 discipline itself). At least one
-> Given-When-Then bullet describing how the rule is checked._
+> _Asked of disciplines too (per the itd-1 discipline itself): at least one
+> Given-When-Then bullet describing how the rule is checked. Nothing checks it
+> here — a discipline never passes the plan step, which is where the acceptance
+> refusal lives, so this section is held by hand and several disciplines carry
+> none (§ 6)._
 
 - **Given** <preconditions>, **when** <spec event>, **then** <gate behaviour>.
 
@@ -134,6 +141,14 @@ role of intent-auditor populates findings here.>
 <Citations to brief sections, related intents, prior art.>
 ```
 
+**Two body idioms are in the tree.** The template above is what the first seven
+disciplines follow. The seven written since (itd-190 onwards) head the rule
+`## The rule` and carry `## The gate`, `## Fit` and `## Staging` in place of the
+scope, acceptance and reference sections: a shorter shape that says what the rule
+is, what holds it, where it fits and how far it is armed. Nothing arbitrates
+between them, because no gate reads a discipline's body at all. Settling on one
+is open work.
+
 **Discipline subtypes come later.** The `kind_notes` field is free-text deliberately. This is a **deferred** capability — Discipline subtype taxonomy is NOT a live Role 3 `suggestion_type` (the three live types are `kind_change`, `bundle`, `supersession`). The subtype taxonomy (e.g., a closed enum of `methodology` / `documentation` / `audit` / `convention`) moves from free-text to formal enum when ANY of the following:
 
 1. **Three or more disciplines exist** with `kind_notes` describing similar shapes.
@@ -142,6 +157,13 @@ role of intent-auditor populates findings here.>
 4. **Cross-project usage** — once abcd is in three or more projects, comparing disciplines across them needs a shared subtype vocabulary.
 
 Until then, `kind_notes` is the free-text descriptor.
+
+**The first trigger has fired, and the enum has not been drawn.** Fourteen
+disciplines are in the tree and every one of them carries a `kind_notes` value,
+against a threshold of three. What is outstanding is the judgement the trigger
+asks for: whether those descriptors fall into shapes a closed enum could name.
+Drawing it is open work, so this section describes a deferral that has outlived
+its own condition rather than one still waiting on it.
 
 ### Lifecycle
 
@@ -229,7 +251,7 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 | `/abcd:intent grill <itd-N>` | Socratic adversarial interview that stress-tests an intent for vagueness, missing acceptance, hidden assumptions before planning. Glossary-aware once `terminology/` exists. `--brief-section <id>` flag for stress-testing a brief section instead. (per itd-27, `intents/planned/` — a later phase; no `grill` sub-verb ships yet) | (stays in current state) |
 | `/abcd:intent plan <itd-N>` | Plans a draft: mints its native spec, injects the bidirectional link (intent `spec_id` ↔ spec `intent`), stamps an identity onto every unmarked scope condition, and moves the file `drafts/` → `planned/`. `--production-mode` stamps the MINTED SPEC's disclosure pair; the intent's own stamp was written at create time and is never rewritten. On an intent already in `planned/` it does the identity step alone (no spec, no move), and refuses when nothing is unmarked. Single intent ID. | `drafts/` → `planned/` (stamp step: no move) |
 | `/abcd:intent ready <itd-N> [--grounds "<pursued\|deferred\|declined>: <conjecture>"]` | **Implement-readiness gate**: reports whether an intent is ready to implement — seven checks: in `planned/`, with acceptance criteria, both claim sections recorded (mechanism prompted-and-nullable, scope conditions mandatory and each identified), a bidirectional spec link, a written spec body, and recorded grounds (a discipline record is exempt: it carries no conjecture of its own). Exit 0 ready / 1 not ready / 2 fault. `--grounds` is the gate's one write: it appends the conjecture behind this decision — what is expected, and what would show it wrong — to the intent's `## Grounds` section, append-only ([adr-57](../../decisions/adrs/0057-grounds-accumulate-as-an-append-only-section.md)), and then reports; a shipped or superseded record is never backfilled. | (no move; `--grounds` appends to `## Grounds`) |
-| `/abcd:intent audit <itd-N>` | **Role 1 — single-document fidelity.** Compares the intent's press release + acceptance criteria against delivered reality (code, configs, docs, tests). Per-criterion verdicts (`MET` / `MET_WITH_CONCERNS` / `NOT_MET` / `INCONCLUSIVE`) appended to the intent's `## Audit Notes`. Aligns with the spec store's `plan-review` / `impl-review` / `completion-review` vocabulary — same operation shape (adversarial second opinion), different opponent (press release vs engineering spec). spc-12 (predecessor store) ships this **manual** verb; spc-28 (predecessor store) ships the on-close hook (move `planned → shipped` + queue a review), but auto-running the reviewer off that queue is still deferred (no spec currently owns it; spc-6 (predecessor store) disowned auto-firing). | (stays) |
+| `/abcd:intent audit <itd-N>` | **Role 1 — single-document fidelity.** Takes a **shipped** intent and nothing else: a record still in `drafts/`, `planned/`, `disciplines/` or `superseded/` is refused by name, because only a shipped intent has a delivered reality to be judged against. Compares the intent's press release + acceptance criteria against delivered reality (code, configs, docs, tests). Per-criterion verdicts (`MET` / `MET_WITH_CONCERNS` / `NOT_MET` / `INCONCLUSIVE`) appended to the intent's `## Audit Notes`. Aligns with the spec store's `plan-review` / `impl-review` / `completion-review` vocabulary — same operation shape (adversarial second opinion), different opponent (press release vs engineering spec). spc-12 (predecessor store) ships this **manual** verb; spc-28 (predecessor store) ships the on-close hook (move `planned → shipped` + queue a review), but auto-running the reviewer off that queue is still deferred (no spec currently owns it; spc-6 (predecessor store) disowned auto-firing). | (stays) |
 | `/abcd:intent audit ingest --verdict-json <path>` | Ingests a host-delegated intent-fidelity verdict JSON, validated fail-closed against the schema and the parked review request, and writes its per-criterion verdict into the shipped intent's `## Audit Notes` (or quarantines a bad payload). | (no move; updates `## Audit Notes`) |
 | `/abcd:intent consistency [<itd-N>]` | **Role 2 — cross-document fidelity.** Surfaces five judgement categories (terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts) across briefs + intents. **Bare** scans the whole corpus; **with `<itd-N>`** narrows to one intent's relationship with the rest. Findings land in `.abcd/.work.local/logs/audit/consistency-<ts>/report.{json,md}`. The judgement half + on-demand verb are the predecessor's spc-29 (a later phase); mechanical-half categories and pre-commit hook are deferred follow-ups. | (stays) |
 | `/abcd:intent shape [<itd-N>]` | **Role 3 — kind classification.** Examines whether an intent's declared `kind` (the noun) still fits the corpus. Surfaces *suggested* reclassifications across three live types: `kind_change`, `bundle`, `supersession`. **Bare** scans the corpus; **with `<itd-N>`** checks one intent. Pairs with `reclassify` (action verb that commits a `shape` finding). On-demand only per spc-29 (predecessor store; a later phase); findings land in `.abcd/.work.local/logs/audit/shape-<ts>/report.{json,md}`. Concurrency via `flock(2)` on `.abcd/coordination/shape.lock` (see § 7). Scheduled / continuous invocation is a deferred follow-up. | (stays) |
@@ -384,12 +406,12 @@ Both the press-release intent and the frozen PRD are immutable input artefacts p
 
 The invariants below are the contract the tree is held to, and each names what holds it. A bullet marked **(convention)** is practice the corpus follows by hand, with no shipped check behind it:
 
-- **Acceptance criteria present and well-formed** (per the itd-1 discipline): every intent in `drafts/`, `planned/`, and `disciplines/` has a `## Acceptance Criteria` section with at least one Given-When-Then bullet. Intents cannot be promoted from `drafts/` → `planned/` (or `drafts/` → `disciplines/`) without this. The block is at plan time, not in the record-lint: the refusal is the intent package's own `hasAcceptanceCriteria` check on a draft, plus the `acceptance_criteria` row of `abcd intent ready`. No record-lint rule reads the section, so a committed intent that lost one still passes the gate.
-- **`kind` is set on intents in `planned/`, `shipped/`, `disciplines/`, and `superseded/`.** Intents in `drafts/` may have `kind: null` (binding decision is at plan time). Lint blocks promotion from `drafts/` if `kind` cannot be inferred + confirmed.
+- **Acceptance criteria present and well-formed** (per the itd-1 discipline): an intent cannot be planned without a `## Acceptance Criteria` section carrying at least one Given-When-Then bullet. The block is at plan time, not in the record-lint: the refusal is the intent package's own `hasAcceptanceCriteria` check on a draft, plus the `acceptance_criteria` row of `abcd intent ready`. Everything in `planned/` and `shipped/` has therefore passed it. The two buckets the plan step never crosses are held by hand and are **(convention)**: a draft still on the bench may carry none, and so may a discipline, whose route into `disciplines/` does not run through `plan` at all. Both are true of this corpus today — four bench drafts and seven of the fourteen disciplines carry no section. No record-lint rule reads it, so a committed intent that lost one still passes the gate.
+- **`kind` is set on intents in `planned/`, `shipped/`, `disciplines/`, and `superseded/`.** Intents in `drafts/` may have `kind: null`. The shipped `plan` step neither infers a kind nor asks for one: it writes `standalone` wherever the draft left the field null, so `standalone` is what an unstated kind becomes. **A later phase** replaces that default with the proposal the user confirms or overrides (§ 1, "Later phase — plan grows a PRD-freeze front end and multi-kind dispatch"). What the record lint holds meanwhile is the value set per bucket: a draft's kind must be null, `standalone` or `bundle-member`, and a planned or shipped record's must be one of the latter two, non-null (`intent_lifecycle`).
 - **`kind: bundle-member` requires a `bundle:` field** pointing to a bundle ID; *all* members of a bundle reference the same bundle ID, and bundles are bidirectional in their members' frontmatter. **(convention)** No shipped lint reads `bundle`: `intent_lifecycle` knows `bundle-member` only as a legal `kind` value. **Exception for superseded bundle-members:** intents in `superseded/` with `kind_at_supersession: bundle-member` carry `bundle: null` AND `bundle_at_supersession: <bundle-id>` (preserves the bundle the intent was part of when retired, while signalling the bundle is no longer active). **(convention)** `bundle_at_supersession` appears in no shipped code either.
 - **Bundle invariant: all members belong to the same phase.** `/abcd:intent plan <itd-A> <itd-B> ...` (multi-arg, kind=bundle-member) hard-blocks promotion when the proposed members are scoped to different phases. Lint code `IL011`. Resolution: re-scope into one phase or downgrade one member to `kind: standalone`. See § 1 "Bundle invariant" for the canonical statement and the worked example (`intent-capture-discipline` retirement on 2026-05-07).
 - **`surface_history` entries are well-formed.** Every entry must include `date` (ISO YYYY-MM-DD), `from` (free-form surface descriptor), `to`, and `reason` (non-empty). Lint code `IL012` (severity: warn — it's an audit trail, not a gate). See itd-27's `surface_history` (skill → sub-verb on 2026-05-07) for a worked example.
-- **`kind: discipline` lives only in `disciplines/` or `superseded/`.** Discipline-kind intents in `drafts/` are an error (caught at plan time when the user picks a kind; rare).
+- **`kind: discipline` lives only in `disciplines/` or `superseded/`.** A discipline-kind record in `drafts/` is an error, caught by the record lint over the committed tree rather than at plan time: the `intent_lifecycle` drafts rule admits only a null, `standalone` or `bundle-member` kind, and the disciplines rule demands `discipline`. The gate is the commit, not the promotion.
 - **No intent has a `status` field — across any kind.** Lifecycle state is encoded by directory location only (`drafts/` / `planned/` / `shipped/` / `disciplines/` / `superseded/`). The 2026-05-08 directive removed the cached-mirror option: directory IS the state, no exceptions. Lint hard-blocks any frontmatter containing a `status:` key (shipped lint rule: `intent_lifecycle`, severity: blocker; templates and existing files were stripped in the 2026-05-08 sweep). The historical `status: draft | planned | shipped` field on standalone/bundle-member intents has been retired; uniform "directory is canonical" applies to all kinds.
 - Every intent in `drafts/` has `spec_id: null` (drafts have no plan yet).
 - Every intent in `planned/` has `spec_id: null` (unscheduled) or a `spc-N` id; a non-null `spec_id` points to an existing native-spec-store `<spec_id>-*.md` whose frontmatter `intent` field matches the intent's `id` (or contains the intent's `id` as one of a list, for bundle-member intents).
@@ -410,7 +432,12 @@ The verb `audit` names Role 1, per adr-40: it emits family-2 promise-vs-reality 
 
 ### Role 1 — single-document fidelity → `/abcd:intent audit <itd-N>`
 
-`/abcd:intent audit <itd-N>` is the **manual** Role 1 surface for `kind: standalone` and `kind: bundle-member` intents. Compares:
+`/abcd:intent audit <itd-N>` is the **manual** Role 1 surface. The bucket is what
+it gates on, not the kind: only an intent in `shipped/` is accepted, and any
+other is refused naming the bucket it is in. That reaches the same records the
+kind framing describes — `shipped/` holds `standalone` and `bundle-member`
+intents and nothing else — but it also means a standalone intent still awaiting
+its build is turned away, as it should be. Compares:
 - **Intent press release + acceptance criteria** ("what user-facing capability exists, plus the verifiable bar")
 - **Delivered reality** (current state of the source repo — code, configs, docs, tests)
 

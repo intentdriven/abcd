@@ -33,10 +33,13 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   line. Sources that refuse automated fetchers are printed as a manual checklist
   rather than recorded as broken.
 - **`docs cite confirm`** records that a human verified a citation the fetcher
-  could not read, either from named URLs or from a receipt file. Both forms
-  write the same dated entry, so the generated checklist page is a second
-  producer of one input rather than a second pathway. Only URLs the
-  documentation actually cites can be confirmed.
+  could not read, either from named URLs or from a receipt file. Today the
+  maintainer clears the printed checklist and names the URLs on the command line;
+  the receipt form ships against a producer that does not exist yet, a generated
+  checklist page that would hand the file back (a later rung of the same intent).
+  Both forms write the same dated entry, so when the page arrives it is a second
+  producer of one input rather than a second pathway. Only URLs the documentation
+  actually cites can be confirmed.
 
 Bare `abcd docs` prints command usage rather than a status board; the
 [surfaces index](README.md) carries the one enumeration of where the

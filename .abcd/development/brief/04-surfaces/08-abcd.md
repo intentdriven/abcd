@@ -37,8 +37,13 @@ Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
 does: `consult` and `ingest` run entirely as host-side markdown over the
-sources corpus and never invoke the binary, and `prepare-this-repo` shells out
-to `abcd lint` for part of its work and handles the rest host-side.
+sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
+case: its audit half runs `abcd lint`, and its adoption half is binary-backed
+too and writes — `abcd identity init` records the repo's identity block and
+registers the surfaces held to it, and `abcd ahoy install` lays the hooks, the
+banlist stub and the gitignore rules. What the markdown owns is the interview
+around them: which file carries the identity, what the tagline should say,
+whether the attribution gate is wanted. The command decides; the binary writes.
 
 ## The board itself is not built
 

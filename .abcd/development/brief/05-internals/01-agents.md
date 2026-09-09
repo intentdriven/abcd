@@ -29,9 +29,13 @@ Fifteen agent prompts ship in `agents/` today, in four groups:
   `scribe` (below).
 
 Each declares its inputs and outputs as JSON, and the schemas are the core's
-rather than the prompt's: the record families and the cold-reading item contract
-each live in the package that owns them, and there is no single shared schema
-package.
+rather than the prompt's. The record families — the issue schema, admissions and
+surprises, dispositions, and the cold-reading run and item contract — share one
+package, `internal/core/issueschema`, deliberately: the verb that writes a record
+and the gate that judges the committed tree have to agree on what a well-formed
+record carries, and two hand-kept copies drift the moment one side gains a field.
+So the cold-reading item contract does not live with cold reading; the reading
+package imports it from there.
 
 `agents/` also holds two plain docs, its README and its changelog, which carry no
 agent frontmatter. Because the plugin manifest declares no agents key, the loader
@@ -222,7 +226,7 @@ Every prompt carries declared frontmatter. The fields:
 |---|---|---|
 | `name` | yes | The agent's registered name; the flat-glob harness registration runs on `name` and `description` |
 | `description` | yes | When the host should dispatch this agent |
-| `color` | optional | A presentation hint, carried by the reviewer, researcher and cold-reading prompts |
+| `color` | optional | A presentation hint. Nine prompts carry one: the four cold-reading definitions (cyan), `docs-currency-reviewer` (blue), `ruthless-reviewer` (orange), `security-reviewer` (red), `sota-researcher` (purple), and `intent-auditor` (green). It tracks no group — the auditor carries one and `lifeboat-reviewer` does not — so it is decoration a prompt opts into, not a signal to read |
 | `tools` / `model` | optional | Tool allow-list and model hint for the host's dispatch, carried by the repo-workflow reviewer and researcher prompts |
 | `prompt_version` | yes | Semver of the prompt, bumped on any prompt change; the changelog entry is keyed on it |
 | `capability_scope` | yes | `{ task_classes: [...], designed_for: "<one line>" }`: the task classes the agent is designed for. `task_classes` is authored as a YAML inline list, never a block list, because the frontmatter parser does not support one nested there |
