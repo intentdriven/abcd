@@ -978,7 +978,10 @@ verifies the platform binary against the same release's checksums.txt, and
 swaps the PATH-installed copy atomically. The verb is the only ask: abcd
 never checks for or applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
-command that owns them.
+command that owns them. The file being replaced must be provably abcd's:
+the binary running the command, an install ~/.abcd/path-entry records, or
+a digest a published release still names. Anything else is refused with a
+remedy that reinstalls over it — never one that deletes it.
 
 **Flags:**
 

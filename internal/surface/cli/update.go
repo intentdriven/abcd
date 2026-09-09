@@ -32,7 +32,10 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"swaps the PATH-installed copy atomically. The verb is the only ask: abcd\n" +
 			"never checks for or applies updates on its own (adr-38). A plugin-root\n" +
 			"binary, the dev shim, and package-manager installs are refused with the\n" +
-			"command that owns them.",
+			"command that owns them. The file being replaced must be provably abcd's:\n" +
+			"the binary running the command, an install ~/.abcd/path-entry records, or\n" +
+			"a digest a published release still names. Anything else is refused with a\n" +
+			"remedy that reinstalls over it — never one that deletes it.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			requested := ""
@@ -112,8 +115,20 @@ func renderUpdateReport(w io.Writer, asJSON bool, rep update.Report) {
 	_ = render(w, asJSON, rep, func(w io.Writer) {
 		switch rep.Action {
 		case update.ActionSwapped:
-			fmt.Fprintf(w, "updated %s: %s -> %s\n", termsafe.Sanitize(rep.TargetPath), termsafe.Sanitize(rep.OldVersion), termsafe.Sanitize(rep.NewVersion))
+			// A file abcd owned but could not date — its release objects are
+			// gone from the forge — has no old version to print, and an empty
+			// left-hand side would read as a broken receipt. It is named for
+			// what it is, and the digest and the ownership proof that allowed
+			// the swap follow on their own line (iss-2609012000222546).
+			old := termsafe.Sanitize(rep.OldVersion)
+			if rep.OldVersion == "" {
+				old = "an unpublished build"
+			}
+			fmt.Fprintf(w, "updated %s: %s -> %s\n", termsafe.Sanitize(rep.TargetPath), old, termsafe.Sanitize(rep.NewVersion))
 			fmt.Fprintf(w, "  origin:   %s\n", rep.Origin)
+			if rep.OldDigest != "" {
+				fmt.Fprintf(w, "  replaced: sha256 %s — in no published release; %s\n", termsafe.Sanitize(rep.OldDigest), rep.Ownership.Prose())
+			}
 			fmt.Fprintf(w, "  verified: sha256 %s (release checksums.txt)\n", termsafe.Sanitize(rep.Digest))
 		case update.ActionCurrent:
 			fmt.Fprintf(w, "already current: %s is %s (verified against the release checksums)\n", termsafe.Sanitize(rep.TargetPath), termsafe.Sanitize(rep.Tag))
