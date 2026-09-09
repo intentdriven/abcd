@@ -22,6 +22,8 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -52,7 +54,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := ideateStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -71,7 +73,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 			// The clock is read HERE, at the front door, and passed in: the date lands
 			// in a durable filename and a durable log line, so the core takes it as an
 			// argument a test can pin rather than reading it from under a writer.
-			res, err := ideate.Record(cwd, args[0], raw, time.Now())
+			res, err := ideate.Record(repoRoot, args[0], raw, time.Now())
 			if err != nil {
 				return &exitError{Code: 2, Msg: "ideate record: " + scrubPaths(err)}
 			}
@@ -85,6 +87,46 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 
 	ideateCmd.AddCommand(recordCmd)
 	return ideateCmd
+}
+
+// ideateStoreRoot is the front door's first step: the checkout whose research
+// store the verdict is written into and whose decision log its pointer is
+// appended to, resolved from the working directory rather than taken to BE it.
+//
+// The verb used to hand os.Getwd() straight to ideate.Record, which joins both
+// relative paths onto whatever it is given. Run from a subdirectory the grill
+// then read a record that was not there and reported the cited ids as records
+// that "do not exist in this repository" — a plausible wrong answer that blames
+// the operator's grill for the verb's own misaddressing — and where the caller's
+// directory happened to carry a decision log, the verdict and its pointer landed
+// in a store below the checkout root. Outside every repository it did the same
+// in a plain directory (iss-2609091729516940). A verdict filed that way reaches
+// no gate, no release cut and no reader, which for this family is the whole
+// point of writing it: a killed idea nobody can find is an idea that gets
+// proposed again.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals — the same one the
+// capture verbs resolve their ledger through and `decide` its decision store,
+// with only the store's noun differing. Nothing is written on a refusal, because
+// the core is never reached.
+//
+// The stray-store note rides the same step, on stderr, exactly as the ledger's
+// and the decision store's do: a resolution that silently steps over a store the
+// defect already laid would leave those verdicts where nothing will ever look
+// again. It REPORTS and moves nothing.
+func ideateStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the research store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "ideate record: " + err.Error() + " (nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, ideate.ResearchRelDir, "research store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "ideate record: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
 }
 
 // readIdeatePayload reads the untrusted verdict document behind the same trust

@@ -45,8 +45,7 @@ func poisonTail() string {
 }
 
 func TestIntentPlanRenderMasksPathTail(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	// Clean kebab-case slug in the frontmatter; the ATTACK is in the filename tail.
 	name := "itd-10-alpha" + poisonTail() + ".md"
 	writeRepoFile(t, repo, cliDrafts+"/"+name, cliDraftWithAC("itd-10", "alpha"))
@@ -59,8 +58,7 @@ func TestIntentPlanRenderMasksPathTail(t *testing.T) {
 }
 
 func TestIntentLinkRenderMasksPathTail(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	name := "itd-10-alpha" + poisonTail() + ".md"
 	writeRepoFile(t, repo, cliPlanned+"/"+name,
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n")

@@ -110,6 +110,16 @@ recordable or it is not.
 | A verdict record that already exists for this slug and date | Overwriting would erase a recorded reason, which is the one thing the verb exists to preserve |
 | A repository with no `.abcd/work/DECISIONS.md` | A record nothing points at is a record nobody finds — refused before anything is written |
 | A symlinked component anywhere in `.abcd/development/research/notes/` | The write goes through one `os.Root` opened at the repository root, which refuses symlink traversal at every level, not just the leaf |
+| A working directory with no repository above it, or one git will not answer for | There is no research store to address, and laying one where the caller stood is a verdict no gate, no release cut and no reader ever sees |
+
+**The repository root is resolved, never assumed to be the working directory.**
+The front door asks
+[`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go) first — the same
+resolution `capture` addresses its ledger through and `decide` its decision store
+— so a run from a package directory grills the checkout's own record and writes
+both artefacts into the checkout's store, and the two refusals above are what
+happens in the states where no root can be named. A research store found **below**
+the checkout root is named on stderr and left untouched.
 
 The research directory itself is **created when absent**: nothing else in abcd
 establishes it and no convention check requires it, so refusing would fail the
