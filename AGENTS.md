@@ -267,6 +267,18 @@ irreversible; guessing downward costs nothing.**
   exactly like a right one; RS002/RS003 check reachability instead. Note the
   repository allows merge, squash and rebase merges, and the last two rewrite a
   cited branch sha out of existence — RS003 is what notices.
+- **Pre-existing is not a defence.** A defect confirmed while doing other work
+  is fixed, or deferred out loud as a recorded decision naming the finding and
+  the reason. Capturing it and shipping past it is not the second option: filing
+  is a decision to make no decision. The release cut enforces the consequential
+  half — `changelog.GuardFindings` refuses a cut carrying a `major` or
+  `critical` record that entered the ledger since the anchor tag and is still in
+  `open/`, naming every one of them. Findings already in the ledger at the
+  anchor are the standing backlog and do not trip it. The way past is to fix and
+  resolve it, `wontfix` it with its reason, or add `deferred_after: <anchor
+  tag>` and a `deferral_reason:` to the record, which is granted for that one
+  cycle and lapses when the next release re-anchors. Full statement:
+  [`.abcd/development/principles/pre-existing-is-not-a-defence.md`](.abcd/development/principles/pre-existing-is-not-a-defence.md).
 
 ## Attribution and acknowledgements
 
