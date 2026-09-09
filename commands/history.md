@@ -12,15 +12,19 @@ SHA. `list`, `show` and `staged` **perform zero writes**; `capture` and `drain`
 are the write paths, and both redact on write — no live secret or absolute home
 path can survive into a record.
 
-Capture of a live session is split across two hooks. SessionEnd only **stages**
-the raw transcript, because redacting at exit costs roughly 0.7s per MB and the
-host cancels a shutdown hook rather than wait, which silently dropped every
-transcript past a couple of megabytes. The next SessionStart drains staging into
-the store. Staging is locked and keyed on content: a SessionEnd that re-fires
-for a session with identical bytes is a no-op, one with different bytes replaces
-the staged copy, so a session has one staged copy and the newer snapshot wins.
-`staged` shows what has ended but is not yet stored; `drain` finishes it without
-waiting for another session.
+Capture of a live session is split between staging and redaction. SessionEnd
+only **stages** the raw transcript, because redacting at exit costs roughly 0.7s
+per MB and the host cancels a shutdown hook rather than wait, which silently
+dropped every transcript past a couple of megabytes. A finished sub-agent stages
+the same way, its own transcript alongside the session's, with the lineage that
+says which session and which agent produced it. The next SessionStart drains
+staging into the store, taking session transcripts before sub-agent ones and
+bounding the pass by bytes as well as count, so a pass that runs out of budget
+stores the part that makes the rest legible. Staging is locked and keyed on
+content per session and agent: a re-fired hook carrying identical bytes is a
+no-op, one carrying different bytes replaces the staged copy, so each has one
+staged copy and the newer snapshot wins. `staged` shows what has ended but is
+not yet stored; `drain` finishes it without waiting for another session.
 
 ## List
 
@@ -49,11 +53,15 @@ the metadata and, if the user wants it, the body.
 ```
 
 List transcripts that ended but are not yet redacted into the store. Each entry
-is one session that ended with its capture incomplete — the outcome the store
-alone cannot report, since an absent record otherwise spans "never ended",
-"ended before the store existed" and "ended and lost" alike. Report
-`session_id`, `staged_at` and `bytes`. **Staged files hold UNREDACTED
-transcript text** until drained, so say so whenever the list is non-empty.
+is one session, or one sub-agent of one, that ended with its capture incomplete
+— the outcome the store alone cannot report, since an absent record otherwise
+spans "never ended", "ended before the store existed" and "ended and lost"
+alike. Report `session_id`, `staged_at` and `bytes`, plus `agent_id` and
+`agent_type` on a sub-agent's entry. **Staged files hold UNREDACTED transcript
+text** until drained, so say so whenever the list is non-empty. The text render
+also carries a note when the host has fired a sub-agent stop without handing
+over a transcript path: on such a host no sub-agent transcript can be captured
+at all, so an empty sub-agent corpus is the host and not the sessions.
 
 ## Drain
 

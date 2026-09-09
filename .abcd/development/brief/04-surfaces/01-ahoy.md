@@ -218,9 +218,11 @@ Steps, run in parallel where independent:
    manifest also wires `abcd hook session-start` (chained after the bootstrap
    and ahead of `prompt-router-reset` inside the ONE `SessionStart` command —
    the harness runs sibling hooks in parallel, so the event carries a single
-   entry), `abcd hook session-end` (a `SessionEnd` event), and `abcd guard
+   entry), `abcd hook session-end` (a `SessionEnd` event), `abcd hook
+   subagent-stop` (a `SubagentStop` event, which stages a finished sub-agent's
+   own transcript), and `abcd guard
    hook` (a `PreToolUse` event, matcher `Bash`, that checks a shell command
-   against the hazard registry before it runs) — five event types in all;
+   against the hazard registry before it runs) — six event types in all;
    verification covers only the three prompt-router commands above. Every
    event command is a self-provisioning shim, not a plain binary call: the
    non-SessionStart shims attempt `hooks/bootstrap.sh` when the plugin-root

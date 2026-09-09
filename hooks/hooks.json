@@ -51,6 +51,16 @@
           }
         ]
       }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "r=\"${CLAUDE_PLUGIN_ROOT:-}\"; [ -n \"$r\" ] || exit 0; g=\"\"; if [ -f \"$r/abcd\" ] && [ -x \"$r/abcd\" ]; then g=\"$r/abcd\"; fi; if [ -z \"$g\" ]; then c=$(command -v abcd 2>/dev/null); if [ -n \"$c\" ]; then y=\"\"; case \"$c\" in /*) dd=${c%/*}; [ -n \"$dd\" ] || dd=/; d=$(cd -P \"$dd\" 2>/dev/null && pwd -P); if [ -z \"$d\" ]; then y=\"its directory could not be resolved\"; else q=$(pwd -P); case \"$d/\" in \"$q\"/*) y=\"it lives inside the working tree\" ;; esac; fi; if [ -z \"$y\" ]; then case \"$(/bin/ls -ld \"$d\" 2>/dev/null)\" in ????????w*) y=\"its directory is world-writable\" ;; esac; fi ;; *) y=\"it did not resolve to an absolute path\" ;; esac; if [ -n \"$y\" ]; then p=$(printf '%s' \"$c\" | tr -d '\\000-\\037\\177'); printf '%s\\n' \"abcd: ignoring the abcd found on PATH at $p because $y \u2014 the documented install puts the binary in an ordinary user directory such as ~/.local/bin, and one the project or another local user can replace is not run as abcd\" >&2; else g=\"$c\"; fi; fi; fi; if [ -n \"$g\" ]; then exec \"$g\" hook subagent-stop; fi; printf '%s\\n' \"abcd: the plugin binary is missing, so this sub-agent's transcript was not captured — install per https://github.com/intentdriven/abcd#install\" >&2; exit 1"
+          }
+        ]
+      }
     ]
   }
 }

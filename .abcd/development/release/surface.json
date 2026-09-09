@@ -798,6 +798,11 @@
       "flags": []
     },
     {
+      "path": "abcd hook subagent-stop",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd ideate",
       "hidden": false,
       "flags": []

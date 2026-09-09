@@ -10,22 +10,35 @@ the explicit `capture` sub-verb, the `drain` sub-verb, and the automatic
 `abcd hook session-start` drain — and all redact on write, so no live secret or
 absolute home path survives into a record.
 
-Automatic capture is **split across two hooks**. `abcd hook session-end` only
+Automatic capture is **split across two halves**, and three hook entrypoints
+feed them. `abcd hook session-end` only
 **stages** the raw transcript beside the store at
 `~/.abcd/history/<root-sha>/staging/`, because redaction costs roughly 0.7s per
 megabyte and the host cancels a shutdown hook rather than wait for it — so
 redacting at exit silently dropped every transcript past a couple of megabytes,
 which is to say the long, dense sessions most worth keeping
-(iss-2608230817034768). `abcd hook session-start` drains staging into the store
-through the same fail-closed `capture` path, where there is a real time budget.
+(iss-2608230817034768). `abcd hook subagent-stop` stages on the same terms when
+a sub-agent finishes, writing that agent's own transcript with the lineage that
+says which session and which agent produced it — and its exit code matters in a
+way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
+every failure path there is a diagnostic and an exit 0. `abcd hook
+session-start` drains staging into the store
+through the same fail-closed `capture` path, where there is a real time budget;
+it takes main-thread transcripts before sub-agent ones and bounds the pass by
+bytes as well as count, so a truncated pass stores the part that makes the rest
+legible.
 
 Staging is the one place abcd holds unredacted transcript text on purpose: mode
 `0o700`, files `0o600`, and each file lives only until the next session drains
-it. The stage handshake is locked and keyed on content: a re-fired SessionEnd
+it. Each staged transcript carries a `.stage.json` sidecar holding its session
+and its lineage, so nothing is ever encoded in the filename; a staged file
+written before the sidecar existed has none and drains as a main-thread
+transcript, which is what it is. The stage handshake is locked and keyed on
+content per `(session, agent)`: a re-fired SessionEnd
 carrying identical bytes is a no-op, one carrying different bytes replaces the
 staged copy (last-writer-wins — the later snapshot of a session is the one worth
 keeping), and a drain removes a staged file only while it still holds the bytes
-it captured, so one session has one staged copy and a fresher copy is never lost
+it captured, so one (session, agent) has one staged copy and a fresher copy is never lost
 (GHSA-xq36-hcgf-9wrj). It is also the **outcome record the store never had** — before it, an absent
 record spanned "never ended", "ended before the store existed" and "ended and
 lost" alike, and nothing could tell them apart, which is why a week of losses

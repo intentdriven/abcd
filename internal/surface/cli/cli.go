@@ -138,6 +138,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"guard"}, {"guard", "hook"},
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
+		{"hook", "subagent-stop"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -1019,6 +1020,16 @@ type hookInput struct {
 	// TranscriptPath is supplied by the Stop hook; it names the session
 	// transcript on disk. Read by `hook session-end` only.
 	TranscriptPath string `json:"transcript_path"`
+
+	// The SubagentStop fields, read by `hook subagent-stop` only. The event
+	// carries the finished sub-agent's own transcript path, which is the whole
+	// reason a sub-agent can be captured without reading the harness's on-disk
+	// layout; agent_id and agent_type are the lineage it carries directly.
+	// parent_agent_id is deliberately absent here — this event does not carry
+	// one, which is why there is an attribution ladder.
+	AgentID             string `json:"agent_id"`
+	AgentTranscriptPath string `json:"agent_transcript_path"`
+	AgentType           string `json:"agent_type"`
 }
 
 // readCappedStdin reads a "-" operand one byte past the cap so an over-cap
@@ -1221,7 +1232,10 @@ func newHookCommand() *cobra.Command {
 			// dense sessions most worth keeping (iss-2608230817034768). Staging is
 			// one write, so this hook's cost no longer scales with the transcript;
 			// the next SessionStart drains it through the same fail-closed Capture.
-			res, err := history.Stage(det.RootSHA, in.SessionID, raw)
+			res, err := history.Stage(det.RootSHA, history.StageMeta{
+				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
+				SourcePath: in.TranscriptPath,
+			}, raw)
 			if err != nil {
 				return warn("staging failed (%v); this session was not captured", err)
 			}
@@ -1281,6 +1295,15 @@ func newHookCommand() *cobra.Command {
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+				// Record which store this session belongs to while a real
+				// working directory is still available to say so. A sub-agent
+				// given its own worktree loses that directory when the harness
+				// removes the worktree at the agent's exit, and this note is
+				// how `hook subagent-stop` still finds the store. Best effort:
+				// it degrades a fallback, never a capture.
+				if in.SessionID != "" {
+					_ = history.NoteSessionRepo(det.RootSHA, in.SessionID)
+				}
 				if dr, err := history.Drain(captureRoot(cwd), det.RootSHA, sessionStartDrainBudget); err == nil {
 					for _, f := range dr.Failed {
 						notices = append(notices, fmt.Sprintf(
@@ -1288,8 +1311,13 @@ func newHookCommand() *cobra.Command {
 							termsafe.Sanitize(f.SessionID), termsafe.Sanitize(fsutil.RedactHome(f.Err)), termsafe.Sanitize(fsutil.RedactHome(f.Path))))
 					}
 					if dr.Remaining > 0 {
+						// The second sentence is the privacy fact, not a
+						// scheduling one: what is left is raw transcript text
+						// sitting at 0o700, and a count of it belongs where the
+						// backlog is announced rather than only in a verb the
+						// reader has to think to run.
 						notices = append(notices, fmt.Sprintf(
-							"abcd: %d earlier session(s) are still awaiting capture — run `abcd history drain` to finish, or start another session.",
+							"abcd: %d earlier transcript(s) are still awaiting capture — run `abcd history drain` to finish, or start another session. Until then they hold UNREDACTED text on disk.",
 							dr.Remaining))
 					}
 				} else {
@@ -1385,6 +1413,11 @@ func newHookCommand() *cobra.Command {
 		},
 	})
 
+	// subagent-stop — SubagentStop: stage a finished sub-agent's transcript.
+	// Its body lives in hook_subagent.go, with the attribution ladder and the
+	// store resolution it needs.
+	hookCmd.AddCommand(newSubagentStopCommand())
+
 	return hookCmd
 }
 
@@ -1393,14 +1426,22 @@ func newHookCommand() *cobra.Command {
 // while the scanner walks it.
 const maxTranscriptBytes = 64 << 20 // 64 MiB
 
-// sessionStartDrainBudget bounds how many staged transcripts one SessionStart
+// sessionStartDrainBudget bounds how much staged transcript one SessionStart
 // redacts before handing control back to the user. Redaction runs at roughly
 // 0.7s per MB, so an unbounded drain of a backlog would stall the first prompt
-// by however long the backlog happens to be. Four is a compromise: enough that a
-// normal one-session-behind case always clears in a single start, small enough
-// that the worst case stays a few seconds. Anything left is reported, never
+// by however long the backlog happens to be.
+//
+// The bound is bytes AND count, not count alone. It was four entries, tuned
+// when a session staged exactly one transcript at its end. A session that
+// delegates stages one per sub-agent completion as well, so four would leave
+// the rest of a busy session's branches sitting unredacted at 0o700 for as many
+// starts as it took to work through them — and a pile of raw transcript text is
+// a privacy fact, not a scheduling detail. So the byte bound is the one that
+// protects the prompt (4 MiB is under three seconds of redaction), and the
+// count bound is raised to 32 to keep a many-tiny-transcripts pass bounded
+// without throttling the ordinary case. Anything left is reported, never
 // dropped — `abcd history drain` finishes it without waiting for a new session.
-const sessionStartDrainBudget = 4
+var sessionStartDrainBudget = history.DrainBudget{MaxEntries: 32, MaxBytes: 4 << 20}
 
 // readTranscript reads the file named by the Stop payload's transcript_path.
 //
@@ -3657,20 +3698,59 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The gap marker is the answer to a question an empty listing
+			// cannot: a harness that fires SubagentStop without an
+			// agent_transcript_path stages nothing, and "no sub-agent
+			// transcripts" then reads as "this session delegated nothing"
+			// rather than "this harness cannot deliver them".
+			gap, hasGap, gapErr := history.SubagentGap(rootSHA)
+			if gapErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"abcd history: the sub-agent payload marker is unreadable (%s)\n",
+					termsafe.Sanitize(gapErr.Error()))
+			}
 			if staged == nil {
 				staged = []history.Staged{}
 			}
+			// Every path in the envelope is absolute and home-rooted — the
+			// staged copy, the sidecar beside it, and the harness file the
+			// bytes were read from — so all three are redacted, not just the
+			// one that existed when this verb was written.
 			for k := range staged {
 				staged[k].Path = fsutil.RedactHome(staged[k].Path)
+				staged[k].SidecarPath = fsutil.RedactHome(staged[k].SidecarPath)
+				staged[k].SourcePath = fsutil.RedactHome(staged[k].SourcePath)
 			}
+			// The JSON envelope stays the array it has always been: a
+			// consumer that iterates it must keep working. The marker is a
+			// per-repo fact rather than a staged entry, so it is reported in
+			// the human render, where the reader who needs it is.
 			return render(cmd.OutOrStdout(), *asJSON, staged, func(w io.Writer) {
+				defer func() {
+					if hasGap {
+						fmt.Fprintf(w, "\nNOTE: this harness fired %s %d time(s) without an agent_transcript_path (first %s). No sub-agent transcript can be captured on it, so an empty sub-agent corpus here is the harness, not the sessions.\n",
+							termsafe.Sanitize(orDefault(gap.Event, "SubagentStop")), gap.Count,
+							gap.FirstSeen.Format("2006-01-02T15:04:05Z"))
+					}
+				}()
 				if len(staged) == 0 {
 					fmt.Fprintln(w, "abcd history — nothing staged; every ended session is stored")
 					return
 				}
 				for _, s := range staged {
-					fmt.Fprintf(w, "%s  %s  %d bytes  awaiting redaction\n",
-						s.StagedAt.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(s.SessionID), s.Bytes)
+					who := termsafe.Sanitize(s.SessionID)
+					if s.AgentID != "" {
+						who += " agent " + termsafe.Sanitize(s.AgentID)
+						if s.AgentType != "" {
+							who += " (" + termsafe.Sanitize(s.AgentType) + ")"
+						}
+					}
+					state := "awaiting redaction"
+					if s.Err != "" {
+						state = "NOT DRAINABLE: " + termsafe.Sanitize(s.Err)
+					}
+					fmt.Fprintf(w, "%s  %s  %d bytes  %s\n",
+						s.StagedAt.Format("2006-01-02T15:04:05Z"), who, s.Bytes, state)
 				}
 				fmt.Fprintf(w, "\n%d staged transcript(s) hold UNREDACTED text until drained; run `abcd history drain`.\n", len(staged))
 			})
@@ -3693,7 +3773,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := history.Drain(captureRoot(cwd), rootSHA, 0)
+			res, err := history.Drain(captureRoot(cwd), rootSHA, history.DrainBudget{})
 			if err != nil {
 				return err
 			}

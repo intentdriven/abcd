@@ -33,16 +33,23 @@ import (
 type binaryHook struct {
 	event string
 	verb  string
+	// neverBootstraps marks a hook that must NOT attempt the salvage download.
+	// Both such hooks fire where the harness will cancel a slow hook rather
+	// than wait — SessionEnd at session exit, SubagentStop at a sub-agent's —
+	// and a blocking download there loses the transcript the hook exists to
+	// capture (iss-2608210934566223).
+	neverBootstraps bool
 }
 
 // binaryHooks enumerates every hook that invokes the binary outside the
 // SessionStart chain (which has its own tests and remains the loud, primary
 // provisioner).
 var binaryHooks = []binaryHook{
-	{"UserPromptSubmit", "prompt-router"},
-	{"PreToolUse", "guard"},
-	{"PreCompact", "prompt-router-reset"},
-	{"SessionEnd", "session-end"},
+	{event: "UserPromptSubmit", verb: "prompt-router"},
+	{event: "PreToolUse", verb: "guard"},
+	{event: "PreCompact", verb: "prompt-router-reset"},
+	{event: "SessionEnd", verb: "session-end", neverBootstraps: true},
+	{event: "SubagentStop", verb: "subagent-stop", neverBootstraps: true},
 }
 
 // hookCommand returns the single command string for an event, failing on any
@@ -161,7 +168,7 @@ func hookRoot(t *testing.T, bootstrap string, withBinary bool) string {
 // (iss-2608210934566223) — TestSessionEndNeverBootstraps pins the inverse.
 func TestBinaryHooksProvisionWhenTheBinaryIsAbsent(t *testing.T) {
 	for _, h := range binaryHooks {
-		if h.event == "SessionEnd" {
+		if h.neverBootstraps {
 			continue
 		}
 		t.Run(h.event, func(t *testing.T) {
@@ -500,5 +507,35 @@ func TestBinaryHooksRefuseAWorldWritablePathBinary(t *testing.T) {
 				[]string{filepath.Join(pathDir, "abcd")},
 				[]string{"its directory is world-writable"})
 		})
+	}
+}
+
+// TestSubagentStopNeverBootstraps is TestSessionEndNeverBootstraps' argument at
+// the other exit. SubagentStop fires when a sub-agent is going away, and the
+// harness cancels a still-running hook there the same way it does at session
+// end — so a blocking bootstrap download is a race the sub-agent's transcript
+// loses, and it would stall the parent session while it lost it. Plugin-root
+// binary first, PATH binary second, else one plain line and a non-blocking exit.
+func TestSubagentStopNeverBootstraps(t *testing.T) {
+	command := hookCommand(t, "SubagentStop")
+	if strings.Contains(command, "bootstrap.sh") {
+		t.Fatalf("the SubagentStop command references bootstrap.sh — a sub-agent's exit must never download the binary: %q", command)
+	}
+	if !strings.Contains(command, "hook subagent-stop") {
+		t.Fatalf("the SubagentStop command no longer invokes `hook subagent-stop`: %q", command)
+	}
+	root := hookRoot(t, provisioningBootstrap, false)
+	_, stderr, code := hookRun(t, "SubagentStop", root, "")
+	if callLog(t, filepath.Join(root, "boot.log")) != "" {
+		t.Fatal("SubagentStop invoked the bootstrap; a download there races the harness's hook cancellation and stalls the session")
+	}
+	if code == 2 {
+		t.Fatal("SubagentStop exited 2 without a binary — that is the host's BLOCKING status and would stop the sub-agent from finishing")
+	}
+	if code == 0 || code == 127 {
+		t.Fatalf("SubagentStop exit = %d without a binary; want a non-zero, non-exec-failure exit", code)
+	}
+	if !strings.Contains(stderr, "transcript was not captured") || !strings.Contains(stderr, "#install") {
+		t.Fatalf("SubagentStop stderr must keep the one-line transcript-not-captured remedy: %q", stderr)
 	}
 }

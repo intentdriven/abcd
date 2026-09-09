@@ -370,11 +370,14 @@ abcd/
     └── hooks.json                      # UserPromptSubmit → hook prompt-router; SessionStart → ONE chained command:
                                         #   bootstrap.sh, then session-start + prompt-router-reset, each fed a copy of the
                                         #   payload (siblings would run in parallel and share one stdin);
-                                        # PreToolUse (matcher Bash) → guard hook; PreCompact → prompt-router-reset; SessionEnd → session-end.
-                                        # The four non-SessionStart event shims also self-provision: when $CLAUDE_PLUGIN_ROOT/abcd
+                                        # PreToolUse (matcher Bash) → guard hook; PreCompact → prompt-router-reset; SessionEnd → session-end;
+                                        # SubagentStop → subagent-stop.
+                                        # The non-SessionStart event shims mostly self-provision: when $CLAUDE_PLUGIN_ROOT/abcd
                                         # is missing they attempt hooks/bootstrap.sh (throttled by a .bootstrap.attempt marker
                                         # within a 10-minute window), then fall back to a PATH-resolved abcd — absolute, outside the
-                                        # working directory, not world-writable, else ignored with a reason — before failing loudly
+                                        # working directory, not world-writable, else ignored with a reason — before failing loudly.
+                                        # SessionEnd and SubagentStop are the exceptions: both fire where the harness cancels a slow
+                                        # hook rather than wait, so neither ever downloads
 ```
 
 The core is organised one package per capability under `internal/core/`, and the
