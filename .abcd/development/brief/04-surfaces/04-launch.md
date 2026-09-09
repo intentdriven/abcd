@@ -19,7 +19,7 @@ The shipped verb surface is the `--dry-run` flag on `abcd launch` — a read-onl
 
 - **`/abcd:launch ship`** — **partly shipped: the RELEASE CUT only** (itd-73 derived versioning + itd-67's changelog slice). `abcd launch ship` derives the version and the record set from what shipped since the newest tag, runs the surface guardrail, and — with `--changelog-json` — validates the host-composed prose against the record set (the completeness bijection), admits only the `Added` and `Fixed` sections — the composer sees the records that shipped and never the previous release's surface, so `Changed`, `Deprecated`, `Removed` and `Security` are refused by name and each dated section states under its heading what the notes list and do not claim (iss-2609011207114761) — and writes the dated `CHANGELOG.md` heading `.github/workflows/auto-release.yml` turns into a tag; `commands/launch.md` carries the emit → compose → ingest orchestration and the `release-changelog-composer` agent it dispatches. The `Ship` engine is wired: `abcd launch ship` is a live subcommand, and `--payload-dir <dir>` stages the versioned release payload — the derived version stamped into the payload's `plugin.json`/`marketplace.json` and lockstep-proved before return. Commit, tag, and publish stay a design target (itd-65 gate suite + itd-72 publishing): the verb neither commits, tags, nor publishes. The full-cut design: cut a curated release artefact from the one repo: run pre-flight gates, filter the artefact (default-deny, `.abcd/**` excluded by packaging), stamp the version, and on a `v*` tag publish a GitHub Release ([adr-28](../../decisions/adrs/0028-single-repo-curated-release.md)). The flow described in §§ 1–6 below is this sub-verb's behaviour. Flag-shaped modifiers `--allow-dirty` and `--allow-doc-warnings` belong to this sub-verb's design; the shipped `ship` accepts `--changelog-json` and `--payload-dir` (plus the global `--json`), and bare `abcd launch` accepts only `--dry-run` and the global `--json`. There is no version flag — the version is derived, never authored ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md), see [§ 3](#3-versioning--marketplace)).
 - **`/abcd:launch scaffold`** — **shipped** (itd-93, spc-14). `abcd launch scaffold` writes the changelog-driven release machinery — `.github/workflows/release.yml`, `.github/workflows/auto-release.yml`, and the adr-37 release runbook (`.abcd/development/release-gate/README.md`) — into a managed repo that lacks it, wired to the repo's own default branch and Go version, `GITHUB_TOKEN`-only and injection-safe. The workflows ship from a single embedded template that abcd-cli's own release workflows are regenerated from (self-scaffold parity, a byte-exact test); the scaffolded `release.yml` carries a `workflow_dispatch` **rehearsal** that arms the full gate against a simulated changelog roll and reviewed-content commit and publishes nothing, so a green rehearsal is the runbook precondition for the first real release. A bare repo with no semantic detector degrades cleanly to the deterministic gates and a generic build. It is idempotent and fail-safe: a re-run on current machinery is a no-op (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless `--confirm` is passed, and a structural fault exits 2. `commands/launch.md` carries the flow. Accepts `--confirm` plus the global `--json`.
-- **`/abcd:launch dry-run`** — shipped as the `--dry-run` flag (the plugin command `commands/launch.md` maps the `dry-run` of its `[dry-run | ship | scaffold]` argument hint onto `abcd launch --dry-run`; the binary has no `dry-run` subcommand). **Report-only preview, always exit-0** (a preview never blocks). It runs the parts of the pre-flight suite that exist today: as of spc-64 (predecessor store) the **secret + PII scan gate** (the native scanners, see [§ 1](#1-pre-flight-gates)) runs for real in report-only mode and prints what it *would* refuse on (a finding, or a fail-closed reason such as "scanner unavailable"); the **installability smoke** runs for real at its light tier (see [§ 1](#1-pre-flight-gates)); the **manifest lockstep check** runs for real at its `dev` polarity over the working tree — the polarity adr-19 requires the committed manifests to satisfy (no version key), see [§ 3](#3-versioning--marketplace) — reports its result and folds any drift or an unreadable version-location contract into what it *would* refuse on; the **citation-baseline gate** (`internal/core/launch/citations.go`) runs for real, tallying the cited claims against their receipts (e.g. `51 cited, 51 with receipts`); the **semantic-receipts row** (`internal/core/launch/receipts.go`) reports, as `{"status": "host-run"}`, which semantic-pass receipts are recorded for the candidate commit — presence only, never a verdict, because `release.yml` owns the required-gates list and judges receipt validity (iss-2608231226342272; the row exists because a preview silent about `receipt_gate` let a one-commit release branch reach a tag and fail-close there); the remaining gates (marker-block, documentation-auditor) are the gate-suite intent's (itd-65): `--dry-run --json` reports each as `{"status": "not_implemented", "detail": "Phase-5 deferred"}`, while the plain-text `--dry-run` render omits the gate list entirely (it prints version, files bundled, scan hardfails, citations, receipts, and would-publish, plus a would-refuse-on line when there is a finding). It also produces the would-be artefact manifest, without writing the release artefact. dry-run is **not** "ship minus publish": running the *full* gate suite and **hard-failing** on a finding (exit non-zero) is the full `ship` verb's behaviour (itd-65 + itd-72), not dry-run's.
+- **`/abcd:launch dry-run`** — shipped as the `--dry-run` flag. There is no `dry-run` sub-verb to map: `commands/launch.md` carries the argument hint `[--dry-run] | ship [--changelog-json <path>] | scaffold`, which names the flag as a flag, and the binary registers no `dry-run` subcommand. **Report-only preview, always exit-0** (a preview never blocks). It runs the parts of the pre-flight suite that exist today: as of spc-64 (predecessor store) the **secret + PII scan gate** (the native scanners, see [§ 1](#1-pre-flight-gates)) runs for real in report-only mode and prints what it *would* refuse on (a finding, or a fail-closed reason such as "scanner unavailable"); the **installability smoke** runs for real at its light tier (see [§ 1](#1-pre-flight-gates)); the **manifest lockstep check** runs for real at its `dev` polarity over the working tree — the polarity adr-19 requires the committed manifests to satisfy (no version key), see [§ 3](#3-versioning--marketplace) — reports its result and folds any drift or an unreadable version-location contract into what it *would* refuse on; the **citation-baseline gate** (`internal/core/launch/citations.go`) runs for real, tallying the cited claims against their receipts (e.g. `51 cited, 51 with receipts`); the **semantic-receipts row** (`internal/core/launch/receipts.go`) reports, as `{"status": "host-run"}`, which semantic-pass receipts are recorded for the candidate commit — presence only, never a verdict, because `release.yml` owns the required-gates list and judges receipt validity (iss-2608231226342272; the row exists because a preview silent about `receipt_gate` let a one-commit release branch reach a tag and fail-close there); the remaining gates (marker-block, documentation-auditor) are the gate-suite intent's (itd-65): `--dry-run --json` reports each as `{"status": "not_implemented", "detail": "Phase-5 deferred"}`, while the plain-text `--dry-run` render omits the gate list entirely (it prints version, files bundled, scan hardfails, citations, receipts, and would-publish, plus a would-refuse-on line when there is a finding). It also produces the would-be artefact manifest, without writing the release artefact. dry-run is **not** "ship minus publish": running the *full* gate suite and **hard-failing** on a finding (exit non-zero) is the full `ship` verb's behaviour (itd-65 + itd-72), not dry-run's.
 
 ## 1. Pre-flight gates
 
@@ -86,10 +86,33 @@ previous release and takes the highest-severity impact. A change not tied to any
 intent falls back to conventional-commit derivation (`feat:` / `fix:` /
 `feat!:` prefixes since the last tag).
 
+### Refusal kinds
+
+A cut that cannot proceed is REFUSED under a **named kind**, and the kind is the
+wire format both front doors emit (`internal/core/release/emit.go`). Every one is
+fail-closed: the cut stops rather than deriving a number or a changelog that
+would be wrong. There are seven, and an operator sees them as
+`refused (<kind>)`:
+
+| Kind | Raised when |
+|---|---|
+| `no-release-tag` | there is no immutable base to measure the cut from |
+| `release-in-flight` | the newest CHANGELOG heading is ahead of the newest tag, so a release sits between its merge and its tag |
+| `unlabelled-record` | a record the cut adds carries no valid `impact` |
+| `stale-intent` | an intent in `planned/` has a spec that has closed |
+| `surface-guard` | the surface guardrail failed, or could not compare |
+| `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
+| `empty-cut` | nothing user-facing shipped, so there is no release |
+
+`release-in-flight` is the one an operator meets most often outside a release
+window, because it fires on any tree whose changelog has been rolled and not yet
+tagged.
+
 **Surface-diff guardrail.** `launch ship` snapshots the `/abcd:*` command, flag,
 and manifest surface and compares it to the previous release. A removed or
-altered surface with no `breaking` intent in the release **fails the launch** —
-a mislabelled impact cannot ship a compatibility lie.
+altered surface with no `breaking` intent in the release **fails the launch**
+under the `surface-guard` kind — a mislabelled impact cannot ship a
+compatibility lie.
 
 **Unfixed-findings guardrail** (`internal/core/changelog.GuardFindings`, wired at
 `internal/core/release/emit.go`). `launch ship` and the read-only `changelog`
@@ -213,13 +236,33 @@ transcript; a `--dry-run`-shaped preview of the prune decision is part of the
 
 ## 4. Reports
 
-`launch-report.{json,md}` in the repo's `.abcd/logbook/launch/<timestamp>/` —
-**full-`ship` behaviour (itd-65)**: no shipped path writes this layout yet, and
-`.abcd/logbook/` does not exist in the tree.
+`launch-report.{json,md}` under a per-timestamp launch directory —
+**full-`ship` behaviour (itd-65)**: no shipped path writes this layout yet.
+
+The `.abcd/logbook/launch/<timestamp>/` path named here and in §§ 1, 3 and 6 is
+the predecessor store's, and it is a **retired** location rather than an unbuilt
+one: iss-36 and iss-56, resolved as iss-73, placed runtime artefacts in the
+gitignored `.abcd/.work.local/logs/` tier, and a detector fails the build if any
+non-test Go source under `internal/` names `logbook` at all. A delivered launch
+report therefore lands in `.abcd/.work.local/logs/`, and the retired path is
+read here as the shape of the report, never as the path to write it to.
 
 ## 5. Bootstrap exception
 
-The first release cut of abcd itself is a manual `v*` tag + GitHub Release. Documenting the exception in `commands/launch.md` lands with publishing (itd-72); the shipped command file covers the read-only dry-run preview and the release cut (emit → compose → ingest), neither of which publishes.
+The first release cut of abcd itself is a manual `v*` tag + GitHub Release: the
+machinery a scaffolded repo inherits cannot cut the release that first publishes
+it.
+
+`commands/launch.md` documents the publishing chain rather than deferring it. Its
+"Release day" runbook walks seven steps — the two semantic passes, the local gate
+proof, the release PR and its merge, the automatic tag, the build-checksum-attest-publish
+step behind the `release` environment's approval gate, the site deploy that
+approval releases with it, and the post-release check — and the page also carries
+the read-only dry-run preview, the release cut (emit → compose → ingest), the
+semantic-receipt section, and the scaffolder. What stays a design target is
+abcd's own publishing AUTOMATION (itd-72): the shipped `ship` verb neither
+commits, tags, nor publishes, so every step past the CHANGELOG heading is
+performed by a human and by CI rather than by the verb.
 
 ## 6. Acceptance
 
