@@ -6,8 +6,9 @@
 > capability or `--allow-empty`/`--overwrite` flag in the binary, no
 > `reflection-composer` agent (the `agents/` catalog ships, but has no
 `reflection-composer.md`), and no
-> `.abcd/logbook/` phase-audit tree or `.abcd/retrospectives/` output tree in the
-> working tree. The backing intent sits in
+> `.abcd/retrospectives/` output tree in the working tree. `.abcd/logbook/` is a
+> different case: it is not an unbuilt design target but a **retired** location
+> (see § Where the receipt lives, below). The backing intent sits in
 > [`intents/planned/`](../../intents/planned/itd-24-reflect-command.md) (itd-24);
 > delivery state is the intent lifecycle's, not this page's (see the [brief
 > README's provenance note](../README.md)). The prose below records the design
@@ -28,8 +29,9 @@ command file `commands/reflect.md`.
 
 ## Argument
 
-The command takes exactly one positional argument: a **phase id** (e.g.
-`phase-1-substrate`, `phase-5-roundtrip`). It is NOT `itd-N` and NOT a
+The command takes exactly one positional argument: a **phase id**, which is a
+filename stem in [`roadmap/phases/`](../../roadmap/phases/) (e.g.
+`phase-0-substrate`, `phase-5-run-seam`). It is NOT `itd-N` and NOT a
 milestone/`spc-N` id. `/abcd:reflect <itd-N>` is refused — reflection is
 phase-grained only.
 
@@ -37,9 +39,9 @@ Bare `/abcd:reflect` (no argument) renders help/state and writes nothing.
 
 ## What it does
 
-1. Selects the **latest** spc-66 (predecessor store) phase-audit receipt whose `phase_id` matches the
-   argument (newest `timestamp` wins) at
-   `.abcd/logbook/audit/phase-<ts>/report.json`.
+1. Selects the **latest** spc-66 (predecessor store) phase-audit receipt whose
+   `phase_id` matches the argument (newest `timestamp` wins), read from the
+   local-ephemeral logs tier (see § Where the receipt lives).
 2. Runs the `reflection-composer` agent as a seeded single-pass interview: five
    seeded questions drawn from the receipt's per-bullet acceptance verdicts.
    Thin answers trigger one clarifying question; a deliberately-empty section
@@ -90,12 +92,30 @@ The HOST session runs the reflection-composer interview per
 fully testable WITHOUT the agent — JSON answers in, README out. The writer is the
 SINGLE dispatch target and the ONLY writer.
 
+## Where the receipt lives
+
+The receipt shape this surface consumes is the predecessor store's spc-66
+phase-audit report, and the predecessor store wrote it to
+`.abcd/logbook/audit/phase-<ts>/report.json`. **That location is retired here.**
+A 2026-07-12 maintainer adjudication (iss-36 and iss-56, resolved as iss-73)
+placed runtime artefacts in the gitignored `.abcd/.work.local/logs/` tier
+instead, and a detector holds it: `TestNoRetiredLogbookLocationInSource` fails
+the build if any non-test Go source under `internal/` so much as names
+`logbook`. A delivered `reflect` therefore reads its receipt from
+`.abcd/.work.local/logs/`, the tier the neighbouring `review-collator` row in
+[`../05-internals/01-agents.md`](../05-internals/01-agents.md) already names;
+the retired path survives in this record only as the predecessor store's, never
+as a path to implement against.
+
 ## Output path and single-source-of-truth
 
-Output is fixed at `.abcd/retrospectives/<phase-id>/README.md` (a peer of
-`.abcd/development/intents/` and the design-target `.abcd/logbook/` tree),
-committed as part of the phase's
-permanent record. The README LINKS to the phase doc, the audit report (its
+Output is fixed at `.abcd/retrospectives/<phase-id>/README.md`, committed as
+part of the phase's permanent record. That path is a peer of `.abcd/work/` and
+`.abcd/development/`, not of `.abcd/development/intents/`, and it is **not one
+of the three tiers** `AGENTS.md` fixes: delivering itd-24 has to place the tree
+in an existing tier or record a decision admitting a fourth, and until then the
+output path is a design target's proposal rather than a settled location. The
+README LINKS to the phase doc, the audit report (its
 receipt path recorded in the README), and each member spec — it never copies
 their bodies. v1 links are limited to those three: the spc-66 (predecessor store) receipt carries no
 intent ids, so intent links are a recorded future extension.

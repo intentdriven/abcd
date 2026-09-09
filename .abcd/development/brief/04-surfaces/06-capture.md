@@ -95,6 +95,8 @@ promoted_to: itd-M         # set when the issue is promoted to an intent
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
 shipped_in: vX.Y.Z         # migration use: the release that already carried the work (resolve --shipped-in)
+deferred_after: vX.Y.Z     # release-cut waiver: the anchor tag this record is deferred past
+deferral_reason: "<text>"  # required with deferred_after: why the cut may carry it open
 resolved_by:               # optional structured pointer to what resolved it
   intent: itd-M
   spec: spc-N
@@ -104,6 +106,12 @@ resolved_by:               # optional structured pointer to what resolved it
 
 Enum values above mirror the issue ledger schema in `internal/core`
 exactly; the schema is the single source of truth.
+
+`deferred_after` and `deferral_reason` are the release cut's waiver pair, and no
+capture verb writes them: they are added to a record by hand when a `major` or
+`critical` finding is to be carried past a cut open, and `changelog.GuardFindings`
+reads them. The waiver is granted for one cycle and lapses when the next release
+re-anchors. [`04-launch.md`](04-launch.md) owns the rule they answer to.
 
 `lapsed_at` is transcribed from what the source states, never derived from the
 clock at write-up. Where that source names only a day, the stamp is midnight UTC
@@ -128,7 +136,33 @@ correct under both. Where a merge produces two reachable candidates, prefer
 the commit that carries the change over the merge commit, whose diff is the
 whole pull request rather than the fix.
 
-Body is free-form: details, suggested fix, links to context.
+Body is free-form: details, suggested fix, links to context. One part of it is
+not, and it is where `--grounds` lands.
+
+### `## Grounds` is tool-owned and append-only
+
+`promote`, `resolve` and `wontfix` write the conjecture they were given into an
+append-only `## Grounds` section in the record body, one top-level bullet per
+entry in the form `- <token>: <text>`. A `wontfix` that took no `--grounds` at
+all still gets a bullet, because a wontfix IS the non-action the `declined`
+token names. Appending rather than setting is the point: a later triage route
+adds a bullet beside the one an earlier route recorded, and neither overwrites
+the other. The section is held by `internal/core/grounds` per adr-57, and
+`record_schema` blocks a frontmatter `grounds:` key by naming this section as
+where the value belongs.
+
+**The grounds text is gated on substance, not only on grammar.** A value that
+parses as `<token>: <text>` is still refused, exit 2 and nothing written, unless
+its text carries at least 20 letters and at least 3 lexical units, and unless it
+says something other than the route taken: a text consisting solely of the
+vocabulary tokens (`pursued`, `deferred`, `declined`) or the names of the verbs
+that ask for one (`ready`, `promote`, `resolve`, `wontfix`, `grounds`) is
+refused as an echo of the question. The floors are deliberately low and claim
+nothing about whether what clears them names a real conjecture: they refuse the
+degenerate cases, and a floor set high enough to judge reasoning would only buy
+padding. In a script written without inter-word spaces each letter counts as one
+unit, so the word floor does not fall on the writer of a Chinese or Japanese
+text.
 
 ## 4. Legacy scratch migration
 
@@ -160,12 +194,13 @@ A later phase, not yet built — the migration rides the `abcd dev-sync work` su
   `internal/core/issueschema`; `internal/core/capture/reading.go` is the writer
   and the refusing gate for both families; `capture disposition` is the front
   door for the answer, and `capture promote` refuses an undispositioned item.
-  The PRODUCER of an `rdi-N` is not here: the cold-reading ingest verb owns the
-  output contract and is the only caller of `capture.IngestReading`, so until it
-  lands the two reading sub-verbs have no item to act on. That sequencing is
-  spc-58's own — it consumes the output contract and adds no second validation
-  path — and it is the reason `IngestReading` is an exported primitive rather
-  than a verb of this surface.
+  The PRODUCER of an `rdi-N` is not here, and it ships: `abcd reading ingest
+  --reading-json <path>` owns the output contract and is the only caller of
+  `capture.IngestReading` (`internal/core/reading/ingest.go`), so the items the
+  two reading sub-verbs act on are written by that verb and by nothing else. See
+  [`23-reading.md`](23-reading.md). That sequencing is spc-58's own — it consumes
+  the output contract and adds no second validation path — and it is the reason
+  `IngestReading` is an exported primitive rather than a verb of this surface.
 - **Step-2 admission records (itd-189, spc-67):** the admission record (`adm-N`
   under `.abcd/work/issues/admissions/<run-id>/`) and the surprise entry
   (`srp-N` under `.abcd/work/issues/surprises/`) ship as SCHEMAS, declared in

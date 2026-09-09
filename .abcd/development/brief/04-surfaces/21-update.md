@@ -1,13 +1,22 @@
 # `/abcd:update` — Complete a Chosen Update
 
 `/abcd:update` completes what `version --check` reports: it fetches the named
-release (or resolves the latest, naming the tag before acting), verifies the
-platform binary against the same release's `checksums.txt`, and swaps the
-PATH-installed copy atomically. The verb is the explicit ask — abcd never
-checks for or applies updates on its own
+release (or resolves the latest), verifies the platform binary against the same
+release's `checksums.txt`, and swaps the PATH-installed copy atomically. The
+verb is the explicit ask — abcd never checks for or applies updates on its own
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this
-verb and `version --check` are the only two paths to the release origin, each
-only when invoked ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md), spc-32).
+verb and `version --check` are the only two **commands** that reach the release
+origin, each only when invoked ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md), spc-32).
+
+They are not the only code paths to that origin. `hooks/bootstrap.sh` pins the
+same repository, resolves its `releases/latest` over the network, and downloads
+the checksum-verified asset — and the hook configuration fires it whenever the
+plugin root holds no binary, so it reaches the origin without the user naming a
+network action in that moment. adr-38 admits it as a tier of its own
+(provisioning completes a chosen update, it never discovers one), and
+`internal/core/update/update.go` says as much where it pins `releaseOrigin`:
+"the same origin `version --check` and hooks/bootstrap.sh resolve against,
+deliberately".
 
 `version --check` hands over to this verb: when an update is available, its
 `next:` line names the command to type, chosen by the same on-disk
@@ -38,18 +47,48 @@ serves — one is a property of the running process, the other a claim abcd wrot
 on this machine — so a deleted release costs the receipt its VINTAGE and never
 its ownership. `abcd update --help` states all three.
 
-Every other shape is a loud refusal naming its remedy: a plugin-root binary
-(the plugin update owns it — itd-108's one-cut coherence), the track-latest dev
-shim, a stranded owned entry (`ahoy install` heals it), a Homebrew
-Cellar-resolved install (`brew upgrade abcd`), a foreign occupant, or an empty
-PATH.
+A resolved tag is named before the swap on a terminal only. Both the naming
+paths are TTY-gated: the `[y/N]` confirmation runs when the tag was resolved
+rather than typed and neither `--yes` nor a pipe is in play, and the progress
+reader needs a terminal on stderr. Under the invocation the plugin command
+issues (`abcd update --yes --json`) nothing is emitted until the receipt, so
+there the resolved tag is first named after the swap, in the receipt itself.
+
+Every other shape of PATH occupant is a loud refusal naming its remedy: a
+plugin-root binary (the plugin update owns it — itd-108's one-cut coherence),
+the track-latest dev shim, a stranded owned entry (`ahoy install` heals it), a
+Homebrew Cellar-resolved install (`brew upgrade abcd`), a foreign occupant, or
+an empty PATH.
 
 The transport is pinned: no proxy or CA overrides from the environment (set
 ones are ignored and named in the receipt), redirects only onto the release
 origin's own hosts, every hop re-checked under the urlguard policy. The swap
 is atomic in the target's directory; a failed download or verification
-leaves no partial file. Progress renders on a TTY only; the receipt (origin,
-tag, digest, old→new) prints in both modes.
+leaves no partial file. Progress renders on a TTY only; the receipt prints in
+both modes.
+
+Three terminal outcomes ship, and the receipt names which one happened in its
+`action` field:
+
+| `action` | What it means |
+|---|---|
+| `swapped` | the file was replaced, and the render reads `updated <path>: <old> -> <tag>` |
+| `already-current` | the target's digest already equals the release's, so nothing is written; the render reads `already current: <path> is <tag> (verified against the release checksums)` |
+| `refused` | a dispatch or ownership refusal, naming its shape and its remedy |
+
+The receipt carries `origin`, `tag`, `asset`, `digest`, `target_path` (redacted
+to `~`), `action`, and `ownership` — the proof that allowed the swap. It also
+carries `env_ignored` when proxy or CA overrides were scrubbed, and `refusal`
+(shape, detail, remedy) on a refusal.
+
+`old_version` → `new_version` is the receipt of a swap the release manifest
+dated. A file swapped under either of the two local proofs has no derivable old
+version, because no published release names those bytes any more: the receipt
+then reports `old_digest` instead and reads
+`updated <path>: an unpublished build -> <tag>`, with a `replaced: sha256
+<digest> — in no published release; <ownership prose>` line under it. That is
+the direct consequence of the three proofs above, so an absent `old_version` is
+the documented shape, never a broken receipt.
 
 ## References
 
