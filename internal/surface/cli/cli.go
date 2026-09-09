@@ -1912,6 +1912,45 @@ type specStatusView struct {
 	Specs  []spec.Spec `json:"specs"`
 }
 
+// specStoreRoot is the spec front door's first step: the checkout whose spec
+// store the verb addresses, resolved from the working directory rather than
+// taken to BE it.
+//
+// Both verbs handed os.Getwd() to a core that joins the store's relative
+// directory onto whatever it is given, so from a subdirectory bare `spec`
+// reported `open 0 · closed 0` against a populated checkout and `spec close`
+// refused with "spec spc-N not found" for a spec sitting right there
+// (iss-2609091729516940). Neither answer looks wrong: a zero count and a
+// missing record are both ordinary facts about a repository, which is what
+// makes the read the more dangerous half — the refusal at least stops the
+// caller, while the count is believed.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals — the same one the
+// capture and decide front doors resolve through, with only the store's noun
+// differing. Refusing outside a checkout is the whole point: `spec` is
+// per-repository, and answering `open 0 · closed 0` for a directory that has no
+// spec store is a statement about a repository that is not there. Nothing is
+// read and nothing is written on a refusal, because the core is never reached.
+//
+// The stray-store note rides the same step, on stderr, exactly as the ledger's
+// and the decision store's do: a resolution that silently steps over a store an
+// unresolved door already laid would leave those records where nothing will ever
+// look again. It REPORTS and moves nothing, and the bare board stays read-only.
+func specStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the spec store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd spec: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, spec.SpecsRelDir, "spec store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd spec: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
 // newSpecCommand builds the `spec` verb — the front door onto internal/core/spec
 // (itd-80). Bare `abcd spec` renders the read-only spec-store status; the `close`
 // sub-verb closes a spec AND reconciles its linked intent (planned -> shipped)
@@ -1922,11 +1961,11 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		Short: "Native spec store; bare invocation is read-only status",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			store, err := spec.Load(cwd)
+			store, err := spec.Load(repoRoot)
 			if err != nil {
 				return err
 			}
@@ -1962,11 +2001,11 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		Short: "Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Reconcile(cwd, args[0], closeImpact)
+			res, err := intent.Reconcile(repoRoot, args[0], closeImpact)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
 			}
@@ -3430,6 +3469,47 @@ func orDefault(v, def string) string {
 	return v
 }
 
+// memoryStoreRoot is the memory front door's first step: the checkout whose
+// substrate the verb addresses, resolved from the working directory rather than
+// taken to BE it.
+//
+// Every verb below built its request with the raw working directory, which the
+// core reads as an explicit root and therefore never resolves
+// (iss-2609091729516940). Both halves failed, and quietly. From a subdirectory
+// bare `memory` reported "store not present" against a checkout whose store
+// holds pages — a sentence that reads as a true fact about the repository — and
+// `memory lint` read that absent store, reported a clean bill of health for
+// pages it never opened, and wrote its run log under the caller. `memory ingest`
+// went further: it exited 0 and laid a COMPLETE second substrate — pages, index,
+// registry, log — under the subdirectory, and outside every repository it laid
+// one in whatever plain directory the caller stood in. Pages filed that way are
+// read by no ask, no lint, and nobody looking for them.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals, the same ones the
+// capture, decide and spec front doors ask for. Refusing outside a checkout is
+// the whole point: the substrate is per-repository, and a store laid where the
+// caller stood is the defect rather than a lenient fallback. Nothing is read and
+// nothing is written on a refusal, because the core is never reached.
+//
+// The stray-store note rides the same step, on stderr: a resolution that
+// silently steps over a substrate the defect already laid would leave those
+// pages where nothing will ever look again. It REPORTS and moves nothing, and
+// the bare board stays read-only.
+func memoryStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the memory store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd memory: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, memory.RelDir, "memory store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
 // newMemoryCommand builds the `memory` sub-tree over internal/core/memory. Bare
 // `memory` renders read-only store status; ingest/ask/lint are the mutating and
 // diagnostic verbs (04-surfaces/07). The distiller (ingest) and synthesizer
@@ -3441,11 +3521,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Curated knowledge substrate; bare invocation is read-only status",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			st, err := memory.Bare(cwd)
+			st, err := memory.Bare(repoRoot)
 			if err != nil {
 				return err
 			}
@@ -3481,12 +3561,12 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Distil an external source into cited memory pages (https URLs only)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			res, err := memory.Ingest(memory.IngestRequest{
-				RepoRoot:     cwd,
+				RepoRoot:     repoRoot,
 				Source:       args[0],
 				KeepOriginal: keepOriginalFlag,
 				Distiller:    pagesJSONDistiller(cmd, pagesJSON),
@@ -3537,11 +3617,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Query memory and synthesise a cited answer",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			req := memory.AskRequest{RepoRoot: cwd, Question: strings.Join(args, " "), TopN: topN}
+			req := memory.AskRequest{RepoRoot: repoRoot, Question: strings.Join(args, " "), TopN: topN}
 			if fileBack {
 				page, err := readPageJSON(cmd, pageJSON)
 				if err != nil {
@@ -3573,11 +3653,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Curator health-check over the whole memory store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := memoryStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := memory.Lint(memory.LintRequest{RepoRoot: cwd})
+			res, err := memory.Lint(memory.LintRequest{RepoRoot: repoRoot})
 			if err != nil {
 				return err
 			}

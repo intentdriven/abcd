@@ -37,6 +37,8 @@ surface contract: what the user types and what happens.
 | `lint` | lint | shipped |
 
 
+**The store every verb here addresses is the checkout's, resolved from the working directory and never taken to be it.** The front door asks [`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go) before it builds a request — the same resolution `capture`, `decide` and `spec` address their stores through: git's toplevel where git will name one, and a refusal in the two remaining states rather than a guess (a repo-shaped tree git will not answer for, and no repository above at all). So a render from a package directory reports the checkout's pages instead of `store not present`, an ingest lands in the checkout's substrate instead of laying a second one beneath the caller, and outside a checkout every verb exits **2** having read nothing and written nothing. It deliberately does not fall through to a marker walk, which would accept any directory carrying the name (iss-2609090947359464). A memory store found **below** the checkout root, on the chain between the caller and it, is named on stderr and left untouched — the deposit an unresolved front door leaves behind, reported to the person standing over it rather than stepped over in silence.
+
 **Bare `/abcd:memory`** renders the store's state and nothing else: how many
 pages there are by class, when the last ingest happened, the recent
 contradictions, and per-source quotation-budget headroom. It never mutates and
