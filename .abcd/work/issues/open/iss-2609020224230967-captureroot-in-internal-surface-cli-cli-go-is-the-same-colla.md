@@ -58,3 +58,5 @@ currently be walked, and whose one walkable path belongs to another workstream.
 through `gitutil.RepoShapedRoot` like the two siblings that already do — and it
 should land before any new caller is added without a root-SHA gate in front of
 it, because the gate is what is holding this closed, not the function.
+
+AMENDED 2026-09-09. The adjacent front-door defect this record was read against — iss-2609090951291524, every capture verb taking the working directory as the repo root — is fixed, and captureRoot gained no new callers in the fixing change. The capture verbs resolve through capture.LedgerRoot, which asks git and refuses the two states captureRoot collapses onto cwd, deliberately rather than reusing this function while it still collapses them. So the condition this record sets is intact: the reading verbs at reading.go:56, :121 and :237 remain the one ungated caller set, and the fix wanted here — three-state through gitutil.RepoShapedRoot, like the two siblings that already do it — is unchanged and still wanted before the next ungated caller is added.

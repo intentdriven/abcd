@@ -559,8 +559,7 @@ func TestHistoryShowSanitisesTranscriptBody(t *testing.T) {
 // token is rejected at the boundary, and that the derived-priority view renders
 // unblocked-first with a [blocked-by …] annotation on the blocked row.
 func TestCaptureBlockedByWiredAndAnnotated(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	// iss-1: the blocker target (minor, unblocked).
 	out := runCLI(t, "capture", "root cause", "--slug", "root", "--json")
