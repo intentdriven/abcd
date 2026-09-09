@@ -51,9 +51,19 @@ commit-author pin.
 
 | field | meaning |
 |---|---|
+| `schema_version` | `1`, and **required**: `Validate` refuses any other value, the absent field included |
 | `block` | `{file, heading}` — where the canonical block lives |
 | `severity` | `warn` (default: highlight, never gate) or `blocker` |
 | `surfaces[]` | `{id, files, kind, patterns \| field, requires, template}` |
+
+The registry is all-or-nothing: the loader decodes with unknown fields
+disallowed and validates every field before any of it is used, because each one
+arrives as committed data. A registry written without `schema_version` is
+refused as `schema_version must be 1, got 0`, and the positioning rule reports
+an unloadable registry as a warn-tier finding rather than as drift, so the
+symptom reads as a broken check rather than as a missing field. `abcd identity
+init` writes the field, which is why a registry the verb laid down never hits
+this.
 
 A surface names candidate `files` (the first that exists is checked, so one entry
 covers several manifest formats), a locator (`kind: "regexp"` with capture-group
