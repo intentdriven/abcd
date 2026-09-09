@@ -9,6 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site/compose.go"
+related_issues: ["iss-2609081941074556"]
 resolution: "creditsHandle now disqualifies a handle glued to a hyphen on either side, so a compound such as fix/itd-199-cleanup no longer credits itd-199; the committed changelog's own credits are unchanged."
 impact: fix
 ---

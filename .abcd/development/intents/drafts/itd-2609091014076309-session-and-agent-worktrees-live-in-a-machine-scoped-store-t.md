@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-118]
 severity: major
 impact: additive
 origin: researcher-authored
@@ -15,7 +15,7 @@ related_adrs: [adr-2609091014087993, adr-2609090717039680]
 
 # Session and agent worktrees live in a machine-scoped store that abcd lists and reclaims, never beside the user's own projects
 
-Typed links: `related_adrs` [adr-2609091014087993](../../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md) (the rule this store enacts), [adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md) (the root-SHA-keyed sibling store whose shape this copies); `refines` [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd-managed-repos-delete-a-pr.md) (its worktree clause: the worktree a merge leaves behind lives in the store and is reclaimed by the verb this intent adds, so the post-merge tidy calls that verb rather than growing a second reclaim).
+Typed links: `related_adrs` [adr-2609091014087993](../../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md) (the rule this store enacts), [adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md) (the root-SHA-keyed sibling store whose shape this copies); `builds_on` [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd-managed-repos-delete-a-pr.md) (its worktree clause: the worktree a merge leaves behind lives in the store and is reclaimed by the verb this intent adds, so the post-merge tidy calls that verb rather than growing a second reclaim).
 
 ## Press Release
 

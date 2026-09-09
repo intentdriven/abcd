@@ -9,6 +9,7 @@ found_during: "ship-audit-itd-130-itd-132-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "hooks/bootstrap.sh"
+related_issues: ["iss-2609012111168716"]
 resolution: "the install one-liners register the PATH copy (c637a734), so the bootstrap refreshes it and ahoy owns it, and abcd update now proves that copy from its path-entry record rather than from a manifest the forge may have deleted"
 impact: fix
 ---

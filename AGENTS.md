@@ -183,12 +183,32 @@ irreversible; guessing downward costs nothing.**
   one working tree, one HEAD, and one index, and a branch switch swaps all
   three under whoever else is using them. The lint gates read the whole tree,
   so foreign work-in-progress fails them in both directions.
+- **That worktree goes in the machine-scoped store, and nowhere else.** A
+  session's own checkout lives at `~/.abcd/worktrees/<root-sha>/<name>/`, keyed
+  on the repository's root commit the way the history, transcript and voyage
+  stores already are — a checkout moves, is renamed and is cloned twice on one
+  machine, while its root commit does none of that. Not beside the checkout,
+  not in the directory the user keeps their projects in, and not inside the
+  working tree, which every tree scan walks. A tool never creates a directory
+  in space the user did not hand it, and beside a checkout there is no declared
+  tier at all:
+  [adr-2609091014087993](.abcd/development/decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md)
+  is the rule and
+  [`the-users-directory-is-theirs`](.abcd/development/principles/the-users-directory-is-theirs.md)
+  is the stance. **The store has no verbs yet.** Aim a plain `git worktree add`
+  at the path and create the lane by hand; the store's own `add`, its listing
+  and its reclaim are
+  [itd-2609091014076309](.abcd/development/intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
+  in `drafts/`, so until it ships nothing enumerates the lane or prunes a spent
+  worktree for you, and a worktree in the store is retired with
+  `git worktree remove` like any other.
 - **Scan before mutating git state.** Before a commit, branch switch, stash,
   rebase, or `git worktree add`/`remove` in a checkout that might be shared,
   check for peer sessions via the harness's session listing, and announce the
   mutation to any peer found. A worktree counts even though it leaves HEAD
-  alone: creating one inside the checkout churns the tree a peer's scan walks,
-  so a concurrent `make preflight` can fail
+  alone. The sharpest case is a worktree created *inside* the checkout — the
+  shape the store above exists to keep out — which churns the tree a peer's
+  scan walks, so a concurrent `make preflight` can fail
   `TestPayloadTreeImplementationsResolveIdentically` with `the payload carries
   N rejected file(s)` while the directory populates. That signature, during
   another session's worktree churn, is a retry rather than a bisect — the

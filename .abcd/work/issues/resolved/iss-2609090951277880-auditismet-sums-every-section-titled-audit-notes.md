@@ -9,6 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site/compose.go"
+related_issues: ["iss-2609081941073604"]
 resolution: "auditIsMet now reads the FIRST Audit Notes section only and refuses a document carrying two, the way it already refuses a negative count; the 26 shipped intents the real tree features are unchanged."
 impact: fix
 ---
