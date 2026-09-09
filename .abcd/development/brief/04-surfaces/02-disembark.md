@@ -23,8 +23,11 @@ before writing any of them, refusing the whole pack rather than redacting.
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
@@ -52,14 +55,18 @@ the report then says.
 **Pack.** `pack <repo> <dest>` writes the lifeboat. Both paths are positional
 and required, and there is no shorthand for either: the lifeboat lands
 out-of-tree at a destination the operator chose, and the source is never written
-to.
+to. It takes `--include-ignored` as well, widening its scan exactly as the flag
+widens probe's and plan's.
 
-**Synthesise over an already-packed lifeboat.** `press-release`, `principles`,
-`review` and `graveyard` each run in one of two modes: deterministic from the
-packed evidence, or validating a host-produced JSON payload passed on a flag.
-The validating mode is cite-or-be-dropped, and the review carries the registered
-verdict. `coverage` is the cross-repo aggregate: hand it probe reports and it
-returns the section-by-repo table.
+**Synthesise over an already-packed lifeboat.** `press-release`, `principles`
+and `review` each run in one of two modes: deterministic from the packed
+evidence, or validating a host-produced JSON payload passed on a flag.
+`graveyard` has the validating mode alone and asks for its payload by name when
+none is given: what an abandoned approach taught is not something the packed
+files can be read for deterministically, so there is no second mode to fall back
+on. The validating mode is cite-or-be-dropped, and the review carries the
+registered verdict. `coverage` is the cross-repo aggregate: hand it probe reports
+and it returns the section-by-repo table.
 
 **Not built yet:** `to-spec-kit`, which would export shipped intents to GitHub
 Spec Kit format alongside the lifeboat (itd-23).
@@ -199,7 +206,9 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   `.git`, whose internal bookkeeping is not the source of truth. Two mutations
   therefore sit outside the assertion's sight: a rewrite that preserves a file's
   size, and any write under `.git`. No path under the source repo is ever a
-  destination.
+  destination. *(The fingerprint is asserted for `probe`, `plan` and `pack`.
+  `review` takes and reads a source repo too, and no test fingerprints that one
+  yet: the rule covers it, the evidence does not.)*
 - **Given** a corpus repo with an intent corpus, ADRs, and a memory backend
   present, **when** a full pack runs to completion, **then** the destination
   contains all sections in [§ 5](#5-output-shape) and the review returns a

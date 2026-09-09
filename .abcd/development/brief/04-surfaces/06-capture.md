@@ -16,8 +16,11 @@ binary.
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
@@ -42,7 +45,10 @@ are caller-supplied flags. Severity, category, source and the found-during
 context each carry a default, so the fast path stays fast; the location, slug
 and dependency flags have none. The `origin` field is derived from the verb that
 ran and is carried by no flag at all (itd-178), and `--production-mode` records
-how the text was produced.
+how the text was produced. That last flag is not the fast path's alone:
+`promote` stamps the draft it mints with it, and `resolve` and `wontfix` each
+take it to restamp the record they are closing, which is refused on a record
+written before the disclosure existed.
 
 One flag is conditionally required: the RFC 3339 instant a recorded discipline
 gave way must be given with the `lapse` category, and omitting it exits 2 and
@@ -73,9 +79,11 @@ required on every state except a hold, which requires an exit condition
 instead. Which states are available varies by the item's position, read off the
 keyed reading record. Once an item already carries a standing answer, a new one
 must cite it with `--supersedes`: that is the only exit from a hold, and what
-makes the standing disposition the one no sibling supersedes. Two hold-shaping
-flags are reserved and dormant, and a populated value is refused until
-activation is ruled.
+makes the standing disposition the one no sibling supersedes. An item the
+researcher recognises as one that has come round before says so with `--recurs`,
+naming the earlier items it recurs from; that is a recorded recognition, never a
+join a machine derived. Two hold-shaping flags are reserved and dormant, and a
+populated value is refused until activation is ruled.
 
 **`/abcd:capture resolve`** marks an issue resolved and moves it to
 `resolved/`. Impact and grounds are both required, and resolving without either
