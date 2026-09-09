@@ -222,11 +222,17 @@ Steps, run in parallel where independent:
    hook` (a `PreToolUse` event, matcher `Bash`, that checks a shell command
    against the hazard registry before it runs) — five event types in all;
    verification covers only the three prompt-router commands above. Every
-   event command is a self-provisioning shim, not a plain binary call: the
-   non-SessionStart shims attempt `hooks/bootstrap.sh` when the plugin-root
-   binary is missing (throttled by a `.bootstrap.attempt` marker within a
-   10-minute window), then fall back to a PATH-resolved `abcd` before failing
-   loudly. The PATH rung is OWNED-ONLY (GHSA-gx3m-3224-qqcv, CWE-426): it
+   event command is a resolving shim, not a plain binary call, and three of
+   them self-provision: `UserPromptSubmit`, `PreToolUse` and `PreCompact`
+   attempt `hooks/bootstrap.sh` when the plugin-root binary is missing
+   (throttled by a `.bootstrap.attempt` marker within a 10-minute window),
+   then fall back to a PATH-resolved `abcd` before failing loudly.
+   `SessionEnd` is the deliberate exception and downloads nothing: it fires as
+   the session is going away, the harness cancels a slow hook there rather
+   than wait, and a mid-flight fetch loses the very transcript the hook exists
+   to capture (iss-2608210934566223, field-hit 2026-08-21). It resolves the
+   plugin root, then `PATH`, then says in one line that the transcript was not
+   captured. The PATH rung is OWNED-ONLY (GHSA-gx3m-3224-qqcv, CWE-426): it
    accepts only an absolute resolution out of a directory that is neither
    under the shim's working directory nor world-writable — the shapes the
    documented install never produces (iss-2609012039117381) — and only when

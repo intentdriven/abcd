@@ -390,17 +390,20 @@ abcd/
 │   ├── principle-distiller.md / release-changelog-composer.md / ruthless-reviewer.md
 │   ├── scribe.md / security-reviewer.md
 │   └── sota-researcher.md              # plus per-agent fixtures/ dirs, README.md, CHANGELOG.md
-└── hooks/                              # Claude Code event hooks — every event command runs through a self-provisioning shim
+└── hooks/                              # Claude Code event hooks — every event command runs through a resolving shim
     ├── bootstrap.sh                    # builds/refreshes the plugin-root binary; referenced by every event command
     └── hooks.json                      # UserPromptSubmit → hook prompt-router; SessionStart → ONE chained command:
                                         #   bootstrap.sh, then session-start + prompt-router-reset, each fed a copy of the
                                         #   payload (siblings would run in parallel and share one stdin);
                                         # PreToolUse (matcher Bash) → guard hook; PreCompact → prompt-router-reset; SessionEnd → session-end.
-                                        # The four non-SessionStart event shims also self-provision: when $CLAUDE_PLUGIN_ROOT/abcd
+                                        # UserPromptSubmit, PreToolUse and PreCompact also self-provision: when $CLAUDE_PLUGIN_ROOT/abcd
                                         # is missing they attempt hooks/bootstrap.sh (throttled by a .bootstrap.attempt marker
                                         # within a 10-minute window), then fall back to a PATH-resolved abcd — absolute, outside the
                                         # working directory, not world-writable, and recorded in ~/.abcd/path-entry as this machine's
-                                        # own; else ignored with a reason — before failing loudly (SessionStart has no PATH rung)
+                                        # own; else ignored with a reason — before failing loudly (SessionStart has no PATH rung).
+                                        # SessionEnd downloads nothing: a fetch as the session exits races the harness's hook
+                                        # cancellation and loses the transcript the hook exists to capture (iss-2608210934566223),
+                                        # so it resolves the plugin root, then PATH, then says the transcript was not captured
 ```
 
 The core is organised one package per capability under `internal/core/`, and the
