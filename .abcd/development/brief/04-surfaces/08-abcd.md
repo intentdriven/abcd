@@ -139,6 +139,7 @@ linked intents, or any spec store.
 | `.abcd/` directory | outside-abcd guidance message (single line, replaces the whole board) |
 | `repo.visibility` in `.abcd/config.json` | `visibility: unknown (no repo.visibility in config)` |
 | disembark log (`~/.abcd/voyage/<source-root-sha>/disembark/history.jsonl`) | `disembark: never run — run /abcd:disembark when ready` (source pending the open question in section 2) |
+| worktree store (`~/.abcd/worktrees/<root-sha>/`) | no line — the board names the lane only when it holds a worktree (design target — [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md): `worktrees: N in the store, M reclaimable`) |
 | dev-sync last-run artifact | `dev-sync: no dev-sync record …` (v1 terminal — see below) |
 | `.abcd/logbook/` (empty / unreadable) | `logbook: no entries yet` |
 | linked intents (none with a live spec) | `intents: no planned or active intents with a linked spec` |

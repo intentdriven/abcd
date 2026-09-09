@@ -207,13 +207,31 @@ Two properties follow from the move, and both are load-bearing:
 
 Because the lifeboat lands out-of-tree, `embark` reads it from wherever disembark wrote it. The destination is protected by a **safety gate** rather than adr-4's overwrite-in-place-with-`.bak` model: abcd refuses unless `<dest>` is absent, an empty directory, or one carrying a parseable `_provenance.json` — it **never overwrites a directory abcd did not produce**. See [`../04-surfaces/03-embark.md`](../04-surfaces/03-embark.md) for the surface contract.
 
+## The worktree store
+
+**Design target (itd-2609091014076309, `intents/drafts/`; unbuilt).** No `worktree` verb exists in the shipped binary, and nothing in it creates or reads this store. What follows is the layout the intent commits to, on the rule [adr-2609091014087993](../../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md) records: a tool never creates directories in user-owned project space, so a session's or an agent's worktree is machine-scoped rather than a sibling of the checkout. It is a **user-scope** artefact keyed on the repository's root-commit SHA, exactly as the history, transcript and voyage stores are, and it is **never committed**:
+
+```
+~/.abcd/worktrees/
+  <root-sha>/
+    <name>/                   one git worktree of that repository, on its own branch
+```
+
+Three properties are load-bearing, and each is the intent's to deliver:
+
+- **Git is the registry.** `git worktree list --porcelain` on the checkout already names every worktree wherever it sits, so the store keeps no index of its own; the verb reads git's answer and says which entries are in the lane, which are outside it, and whether each is clean and merged. A cross-repository walk labels each lane through the history store's `index.json` where the root commit is registered and by SHA where it is not; the worktree's own `.git` file, not the registry's mutable `path` label, says which checkout a lane belongs to.
+- **It creates itself through one seam, never through a symlink**, on the transcript store's discipline (§ The transcript corpus): each level made individually and re-verified as a real directory.
+- **Reclaim is explicit and provable.** `prune` removes a worktree only when its branch is merged into the default branch and its tree is clean, names everything it declined and why, and never deletes a directory git does not recognise as a worktree of the repository — the same stance embark's destination gate takes at its destination.
+
+Worktrees that already sit beside a checkout are outside the store by definition: listed as such, never moved, and retired by the user's own `git worktree remove`.
+
 ## The two `.abcd/` scopes
 
 `.abcd/` is **one namespace pattern instantiated at two scopes**. abcd lives in **one repository** ([adr-28](../../decisions/adrs/0028-single-repo-curated-release.md)): its design record is **repo-scoped and in-tree**, and the user scope holds only state that is genuinely machine-wide. `/abcd:ahoy` classifies the folder it runs in (see [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md)) and acts on the scope that applies:
 
 | Scope | Location | Holds |
 |---|---|---|
-| **user** | `~/.abcd/` | one per machine — **machine-local shared state only**: the root-SHA-keyed `history/` registry (`index.json` + per-root-SHA `meta.json`) and the root-SHA-keyed `transcripts/` corpus ([adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)), the root-SHA-keyed `voyage/` operations namespace ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)), machine `config.json` defaults, the user-scope `memory/` (personal, cross-project knowledge), and the caller-controlled declarations `path-entry` (the owned PATH copy), `trusted-roots` (foreign-uid configuration roots, below) and `local-transcript-roots` (checkouts whose transcripts are pulled into the checkout). **Never the design record.** |
+| **user** | `~/.abcd/` | one per machine — **machine-local shared state only**: the root-SHA-keyed `history/` registry (`index.json` + per-root-SHA `meta.json`) and the root-SHA-keyed `transcripts/` corpus ([adr-2609090717039680](../../decisions/adrs/2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)), the root-SHA-keyed `voyage/` operations namespace ([adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)), the root-SHA-keyed `worktrees/` store for session and agent checkouts (design target — [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md), `intents/drafts/`; the rule is [adr-2609091014087993](../../decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md)), machine `config.json` defaults, the user-scope `memory/` (personal, cross-project knowledge), and the caller-controlled declarations `path-entry` (the owned PATH copy), `trusted-roots` (foreign-uid configuration roots, below) and `local-transcript-roots` (checkouts whose transcripts are pulled into the checkout). **Never the design record.** |
 | **repo** | in-tree `.abcd/` | this repository's record and working files — the three-tier layout below, plus `config.json` (with its `meta` setup block), `rules.json`, and the `memory/`, native spec store, `logbook/`, `rp/` namespaces. **The home for project work.** There is **no in-tree `lifeboat/`**: the lifeboat is out-of-tree output at an operator-chosen destination (adr-35). |
 
 **The repo-scope three-tier working layout** (matching [`../02-constraints/01-platform.md`](../02-constraints/01-platform.md) and [`../01-product/02-context.md`](../01-product/02-context.md)):
