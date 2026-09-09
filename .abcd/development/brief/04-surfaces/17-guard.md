@@ -41,8 +41,15 @@ only format it:
 | Verdict | `guard check` | `guard hook` |
 |---|---|---|
 | `allow` | exit 0 | exit 0, silent |
-| `warn` | exit 0, warning rendered | exit 0, warning on stderr |
-| `block` | exit 1, why + successor rendered | the host's blocking status, why + successor as the message |
+| `warn` | exit 0, warning rendered | exit 1, warning on stderr |
+| `block` | exit 1, why + successor rendered | exit 2, the host's blocking status, why + successor as the message |
+
+Exit 1 on the hook is loud and non-blocking, and it is why a warn does not exit
+0 there: a `PreToolUse` hook that exits 0 has its stderr DISCARDED, so a warn
+returning 0 would run as if allowed with nobody told (iss-231). Exit 2 is the
+one status that stops anything. Every non-decision path — an unreadable
+payload, an unparsable command line, a registry that will not load — takes the
+same exit 1, which is the fail-open-loud contract stated below.
 
 The two front doors differ in how a verdict is REPORTED, never in the verdict
 itself. `guard check` trims a trailing newline off a candidate read on stdin, so
