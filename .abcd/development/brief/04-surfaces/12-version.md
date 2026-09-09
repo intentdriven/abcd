@@ -14,8 +14,10 @@ surface's only network touch, and abcd never fetches implicitly
 
 Bare `abcd version` prints a short block: the version line, then `install:`
 (only when an install mode is resolvable), `vintage:` and `staleness:`. It is
-not a status board; the [surfaces index](README.md) carries the one enumeration
-of where the bare-status convention holds, and `version` is not on it. Adding
+the bare-invocation convention the [surfaces index](README.md) sets out, a
+read-only render of the verb's own state, and `version` keeps it rather than
+sitting among the exceptions that index enumerates. What it is not is a board for
+the repository: the state it reports is the binary's. Adding
 `--json` emits the same facts as `name`, `version`, `vintage` and `staleness`,
 with `install_mode` present only when it resolves and a `check` object present
 only when `--check` was passed.

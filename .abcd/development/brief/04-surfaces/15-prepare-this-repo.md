@@ -17,6 +17,12 @@ bare-status render. The workflow runs in the host agent from
 [`commands/prepare-this-repo.md`](../../../../commands/prepare-this-repo.md).
 It takes no argument, always operating on the current repository.
 
+Because the binary carries no verb of this name, typing `abcd prepare-this-repo`
+at a shell is an unknown command rather than a route in. Today that refusal also
+blames a stale binary and asks for a rebuild, which is the wrong reading for a
+surface that is host-delegated by design: what the reader needs is the plugin
+command above.
+
 ## What it does
 
 - **Refuses on repos the user does not own.** The first phase checks the origin
@@ -40,8 +46,14 @@ which the command then supplements with the structural and principles judgement
 the binary does not make. `abcd identity init` records the identity block: the
 markdown itself, which stays the source of truth, plus `.abcd/positioning.json`,
 the pointer recording where that block lives and which surfaces render from it.
-`abcd ahoy install` writes the commit gates, and runs a second time with
-`--attribution` where the user opts in.
+`abcd ahoy install` is the adopt phase's workhorse, and it does more than write
+the commit gates. In one run it plants abcd's own managed block in the repo's
+`CLAUDE.md` and `AGENTS.md` (both by default, and the target is choosable down to
+neither), writes the repo's settings file with its visibility, oracle backend and
+scan depth, writes its rule-loader overrides file, installs a copy of the binary
+on `PATH`, records the repo in the machine's own store, and offers to pin the git
+commit identity. It runs a second time with `--attribution` where the user opts
+in.
 
 `abcd identity render` is the follow-on surface and writes nothing: it proposes
 a correction as a diff, and adopting it is always the maintainer's move.
@@ -75,10 +87,12 @@ then ratified ADRs, then everything else read for understanding only.
 
 ## Boundaries
 
-- **Nameless, self-contained output.** The working-conventions block written
-  into `AGENTS.md` never mentions abcd, this command, or any private repository:
-  the conventions read as the repo's own, between dated markers so later tooling
-  can find and replace them.
+- **Self-contained output.** The working-conventions block written into
+  `AGENTS.md` reads as the repo's own: it names neither this command nor any
+  private repository, and it sits between dated markers so later tooling can find
+  and replace it. It is no longer strictly nameless, because the three-tier layout
+  it prescribes lives under `.abcd/`, so the tool's name is in every path it
+  states.
 - **Never commit downstream assets.** Anything tooling will later provide
   (persona data, lint-config JSON, content copied from the abcd record) is
   applied, not copied. Only content about the target repository is committed.
@@ -106,7 +120,12 @@ then ratified ADRs, then everything else read for understanding only.
   interviewed only where it did not, and `abcd identity` reports every rendered
   surface against it.
 - **Given** the adoption completes, **then** nothing from `private-names.txt`
-  and no abcd-internal content appears in any committed artefact.
+  appears in any committed artefact, and the working-conventions block carries no
+  content lifted from abcd's own record. One abcd-authored block is committed by
+  design: the managed rule-loader section the install plants in `CLAUDE.md` and
+  `AGENTS.md`, which names abcd because it has to tell a later reader what
+  maintains it and how to override it. Which of those two files carries it, or
+  neither, is the install's own choice to make.
 
 ## Composition
 
@@ -118,5 +137,5 @@ layout the shipped abcd surfaces then operate over.
 ## References
 
 - Plugin command: [`commands/prepare-this-repo.md`](../../../../commands/prepare-this-repo.md)
-- The three-tier layout it adopts: [`../01-product`](../01-product) and the abcd `.abcd/README.md`
+- The three-tier layout it adopts: [`../02-constraints/01-platform.md`](../02-constraints/01-platform.md) and the abcd `.abcd/README.md`
 - The invariants the working-conventions block encodes: [`../02-constraints`](../02-constraints)

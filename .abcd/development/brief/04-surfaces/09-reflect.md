@@ -2,7 +2,12 @@
 
 > **Not built yet.** There is no `reflect` verb on the binary, no
 > `commands/reflect.md`, no `reflection-composer` agent under `agents/`, and no
-> `.abcd/retrospectives/` tree in the working tree. The backing intent sits in
+> `.abcd/retrospectives/` tree in the working tree. Nor does the thing this
+> surface reads: no phase audit runs today and no phase has produced a receipt,
+> so the input the design below treats as available is itself a design target,
+> deferred together with the phase-audit tooling
+> ([adr-9](../../decisions/adrs/0009-phase-as-product-layer.md)). The backing
+> intent sits in
 > [`intents/planned/`](../../intents/planned/itd-24-reflect-command.md)
 > (itd-24); delivery state is the intent lifecycle's, not this page's (see the
 > [brief README's provenance note](../README.md)). The prose below records the
@@ -10,7 +15,7 @@
 
 Close a phase of work with a retrospective somebody will actually read a year
 later, without starting from a blank page. The command takes a completed
-phase, reads the audit receipt that phase already produced, and turns its
+phase, reads the audit receipt that phase produced, and turns its
 per-item verdicts into a short interview: five seeded questions, one clarifying
 follow-up where an answer is thin. What lands is a five-section README that
 links out to the phase, the audit and the specs rather than copying them, so
@@ -67,9 +72,9 @@ they are rendered into link text.
 
 The receipt shape this surface consumes is the predecessor store's phase-audit
 report, and the predecessor wrote it under `.abcd/logbook/`. **That location is
-retired here.** A 2026-07-12 maintainer adjudication (iss-36 and iss-56,
-resolved as iss-73) placed runtime artefacts in the gitignored
-`.abcd/.work.local/logs/` tier instead, and a detector holds it:
+retired here.** A 2026-07-12 maintainer adjudication, made on iss-56, placed
+runtime artefacts in the gitignored `.abcd/.work.local/logs/` tier instead;
+iss-73 carried out the relocation, and a detector holds it:
 `TestNoRetiredLogbookLocationInSource` fails the build if any non-test Go source
 under `internal/` so much as names `logbook`. A delivered `reflect` therefore
 reads its receipt from `.abcd/.work.local/logs/`; the retired path survives in

@@ -1,7 +1,7 @@
 # Skills — Procedural Workflows That Aren't Commands
 
-A new surface has to be either a command or a skill, and the choice is expensive
-to reverse: by the time you discover a skill is mutating state, downstream
+A new user-invokable surface has to be either a command or a skill, and the
+choice is expensive to reverse: by the time you discover a skill is mutating state, downstream
 contracts have hardened around the skill shape. This page holds the criterion that
 makes the call at design time, and records where abcd came out.
 
@@ -12,6 +12,13 @@ state: the sources corpus, its ledger, the target repo. They live at
 `commands/<name>.md` with chapters [`13-consult.md`](../04-surfaces/13-consult.md),
 [`14-ingest.md`](../04-surfaces/14-ingest.md), and
 [`15-prepare-this-repo.md`](../04-surfaces/15-prepare-this-repo.md).
+
+The plugin carries two further surface kinds this choice does not cover, because
+neither is something a person invokes by name: the agent prompts under `agents/`,
+which verbs and reviewers dispatch ([`01-agents.md`](01-agents.md)), and the hook
+entrypoints under `hooks/`. The release payload declares all four kinds. Only
+commands and skills compete for the same slash-invoked namespace, and that
+competition is what this page decides.
 
 ## Skill vs command — the criterion
 
@@ -66,7 +73,10 @@ the transport-agnostic core.
 The mapping between command pages and binary verbs is one-to-one in neither
 direction, and both exceptions are deliberate. Five verbs have a Go verb and no
 command page: `changelog`, `completion`, `hook`, `rules`, and `spec`. Three
-command pages invoke no binary verb: the host-delegated three above. See
+command pages carry no Go verb of their own name: the host-delegated three above.
+Two of those three call no part of the binary at all; `/abcd:prepare-this-repo`
+is the exception, running the binary's audit, install and identity verbs as steps
+inside a workflow the host drives. See
 [`04-surfaces/`](../04-surfaces) for per-command detail.
 
 ## Skills are not in `04-surfaces/`
@@ -96,8 +106,15 @@ A later phase introducing a slash-invokable workflow that has no parent command 
 is findings-only and idempotent per the criterion above gets: an intent file
 capturing the user moment, a `skills/<name>/` directory holding the executable
 form, an entry in this section, a row in the surfaces registry marked `shipped`,
-and **no** surface chapter — because a skill needing one is command-shaped and
-ships as a command instead.
+the skills directory added to the release payload's include list, and **no**
+surface chapter — because a skill needing one is command-shaped and ships as a
+command instead.
+
+The payload step is the one that is easy to forget and has not been taken for
+anyone: the include list still names commands, agents and hooks and no skills
+directory, which is exactly the condition that dropped a shipped skill from the
+cut artefact before. A skill added without it passes the record gate and is
+missing from the release.
 
 itd-30 (design fictions, a later phase) is a **command extension** rather than a
 new skill: it extends the canonical create `/abcd:intent "<text>"` with a format
