@@ -53,9 +53,30 @@ on:
 # it. Default-branch pushes all share a single group, so the cancel expression —
 # not the group key — is what keeps a merge from being cancelled mid-run by the
 # merge behind it.
+#
+# A MERGE-QUEUE run is exempt from both halves, and that exemption is load-bearing
+# rather than tidy (iss-2609020716560392). A queue entry runs on a temporary ref,
+# `refs/heads/gh-readonly-queue/main/pr-N-<base sha>`, which is never the default
+# branch — so the ref comparison alone armed cancellation there, and GitHub reads
+# a cancelled required check as a FAILED one: it drops the entry and disarms
+# auto-merge with nothing said on the pull request. One PR was removed four times
+# in a night this way.
+#
+# Both halves move, because each closes a different window:
+#
+#   - The cancel expression now excuses the merge_group event by name. Keying on
+#     the event rather than on the ref's prefix says what is meant, and holds if
+#     GitHub ever reshapes the queue ref.
+#   - The group key is the run id on that event, so a queue run shares its group
+#     with nothing at all. `cancel-in-progress: false` is not enough on its own:
+#     a run held PENDING on a busy group is cancelled outright when a third run
+#     arrives, and a re-queued entry at the same base sha carries the same ref as
+#     the run still finishing for its ejected predecessor. Unique-per-run is what
+#     removes that collision instead of ranking it. Same shape as attribution.yml,
+#     which falls through to github.run_id for the same reason.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'merge_group' && github.run_id || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'merge_group' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
 permissions:
   contents: read
