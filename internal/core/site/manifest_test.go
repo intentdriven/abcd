@@ -88,8 +88,10 @@ func TestManifestRefusesPageSourcesOutsideTheDocRoots(t *testing.T) {
 		{"chapter page outside the page roots", chapterPage, `"page": ".abcd/work/CONTEXT.md"`, ".abcd/work/CONTEXT.md"},
 		// identity.file and policy.file are not whole-file page sources — a
 		// heading extract and a one-bullet quote — so they keep their legitimate
-		// locations outside docs/. The .git refusal still reaches them: a
-		// heading extract out of .git/config is a quote out of .git/config.
+		// locations outside docs/, each inside its own closed set
+		// (TestManifestRefusesQuoteSourcesOutsideTheirRoots). The .git refusal
+		// still reaches them first: a heading extract out of .git/config is a
+		// quote out of .git/config.
 		{"identity block inside the git directory", identity, `"file": ".git/config"`, ".git/config"},
 		{"contributors policy inside the git directory", policy, `"file": ".git/config"`, ".git/config"},
 	}
@@ -117,6 +119,105 @@ func TestManifestRefusesPageSourcesOutsideTheDocRoots(t *testing.T) {
 				t.Errorf("the refusal does not name %q: %v", c.says, err)
 			}
 		})
+	}
+}
+
+// TestManifestRefusesQuoteSourcesOutsideTheirRoots is the same boundary for the
+// QUOTE-type path fields — the ones that select a span of a file rather than
+// inlining the whole of it.
+//
+// They used to pass the relative-path check and then only the .git refusal,
+// which is the denylist the page sources were closed against precisely because
+// it cannot anticipate the next reachable file: it leaves the gitignored local
+// tier, the private record and every file a future contributor adds still
+// nameable. The contributors policy is the one that renders worst — policyQuote
+// publishes the ENTIRE matched section verbatim whenever `part` is anything but
+// first-bullet — so a manifest pointing it at a local scratch file with a
+// matching heading published that file to the public site
+// (iss-2609090951279243).
+func TestManifestRefusesQuoteSourcesOutsideTheirRoots(t *testing.T) {
+	const (
+		identity  = `"file": ".abcd/development/brief/01-product/README.md"`
+		uiStrings = `"ui_strings": "site-src/ui.json"`
+		docsIndex = `"index": "docs/README.md"`
+		policy    = `"file": "CONTRIBUTING.md"`
+		baseline  = `"unresolved_reference_baseline": ".abcd/site-baseline.json"`
+	)
+	refused := []struct{ name, from, to, says string }{
+		// The record's own detector: the policy file outside the roots.
+		{"contributors policy in the local tier", policy,
+			`"file": ".abcd/.work.local/scratch/notes.md"`, ".abcd/.work.local/scratch/notes.md"},
+		{"contributors policy in the working tier", policy,
+			`"file": ".abcd/work/CONTEXT.md"`, ".abcd/work/CONTEXT.md"},
+		{"contributors policy at a repository-root dotfile", policy, `"file": ".env"`, ".env"},
+		{"identity block in the local tier", identity,
+			`"file": ".abcd/.work.local/scratch/identity.md"`, ".abcd/.work.local/scratch/identity.md"},
+		{"identity block at a repository-root dotfile", identity, `"file": ".env"`, ".env"},
+		{"ui strings in the local tier", uiStrings,
+			`"ui_strings": ".abcd/.work.local/scratch/ui.json"`, ".abcd/.work.local/scratch/ui.json"},
+		{"docs index outside the documentation root", docsIndex,
+			`"index": ".abcd/work/CONTEXT.md"`, "docs.index"},
+		{"baseline in the local tier", baseline,
+			`"unresolved_reference_baseline": ".abcd/.work.local/scratch/b.json"`, ".abcd/.work.local/scratch/b.json"},
+	}
+	for _, c := range refused {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			repointManifest(t, f, c.from, c.to)
+			_, err := LoadManifest(f.Root())
+			if err == nil {
+				t.Fatalf("the manifest accepted %s", c.name)
+			}
+			if !strings.Contains(err.Error(), c.says) {
+				t.Errorf("the refusal does not name %q: %v", c.says, err)
+			}
+		})
+	}
+
+	// The anti-vacuity half, per field: each set is wider than the page roots
+	// for a stated reason, and the location that reason names must still load.
+	// A gate that refused these would refuse this repository's own manifest.
+	accepted := []struct{ name, from, to string }{
+		{"the identity block in the durable record", identity,
+			`"file": ".abcd/development/brief/01-product/README.md"`},
+		{"the contributors policy at the repository root", policy, `"file": "CONTRIBUTING.md"`},
+		{"a documentation page as the policy source", policy, `"file": "docs/README.md"`},
+		// The baseline is held to the manifest's own directory and no deeper,
+		// so a repository may name a baseline it has yet to write.
+		{"a baseline beside the manifest", baseline,
+			`"unresolved_reference_baseline": ".abcd/other-baseline.json"`},
+	}
+	for _, c := range accepted {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			repointManifest(t, f, c.from, c.to)
+			if _, err := LoadManifest(f.Root()); err != nil {
+				t.Fatalf("the manifest refused %s: %v", c.name, err)
+			}
+		})
+	}
+}
+
+// repointManifest rewrites one declaration in a fixture's committed manifest,
+// failing the test if the string it is asked to replace is not there — a case
+// that silently matched nothing would assert about the unedited manifest.
+// Repointing a declaration at what it already says leaves the file alone: that
+// is the case asserting the fixture's own value still loads.
+func repointManifest(t *testing.T, f *fixture, from, to string) {
+	t.Helper()
+	manifest := filepath.Join(f.Root(), ".abcd", "site.json")
+	original, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(original), from) {
+		t.Fatalf("the fixture manifest does not contain %q", from)
+	}
+	if from == to {
+		return
+	}
+	if err := os.WriteFile(manifest, []byte(strings.Replace(string(original), from, to, 1)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
