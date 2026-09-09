@@ -50,11 +50,18 @@ build never draws.
 
 ```bash
 abcd site                    # what is declared, and what the last build left; exit 0
+abcd site --out DIR          # report the board on DIR instead of ./site
 abcd site build              # render into ./site
 abcd site build --out DIR    # render into DIR
 abcd site build --preview    # stamp the render as unreleased · <commit>
 abcd site check --out DIR    # gate the rendered tree (rendering first when DIR has no index.html); exit 1 on findings
 ```
+
+The build stamp is injectable in all three of its parts, so a caller that
+knows better than the defaults can say so: `--version` (default: the newest
+dated CHANGELOG heading), `--commit` (default: git HEAD) and `--date`
+(default: the newest release's date). That is what keeps the render free of a
+clock read, and what lets a test pin the whole export byte for byte.
 
 `--preview` is for a build of an untagged tree: the stamp renders the
 `ui.json` word `unreleased` with the commit in place of a version,
@@ -80,7 +87,8 @@ directory holding `.git` are refused before anything is read; the bare
 | `site-src/ui.json` | the closed allowlist of words the generator may add |
 | `.abcd/record-lint.json` | where the record stores are, so the graph scan finds them |
 | `.abcd/site-baseline.json` | the unresolved-reference ratchet the health block counts against (the path is `checks.unresolved_reference_baseline`'s, defaulting to this one) |
-| `.abcd/development/**`, `.abcd/work/issues/**` | the record itself, through the record-lint engine's own scan — one parser, not a second |
+| `.abcd/development/**`, `.abcd/work/issues/**` | the record itself, through the record-lint engine's own scan — one frontmatter parser, not a second. The parts of that tree carrying no frontmatter are read another way, because there is nothing for that scan to read: the principle store `.abcd/development/principles/` joins the graph from a directory listing plus a first-heading read |
+| `.abcd/development/research/references.csl.json` | the bibliography, read by its own CSL-JSON parser: it renders the references page and is cross-checked against `ACKNOWLEDGEMENTS.md` so the two numberings agree |
 | `.abcd/development/brief/glossary/**` | the terms, through the glossary package's own scan, for the glossary page set and the term links on every record page |
 | git history | one `git log --reverse --name-status --diff-merges=first-parent` pass, plus `shortlog` and the `Assisted-by:` trailers |
 | `CHANGELOG.md` | the dated release headings |
@@ -118,6 +126,12 @@ adr-47 decision 3 exactly: composed surfaces are `/` and every
 manifest-selected span, the verbatim record rendering under `/record/` is
 exempt, and the attribution escape is a verification — a name on
 `/contributors/` must match a trailer or contributor git actually carries.
+`/docs/` is dropped from the page walk before any gate sees it, the mobile
+checks included, so they say nothing about that subtree: it is MkDocs' own
+tree rather than this build's output, its pages carry HTML comments the
+generator's grammar refuses, and its words are gated at the source by
+docs-lint instead. In production the two trees share one output directory, so
+"every page" here means every page this build wrote.
 The rendered-overflow screenshot audit is CI's optional, non-gating job; the
 static gates here are what a browserless binary can assert, and the two are
 complementary by design.
@@ -143,7 +157,11 @@ is what lets `record.json` be a build artifact nobody commits.
 
 Three things are derived rather than decided. The featured quotation is the
 newest shipped intent whose audit rollup records met criteria and none unmet,
-dated by the day its file entered `shipped/`. The Beta badge renders while the
+dated by the day its file entered `shipped/`, with the id descending as the
+tie-break on a shared date. The derivation carries one exclusion: an intent
+whose `## Press Release` is still, in its entirety, the minted seed template is
+skipped, because the site would otherwise quote the placeholder back at the
+reader as the project's own words. The Beta badge renders while the
 newest dated changelog version's major is 0. The footer's version and commit are
 the build stamp.
 
@@ -167,10 +185,14 @@ build that stops and says which line is the only outcome anybody can act on.
 The record graph as one file: nodes with their lifecycle, title, dates and
 degree; typed links with each mirrored pair collapsed once (an intent's
 `spec_id` and its spec's `intent` are one link); body mentions deduplicated
-against those links; counts by store and lifecycle; releases; authorship and the
+against those links; counts by store, lifecycle and status (a flat store grades
+its records by a frontmatter field rather than by moving them between
+directories, so a lifecycle count alone would render it as one undifferentiated
+block); releases; authorship and the
 `Assisted-by:` tallies; the unresolved references measured against the committed
-baseline; and both precomputed chart arrangements. It is a build artifact and is
-never committed.
+baseline; both precomputed chart arrangements; and a summary of the git walk the
+dates came from, `first_commit`, `last_commit` and `commits`. It is a build
+artifact and is never committed.
 
 ## References
 
