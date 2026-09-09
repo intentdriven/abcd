@@ -9,6 +9,7 @@ found_during: "bughunt-triage"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site/compose.go"
+related_issues: ["iss-2609090951277880"]
 resolution: "auditIsMet now reads the Audit Notes section through StripFrontmatter and Sections, skips fenced lines inside it, and refuses a negative count outright. Both halves were needed: fence-awareness alone leaves an unfenced negative able to cancel a real NOT_MET, and refusing negatives alone leaves a fenced 'Acceptance rollup: MET 1' able to lift a concerns-only rollup whose notMet is already zero. The function comment, which already claimed to read the Audit Notes rollup, is now true and says why the narrowing matters. The real tree's MET set is unchanged at 26 of 41 shipped intents and the homepage still features itd-2609021003095168."
 impact: fix
 ---

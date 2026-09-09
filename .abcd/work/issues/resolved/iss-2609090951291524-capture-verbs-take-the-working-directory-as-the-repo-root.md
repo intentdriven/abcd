@@ -9,6 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/cli.go"
+related_issues: ["iss-2609020224230967", "iss-2609090947359464"]
 resolution: "Every capture front door resolves the checkout root before it builds its request: captureLedgerRoot asks capture.LedgerRoot, which takes git's toplevel and refuses both remaining states rather than guessing — a repo-shaped tree git will not answer for, and no repository at all. A verb run from a subdirectory now addresses the checkout's ledger, and a verb run outside a checkout writes nothing. A ledger already sitting below the checkout root is named on stderr and left untouched; the bare board stays read-only."
 impact: fix
 ---

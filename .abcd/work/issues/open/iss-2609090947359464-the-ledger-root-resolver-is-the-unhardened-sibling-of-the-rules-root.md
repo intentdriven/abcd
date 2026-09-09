@@ -9,6 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/roots.go"
+related_issues: ["iss-2609090951291524"]
 ---
 
 discoverRepoRoot is the unhardened twin of the rules-root resolver that was hardened in the same batch. Its git call is properly isolated, and its own comment explains why: an inherited GIT_WORK_TREE or GIT_DIR would redirect discovery at a different tree. The fallback beneath that call has neither guard the sibling grew. Where git will not answer, the loop walks upward accepting any directory whose git entry merely exists, with no shape check of the kind plausibleRepository performs and no ownership check of the kind foreignOwnerRefusal performs, so an empty directory named for the marker in a shared ancestor, or a real repository another uid laid there, would bound the ledger root exactly as it bounded the rules root before that fix.

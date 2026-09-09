@@ -9,6 +9,7 @@ found_during: "bughunt-triage"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site/compose.go"
+related_issues: ["iss-2609090951280114", "iss-2609090951287232"]
 resolution: "releaseOf now matches the record handle at a word boundary: every handle on a changelog line is read out through the package's own bodyHandleRe and compared whole, so itd-199 can no longer be credited by a newer section's itd-1990. Newest-section-first is unchanged. Covered by a synthetic superstring detector and an anti-vacuity guard on the committed CHANGELOG, where itd-1 was stamped 0.7.1 off the itd-130 credit and now takes 0.2.0, the release that names it."
 impact: fix
 ---

@@ -9,6 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site/compose.go"
+related_issues: ["iss-2609081941074556"]
 resolution: "The changelog walk now tracks fences, ahead of the dated-heading test, so a handle inside a fenced block is no longer a credit and a fenced dated heading moves no version cursor."
 impact: fix
 ---
