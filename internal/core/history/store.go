@@ -30,10 +30,109 @@ const rootSHAErrMsg = "history: rootSHA must be a 40- or 64-character lowercase 
 // separator surprises.
 var sessionIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
+// agentIDRe restricts a harness-supplied agent id to the same filesystem-safe
+// charset as a session id, and for the same reason: a sub-agent's agent id is
+// embedded verbatim in its record filename, so a separator or a traversal
+// segment in it is a path hazard rather than a cosmetic problem. A parent agent
+// id is held to the same shape because it names an agent that has, or will
+// have, a record of its own.
+var agentIDRe = sessionIDRe
+
 // validKinds are the accepted source_kind values.
 var validKinds = map[string]struct{}{
 	"native":           {},
 	"specstory-import": {},
+}
+
+// validLineageSources are the accepted lineage_source values: which rung of the
+// attribution ladder answered. It is what distinguishes an agent_type that was
+// never recoverable from one that was never there.
+var validLineageSources = map[string]struct{}{
+	"hook":     {},
+	"ingest":   {},
+	"migrated": {},
+}
+
+// validSpawnAttributions are the accepted spawn_attribution values: which rung
+// of the attribution ladder placed this agent's spawn point.
+//
+// This field exists because the field set could otherwise not tell two
+// different empties apart. An empty parent_agent_id was read as "the main
+// thread spawned it", but a hook-sourced record captured with no harness
+// sidecar has it empty too — and spawn_depth zero with it — so a genuine
+// depth-1 child of the main thread and a record whose lineage was never
+// recovered were the same bytes. lineage_source cannot separate them: it names
+// which DOOR the record came through, and both came through the hook. Making it
+// carry the rung as well would overload one field with two facts, which is the
+// defect adr-2609090636172016 removed; so it is a field, in the same flat
+// one-scalar-per-line frontmatter idiom as the rest.
+var validSpawnAttributions = map[string]struct{}{
+	"sidecar":      {}, // the harness's per-agent sidecar answered
+	"transcript":   {}, // the spawning transcript's own tool result answered
+	"unattributed": {}, // nothing answered; the spawn fields carry no information
+}
+
+// validate checks CaptureMeta's external inputs at the store's boundary. Every
+// field here comes off a harness payload or a configuration file, and every one
+// of them is written into a record — into a filename, in the agent id's case,
+// and into one-scalar-per-line frontmatter in the rest. A line break in a scalar
+// would let externally supplied text forge a frontmatter field, so it is refused
+// here rather than escaped downstream.
+func (m CaptureMeta) validate() error {
+	if !sessionIDRe.MatchString(m.SessionID) {
+		return fmt.Errorf("history: sessionID must be non-empty and match [A-Za-z0-9._-]+")
+	}
+	if _, ok := validKinds[m.Kind]; !ok {
+		return fmt.Errorf("history: source kind %q is not one of native, specstory-import", m.Kind)
+	}
+	if m.AgentID != "" && !agentIDRe.MatchString(m.AgentID) {
+		return fmt.Errorf("history: agentID must match [A-Za-z0-9._-]+")
+	}
+	if m.ParentAgentID != "" && !agentIDRe.MatchString(m.ParentAgentID) {
+		return fmt.Errorf("history: parentAgentID must match [A-Za-z0-9._-]+")
+	}
+	if m.SpawnDepth < 0 {
+		return fmt.Errorf("history: spawnDepth must not be negative, got %d", m.SpawnDepth)
+	}
+	if m.LineageSource != "" {
+		if _, ok := validLineageSources[m.LineageSource]; !ok {
+			return fmt.Errorf("history: lineage source %q is not one of hook, ingest, migrated", m.LineageSource)
+		}
+	}
+	if err := m.validateSpawnAttribution(); err != nil {
+		return err
+	}
+	for _, f := range []struct{ name, value string }{
+		{"agentType", m.AgentType},
+		{"spawnToolUseID", m.SpawnToolUseID},
+	} {
+		if strings.ContainsAny(f.value, "\r\n") {
+			return fmt.Errorf("history: %s must not contain a line break (record frontmatter is one scalar per line)", f.name)
+		}
+	}
+	return nil
+}
+
+// validateSpawnAttribution holds the invariant that makes "no parent" and
+// "unknown parent" structurally distinct for everything written from here on.
+// A sub-agent record MUST say which rung placed it — an unset field would be
+// the ambiguity itself — and a record claiming nothing placed it cannot also
+// carry spawn detail. A main-thread record has no spawn to attribute.
+func (m CaptureMeta) validateSpawnAttribution() error {
+	if m.AgentID == "" {
+		if m.SpawnAttribution != "" {
+			return fmt.Errorf("history: spawnAttribution %q is meaningless on a main-thread record (no agent id)", m.SpawnAttribution)
+		}
+		return nil
+	}
+	if _, ok := validSpawnAttributions[m.SpawnAttribution]; !ok {
+		return fmt.Errorf("history: a sub-agent record needs a spawnAttribution of sidecar, transcript or unattributed, got %q", m.SpawnAttribution)
+	}
+	if m.SpawnAttribution == "unattributed" &&
+		(m.ParentAgentID != "" || m.SpawnDepth != 0 || m.SpawnToolUseID != "") {
+		return fmt.Errorf("history: an unattributed spawn cannot also name a parent, a depth or a spawning tool call")
+	}
+	return nil
 }
 
 // historyRoot returns ~/.abcd/history. HOME is respected so tests can redirect.
@@ -101,10 +200,22 @@ func repoLock(tdir string) (func(), error) {
 	return func() { f.Close() }, nil
 }
 
-// recordFilename is <compact-utc>-<session-id>.md — sorts chronologically and,
-// with nanosecond precision, does not collide within a session.
-func recordFilename(capturedAt time.Time, sessionID string) string {
-	return capturedAt.UTC().Format("20060102T150405.000000000Z") + "-" + sessionID + ".md"
+// recordFilename is <compact-utc>-<session-id>.md for a main-thread record and
+// <compact-utc>-<session-id>-agent-<agent-id>.md for a sub-agent's. It sorts
+// chronologically and, with nanosecond precision, does not collide within a
+// session.
+//
+// The agent segment is readable convenience ONLY: an operator listing the
+// directory can tell a session's spine from its branches. Nothing decodes this
+// string back into fields — listRecords parses frontmatter and never the
+// filename — which is what keeps the composite-identifier defect this schema
+// removed from reappearing one directory later.
+func recordFilename(capturedAt time.Time, sessionID, agentID string) string {
+	name := capturedAt.UTC().Format("20060102T150405.000000000Z") + "-" + sessionID
+	if agentID != "" {
+		name += "-agent-" + agentID
+	}
+	return name + ".md"
 }
 
 // frontmatter fields (flat, one scalar per line) — a small fixed schema parsed
@@ -118,6 +229,17 @@ const (
 	fmSourceSHA   = "source_sha256"
 	fmRedSecrets  = "redacted_secrets"
 	fmRedHomePath = "redacted_home_paths"
+
+	// Lineage (schema 2). Every one of these is omitted when empty, so a
+	// main-thread record is byte-identical to its schema-1 shape but for the
+	// version stamp.
+	fmAgentID          = "agent_id"
+	fmParentAgentID    = "parent_agent_id"
+	fmAgentType        = "agent_type"
+	fmSpawnDepth       = "spawn_depth"
+	fmSpawnToolUseID   = "spawn_tool_use_id"
+	fmLineageSource    = "lineage_source"
+	fmSpawnAttribution = "spawn_attribution"
 )
 
 // marshalRecord renders a record file: YAML frontmatter then the redacted body.
@@ -132,12 +254,37 @@ func marshalRecord(r Record, body string) []byte {
 	fmt.Fprintf(&b, "%s: %s\n", fmSourceSHA, r.SourceSHA256)
 	fmt.Fprintf(&b, "%s: %d\n", fmRedSecrets, r.Secrets)
 	fmt.Fprintf(&b, "%s: %d\n", fmRedHomePath, r.HomePaths)
-	b.WriteString("---\n")
-	b.WriteString(body)
-	if !strings.HasSuffix(body, "\n") {
-		b.WriteString("\n")
+	// Lineage, omitted when absent: an empty field would be a trailing-space
+	// line, and a main-thread record has nothing to say here.
+	for _, f := range []struct{ key, value string }{
+		{fmAgentID, r.AgentID},
+		{fmParentAgentID, r.ParentAgentID},
+		{fmAgentType, r.AgentType},
+		{fmSpawnToolUseID, r.SpawnToolUseID},
+		{fmLineageSource, r.LineageSource},
+		{fmSpawnAttribution, r.SpawnAttribution},
+	} {
+		if f.value != "" {
+			fmt.Fprintf(&b, "%s: %s\n", f.key, f.value)
+		}
 	}
+	if r.SpawnDepth > 0 {
+		fmt.Fprintf(&b, "%s: %d\n", fmSpawnDepth, r.SpawnDepth)
+	}
+	b.WriteString("---\n")
+	b.WriteString(marshalBody(body))
 	return []byte(b.String())
+}
+
+// marshalBody is the body exactly as a record file holds it: newline-terminated.
+// It is a named seam because supersession compares a candidate body against what
+// is already on disk, and a comparison against a differently-terminated string
+// would miss the prefix relation it exists to find.
+func marshalBody(body string) string {
+	if strings.HasSuffix(body, "\n") {
+		return body
+	}
+	return body + "\n"
 }
 
 // parseRecord splits a record file into its metadata and redacted body. The
@@ -185,6 +332,16 @@ func parseRecord(data []byte) (Record, string, error) {
 	}
 	r.Secrets, _ = strconv.Atoi(fields[fmRedSecrets])
 	r.HomePaths, _ = strconv.Atoi(fields[fmRedHomePath])
+	// Lineage is optional in BOTH directions: absent on a main-thread record and
+	// absent on every schema-1 record, which is why a schema-1 record parses as a
+	// main-thread record rather than as a fault.
+	r.AgentID = fields[fmAgentID]
+	r.ParentAgentID = fields[fmParentAgentID]
+	r.AgentType = fields[fmAgentType]
+	r.SpawnToolUseID = fields[fmSpawnToolUseID]
+	r.LineageSource = fields[fmLineageSource]
+	r.SpawnAttribution = fields[fmSpawnAttribution]
+	r.SpawnDepth, _ = strconv.Atoi(fields[fmSpawnDepth])
 	return r, body, nil
 }
 

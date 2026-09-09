@@ -31,7 +31,7 @@ func TestCaptureAcceptsSHA256RootKey(t *testing.T) {
 	}
 	repoRoot := t.TempDir()
 
-	res, err := Capture(repoRoot, sha256Root, "sess-sha256", []byte("assistant: hi\n"), "native")
+	res, err := Capture(repoRoot, sha256Root, []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-sha256", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture with a SHA-256 root key failed: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestCaptureRedactsSecretsAndHomePaths(t *testing.T) {
 		"assistant: done",
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-abc123", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-abc123", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestCaptureRedactsPercentEncodedSecrets(t *testing.T) {
 		"assistant: done",
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-pct370", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-pct370", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestCaptureRedactsHomePathFollowedByPunctuation(t *testing.T) {
 	}
 	transcript := strings.Join(lines, "\n") + "\n"
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-punct", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-punct", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestCaptureIdempotentOnSourceSHA(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	raw := []byte("user: hello\nassistant: hi\n")
 
-	first, err := Capture(repoRoot, testRootSHA, "sess-idem", raw, "native")
+	first, err := Capture(repoRoot, testRootSHA, raw, CaptureMeta{SessionID: "sess-idem", Kind: "native"})
 	if err != nil {
 		t.Fatalf("first capture: %v", err)
 	}
@@ -307,7 +307,7 @@ func TestCaptureIdempotentOnSourceSHA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second, err := Capture(repoRoot, testRootSHA, "sess-idem", raw, "native")
+	second, err := Capture(repoRoot, testRootSHA, raw, CaptureMeta{SessionID: "sess-idem", Kind: "native"})
 	if err != nil {
 		t.Fatalf("second capture: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestCaptureIdenticalSourceDistinctSessionsWritesBoth(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	raw := []byte("user: hello\nassistant: hi\n")
 
-	first, err := Capture(repoRoot, testRootSHA, "sess-a", raw, "native")
+	first, err := Capture(repoRoot, testRootSHA, raw, CaptureMeta{SessionID: "sess-a", Kind: "native"})
 	if err != nil {
 		t.Fatalf("first capture: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestCaptureIdenticalSourceDistinctSessionsWritesBoth(t *testing.T) {
 		t.Fatalf("first capture should write")
 	}
 
-	second, err := Capture(repoRoot, testRootSHA, "sess-b", raw, "native")
+	second, err := Capture(repoRoot, testRootSHA, raw, CaptureMeta{SessionID: "sess-b", Kind: "native"})
 	if err != nil {
 		t.Fatalf("second capture: %v", err)
 	}
@@ -381,10 +381,10 @@ func TestCaptureIdenticalSourceDistinctSessionsWritesBoth(t *testing.T) {
 func TestListAndRead(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 
-	if _, err := Capture(repoRoot, testRootSHA, "sess-one", []byte("first session\n"), "native"); err != nil {
+	if _, err := Capture(repoRoot, testRootSHA, []byte("first session\n"), CaptureMeta{SessionID: "sess-one", Kind: "native"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Capture(repoRoot, testRootSHA, "sess-two", []byte("second session\n"), "native"); err != nil {
+	if _, err := Capture(repoRoot, testRootSHA, []byte("second session\n"), CaptureMeta{SessionID: "sess-two", Kind: "native"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -422,7 +422,7 @@ func TestListAndRead(t *testing.T) {
 func TestListSkipsSymlinkedRecord(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	tdir := filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")
-	if _, err := Capture(repoRoot, testRootSHA, "sess-real", []byte("real one\n"), "native"); err != nil {
+	if _, err := Capture(repoRoot, testRootSHA, []byte("real one\n"), CaptureMeta{SessionID: "sess-real", Kind: "native"}); err != nil {
 		t.Fatal(err)
 	}
 	recs, err := List(testRootSHA)
@@ -467,7 +467,7 @@ func TestCapturePreconditionMissingDir(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	_, err := Capture(repoRoot, testRootSHA, "sess-x", []byte("hi\n"), "native")
+	_, err := Capture(repoRoot, testRootSHA, []byte("hi\n"), CaptureMeta{SessionID: "sess-x", Kind: "native"})
 	if err == nil {
 		t.Fatalf("expected a precondition error when transcripts dir is absent")
 	}
@@ -485,7 +485,7 @@ func TestBootstrapErrorNamesRealVerb(t *testing.T) {
 	repoRoot := t.TempDir()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	_, err := Capture(repoRoot, testRootSHA, "sess-x", []byte("hi\n"), "native")
+	_, err := Capture(repoRoot, testRootSHA, []byte("hi\n"), CaptureMeta{SessionID: "sess-x", Kind: "native"})
 	if err == nil {
 		t.Fatalf("expected a precondition error when transcripts dir is absent")
 	}
@@ -515,7 +515,7 @@ func TestCaptureRejectsBadInput(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := Capture(repoRoot, c.rootSHA, c.sessionID, []byte("x\n"), c.kind); err == nil {
+			if _, err := Capture(repoRoot, c.rootSHA, []byte("x\n"), CaptureMeta{SessionID: c.sessionID, Kind: c.kind}); err == nil {
 				t.Errorf("expected rejection for %s", c.name)
 			}
 		})
@@ -540,7 +540,7 @@ func TestCaptureRedactsNetworkIdentifiers(t *testing.T) {
 		"assistant: synced from " + device,
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-net001", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-net001", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -744,7 +744,7 @@ func TestCaptureStoresUnanchoredEntropyVerbatim(t *testing.T) {
 		"assistant: ssh " + lanAddr,
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-entropy1", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-entropy1", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -792,7 +792,7 @@ func TestCaptureStoresUnanchoredEntropyVerbatim(t *testing.T) {
 // diagnostic for an invalid rootSHA names both accepted widths (40 and 64), so it
 // cannot drift from rootSHARe, which accepts SHA-256's 64 as well as SHA-1's 40.
 func TestCaptureRejectsBadRootSHAMessageNamesBothWidths(t *testing.T) {
-	_, err := Capture(t.TempDir(), "not-a-sha", "sess-x", []byte("assistant: hi\n"), "native")
+	_, err := Capture(t.TempDir(), "not-a-sha", []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-x", Kind: "native"})
 	if err == nil {
 		t.Fatal("expected an invalid rootSHA to be rejected")
 	}

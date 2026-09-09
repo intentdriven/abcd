@@ -345,7 +345,7 @@ func Drain(repoRoot, rootSHA string, budget int) (DrainResult, error) {
 				Err: fmt.Sprintf("cannot read staged transcript: %v", err)})
 			continue
 		}
-		cr, err := Capture(repoRoot, rootSHA, s.SessionID, raw, "native")
+		cr, err := Capture(repoRoot, rootSHA, raw, CaptureMeta{SessionID: s.SessionID, Kind: "native"})
 		if err != nil {
 			res.Failed = append(res.Failed, DrainFailure{SessionID: s.SessionID, Path: s.Path, Err: err.Error()})
 			continue

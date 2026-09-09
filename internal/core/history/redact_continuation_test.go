@@ -25,7 +25,7 @@ func TestCaptureRedactsHomeWithANameSuffix(t *testing.T) {
 	transcript := "the archive is at https://ci.example.com" + home + ".zip for review\n" +
 		"old copy under " + home + "-old/x here\n" +
 		"snapshot under /Volumes/T7" + home + "_snapshot/x here\n"
-	res, err := Capture(t.TempDir(), testRootSHA, "sess-suffix", []byte(transcript), "native")
+	res, err := Capture(t.TempDir(), testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-suffix", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture refused: %v", err)
 	}

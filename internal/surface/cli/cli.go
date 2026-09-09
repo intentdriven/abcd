@@ -3571,15 +3571,20 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := history.Capture(captureRoot(cwd), rootSHA, sess, raw, orDefault(kind, "native"))
+			res, err := history.Capture(captureRoot(cwd), rootSHA, raw,
+				history.CaptureMeta{SessionID: sess, Kind: orDefault(kind, "native")})
 			if err != nil {
 				return err
 			}
 			// The stored path is absolute and home-rooted; this is a success
 			// envelope the CLI error scrub never sees, so redact the home root to
 			// ~ before it is rendered or marshalled. Callers re-derive the file
-			// handle from disk, never from this rendered value.
+			// handle from disk, never from this rendered value. A superseded
+			// record's path is the same absolute path from the same store.
 			res.Record.Path = fsutil.RedactHome(res.Record.Path)
+			if res.Superseded != nil {
+				res.Superseded.Path = fsutil.RedactHome(res.Superseded.Path)
+			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if !res.Wrote {
 					fmt.Fprintf(w, "abcd history capture — %s already stored (no-op); redacted secrets=%d home=%d\n",
