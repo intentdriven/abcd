@@ -16,8 +16,11 @@ explicitly.
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
@@ -25,13 +28,17 @@ explicitly.
 | `list` | — | shipped |
 | `remove` | — | shipped |
 
-Every sub-verb names its layer with `--private` or `--public`, and neither
-defaults: a write that guessed the layer would be a private pattern published, or
-a public ban nobody can see. `add` takes a key and a pattern, and the pattern `-`
-reads one line from **stdin** instead, so a private pattern never has to sit in a
-shell history or a process list. `--severity` and `--successor` shape a public
-entry only; the private write path takes neither, because a private entry has one
-severity and its refusal names nothing but its key.
+`add` and `remove` each name their layer with `--private` or `--public`, and
+neither defaults: a write that guessed the layer would be a private pattern
+published, or a public ban nobody can see. On `list` the same two flags are
+optional and narrow the render to one layer; naming neither renders both, which
+is what bare invocation already does. `add` takes a key and a pattern, and the
+pattern `-` reads one line from **stdin** instead, so a private pattern never has
+to sit in a shell history or a process list. `--severity` and `--successor` shape a public
+entry only, because a private entry has one severity and its refusal names
+nothing but its key. A private add still accepts both and silently does nothing
+with them, which is a rough edge rather than a guard: nothing tells the user the
+flag did not apply.
 
 ## Why two layers
 
@@ -51,8 +58,13 @@ The public layer is not a new mechanism. It is the `banned_tokens` family that
 already gates this repo's harness names, so an entry a verb writes and an entry a
 human hand-curated are enforced by the same engine with the same escape hatch.
 Verb-written entries carry the `names/` id prefix, which is the ownership
-boundary: `list` shows the whole family, and a removal is refused for anything
-outside that namespace.
+boundary — and it holds in one direction only. `list` shows the whole family, and
+a removal is refused for anything outside that namespace, so the verb cannot
+delete an entry a person curated by hand elsewhere in the family. Nothing stops a
+person writing an entry *into* `names/` by hand, and this repository's own config
+already carries one: it renders as verb-managed, and a removal would take it.
+Read the prefix as the place the verb writes, not as proof of what wrote an
+entry.
 
 ## The private store's format is declared, not guessed
 
@@ -94,10 +106,12 @@ untouched. So a hand-added private entry and the corpus sync write into one stor
 without either clobbering the other. See [`13-consult.md`](13-consult.md) for the
 corpus side of that contract.
 
-Leading and trailing ASCII spaces and tabs are stripped, and nothing else is: the
-Go parser and the shell hook strip the same set, byte for byte. A whitespace class
-that differed between the two readers would be a line one of them silently ignores
-while the other reports it as live.
+Leading and trailing ASCII spaces and tabs are stripped, and so are a trailing
+carriage return on any line and a byte-order mark at the very start of the file,
+so a store saved by a Windows editor reads the same as one saved anywhere else;
+nothing else is stripped, and the Go parser and the shell hook strip the same
+set, byte for byte. A whitespace class that differed between the two readers
+would be a line one of them silently ignores while the other reports it as live.
 
 ## What the guard does at commit time
 

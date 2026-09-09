@@ -39,6 +39,11 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   id, kind) triple, so re-capturing identical content under the same session and
   kind is a no-op while the same content under a different session id writes a
   new record and a second session is never mis-attributed to the first.
+  `--session` names the session the record belongs to: it defaults to the
+  transcript's filename, and it is required when the transcript arrives on
+  standard input, where there is no filename to read it from. `--kind` says
+  where the transcript came from, a session abcd captured itself or an import of
+  a prior tool's transcripts, and it defaults to the first.
 - **`staged`** lists transcripts that ended but are not yet redacted into the
   store. A non-empty list means unredacted transcript text is on disk.
 - **`drain`** redacts and stores every staged transcript, then deletes the raw
@@ -67,6 +72,20 @@ megabytes: the long, dense sessions most worth keeping
 through the same fail-closed `capture` path, where there is a real time budget.
 Whatever the budget leaves is reported rather than dropped, because a repo with
 a dozen missed sessions must not stall the user's first prompt.
+
+Session start is also the one moment abcd can tell a user about install trouble
+before they act on it, so the same hook carries a short notice channel: a
+transcript backlog or a drain that failed, a plugin binary out of step with the
+surface it was installed from, a binary built behind the checkout it was built
+from, and a repo last set up under a different version. The delivery is
+deliberate. The hook always exits successfully, because a notice is not a
+failure and a failing session-start hook shows the user an empty error banner
+with the text thrown away. The notices themselves go to the error stream, where
+a person reads them. What the hook prints on its output stream is one fixed
+sentence and a count, pointing at the verbs that hold the detail: whatever a
+session-start hook prints there is folded into the session's own context, and
+these notices quote values read off tracked files, which a pull request or a
+fork can write.
 
 Staging is the one place abcd holds unredacted transcript text on purpose: mode
 `0o700`, files `0o600`, each file living only until the next session drains it.
@@ -154,10 +173,12 @@ quietly on disk.
 
 ## Composition
 
-The store is the substrate the transcript-harvest path (and, later, the memory
-distiller) reads from: history captures raw sessions, `memory` distils curated
-knowledge from them. The store is keyed per repo, so transcripts never leak
-across projects.
+The store is the substrate a later harvest is meant to read: history captures
+raw sessions, and the design is that `memory` distils curated knowledge out of
+them. **Nothing does that yet.** No shipped surface reads the store but
+`history` itself, and `memory ingest` takes a document or a web address, never a
+stored transcript. The store is keyed per repo, so transcripts never leak across
+projects.
 
 ## References
 
