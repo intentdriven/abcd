@@ -83,6 +83,29 @@ a binary abcd cannot vouch for is never given the guard's verdict to answer
 with. A repository you have merely cloned does not get to supply the shell
 guard or the rules loader for the session that is reading it.
 
+The same principle bounds where those two read their configuration. The rules
+loader and the shell guard both read `.abcd/` from one repository root resolved
+for the session, and that root is never taken from a directory above your
+working tree. When `git` will not name the tree — a checkout owned by a
+different user account, a container bind mount, a shared CI checkout — the root
+is recovered from the `.git` marker instead, and a root your account does not
+own is refused: the session falls back to its own working directory, the
+bundled rule defaults and bundled hazard registry stand in for the
+repository's, and one line names the directory refused. Laying out a real
+repository in a shared directory anyone can write is otherwise enough to supply
+both, and no property of the tree tells that apart from a checkout that is
+honestly someone else's. If such a checkout is genuinely yours to trust,
+declare it once, from an account you control:
+
+```sh
+mkdir -p ~/.abcd && printf '%s\n' '/path/to/checkout' >> ~/.abcd/trusted-roots
+```
+
+One absolute path per line; `#` starts a comment. The declaration is read only
+from your home directory, and only while that file is yours and not writable by
+others — a file inside the checkout can never vouch for the checkout. Nothing
+infers the exception for you.
+
 That covers the hooks. For the `abcd` command in your own terminal, keep the
 [install](#cli) below, or put the plugin-root binary on your `PATH` by
 running it once by its absolute path — `'<plugin-root>/abcd' ahoy install`.
