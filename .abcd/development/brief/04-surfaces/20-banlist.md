@@ -24,6 +24,17 @@ expensive to remediate afterwards.
 | `list` | — | shipped |
 | `remove` | — | shipped |
 
+Every sub-verb names its layer with `--private` or `--public`, and neither
+defaults: a write that guessed the layer would be a private pattern published,
+or a public ban nobody can see. `add` takes a `<key>` and a `<pattern>`, and the
+pattern `-` reads one line from **stdin** instead, so a private pattern never
+has to sit in a shell history or a process list. Two further flags shape a
+public entry only: `--severity` (`blocker`, the default, or `warn`) and
+`--successor`, the replacement the docs-lint finding cites when it fires
+(default "a generic term"). The private write path takes neither and ignores
+both, because a private entry has one severity and its refusal names nothing but
+its key.
+
 
 ## Why two layers
 
@@ -34,7 +45,7 @@ compromise.
 
 | | public layer | private layer |
 |---|---|---|
-| store | `.abcd/docs-lint.json`, the `banned_tokens` family | `.abcd/.work.local/private-names.txt`, gitignored |
+| store | `.abcd/docs-lint.json`, the `banned_tokens` family | `.abcd/.work.local/private-names.txt`, gitignored; inside a linked worktree the primary checkout's copy is read as well (below) |
 | enforced by | `abcd docs lint` in CI, per-line escape | the committed `.githooks/pre-commit` and `pre-merge-commit` guards |
 | reach | every clone and pull request — **when the config is tracked** (see below) | only machines that have opted in, and only the commits git runs a hook for |
 | visibility | entries render in full | entries render **by key only** |
@@ -79,6 +90,15 @@ declaration makes both unrepresentable, at the cost of one line a user adds by h
 `add` and `remove` refuse a non-empty legacy store for exactly that reason: writing a
 keyed line into it would change what every *other* line means.
 
+**The private store has a second writer**, and the format declaration is what
+lets the two share it. `~/.abcd/sources/bin/sync-banlist <repo-root>` derives
+patterns from the confidential entries of the sources corpus and maintains them
+inside a fenced generated block in the same file; it refuses a target whose
+first line is not the declaration, and lines outside its block, whether a verb
+wrote them or a human did, survive untouched. So `add --private` and the corpus
+sync write into one store without either clobbering the other. See
+[`13-consult.md`](13-consult.md) for the corpus side of that contract.
+
 Leading and trailing ASCII spaces and tabs are stripped, and nothing else is — the
 Go parser and the shell hook strip the same set, byte for byte. A whitespace class
 that differs between the two readers is a line one of them silently ignores while
@@ -111,6 +131,23 @@ it checks exactly as much. The layer protects machines that opted in, and silenc
 must never impersonate protection — which is why the read surface reports `present`
 as a distinct state rather than rendering an empty list.
 
+### Inside a linked worktree, the primary checkout's store is read too
+
+A checkout is not always the only store in play. Inside a **linked git
+worktree** both the guard and the read surface resolve the PRIMARY checkout's
+`.abcd/.work.local/private-names.txt` as a read-side fallback (itd-150): the
+guard reads it alongside the local store, and `abcd banlist` renders it under an
+`inherited from the primary checkout` heading, entries by key as ever. So an
+`INACTIVE` local store in a linked worktree does **not** mean the commit goes
+through unchecked, and the render says so on the same screen it says `INACTIVE`.
+
+The fallback is **read-side only**, and that asymmetry is the thing to hold on
+to. `add --private` in a linked worktree writes to that worktree's own store,
+which the primary checkout's guard does not read back: a name that must be
+enforced in a given checkout is declared in that checkout. The store the
+per-worktree tier gives each lane its own copy of is exactly why the read side
+has to reach across and the write side must not.
+
 ## Two ways an entry fails, reported apart
 
 `abcd banlist list --private` distinguishes a line the guard's engine **cannot use**
@@ -131,16 +168,22 @@ its own source.
 
 ## Scaffolded, not hand-wired
 
-`abcd ahoy` writes all five artefacts into any repo it configures, so a repo
-becomes name-safe by being abcd-managed:
+`abcd ahoy` scaffolds five artefacts, so a repo becomes name-safe by being
+abcd-managed. Four of the five carry a condition, stated in the table: abcd
+writes an artefact where writing it is safe and reports the state where it is
+not, because a scaffolded file abcd would immediately declare unenforceable is
+worse than an absent one.
 
-| artefact | where | note |
+| artefact | where | written when |
 |---|---|---|
-| guard hook | `.githooks/pre-commit` | committed, so every clone inherits it; a clone arms it once with `git config core.hooksPath .githooks` |
-| merge guard | `.githooks/pre-merge-commit` | git runs no `pre-commit` for a merge commit, so the same guard runs from a second entry point. Written **only** beside abcd's own guard: the shim delegates to whatever occupies `pre-commit`, so beside a foreign hook it would both claim coverage it has not got and silently start running the maintainer's hook on merges |
-| EOL pin | `.gitattributes` | one appended line keeping the hooks at LF — a `core.autocrlf` checkout rewrites a script git EXECUTES, and its shebang stops resolving |
-| public family | `.abcd/docs-lint.json` | an **empty** `banned_tokens` array — abcd cannot know which names a repo may not publish, and a ban nobody declared would fail a build over a word the maintainer never chose |
-| private stub | `.abcd/.work.local/private-names.txt` | inside the gitignored local tier |
+| guard hook | `.githooks/pre-commit` | unconditionally, when absent. Committed, so every clone inherits it; a clone arms it once with `git config core.hooksPath .githooks` |
+| merge guard | `.githooks/pre-merge-commit` | **only** beside abcd's own guard (`guardOwned`). git runs no `pre-commit` for a merge commit, so the same guard runs from a second entry point; the shim delegates to whatever occupies `pre-commit`, so beside a foreign hook it would both claim coverage it has not got and silently start running the maintainer's hook on merges |
+| EOL pin | `.gitattributes` | **only** beside abcd's own guard, the same key: the pin belongs with the hooks and with nothing else. One appended line keeps them at LF, because a `core.autocrlf` checkout rewrites a script git EXECUTES and its shebang stops resolving |
+| public family | `.abcd/docs-lint.json` | **only** where `publicPathIsWritable` says the path would be tracked: withheld where git would ignore it, and withheld where git cannot be asked, since a config written into a path nobody could check is the same wager either way. Seeded with an **empty** `banned_tokens` array, because abcd cannot know which names a repo may not publish and a ban nobody declared would fail a build over a word the maintainer never chose |
+| private stub | `.abcd/.work.local/private-names.txt` | **only** where git itself reports the path as ignored (below). Inside the gitignored local tier |
+
+Every one of the five is create-if-absent and keyed on the gap detection
+actually raised, so nothing above overwrites a file the maintainer owns.
 
 Presence is not identity. Each hook carries an `# abcd-name-guard: v1` line —
 matched as a whole line, so a hook that merely mentions it in a comment is not
@@ -228,19 +271,34 @@ patterns.
 ## What the public layer does not reach
 
 The public layer's claim is that it is committed and enforced for everyone, and
-that claim depends on the config being tracked. Under `visibility: public` the
-installed fence ignores the anchored `/.abcd/` wholesale — one switch, no
-per-subdirectory exceptions — and `.abcd/docs-lint.json` sits inside it. A repo
-abcd configures as public therefore carries a public family CI never sees, exactly
-where public exposure is the risk.
+that claim depends on the config being tracked. `.abcd/docs-lint.json` sits
+inside the namespace `visibility: public` fences, so the question is a live one.
 
-abcd does not resolve that here: moving the file amends the iss-169 fence record,
-and carving an exception into the fence gives up the one-switch property that
-record chose. It stops claiming otherwise instead — detection reports
-`banlist.public_family_ignored` and the status board reads "public family NOT
-ENFORCEABLE". The placement question is
-[`iss-176`](../../../work/issues/resolved/iss-176-public-banlist-family-unenforceable-under-public-visibility.md),
-for a maintainer to settle.
+On a repo that commits the documented three-tier layout it is settled by the
+fence itself. `effectiveVisibilityEntries`
+(`internal/core/ahoy/gitignore.go`, iss-255) narrows the anchored `/.abcd/`
+entry — and only that entry — to `.abcd/.work.local/` whenever git reports any
+tracked file under `.abcd/`, because an ignore rule cannot untrack committed
+records and a wholesale fence there would only hide new ones. So in a normal
+abcd-managed public repo, this repository included, `.abcd/docs-lint.json` is
+tracked, CI reads it, and the public layer reaches every clone. The narrowing is
+the mechanical boundary of what an ignore rule can do, not a per-subdirectory
+carve-out of the one-switch decision: see
+[`../05-internals/03-configuration.md`](../05-internals/03-configuration.md).
+
+The reach that remains unmet is the repo that commits nothing under `.abcd/`,
+and the repo whose git cannot be asked. Narrowing needs positive evidence, so
+both keep the wholesale fence, and a public family written there would reach no
+CI run. abcd does not write one: `publicPathIsWritable` withholds the scaffolded
+config in exactly those two cases, and where a config is already sitting in an
+ignored path detection reports `banlist.public_family_ignored` while the status
+board reads "public family NOT ENFORCEABLE". Not claiming enforcement is the
+whole remedy, and it is the shipped one.
+
+[`iss-176`](../../../work/issues/resolved/iss-176-public-banlist-family-unenforceable-under-public-visibility.md)
+asked whether the file should move, and is **resolved**: the premise it rested
+on no longer holds, the relocation was built and abandoned as unnecessary, and
+no maintainer decision is outstanding.
 
 ## Honest reach
 
@@ -270,3 +328,6 @@ pattern, and a guard is only ever asked about what git asks it about.
 - Intent: [`itd-74`](../../intents/shipped/itd-74-name-banlist.md)
 - Public-layer gate: [`10-docs.md`](10-docs.md)
 - Install surface: [`01-ahoy.md`](01-ahoy.md)
+- The corpus writer that shares the private store: [`13-consult.md`](13-consult.md)
+- The visibility fence and its tracked-tier narrowing:
+  [`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)
