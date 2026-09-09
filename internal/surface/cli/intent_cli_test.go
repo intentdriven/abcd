@@ -154,6 +154,10 @@ func TestIntentLinkMismatchErrors(t *testing.T) {
 
 func TestSpecBareText(t *testing.T) {
 	repo := t.TempDir()
+	// A bare temporary directory is no longer a place a spec store is addressed:
+	// the front door resolves the checkout root first and refuses outside one
+	// (iss-2609091729516940), so the fixture is a git working tree.
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
@@ -166,6 +170,7 @@ func TestSpecBareText(t *testing.T) {
 
 func TestSpecCloseHappy(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	// spec close now reconciles the linked intent, so the intent must exist and
 	// be planned+linked back to this spec.
@@ -210,6 +215,7 @@ func TestSpecCloseHappy(t *testing.T) {
 // intent that moved and its from->to.
 func TestSpecCloseReconcileText(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
@@ -224,6 +230,10 @@ func TestSpecCloseReconcileText(t *testing.T) {
 
 func TestSpecCloseMissingErrors(t *testing.T) {
 	repo := t.TempDir()
+	// The tree is git-initialised so the refusal asserted below is the one this
+	// test names — a spec that is not in the store — and not the checkout-root
+	// refusal a bare temporary directory now earns first.
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	if _, err := runCLIErr(t, "spec", "close", "spc-99"); err == nil {
 		t.Fatal("closing a missing spec must exit non-zero")
@@ -760,6 +770,7 @@ var (
 // asserted here and not only in the core package.
 func TestSpecCloseRefusesAnImpactlessIntent(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")

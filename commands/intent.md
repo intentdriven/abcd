@@ -348,6 +348,11 @@ refused). The close refuses rather than shipping a record with neither, and it
 refuses a `--impact` that disagrees with one already written down: a close does
 not revise a recorded judgement. `spec close` is CLI-only — there is no
 `/abcd:spec` page.
+Both spec verbs — the close and the bare `abcd spec` status render — resolve the
+repository root first, so they address the checkout's spec store from anywhere in
+the tree and refuse with exit **2** outside a repository, where there is no spec
+store to address; a spec store found below the repository root is named on
+stderr and left alone.
 Report the returned pair (the spec's new path, the intent's new path), then
 queue the audit below.
 
