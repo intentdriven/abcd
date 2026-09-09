@@ -284,7 +284,8 @@ version-writing refuses and the escalation stands. Concretely, `ship`:
    canonical `.claude-plugin/marketplace.json`, never a root-level copy. **Later
    phase** ([adr-20](../../decisions/adrs/0020-manifest-version-lockstep.md)):
    that entry conforms to a schema, validated programmatically by this step.
-4. Refreshes any other version references generated from the config slug.
+4. Stamps nothing else. Those two locations are the whole of it, and the render
+   names both, so there is no third place for a version to drift out of step.
 
 **Anti-drift.** The two manifests in the artefact describe one release, so the
 version at the selected location and the marketplace entry must agree. A
@@ -318,8 +319,13 @@ history. The launch report is the durable record of every launch including
 pruned ones, so deleting a release tag never deletes the evidence a launch
 happened.
 
-A prune is a destructive, outward-visible act, so `ship` reports exactly which
-release it removed, or why it refused.
+A prune is a destructive, outward-visible act, so the design has `ship` report
+exactly which release it removed, or why it refused. **Removal itself is a
+full-`ship` design target** (itd-65). What ships today computes the decision and
+renders it — which releases a line keeps, which the plan would prune, and the
+reason a refusal stands — and stops there: no shipped path deletes a tag, a
+release or an asset, so the plan is a statement of intent a person still carries
+out.
 
 ## 4. Reports
 
@@ -388,7 +394,9 @@ performed by a human and by CI.
   removed, the removal is named in the launch report, and the last release of
   every other line is untouched. **Given** a release newer than the
   just-published version already exists, the retention step refuses to prune
-  anything and records the refusal reason.
+  anything and records the refusal reason. *(Not built: the shipped cut renders
+  the retention decision and stops before any removal, and the launch report is
+  itd-65's.)*
 - **Given** a documentation-auditor warning, **when** `ship` runs without
   `--allow-doc-warnings`, **then** the user is shown the warnings and asked
   transparently whether to proceed. *(Both the auditor gate and the flag are

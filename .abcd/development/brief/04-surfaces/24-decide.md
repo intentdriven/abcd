@@ -2,9 +2,11 @@
 
 `/abcd:decide` mints an architecture decision record: it allocates the id,
 derives the slug and the date, and writes the store's skeleton into
-`.abcd/development/decisions/adrs/`. It is the ADR store's **write** verb, the
+`.abcd/development/decisions/adrs/`. It is the ADR store's **minting** verb, the
 counterpart of the read-only `abcd adr-N` dispatch the
-[`08-abcd.md`](08-abcd.md) chapter describes.
+[`08-abcd.md`](08-abcd.md) chapter describes. It is not the store's only writer:
+[`/abcd:embark`](03-embark.md) unpacks a lifeboat's decision records into the same
+store, which is a restore rather than a mint.
 
 ## Behaviour
 
@@ -14,8 +16,9 @@ abcd decide "<title>" --json
 
 emits `{ "id": "adr-<stamp>", "slug": "<kebab-case>", "title": "<title>",
 "date": "YYYY-MM-DD", "path": ".abcd/development/decisions/adrs/<stamp>-<slug>.md" }`
-and writes exactly that one file. The plain render names the same four values
-and the status the record lands with. Exit 0 when the record lands, exit 2 for
+and writes that one file, laying the store's directories down first where the
+checkout does not already hold them. Nothing else lands on disk. The plain render
+names the same four values and the status the record lands with. Exit 0 when the record lands, exit 2 for
 an operand fault — no title, or a title with nothing slug-able in it — with
 nothing written.
 
