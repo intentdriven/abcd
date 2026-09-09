@@ -245,7 +245,24 @@ Steps, run in parallel where independent:
    `~/.abcd/path-entry` records that exact path as this machine's installed
    binary. The record is a `path=` string comparison and no hashing, because
    adr-46 keeps the fast path at one file test; the install one-liners and
-   `ahoy install` both write it. Anything else is ignored with one line
+   `ahoy install` both write it, and `ahoy install` writes it for EVERY entry
+   shape it leaves on PATH — the owned copy, the pinned symlink it degrades to
+   with no verified artefact to copy from, and the `--dev` shim — because an
+   entry the record does not name is an install this rung refuses while the
+   board reports it healthy, which is the one disagreement between the two
+   surfaces that neither surface states (iss-2609091126475539). Recording the
+   `--dev` shim does not widen the rung: the record is home-scoped and written
+   only by an install the operator ran themselves, which is the distinction the
+   rung draws — a checkout the session merely reads may not supply the binary,
+   a binary the operator installed may. The shape that ownership rests on
+   differs by entry and the copy predicate says so: the owned copy is the
+   record PLUS a byte-for-byte hash match and explicitly not the shim, since
+   `abcd update` reads that predicate as permission to overwrite the file. An
+   owned entry the record does not name is the `symlink.unrecorded` gap —
+   required and resolvable, because an install with no actionable gap never
+   builds an apply context and so could not otherwise heal one; uninstall drops
+   the record with the entry it names, and only that one. Anything else is
+   ignored with one line
    naming the binary and the reason, and the shim degrades — for the
    `PreToolUse` guard that is the UNGUARDED line and exit 1, never the exit 0
    the harness reads as an approval. SessionStart carries no PATH rung at all

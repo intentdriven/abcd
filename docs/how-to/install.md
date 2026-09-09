@@ -73,8 +73,14 @@ That `PATH` rung is narrow on purpose, and it is owned-only. A hook takes an
 outside the one the session is working in, that is not world-writable, **and**
 `~/.abcd/path-entry` records that exact path as the `abcd` installed on this
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
-own install verb; a binary nothing recorded is ignored with one line naming it
-and the reason, and the hook takes its degraded path instead. The rule is what
+own install verb — whichever entry it leaves on `PATH`: the copy of the
+verified release binary it prefers, the symlink it degrades to when there is no
+verified copy to make, and the track-latest shim `--dev` writes. Uninstalling
+takes the record away with the entry, so nothing that lands in that directory
+later inherits the claim. A binary nothing recorded is ignored with one line
+naming it and the reason, and the hook takes its degraded path instead; an
+entry an earlier release left unrecorded is named as a gap by `abcd ahoy`, and
+re-running the install records it in place. The rule is what
 stands between the session and a plausible `abcd` earlier on `PATH` than yours:
 a `.` entry, a vendored directory inside a checkout, a shared world-writable
 directory, or simply a file someone else put there. For `PreToolUse` the
