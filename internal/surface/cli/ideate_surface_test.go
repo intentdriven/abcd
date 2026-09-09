@@ -172,6 +172,9 @@ func TestIdeateRecordReadsStdin(t *testing.T) {
 // warns, or requires it.
 func TestIdeateRoutingHintIsAPointerNotAGate(t *testing.T) {
 	repo := ideateRepo(t)
+	// The bare capture board resolves the checkout root and refuses outside one
+	// (iss-2609090951291524), so the routing hint is read in a working tree.
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	for _, verb := range []string{"intent", "capture"} {
 		out := string(runCLI(t, verb))

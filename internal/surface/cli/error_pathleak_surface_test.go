@@ -121,8 +121,7 @@ func TestJSONSuccessEnvelopeNoAbsolutePathLeak(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := t.TempDir()
-			t.Chdir(repo)
+			repo := captureLedgerRepo(t)
 			args := tc.args(t)
 			var stdout, stderr bytes.Buffer
 			code := Run(args, &stdout, &stderr)

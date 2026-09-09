@@ -411,8 +411,7 @@ func TestIntentReadyJSON(t *testing.T) {
 // TestBareHelpsCarryDecisionRule is itd-46 AC5: both bare-form outputs carry the
 // one-line capture-vs-intent decision rule so a user knows which ledger to reach.
 func TestBareHelpsCarryDecisionRule(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	intentOut := string(runCLI(t, "intent"))
 	if !strings.Contains(intentOut, "user-facing change") || !strings.Contains(intentOut, "nitpick") {
@@ -579,8 +578,7 @@ func TestProductionModeFlagRefusesFreeText(t *testing.T) {
 		{"intent", "a draft with a hand-typed mode", "--production-mode", "typed by me on a Tuesday"},
 		{"capture", "a finding with a hand-typed mode", "--production-mode", "typed by me on a Tuesday"},
 	} {
-		repo := t.TempDir()
-		t.Chdir(repo)
+		repo := captureLedgerRepo(t)
 		out, err := runCLIErr(t, argv...)
 		if err == nil {
 			t.Errorf("%v: free text was accepted as a production mode:\n%s", argv[0], out)

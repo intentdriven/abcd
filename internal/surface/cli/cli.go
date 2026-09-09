@@ -2481,6 +2481,85 @@ func (p *stdinPrompter) Prompt(key string, choices []string, def string) string 
 	return line
 }
 
+// captureLedgerRoot is the shared front-door step for every `capture` verb: the
+// checkout whose ledger the verb acts on, resolved from the working directory
+// rather than taken to BE it.
+//
+// Every verb below used to build its request with `RepoRoot: cwd`, which the
+// core reads as an explicit root and therefore never resolves. A verb run from a
+// subdirectory then addressed a ledger that was not there — silently in both
+// directions: a read reported open 0 against a populated checkout, and a write
+// minted a second ledger under the subdirectory and reported success with a
+// repo-relative path nothing about which looked unusual. Records filed that way
+// are invisible to every gate that reads the real ledger, to the release cut,
+// and to whoever filed them (iss-2609090951291524). capture.LedgerRoot owns the
+// resolution and owns the refusals; this is the door that calls it, the way the
+// reading verbs already resolve their toplevel before they call.
+//
+// The stray-ledger note rides the same step, on stderr, for the reason
+// historyStore prints its own diagnostics there: a resolution that silently
+// steps over a store the defect already minted would leave those records where
+// nothing will ever look again. It REPORTS and moves nothing — no verb here
+// migrates a record, and the bare board stays read-only.
+func captureLedgerRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := capture.LedgerRoot(cwd)
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd capture: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayLedgerNotes(cwd, root) {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
+// strayLedgerNotes names a ledger sitting BELOW the checkout root, between the
+// caller and it — the exact deposit iss-2609090951291524 left behind, and the
+// one place a front door can name with certainty and at no cost.
+//
+// The walk is bounded to the chain from cwd up to (not including) the root, so
+// it fires for the person who created the stray store, on their next capture
+// from the directory that created it. A sweep of the whole checkout would find
+// stray stores this walk cannot see; that belongs to a lint rule that reads the
+// tree, not to a verb that has one directory to look at.
+//
+// The note STATES what is there and never accuses: a checkout can hold a ledger
+// below its root on purpose (this repository's own cold-reading eval fixtures
+// do), and only the person standing in it can tell a fixture from an orphan.
+// What the note owes them is the fact that two stores exist and which one the
+// verb just used.
+func strayLedgerNotes(cwd, root string) []string {
+	dir, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		dir = filepath.Clean(cwd)
+	}
+	top, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		top = filepath.Clean(root)
+	}
+	var notes []string
+	for dir != top {
+		ledger := filepath.Join(dir, filepath.FromSlash(capture.LedgerRelPath))
+		if fi, statErr := os.Stat(ledger); statErr == nil && fi.IsDir() {
+			rel, relErr := filepath.Rel(top, ledger)
+			if relErr != nil {
+				rel = ledger
+			}
+			notes = append(notes, "a ledger also exists below the checkout root, at "+filepath.ToSlash(rel)+
+				" — this verb addressed the checkout's ledger and left that one untouched; records filed there reach no gate and no release cut")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return notes
+}
+
 // newCaptureCommand builds the `capture` sub-tree — the write side of the issue
 // ledger. Bare `capture` renders read-only status; a free-text positional
 // appends an issue; list/resolve/wontfix/promote are thin consumers of capture
@@ -2493,13 +2572,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Capture issues to the ledger; bare invocation is read-only status",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
 			// Bare invocation: read-only status render (never mutates).
 			if len(args) == 0 {
-				st, err := capture.Status(capture.StatusRequest{RepoRoot: cwd})
+				st, err := capture.Status(capture.StatusRequest{RepoRoot: repoRoot})
 				if err != nil {
 					return err
 				}
@@ -2507,7 +2586,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				// SAME function the lint rule calls, not a second scan: an item
 				// nobody has answered has no state to sit in, and two readings of
 				// that one question would be two answers to it.
-				board, err := captureBoardOf(cwd, st)
+				board, err := captureBoardOf(repoRoot, st)
 				if err != nil {
 					return err
 				}
@@ -2618,7 +2697,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			req := capture.CaptureRequest{
-				RepoRoot:    cwd,
+				RepoRoot:    repoRoot,
 				Text:        text,
 				Severity:    capture.Severity(orDefault(severity, "minor")),
 				Category:    capture.Category(orDefault(category, "observation")),
@@ -2629,7 +2708,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				LapsedAt:    lapsedAt,
 				BlockedBy:   blocked,
 			}
-			if req.ProductionMode, err = resolveProductionMode(cwd, captureProductionMode); err != nil {
+			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
 			}
 			// --lapsed-at has NO default, and this is where the caller learns it: a
@@ -2682,7 +2761,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "List issues by state (one of --open/--resolved/--wontfix/--all required)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2690,7 +2769,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := capture.List(capture.ListRequest{RepoRoot: cwd, State: state})
+			res, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: state})
 			if err != nil {
 				return err
 			}
@@ -2722,7 +2801,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2730,7 +2809,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Resolve(capture.ResolveRequest{
-				RepoRoot: cwd, ID: args[0], Resolution: args[1], Impact: resolveImpact,
+				RepoRoot: repoRoot, ID: args[0], Resolution: args[1], Impact: resolveImpact,
 				ByIntent: resolveByIntent, BySpec: resolveBySpec, ByCommit: resolveByCommit,
 				ShippedIn: resolveShippedIn, Grounds: resolveGrounds,
 				ProductionMode: resolveModeRestamp,
@@ -2781,7 +2860,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2797,12 +2876,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			// The mode belongs to the DRAFT this mints; stamp-only mode mints
 			// nothing, so it carries none.
-			mode, err := resolveProductionMode(cwd, promoteProductionMode)
+			mode, err := resolveProductionMode(repoRoot, promoteProductionMode)
 			if err != nil {
 				return err
 			}
 			res, err := capture.Promote(capture.PromoteRequest{
-				RepoRoot: cwd, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
+				RepoRoot: repoRoot, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
 				ProductionMode: mode,
 			})
 			if err != nil {
@@ -2845,7 +2924,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Answer one reading item (a separate record, keyed to the item)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -2854,7 +2933,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Disposition(capture.DispositionRequest{
-				RepoRoot: cwd, Item: args[0], State: dispState,
+				RepoRoot: repoRoot, Item: args[0], State: dispState,
 				Grounds: dispGrounds, ExitCondition: dispExit,
 				Supersedes: dispSupersedes, Recurs: recurs,
 				HoldFrameLocation: dispHoldFrame, HoldMoscow: dispHoldMoscow,
@@ -2901,12 +2980,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		Short: "Record an explicit non-action decision (open/ -> wontfix/)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
 				return err
 			}
 			res, err := capture.Wontfix(capture.WontfixRequest{
-				RepoRoot: cwd, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
+				RepoRoot: repoRoot, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
 				ProductionMode: wontfixProductionMode,
 			})
 			if err != nil {
