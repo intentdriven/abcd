@@ -192,7 +192,7 @@ irreversible; guessing downward costs nothing.**
   working tree, which every tree scan walks. A tool never creates a directory
   in space the user did not hand it, and beside a checkout there is no declared
   tier at all:
-  [adr-2609091014087993](.abcd/development/decisions/adrs/2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md)
+  [adr-2609091248200336](.abcd/development/decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
   is the rule and
   [`the-users-directory-is-theirs`](.abcd/development/principles/the-users-directory-is-theirs.md)
   is the stance. **The store has no verbs yet.** Aim a plain `git worktree add`
