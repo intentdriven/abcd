@@ -7,13 +7,14 @@ binary. Every other row describes behaviour the binary carries today.
 
 The table is not the whole gate set. Shipped verb families carry no row here at
 all — `banlist`, `changelog`, `decide`, `docs`, `guard`, `identity`, `lint`,
-`reading`, `rules`, `site`, `update`, and `version` — and several families that
-do have rows are covered only in part: the `ahoy` read-only sub-verbs (`doctor`,
-`dry-run`, `remote`, `uninstall`, `identity-check`), the `disembark` synthesis
-sub-verbs (`coverage`, `graveyard`, `plan`, `press-release`, `principles`,
-`review`), `history` beyond capture (`drain`, `list`, `show`, `staged`),
-`capture disposition`, `intent ready`/`link`/`audit ingest`, and `spec close`.
-Each of those is specified in its own chapter under
+`reading`, `site`, `update`, `version`, and the `abcd rules` render verb (the
+rules-loader rows below gate the injection hook, not the verb) — and several
+families that do have rows are covered only in part: the `ahoy` read-only
+sub-verbs (`doctor`, `dry-run`, `remote`, `uninstall`, `identity-check`), the
+`disembark` synthesis sub-verbs (`coverage`, `graveyard`, `plan`,
+`press-release`, `principles`, `review`), `history` beyond capture (`drain`,
+`list`, `show`, `staged`), `capture disposition`, and `intent
+ready`/`link`/`audit ingest`. Each of those is specified in its own chapter under
 [`../04-surfaces/`](../04-surfaces), and the machine-checked half of the surface
 set is the `surface_coverage` rule over
 [`../04-surfaces/README.md`](../04-surfaces/README.md). An absence from this table
