@@ -27,8 +27,12 @@ cannot drift apart.
 Bare `/abcd:ahoy` shows read-only status only — never mutates state. The
 `/abcd:ahoy` slash command dispatches every sub-verb (`status | install |
 uninstall | doctor | dry-run | remote`), the write verbs included — each
-announces that it writes before it runs — and each also ships on the CLI as
-`abcd ahoy <sub-verb>`. Current sub-verbs:
+announces that it writes before it runs. `status` is the one word in that list
+with no CLI sub-command behind it: it is a plugin-page alias for the bare form
+(`commands/ahoy.md`: "No argument, or `status`, is the bare read-only detection
+pass"), and `abcd ahoy status` is refused as an unknown command. Every other
+word ships on the CLI as `abcd ahoy <sub-verb>`, and the machine-checked
+Sub-verbs table above is the CLI set. Current sub-verbs:
 
 - **`/abcd:ahoy install`** — install or update the plugin in this repo
   (idempotent; covers first-install and upgrade). Runs the detection pass, then
@@ -54,19 +58,33 @@ announces that it writes before it runs — and each also ships on the CLI as
 - **`/abcd:ahoy remote`** — report the GitHub-native secret-scanning toggles on
   the repository this checkout's own origin remote names, and the changes an
   apply would make. Read-only: it writes nothing on the remote and nothing in
-  the tree. A toggle it could not read reports `unknown`, never `disabled`.
+  the tree. A toggle it could not read reports `unknown`, never `disabled`. The
+  same request also reads the repository's **merge hygiene**
+  (`delete_branch_on_merge`, `allow_merge_commit`, `allow_squash_merge`,
+  `allow_rebase_merge`), carried in the result as `merge_hygiene`. abcd mirrors
+  those four and never sets them: they encode a maintainer's workflow rather
+  than a security posture, and each is reported only when the API answered for
+  it, because `false` and "the API did not say" are different facts
+  (iss-2608270512210664).
 - **`/abcd:ahoy remote apply`** — the one abcd verb that mutates state **outside
   this machine**: it enables GitHub's native secret scanning and then
   secret-scanning push protection (that order, because GitHub refuses push
   protection on a repository whose secret scanning is off), and mirrors the
-  desired state into `.abcd/work/rulesets/repo-settings.json`. It answers to
+  desired state into `.abcd/work/rulesets/repo-settings.json`: a `managed` block
+  holding the two toggles abcd drives, and an `observed` block holding the
+  merge-hygiene settings it only reads. It answers to
   adr-44 and invariant 10 — no uninvited remote mutation, through a verb the user
   invokes AND confirms — with four gates that refuse rather than guess: the folder
   must be a repo abcd manages, the repository must be the one this checkout's
   origin names, the repo's config must not set `scan.native_secret_scanning` to
   `false`, and the caller must confirm the specific toggles named (an unanswered
-  run declines; `--yes` is the explicit advance answer, and a run that changed
-  nothing exits non-zero). Every request pins the API host explicitly, so an
+  run declines; `--yes` is the explicit advance answer). Exactly two statuses
+  exit non-zero: `refused`, a gate abcd itself closed, and `aborted`, a
+  confirmation the caller declined, which a non-interactive run without `--yes`
+  reaches by reading EOF. A run with nothing to change exits 0, whether that is
+  the idempotent `already_up_to_date` re-run or the `opted_out` repo whose own
+  config declined, because leaving the repo alone is what the repo asked for.
+  Every request pins the API host explicitly, so an
   ambient `GH_HOST` cannot send the write to an endpoint the origin never named.
   The call goes through `gh`, so the
   write is made by the caller's own authenticated identity and abcd never holds
@@ -155,7 +173,7 @@ detection pass** and differ only in what they do with its output:
 
 | Sub-verb | Detection | Then |
 |---|---|---|
-| bare `/abcd:ahoy` | full | render the status board: folder kind, plugin-root status, root SHA, vintage, staleness, citations (managed repo), gap count, guard health, banlist block — no gap detail |
+| bare `/abcd:ahoy` | full | render the status board: folder kind, plugin-root status, root SHA, vintage, staleness, citations (managed repo), gap count, guard health, banlist block — no gap detail. Under `--json` the same pass renders the nine-key envelope plus `vintage` and `staleness` |
 | `doctor` | full | render detection- and audit-gap counts (full per-gap detail in the JSON envelope) |
 | `dry-run` | full | render the canonical `DetectionResult` JSON envelope (per spc-16 T1 — no unified-diff) |
 | `install` | full | run the apply pass over the gaps |
@@ -168,8 +186,11 @@ detection still reports it `missing` and `install` repairs it.
 
 ### The detection pass
 
-Probes the folder, the repo, and `~/.abcd/`, produces an in-memory state contract (the
-`ahoy-state.json` shape — see [`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
+Probes the folder, the repo, and `~/.abcd/`, and produces an in-memory state
+contract: the `DetectionResult`, whose canonical shape is the nine-key envelope
+`dry-run` renders (see [§ Sub-verb semantics](#sub-verb-semantics)). It is a
+value passed between passes, never a file: nothing on disk holds it, and no
+`ahoy-state.json` is written anywhere at either scope.
 Steps, run in parallel where independent:
 
 0. **Folder classification** (per itd-40) — classify `cwd` into one of three
@@ -408,8 +429,12 @@ closes stdin and pre-answers: `abcd ahoy install --yes --refuse-adopt
    and write `.abcd/usage.md`.
 4. **Config gaps** (`config-change`) — transparent prompts; each skips with a
    "current value" notice if the key is already set:
-   - **Visibility** (private/public) — always re-confirms, shows current state
-     and consequences (which directories will be tracked/untracked).
+   - **Visibility** (private/public): asked only when the slot is empty, the
+     same skip-if-set rule the other values follow. The prompt is the bare
+     `visibility (private/public) []: `; it neither echoes a persisted value nor
+     names the directories the answer will track or ignore. There is no silent
+     default, so an answer outside the choice set leaves the install partial
+     rather than picking one.
    - **If private:** `scan.deep` — probe `trufflehog`, offer install if missing.
    - **Docs target** (`CLAUDE.md` / `AGENTS.md` / Both / Skip).
    - **Oracle** — host-delegated by default (abcd hands prompts to the host's
@@ -419,7 +444,13 @@ closes stdin and pre-answers: `abcd ahoy install --yes --refuse-adopt
 5. **Apply visibility** — add/remove `.gitignore` allowlist entries to match
    the visibility table in
    [`05-internals/03-configuration.md § 1`](../05-internals/03-configuration.md#1-visibility-driven-gitignore-policy).
-   Show the resulting tracked-vs-ignored list before confirming.
+   The block is rewritten under the step-4 `config-change` approval (or under an
+   explicit `--visibility` override, so the fence never drifts from a freshly
+   set value): the step has no confirmation of its own and prints no
+   tracked-vs-ignored list. Its one extra line is a post-hoc note, when a public
+   fence had to be narrowed because an ignore rule cannot untrack committed
+   records, so the reader learns from the receipt that the committed record
+   tiers stay published (iss-255).
 6. **Name-banlist scaffolding** (`safe-autocreate`, itd-74 / spc-20) — write the
    five artefacts: the committed guard hooks (`.githooks/pre-commit` and
    `.githooks/pre-merge-commit`, because git runs no pre-commit for a merge), the
@@ -465,9 +496,12 @@ closes stdin and pre-answers: `abcd ahoy install --yes --refuse-adopt
    users edit outside the markers.** Content comes from
    `internal/core/ahoy/defaults/claude-md-marker-block.md`. Write the minimal
    `.abcd/rules.json` skeleton if missing.
-9. **PATH entry** (`config-change`) — transparent prompt: "Install `abcd`
-   symlink to `~/.local/bin/abcd`? Default: yes for private repos, no for
-   public." An abcd-owned entry already on `PATH` is adopted where it stands
+9. **PATH entry** (`config-change`) — the step has no prompt of its own: it
+   rides the one category-level "Apply config-change changes?" approval that
+   covers every `config-change` gap in the run. `symlink.missing` is `Required`
+   unconditionally; nothing on this path varies with the repo's visibility, and
+   there is no per-entry question to answer. An abcd-owned entry already on
+   `PATH` is adopted where it stands
    rather than duplicated; `--bin-dir <dir>` names a different directory (the
    only route to a system-wide one) and fails loudly when it is not writable.
    abcd NEVER escalates privileges. If accepted AND the target is absent or
@@ -516,8 +550,14 @@ notes the orphaned-predecessor possibility in the summary.
 
 **Uninstall (`/abcd:ahoy uninstall`):** removes the BEGIN/END marker block from
 CLAUDE.md/AGENTS.md, abcd's own `PATH` entry (`~/.local/bin/abcd`, or wherever
-on `PATH` it sits) **if it points at this plugin** (otherwise leave it alone),
-and the provenance record by which that ownership is proven; `--bin-dir` names
+on `PATH` it sits) **if abcd owns it** (otherwise leave it alone), and the
+provenance record by which that ownership is proven. Ownership is the same
+three-shape predicate detection classifies with, and only one of the three is a
+pointer at all: the `--dev` shim, the spc-35 owned COPY that `~/.abcd/path-entry`
+names and whose bytes still hash to the recorded value (the default install, a
+regular file pointing at nothing), and lastly a legacy symlink whose target is
+this plugin's binary. Anything else is a foreign entry and is left where it
+stands. `--bin-dir` names
 the directory holding the entry when `install --bin-dir` put it somewhere not on
 `PATH`. `hooks/hooks.json` is plugin-static per
 spc-14 T7 — uninstall NEVER mutates it (per spc-16 T1 brief amendment).
@@ -539,6 +579,15 @@ reports the guard-hook health: `plugin_root_resolved`, `hook_installed`,
 `binary_reachable`, `registry_loadable`, `disabled`, `detail`, and `entries`) so the plugin command
 (`commands/ahoy.md`) summarises state off `folder_kind` + `gaps` and
 names `abcd ahoy install` for anything actionable.
+
+**Bare invocation (`abcd ahoy --json`):** the status board has a machine render
+too, and it is the form the plugin command runs. Its envelope is the same
+`DetectionResult` nine keys plus the two the board shows and the envelope does
+not otherwise carry: `{folder_kind, adopted, root_sha, plugin_root_status,
+repo_identity, signals, guard, banlist, gaps, vintage, staleness}`.
+`commands/ahoy.md` reads `vintage` and `staleness` from exactly this render, so
+the two extra keys are a contract with the plugin surface rather than a
+convenience.
 
 **Doctor (`/abcd:ahoy doctor`):** runs the detection pass plus a read-only
 audit pass. The text render shows two counts — detection gaps and audit gaps —
