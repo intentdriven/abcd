@@ -85,19 +85,38 @@ user-scope directory for machine-local state:
 
 ```
 ~/.abcd/                       USER SCOPE — one per machine (machine-local state only)
-  history/                       shared history store + index.json (identity/lineage,
-                                 keyed on root-commit SHA — adr-29)
+  history/                       the REGISTRY only: index.json (identity/lineage, keyed
+                                 on root-commit SHA) + per-repo <root-sha>/meta.json.
+                                 ahoy owns it; it holds no transcripts
+  transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
+                                 registry, creating itself on first use
+  voyage/<root-sha>/             disembark/embark operations log, never committed
+                                 (adr-35)
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+                                 (DESIGN TARGET, unbuilt — itd-2609091014076309; the
+                                 rule is adr-2609091014087993)
   config.json                    machine config.json defaults (a later phase)
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
-  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
-                                 (design target — itd-2609091014076309; the rule is
-                                 adr-2609091014087993)
+  sources/                       the local sources corpus /abcd:ingest and /abcd:consult
+                                 read. abcd NEVER creates it: absent means both verbs
+                                 say so and stop
+  path-entry                     the abcd copy this machine owns, the one PATH binary a
+                                 hook will run
+  trusted-roots                  foreign-uid configuration roots the caller vouches for
+  local-transcript-roots         checkouts whose transcripts are pulled in to
+                                 <repo>/.abcd/.work.local/transcripts/ instead
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
   CLAUDE.md                      marker block (stands alone)
 ```
+
+The same inventory is stated as a table under *The two `.abcd/` scopes* in
+[`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes);
+the two are one list and must agree. The three declaration files at the bottom
+are caller-controlled and line-oriented, honoured only when each is a regular
+file this uid owns that no one else can write.
 
 `/abcd:ahoy`'s detection pass **classifies `cwd`** into one of three kinds
 (`managed-repo` / `unmanaged-repo` / `unmanaged-folder` — see detection step 0
