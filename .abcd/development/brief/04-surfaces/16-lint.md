@@ -19,8 +19,11 @@ The verb applies rules about form, which adr-40's vocabulary names a lint;
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 `abcd lint` registers no sub-verbs. The staged `chain` and `lifeboat`
 verbs belong to the **reserved** `/abcd:audit` surface (itd-16's hash-chain

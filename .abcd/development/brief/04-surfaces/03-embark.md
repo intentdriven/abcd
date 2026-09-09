@@ -28,8 +28,11 @@ whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|

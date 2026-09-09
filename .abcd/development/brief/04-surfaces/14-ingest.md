@@ -78,10 +78,10 @@ ingest writes sources in, consult reads them out and records which decisions
 they influenced. Both share the confidentiality guard and the store.
 
 The command prefers explicit registrar flags because it has better metadata in
-hand than a bare fetch would. The `abcd-ingest <url-or-file>` human quick path
-that `commands/ingest.md` mentions is **not a demonstrable surface**: no binary
-sub-verb and no repo-shipped script provides it, so where it exists at all it is
-an operator-local convenience outside the corpus contract.
+hand than a bare fetch would. There is **no one-argument quick path** into the
+registrar: no binary sub-verb and no repo-shipped script provides one, so where
+a reader finds such a command it is an operator-local convenience outside the
+corpus contract. The plugin page said otherwise until v0.8.0 and now says this.
 
 ## References
 

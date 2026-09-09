@@ -19,10 +19,10 @@ itself and at what a fix would read like.
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
 > non-assessment verb) and its existence (`shipped` / `staged`). The existence
-> cell is verified against the committed command-tree snapshot in both
-> directions; the bucket cell is held to the closed adr-40 vocabulary, which the
-> snapshot does not record, so which bucket a verb sits in stays an editorial
-> claim._
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
