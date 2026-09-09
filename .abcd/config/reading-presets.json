@@ -27,10 +27,10 @@
       },
       "kinds": ["brief-section", "glossary-term", "discipline", "spec", "doc", "config", "source", "test"],
       "window": {
-        "tokens_est": 860000,
-        "measured_tokens_est": 850202,
-        "measured_bytes": 3273278,
-        "measured_at": "bbb4208355011f8d7882f5478c00f1161a33c488"
+        "tokens_est": 850000,
+        "measured_tokens_est": 833115,
+        "measured_bytes": 3207493,
+        "measured_at": "cd5e6e19489ab3be4828296b02f945fd71eab4dc"
       }
     },
     "entailment": {
@@ -63,10 +63,10 @@
       },
       "kinds": ["brief-section", "glossary-term", "discipline", "spec", "intent-projection"],
       "window": {
-        "tokens_est": 320000,
-        "measured_tokens_est": 308981,
-        "measured_bytes": 1189577,
-        "measured_at": "bbb4208355011f8d7882f5478c00f1161a33c488"
+        "tokens_est": 300000,
+        "measured_tokens_est": 288028,
+        "measured_bytes": 1108908,
+        "measured_at": "cd5e6e19489ab3be4828296b02f945fd71eab4dc"
       }
     },
     "comparative": {
@@ -109,10 +109,10 @@
       },
       "kinds": ["brief-section", "glossary-term", "discipline", "spec", "intent-projection", "doc", "config", "source", "test"],
       "window": {
-        "tokens_est": 870000,
-        "measured_tokens_est": 859239,
-        "measured_bytes": 3308072,
-        "measured_at": "bbb4208355011f8d7882f5478c00f1161a33c488"
+        "tokens_est": 860000,
+        "measured_tokens_est": 842152,
+        "measured_bytes": 3242287,
+        "measured_at": "cd5e6e19489ab3be4828296b02f945fd71eab4dc"
       }
     }
   }
