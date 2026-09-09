@@ -49,8 +49,7 @@ func conditionedVerdict(receiptID string) string {
 // returns the repo root with the staged verdict's path.
 func conditionedRepo(t *testing.T) (root, verdictPath string) {
 	t.Helper()
-	root = t.TempDir()
-	t.Chdir(root)
+	root = intentTestRepo(t)
 	shipped := filepath.Join(root, ".abcd", "development", "intents", "shipped")
 	if err := os.MkdirAll(shipped, 0o755); err != nil {
 		t.Fatal(err)

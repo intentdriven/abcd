@@ -1510,6 +1510,51 @@ renders bare and carries "source": "bundled". Read-only.`,
 	}
 }
 
+// intentStoreRoot is the shared front-door step for every `intent` verb: the
+// checkout whose intent store the verb addresses, resolved from the working
+// directory rather than taken to BE it.
+//
+// Every verb below used to hand os.Getwd() straight to the core, which joins the
+// store's relative directory onto whatever it is given and reads or creates the
+// tree there. A verb run from a subdirectory then addressed a store that was not
+// there, silently in both directions: `abcd intent` reported drafts 0 against a
+// checkout holding one, and `abcd intent "<text>"` minted a SECOND store beneath
+// the subdirectory and reported success with a repo-relative path that reads
+// exactly like the checkout store's. Outside every repository it exited 0 and
+// laid the whole intent skeleton in whatever plain directory the caller stood in
+// (iss-2609091729516940). A draft filed either way is invisible to every gate,
+// to the release cut and to whoever filed it — and its spec can never be closed
+// against it, because the reconcile step looks in the checkout.
+//
+// gitutil.CheckoutRoot owns the resolution and both refusals — the same one the
+// capture verbs resolve their ledger through and `decide` its decision store,
+// with only the store's noun differing. Refusing is the whole point outside a
+// checkout: there is no intent store to address, and laying one where the caller
+// stood is the defect rather than a lenient fallback.
+//
+// Resolving is a QUESTION, not a write, so the bare read-only status board stays
+// read-only: nothing here creates a directory, and on a refusal the core is
+// never reached at all.
+//
+// The stray-store note rides the same step, on stderr, exactly as the ledger's
+// and the decision store's do: a resolution that silently steps over a store the
+// defect already laid would leave those drafts where nothing will ever look
+// again. It REPORTS and moves nothing.
+func intentStoreRoot(cmd *cobra.Command) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the intent store")
+	if err != nil {
+		return "", &exitError{Code: 2, Msg: "abcd intent: " + err.Error() + " (nothing read, nothing written)"}
+	}
+	for _, note := range strayStoreNotes(cwd, root, intent.IntentsRelDir, "intent store") {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent: %s\n", termsafe.Sanitize(note))
+	}
+	return root, nil
+}
+
 // newIntentCommand builds the `intent` verb — the front door onto
 // internal/core/intent (itd-80). Bare `abcd intent` renders the read-only
 // lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
@@ -1521,7 +1566,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Intent lifecycle; bare invocation is read-only status, quoted text files a draft",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -1555,9 +1600,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
 						args[0])}
 				}
-				return createIntentFromText(cmd, cwd, strings.Join(args, " "), intentImpact, intentProductionMode, *asJSON)
+				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intentImpact, intentProductionMode, *asJSON)
 			}
-			v, err := intent.Status(cwd)
+			v, err := intent.Status(repoRoot)
 			if err != nil {
 				return err
 			}
@@ -1595,7 +1640,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Deprecated alias for `abcd intent \"<text>\"` (files a draft from the text)",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -1604,7 +1649,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.ErrOrStderr(),
 				"WARNING: `abcd intent new` is deprecated; use `abcd intent \"<text>\"` (quoted text is the create signal).")
-			return createIntentFromText(cmd, cwd, strings.Join(args, " "), "", "", *asJSON)
+			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), "", "", *asJSON)
 		},
 	})
 
@@ -1615,17 +1660,17 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			// The mode belongs to the SPEC this mints; the intent's own stamp was
 			// written when its draft was created and is never rewritten.
-			mode, err := resolveProductionMode(cwd, planProductionMode)
+			mode, err := resolveProductionMode(repoRoot, planProductionMode)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Plan(cwd, args[0], mode)
+			res, err := intent.Plan(repoRoot, args[0], mode)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
@@ -1668,7 +1713,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Report whether an intent is ready to implement (planned + AC + claims + written spec + recorded grounds); exit 1 when not",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
@@ -1678,7 +1723,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if perr != nil {
 					return &exitError{Code: 2, Msg: "abcd intent ready: " + perr.Error() + " (nothing recorded)"}
 				}
-				rec, rerr := intent.RecordGrounds(cwd, args[0], g)
+				rec, rerr := intent.RecordGrounds(repoRoot, args[0], g)
 				if rerr != nil {
 					return &exitError{Code: 2, Msg: "abcd intent ready: " + rerr.Error()}
 				}
@@ -1692,7 +1737,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// fault that emits no envelope.
 				emitGroundsReceipt(cmd, *asJSON, rec)
 			}
-			res, err := intent.Ready(cwd, args[0])
+			res, err := intent.Ready(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent ready: " + err.Error()}
 			}
@@ -1751,11 +1796,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		Short: "Link a planned intent to an existing spec (writes the intent's spec_id)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Link(cwd, args[0], args[1])
+			res, err := intent.Link(repoRoot, args[0], args[1])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent link: " + err.Error()}
 			}
@@ -1801,7 +1846,7 @@ const ideateRoutingRule = "  a big, unproven idea? `abcd ideate` runs the option
 // It is deliberately NOT used by the ledger transitions: a resolve or wontfix
 // that declares no mode must leave the record's existing stamp alone, and
 // defaulting there would silently overwrite it.
-func resolveProductionMode(cwd, flag string) (string, error) {
+func resolveProductionMode(repoRoot, flag string) (string, error) {
 	if flag != "" {
 		m, err := provenance.ParseMode(flag)
 		if err != nil {
@@ -1809,7 +1854,7 @@ func resolveProductionMode(cwd, flag string) (string, error) {
 		}
 		return string(m), nil
 	}
-	m, err := identity.DeclaredProductionMode(cwd)
+	m, err := identity.DeclaredProductionMode(repoRoot)
 	if err != nil {
 		return "", &exitError{Code: 2, Msg: "abcd: " + err.Error() + " (nothing written)"}
 	}
@@ -1822,12 +1867,12 @@ var productionModeFlagHelp = "how this record's text was produced: " + provenanc
 	" (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
 
 // this surface stays a thin marshaller.
-func createIntentFromText(cmd *cobra.Command, cwd, text, impact, productionMode string, asJSON bool) error {
-	mode, err := resolveProductionMode(cwd, productionMode)
+func createIntentFromText(cmd *cobra.Command, repoRoot, text, impact, productionMode string, asJSON bool) error {
+	mode, err := resolveProductionMode(repoRoot, productionMode)
 	if err != nil {
 		return err
 	}
-	it, err := intent.CreateFromText(cwd, text, impact, mode)
+	it, err := intent.CreateFromText(repoRoot, text, impact, mode)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}
@@ -1849,11 +1894,11 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 0 {
 				return cmd.Help()
 			}
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.ReEmitAudit(cwd, args[0])
+			res, err := intent.ReEmitAudit(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
 			}
@@ -1870,14 +1915,14 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		Short: "Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
 			if verdictJSON == "" {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: --verdict-json <path> is required"}
 			}
-			res, err := intent.IngestVerdict(cwd, verdictJSON)
+			res, err := intent.IngestVerdict(repoRoot, verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
 			}
@@ -2600,7 +2645,7 @@ func strayStoreNotes(cwd, root, relPath, noun string) []string {
 			if relErr != nil {
 				rel = store
 			}
-			notes = append(notes, "a "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
+			notes = append(notes, indefiniteArticle(noun)+" "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
 				" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
 		}
 		parent := filepath.Dir(dir)
@@ -2610,6 +2655,23 @@ func strayStoreNotes(cwd, root, relPath, noun string) []string {
 		dir = parent
 	}
 	return notes
+}
+
+// indefiniteArticle picks the article for a store noun the note names. It exists
+// because the note is composed from a caller-supplied noun and "a intent store"
+// is what a bare "a " produces for the intent family. The rule is the written
+// one — the vowel-letter test — which is exact over the closed set of nouns this
+// package passes ("ledger", "decision store", "intent store", "research store")
+// and is not asked to judge prose it has never been given.
+func indefiniteArticle(noun string) string {
+	if noun == "" {
+		return "a"
+	}
+	switch noun[0] {
+	case 'a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U':
+		return "an"
+	}
+	return "a"
 }
 
 // newCaptureCommand builds the `capture` sub-tree — the write side of the issue

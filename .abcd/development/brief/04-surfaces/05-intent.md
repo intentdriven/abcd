@@ -16,6 +16,27 @@ Intents live at `.abcd/development/intents/{drafts,planned,shipped,disciplines,s
 
 There is no `active/` state — "active" is implicit (a planned intent's linked spec is currently in flight in the native spec store; an active discipline is any intent in `disciplines/`).
 
+**The store every verb addresses is the checkout's, from anywhere in the tree.**
+The front door resolves the checkout root before it reads or writes, through
+[`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go) — the same
+resolution `capture` addresses its ledger through and `decide` its decision
+store. It is git's toplevel where git will name one, and a refusal in the two
+remaining states rather than a guess: a repo-shaped tree git will not answer for,
+and no repository above at all. Outside a checkout every `intent` verb therefore
+exits **2** and does nothing, because there is no intent store to address and
+laying one where the caller stood produces a draft no gate, no release cut and no
+reader ever sees — and one whose spec can never be closed against it, because the
+reconcile step looks in the checkout. It deliberately does not fall through to a
+marker walk, which would accept any directory carrying the name
+(iss-2609090947359464). Resolving is a question and not a write, so bare
+invocation stays read-only.
+
+An intent store found **below** the checkout root, on the chain between the
+caller and it, is named on stderr and left untouched — the deposit an unresolved
+front door leaves behind, reported to the person standing over it rather than
+stepped over in silence. The note states what is there; moving a record is a
+judgement no verb makes.
+
 ## Sub-verbs
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's

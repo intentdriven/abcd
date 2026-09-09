@@ -103,7 +103,7 @@ Refusals are **whole-document**, never cite-or-be-dropped. A verdict record with
 a quietly-dropped falsified claim or grill hit is worse than no record, because a
 later session trusts it.
 
-The refusals a caller actually meets fall into four groups, each protecting
+The refusals a caller actually meets fall into five groups, each protecting
 something a later reader depends on:
 
 - **The payload cannot be tied to a definition**: no `schema_version`, one this
@@ -121,6 +121,12 @@ something a later reader depends on:
 - **The write is not safely containable**: a slug that is not lower-case
   kebab-case, a symlinked component under the research directory, or a repository
   with no `.abcd/work/DECISIONS.md` for the pointer line to land in.
+- **There is no store to address**: a working directory with no repository above
+  it, or one git will not answer for. The research store belongs to a checkout,
+  and laying one where the caller happens to be standing writes a verdict nobody
+  will find. The verb resolves the checkout root first and refuses with nothing
+  written, so a run from a subdirectory reaches the checkout's own store rather
+  than a second one beneath it.
 
 The research directory itself is created when absent: nothing else in abcd
 establishes it, so refusing would fail the first run in every repository, after

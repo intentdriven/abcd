@@ -130,6 +130,17 @@ It writes `.abcd/development/research/notes/<date>-ideate-<slug>.md` — the ide
 three legs, the verdict, and the rejected alternatives, rendered for a human —
 and appends one dated pointer line to `.abcd/work/DECISIONS.md`.
 
+**Both paths are relative to the checkout root, from anywhere in the tree.** The
+verb resolves the repository root before it validates anything, so the grill
+reads the checkout's own record — a hit citing `itd-104` resolves from a package
+directory exactly as it does from the root — and both artefacts land in the
+checkout's store. Outside a repository there is no research store to write into,
+and the verb refuses (exit 2) rather than laying one where it stands: a verdict
+filed outside every checkout reaches no gate and no reader, and a killed idea
+nobody can find is an idea that gets proposed again. If a research store also
+exists below the repository root, the verb names it on stderr and leaves it
+alone; relay that line.
+
 Both are committed, so every free-text field of the verdict is scanned and
 redacted before either is written: a token, an email, or an absolute home path in
 the idea, a claim, a note, a kill attempt, or a rejected alternative is rewritten
@@ -146,9 +157,11 @@ Exit codes:
   matches what was composed, and whoever composed it needs to know a credential
   or an identity was in the text.
 - **2** — refused, and **nothing was written**. Relay the diagnostic: an
-  unresolvable citation names the id, a payload fault names the field, and a
+  unresolvable citation names the id, a payload fault names the field, a
   verdict record that already exists under today's date is refused rather than
-  overwritten (give the re-run its own slug, or keep the first record).
+  overwritten (give the re-run its own slug, or keep the first record), and a
+  working directory with no repository above it — or one git will not answer
+  for — is refused because there is no research store to address.
 
 ## After a verdict
 

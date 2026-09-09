@@ -40,8 +40,7 @@ func intentDraftCount(t *testing.T, root string) int {
 // typo for `link` followed by an itd id) must be refused with a did-you-mean and
 // must not file a draft. Before the fix it was swallowed as create text.
 func TestIntentTypoSubcommandNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "lnk", "itd-5")
 	if err == nil {
@@ -58,8 +57,7 @@ func TestIntentTypoSubcommandNeverWrites(t *testing.T) {
 // TestIntentTypoLoneTokenNeverWrites covers the lone-token shape: `intent paln`
 // (a typo for `plan`, no trailing arg) must be refused, not filed.
 func TestIntentTypoLoneTokenNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "paln")
 	if err == nil {
@@ -81,8 +79,7 @@ func TestIntentTypoLoneTokenNeverWrites(t *testing.T) {
 func TestIntentIdShapeDistinguishesTypoFromProse(t *testing.T) {
 	// itd/spc second token -> shaped like a subcommand call -> refused.
 	for _, id := range []string{"itd-5", "spc-2"} {
-		repo := t.TempDir()
-		t.Chdir(repo)
+		repo := intentTestRepo(t)
 		out, err := runCLIErr(t, "intent", "lnk", id)
 		if err == nil {
 			t.Fatalf("intent lnk %s must be refused as a typoed subcommand, got:\n%s", id, out)
@@ -92,8 +89,7 @@ func TestIntentIdShapeDistinguishesTypoFromProse(t *testing.T) {
 		}
 	}
 	// Same first token, prose second token -> a genuine title -> still files.
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	runCLI(t, "intent", "lnk", "widen", "the", "public", "api")
 	if n := intentDraftCount(t, repo); n != 1 {
 		t.Fatalf("a prose title after a verb-ish first word wrote %d draft(s), want 1", n)
@@ -104,8 +100,7 @@ func TestIntentIdShapeDistinguishesTypoFromProse(t *testing.T) {
 // genuine multi-word draft title whose first word resembles a subverb but is
 // followed by prose (not a record id) still files.
 func TestIntentFreeTextTitleStillWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out := runCLI(t, "intent", "plans", "the", "release", "cadence", "for", "next", "quarter", "--json")
 	var r struct {
@@ -125,8 +120,7 @@ func TestIntentFreeTextTitleStillWrites(t *testing.T) {
 // TestIntentAuditRenameCleanBreak (spc-28): the audit spelling is live and the
 // old review spelling is an unknown sub-command — a clean break, no alias.
 func TestIntentAuditRenameCleanBreak(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	intentTestRepo(t)
 	if _, err := runCLIErr(t, "intent", "review", "itd-1"); err == nil ||
 		!strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("intent review must be an unknown sub-command after the rename, got: %v", err)
@@ -163,8 +157,7 @@ func TestIntentAuditRenameCleanBreak(t *testing.T) {
 // TestIntentLoneWordNeverWrites is the headline: a single bare word that is not
 // a sub-verb and is not near one must be refused, and must file no draft.
 func TestIntentLoneWordNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "nosuchthing")
 	if err == nil {
@@ -179,8 +172,7 @@ func TestIntentLoneWordNeverWrites(t *testing.T) {
 // actually types: `abcd intent itd-5` (a forgotten sub-verb) must not become a
 // draft whose title is a record id.
 func TestIntentLoneRecordIDNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "itd-5")
 	if err == nil {
@@ -196,8 +188,7 @@ func TestIntentLoneRecordIDNeverWrites(t *testing.T) {
 // quotes), and it must still file. A fix that refused every single-argument
 // invocation would break the documented create path, and this catches it.
 func TestIntentQuotedProseStillWritesAsOneArg(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	runCLI(t, "intent", "widen the public api")
 	if n := intentDraftCount(t, repo); n != 1 {
@@ -207,8 +198,7 @@ func TestIntentQuotedProseStillWritesAsOneArg(t *testing.T) {
 
 // TestIntentEmptyTextNeverWrites is the intent half of the empty-positional case.
 func TestIntentEmptyTextNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "")
 	if err == nil {
@@ -235,8 +225,7 @@ func TestIntentEmptyTextNeverWrites(t *testing.T) {
 // so it must be refused at exit 2 with the registered sub-verbs named, and must
 // file no draft.
 func TestIntentFarMissSubcommandNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "nosuchverb", "itd-5")
 	if err == nil {
@@ -262,8 +251,7 @@ func TestIntentFarMissSubcommandNeverWrites(t *testing.T) {
 // near-miss still names the one sub-verb it is near, rather than degrading into
 // the far-miss listing.
 func TestIntentNearMissKeepsDidYouMean(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	intentTestRepo(t)
 
 	_, err := runCLIErr(t, "intent", "lnk", "itd-5")
 	if err == nil {
@@ -279,8 +267,7 @@ func TestIntentNearMissKeepsDidYouMean(t *testing.T) {
 // still files. The far-miss refusal keys on the subcommand shape, not on the
 // first word alone.
 func TestIntentFarMissProseStillWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	runCLI(t, "intent", "nosuchverb", "the", "release", "gate", "before", "cutting")
 	if n := intentDraftCount(t, repo); n != 1 {
@@ -292,8 +279,7 @@ func TestIntentFarMissProseStillWrites(t *testing.T) {
 // refused naming its SUCCESSOR, not by the far-miss listing — the far-miss
 // branch runs after the retired lookup and must not swallow it.
 func TestIntentRetiredSubverbSurvivesFarMissBranch(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	intentTestRepo(t)
 
 	_, err := runCLIErr(t, "intent", "review", "itd-1")
 	if err == nil {
@@ -310,8 +296,7 @@ func TestIntentRetiredSubverbSurvivesFarMissBranch(t *testing.T) {
 // and it still files. Without that half the far-miss refusal would reach a
 // legitimate title a user happened to end with an id.
 func TestIntentQuotedProseBeforeRecordIDStillWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	runCLI(t, "intent", "widen the public api", "itd-5")
 	if n := intentDraftCount(t, repo); n != 1 {

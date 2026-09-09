@@ -12,9 +12,17 @@ import (
 
 // ideateRepo lays out the minimum an `ideate record` run needs, so the surface
 // test proves the WIRING end to end rather than mocking the core.
+//
+// It is a git working tree, not a bare temporary directory: a directory outside
+// every repository is no longer a place a verdict is recorded, because the front
+// door resolves the checkout root and refuses when there is none
+// (iss-2609091729516940).
 func ideateRepo(t *testing.T) string {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
+	gitInitAt(t, root)
+	root = realPath(t, root)
 	write := func(rel, body string) {
 		abs := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
@@ -171,10 +179,10 @@ func TestIdeateRecordReadsStdin(t *testing.T) {
 // renders NAME /abcd:ideate for a big unproven idea, and neither one blocks,
 // warns, or requires it.
 func TestIdeateRoutingHintIsAPointerNotAGate(t *testing.T) {
+	// The bare capture and intent boards resolve the checkout root and refuse
+	// outside one (iss-2609090951291524, iss-2609091729516940), so the routing
+	// hint is read in a working tree — which ideateRepo now always is.
 	repo := ideateRepo(t)
-	// The bare capture board resolves the checkout root and refuses outside one
-	// (iss-2609090951291524), so the routing hint is read in a working tree.
-	gitInitAt(t, repo)
 	t.Chdir(repo)
 	for _, verb := range []string{"intent", "capture"} {
 		out := string(runCLI(t, verb))

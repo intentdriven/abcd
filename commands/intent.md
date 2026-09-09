@@ -20,6 +20,18 @@ invocation **performs zero writes**.
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
 and the intent↔spec links. Nothing is created or moved by this invocation.
 
+**Every `intent` verb addresses the checkout's store, from anywhere in the
+tree.** The verb resolves the repository root before it reads or writes, so the
+counts are the checkout's and a reported `path` is relative to that root, not to
+the directory you happen to be standing in. Outside a repository there is no
+intent store to address, and the verb refuses (exit 2) rather than reading an
+empty one or laying a new one where it stands — a draft filed outside every
+checkout is committed by nothing, read by nothing, and its spec can never be
+closed against it. Resolving is a question, not a write, so bare invocation still
+performs zero writes. If an intent store also exists below the repository root,
+the verb names it on stderr and leaves it alone; relay that line, because records
+sitting there reach no gate and no release cut.
+
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:
@@ -128,8 +140,10 @@ Before implementing ANY `itd-N` — or whenever the user asks you to "build",
   "`<itd-N>` is not specced, so it cannot be implemented yet", present each
   failing check's `detail` and `remedy` from the JSON, and **offer the
   planning interview** below.
-- **Exit 2 (fault):** the id is malformed, the intent is unknown, or a record
-  is unreadable — report the diagnostic; there is nothing to gate.
+- **Exit 2 (fault):** the id is malformed, the intent is unknown, a record is
+  unreadable, or the working directory has no repository above it (or one git
+  will not answer for), so there is no intent store to address — report the
+  diagnostic; there is nothing to gate.
 
 ## Grounds: why this is being pursued
 
