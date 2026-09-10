@@ -102,7 +102,7 @@ func hookRunHome(t *testing.T, event, root, pathDir, dir, home string) (string, 
 		pathEnv = pathDir + ":" + pathEnv
 	}
 	if home == "" {
-		home = t.TempDir()
+		home = sandboxHome(t)
 	}
 	cmd := exec.Command("sh", "-c", hookCommand(t, event))
 	cmd.Dir = dir
@@ -270,7 +270,7 @@ func TestBinaryHooksExitQuietlyWithoutAPluginRoot(t *testing.T) {
 		t.Run(h.event, func(t *testing.T) {
 			cmd := exec.Command("sh", "-c", hookCommand(t, h.event))
 			cmd.Stdin = strings.NewReader("{}")
-			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()}
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + sandboxHome(t)}
 			var stderr bytes.Buffer
 			cmd.Stderr = &stderr
 			if err := cmd.Run(); err != nil {
