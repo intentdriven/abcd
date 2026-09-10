@@ -70,11 +70,39 @@ func seedInstallShapeCache(t *testing.T, body []byte) string {
 	return data
 }
 
+// sandboxHome returns a HOME for a test that hands it to a process abcd does not
+// control, and it is deliberately NOT t.TempDir().
+//
+// The dev shim rebuilds from source, so it runs the Go toolchain with this HOME
+// in its environment, and the toolchain writes telemetry counters under
+// HOME/<user-config>/go/telemetry/local on its own schedule rather than
+// synchronously with the command. t.TempDir() removes its directory at cleanup
+// and FAILS THE TEST if the removal does not succeed, so a counter file landing
+// during that removal fails a test whose body has already passed. It fails only
+// where the shim finds a `go` on the PATH the test grants it (`/usr/bin:/bin`),
+// which is why this reproduces on the Linux release runner and not on macOS.
+//
+// Neither documented knob prevents it from the environment: GOTELEMETRY=off and
+// GOTELEMETRYDIR were both measured against go1.27.1 and the counter files still
+// landed under HOME. So the directory cannot be kept clean, and the honest fix is
+// to stop treating its removal as an assertion. Removal stays best-effort: what
+// the test is entitled to assert is what abcd wrote, never what a foreign process
+// left behind.
+func sandboxHome(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "abcd-sandbox-home-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
 // runAhoyInstall installs into a sandboxed home and returns that home and the
 // directory the entry landed in.
 func runAhoyInstall(t *testing.T, dev bool, dataDir string) (home, binDir string) {
 	t.Helper()
-	home = t.TempDir()
+	home = sandboxHome(t)
 	binDir = filepath.Join(home, ".local", "bin")
 	root := installShapePluginRoot(t)
 	t.Setenv("HOME", home)

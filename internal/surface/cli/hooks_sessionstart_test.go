@@ -89,7 +89,7 @@ func sessionStartRun(t *testing.T, root, stdin string, extraEnv ...string) (stri
 	cmd.Stdin = strings.NewReader(stdin)
 	cmd.Env = append([]string{
 		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + t.TempDir(),
+		"HOME=" + sandboxHome(t),
 		"CLAUDE_PLUGIN_ROOT=" + root,
 	}, extraEnv...)
 	var stdout, stderr bytes.Buffer
@@ -349,7 +349,7 @@ func TestSessionStartWithoutAPluginRootDoesNothing(t *testing.T) {
 		t.Skip("sh unavailable")
 	}
 	cmd := exec.Command("sh", "-c", sessionStartCommand(t))
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()}
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + sandboxHome(t)}
 	cmd.Stdin = strings.NewReader(sessionStartPayload)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
