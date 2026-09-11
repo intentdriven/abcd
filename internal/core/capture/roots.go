@@ -76,6 +76,38 @@ func resolveRoots(repoRoot, issuesRoot string) (string, string, error) {
 	return rr, ir, nil
 }
 
+// LedgerName is the noun the ledger's root refusals are phrased with. It is the
+// ledger's half of gitutil.CheckoutRoot's contract — the resolution and the
+// refusal policy are shared, and only the noun is this store's.
+const LedgerName = "the issue ledger"
+
+// LedgerRoot answers the question every front door has to ask before it touches
+// the ledger: which checkout's ledger does a caller standing in cwd address?
+//
+// It is the ledger's door onto gitutil.CheckoutRoot and holds no resolution of
+// its own. The question is not ledger-specific — the decision store asked it
+// next, and reached the same failure one directory further out
+// (iss-2609091707224329) — so the three-state answer, git's toplevel or one of
+// two refusals, is resolved once there and named here. What is ledger-specific
+// is the noun the refusals carry, which is all this function supplies.
+//
+// It exists because the CLI used to skip asking at all: every capture verb
+// handed its working directory to resolveRoots as an explicit repo root, so the
+// discovery below was never reached and a verb run from a subdirectory addressed
+// a ledger that was not there — a read reported open 0 against a populated
+// checkout, and a write minted a second ledger under the subdirectory and
+// reported success with a repo-relative path that looked ordinary
+// (iss-2609090951291524).
+//
+// The resolution deliberately does not fall through to discoverRepoRoot's marker
+// walk, which accepts any directory merely carrying the name and grew neither
+// the shape check nor the ownership gate its rules-root sibling has
+// (iss-2609090947359464). That walk is unreachable in shipped code, and routing
+// the front doors through it would be the one change that makes it live.
+func LedgerRoot(cwd string) (string, error) {
+	return gitutil.CheckoutRoot(cwd, LedgerName)
+}
+
 // discoverRepoRoot returns the git worktree root containing start, or "".
 func discoverRepoRoot(start string) string {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")

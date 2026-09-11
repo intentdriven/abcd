@@ -53,19 +53,61 @@ type Refusal struct {
 	Remedy string `json:"remedy"`
 }
 
+// Ownership names the proof that the file about to be replaced is abcd's own.
+// There are three, and only the first depends on anything a forge still serves
+// — which is why the other two exist (iss-2609012000222546): release objects
+// are deletable, and an ownership proof that rests on them stops proving the
+// day they are deleted, stranding an install with no way forward.
+type Ownership string
+
+const (
+	// OwnedByManifest: the file's digest appears in a published release's
+	// checksums.txt. The strongest proof and the only one that also dates the
+	// file, so it is tried first — but it dies with the release object.
+	OwnedByManifest Ownership = "release-manifest"
+	// OwnedByRunningExecutable: the file IS the executable this process is
+	// running from. Nothing else can be: the code asking the question was
+	// loaded out of those very bytes, so the file is abcd by construction and
+	// no forge object is consulted to know it.
+	OwnedByRunningExecutable Ownership = "running-executable"
+	// OwnedByPathEntry: ~/.abcd/path-entry records this exact file as the copy
+	// abcd installed, and the bytes still hash to what was recorded. Local,
+	// written at install time by every install route, and equally independent
+	// of what the forge still serves.
+	OwnedByPathEntry Ownership = "path-entry-record"
+)
+
+// Prose renders the ownership proof as the half-sentence the receipt prints.
+// The words live in the core beside the enum, so the CLI never invents its own
+// account of why abcd was allowed to replace the file.
+func (o Ownership) Prose() string {
+	switch o {
+	case OwnedByManifest:
+		return "its digest is published in a release's checksums.txt"
+	case OwnedByRunningExecutable:
+		return "it is the binary running this command, so it is abcd by construction"
+	case OwnedByPathEntry:
+		return "~/.abcd/path-entry records it as this machine's abcd install"
+	default:
+		return string(o)
+	}
+}
+
 // Report is the update receipt: origin, tag, digest, and what happened. It
 // prints in both TTY and piped modes — silence is only ever about progress.
 type Report struct {
-	Origin     string   `json:"origin"`
-	Tag        string   `json:"tag,omitempty"`
-	Asset      string   `json:"asset,omitempty"`
-	Digest     string   `json:"digest,omitempty"`
-	TargetPath string   `json:"target_path,omitempty"`
-	OldVersion string   `json:"old_version,omitempty"`
-	NewVersion string   `json:"new_version,omitempty"`
-	Action     Action   `json:"action"`
-	EnvIgnored []string `json:"env_ignored,omitempty"`
-	Refusal    *Refusal `json:"refusal,omitempty"`
+	Origin     string    `json:"origin"`
+	Tag        string    `json:"tag,omitempty"`
+	Asset      string    `json:"asset,omitempty"`
+	Digest     string    `json:"digest,omitempty"`
+	TargetPath string    `json:"target_path,omitempty"`
+	OldVersion string    `json:"old_version,omitempty"`
+	OldDigest  string    `json:"old_digest,omitempty"`
+	NewVersion string    `json:"new_version,omitempty"`
+	Ownership  Ownership `json:"ownership,omitempty"`
+	Action     Action    `json:"action"`
+	EnvIgnored []string  `json:"env_ignored,omitempty"`
+	Refusal    *Refusal  `json:"refusal,omitempty"`
 }
 
 // RemedyPluginUpdate is the way out of every refusal whose cause is a binary
@@ -73,6 +115,17 @@ type Report struct {
 // note the CLI appends to an unknown command (iss-2608230943088357). One
 // string, so the two surfaces cannot drift apart.
 const RemedyPluginUpdate = "take a plugin update in the host (e.g. /plugin update abcd)"
+
+// remedyReinstallOverIt is the way out of the unprovenanced-file refusal, and
+// it deliberately does not begin with "remove it". The refusal it answers is
+// the last thing a user with one abcd sees: deleting the file first destroys
+// the only tool that could fetch a replacement, which is exactly the dead end
+// iss-2609012000222546 reports. So the remedy names the reinstall route, says
+// it overwrites the entry in place, and states outright that the verb cannot
+// run once the file is gone.
+const remedyReinstallOverIt = "reinstall OVER it rather than removing it — `abcd update` cannot run once this file is gone: " +
+	"re-run the install one-liner from the README (" + releaseOrigin + "#install), which overwrites the entry in place and " +
+	"records it as this machine's abcd, or run `abcd ahoy install` from a plugin session"
 
 // brewCellarPrefixes are the resolved locations a Homebrew-installed binary
 // lives under. A PREFIX test on the resolved path, never a substring match
@@ -83,6 +136,11 @@ var brewCellarPrefixes = []string{
 	"/usr/local/Cellar/",
 	"/home/linuxbrew/.linuxbrew/Cellar/",
 }
+
+// osExecutable is os.Executable behind a package var, so a test can pin the
+// running executable at a fixture path — the same seam ahoy keeps for the same
+// reason. The shipping code never assigns it.
+var osExecutable = os.Executable
 
 // caseFoldingFS is the package's view of fsutil.CaseFoldingFS, held as a var so a
 // test can provoke the case-folding branch of the Cellar-prefix match on a
@@ -338,13 +396,22 @@ func (u *Updater) ResolveTag(requested string) (string, error) {
 	return tag, nil
 }
 
-// Apply completes the chosen update: prove the target file is abcd's by
-// provenance (its digest appears in a published release's checksums.txt),
-// download the tag's asset, verify it against the same release's manifest,
-// and swap atomically. It never leaves a partial file: verification happens
-// before anything at the target path is touched. The old version is DERIVED —
-// the release whose manifest matches the on-disk bytes — never read from the
-// running binary, which may not be the file being replaced.
+// Apply completes the chosen update: prove the target file is abcd's, download
+// the tag's asset, verify it against the release's own manifest, and swap
+// atomically. It never leaves a partial file: verification happens before
+// anything at the target path is touched.
+//
+// Ownership is proven by whichever of the three proofs answers first (see
+// Ownership). The published-digest proof is tried first because it also DATES
+// the file — the old version is derived from the release whose manifest matches
+// the on-disk bytes, never read from the running binary, which may not be the
+// file being replaced. It is not, however, the only proof, and must not be:
+// release objects are deletable, and when the 2026-08-30 cleanup removed every
+// manifest older than v0.6.9 this refused every install it had previously
+// vouched for and sent the user to delete their only abcd
+// (iss-2609012000222546). The two local proofs cannot be revoked from off the
+// machine; a file they carry has no derivable version, so the receipt names it
+// an unpublished build and reports its digest.
 func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) {
 	// TargetPath is rendered in the receipt (text and --json) and relayed by the
 	// plugin into agent chat, so the home root is redacted to ~ — the report is a
@@ -373,6 +440,7 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 		rep.Digest = wantHex
 		rep.OldVersion = tag
 		rep.NewVersion = tag
+		rep.Ownership = OwnedByManifest
 		return rep, nil
 	}
 
@@ -380,16 +448,36 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	if err != nil {
 		return rep, err
 	}
-	if !proven {
+	switch {
+	case proven:
+		rep.Ownership = OwnedByManifest
+		rep.OldVersion = oldVer
+	case runsFromTarget(target):
+		// The file IS the executable this process runs from, so it is abcd by
+		// construction: these bytes are the ones that loaded the code asking
+		// the question, and a foreign binary cannot be them. Provenance had one
+		// job left — dating the file — and the manifests that would have done
+		// it are gone, so the receipt reports an unpublished build by digest
+		// and the swap proceeds.
+		rep.Ownership = OwnedByRunningExecutable
+		rep.OldDigest = targetHex
+	case ahoy.IsOwnedPathCopy(target):
+		// The verb was invoked from elsewhere (a plugin-root binary, a source
+		// checkout) and is acting on the PATH copy: abcd's own install record
+		// names this file and its bytes still match, which is an ownership
+		// claim abcd wrote itself and no release deletion can revoke.
+		rep.Ownership = OwnedByPathEntry
+		rep.OldDigest = targetHex
+	default:
 		rep.Action = ActionRefused
 		rep.Refusal = &Refusal{
-			Shape:  "unprovenanced-file",
-			Detail: "the file at " + fsutil.RedactHome(target) + " matches no published release of abcd (digest " + targetHex + "), so abcd will not replace it",
-			Remedy: "if this is a stale or hand-built abcd, remove it and reinstall; abcd never clobbers a binary it cannot prove is its own",
+			Shape: "unprovenanced-file",
+			Detail: "the file at " + fsutil.RedactHome(target) + " matches no published release of abcd (digest " + targetHex +
+				"), is not the binary running this command, and no ~/.abcd/path-entry record vouches for it, so abcd will not replace it",
+			Remedy: remedyReinstallOverIt,
 		}
 		return rep, nil
 	}
-	rep.OldVersion = oldVer
 
 	sum, err := hex.DecodeString(wantHex)
 	if err != nil {
@@ -422,6 +510,34 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	return rep, nil
 }
 
+// runsFromTarget reports whether target is the very file this process was
+// executed from. It is the one ownership proof that cannot be revoked by
+// anything outside this machine: the bytes at target are the bytes that were
+// loaded to run this code, so the file is abcd, and no foreign binary can be
+// standing there.
+//
+// The comparison is os.SameFile, never a string compare: os.Stat follows
+// symlinks, so one inode spelled two ways — /usr/local/bin/abcd and the
+// ~/.local/bin/abcd a link points at — still matches, where a path compare
+// would miss it and refuse the very install this exists to rescue. Anything
+// that fails to stat reports false: the refusing side, where the install
+// record still gets its turn.
+func runsFromTarget(target string) bool {
+	exe, err := osExecutable()
+	if err != nil || exe == "" || target == "" {
+		return false
+	}
+	efi, err := os.Stat(exe)
+	if err != nil {
+		return false
+	}
+	tfi, err := os.Stat(target)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(efi, tfi)
+}
+
 // deriveTargetVersion establishes that the on-disk target is a published abcd
 // binary and returns the release it belongs to. It checks the install tag's
 // own manifest first (the target may be another platform's asset of the same
@@ -429,7 +545,10 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 // so a machine one-liner-installed at an OLD release is still proven and its
 // old version reported correctly — never the running binary's version. A 404
 // on the release list is "nothing to prove against" (not proven); a transport
-// failure is a real error surfaced loudly.
+// failure is a real error surfaced loudly. Not proven is no longer the end of
+// the road: Apply falls through to the two local proofs, which is why a
+// deleted release now costs the receipt a version rather than costing the user
+// their install.
 func (u *Updater) deriveTargetVersion(targetHex, installTag string, installSums map[string]string) (string, bool, error) {
 	for _, h := range installSums {
 		if h == targetHex {

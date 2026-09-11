@@ -39,15 +39,23 @@ permissions:
 
 jobs:
   attribution:
-    # The bot exemption lives INSIDE the steps, deliberately, and not as a job-level
-    # `if:`. A required status check that never reports leaves a pull request stuck
-    # on "Expected — waiting for status" forever, and whether a job skipped by an
-    # `if:` emits a check run with conclusion "skipped" is not a property worth
-    # betting dependabot's mergeability on. Running the job unconditionally means the
-    # check ALWAYS reports, so this workflow is safe to add to the required checks
-    # (iss-212). The exemption itself still holds: a bot cannot write a trailer, and
-    # a permanently red gate on its pull requests would train a maintainer to
-    # discount red on exactly the ones where red most needs trusting.
+    # Exemptions live INSIDE the steps, deliberately, and not as a job-level `if:`.
+    # A required status check that never reports leaves a pull request stuck on
+    # "Expected — waiting for status" forever, and whether a job skipped by an `if:`
+    # emits a check run with conclusion "skipped" is not a property worth betting a
+    # pull request's mergeability on. Running the job unconditionally means the check
+    # ALWAYS reports, so this workflow is safe to add to the required checks
+    # (iss-212).
+    #
+    # The COMMIT half no longer exempts a bot, and that is the point of the change
+    # rather than a side effect (iss-2609082001204831). The old reasoning — a bot
+    # cannot write a trailer, so red would train a maintainer to discount red — is
+    # about the MESSAGE, which the body half still exempts. It says nothing about
+    # AUTHORSHIP, and authorship is what the gate is now enforcing: a commit is
+    # authored by a human, machine assistance is disclosed by the trailer alone. So
+    # a dependabot pull request is now red until a human lands the bump, which is
+    # the correct answer rather than a cost, and the gate is not made to lie in
+    # order to keep a bot's pull request green.
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
@@ -95,7 +103,6 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -103,8 +110,7 @@ jobs:
             echo "attribution: merge-queue run — commit check exempt (validated on the pull request before queueing; the queue's own merge commit carries no trailer to check), nothing was checked."
             exit 0
           fi
-          if [ "$PR_AUTHOR_TYPE" = "Bot" ]; then
-            echo "attribution: pull request authored by a bot — commit check exempt, nothing was checked."
-            exit 0
-          fi
+          # No bot exemption here: the commit half reads AUTHORSHIP, and a machine
+          # author is exactly what it now refuses (iss-2609082001204831). A bump a
+          # bot proposed is landed by a human.
           bash scripts/check-attribution.sh commits "$BASE_SHA" "$HEAD_SHA"

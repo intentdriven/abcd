@@ -21,6 +21,10 @@ import (
 // the envelope carries no absolute path but keeps the file's base name for context.
 func TestJSONErrorEnvelopeNoAbsolutePathLeak(t *testing.T) {
 	repo := t.TempDir()
+	// A bare temporary directory is no longer a place a record store is
+	// addressed: the memory front door resolves the checkout root first and
+	// refuses outside one (iss-2609091729516940).
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 
 	// An absolute path guaranteed to fail os.ReadFile with a *PathError.
@@ -121,8 +125,7 @@ func TestJSONSuccessEnvelopeNoAbsolutePathLeak(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := t.TempDir()
-			t.Chdir(repo)
+			repo := captureLedgerRepo(t)
 			args := tc.args(t)
 			var stdout, stderr bytes.Buffer
 			code := Run(args, &stdout, &stderr)
@@ -185,6 +188,11 @@ func collectPaths(t *testing.T, raw []byte) []string {
 // must be free of an absolute path and of the repo root.
 func TestMemoryIngestSuccessEnvelopeNoAbsolutePathLeak(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
+	// Spelled the way the resolver spells it: the front door renders paths
+	// against git's toplevel, which is symlink-resolved, so a fixture holding
+	// the /var form would compare against a root spelled /private/var.
+	repo = realPath(t, repo)
 	t.Chdir(repo)
 	src := filepath.Join(repo, "article.txt")
 	if err := os.WriteFile(src, []byte("Rotate tokens every 24 hours.\n"), 0o644); err != nil {
@@ -258,9 +266,11 @@ func collectStrings(t *testing.T, raw []byte) []string {
 // path reaches the --json error envelope. The path must be rendered repo-relative.
 func TestMemoryIngestErrorNoAbsolutePathLeakOutsideRoots(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
+	repo = realPath(t, repo)
 	t.Chdir(repo)
 	// A source outside both cwd (repo) and home — the scrub's two roots.
-	outside := t.TempDir()
+	outside := realPath(t, t.TempDir())
 	missing := filepath.Join(outside, "secret-notes.txt")
 
 	var stdout, stderr bytes.Buffer

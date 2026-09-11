@@ -10,8 +10,13 @@ VERSION ?=
 # for public distribution.
 LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.Version=$(VERSION),)
 
+# The Go toolchain version go.mod declares, read from the declaration rather
+# than spelled here: a second spelling is a second thing to bump, and the one
+# that falls behind is the one nothing runs. Drives the format gate below.
+GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
+
 .PHONY: build test vet clean preflight lint-reviews lint-issues lint-decisions record-lint docs-lint site-render smoke \
-	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check
+	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -60,6 +65,77 @@ smoke:
 # edit to this target or to the workflow.
 evals-cold-reading:
 	go test -tags coldreading ./evals/...
+
+# Format gate, resolved through the toolchain go.mod declares
+# (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
+# releases — go 1.27 re-indents a multi-value return whose operands are
+# composite literals, which this tree contains at internal/core/ahoy/remote.go —
+# so on a machine newer than the declaration a bare `gofmt -l .` names a file
+# that CI's pinned gofmt calls correctly formatted. The developer reformats what
+# the gate names and pushes a file CI then rejects in the other direction, and
+# neither direction is visible in the output, which names a file and never says
+# which toolchain judged it.
+#
+# `GOTOOLCHAIN=go<version> go env GOROOT` fetches and caches the declared
+# toolchain if the machine lacks it, then reports where it landed; the gofmt
+# under that GOROOT is the one CI runs. `fmt` applies the same binary, so the
+# remedy and the diagnosis can never disagree.
+#
+# It REFUSES rather than falling back when the toolchain cannot be resolved
+# (offline, or the fetch declined). A fallback would print a filename judged by
+# the wrong gofmt, which is precisely the false green this target removes — the
+# skew is named in the refusal instead
+# (.abcd/development/principles/loud-staging.md).
+define pinned_gofmt
+	@set -eu; \
+	version='$(GO_TOOLCHAIN_VERSION)'; \
+	if [ -z "$$version" ]; then \
+		echo "gofmt: REFUSING — go.mod declares no \`go <version>\` line, so the format gate has no toolchain to resolve." >&2; \
+		exit 2; \
+	fi; \
+	local_version="$$(go env GOVERSION 2>/dev/null || echo unknown)"; \
+	if ! goroot="$$(GOTOOLCHAIN=go$$version go env GOROOT 2>&1)" || [ ! -x "$$goroot/bin/gofmt" ]; then \
+		echo "gofmt: REFUSING to judge this tree." >&2; \
+		echo "gofmt:   go.mod declares go$$version; the go on PATH is $$local_version." >&2; \
+		echo "gofmt:   the go$$version toolchain could not be resolved (the fetch needs network):" >&2; \
+		echo "$$goroot" | sed 's/^/gofmt:     /' >&2; \
+		echo "gofmt:   NOT falling back to the gofmt on PATH — a different gofmt version judges this" >&2; \
+		echo "gofmt:   tree differently, so the fallback would name files CI considers correct." >&2; \
+		exit 2; \
+	fi; \
+	resolved="$$("$$goroot/bin/go" version 2>/dev/null | awk '{print $$3}')"; \
+	if [ "$$resolved" != "go$$version" ]; then \
+		echo "gofmt: REFUSING — go.mod declares go$$version, but the resolved toolchain reports $$resolved." >&2; \
+		echo "gofmt:   GOTOOLCHAIN did not switch, so the gate would run the wrong gofmt." >&2; \
+		exit 2; \
+	fi; \
+	case '$(1)' in \
+	check) \
+		unformatted="$$("$$goroot/bin/gofmt" -l .)"; \
+		if [ -n "$$unformatted" ]; then \
+			echo "gofmt: these files are not formatted (run \`make fmt\`):" >&2; \
+			echo "$$unformatted" >&2; \
+			exit 1; \
+		fi; \
+		echo "fmt-check: the tree is formatted under go$$version's gofmt"; \
+		;; \
+	write) \
+		"$$goroot/bin/gofmt" -l -w .; \
+		;; \
+	esac
+endef
+
+# The gate: name every file the declared toolchain's gofmt would rewrite, and
+# exit non-zero if there is one. This is CI's `Format (gofmt)` step — the
+# workflow invokes this target rather than restating the command, so the
+# developer's gate and CI's gate are one thing
+# (.abcd/development/principles/one-canonical-primitive.md).
+fmt-check:
+	$(call pinned_gofmt,check)
+
+# The remedy: rewrite them, with the same binary the gate judged them by.
+fmt:
+	$(call pinned_gofmt,write)
 
 vet:
 	go vet ./...
@@ -197,9 +273,9 @@ scaffold-sync-check:
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
 # and race-enabled internal tests natively. CI's check job runs those same four
-# Go steps plus a `gofmt -l .` format gate this target does not, so run gofmt
-# separately before pushing. Host-native `go build` (not the cross-compiling
-# build target) because it mirrors CI.
+# Go steps plus the `fmt-check` format gate this target does not, so run
+# `make fmt-check` separately before pushing. Host-native `go build` (not the
+# cross-compiling build target) because it mirrors CI.
 #
 # The eval lanes are prerequisites because the untagged `go test ./...` step
 # below cannot reach them: every eval file carries a build tag, so a defect in

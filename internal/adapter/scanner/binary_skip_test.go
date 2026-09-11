@@ -154,9 +154,11 @@ func pngBytes(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// TestValidPNGWithoutSecretIsClean: a genuine image yields zero findings, and
-// is reported as ContentUnverified — its IDAT is deflate, so the byte scan
-// covers only the plaintext regions and the report must say so.
+// TestValidPNGWithoutSecretIsClean: a genuine image yields zero findings —
+// decoding its IDAT and text chunks must not manufacture one — and is reported
+// as ContentDecoded, never as ScannedBinary: the byte scan alone covers only
+// its plaintext regions, and the decoder is what reads the rest
+// (iss-2608291832160371).
 func TestValidPNGWithoutSecretIsClean(t *testing.T) {
 	root := t.TempDir()
 	abs := writeFile(t, root, "docs/assets/img/logo.png", string(pngBytes(t)))
@@ -168,8 +170,8 @@ func TestValidPNGWithoutSecretIsClean(t *testing.T) {
 	if len(res.Findings) != 0 {
 		t.Fatalf("a real image must not trip any rule: %+v", res.Findings)
 	}
-	if !contains(res.ContentUnverified, "docs/assets/img/logo.png") || contains(res.ScannedBinary, "docs/assets/img/logo.png") {
-		t.Errorf("a compressed image format is ContentUnverified, never ScannedBinary: %+v", res)
+	if !contains(res.ContentDecoded, "docs/assets/img/logo.png") || contains(res.ScannedBinary, "docs/assets/img/logo.png") {
+		t.Errorf("a decoded image is ContentDecoded, never ScannedBinary: %+v", res)
 	}
 }
 

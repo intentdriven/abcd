@@ -24,7 +24,6 @@ var abcdExtraGates = []Gate{
 func AbcdSubstitutions() Substitutions {
 	return Substitutions{
 		DefaultBranch: "main",
-		GoVersion:     "1.26.7",
 		Abcd:          true,
 		ExtraGates:    abcdExtraGates,
 		SemanticGates: abcdSemanticGates,
@@ -33,12 +32,12 @@ func AbcdSubstitutions() Substitutions {
 
 // BareSubstitutions is the degraded fact set a managed repo with no semantic
 // detectors receives: the deterministic Go gates alone, a generic build, and no
-// host-run semantic gate (spc-14 clean degradation). DefaultBranch and GoVersion
-// are the repo's own facts, derived by the caller.
-func BareSubstitutions(defaultBranch, goVersion string) Substitutions {
+// host-run semantic gate (spc-14 clean degradation). DefaultBranch is the repo's
+// own fact, derived by the caller; the Go toolchain is not a substitution at all,
+// because the rendered workflows read it out of the adopter's go.mod.
+func BareSubstitutions(defaultBranch string) Substitutions {
 	return Substitutions{
 		DefaultBranch: defaultBranch,
-		GoVersion:     goVersion,
 		Abcd:          false,
 		ExtraGates:    nil,
 		SemanticGates: nil,

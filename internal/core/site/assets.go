@@ -33,7 +33,14 @@ package site
 //     `on*` attribute inside one is executable code on the site's own origin,
 //     reached with no click, in a file that is not code and that no reviewer
 //     reads as code. So an SVG is parsed and held to an allowlist of the
-//     elements and attributes a drawing is made of.
+//     elements and attributes a drawing is made of — a CLOSED list on both
+//     sides, because the attribute that matters is the one nobody thought of.
+//     `style` and `class` carry no script and are still not a drawing's: inline
+//     CSS on the root beats `.svgasset svg` and `.card .icon svg`, neither of
+//     which is `!important`, and a child that positions itself `fixed` covers
+//     the page it was drawn into. The drawings' theme colours ride on the paint
+//     attributes as `var(--token, fallback)` values, so nothing legitimate is
+//     lost by refusing both.
 
 import (
 	"encoding/binary"
@@ -156,6 +163,81 @@ var embeddedRasterPrefixes = []string{
 // from a page that makes none, or a scheme that executes.
 var svgHrefAttrs = map[string]bool{"href": true, "xlink:href": true, "src": true}
 
+// svgNamespace and xlinkNamespace are the two vocabularies a drawing declares:
+// SVG itself, and XLink for the `xlink:href` an older exporter writes on <use>.
+// A declaration of anything else is how a foreign vocabulary gets into a file
+// that is inlined into the page, so it is refused rather than carried through.
+const (
+	svgNamespace   = "http://www.w3.org/2000/svg"
+	xlinkNamespace = "http://www.w3.org/1999/xlink"
+)
+
+// svgAttrs is what a drawing is made of, attribute-side: the geometry that
+// places a shape, the paint that fills and strokes it, the type that sets its
+// text, the units and transforms that gradients, patterns, clips, masks and
+// markers are configured by, and the identity a same-document reference points
+// at. `aria-*` is allowed by prefix below, and the pointing attributes
+// (href, xlink:href, src) are settled before this map is consulted.
+//
+// It is CLOSED, and that is the whole point: the old check refused `on*` and
+// scheme-checked the pointing attributes, then returned nil for everything
+// else, which made an allowlist in name a denylist in behaviour — `style` and
+// `class` walked through it into the published page. An attribute nobody has
+// weighed is now refused by name, so the failure is a build error naming the
+// asset rather than live markup on the site.
+//
+// Every name the committed corpus carries is here (TestCommittedSVGAssets-
+// AreDrawings inlines all 32 drawings through the real pipe, so a name dropped
+// from this list fails that test rather than the site build). The rest is the
+// standard presentation and geometry set, with three deliberate absences:
+// `style` and `class`, for the reason at the top of this file, and `overflow`,
+// which is the one presentation attribute that lets a drawing paint outside the
+// viewport its root establishes.
+var svgAttrs = map[string]bool{
+	// Identity and the document's own frame.
+	"id": true, "xmlns": true, "role": true, "version": true,
+	"viewBox": true, "preserveAspectRatio": true,
+
+	// Geometry: where a shape is and how big it is.
+	"x": true, "y": true, "dx": true, "dy": true,
+	"x1": true, "y1": true, "x2": true, "y2": true,
+	"cx": true, "cy": true, "r": true, "rx": true, "ry": true,
+	"width": true, "height": true, "d": true, "points": true,
+	"transform": true, "pathLength": true,
+
+	// Paint: fill, stroke and the opacity of either.
+	"fill": true, "fill-opacity": true, "fill-rule": true,
+	"stroke": true, "stroke-width": true, "stroke-opacity": true,
+	"stroke-linecap": true, "stroke-linejoin": true, "stroke-miterlimit": true,
+	"stroke-dasharray": true, "stroke-dashoffset": true,
+	"opacity": true, "color": true, "paint-order": true, "vector-effect": true,
+	"shape-rendering": true, "text-rendering": true, "image-rendering": true,
+	"color-interpolation": true, "display": true, "visibility": true,
+
+	// Type.
+	"font-family": true, "font-size": true, "font-weight": true,
+	"font-style": true, "font-variant": true, "font-stretch": true,
+	"letter-spacing": true, "word-spacing": true, "text-decoration": true,
+	"text-anchor": true, "dominant-baseline": true, "alignment-baseline": true,
+	"baseline-shift": true, "writing-mode": true, "direction": true,
+	"textLength": true, "lengthAdjust": true,
+
+	// Clipping and masking — the referenced element is itself allowlisted.
+	"clip-path": true, "clip-rule": true, "clipPathUnits": true,
+	"mask": true, "maskUnits": true, "maskContentUnits": true,
+
+	// Markers: the arrowheads the loop drawing puts on its paths.
+	"marker-start": true, "marker-mid": true, "marker-end": true,
+	"markerWidth": true, "markerHeight": true, "markerUnits": true,
+	"refX": true, "refY": true, "orient": true,
+
+	// Gradients and patterns.
+	"gradientUnits": true, "gradientTransform": true, "spreadMethod": true,
+	"fx": true, "fy": true, "fr": true, "offset": true,
+	"stop-color": true, "stop-opacity": true,
+	"patternUnits": true, "patternContentUnits": true, "patternTransform": true,
+}
+
 // checkInlinableSVG parses an SVG and refuses anything a drawing does not need.
 // It parses rather than greps: entities, CDATA, comments and attribute quoting
 // are exactly what a substring check gets wrong, and an XML decoder gets right.
@@ -245,7 +327,44 @@ func checkSVGAttr(a xml.Attr, element string, bad func(string, ...any) error) er
 		return bad("points %s on <%s> at %q; a drawing refers only to its own definitions (#id)",
 			full, element, clip(v))
 	}
-	return nil
+	// A namespace declaration — `xmlns` (which the decoder reports with an empty
+	// space) or `xmlns:prefix` (reported with the space "xmlns"). Declaring a
+	// second vocabulary is how markup from somewhere else gets into a file that
+	// is inlined into the page, so the two a drawing needs are named and the
+	// rest is refused.
+	if a.Name.Space == "xmlns" || (a.Name.Space == "" && local == "xmlns") {
+		if v := strings.TrimSpace(a.Value); v == svgNamespace || v == xlinkNamespace {
+			return nil
+		}
+		return bad("declares the namespace %q on <%s>; a drawing is written in SVG, and in XLink for its <use> references, and in nothing else",
+			clip(a.Value), element)
+	}
+	// Any other prefixed attribute. `xlink:href` is settled above and is the
+	// only namespaced attribute a drawing carries; the rest of XLink says
+	// nothing a picture needs, and a prefix the document never declared is the
+	// shape of something trying to look like an attribute this check knows.
+	if a.Name.Space != "" {
+		return bad("sets the prefixed attribute %s on <%s>; the only namespaced attribute a drawing carries is xlink:href",
+			full, element)
+	}
+	// `style` and `class` carry no script and still do not belong to a drawing:
+	// inline CSS on the root outranks the stylesheet's own `.svgasset svg` and
+	// `.card .icon svg` rules, and a child can position itself out of the box
+	// the page laid out and over the page itself.
+	if local == "style" || local == "class" {
+		return bad("sets %s on <%s>, which styles the page rather than draws; a drawing's colours are var(--token, fallback) values on its paint attributes",
+			local, element)
+	}
+	// ARIA is how a drawing names itself to a screen reader, and its names are
+	// open-ended, so it is allowed by prefix rather than one at a time.
+	if strings.HasPrefix(local, "aria-") {
+		return nil
+	}
+	if svgAttrs[local] {
+		return nil
+	}
+	return bad("sets %s on <%s>, which is not one of the attributes a drawing is made of",
+		full, element)
 }
 
 // assetPipe resolves image references and records what the build must copy.

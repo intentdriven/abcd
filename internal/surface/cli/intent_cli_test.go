@@ -23,6 +23,22 @@ func writeRepoFile(t *testing.T, root, rel, content string) {
 	}
 }
 
+// intentTestRepo is the working tree every `intent` surface test stands in. It
+// is a git working tree, not a bare temporary directory, because a directory
+// outside every repository is no longer a place the intent store is read or
+// written: the front door resolves the checkout root and refuses when there is
+// none (iss-2609091729516940). HOME is redirected so nothing consults the
+// developer's own home.
+func intentTestRepo(t *testing.T) string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	repo = realPath(t, repo)
+	t.Chdir(repo)
+	return repo
+}
+
 const (
 	cliDrafts    = ".abcd/development/intents/drafts"
 	cliPlanned   = ".abcd/development/intents/planned"
@@ -35,8 +51,7 @@ func cliDraftWithAC(id, slug string) string {
 }
 
 func TestIntentBareText(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
 	writeRepoFile(t, repo, cliPlanned+"/itd-2-beta.md",
 		"---\nid: itd-2\nslug: beta\nspec_id: spc-1\nkind: standalone\n---\n# beta\n")
@@ -48,8 +63,7 @@ func TestIntentBareText(t *testing.T) {
 }
 
 func TestIntentBareJSON(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
 
 	out := runCLI(t, "intent", "--json")
@@ -65,8 +79,7 @@ func TestIntentBareJSON(t *testing.T) {
 }
 
 func TestIntentPlanHappy(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
 
 	out := runCLI(t, "intent", "plan", "itd-10", "--json")
@@ -99,8 +112,7 @@ func TestIntentPlanHappy(t *testing.T) {
 }
 
 func TestIntentPlanRefusesNoAC(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: null\n---\n# alpha\n\nno criteria\n")
 	if _, err := runCLIErr(t, "intent", "plan", "itd-10"); err == nil {
@@ -109,8 +121,7 @@ func TestIntentPlanRefusesNoAC(t *testing.T) {
 }
 
 func TestIntentPlanRefusesNonDraft(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
 	if _, err := runCLIErr(t, "intent", "plan", "itd-10"); err == nil {
@@ -119,8 +130,7 @@ func TestIntentPlanRefusesNonDraft(t *testing.T) {
 }
 
 func TestIntentLinkHappy(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n")
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-3-alpha.md",
@@ -141,8 +151,7 @@ func TestIntentLinkHappy(t *testing.T) {
 }
 
 func TestIntentLinkMismatchErrors(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n")
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-3-other.md",
@@ -154,6 +163,10 @@ func TestIntentLinkMismatchErrors(t *testing.T) {
 
 func TestSpecBareText(t *testing.T) {
 	repo := t.TempDir()
+	// A bare temporary directory is no longer a place a spec store is addressed:
+	// the front door resolves the checkout root first and refuses outside one
+	// (iss-2609091729516940), so the fixture is a git working tree.
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
@@ -166,6 +179,7 @@ func TestSpecBareText(t *testing.T) {
 
 func TestSpecCloseHappy(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	// spec close now reconciles the linked intent, so the intent must exist and
 	// be planned+linked back to this spec.
@@ -174,7 +188,9 @@ func TestSpecCloseHappy(t *testing.T) {
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
 
-	out := runCLI(t, "spec", "close", "spc-1", "--json")
+	// The record declares no impact, so the close supplies it — the flag's
+	// end-to-end wiring, from the surface through Reconcile to the record.
+	out := runCLI(t, "spec", "close", "spc-1", "--impact", "fix", "--json")
 	var got struct {
 		Spec struct {
 			Status string `json:"status"`
@@ -208,9 +224,10 @@ func TestSpecCloseHappy(t *testing.T) {
 // intent that moved and its from->to.
 func TestSpecCloseReconcileText(t *testing.T) {
 	repo := t.TempDir()
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
-		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
 
@@ -222,6 +239,10 @@ func TestSpecCloseReconcileText(t *testing.T) {
 
 func TestSpecCloseMissingErrors(t *testing.T) {
 	repo := t.TempDir()
+	// The tree is git-initialised so the refusal asserted below is the one this
+	// test names — a spec that is not in the store — and not the checkout-root
+	// refusal a bare temporary directory now earns first.
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	if _, err := runCLIErr(t, "spec", "close", "spc-99"); err == nil {
 		t.Fatal("closing a missing spec must exit non-zero")
@@ -245,8 +266,7 @@ func runCLISplit(t *testing.T, args ...string) (string, string, error) {
 // TestIntentQuotedTextCreates is itd-46 AC1 at the CLI: `abcd intent "<text>"`
 // files a new drafts/itd-N-<slug>.md seeded from the text — no `new` sub-verb.
 func TestIntentQuotedTextCreates(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out := runCLI(t, "intent", "I want users to feel the card respects their time", "--json")
 	var got struct {
@@ -274,8 +294,7 @@ func TestIntentQuotedTextCreates(t *testing.T) {
 // "<text>"` routes to the same create path and prints a deprecation warning on
 // stderr naming the new shape; the stdout artefact matches the sub-verb-free form.
 func TestIntentNewAliasWarnsAndCreates(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	intentTestRepo(t)
 
 	stdout, stderr, err := runCLISplit(t, "intent", "new", "a symmetric create path", "--json")
 	if err != nil {
@@ -307,8 +326,7 @@ func TestIntentNewAliasWarnsAndCreates(t *testing.T) {
 // TestIntentBareCreatesNothing is itd-46 AC3: bare `abcd intent` renders status +
 // help and mutates nothing — no drafts file appears.
 func TestIntentBareCreatesNothing(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out := string(runCLI(t, "intent"))
 	if !strings.Contains(out, "abcd intent") {
@@ -335,8 +353,7 @@ func exitCodeOf(err error) int {
 // a draft renders the full NOT READY report on stdout and exits 1 with an EMPTY
 // message (the report is the output; the code is the only extra signal).
 func TestIntentReadyNotReadyExit1(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
 
 	out, errb, err := runCLISplit(t, "intent", "ready", "itd-10")
@@ -352,8 +369,7 @@ func TestIntentReadyNotReadyExit1(t *testing.T) {
 }
 
 func TestIntentReadyGreenExit0(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n"+cliGroundsSection)
@@ -367,8 +383,7 @@ func TestIntentReadyGreenExit0(t *testing.T) {
 }
 
 func TestIntentReadyUnknownExit2(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	intentTestRepo(t)
 
 	_, err := runCLIErr(t, "intent", "ready", "itd-999")
 	if exitCodeOf(err) != 2 {
@@ -379,8 +394,7 @@ func TestIntentReadyUnknownExit2(t *testing.T) {
 // TestIntentReadyJSON proves the machine seam: --json emits the full ReadyResult
 // (7 fixed checks) even on the not-ready path, alongside exit 1.
 func TestIntentReadyJSON(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
 
 	out, _, err := runCLISplit(t, "intent", "ready", "itd-10", "--json")
@@ -409,8 +423,7 @@ func TestIntentReadyJSON(t *testing.T) {
 // TestBareHelpsCarryDecisionRule is itd-46 AC5: both bare-form outputs carry the
 // one-line capture-vs-intent decision rule so a user knows which ledger to reach.
 func TestBareHelpsCarryDecisionRule(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	intentOut := string(runCLI(t, "intent"))
 	if !strings.Contains(intentOut, "user-facing change") || !strings.Contains(intentOut, "nitpick") {
@@ -428,8 +441,7 @@ func TestBareHelpsCarryDecisionRule(t *testing.T) {
 // stable to key on. `abcd intent` (bare) is a corpus-wide count-and-link status
 // with no per-record body, which is why the payload lives on the per-intent gate.
 func TestIntentReadyJSONRendersConditionIdentities(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\n"+
@@ -471,8 +483,7 @@ func TestIntentReadyJSONRendersConditionIdentities(t *testing.T) {
 // the command the readiness gate names as the remedy must actually run, and
 // exit 0, on the record that printed it.
 func TestIntentPlanStampsAPlannedRecord(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\n- written after planning\n\n## Acceptance Criteria\n\n- ok\n"+cliGroundsSection)
@@ -503,8 +514,7 @@ func TestIntentPlanStampsAPlannedRecord(t *testing.T) {
 // but the intent has one, and an empty spec object in the payload reads as "this
 // intent has no spec" to anything consuming the JSON.
 func TestIntentPlanStampOnlyJSONNamesTheLinkedSpec(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\n- written after planning\n\n## Acceptance Criteria\n\n- ok\n"+cliGroundsSection)
@@ -533,8 +543,7 @@ func TestIntentPlanStampOnlyJSONNamesTheLinkedSpec(t *testing.T) {
 // draft, defaults when unstated, and is refused out of vocabulary with nothing
 // written.
 func TestIntentProductionModeFlag(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out := runCLI(t, "intent", "a draft the operator dictated to a scribe", "--production-mode", "scribe-transcribed", "--json")
 	var r struct {
@@ -578,8 +587,7 @@ func TestProductionModeFlagRefusesFreeText(t *testing.T) {
 		{"intent", "a draft with a hand-typed mode", "--production-mode", "typed by me on a Tuesday"},
 		{"capture", "a finding with a hand-typed mode", "--production-mode", "typed by me on a Tuesday"},
 	} {
-		repo := t.TempDir()
-		t.Chdir(repo)
+		repo := captureLedgerRepo(t)
 		out, err := runCLIErr(t, argv...)
 		if err == nil {
 			t.Errorf("%v: free text was accepted as a production mode:\n%s", argv[0], out)
@@ -601,8 +609,7 @@ func TestProductionModeFlagRefusesFreeText(t *testing.T) {
 // flag's whole effect; the report is unchanged by it, and the exit code is the
 // gate's own.
 func TestIntentReadyGroundsFlagRecordsThenReports(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n")
@@ -630,8 +637,7 @@ func TestIntentReadyGroundsFlagRecordsThenReports(t *testing.T) {
 // structural fault, never the gate's own "not ready" verdict — a caller that
 // maps exit 1 to SKIP must not read a lost write as a skipped item.
 func TestIntentReadyGroundsWriteFailureExits2(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
 
 	// An unknown intent: the write cannot happen, and the gate is never reached.
@@ -663,8 +669,7 @@ const cliGroundsSection = "\n## Grounds\n\n- pursued: we expect the recorded con
 // wired for. With the flag, the envelope carries the grounds result beside the
 // readiness result.
 func TestIntentReadyGroundsJSONCarriesTheWriteReceipt(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n")
@@ -724,8 +729,7 @@ func TestIntentReadyGroundsJSONCarriesTheWriteReceipt(t *testing.T) {
 // news that a record was written — a retry would otherwise append a second
 // entry.
 func TestIntentReadyGroundsTextReceiptPrecedesTheReport(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n")
@@ -753,3 +757,29 @@ var (
 	cliNativeIntentIDRe = regexp.MustCompile(`^itd-[0-9]{16}$`)
 	cliNativeSpecIDRe   = regexp.MustCompile(`^spc-[0-9]{16}$`)
 )
+
+// TestSpecCloseRefusesAnImpactlessIntent is iss-126 at the surface: without a
+// judgement on the record and none on the flag, the close refuses rather than
+// moving the intent into the one bucket intent_impact_valid requires an impact
+// in. The refusal is what makes `--impact` more than decoration, so it is
+// asserted here and not only in the core package.
+func TestSpecCloseRefusesAnImpactlessIntent(t *testing.T) {
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	t.Chdir(repo)
+	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
+
+	out, err := runCLIErr(t, "spec", "close", "spc-1")
+	if err == nil {
+		t.Fatalf("spec close shipped an intent declaring no impact:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "impact") {
+		t.Fatalf("the refusal does not name the missing impact: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, ".abcd/development/intents/planned", "itd-10-alpha.md")); statErr != nil {
+		t.Fatalf("the refused close still moved the intent out of planned/: %v", statErr)
+	}
+}

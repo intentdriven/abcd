@@ -144,16 +144,27 @@ func TestRepoPayloadBinariesScanClean(t *testing.T) {
 	if scan.Unavailable {
 		t.Fatalf("scanner unavailable on the repo's own payload: %s", scan.UnavailableReason)
 	}
-	if len(scan.ContentUnverified) == 0 {
+	if len(scan.ContentDecoded)+len(scan.ContentUnverified) == 0 {
 		t.Fatalf("the repo payload is expected to carry at least one image asset; none was reported: %+v", scan)
 	}
+	// The decoder runs on the real payload, not only on fixtures: the repo's
+	// own images are decoded — IDAT and text chunks inflated and scanned —
+	// and none of that manufactures a finding (iss-2608291832160371).
+	if len(scan.ContentDecoded) == 0 {
+		t.Errorf("the repo payload's image assets must be decoded, not merely byte-scanned: %+v", scan)
+	}
 	binary := map[string]bool{}
-	for _, p := range append(append([]string{}, scan.ScannedBinary...), scan.ContentUnverified...) {
+	for _, p := range append(append(append([]string{}, scan.ScannedBinary...), scan.ContentUnverified...), scan.ContentDecoded...) {
 		binary[p] = true
 	}
 	for _, f := range scan.Findings {
 		if binary[f.File] {
 			t.Errorf("byte rule %s tripped on a genuine binary asset %s (line %d)", f.Kind, f.File, f.Line)
+		}
+	}
+	for p, why := range scan.ContentUnverifiedWhy {
+		if why == "" {
+			t.Errorf("an unverified payload file must say why it could not be read: %s", p)
 		}
 	}
 	if len(scan.Unscanned) != 0 {
@@ -162,15 +173,17 @@ func TestRepoPayloadBinariesScanClean(t *testing.T) {
 }
 
 // TestScanDetailSeparatesCoverageTiers: the gate row must not fold the
-// byte-scanned files into the full-rule-set count, and must say out loud which
-// files the byte scan could not content-verify.
+// byte-scanned files into the full-rule-set count, and must keep the decoded
+// tier ("decoded and clean") apart from the tier the scan could not read at
+// all — never one green (iss-2608291832160371).
 func TestScanDetailSeparatesCoverageTiers(t *testing.T) {
 	detail := scanDetail(scanner.ScanResult{
 		FilesScanned:      3,
 		ScannedBinary:     []string{"a.ico"},
+		ContentDecoded:    []string{"r.zip"},
 		ContentUnverified: []string{"p.tgz", "q.png"},
 	})
-	want := "scanned 3 files with the full rule set, 1 binary (byte rules only), 2 compressed (not content-verified), 0 hard-fails"
+	want := "scanned 3 files with the full rule set, 1 binary (byte rules only), 1 decoded (entries scanned), 2 compressed (not content-verified), 0 hard-fails"
 	if detail != want {
 		t.Fatalf("scanDetail = %q, want %q", detail, want)
 	}

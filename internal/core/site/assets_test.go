@@ -137,6 +137,63 @@ func TestAssetsRefuseExecutableSVG(t *testing.T) {
 	}
 }
 
+// TestAssetsRefuseStyledSVG is the same boundary read one step further out. A
+// drawing that carries no script can still carry a stylesheet, because `style`
+// and `class` are attributes, and an inlined drawing's attributes are live
+// markup on the page like any others.
+//
+// Inline CSS on the root wins against `.svgasset svg` and `.card .icon svg`,
+// neither of which is `!important`, so a drawing can size itself to the
+// viewport; a child can `position:fixed` out of the box the page laid out for
+// it, and cover the page it was drawn into. `class` is the same reach by
+// another route — it borrows whatever the site's own stylesheet says about that
+// name. Neither is a thing a drawing needs: the committed corpus carries paint
+// and geometry, and its colours are `var(--token, fallback)` values on the
+// paint attributes themselves.
+func TestAssetsRefuseStyledSVG(t *testing.T) {
+	cases := []struct{ name, svg, says string }{
+		{"style on the root",
+			`<svg xmlns="http://www.w3.org/2000/svg" style="position:fixed;inset:0;width:100vw;height:100vh"><rect width="1" height="1"/></svg>`,
+			"style"},
+		{"style on a child",
+			`<svg xmlns="http://www.w3.org/2000/svg"><rect style="position:fixed;inset:0" width="1" height="1"/></svg>`,
+			"style"},
+		{"class on the root",
+			`<svg xmlns="http://www.w3.org/2000/svg" class="wrap"><rect width="1" height="1"/></svg>`,
+			"class"},
+		{"class on a child",
+			`<svg xmlns="http://www.w3.org/2000/svg"><g class="hero"><rect width="1" height="1"/></g></svg>`,
+			"class"},
+		// The allowlist is closed, so an attribute nobody weighed is refused by
+		// name rather than passed through for the browser to decide about.
+		{"an attribute a drawing is not made of",
+			`<svg xmlns="http://www.w3.org/2000/svg"><rect requiredExtensions="x" width="1" height="1"/></svg>`,
+			"requiredExtensions"},
+		// A namespace declaration is how a foreign vocabulary gets in; a drawing
+		// declares SVG, and xlink for the `xlink:href` its <use> elements write.
+		{"a foreign namespace declaration",
+			`<svg xmlns="http://www.w3.org/2000/svg" xmlns:h="http://www.w3.org/1999/xhtml"><rect width="1" height="1"/></svg>`,
+			"namespace"},
+	}
+	at := Source{Path: "docs/explanation/page.md", Line: 7}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := assetFixture(t, map[string]string{"docs/assets/img/x.svg": c.svg})
+			pipe := newAssetPipe(root, mustOpenRoot(t, root))
+			out, err := pipe.render("docs/explanation", "../assets/img/x.svg", "", at)
+			if err == nil {
+				t.Fatalf("inlined a styled SVG into the page:\n%s", out)
+			}
+			if !strings.Contains(err.Error(), "docs/assets/img/x.svg") {
+				t.Errorf("the refusal does not name the asset: %v", err)
+			}
+			if c.says != "" && !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(c.says)) {
+				t.Errorf("the refusal does not say %q: %v", c.says, err)
+			}
+		})
+	}
+}
+
 // TestAssetsAcceptDrawings keeps the refusal from swallowing the real corpus:
 // the shapes, gradients, clip paths and text the committed drawings are made of
 // stay renderable, and a same-document reference is not an external one.
@@ -246,21 +303,45 @@ func TestAssetsStripTouchesTheRootTagAlone(t *testing.T) {
 // TestCommittedSVGAssetsAreDrawings runs the same refusal over every SVG this
 // repository actually carries, so an asset that could never be published is
 // caught when it lands rather than when a page first references it.
+//
+// It is also the anti-vacuity guard on the attribute allowlist. A closed list
+// is only as good as the evidence it was drawn from, and the cheapest way to
+// write one that refuses nothing real is to write one that refuses everything
+// real: every committed drawing goes through the whole pipeline here, not just
+// the parse, so an attribute the corpus carries and the list forgot fails this
+// test rather than the site build.
 func TestCommittedSVGAssetsAreDrawings(t *testing.T) {
 	repoRoot := filepath.Join("..", "..", "..")
 	dir := filepath.Join(repoRoot, "docs", "assets", "img")
+	pipe := newAssetPipe(repoRoot, mustOpenRoot(t, repoRoot))
+	at := Source{Path: "docs/explanation/page.md", Line: 1}
 	var found int
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".svg") {
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(p, ".svg") {
 			return err
 		}
 		found++
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(p)
 		if err != nil {
 			return err
 		}
-		if err := checkInlinableSVG(string(data), path); err != nil {
+		if err := checkInlinableSVG(string(data), p); err != nil {
 			t.Errorf("%v", err)
+			return nil
+		}
+		// The reference as a page would write it: a docs page naming an asset
+		// under the asset root, resolved and inlined by the real pipe.
+		rel, err := filepath.Rel(filepath.Join(repoRoot, "docs"), p)
+		if err != nil {
+			return err
+		}
+		out, err := pipe.render("docs", filepath.ToSlash(rel), "", at)
+		if err != nil {
+			t.Errorf("a committed drawing no longer inlines: %v", err)
+			return nil
+		}
+		if !strings.Contains(out, "<svg") {
+			t.Errorf("%s: the inlined drawing carries no <svg> element", p)
 		}
 		return nil
 	})

@@ -14,9 +14,17 @@ import (
 // decideRepo lays out an ADR store already holding the hand-numbered ordinals,
 // so the surface test proves the WIRING end to end against the shape a real
 // checkout has.
+//
+// It is a git working tree, not a bare temporary directory: a directory outside
+// every repository is no longer a place a decision is minted, because the front
+// door resolves the checkout root and refuses when there is none
+// (iss-2609091707224329).
 func decideRepo(t *testing.T) string {
 	t.Helper()
+	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
+	gitInitAt(t, root)
+	root = realPath(t, root)
 	abs := filepath.Join(root, filepath.FromSlash(decide.ADRsRelDir), "0058-a-reading-is-commissioned.md")
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		t.Fatal(err)

@@ -62,10 +62,14 @@ type FileOutcome struct {
 type Report struct {
 	Substitutions Substitutions `json:"-"`
 	DefaultBranch string        `json:"default_branch"`
-	GoVersion     string        `json:"go_version"`
-	Files         []FileOutcome `json:"files"`
-	Wrote         int           `json:"wrote"`
-	Refused       int           `json:"refused"`
+	// GoVersion is what the scaffolded workflows will RESOLVE, not a value written
+	// into them: they point setup-go at go.mod, so this reports the go directive
+	// the run read. It is reported because an adopter should see which toolchain
+	// their release lane is about to use, and see it before the first tag.
+	GoVersion string        `json:"go_version"`
+	Files     []FileOutcome `json:"files"`
+	Wrote     int           `json:"wrote"`
+	Refused   int           `json:"refused"`
 	// NoOp is true when every file was already current (the idempotent re-run).
 	NoOp bool `json:"no_op"`
 }
@@ -81,8 +85,9 @@ type Request struct {
 
 // Scaffold writes the changelog-driven release machinery into RepoRoot: a
 // generic (bare-repo) release.yml, auto-release.yml, and the adr-37 runbook, each
-// wired to the repo's own default branch and Go version. It is idempotent and
-// fail-safe:
+// wired to the repo's own default branch. The Go toolchain is not wired in: the
+// workflows point setup-go at the repo's go.mod, so they follow its go directive
+// with no re-scaffold. It is idempotent and fail-safe:
 //
 //   - a file absent on disk is written;
 //   - a file byte-identical to the machinery is a no-op (StatusCurrent);
@@ -93,7 +98,7 @@ type Request struct {
 // caller can render exactly what was and was not touched — no partial half-write.
 func Scaffold(req Request) (Report, error) {
 	branch, goVersion := DeriveRepoFacts(req.RepoRoot)
-	subs := BareSubstitutions(branch, goVersion)
+	subs := BareSubstitutions(branch)
 	rendered, err := Render(subs)
 	if err != nil {
 		return Report{}, err
@@ -251,9 +256,14 @@ const defaultGoVersion = "1.25"
 const defaultBranch = "main"
 
 // DeriveRepoFacts reads the target repo's own default branch and Go version, both
-// validated against an injection-safe allowlist before they can reach the
-// rendered YAML. Anything malformed or absent falls back to a safe default, so a
-// hostile go.mod or ref name can never inject workflow content.
+// validated against an injection-safe allowlist. Anything malformed or absent
+// falls back to a safe default, so a hostile ref name can never inject workflow
+// content.
+//
+// Only the branch reaches the rendered YAML. The Go version is reported to the
+// adopter — it is the toolchain their scaffolded workflows will resolve, since
+// those point setup-go at go.mod — and is validated on the same terms anyway,
+// because a report line is a place a hostile go.mod could otherwise write.
 func DeriveRepoFacts(repoRoot string) (branch, goVersion string) {
 	return deriveBranch(repoRoot), deriveGoVersion(repoRoot)
 }

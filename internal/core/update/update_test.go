@@ -431,3 +431,177 @@ func TestResolveTagValidatesShape(t *testing.T) {
 		t.Fatalf("a plain tag must pass: %q %v", tag, err)
 	}
 }
+
+// --- ownership proofs that no forge can delete (iss-2609012000222546) ---
+//
+// The 2026-08-30 release-object deletion turned every install older than the
+// surviving cuts into an `unprovenanced-file` refusal, because the ONLY
+// ownership proof walked exactly the manifests that were deleted. These three
+// tests pin the two proofs that do not depend on what a forge still serves,
+// and the shape of the refusal that remains when neither holds.
+
+// pinRunningExecutable points the package's os.Executable seam at path, so the
+// test can stage "the target IS the binary running this command" without
+// re-executing the test binary from a fixture directory.
+func pinRunningExecutable(t *testing.T, path string) {
+	t.Helper()
+	orig := osExecutable
+	osExecutable = func() (string, error) { return path, nil }
+	t.Cleanup(func() { osExecutable = orig })
+}
+
+// TestApplyProceedsWhenTheTargetIsTheRunningExecutable is the mechanism fix:
+// the origin publishes ONLY the new release (every older manifest deleted, as
+// on 2026-08-30), so the on-disk bytes are provable against nothing. They are
+// still abcd's — the process asking the question was loaded out of them — so
+// the swap proceeds and the receipt reports an unpublished build by digest
+// rather than refusing the user into a dead end.
+func TestApplyProceedsWhenTheTargetIsTheRunningExecutable(t *testing.T) {
+	// Both spellings of "the same file": the path itself, and a symlink to it.
+	// The second is why the check is os.SameFile on the resolved paths rather
+	// than a string compare — one inode reached two ways is still one inode,
+	// and a compare that missed that would refuse the very install it is meant
+	// to rescue.
+	for _, spelling := range []string{"the target path itself", "a symlink to the target"} {
+		t.Run(spelling, func(t *testing.T) {
+			o := newTestOrigin(t)
+			oldBin := []byte("the-deleted-release-bytes")
+			newBin := []byte("new-binary-bytes")
+			o.addRelease("v0.7.0", testAssetName, newBin)
+			target := writeTarget(t, oldBin)
+			exe := target
+			if spelling != "the target path itself" {
+				exe = filepath.Join(t.TempDir(), "abcd")
+				if err := os.Symlink(target, exe); err != nil {
+					t.Fatal(err)
+				}
+			}
+			pinRunningExecutable(t, exe)
+
+			rep, err := testUpdater(t, o).Apply(target, "v0.7.0", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rep.Action != ActionSwapped {
+				t.Fatalf("action = %q, want %q (refusal %+v)", rep.Action, ActionSwapped, rep.Refusal)
+			}
+			if got, _ := os.ReadFile(target); string(got) != string(newBin) {
+				t.Fatalf("target holds %q, want the new binary", got)
+			}
+			if rep.Ownership != OwnedByRunningExecutable {
+				t.Errorf("ownership = %q, want %q — the receipt must say which proof carried it", rep.Ownership, OwnedByRunningExecutable)
+			}
+			sum := sha256.Sum256(oldBin)
+			if rep.OldDigest != hex.EncodeToString(sum[:]) {
+				t.Errorf("old_digest = %q, want the replaced file's digest %s", rep.OldDigest, hex.EncodeToString(sum[:]))
+			}
+			if rep.OldVersion != "" {
+				t.Errorf("old_version = %q, want empty: no published release names those bytes, and inventing a version would be a claim abcd cannot make", rep.OldVersion)
+			}
+		})
+	}
+}
+
+// TestApplyProceedsOnTheRecordedPathCopy is the second forge-independent
+// proof, and the one that carries the case the running executable cannot: the
+// verb invoked from somewhere else (a plugin-root binary, a source checkout)
+// acting on the PATH copy. ~/.abcd/path-entry — written by `ahoy install` and
+// by both README install one-liners — names the file and its digest, so abcd
+// installed it and may replace it, whatever the forge still serves.
+func TestApplyProceedsOnTheRecordedPathCopy(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("the-deleted-release-bytes")
+	newBin := []byte("new-binary-bytes")
+	o.addRelease("v0.7.0", testAssetName, newBin)
+	target := writeTarget(t, oldBin)
+	// The running executable is deliberately something else entirely.
+	pinRunningExecutable(t, filepath.Join(t.TempDir(), "some-other-abcd"))
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(oldBin)
+	rec := "path=" + target + "\nbinary_sha256=" + hex.EncodeToString(sum[:]) + "\n"
+	if err := os.WriteFile(filepath.Join(home, ".abcd", "path-entry"), []byte(rec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.7.0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Action != ActionSwapped {
+		t.Fatalf("action = %q, want %q (refusal %+v)", rep.Action, ActionSwapped, rep.Refusal)
+	}
+	if rep.Ownership != OwnedByPathEntry {
+		t.Errorf("ownership = %q, want %q", rep.Ownership, OwnedByPathEntry)
+	}
+	if rep.OldDigest != hex.EncodeToString(sum[:]) {
+		t.Errorf("old_digest = %q, want the replaced file's digest", rep.OldDigest)
+	}
+}
+
+// TestApplyRefusalNamesTheWayBackIn covers the other half of the report: a file
+// that is neither published, nor the running binary, nor recorded, is still
+// refused — but the remedy must never send the user to delete their only abcd
+// without naming how to get another. The old text ("remove it and reinstall")
+// named no command, and once the file is gone `abcd update` cannot run at all.
+func TestApplyRefusalNamesTheWayBackIn(t *testing.T) {
+	o := newTestOrigin(t)
+	o.addRelease("v0.7.0", testAssetName, []byte("new-binary-bytes"))
+	target := writeTarget(t, []byte("some-random-binary"))
+	pinRunningExecutable(t, filepath.Join(t.TempDir(), "some-other-abcd"))
+	t.Setenv("HOME", t.TempDir())
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.7.0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Action != ActionRefused || rep.Refusal == nil {
+		t.Fatalf("a file abcd cannot prove is its own must still refuse: %+v", rep)
+	}
+	if rep.Refusal.Shape != "unprovenanced-file" {
+		t.Errorf("shape = %q, want unprovenanced-file", rep.Refusal.Shape)
+	}
+	remedy := rep.Refusal.Remedy
+	if !strings.Contains(remedy, "cannot run once this file is gone") {
+		t.Errorf("the remedy must say the verb dies with the file, so removing it is not a first step: %q", remedy)
+	}
+	if !strings.Contains(remedy, releaseOrigin) {
+		t.Errorf("the remedy must name where a replacement comes from: %q", remedy)
+	}
+	if !strings.Contains(remedy, "ahoy install") {
+		t.Errorf("the remedy must name the plugin-side reinstall too: %q", remedy)
+	}
+	// The detail must name every proof that was tried, so the reader can tell
+	// a deleted release apart from a genuinely foreign occupant.
+	for _, want := range []string{"no published release", "not the binary running", "path-entry"} {
+		if !strings.Contains(rep.Refusal.Detail, want) {
+			t.Errorf("the refusal detail does not name %q: %q", want, rep.Refusal.Detail)
+		}
+	}
+}
+
+// TestApplyRecordsManifestOwnershipOnAnOrdinarySwap keeps the ordinary path
+// honest: when the digest IS published, that is the proof reported, and no
+// old_digest is emitted — the receipt names a version instead.
+func TestApplyRecordsManifestOwnershipOnAnOrdinarySwap(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, []byte("new-binary-bytes"))
+	target := writeTarget(t, oldBin)
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Ownership != OwnedByManifest {
+		t.Errorf("ownership = %q, want %q", rep.Ownership, OwnedByManifest)
+	}
+	if rep.OldVersion != "v0.6.1" || rep.OldDigest != "" {
+		t.Errorf("a provable old build is reported by version, not by digest: %+v", rep)
+	}
+}

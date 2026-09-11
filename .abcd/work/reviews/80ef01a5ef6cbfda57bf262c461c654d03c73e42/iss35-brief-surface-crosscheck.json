@@ -1,0 +1,903 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "80ef01a5ef6cbfda57bf262c461c654d03c73e42"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-09-09T20:05:00Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:cfa8471246429ec638ca26e6f064c55b48e0ddae4e879cc9278293fbc21558ce",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:2e94cc3c144cf7130bb2755e92e5705dcbad044d0fd13a84d180a00662e3648c",
+    "briefVersion": "0.8.0"
+  },
+  "categories": {
+    "false-claim": 63,
+    "undocumented-surface": 26,
+    "fictional-layout": 4,
+    "stale-count": 7,
+    "criterion-violation": 9
+  },
+  "failing": [
+    {
+      "id": "b-1",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:299: claim: The gap-category table gives \"history-store directories\" as an example of the `safe-autocreate` category (\"the repo skeleton, history-store directories, the name-guard artefacts\"), and the table's preamble states \"The category is what the apply pass asks about\". / reality: No shipped gap in the `safe-autocreate` category concerns the history store. The complete set of SafeAutocreate gap ids is `skeleton.config_missing`, `rules.missing`, `install_meta.missing`, `version.upgrade`, `attribution.hook_missing` and the `banlist.*` scaffolding gaps. Both history gaps ship as UserState: `internal/core/ahoy/detect.go:303` `ID: \"history.bootstrap_missing\", Category: UserState` and `detect.go:319` `ID: \"history.meta_missing\", Category: UserState` \u2014 the row the brief assigns them to in the table is the `user-state` row, whose stated apply behaviour is the opposite (\"guided; never auto-edit user-scope state\").",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-2",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:411: claim: \"Ownership is the same three-shape predicate detection classifies with, and only one of the three is a pointer at all: the dev shim; the owned copy ... a regular file pointing at nothing; and lastly a legacy symlink whose target is this plugin's binary.\" \u2014 the sentence names the dev shim as the one pointer. / reality: The dev shim is not a pointer: `internal/core/ahoy/store.go` classifies it by reading the file's bytes (`isDevShimFile` \u2192 `bytes.HasPrefix(data, devShimPrefix)`), and it is only reached after the symlink branch has been ruled out, so a dev shim is a regular executable script. The one shape that is a pointer is `binTargetOwnedSymlink` (`store.go:456`, \"our LEGACY symlink -> the pinned binary\"), which the sentence lists last.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-3",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:134: claim: The repo-scope half of the \"What abcd manages\" tree gives the marker block exactly one home: `CLAUDE.md   marker block (stands alone)`. / reality: The marker block's host is configurable and `AGENTS.md` is a first-class target the tree never names. `abcd ahoy install --docs-target` accepts `claude_md | agents_md | both | skip` (verified in `--help`), and `internal/core/ahoy/marker.go:313-327` `markerTargets` maps those to `CLAUDE.md`, `AGENTS.md`, both, or none \u2014 with both files checked during detection when the value is absent. Verified empirically: a folder holding only an `AGENTS.md` with a BEGIN/END ABCD fence and no `.git/` classifies as `managed-repo`, exactly as the `CLAUDE.md` case does.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-4",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/02-disembark.md:209-211: claim: \"(The fingerprint is asserted for `probe`, `plan` and `pack`. `review` takes and reads a source repo too, and no test fingerprints that one yet: the rule covers it, the evidence does not.)\" \u2014 asserts the shipped `review` sub-verb READS the source repo, and frames the missing fingerprint test as a real evidence gap. / reality: `ReviewLifeboat` never reads the source repo's content. internal/core/lifeboat/synthesis_review.go:92-100 resolves `sourceRepo` to an absolute path, gates it with `fsutil.IsRealDir`, and takes only `filepath.Base` for the attestation's `source_name`; the file header (lines 11-14) states the source repo's \"CONTENT is never read (it is gated as a real dir only, so the audit stays deterministic and safe even when the source is gone)\". commands/disembark.md:211-213 documents the same: \"The `<source-repo>` argument is **required**; its content is never read.\" The brief's own plugin surface and the binary agree against the brief chapter.",
+      "disposition": "deferred",
+      "note": "REGRESSION THIS RELEASE INTRODUCED, and the only finding in this receipt that is fixed rather than deferred. The round-2 fix carried a false half of its own source finding: `disembark review` never reads the source repo's content. Corrected in the receipts commit; see this receipt's _reviewProvenance."
+    },
+    {
+      "id": "b-5",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/02-disembark.md:162-165: claim: \u00a75 enumerates everything the synthesis sub-verbs add after a pack: \"`press-release` writes `press-release.{json,md}`, `principles` writes `principles.{json,md}`, `review` writes the verdict artefact, and `graveyard` validates and writes the lesson JSON.\" The \u00a75 output tree (lines 134-153) shows `graveyard/` holding only `abandoned.json` and `archaeology.json`. / reality: `disembark graveyard` also writes a per-lesson file tree `graveyard/low-confidence/<id>.json` for lessons the payload marks low-confidence \u2014 internal/core/lifeboat/graveyard_lessons.go:169-183 (`rel := path.Join(\"graveyard\", \"low-confidence\", l.ID+\".json\")`), surfaced in the verb's own render at graveyard_lessons.go:194 (\"low-confidence: %d  (graveyard/low-confidence/)\"). Its only documented home is the plugin command page, commands/disembark.md:130; no brief chapter names it.",
+      "disposition": "deferred",
+      "note": "REGRESSION THIS RELEASE INTRODUCED, and the only finding in this receipt that is fixed rather than deferred. The round-2 fix carried a false half of its own source finding: `disembark review` never reads the source repo's content. Corrected in the receipts commit; see this receipt's _reviewProvenance."
+    },
+    {
+      "id": "b-6",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/02-disembark.md:164: claim: \"`review` writes the verdict artefact\" \u2014 named without a path, while the same sentence gives exact filenames for press-release and principles, and the \u00a75 output tree lists no `review/` directory. / reality: The verdict artefact lands at `review/review-<manifest12>.json` plus `review/review-<manifest12>.md` \u2014 internal/core/lifeboat/synthesis_review.go:53 (`reviewArtefactDir = \"review\"`) and :163-168. The directory was renamed from the pre-spc-30 `audit/` (synthesis_review.go:54, and `removeLegacyReviewArtefact` at :77-83 sweeps the old pair), so the path is a moved surface with no brief record of either name. Documented only at commands/disembark.md:222-224.",
+      "disposition": "deferred",
+      "note": "REGRESSION THIS RELEASE INTRODUCED, and the only finding in this receipt that is fixed rather than deferred. The round-2 fix carried a false half of its own source finding: `disembark review` never reads the source repo's content. Corrected in the receipts commit; see this receipt's _reviewProvenance."
+    },
+    {
+      "id": "b-7",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/02-disembark.md:87-89, 233-236: claim: The \u00a71 architecture box states the destination safety gate in full as \"refuse unless <dest> is absent, empty, or carries a parseable _provenance.json\", and the \u00a77 criterion restates only that three-way test (\"a destination that is neither absent, nor an empty directory, nor one carrying a parseable `_provenance.json`\"). / reality: `destinationGate` (internal/core/lifeboat/pack.go:128-160) enforces three further refusals that no brief chapter records: a symlinked destination (pack.go:131), a destination anywhere inside a `.git` directory (pack.go:148), and a destination that overlaps the source tree \u2014 equal to, an ancestor of, or inside it \u2014 checked on symlink-resolved paths (pack.go:153). A destination that is absent and would therefore pass the documented rule is still refused by all three.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-8",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/01-press-release.md:31: claim: An unmarked acceptance criterion that explicitly cites `04-surfaces/03-embark.md \u00a7 3` as its authority: \"when `/abcd:embark from <dest>` runs, then the user is presented with the press-release interview as the first interaction, the amended press release becomes the new repo's `.abcd/development/brief/README.md`, and all canonical-location files (specs, ADRs, memory, docs, terminology, principles) land at the locations specified in [04-surfaces/03-embark.md \u00a7 3]\". / reality: None of it is true of the shipped verb, and 03-embark.md \u00a7 3 says the opposite. Verified by running `bin/abcd-darwin-arm64 embark from <lb> <tgt>`: the run is a non-interactive deterministic Go pass (03-embark.md:76-78 \"No interactive scaffolder and no model sit in the write path\"), there is no press-release interview and no prompt of any kind; nothing is written to `.abcd/development/brief/README.md` (the target tree after a from contained exactly `.abcd/development/decisions/adrs/0001-*.md`, `.abcd/development/intents/drafts/itd-1-*.md`, `.abcd/work/issues/open/iss-1-*.md`, `CLAUDE.md`); and `embarkFamilies` in internal/core/lifeboat/embark_types.go is exactly four families (adrs, issues, intents, specs) \u2014 there is no memory, docs, terminology or principles embark family. `principles.*` is in `reportOnlyPrefixes` (never written), and a lifeboat carries no terminology or memory content at all (grep for \"terminology\" across internal/core/lifeboat returns nothing). 03-embark.md:96-97 states outright \"Terminology, docs and the memory store are not embark families; they do not travel.\" The criterion is not marked staged, probe-only or later-phase.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-9",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/03-embark.md:227: claim: \u00a7 7 attributes the voyage store's relocation to \"(adr-35, superseding adr-4's in-tree location)\", citing adr-4 as an extant decision record. / reality: No adr-4 exists in the tree: `.abcd/development/decisions/adrs/` has no `0004-*.md` (the numbering jumps 0003 \u2192 0005), and `find .abcd/development/decisions -name '0004*'` returns nothing. adr-4 was pruned on supersession, but `.abcd/development/decisions/adrs/README.md:48` states a superseded ADR is pruned \"unless later records still cite it, in which case it is retained\" \u2014 and five brief locations still cite it (03-embark.md:227, 05-internals/03-configuration.md:180, glossary/core/disembark.md:29, glossary/core/voyage.md:22, 02-constraints/04-naming.md:218 and :221, 02-constraints/01-platform.md:17 and :19, 02-constraints/03-invariants.md:19). Every other record handle in 03-embark.md (adr-33, adr-35, adr-40, itd-3, itd-23, spc-27, spc-30) resolves to a real file.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-10",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:194-196: claim: The bump-tier table states the mapping flatly: Major = any shipped `impact: breaking`; Minor = no breaking plus at least one `impact: additive`; Patch = only `impact: fix`. Stated as shipped behaviour (adr-31/itd-73 \"ships with the release cut\"), with no pre-stable qualification on the table. / reality: `changelog.DeriveNext` (internal/core/changelog/version.go:38-60) applies a pre-stable branch while `prev.Major == 0`: breaking bumps MINOR, additive bumps PATCH, fix bumps PATCH. The tier string is then derived from the version delta, not from the impact (`launch.BumpTier`, internal/core/launch/semver.go:70-80, called at internal/surface/cli/ship.go:78). At the repo's current 0.8.0 no cut can produce tier `major`, and additive is indistinguishable from fix \u2014 both render `patch`. The table's mapping has never held for any cut this project has made.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-11",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:196: claim: Patch tier is triggered by \"Only `impact: fix` intents, **or a release with no intent-tied change**.\" / reality: A cut whose records drive no bump derives no version at all: `DeriveNext` returns `bumped=false` for a non-bump-driving impact, and internal/core/release/emit.go:213-219 then appends the `empty-cut` refusal \u2014 \"nothing user-facing shipped since <tag> \u2014 every record in the cut is internal (or the cut is empty), so there is no version to derive and no release to make\". `sealed()` clears the version and `abcd launch ship` exits 1. This also contradicts the same document's own refusal table at line 219 (`empty-cut`). The fourth impact value `internal` (internal/core/changelog/impact.go:34-42), which lands a cut in exactly this state, is absent from the tier table.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-12",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:200-201: claim: \"A change not tied to any intent falls back to conventional-commit derivation.\" / reality: No conventional-commit derivation exists in the binary. `grep -rn conventional internal/ --include=*.go` hits only lifeboat source-convention code (README/ADR directory spellings), nothing in `internal/core/changelog/` or `internal/core/release/`. `changelog.Derive` (internal/core/changelog/derive.go:89-128) takes its impact solely from `ShippedSince`, whose `recordPaths` are two fixed pathspecs (internal/core/changelog/shipped.go:19-28); a change tied to no record contributes nothing and there is no commit-message fallback path to fall back to.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-13",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:199-200: claim: \"At release, `ship` gathers the intents shipped since the previous release and takes the highest-severity impact\" \u2014 and the tier table's rows speak only of \"intents\". / reality: `recordPaths` is `{\".abcd/development/intents/shipped\", \".abcd/work/issues/resolved\"}` (internal/core/changelog/shipped.go:19-28). Resolved ISSUE records carry an impact and drive the derived version exactly as shipped intents do \u2014 a resolved issue graded `additive` bumps the cut on its own. The record family that participates in versioning is documented nowhere in this chapter.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-14",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:254-260: claim: \"Every render of `abcd changelog` and `abcd launch ship` carries a findings line (the verdict, the count of unfixed findings and the anchor they were measured from, and the count deferred), then one line per waiver naming the record, its severity and its stated reason.\" / reality: When the derivation refuses before the guard runs, the findings content is never computed. Verified on this tree: `abcd changelog` and `abcd launch ship` both render `findings:   (not run)` (and `guard:      (not run)`) under a `release-in-flight` refusal \u2014 no verdict, no count, no anchor, no deferred count. The document itself names `release-in-flight` at line 221 as the refusal \"an operator meets most often outside a release window\", so the state in which the findings line is empty is the common one.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-15",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:377-379: claim: Acceptance: \"**Given** at least one additive intent and no breaking intent, **when** `ship` runs, **then** the tier is minor... **Given** any breaking intent, the tier is major.\" Not marked staged, probe-only or later-phase. / reality: Unreachable on any 0.y.z base: `DeriveNext`'s pre-stable branch maps additive to a patch bump and breaking to a minor bump, and `BumpTier` reads the delta, so the shipped verb renders tier `patch` for the additive case and `minor` for the breaking case. The criterion can only be satisfied after a hand-declared 1.0.0.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-16",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/04-launch.md:62-65: claim: \"The workflows ship from a single embedded template that abcd's own release workflows are regenerated from, proved byte-exact by a test.\" / reality: internal/core/launch/scaffold/render.go:34 embeds three templates \u2014 `templates/release.yml.tmpl`, `templates/auto-release.yml.tmpl` and `templates/runbook.md.tmpl` \u2014 and the two workflows are rendered from two distinct templates (render.go:95-103). The byte-exact self-scaffold parity test exists (scaffold_test.go:28-43), but it compares two workflow pairs, not one template.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-17",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:405 (also :86, :412, :413): claim: Bundle/surface-history invariants carry numbered lint codes `IL011` and `IL012`, cited as \"per `05-internals/06-lint.md`\", with :405 framing \"The `IL0xx` codes per [05-internals/06-lint.md] are plan-time design\". / reality: .abcd/development/brief/05-internals/06-lint.md (72 lines) contains no occurrence of IL011, IL012 or any `IL0xx` code, and states the opposite outright: \"The engine carries no numbered code catalogue: rules are named, not numbered, and their definitions live in the two JSON configs above.\" The shipped engine confirms it \u2014 every RuleID in internal/core/lint/*.go is a name (intent_lifecycle, spec_id_unique, surface_coverage, \u2026), and .abcd/record-lint.json's 25 armed rules are all named. The citation resolves to a document that defines nothing it is cited for.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-18",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:357 and :364: claim: Frontmatter fields are tied to numbered lint codes: `contexts` is \"used by GL003 to resolve cross-context ambiguity\"; `prd_grandfathered` \"Suppresses GR002 and GL005 as info-only (not blocker)\". Section 5's preamble (:353) sources the schema design to `05-internals/06-lint.md`. / reality: 06-lint.md defines no GL003, GL005 or GR002 \u2014 it defines no numbered codes at all. No such codes exist in internal/core/lint or in .abcd/record-lint.json. The cited home for these codes documents a deliberately name-only rule catalogue.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-19",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:513: claim: \"the mechanical-half lint categories \u2014 schema/state contradictions, reference rot, acknowledgement gaps \u2014 were originally planned as `internal/core/lint --cross-doc` codes `XD002`/`XD006`/`XD007` per `05-internals/06-lint.md`\". / reality: 06-lint.md contains no XD002, XD006 or XD007, and no `--cross-doc` flag or mode. `abcd docs lint --help` exposes no `--cross-doc` flag either. The cited section documents exactly two armed gates (record-currency via cmd/record-lint, docs-currency via abcd docs lint) with named rules only.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-20",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:353: claim: \"schema: `intent.schema.json`, part of the plan-time intent-lint design per [`05-internals/06-lint.md`]\". / reality: No file named intent.schema.json exists anywhere in the tree (nor any *.schema.json at all), and 06-lint.md never mentions a schema file or a plan-time intent-lint tier. The page's own \u00a71 (:84) already states \"the tree holds no intent schema file\", so the \u00a75 citation points at a design document that does not carry it.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-21",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:353, :363, :382, :384, :396: claim: The later-phase PRD artefact lives at `.abcd/intents/<itd-N>/prd.md`, with a durable attempt journal at `.abcd/intents/<itd-N>/.planning-attempt.json`, described as \"a per-intent path, not under the ephemeral logs tier\". / reality: `.abcd/intents/` does not exist and is not one of the three tiers the repository declares (`.abcd/development/` durable, `.abcd/work/` shared working, `.abcd/.work.local/` local ephemeral). `.abcd/` holds only config/, development/, work/, and the JSON gate configs. The same page (:9) states intents live at `.abcd/development/intents/`, so the sidecar root named here belongs to no declared tier. (The row is later-phase, but the path contradicts the record's own committed layout independently of phase.)",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-22",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:528: claim: Concurrency contract: \"`.abcd/coordination/shape.lock`  (file lock via flock(2))\". / reality: No `.abcd/coordination/` directory exists, and no shipped code references it. As with `.abcd/intents/`, the path sits in no declared tier of the three-tier `.abcd/` layout. (Later-phase surface; reported for the layout claim, not the verb.)",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-23",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:176-183: claim: The lifecycle diagram enumerates what the quoted-text create seeds: \"frontmatter (kind: null, suggested_kind: null, spec_id: null, reclassification_history: [], builds_on: [], severity: minor) and a body carrying the seed text under `## Why This Matters`, with a placeholder `## Acceptance Criteria` section\". / reality: internal/core/intent/create.go seedDraft writes ten frontmatter keys, not six: it also writes `id`, `slug`, `origin` and `production_mode` (plus conditional `promoted_from` and `impact`), and the seeded body also carries `## Press Release`, `## Mechanism` (MechanismPrompt), `## Scope Conditions` (ScopeConditionsPrompt), `## Open Questions` and `## Audit Notes`. \u00a73 of the same page states the correct figure (\"The ten keys below are the canonical seed skeleton the quoted-text create writes\"), so the \u00a71 enumeration is the stale one \u2014 it omits the itd-178 disclosure pair and both claim-gradient prompt sections that the shipped create emits.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-24",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:36-40 (and the acceptance bullet at :251-253): claim: Bare `/abcd:capture` renders \"the open, resolved and wontfix counts, the most recent open issues, and a three-way routing hint\" \u2014 three elements, nothing else. / reality: The shipped bare render carries a whole outstanding-readings block the chapter never mentions: `outstanding <rdi> (run <rdg>) \u2014 no disposition`, `unadmitted`, `contested`, `tangled`, `illegible`, `unread`, and `held <rdi> (<dsp>) \u2014 exits when: \u2026` (internal/surface/cli/cli.go:2730-2772). `abcd capture --json` confirms the extra surface with a top-level `reading_outstanding: {undispositioned, open_holds, \u2026}` object. The `unadmitted` line also contradicts \u00a76's \"what is armed today is the committed-tree gate\" \u2014 bare capture reports unanswered admissions too.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-25",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:42-44 (and the acceptance bullet at :224-226): claim: \"`/abcd:capture \"<text>\"` is the fast path: it appends a structured entry with an auto-assigned `iss-N` and writes it to `open/`\", and \"Given an abcd-installed repo, when the user runs `/abcd:capture \"<text>\"`, then a new file exists under `.abcd/work/issues/open/`\". No refusal path for the text argument is stated. / reality: A single-word text is never filed. `abcd capture frobnicate` exits 2 with \"unknown capture subcommand \\\"frobnicate\\\" (nothing captured \u2014 a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)\", and a near-miss token gets a did-you-mean refusal (`abcd capture resovle iss-N` \u2192 exit 2, \"did you mean \\\"resolve\\\"?\"). The guard is at internal/surface/cli/cli.go:2776-2790 (iss-29, iss-2609091647589392). The acceptance criterion as written is false for any one-word `<text>`.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-26",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:62: claim: Of `--open` / `--resolved` / `--wontfix` / `--all`: \"each must appear immediately adjacent to `list`.\" / reality: No adjacency is required or enforced. `abcd capture list --json --open` succeeds with `--json` intervening (exit 0, JSON issue list). The only real constraint is that the filter flag belongs to the `list` subcommand rather than to `capture` \u2014 `abcd capture --open list` fails with \"unknown flag: --open\", which is ordinary cobra flag scoping, not adjacency.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-27",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:95-97: claim: For `wontfix`: \"Grounds are optional here and override the recorded text only: the token stays `declined`, because a wontfix **is** that non-action.\" Reads as: whatever token is supplied, the recorded token is coerced to `declined`. / reality: A non-`declined` token is refused outright, not coerced. `abcd capture wontfix <iss-N> \"<reason>\" --grounds \"pursued: \u2026\"` exits 2 with \"wontfix: grounds refused: grounds must be `declined: <text>` (a wontfix IS the non-action that value names), got \\\"pursued\\\"; nothing written\", and the issue stays in `open/`. The chapter states every other grounds refusal explicitly (promote's reading-route refusal, the substance floors) but not this one.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-28",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:10-11 (ledger layout) and :247-250 (list acceptance): claim: \"The ledger lives in the repo at `.abcd/work/issues/`, folder-as-status (`open/`, `resolved/`, `wontfix/`)\", and a list's output \"carries id, state, severity and slug in derived-priority order\". Only `dispositions/` is named elsewhere (:238). / reality: The ledger root holds four sibling families beyond the three status folders: `issueschema.LedgerDirs()` = StatusDirs + `readings/`, `dispositions/`, `admissions/`, `surprises/` (internal/core/issueschema/ledgerdirs.go:26-30; the constants at reading.go:43,50 and admission.go:52,59). `readings/<rdg-N>/` and `admissions/<rdg-N>/` are written/read at capture/reading.go:203, capture/itemfate.go:82 and lint/readingoutstanding.go:427 \u2014 none of these three directories is named anywhere in the chapter. Both `capture list` and the bare board additionally render a `skipped <path>: <error>` roster for records the reader refused (cli.go:2716-2723), which neither the layout section nor the list acceptance criterion mentions.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-29",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/07-memory.md:86: claim: Of `memory lint`: \"It mutates no memory-store state, and its exit code is the decision\" \u2014 stated flatly, one clause after naming the coverage-index rebuild. / reality: The rebuilt index is memory-store state: `internal/core/memory/provenance.go:49` puts `CoverageIndexPath` at `.abcd/memory/.coverage_index.json`, inside the store the same page defines at `.abcd/memory/` (line 7), and `internal/core/memory/coverage.go:550 writeCoverageIndex` writes it during the lint's corpus pass. The source itself carries the qualification the brief drops \u2014 `lint.go:19` and the `Lint` doc comment both read \"mutates no memory-store state (only the regenerable coverage index + report)\". As written the brief sentence is literally false; the shipped guarantee is \"no state other than the regenerable index and the run log\".",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-30",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/07-memory.md:56: claim: The ingest paragraph (lines 56-62) and the `--keep-original` paragraph (lines 72-77) describe the flag as opting into keeping the original under `.abcd/memory/sources/`, and say nothing about ingest's exit code. The chapter documents exit contracts elsewhere (line 43 \"exits **2**\"; line 88 \"blockers exit non-zero\"), so the omission sits in a class of claim the page otherwise makes. / reality: `internal/surface/cli/cli.go:3659-3665`: when `--keep-original` was requested and the copy failed, `memory ingest` returns `&exitError{Code: 1}` even though the ingest itself succeeded and its pages were durably written \u2014 a shipped, scriptable partial-success exit code with no documented home in the brief (the plugin page `commands/memory.md` does not carry it either).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-31",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:15-19: claim: \"Two read-only forms, and no third.\" \u2014 \"Bare `abcd` renders a four-field snapshot of the current directory: the directory itself, whether it is a git repo, whether an abcd record is present, and which of the `.abcd/` work tiers exist.\" Nothing else is attributed to the bare form. / reality: On an interactive TTY the shipped bare `abcd` emits a full colour banner BEFORE the four-field snapshot: half-block mascot art, the version string (`abcd (dev build)`), the tagline \"For people who know what they want to build and need help shipping it.\", and two run-hint lines (`run abcd --help to explore \u00b7 abcd ahoy to set up`). Verified with `script -q /dev/null ./bin/abcd-darwin-arm64`; wired at internal/surface/cli/cli.go:236 (`writeBanner`) behind `bannerTTY`, implemented in internal/surface/cli/banner.go. The banner has no documented home anywhere in the brief's surface chapters \u2014 grepping the whole brief for \"banner\" yields only 04-surfaces/11-history.md:85 (an unrelated hook error banner), 04-surfaces/19-identity.md:5 (a passing mention of \"the binary's banner\" with no surface description), and 06-delivery/03-out-of-scope.md:88 (itd-134, a split-out managed-repo generator). This chapter owns the top-level `abcd` surface, so the banner is an undocumented shipped surface.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-32",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:52-54: claim: \"The shipped status path reads `.git`, `.abcd/development` and the three work tiers, and nothing else\". / reality: The shipped bare invocation also reads build-time-baked identity (title/version/tagline) and resolves the colour ladder from the environment before rendering: `writeBanner(cmd.OutOrStdout(), noColor, os.Getenv)` at internal/surface/cli/cli.go:236, with the ladder `--no-color > NO_COLOR > TERM` in internal/term/term.go:30. So the bare path reads more than the four filesystem probes the sentence enumerates.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-33",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:15-20: claim: The chapter's flag surface for the top-level command is `--json` alone (\"The plugin command invokes it as `abcd --json`\"), under \"Two read-only forms, and no third.\" / reality: `abcd --help` lists a third root flag, `--no-color` (\"render the banner without color\"), declared root-locally at internal/surface/cli/cli.go:253 and therefore live only on the bare invocation this chapter owns. It is unmentioned here; its only brief coverage is as an emission invariant at .abcd/development/brief/02-constraints/03-invariants.md:39, not as a surface flag of `abcd`.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-34",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:24-26: claim: Record-id dispatch is listed under \"What ships today\" and sourced to \"(spc-26, itd-121)\". / reality: The behaviour does ship (verified: `./bin/abcd-darwin-arm64 itd-20` renders id/family/status/path/links/next-moves and exits 0), but itd-121 is still in `.abcd/development/intents/planned/` and spc-26 still in `.abcd/development/specs/open/` \u2014 the delivering change never closed the spec, so the shipped surface's own records still read as unshipped work.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-35",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:15-19: claim: Implied by the chapter's account of the bare form: the shipped bare render carries nothing beyond the snapshot, i.e. no banner work has landed. / reality: The banner is shipped code (internal/surface/cli/banner.go, wired at cli.go:236, covered by internal/surface/cli/banner_test.go) yet its intent itd-112 sits in `.abcd/development/intents/planned/` and its spec spc-41 in `.abcd/development/specs/open/` \u2014 same unclosed-on-delivery shape, and the reason no surface chapter describes the banner.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-36",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/11-history.md:40-49 (the `capture` bullet): claim: The bullet is the chapter's full account of how `history capture` accepts and refuses input: it \"redacts and stores a raw transcript read from a file or stdin\", is \"fail-closed on redaction and idempotent on the (content hash, session id, kind) triple\", and takes `--session` and `--kind`. Two shipped refusal paths on the file operand are named nowhere: a size cap, and a regular-file requirement. / reality: `abcd history capture <file>` refuses whole on a 64 MiB cap and on a non-regular operand. internal/surface/cli/cli.go:3857 reads the operand through `readSourceCapped(cmd, src, maxTranscriptBytes)`; `maxTranscriptBytes = 64 << 20` (cli.go:1405), and `readGuardedOperand` (cli.go:993-1006) maps `fsutil.ErrTooBig` to \"<spec> exceeds the 67108864-byte cap\" and `fsutil.ErrNotRegular`/`ELOOP` to \"<spec> is not a readable regular file (a symlink or non-regular operand is refused)\". The refuse-whole (never truncate) behaviour is deliberate and commented at cli.go:3814-3817 as spc-4's invariant, because a severed prefix would be stored under a sha256 idempotency key computed over the prefix \u2014 i.e. it bears directly on the idempotency claim the bullet does make. The cap appears in no brief chapter and in no plugin command page: `grep -rn \"64 MiB\\|maxTranscriptBytes\" .abcd/development/brief/ commands/ docs/` returns nothing.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-37",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/11-history.md:79-83: claim: Enumerates what the session-start notice channel carries: \"a transcript backlog or a drain that failed, a plugin binary out of step with the surface it was installed from, a binary built behind the checkout it was built from, and a repo last set up under a different version\" \u2014 four notice kinds, presented as the channel's contents. / reality: `abcd hook session-start` emits two further notice kinds not in the list (internal/surface/cli/cli.go:1293-1301): the store-resolution notes returned by `history.Resolve` (a corpus migrated off the legacy location, and an opt-in `~/.abcd/local-transcript-roots` declaration that was present but not honoured), and \u2014 when Resolve itself fails \u2014 \"abcd: the transcript store could not be opened (\u2026); this session will not be captured.\" The chapter documents the migration's own stderr report separately (line 149) and the ignored-declaration note (line 138-140), but neither is attributed to this hook, and the store-cannot-be-opened notice appears nowhere in the chapter at all. Six notice kinds ship where the chapter enumerates four.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-38",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/12-version.md:19-21 (and 34-40): claim: \"What it is not is a board for the repository: the state it reports is the binary's.\" The chapter describes `vintage:`/`staleness:` purely as the binary against \"its reference\", and never says which reference or that the working directory selects it. / reality: `internal/surface/cli/version.go` calls `ahoy.Vintage(cwd)`, and `internal/core/ahoy/vintage.go:vintageFrom` picks the reference FROM cwd: the source-checkout tip when cwd is abcd's own checkout (Source \"checkout tip\"), otherwise the plugin-cache manifest pin (Source \"plugin manifest pin\"). Empirically, one and the same binary prints `vintage: 4701cc5f99cc` / `staleness: up to date` run from the repo root and `vintage: dev` / `staleness: unknown` run from a directory outside the checkout. The cwd dependence, and the two named references it chooses between, appear nowhere in the brief (`grep -rn -i \"checkout tip|plugin manifest pin\" .abcd/development/brief/` returns nothing).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-39",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/12-version.md:15-23: claim: The chapter enumerates the render exactly \u2014 plain: the version line, `install:` (conditional), `vintage:`, `staleness:`; JSON: \"`name`, `version`, `vintage` and `staleness`, with `install_mode` present only when it resolves and a `check` object present only when `--check` was passed\". The `check` object's own fields are never named. / reality: `abcd version --check` prints three further labelled plain lines the chapter names nowhere \u2014 `latest:    v0.7.1 (source: github.com/intentdriven/abcd releases)`, `check:     <verdict>`, and `next:      <command>` \u2014 and the JSON `check` object carries `latest`, `source`, `verdict` and `next_step` (internal/surface/cli/version.go, type checkResult). The only documented home for these field names is the plugin page `commands/version.md`, outside the pinned brief list.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-40",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/12-version.md:51-53: claim: \"So an unknown command or flag carries a second line, derived from what the binary can prove on disk alone\" \u2014 stated for unknown flags without qualification, with the only escape being \"when neither [evidence source] says anything\". / reality: Unknown SHORTHAND flags are categorically excluded, regardless of evidence: `unknownFlagRe` in internal/surface/cli/staleusage.go:58 matches only `--long` spellings and the comment states the shorthand form \"is left alone\". Verified against a fixture plugin root whose command page documents the verb: `abcd lint --frob` yields the second line (\"this binary predates the `--frob` flag of `abcd lint` its plugin surface documents \u2014 take a plugin update in the host\u2026\"), while `abcd lint -Z` prints only cobra's `unknown shorthand flag: 'Z' in -Z` with no second line.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-41",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/14-ingest.md:84: claim: \"The plugin page said otherwise until v0.8.0 and now says this.\" \u2014 the chapter attributes the removal of the `abcd-ingest` one-argument quick path from `commands/ingest.md` to a released v0.8.0. / reality: No v0.8.0 release exists. The newest tag is v0.7.1, both locally (`git tag --sort=-v:refname`) and on the remote (`git ls-remote --tags origin`). The commit that actually corrected `commands/ingest.md` is 095b7977 (\"docs: correct the design record where it overstates the shipped surface (batch F)\", 2026-09-09 20:21), which landed AFTER the v0.8.0 changelog section was composed by 6e5f0bdf (\"chore: roll the changelog for v0.8.0\", 2026-09-09 19:48); that dated `## [0.8.0] - 2026-09-09` section carries no entry for the ingest quick-path correction. The version boundary the chapter cites is therefore not one a reader can verify against any cut release.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-42",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:52: claim: \"In one run it ... writes the repo's settings file with its visibility, oracle backend and scan depth\" \u2014 scan depth listed as one of three fields a single `ahoy install` run writes into the settings file, and the docs target is not listed among them. / reality: internal/core/ahoy/apply.go:518-522 always writes `repo.visibility`, `docs.target` and `oracle.backend`, but writes `scan.deep` only when `ic.ScanDeep != nil` \u2014 i.e. only when `--scan-deep` is passed, a value is already stored, or the private-repo + trufflehog-on-PATH prompt path fires (apply.go:493-505). A scratch-repo `ahoy dry-run --json` emits config gaps `config.docs_target_missing`, `config.oracle_backend_missing`, `config.visibility_missing` and no scan-deep gap at all; this repo's own `.abcd/config.json` carries `docs`, `oracle`, `repo` and no `scan` key. So a default run writes visibility, docs target and oracle backend \u2014 not scan depth.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-43",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:115: claim: Acceptance: the adopted `AGENTS.md` carries \"the marked nameless working-conventions section\". / reality: The chapter's own Boundaries (lines 93-95) concedes the block \"is no longer strictly nameless, because the three-tier layout it prescribes lives under `.abcd/`, so the tool's name is in every path it states\", and the shipped commands/prepare-this-repo.md still instructs the opposite as its rule (\"The section is **self-contained and nameless**: it never mentions abcd, this command, or any private repository\") while its own prescribed bullets state `.abcd/development/`, `.abcd/work/`, `.abcd/.work.local/`. The acceptance criterion as written cannot be satisfied by the surface as shipped, and the shipped command and the chapter disagree on whether namelessness still holds.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-44",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:74: claim: The adopt phase is described as \"a merged, never overwritten, `AGENTS.md`\" / \"merge into `AGENTS.md`\"; no other conventions file is created, and CLAUDE.md is mentioned only as one of the two files `ahoy install` plants its managed block in (line 51). / reality: commands/prepare-this-repo.md Phase 3 step 3 instructs: \"Merge \u2014 never overwrite \u2014 into the repo's `AGENTS.md` (create it if absent, with `CLAUDE.md` as a symlink to it)\". Creating a `CLAUDE.md` symlink in the target repo is a write the chapter never documents, and it interacts with the line-51 claim that the install plants the block in \"CLAUDE.md and AGENTS.md\" (both by default) \u2014 where the symlink exists, those are one file, not two.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-45",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/16-lint.md:39-43: claim: The human render is enumerated exhaustively \u2014 \"Without `--json`, the verb prints a grouped, doctor-style report: a severity glyph, the rule id, `file:line`, the message, and the fix indented under it, closing on a count\" \u2014 and `skipped` is then introduced only as a `--json` emission (\"With `--json` it emits `findings` and `skipped`\"), so skipped rules read as a JSON-only concept and the clean-repo case is not described at all. / reality: `renderLintHuman` (internal/surface/cli/lint.go:102-125) emits two further line classes in the non-JSON render. Probed on a synthetic repo with no `docs/` and no `.abcd/positioning.json`: `abcd lint --root <r>` printed `abcd lint \u2014 \u2713 conforms to the working conventions`, then `\u2022 [docs-currency] skipped (not applicable)` and `\u2022 [identity-positioning] skipped (not applicable)`, before the count line. The skipped list is a human-render surface as well as a JSON field.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-46",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/17-guard.md:61: claim: \"Either verb also speaks JSON, and that is the form the plugin page uses: a verdict, and with it the entry that fired, its tier, why the command is dangerous, and the safe successor. A `matches` list carries any further entries the same line tripped\" \u2014 i.e. both `guard check` and `guard hook` emit the JSON decision object. / reality: Only `guard check` speaks JSON. `guard hook` never renders a decision object: `newGuardHookCommand` in internal/surface/cli/guard.go writes only a sanitised plain-text `dec.Message` to stderr and never calls `render(...)`, so the `*asJSON` flag is not even passed into it. Empirically, `abcd guard hook --json` on a block payload writes 0 bytes to stdout (the human sentence goes to stderr, exit 2), and on a warn payload also writes 0 bytes to stdout (exit 1) \u2014 no `verdict`/`entry_id`/`tier`/`why`/`successor`/`matches` in any form. The global `--json` flag is accepted by `guard hook` and silently ignored. commands/guard.md, the plugin page cited, uses `--json` only on the `check` block and documents no JSON for `hook`.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-47",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/17-guard.md:99: claim: A repo `.abcd/guard.json` \"must declare `schema_version: 1` or the guard refuses to run at all rather than running on a registry it cannot trust.\" / reality: The guard refuses on `check` only; on the hook it keeps running and still decides. internal/core/guard/config.go:62 returns `Defaults()` alongside `ErrSchemaVersion`, and the hook's fail-SAFE branch (internal/surface/cli/guard.go, `repoDropped`) drops the repo overrides with a stderr notice and evaluates against the bundled hazards. Empirically, in a fixture repo whose `.abcd/guard.json` is `{\"entries\":{}}` (no schema_version), `guard hook` on a force-push payload printed \"the repo .abcd/guard.json did not load (guard: unsupported schema_version: ... got 0); its overrides are DROPPED, but the bundled hazards remain armed.\" and then returned a real verdict \u2014 \"Blocked by the abcd guard (git-push-force)\", exit 2. `guard check` in the same tree exited 2 without checking. The claim also contradicts lines 83-93 of this same chapter, which state that on the hook \"the session keeps its protection\" while `check` refuses.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-48",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/18-ideate.md:54-57: claim: \"Only records carry citable ids, and leg 2's citations are held to that: the brief, the principles, the research notes and the decision log have no id to cite, so a hit on one of those rides in the `note` field of the nearest citable record.\" \u2014 i.e. every record family is citable in the grill, and only id-less material needs the note-field workaround. / reality: The shipped citation gate accepts a CLOSED four-family list only: `internal/core/ideate/record.go:404` refuses anything else with `grill hit N cites \"\u2026\", which is not a record id (want adr-N, itd-N, iss-N, or spc-N)`. The readings family is a shipped, in-tree, id-carrying record family \u2014 `recordid.ValidReadingRunID` (internal/core/recordid/valid.go:18, `^rdg-[0-9]+$`), minted per adr-45, with its durable artefacts committed under `.abcd/development/readings/<run-id>/` (charter `.abcd/development/readings/README.md:1-9`, \"the durable record of every cold-reading assembly this repository performs\"). Empirically, a grill hit citing `rdg-2609022232332510` is refused whole-document with exit 2 and the message above. So a record family that does carry ids is uncitable, and the brief names no fallback for it (the note-field escape it offers is scoped to id-less material). Not marked staged or later-phase.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-49",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/19-identity.md:101: claim: \"A surface whose candidate files are all absent is skipped rather than reported, because a file that does not exist carries no drift.\" The chapter never names an `absent` status, so a reader takes such a surface to be omitted from the report entirely. / reality: An all-absent surface IS reported \u2014 it is a first-class enumerated status (`positioning.StatusAbsent`, internal/core/positioning/check.go:33) carried in the `Report.Surfaces` slice and in the `--json` contract. Empirically, a registry entry pointing at a non-existent file renders `\u2022 [all-absent] (absent) \u2014 absent` in the bare `abcd identity` output; it is merely excluded from `Drifted()` and emits no lint finding. The shipped plugin page contradicts the brief and documents it correctly: commands/identity.md lists `absent` as one of four statuses (\"no such file in this repo \u2014 not a fault\"). The `absent` status therefore has no documented home inside the pinned brief chapters.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-50",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/19-identity.md:94: claim: The \"Behaviour\" section enumerates the outcomes a surface can reach \u2014 ok, drifted, unlocatable (\"reported in its own right\"), absent \u2014 and presents them as the complete set, on the stated principle that an unwatched surface must never \"read as a clean pass\". / reality: A fifth, undocumented outcome ships and is strictly louder than any of them: a surface file that is PRESENT but unreadable (a symlink, a device, over the 1 MiB cap, or escaping the containment root) returns `ErrSurfaceUnreadable` from `readFirstPresent` (internal/core/positioning/check.go:22, 158-166), which aborts the WHOLE check rather than yielding a per-surface status. Empirically, with one registered surface file symlinked, `abcd identity` exits 2 with `abcd identity: surface file could not be read: LINKED.md: fsutil: not a regular file`, and every other surface's verdict is lost. Worse, through `abcd lint` the same condition is misattributed: `internal/core/repolint/rule_positioning.go:66-74` files it against `cfg.Block.File` with the message \"the canonical identity block could not be read\" and the fix \"add the identity block, or point .abcd/positioning.json at where it lives\" \u2014 naming the identity block for a fault in a surface file. This outcome is documented in neither the pinned brief chapters nor commands/identity.md.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-51",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/20-banlist.md:101-107: claim: \"The store has a second writer, and the format declaration is what lets the two share it. The sources corpus derives patterns from its confidential entries and maintains them inside a fenced generated block in the same file, refusing a target that does not carry the declaration and leaving every line outside its block untouched.\" Stated unqualified, in a shipped-surface chapter, with no note that the writer lives outside abcd. / reality: No such writer ships. Nothing in the binary, in commands/ or agents/, or anywhere in the tree implements a corpus-side banlist sync \u2014 internal/core/banlist/corpus_test.go is the parser fixture corpus, not a writer. The actual second writer is ~/.abcd/sources/bin/sync-banlist, a user-scope script named only by commands/consult.md:73 and absent from this repository. The repo's own record contradicts the shared-format half: .abcd/work/issues/resolved/iss-2609012039228906-*.md records that the sync script \"appends bare one-field pattern lines between its fences, which the keyed parser correctly refuses by line number\", was resolved as \"Declined: the generator is not in this repository\", and its sibling defect iss-2608220750029993-adjacent iss-2608220150157507 (unanchored generated patterns) is still open. So neither the \"refuses a target without the declaration\" behaviour nor the \"neither clobbers the other\" outcome is verifiable against, or guaranteed by, anything abcd ships.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-52",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/20-banlist.md:140-152: claim: The linked-worktree read-side fallback (guard plus render) is described as shipped behaviour and cited to \"(itd-150)\". / reality: The behaviour is indeed shipped \u2014 internal/core/ahoy/defaults/pre-commit:176 (\"--- itd-150: the linked-worktree fallback ---\"), internal/core/banlist/worktree.go, and the live `abcd banlist` render's \"inherited from the primary checkout\" block \u2014 but the cited record is not: itd-150 sits in .abcd/development/intents/planned/ and its spec spc-43 in .abcd/development/specs/open/, with acceptance criteria the shipped hook already satisfies. Per the repo's own definition of done a delivered intent closes its spec in the same change, so the chapter cites a planned intent as the source of code already on main.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-53",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:100-102: claim: \"A refusal receipt is deliberately thinner: a refusal raised before any fetch carries the target path and a block naming shape, detail and remedy, and nothing else, because there is no release it could name.\" / reality: The JSON refusal receipt also carries an `origin` key. `Report.Origin` is tagged `json:\"origin\"` with no `omitempty` (internal/core/update/update.go:98), and a dispatch refusal is built by `refusalReport` (internal/surface/cli/update.go) which never sets it, so the emitted receipt is `{\"origin\": \"\", \"target_path\": ..., \"action\": \"refused\", \"refusal\": {...}}`. Reproduced: `PATH=<dir with a foreign abcd symlink> ./bin/abcd-darwin-arm64 update --json` prints `\"origin\": \"\"` as its first field.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-54",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:100-102: claim: a pre-fetch refusal receipt \"carries the target path\" / reality: The `absent` refusal carries no target path at all: `ResolveUpdateTarget` returns `UpdateTarget{Kind: UpdateTargetAbsent}` with an empty `Path` (internal/core/ahoy/update_target.go), and `target_path` is `omitempty`, so the key is dropped entirely. Reproduced: `PATH=/nonexistent ./bin/abcd-darwin-arm64 update --json` emits only `origin`, `action` and `refusal`.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-55",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md:42: claim: Decision 2 states the build \"inlines SVGs (`var(--token, fallback)` colours) and optimises rasters, and never draws\" \u2014 asserting a raster optimisation step. 22-site.md:55-56 states the opposite (\"rasters are copied verbatim\"), so the two records disagree and the ADR is the side that is wrong. / reality: internal/core/site/assets.go:11-13 documents \"A raster is COPIED VERBATIM into the output tree and referenced \u2014 no re-encoding, because optimisation would mean a dependency and a decision nobody has made yet.\" Empirically confirmed: after `site build`, `cmp docs/assets/img/logo.png <out>/assets/img/logo.png` reports the files byte-identical. No optimisation code exists in the site package.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-56",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/23-reading.md:80-83: claim: A widening run holding fewer than two candidates means \"the position is not exercised, and the assembly stages a run whose ingest commits that outcome as an empty comparative run naming the widening run\" \u2014 described purely as a staging outcome, with no mention that the assembly also refuses. The chapter's only refusal statement (line 88, \"Every refusal exits 2\") is attached to the dirty/target gate, so a reader takes the not-exercised path to be a successful assembly. / reality: The shipped verb refuses AND stages: internal/core/reading/assemble.go:615 returns `notExercisedError(...)` beside a populated result, and `PositionNotExercised` (assemble.go:619-640) is a real error the CLI exits 2 on. commands/reading.md states the shipped behaviour correctly \u2014 \"The verb refuses, names the interpretation, and still stages a run whose bundle carries no candidate item and whose manifest carries `candidate_run`, `candidates` ... and `exercised: false`.\" The brief chapter carries only the staging half.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-57",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/23-reading.md:86-87: claim: \"Assembly reads the working tree, so it refuses unless HEAD resolves to the target and no included path is uncommitted.\" The dirty set is stated as the included paths (with the preset file separately noted as \"inside the dirty gate\" at line 54). / reality: internal/core/reading/assemble.go:866-943 (`refuseDirtyIncludedPaths`) additionally seeds the dirty set with two paths no include row can ever admit \u2014 `LintConfigPath` (.abcd/record-lint.json, the record configuration that decides which stores the record scan reads) and `PresetConfigPath` \u2014 and, at the comparative position only, refuses on any uncommitted path under the two fate families (dispositions and admissions in the issue ledger), which the code notes are \"never a reading's input\" and so are admitted by no row at any position. commands/reading.md names the record configuration in that set (\"The preset configuration is in that dirty set, for the same reason the record configuration is\"); the brief names neither it nor the fate families.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-58",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/23-reading.md:31-36: claim: The bare-verb render is enumerated as \"the assembler's version and schema number, the include and exclusion row counts, the charter path, the position definitions the binary resolves, the staged runs, and any orphaned ingest waiting to be swept\" \u2014 six items, with interrupted stages folded into the single category \"orphaned ingest\". / reality: `abcd reading --json` emits a seventh field, `leftover_stages`, alongside `orphaned_ingests`, and the two are deliberately distinct categories: internal/core/reading/status.go:48-54 documents that a leftover stage is a run whose commit marker LANDED, whose records stay and are never rolled back, and that \"reporting one as an orphan would promise a rollback that never happens (iss-2609012043437282)\". commands/reading.md carries the distinction explicitly (\"`leftover_stages` is the other thing a stage can be, and it is not an orphan ... never say its records will be rolled back\"). The brief's enumeration omits the field and collapses the distinction the code exists to preserve.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-59",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/24-decide.md:21: claim: After enumerating five JSON fields (`id`, `slug`, `title`, `date`, `path`), the chapter says \"The plain render names the same four values and the status the record lands with.\" / reality: The JSON object carries FIVE values, not four, so \"the same four values\" cannot refer to the set just listed. The plain render names four OF the five \u2014 id (in the heading line), title, date and record path \u2014 and silently drops `slug`. Observed: `decision record minted \u2014 adr-2609091943199178` / `title:` / `date:` / `record:` / `status: proposed \u2014 write the four sections, then set `accepted` when the decision is in force`. The chapter never says which of the five the plain render omits.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-60",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/24-decide.md:44-46 (and the filename claim at :60): claim: The chapter describes the slug derivation and the filename in full \u2014 \"It reaches the committed filename by way of the derived slug\", \"The filename is the stamp followed by the slug\" \u2014 with no mention of any length limit. / reality: The mint caps the derived slug at 60 characters (`maxSlugLen = 60`, internal/core/decide/decide.go:59), truncating mid-word. Verified: `abcd decide \"This is a deliberately very long decision title that runs well past any reasonable filename budget indeed\" --json` returns `\"slug\": \"this-is-a-deliberately-very-long-decision-title-that-runs-we\"` \u2014 a 60-char slug ending in a severed word \u2014 and the path `.abcd/development/decisions/adrs/2609091946099463-this-is-a-deliberately-very-long-decision-title-that-runs-we.md`, while `title` is emitted in full. The truncation is documented nowhere in the brief (grep over .abcd/development/brief/ finds no slug cap/truncation/budget statement for the ADR mint).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-61",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:53-54: claim: The prompt files under `agents/` \"are checked in neither direction: nothing asserts that one has a row here, and nothing notices when one is added or removed (iss-110).\" / reality: The second half is false as shipped. A blocker record-lint rule `agent_contract` (config in `.abcd/record-lint.json`: `{\"enabled\": true, \"severity\": \"blocker\", \"agents_dir\": \"agents\", \"changelog\": \"agents/CHANGELOG.md\"}`, implemented in `internal/core/lint/agentcontract.go`) enumerates `agents/` itself and runs three sub-checks over every prompt: itd-5 trust-contract frontmatter (`prompt_version`, `reads_untrusted_input`, `capability_scope.task_classes`, `capability_scope.designed_for`); a per-agent `injection-canary.json` fixture for any untrusted-input agent; and a per-agent `agents/CHANGELOG.md` entry keyed on `prompt_version` for EVERY prompt, not only diffed ones (agentcontract.go:292-294 emits `\"carries no entry for <name> <version>\"`). An agent added without frontmatter, canary or changelog entry fails the gate. Only removal genuinely goes unnoticed. The rule was added after this paragraph was written; iss-110 is still open (`.abcd/work/issues/open/iss-110-agents-changelog-md-and-agents-readme-md-are-plain-docs-the.md`) but no longer covers the whole claim.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-62",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:83-85: claim: \"Six parents print usage with no state at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. ... This paragraph is the one enumeration of the exceptions\". / reality: The enumeration is incomplete against this same document's own verb inventory. Bare `abcd hook` prints its usage block with no state (\"Claude Code hook entrypoints (operator-internal) / Usage: abcd hook [flags] / abcd hook [command]\") and bare `abcd completion` likewise prints usage only \u2014 both are sub-command-bearing parents, and both are named in this file's own \"Operator-internal verbs\" table as verbs the binary registers. Every other registered verb was exercised and does render state (`ahoy`, `banlist`, `capture`, `changelog`, `identity`, `intent`, `lint`, `memory`, `reading`, `rules`, `site`, `spec`, `version`), so the exception set is eight parents plus `launch`/`decide`/`update`, not six.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-63",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:56: claim: \"The grain extends **inside** each row (spc-27, adr-40 decision 6)\" \u2014 the sub-verb pass is described as delivered, machine-checked machinery, and every `## Sub-verbs` table in this directory repeats \"Machine-checked (`surface_coverage`, spc-27)\". / reality: The machinery ships (`internal/core/lint/subverbs.go` is wired into `surface_coverage`, the snapshot `.abcd/development/release/surface.json` is committed and drift-tested, and `make record-lint` runs it clean), but its records never closed: spc-27 is in `.abcd/development/specs/open/spc-27-the-registry-cannot-wave-its-hands-every-surface-file-carrie.md` and its intent itd-122 is in `.abcd/development/intents/planned/itd-122-the-registry-cannot-wave-its-hands-every-surface-file-carrie.md`. The repo's definition of done requires a delivered intent to close its spec in the same change, so the record asserts unshipped state for machinery this chapter documents as live \u2014 and the changelog cut derives from terminal folders, so this delivery has no changelog line.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-64",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:218: claim: The `voyage/` reserved-vocabulary row states, with no `(staged)` marker, that the store is \"Split by operation: `disembark/history.jsonl`, `embark/provenance.json`, `embark/from/<timestamp>/`.\" / reality: Only the disembark half exists. `internal/core/lifeboat/voyage.go` is the sole writer under `~/.abcd/voyage/`; it creates `<root-sha>/disembark/` (line 84) and appends `history.jsonl` (line 106) and nothing else. `internal/core/lifeboat/embark.go` never touches the voyage store (grep for `voyage` across `internal/` returns hits only in `lifeboat/voyage.go`, `lifeboat/pack.go` and tests). The brief itself contradicts the row: `.abcd/development/brief/05-internals/03-configuration.md` \u00a7 The voyage store says \"What ships is an append-only manifest log of every disembark run; nothing else is written anywhere under the store, and an embark side recording what a write did is **staged**.\"",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-65",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:219: claim: The `history.jsonl` row: \"one line per disembark run: `manifest_sha256`, file list, oracle backend used, verdict.\" / reality: The shipped line is `voyageEntry` (internal/core/lifeboat/voyage.go:31-40): `schema_version`, `event`, `at`, `manifest_sha256`, `source_name`, `source_root_sha`, `dest`, `files` (an int COUNT), `bytes`. There is no file list, no oracle-backend field and no verdict field, and the code says so deliberately: \"It carries no oracle verdict or shared_with field \u2014 nothing produces them yet, and an empty field would be a lie (adr-35). \u2026 so the ledger records the count, not the list.\" Three of the four items the row names are absent, and the row carries no staged marker.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-66",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:180: claim: The `task_classes` row: \"This table is the source of truth today: the binary carries no `task_classes` schema and no cross-check test reads the field (iss-265).\" / reality: The binary reads and enforces the field. `internal/core/lint/agentcontract.go` (rule `agent_contract`) requires `capability_scope.task_classes` on every agent prompt and refuses a missing or empty one (lines 196-199), and `internal/core/lint/agentcontract_test.go` exercises it (lines 40, 99-100, 296). What is still absent is validation of the closed TOKEN LIST \u2014 no Go file names `cold_reading`, `surface_render` or the other tokens as an enum. The row's blanket \"carries no schema and no cross-check test reads the field\" overstates that gap; the accurate statement is that the field's presence is gated but its values are not.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-67",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:54-58: claim: \"The remaining surfaces are exempt for the plain reason that no maritime cognate adds meaning: `banlist`, `changelog`, `consult`, `decide`, `docs`, `guard`, `history`, `ideate`, `identity`, `ingest`, `lint`, `memory`, `prepare-this-repo`, `reading`, `rules`, `site`, `spec`, `update`, and `version`. They are registered here so the exemption is on the record.\" / reality: The binary registers a top-level `hook` verb with four sub-verbs (`abcd hook --help`: `prompt-router`, `prompt-router-reset`, `session-end`, `session-start`), an abcd-minted name that appears nowhere in this file \u2014 not in the maritime table, not in the exemptions, not in the reserved-vocabulary table. Its only documented home is `.abcd/development/brief/04-surfaces/README.md` \u00a7 Operator-internal verbs. Every other verb the binary registers is accounted for here, so `hook` is the one abcd-owned command name with no exemption on the record.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-68",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:94-107: claim: \"a plain unfiltered `<verb> list` [is] **forbidden**\" (line 94), and the conformance paragraph (lines 99-107) names the gap as: several parents printing usage with no state, two verbs refusing, and \"`history` breaks the rule from both ends at once\" \u2014 history being the singular case of that shape. / reality: `banlist` has the same shape and is not recorded. Bare `abcd banlist` renders both layers; `abcd banlist list` with no flag renders byte-identical output (`--private`/`--public` are optional, per `abcd banlist list --help`), so it is a plain unfiltered `<verb> list` that only renames \"show me the state\". By contrast `capture list` earned its exception by REQUIRING a filter flag, and the code marks that explicitly (internal/surface/cli/cli.go:2877: \"list \u2014 the earned SD001 exception: a filter flag is REQUIRED\"); banlist's carries no such requirement and no recorded exception here or in 04-surfaces/README.md \u00a7 Bare invocation.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-69",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:31: claim: \"Each declares its inputs and outputs as JSON, and the schemas are the core's rather than the prompt's\" \u2014 stated of all fifteen shipped prompts. / reality: Five of the fifteen shipped prompts carry no JSON output contract at all (zero fenced JSON blocks): agents/ruthless-reviewer.md and agents/security-reviewer.md declare prose outputs (`## Output` -> `### Analysis` / `### Findings` / `### Verdict`, free prose plus bullets); agents/sota-researcher.md and agents/docs-currency-reviewer.md have no `## Output` section at all; agents/scribe.md's outputs are the ledger's markdown record shapes (`## The reading record`, `## The disposition record`, `## Delivery`), not JSON. Only the ten verb-fed and cold-reading prompts carry JSON fences (intent-auditor 5, the four cold-reading definitions and the five lifeboat/release composers 1 each).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-70",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:158-166: claim: \"Review verdicts \u2014 {SHIP, NEEDS_WORK, MAJOR_RETHINK} \u2014 assess a change ... so any abcd-produced review is portable across the seam without a tool-specific validator\" and \"Reviews emit family 1; auditors emit family 2. The two are never mixed.\" / reality: Two of the four shipped reviewer prompts emit neither family. agents/ruthless-reviewer.md's `### Verdict` is \"Exactly one of: SHIP / FIX FIRST\" (two tokens, `FIX FIRST` is in no declared family and `NEEDS_WORK`/`MAJOR_RETHINK` never appear). agents/security-reviewer.md's `### Verdict` is \"Exactly one of: APPROVE / BLOCK / NEEDS-INPUT\" \u2014 a third vocabulary entirely. Only agents/lifeboat-reviewer.md actually emits family 1.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-71",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:158-166: claim: The Verdict-tag protocol section enumerates exactly two verdict enums as \"in play\". / reality: Two further verdict vocabularies ship in agents/ and are documented nowhere in this chapter: `{SHIP, FIX FIRST}` (ruthless-reviewer) and `{APPROVE, BLOCK, NEEDS-INPUT}` (security-reviewer).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-72",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:112: claim: \"(spc-6 disowned auto-firing, and no spec owns it now)\" \u2014 cited bare, so it reads as a spec in this repository's native spec store. / reality: The native spc-6 is .abcd/development/specs/open/spc-6-issue-capture.md (intent itd-4, the capture engine catch-up); it contains no occurrence of \"audit\", \"auto-fir\" or the auditor at all. The sibling chapter .abcd/development/brief/04-surfaces/05-intent.md:221,254,450 makes the same statement but qualifies every id \u2014 \"spc-6 (predecessor store) disowned auto-firing\" \u2014 so this chapter's unqualified `spc-6` points at the wrong record. (The second half, \"no spec owns it now\", checks out.)",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-73",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:230: claim: Frontmatter table row: \"`tools` / `model` | optional | Tool allow-list and model hint for the host's dispatch, carried by the repo-workflow reviewer and researcher prompts\" \u2014 pairing the two fields across the four named prompts. / reality: `tools` is carried by all four (docs-currency-reviewer, ruthless-reviewer, security-reviewer, sota-researcher), but `model` appears on only two of the fifteen prompts \u2014 ruthless-reviewer.md and security-reviewer.md (`model: opus`). docs-currency-reviewer.md and sota-researcher.md carry `tools` with no `model`.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-74",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:3: claim: \"Installing abcd asks four questions, records the answers, and gets on with it\" \u2014 the four being visibility, docs target, oracle backend and deep scan (the four `--visibility` / `--docs-target` / `--oracle-backend` / `--scan-deep` overrides). / reality: Install has a FIFTH prompted, recorded step: the advisory git-identity pin. `internal/core/ahoy/apply.go:375` (`stepIdentityPin`) writes `.abcd/config/identity.json` from the current git author identity, and `abcd ahoy install --help` names it explicitly as the one category `--yes` does NOT approve (\"excludes the optional git-identity pin, which needs an answered prompt\"). Its answer is read back by the shipped binary (`ahoy identity-check`, and `identity.DeclaredProductionMode` at internal/core/identity/identity.go:138, which supplies the default for `abcd intent --production-mode`).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-75",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:5: claim: \"That is the whole of the configuration surface the shipped binary consults\" (i.e. the seven `.abcd/config.json` keys plus `meta`). / reality: The binary consults at least eleven further committed configuration records: `.abcd/rules.json` (internal/core/rules), `.abcd/config/identity.json`, `.abcd/config/launch-payload.json`, `.abcd/config/reading-presets.json`, `.abcd/config/version-location.json`, `.abcd/record-lint.json`, `.abcd/docs-lint.json`, `.abcd/site.json`, `.abcd/site-baseline.json`, `.abcd/positioning.json`, `.abcd/citations-baseline.json` (plus `guard.json` where a repo declares one \u2014 rules/root.go:36 resolves rules.json, config.json and guard.json from one root). The same chapter contradicts the sentence at line 258-262, where it lists those records as repo-scope config.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-76",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:119: claim: \"eight of the thirteen committed records carry it [schema_version: 1], and five do not, the record-lint and docs-lint configuration among them.\" / reality: The repo holds TWELVE committed configuration records (8 at `.abcd/*.json` + 4 under `.abcd/config/`), of which SEVEN carry `schema_version` (citations-baseline, config, positioning, rules, site-baseline, site, config/reading-presets) and five do not (docs-lint, record-lint, config/identity, config/launch-payload, config/version-location). The \"five do not\" half matches that set exactly; the \"eight of thirteen\" half is one over on both numbers. It reaches 8/13 only if one development record (`.abcd/development/personas.json` or `.abcd/development/release/surface.json`) is folded into the set, which the sentence's own examples do not suggest. No configuration record was deleted since the doc was written (checked `git log --diff-filter=D -- .abcd/*.json`).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-77",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:284: claim: \"The vendor harness directory is not abcd's. abcd writes nothing into it beyond the plugin install itself; everything else routes to the scope-appropriate `.abcd/`. The one interaction the design gives abcd with it is read-only: the staged memory harvest of \u00a7 2 would read from it as a source.\" / reality: The shipped `hooks/bootstrap.sh` maintains a persistent WRITE store inside the harness-owned per-plugin data directory `$CLAUDE_PLUGIN_DATA`: `cache/abcd-<os>-<arch>` (the verified release artefact), `cache/binary-meta` (provenance), `.bootstrap.lock`, and `.bootstrap.tmp.$$` / `.bootstrap.auth.$$` staging dirs (bootstrap.sh:45, 249-277, 361-368, 387, 445-446, 503, 562, 630-632), plus `.bootstrap.attempt` markers and `.binary-meta` in `$CLAUDE_PLUGIN_ROOT`. That store survives plugin updates by design and is the fourth machine-scoped store abcd lays out, yet the chapter's store inventory (history, transcripts, voyage, worktrees, the two `.abcd/` scopes) never locates it; its only documented home is `docs/how-to/install.md:40-47,137-141`. The chapter does mention \"the persistent download cache\" once, at line 508, without saying where it lives or that abcd writes it.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-78",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:476: claim: \u00a7 3 \"Plugin shape \u2014 directory layout\" draws the repository tree (`.claude-plugin/`, `cmd/`, `internal/`, `commands/`, `agents/`, `hooks/`) with no ellipsis or \"selected entries\" caveat. / reality: `scripts/` is a top-level directory that ships in the release artefact \u2014 `.abcd/config/launch-payload.json` lists it among the nine includes, alongside `.claude-plugin`, `commands`, `agents`, `hooks`, `docs` \u2014 and holds the CI gates the delivery chapter relies on (check-attribution.sh, check-reviews.sh, check-issue-resolution.sh, check-decisions-append.sh, check-vcs-stamp.sh, pr-keep-current.sh). It appears nowhere in the tree and nowhere else in the brief (`grep -rn \"scripts/\" .abcd/development/brief/` returns no match). `evals/` and `site-src/` are likewise absent from the tree, though neither ships.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-79",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:75: claim: Layer B's harness \"lands with the first Pass-A agent spec (Phase 6), the point at which a second agent exists to generalise the runner over\" \u2014 presupposing the tree currently holds a single agent prompt, with the second arriving in Phase 6. / reality: agents/ ships 15 agent prompts today (cold-reading-comparative, cold-reading-detection, cold-reading-entailment, cold-reading-widening, docs-currency-reviewer, graveyard-interpreter, intent-auditor, lifeboat-reviewer, press-release-composer, principle-distiller, release-changelog-composer, ruthless-reviewer, scribe, security-reviewer, sota-researcher), each with its own fixtures/ directory and CHANGELOG entries. A second agent to generalise a runner over has existed since the 2026-07-16 M6 synthesis-agent batch; the stated gating condition is already met, so the sentence's rationale for deferring the harness to Phase 6 is stale.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-80",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:19: claim: \"The release payload declares all four kinds.\" \u2014 i.e. commands, skills, agents and hooks are all declared by the release payload. / reality: The payload declares three, not four. `.abcd/config/launch-payload.json` includes exactly `.claude-plugin`, `commands`, `agents`, `hooks`, `scripts`, `docs`, `README.md`, `LICENSE`, `.gitignore` \u2014 no `skills` entry \u2014 and `.claude-plugin/plugin.json` declares no `commands`/`agents`/`skills`/`hooks` manifest keys at all (it carries only name, description, author, homepage, repository, license, keywords). `bin/abcd-darwin-arm64 launch --dry-run --json` resolves a bundle with `commands/`, `agents/` and `hooks/` paths and zero `skills/` paths. The page contradicts itself 96 lines later at :115-116 (\"the include list still names commands, agents and hooks and no skills directory\").",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-81",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:113-117: claim: \"The payload step is the one that is easy to forget and has not been taken for anyone \u2026 A skill added without it passes the record gate and is missing from the release.\" \u2014 presented as a live silent-drop hazard with no mechanical detector. / reality: A shipped detector already refuses exactly this. `internal/core/launch/payload_completeness_test.go` defines `pluginSurfaceDirs = []string{\"commands\", \"agents\", \"hooks\", \"skills\"}` (line 15) and `TestBundleShipsEveryPluginSurface` fails with \"plugin-surface directory %q exists on disk but is neither in the launch-payload includes nor in surfaceExcludeReasons\" (line 64) the moment a `skills/` directory exists on disk without an includes entry or an explicit `surfaceExcludeReasons` entry (that map is currently empty). So a skill added without the payload step fails `go test ./...` and therefore `make preflight` \u2014 it does not reach a release quietly. The chapter names no such gate and asserts the opposite consequence.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-82",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:36: claim: \"History and spec ship as core packages with no adapter interface behind them yet.\" \u2014 stated unmarked, in the same paragraph that lists the history seam among those \"planned rather than present\". / reality: internal/core/history/history.go imports internal/adapter/gitleaks and holds the seam explicitly: `var scanGitleaks = gitleaks.Scan` (history.go:35, :51), an OPT-IN external scanner adapter selected by a per-repo .abcd/config/gitleaks.json and folded into the transcript redaction path. So the shipped history package does have a config-selected external adapter behind it. (Spec has none \u2014 that half is accurate.)",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-83",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:30: claim: \"The scanner is the one seam standing \u2014 the native secret and PII scan, with an external backend as its config-selected plug-in.\" / reality: internal/adapter/ holds TWO shipped adapter packages: scanner and gitleaks. gitleaks is not a plug-in behind adapter/scanner's interface \u2014 nothing in adapter/scanner references it; it is consumed directly by internal/core/history (the only importer, per grep over internal/), so the standing external backend augments transcript redaction rather than plugging into the scanner seam the sentence describes.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-84",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:129: claim: The milestone DAG runs 0\u20136 and ends at \"6. Lifeboat round-trip\", presented as the build-milestone detail paired with the phase index it cites at line 6-8 (roadmap/phases/README.md). / reality: The paired phase index carries phase-7-ledger.md (\"Provenance ledger and cold reading\") and phase-8-brief-currency.md, both delivered: the binary registers `reading` (assemble/manifest), `decide`, `capture disposition`/`promote`, `docs`, `lint`, `site`, `rules`, `guard`, `identity`, `banlist`, `update`, `version` and `changelog`, and agents/ ships four cold-reading prompts (cold-reading-comparative/detection/entailment/widening). None of these verbs appears anywhere in this file as a verb \u2014 grep for banlist, decide, reading, site, update returns 0 hits, and the hits for docs/guard/identity/lint/rules/version/changelog are all incidental prose (\"phase docs\", \"safety guard\", \"identity-check\", \"record-lint\", \"rules loader\", \"the version\", \"changelog heading\"). The milestone list stops two phases short of the shipped surface.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-85",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:77: claim: \"memory: the curated knowledge substrate (itd-36); a vendor memory harvest is an opt-in, read-only source over it.\" \u2014 present tense, unmarked (the file marks its other unshipped items *(design target)*, e.g. lines 94, 110, 116). / reality: `abcd memory` ships exactly three sub-verbs \u2014 ask, ingest, lint. There is no harvest/import path over a vendor memory store: `memory ingest` takes `<path-or-https-url>` with flags --keep-original/--pages-json, and no file in internal/ (non-test) contains the word \"harvest\" in this sense (only frontmatter.go and site/contributors.go, unrelated). Contrast line 73, where the equivalent transcript claim IS shipped (`abcd history capture --kind specstory-import`).",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-86",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:46 (Launch manifest): claim: \"Correct include and exclude, resolved from the bundler's own rules. **(staged)** a per-repo allow-file overriding them: the launch core reads no such file\" / reality: The launch core REQUIRES a per-repo include file. internal/core/launch/includes.go:13 declares `includeConfigRelPath = \".abcd/config/launch-payload.json\"` and LoadIncludes (includes.go:39) reads it; a missing, unreadable, non-object, includes-less or empty-includes file is a PreflightError, so the bundle refuses rather than falling back to \"the bundler's own rules\". The committed .abcd/config/launch-payload.json declares the ten include roots (.claude-plugin, commands, agents, hooks, scripts, docs, README.md, LICENSE, .gitignore) that produced the 123-file dry-run manifest. The file is also documented in .abcd/development/brief/04-surfaces/04-launch.md, so the staged row contradicts the surface chapter as well.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-87",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:65 (Capture filtered list): claim: \"`abcd capture list` with a state filter prints one line per issue, sorted by id\" / reality: The presented order is severity-major-first with blocked issues pushed last, not id order. internal/core/capture/workflow.go:687-704 `prioritise` re-sorts after the id sort (workflow.go:833 `sortIssues`): unblocked before blocked, then `severityRank` descending, id only as the stable tiebreak. Observed on `./bin/abcd-darwin-arm64 capture list --open`: 49 major, then 287 minor, then 47 nitpick, then 1 further major (iss-164, `[blocked-by iss-163]`) as the final line.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-88",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:62 (Capture resolve): claim: \"An unknown id and a transition conflict each have their own exit code\" / reality: Both exit 1. `capture resolve iss-99999999 \u2026` prints `abcd: unknown issue id: iss-99999999 not found in any status directory` and exits 1; `capture resolve iss-73 \u2026` (already in resolved/) prints `abcd: transition conflict: iss-73 already in resolved` and also exits 1. The two faults are distinct sentinels in the core (internal/core/capture/capture.go:291 ErrUnknownIssueID, :294 ErrTransitionConflict) and produce distinct messages, but the CLI maps both to the same exit code. (Separately observed while checking: with --json both error envelopes exit 0.)",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-89",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:55 (Intent help): claim: \"Bare `abcd intent` shows intents grouped by state with the next actions to take\" / reality: Bare `abcd intent` emits 86 lines, 82 of which are `link: itd-N -> spc-N` rows. The other four are: a single count line (`drafts 73 \u00b7 planned 62 \u00b7 shipped 40 \u00b7 disciplines 14 \u00b7 superseded 6`), a spec count line (`specs: open 42 \u00b7 closed 39`), and two generic ledger-choice hints (`which ledger? \u2026 capture \u2026 intent \u2026` and `a big, unproven idea? abcd ideate \u2026`). No intents are listed grouped by state, and no per-intent next action is shown.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-90",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:51 (Intent capture): claim: cites \"(itd-1, spc-30/itd-46)\" as the record pair for quoted-text intent capture / reality: itd-46's spec is spc-7, not spc-30: .abcd/development/intents/shipped/itd-46-abcd-intent-quoted-text-create-symmetric.md carries `spec_id: spc-7`, and .abcd/development/specs/closed/spc-7-abcd-intent-quoted-text-create-symmetric.md is the matching spec. spc-30 is a different record entirely \u2014 .abcd/development/specs/open/spc-30-the-lifeboat-verdict-says-what-it-is-disembark-oracle-become.md, `intent: itd-125`, the `disembark oracle` \u2192 `disembark review` rename. The cited pair does not exist.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-91",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:61 (Capture write): claim: \"defaults applied per spc-21\" / reality: spc-21 is .abcd/development/specs/closed/spc-21-a-fresh-plugin-install-just-works-the-hook-binary-survives.md, `intent: itd-105` \u2014 the POSIX-sh SessionStart bootstrap that provisions the plugin binary. It says nothing about capture defaults. The issue-capture spec is spc-6 (.abcd/development/specs/open/spc-6-issue-capture.md, `intent: itd-4`), which is the record that covers `abcd capture [text] | list | resolve | wontfix` and the iss-N ledger.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-92",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:54 (Intent lifecycle hook): claim: \"auto-running the auditor is deferred (spc-6 disowned it)\" / reality: spc-6 is the issue-capture spec for itd-4 (.abcd/development/specs/open/spc-6-issue-capture.md). `grep -in 'auditor|audit'` over it returns nothing \u2014 it neither owns nor disowns the intent auditor. No spec in .abcd/development/specs/ contains \"auto-run\"/\"auto-running\" either, so the disowning the row attributes to spc-6 is not in the cited record.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-93",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:74 (Grill (itd-27)): claim: \"no PRD or grill report is written anywhere\" / reality: A grill report is written by the shipped `ideate` verb. internal/core/ideate/render.go:64 `renderGrill` writes a `## Leg 2 \u2014 Record grill` section (with its cited hits, gated by the citation resolver at ideate/record.go:500) into a dated research note under `.abcd/development/research/notes/` (ideate.go:56 ResearchRelDir), produced by `abcd ideate record <idea-slug> --verdict-json`. A committed example is .abcd/development/research/notes/2026-08-15-decomposition-calibration.md. The narrower half of the row holds \u2014 `intent` registers no `grill` sub-verb (sub-verbs are audit, link, new, plan, ready) and no PRD is written \u2014 but the \"anywhere\" scope is false against the shipped tree.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-94",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:74 (Grill (itd-27)): claim: \"No `GR*` code exists in any tree, so each of those is enforced by review\" / reality: GR001\u2013GR005 exist in the committed record: .abcd/development/decisions/adrs/0007-grill-skill-and-glossary.md:69-73 defines all five with severities, and .abcd/development/roadmap/phases/phase-3-intent.md:33 names \"GL001\u2013GL005, GR001\u2013GR005\". What is true \u2014 and what the row presumably means \u2014 is that no GR code is implemented in any lint: `grep -E '\\bGR[0-9]{3}\\b'` over internal/ and cmd/ returns nothing.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-95",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/02-context.md:8: claim: \"`probe <source-repo>` and `dry-run` sub-verbs preview without writing\" \u2014 names a `dry-run` sub-verb of disembark, and describes bare `/abcd:disembark` as \"status+help\". / reality: `disembark` registers no `dry-run`: `abcd disembark dry-run` returns `abcd: unknown command \"dry-run\" for \"abcd disembark\"`. The dry-run sub-verb is named `plan` (`abcd disembark plan`). `dry-run` exists only under `ahoy`. Bare `abcd disembark` prints usage with no state at all \u2014 04-surfaces/README.md \u00a7 Bare invocation lists `disembark` among the six parents that do exactly that, contradicting the \"status+help\" claim here.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-96",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/README.md:193 (repeated at glossary/core/lifeboat.md:9 and glossary/core/voyage.md:66): claim: The packing invocation is written as a bare CLI command: `abcd disembark <source-repo> to <dest>` \u2014 no sub-verb, a literal `to` separator. / reality: The registered shape is `abcd disembark pack <repo> <dest>` (Usage line from `abcd disembark pack --help`). `abcd disembark <path> ...` is refused: `abcd: unknown command \".\" for \"abcd disembark\"`. There is no `to` token anywhere in the tree, and `pack` is mandatory. (The `/abcd:disembark <source-repo> to <dest>` slash form in 01-press-release.md:5,15,29,30,31 and 02-context.md:8,24 mismatches too: commands/disembark.md's argument-hint is `\"<source-repo> <dest> | plan <source-repo> | probe <source-repo>\"`, with no `to`.)",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-97",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/distribution/release.md:45: claim: \"`launch ship` refuses a no-change release unless `--force` is passed.\" / reality: `abcd launch ship` registers exactly three flags: `--changelog-json`, `--payload-dir` and the global `--json`. No `--force` flag exists on `launch ship` or on any other command in the tree (grep over internal/surface and cmd finds no `--force` registration; internal/surface/cli/identity_surface_test.go:149 asserts `--force` is absent by design). 04-surfaces/04-launch.md documents no bypassable no-change refusal.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-98",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/01-press-release.md:19: claim: Lists, under \"What's In Scope\" \u2192 \"Plumbing that makes it possible\", \"operator-internal command wiring (e.g. `/abcd:run`, the itd-29 autonomous-run operator surface \u2014 read-mostly `status`/`pause`/`resume`/`preflight` ...)\" with no staged/design-target marker \u2014 in a bullet whose sibling items (agents, adapter seam, prompt-quality stack) do ship. / reality: The binary registers no `run` verb (`abcd --help` Available Commands, plus the hidden `hook`), there is no `commands/run.md`, and no `status`/`pause`/`resume`/`preflight` sub-command exists anywhere. 04-surfaces/README.md \u00a7 Operator-internal verbs names only `changelog`, `rules`, `spec`, `hook`, `completion`, and 01-product/04-scope.md:19 explicitly calls `/abcd:run` a design target with itd-29 still in intents/planned/. The same bullet marks the reflection composer as \"designed and not yet written\", so the omission of a marker on `/abcd:run` reads as a shipped claim.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-99",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/01-press-release.md:5: claim: \"Bare invocation of any command shows status + suggested next actions; state-mutating actions require an explicit sub-verb (the universal abcd convention).\" Stated as universal. / reality: Six parents print usage with no state: bare `disembark`, `docs`, `embark`, `guard`, `history`, `ideate` (verified by running each). Bare `abcd launch` refuses with a `--dry-run` hint; bare `abcd decide` refuses (\"one quoted title is required\"). And four registered verbs mutate with no sub-verb at all: `abcd update` (fetch-verify-swap), `abcd decide \"<title>\"`, `abcd capture \"<text>\"`, `abcd intent \"<text>\"`. 04-surfaces/README.md \u00a7 Bare invocation states the convention is \"a convention rather than a universal\" and 02-constraints/04-naming.md says \"Conformance is partial\" \u2014 so the press release overclaims against the brief's own enumeration and against the binary.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-100",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:31: claim: Of the fifteen shipped prompts: \"Each declares its inputs and outputs as JSON, and the schemas are the core's rather than the prompt's.\" / reality: Five of the fifteen declare no JSON output at all and no core schema backs them: agents/docs-currency-reviewer.md (report as a markdown table + fixes), agents/ruthless-reviewer.md (## Output = Analysis / Findings / Verdict prose), agents/security-reviewer.md (same prose shape), agents/sota-researcher.md (a ranked prose deliverable), agents/scribe.md (records described in prose bullets). `grep -c '```json'` returns 0 for each; the other ten carry a fenced JSON contract. No verb consumes the five, so there is no core schema to be theirs.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-101",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:166: claim: \u00a7 Verdict-tag protocol: review verdicts are the closed set {SHIP, NEEDS_WORK, MAJOR_RETHINK}, \"emitted as tags in oracle output\", so \"any abcd-produced review is portable across the seam\"; \"Reviews emit family 1; auditors emit family 2. The two are never mixed.\" / reality: Two of the four shipped review-shaped prompts emit a third and fourth enum belonging to neither family: agents/ruthless-reviewer.md \u00a7 Verdict = {SHIP, FIX FIRST}; agents/security-reviewer.md \u00a7 Verdict = {APPROVE, BLOCK, NEEDS-INPUT}. Only lifeboat-reviewer emits family 1. Nothing validates either, so the portability claim does not hold for them.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-102",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:17: claim: The agent prompts under `agents/` are a surface kind the skill/command criterion does not cover \"because neither is something a person invokes by name\" \u2014 \"the agent prompts under `agents/`, which verbs and reviewers dispatch\". / reality: Four of the fifteen are dispatched by a person by name and by nothing else \u2014 01-agents.md:25 itself says \"**Repo-workflow reviewers and researchers**, dispatched by a human rather than by a verb: `docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer`, and `sota-researcher`\", and their `description` frontmatter reads \"Use PROACTIVELY\u2026\". 04-surfaces/README.md:52 likewise calls them prompts \"which a harness registers as invocable agents\". Two brief chapters state opposite things about the same surface.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-103",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:203: claim: \u00a7 The scribe protocol, rule 3: \"The transcribed material is committed through the ordinary record path. The reading and disposition stores are declared record families, so `record_schema` holds each record to its shape at the gate, and the writing verbs validate before they write.\" / reality: The shipped prompt contradicts it: agents/scribe.md:162-166 \u00a7 Delivery says \"There is no ingest verb\" and that \"until spc-58's reading and disposition stores land, [the record gates] know nothing of these shapes, and the record lint refuses their directory as an undeclared bucket\". The binary sides with the brief \u2014 `abcd capture disposition` and `abcd reading ingest` are both registered (verified against bin/abcd-darwin-arm64), and .abcd/record-lint.json:262-264 declares the `rdi`, `dsp` and `rdg` families \u2014 so the shipped prompt is stale against the surface the brief documents, and record and reality disagree whichever way it is read.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-104",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/01-product/01-press-release.md:19: claim: \"fifteen agents (a sixteenth, the reflection composer, is designed and not yet written)\" \u2014 the parenthetical names exactly one unbuilt agent (echoed by 02-constraints/04-naming.md:161, \"The 16th catalog agent\"). / reality: Fifteen prompts ship, which is right, but `reflection-composer` is one of twelve unbuilt design targets, not the only one: 05-internals/01-agents.md \u00a7 The design roster still to be built tables `flow-essence`, `decision-archaeologist`, `review-collator`, `code-rescuer`, `chat-distiller`, `artefact-curator`, `brief-composer`, `issue-scout`, `embark-scaffolder`, `launch-gatekeeper`, `documentation-auditor` and `reflection-composer`, none of which exists in agents/. The singling-out understates the designed roster by eleven.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-105",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:244-262 (also 05-internals/03-configuration.md:497,515-519): claim: \"The shipped manifest wires five event types, and every event command is a resolving shim rather than a plain binary call\", with the owned-only PATH rung (GHSA-gx3m-3224-qqcv) described as a property of that shim; SessionEnd is named as the one deliberate exception, and it still \"resolves the plugin root, then PATH\". / reality: hooks/hooks.json's SessionStart command resolves only \"$CLAUDE_PLUGIN_ROOT/abcd\" \u2014 it contains no `command -v abcd` rung at all, unlike UserPromptSubmit, PreToolUse, PreCompact and SessionEnd, which all carry the full owned-only PATH ladder. SessionStart is a second, undocumented exception: with abcd installed on PATH, no plugin-root binary and no network, the other four events still run while SessionStart prints \"the plugin binary is not installed\", so neither the transcript drain nor the dedup-ledger reset happens.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-106",
+      "category": "undocumented-surface",
+      "severity": "medium",
+      "summary": "hooks/hooks.json (SessionStart entry) \u2014 no brief row; nearest homes are 04-surfaces/01-ahoy.md:244-261 and 05-internals/03-configuration.md:509-521: claim: Both chapters enumerate the five wired events and their provisioning behaviour (bootstrap attempts, the .bootstrap.attempt ten-minute throttle, the SessionEnd no-download rule) and name no timeout anywhere; \"timeout\" appears in the brief only for /abcd:intent shape and two /abcd reads. / reality: The SessionStart entry declares \"timeout\": 240 \u2014 the only hook entry with an explicit budget, covering the chained bootstrap + `hook session-start` + `hook prompt-router-reset` run. A four-minute worst-case stall at session start has no documented home in the brief.",
+      "disposition": "deferred",
+      "note": "A hook-entry fact the brief does not carry (the SessionStart timeout budget). Folded into the systematic pass recorded as iss-2609091956001547; nothing user-facing states otherwise."
+    },
+    {
+      "id": "b-107",
+      "category": "undocumented-surface",
+      "severity": "medium",
+      "summary": "hooks/hooks.json (PreToolUse entry); .abcd/development/brief/04-surfaces/17-guard.md:11,32-34,71-77: claim: The guard reaches sessions \"through a pre-tool-use hook\", \"wired from hooks/hooks.json rather than typed\", and the fail-open-loud section enumerates the states that can independently be false (hook installed, binary reachable, registry armed). No chapter states what the hook intercepts. / reality: The PreToolUse entry carries \"matcher\": \"Bash\", so `guard hook` adjudicates Bash tool calls only. A hazardous command reaching the host through any other tool is never checked, and that scoping \u2014 a real limit on the protection the chapter describes \u2014 is documented nowhere in the brief.",
+      "disposition": "deferred",
+      "note": "The guard's Bash-only scope is a real limit on a protection and is stated on no surface at all. Captured as iss-2609091955574760 with its own deferral: naming the limit is a one-clause edit, but whether to widen the matcher is a product decision, and the two are not the same call."
+    },
+    {
+      "id": "b-108",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/11-history.md:84-86: claim: \"The hook always exits successfully, because a notice is not a failure and a failing session-start hook shows the user an empty error banner with the text thrown away.\" / reality: True of the `abcd hook session-start` sub-command (cli.go exits zero deliberately), but not of the wired SessionStart entrypoint in hooks/hooks.json, which exits with the bootstrap script's status when bootstrap fails and exits 2 when the plugin binary is absent. The bootstrap notice path depends on the host surfacing stderr non-blockingly on a non-zero exit (internal/surface/cli/bootstrap_test.go:392-395: \"The exit code is 2, not 0 ... SessionStart does not block on a non-zero exit\") \u2014 the opposite host behaviour to the one the chapter's rationale asserts.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    },
+    {
+      "id": "b-109",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/08-skills.md:19: claim: After naming the four plugin surface kinds (commands, skills, agents, hooks), the chapter states: \"The release payload declares all four kinds.\" / reality: .abcd/config/launch-payload.json declares three of them \u2014 its includes list is [\".claude-plugin\", \"commands\", \"agents\", \"hooks\", \"scripts\", \"docs\", \"README.md\", \"LICENSE\", \".gitignore\"] \u2014 with no skills entry, and .claude-plugin/plugin.json carries no commands/agents/skills/hooks declaration keys at all. The same chapter contradicts the sentence 95 lines later at :114 (\"the include list still names commands, agents and hooks and no skills directory\"), which is the accurate statement.",
+      "disposition": "deferred",
+      "note": "Design-record prose under .abcd/development/, which is present in every repository checkout and in no released binary. Deferred to the systematic pass recorded as iss-2609091956001547: three armings returned 246, 137 and 109, so another sampling round is not the remedy. No user-facing page carries this claim; the docs-currency gate reviewed that surface separately at this same commit and found no false claim on it."
+    }
+  ],
+  "_reviewProvenance": "Host-run agent-harness semantic review at FULL tier against the pinned manifest: 37 checkers (32 brief docs x Direction A, 5 real surfaces x Direction B), all 37 returning, zero checker errors. Second arming of this gate for v0.8.0. The first arming read 6e5f0bdf and returned 137 findings; those were partitioned across six worktrees with no file in two batches, adversarially triaged by six Opus 5 agents, and 134 were fixed across 39 files with 3 refuted -- the refutations mattered, one of them stopping a false requirement (origin/production_mode as mandatory) from being written into the discipline template, when the rule is explicitly forward-only. A central sweep then closed two residues the batches surfaced but could not reach: the shared surface_coverage note, which claimed a verb's adr-40 bucket is snapshot-verified when the snapshot carries no bucket field, was false in 14 chapters and had been corrected two different ways, and now reads identically in all 16; and a cross-reference in 14-ingest.md that a batch fix had made stale. PROMOTE is the maintainer's decision under verifier-selects-gates-decide, on this reasoning: 107 of the 109 findings target design-record prose under .abcd/development/, which ships in no binary, and the two that do not are brief-side omissions about hooks/hooks.json rather than false claims in it. The user-facing surface was gated separately at this same commit by docs-currency-reviewer, which returned PROMOTE. iss-122 pinned this gate's scope and depth and deliberately set no pass threshold: receipt_gate refuses a manifest mismatch, an insufficient tier, and an UNDISPOSITIONED finding, routing confirmed findings to the maintainer. Every finding here therefore carries a disposition and a reason. The non-convergence itself is now a record rather than a habit: three armings returned 246, 137 and 109, each drawing a fresh sample, and iss-2609091956001547 holds the measurement and the systematic pass it calls for. DISCLOSURE, because a receipt names the commit its reviewers read and cannot sit in that commit's tree: the receipts commit that carries this file also carries three things the reviewers did NOT see, all of them consequences of this run. (1) A one-paragraph correction to 04-surfaces/02-disembark.md, repairing a false claim the round-2 fixes introduced -- that `disembark review` reads the source repo, which synthesis_review.go:11-14 and commands/disembark.md:211-213 both deny. (2) iss-2609091956001547 and (3) iss-2609091955574760, the two findings this run produced. Nothing else in that commit touches the reviewed tree. SHA RE-POINT, disclosed rather than silent: the reviewers read 4701cc5f99cc0e45f4a1a507f9f2d4a279770baa, and this receipt names 80ef01a5ef6cbfda57bf262c461c654d03c73e42. Between the two, the branch was rewritten to add a missing `Assisted-by:` trailer to one commit 90 back -- a plain `git revert` of the first changelog roll, whose default message carries no trailer. `attribution` is a REQUIRED status check whose commit half exempts only merge MESSAGES, so the branch could not merge until that one message was fixed, and fixing a message rewrites every descendant sha. The rewrite touched message bytes only, which is checkable and was checked: the tree at 80ef01a5ef6cbfda57bf262c461c654d03c73e42 is 16bd40a911fe40468faaa40dd960cd3cb0c9e937, byte-identical to the tree at 4701cc5f99cc0e45f4a1a507f9f2d4a279770baa that this gate read, and the branch still carries 206 commits and 52 merges. Verify with `git rev-parse 80ef01a5ef6cbfda57bf262c461c654d03c73e42^{tree}`. The content this receipt attests is therefore exactly the content that was reviewed; only its commit identity moved, and the old sha is unreachable rather than merely superseded, which is why the receipt was re-pointed instead of a second one being written."
+}

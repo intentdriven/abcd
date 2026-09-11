@@ -707,3 +707,100 @@ func assertNothingWritten(t *testing.T, root string) {
 		t.Errorf("a refused run wrote %s", e.Name())
 	}
 }
+
+// record_redact_test.go material — the store-before-commit gate for ideate
+// (iss-2609020127281995, iss-2608291817368607). `ideate record` writes
+// host-composed free text into TWO committed tiers — the dated research note
+// under .abcd/development/ and the dated pointer in .abcd/work/DECISIONS.md —
+// and until this ran the package imported no scanner at all: termsafe neutralises
+// terminal escapes and markdown/HTML structure, which is a different job from
+// finding a credential.
+//
+// Every span below is FAKE: a `ghp_` token shape of literal letters, and a home
+// path under a set-for-the-test $HOME. Nothing here is a live credential.
+
+const fakeIdeateToken = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd"
+
+// TestRecordRedactsSecretsInVerdictProse drives a valid verdict whose idea text
+// and one leg's claim each carry a secret-shaped literal, and proves the literal
+// reaches NEITHER committed artefact while the redaction placeholder does.
+func TestRecordRedactsSecretsInVerdictProse(t *testing.T) {
+	// A set-for-the-test home so the scanner's identity probe (which reads $HOME)
+	// flags the path as the caller's own — deterministic across platforms.
+	home := "/Users/testperson"
+	t.Setenv("HOME", home)
+	homePath := home + "/private/verdict-notes.md"
+
+	root := seedRepo(t)
+	p := validPayload()
+	p["idea"] = "the gauntlet should read the token " + fakeIdeateToken + " from " + homePath
+	p["legs"].([]any)[0].(map[string]any)["claims"] = []any{
+		map[string]any{
+			"claim":          "the research leg pasted " + fakeIdeateToken + " into its own note",
+			"primary_source": "https://example.invalid/paper.pdf",
+			"status":         "verified",
+		},
+	}
+	res, err := Record(root, "leaky-verdict", encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	body := readFile(t, root, res.Path)
+	log := readFile(t, root, DecisionsRelDir)
+	for name, text := range map[string]string{res.Path: body, DecisionsRelDir: log} {
+		if strings.Contains(text, fakeIdeateToken) {
+			t.Errorf("%s carries the raw secret span", name)
+		}
+		if strings.Contains(text, homePath) {
+			t.Errorf("%s carries the caller's raw home path", name)
+		}
+	}
+	// The record must still SAY something: a redaction that silently dropped the
+	// idea would pass the two assertions above and destroy the record.
+	if !strings.Contains(body, "the gauntlet should read the token ") {
+		t.Errorf("the idea text did not survive redaction:\n%s", body)
+	}
+	if !strings.Contains(body, "~/private/verdict-notes.md") {
+		t.Errorf("the home path was not replaced by its placeholder:\n%s", body)
+	}
+	// The fingerprint, not just "some asterisks": the record already renders
+	// `**survived**`, so a bare star assertion would pass against no redaction
+	// at all. maskSecret keeps the first three runes and the last two.
+	fingerprint := "ghp" + strings.Repeat("*", len(fakeIdeateToken)-5) + "cd"
+	if n := strings.Count(body, fingerprint); n != 2 {
+		t.Errorf("the record carries %d secret fingerprints, want 2 (the idea and the claim):\n%s", n, body)
+	}
+	if res.Redactions < 3 {
+		t.Errorf("Redactions = %d, want at least 3 (two token spans and one home path)", res.Redactions)
+	}
+}
+
+// TestRecordRefusesOnDegradedScanner is the fail-closed half. A per-repo
+// .abcd/config/pii.json that cannot be parsed leaves the scanner with a silently
+// weakened pattern set, and ScanText cannot signal that in-band — so the write is
+// refused outright. The record write is a one-shot exclusive create, so the proof
+// that matters is that NOTHING landed: no note, and no pointer appended.
+func TestRecordRefusesOnDegradedScanner(t *testing.T) {
+	root := seedRepo(t)
+	cfg := filepath.Join(root, ".abcd", "config", "pii.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte("{ this is not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := readFile(t, root, DecisionsRelDir)
+
+	_, err := Record(root, "degraded-scanner", encode(t, validPayload()), at)
+	if err == nil {
+		t.Fatal("Record accepted a verdict with a degraded scanner")
+	}
+	if !strings.Contains(err.Error(), "degraded scanner") {
+		t.Errorf("error = %v, want it to name the degraded scanner", err)
+	}
+	assertNothingWritten(t, root)
+	if got := readFile(t, root, DecisionsRelDir); got != before {
+		t.Errorf("the refused run appended to the decision log:\n%s", got)
+	}
+}

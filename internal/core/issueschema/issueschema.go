@@ -76,6 +76,18 @@ var Known = map[string]bool{
 	// one is refused, which is exactly how the first draft of this feature shipped
 	// a flag that could never execute.
 	"shipped_in": true,
+	// deferred_after and deferral_reason are the release cut's WAIVER pair: the
+	// anchor tag a still-open finding was consciously deferred past, and the
+	// stated reason. The unfixed-findings guardrail
+	// (core/changelog.GuardFindings) refuses a cut that carries a consequential
+	// finding captured since the anchor and still open, and this pair is the one
+	// way past it — a deferral that is recorded and reviewable rather than
+	// silent. Optional, and rare: only a finding a maintainer has decided to
+	// hold over has anything to say here. Both must be KNOWN properties, or the
+	// reader drops every waived record as malformed and the finding goes
+	// invisible to every capture surface — the exact failure the guardrail
+	// exists to prevent, reintroduced by its own escape hatch.
+	"deferred_after": true, "deferral_reason": true,
 	// origin and production_mode are the disclosure pair (itd-178): where an
 	// item came from, and how its text was produced. Both are optional here —
 	// population is forward-only, and an existing record carries neither — but

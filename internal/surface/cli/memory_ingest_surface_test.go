@@ -15,6 +15,9 @@ import (
 // the kept-originals directory a regular file.
 func TestMemoryIngestKeepOriginalPartialFailure(t *testing.T) {
 	repo := t.TempDir()
+	// The memory front door resolves the checkout root before it writes, so the
+	// fixture is a git working tree (iss-2609091729516940).
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 
 	src := filepath.Join(repo, "article.txt")

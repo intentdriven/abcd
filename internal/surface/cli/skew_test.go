@@ -51,7 +51,7 @@ const (
 // "the root that fetched" would routinely describe a root the harness has
 // already deleted.
 func TestHookSessionStartReportsBinarySkew(t *testing.T) {
-	repo, _ := sessionEndRepo(t) // ready store: the transcripts notice stays silent
+	repo, _ := sessionEndRepo(t) // hermetic HOME; the store makes itself
 	skewRoot(t, skewLiveRoot)
 	skewCacheMeta(t, "release_tag=v0.4.9\nrelease_sha="+skewRelease+"\nbinary_sha256=unverified\nfetched_at=2026-08-01T00:00:00Z\n")
 

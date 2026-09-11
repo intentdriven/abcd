@@ -2,9 +2,11 @@
 
 `/abcd:decide` mints an architecture decision record: it allocates the id,
 derives the slug and the date, and writes the store's skeleton into
-`.abcd/development/decisions/adrs/`. It is the ADR store's **write** verb, the
+`.abcd/development/decisions/adrs/`. It is the ADR store's **minting** verb, the
 counterpart of the read-only `abcd adr-N` dispatch the
-[`08-abcd.md`](08-abcd.md) chapter describes.
+[`08-abcd.md`](08-abcd.md) chapter describes. It is not the store's only writer:
+[`/abcd:embark`](03-embark.md) unpacks a lifeboat's decision records into the same
+store, which is a restore rather than a mint.
 
 ## Behaviour
 
@@ -14,10 +16,30 @@ abcd decide "<title>" --json
 
 emits `{ "id": "adr-<stamp>", "slug": "<kebab-case>", "title": "<title>",
 "date": "YYYY-MM-DD", "path": ".abcd/development/decisions/adrs/<stamp>-<slug>.md" }`
-and writes exactly that one file. The plain render names the same four values
-and the status the record lands with. Exit 0 when the record lands, exit 2 for
+and writes that one file, laying the store's directories down first where the
+checkout does not already hold them. Nothing else lands on disk. The plain render
+names the same four values and the status the record lands with. Exit 0 when the record lands, exit 2 for
 an operand fault — no title, or a title with nothing slug-able in it — with
 nothing written.
+
+**The path is relative to the repository root, from anywhere in the tree.** The
+front door resolves the checkout root before it builds the request, so a mint
+from a package directory lands in the checkout's own store and no second store
+appears beneath the caller. The resolution is
+[`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go), the same one
+`capture` addresses its ledger through — git's toplevel where git will name one,
+and a refusal in the two remaining states rather than a guess: a repo-shaped tree
+git will not answer for, and no repository above at all. Outside a checkout the
+verb therefore exits **2** and writes nothing, because there is no decision store
+to address and laying one where the caller stood is what a lost record looks like
+one directory further out. It deliberately does not fall through to a marker
+walk, which would accept any directory carrying the name (iss-2609090947359464).
+
+A decision store found **below** the checkout root, on the chain between the
+caller and it, is named on stderr and left untouched — the deposit an
+unresolved front door leaves behind, reported to the person standing over it
+rather than stepped over in silence. The note states what is there; moving a
+record is a judgement no verb makes.
 
 The title is one quoted operand. It reaches the committed filename by way of the
 derived slug, so it passes the canonical scanner before anything is derived from
@@ -41,11 +63,22 @@ and smaller than every stamp, so the hand-numbered records sort first in both
 the lexical listing and the numeric index order.
 
 **`0001`–`0058` keep their ids and their filenames.** Nothing is renumbered, and
-every reader of an ADR id admits both vintages through one derivation
-(`recordid.CanonADRID` for a cited id, `recordid.ADRFileID` for a filename): the
-citation resolver, the `abcd <record-id>` dispatch, the `record_schema` gate, the
-context-citation-currency gate, the site's decisions index, and the lifeboat
-packer.
+every reader of an ADR id admits both vintages: dispatch on `adr-45` and on a
+stamped id both resolve, and the record gates pass over freshly minted stamped
+skeletons. What they do not share is one derivation. `recordid.CanonADRID` (for
+a cited id) and `recordid.ADRFileID` (for a filename) are the canonical pair,
+and only the citation resolver, the `abcd <record-id>` dispatch and `decide`
+itself call them. Three readers carry their own: the `record_schema` gate and
+the context-citation-currency gate share a locally defined handle regex and
+ADR-filename regex inside `internal/core/lint` (taking `recordid.FilenameNumRe`
+for itd, spc and iss but not for adr); the site's decisions index derives
+handles in `internal/core/site`, a package that does not import
+`core/recordid` at all; and the lifeboat re-implements the pair as
+`gvCanonADRID` / `gvADRIDFromFilename`, whose own comment records that it
+agrees with the other two by inspection. The lifeboat's native ADR source adds
+a fourth local filter for numbered filenames. Four parallel derivations agreeing
+by inspection is the shape a divergence hides in, and consolidating them is
+open work rather than a claim this chapter can make.
 
 ## What the verb does not do
 

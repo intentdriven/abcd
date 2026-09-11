@@ -25,6 +25,125 @@ const ManifestRelPath = ".abcd/site.json"
 // maxManifestBytes bounds the manifest read. It is configuration, not content.
 const maxManifestBytes = 256 * 1024
 
+// pageRootPrefixes are the only directories a composed page may come from, the
+// same closed set assetRootPrefix is for pictures and for the same reason: the
+// build INLINES what it reads here into `index.html`, so a page path that is
+// merely a valid repo-relative path reaches `.git/config` (a credential-bearing
+// remote URL, and on a CI runner the checkout token in an `http.…extraheader`
+// line), `.env`, and the gitignored `.abcd/.work.local/` tier — and publishes
+// whichever it names. `docs/` is the documentation the landing page is composed
+// from; `site-src/` is the site's own static input. Nothing else is prose the
+// site was built to render (iss-2609081940475662).
+var pageRootPrefixes = []string{"docs/", "site-src/"}
+
+// quoteSource is the closed set of files ONE quote-type manifest path field may
+// name — the fields that select a SPAN of a file rather than inlining the whole
+// of it.
+//
+// They used to pass the relative-path check and then only refuseGitDir, which is
+// the denylist refusePageSource was closed against for a reason that applies
+// here unchanged: `.git` and `.env` are the destinations somebody thought of,
+// and the gitignored `.abcd/.work.local/` tier, the private record and every
+// file a future contributor adds are the ones nobody did. A heading-selected
+// span is published as verbatim as a whole page, and policyQuote renders the
+// ENTIRE matched section whenever `part` is anything but first-bullet — so a
+// manifest naming a local scratch file with a matching heading published that
+// file to the public site (iss-2609090951279243).
+//
+// Each field gets its OWN set rather than the page roots, because each reads a
+// different kind of file, and the reason a set is wider (or narrower) than the
+// page roots is stated on it below.
+type quoteSource struct {
+	// under admits any path beneath one of these directory prefixes. Each entry
+	// ends in "/", so `docs/` never admits `docsy/`.
+	under []string
+	// directlyIn admits a file sitting DIRECTLY in one of these directories and
+	// nothing in a subdirectory of one, which is how a set reaches a directory
+	// whose subtree it must not reach.
+	directlyIn []string
+	// rootMarkdown admits a markdown file at the repository root itself.
+	rootMarkdown bool
+	// what says, in the refusal, what the field is for — the reader's next move
+	// is an edit to this key, and the reason it is fenced is the useful half.
+	what string
+}
+
+var (
+	// identity.file is a heading extract, and the canonical identity block lives
+	// in the durable design record rather than in the documentation — so the set
+	// adds `.abcd/development/`, the committed record tier that is present in
+	// every checkout. It reaches neither `.abcd/work/` nor the gitignored
+	// `.abcd/.work.local/` tier.
+	identitySource = quoteSource{
+		under: []string{"docs/", "site-src/", ".abcd/development/"},
+		what:  "the hero quotes a heading span of it, and a span is published as verbatim as a page",
+	}
+	// ui_strings is the site's OWN input rather than repository prose, so its
+	// set is NARROWER than the page roots: the documentation declares no
+	// interface strings.
+	uiStringsSource = quoteSource{
+		under: []string{"site-src/"},
+		what:  "it declares the interface strings the site renders",
+	}
+	// docs.index and docs.cli name documentation PAGES, so their set is narrower
+	// than the page roots too — the site's own source holds no documentation.
+	docsRefSource = quoteSource{
+		under: []string{"docs/"},
+		what:  "it names a documentation page the site links",
+	}
+	// record_pages.contributors.policy.file: the contribution policy
+	// conventionally sits at the repository ROOT, which the page roots do not
+	// cover, so the set adds a markdown file at the root itself. The root holds
+	// committed, forge-published prose and no gitignored tier; `.env` and
+	// `.git/config` are not markdown and stay refused.
+	policySource = quoteSource{
+		under:        []string{"docs/", "site-src/"},
+		rootMarkdown: true,
+		what:         "the contributors page publishes the section it selects, verbatim",
+	}
+	// checks.unresolved_reference_baseline is CONFIGURATION rather than prose:
+	// it is decoded against a fixed schema with unknown fields refused, and only
+	// the LENGTH of its list reaches the site. It sits beside the manifest, so
+	// it is held to the manifest's own directory and no deeper — which closes
+	// the `.abcd/.work.local/` tier a bare `.abcd/` prefix would leave open,
+	// while still letting a repository name a baseline it has yet to write.
+	baselineSource = quoteSource{
+		directlyIn: []string{".abcd/"},
+		what:       "it is the ratchet the reference check measures against",
+	}
+)
+
+// admits reports whether p is in the set.
+func (q quoteSource) admits(p string) bool {
+	for _, prefix := range q.under {
+		if strings.HasPrefix(p, prefix) {
+			return true
+		}
+	}
+	for _, dir := range q.directlyIn {
+		if rest, ok := strings.CutPrefix(p, dir); ok && rest != "" && !strings.Contains(rest, "/") {
+			return true
+		}
+	}
+	if q.rootMarkdown && !strings.Contains(p, "/") && strings.HasSuffix(strings.ToLower(p), ".md") {
+		return true
+	}
+	return false
+}
+
+// describe names the set, so a refusal says where the file may live instead.
+func (q quoteSource) describe() string {
+	var parts []string
+	parts = append(parts, q.under...)
+	for _, dir := range q.directlyIn {
+		parts = append(parts, dir+" itself")
+	}
+	if q.rootMarkdown {
+		parts = append(parts, "a markdown file at the repository root")
+	}
+	return strings.Join(parts, " or ")
+}
+
 // ErrManifestInvalid is returned for a manifest the build cannot act on.
 var ErrManifestInvalid = errors.New("site: manifest is invalid")
 
@@ -226,11 +345,24 @@ func (m Manifest) validate() error {
 	if !fsutil.ValidRelPath(m.Identity.File) {
 		return bad("identity.file %q is not a repo-relative path", m.Identity.File)
 	}
+	// identity.file is a heading extract rather than a whole-file page source,
+	// so it keeps its home in the durable record outside docs/ — but inside a
+	// closed set of its own, and a heading extract out of .git/config is still a
+	// quote out of .git/config.
+	if err := refuseQuoteSource(bad, "identity.file", m.Identity.File, identitySource); err != nil {
+		return err
+	}
 	if m.UIStrings == "" || !fsutil.ValidRelPath(m.UIStrings) {
 		return bad("ui_strings %q is not a repo-relative path", m.UIStrings)
 	}
+	if err := refuseQuoteSource(bad, "ui_strings", m.UIStrings, uiStringsSource); err != nil {
+		return err
+	}
 	if m.Home.Hero.Page == "" || !fsutil.ValidRelPath(m.Home.Hero.Page) {
 		return bad("home.hero.page %q is not a repo-relative path", m.Home.Hero.Page)
+	}
+	if err := refusePageSource(bad, "home.hero.page", m.Home.Hero.Page); err != nil {
+		return err
 	}
 	if m.Home.Hero.Figure != "" && m.Home.Hero.Figure != figureFirstImage {
 		return bad("home.hero.figure %q is not a figure rule (want %q)", m.Home.Hero.Figure, figureFirstImage)
@@ -250,6 +382,9 @@ func (m Manifest) validate() error {
 		letters[ch.Letter] = true
 		if !fsutil.ValidRelPath(ch.Page) {
 			return bad("%s.page %q is not a repo-relative path", where, ch.Page)
+		}
+		if err := refusePageSource(bad, where+".page", ch.Page); err != nil {
+			return err
 		}
 		switch ch.Layout {
 		case LayoutCardsFromH2, LayoutLeadInCards, LayoutProse, LayoutInstall:
@@ -324,8 +459,14 @@ func (m Manifest) validateDeferred(bad func(string, ...any) error) error {
 		{"docs.index", m.Docs.Index},
 		{"docs.cli", m.Docs.CLI},
 	} {
-		if f.path != "" && !fsutil.ValidRelPath(f.path) {
+		if f.path == "" {
+			continue
+		}
+		if !fsutil.ValidRelPath(f.path) {
 			return bad("%s %q is not a repo-relative path", f.key, f.path)
+		}
+		if err := refuseQuoteSource(bad, f.key, f.path, docsRefSource); err != nil {
+			return err
 		}
 	}
 	// DEFERRED to spc-38's pages half (the contributors page).
@@ -334,15 +475,74 @@ func (m Manifest) validateDeferred(bad func(string, ...any) error) error {
 		if !fsutil.ValidRelPath(policy.File) {
 			return bad("record_pages.contributors.policy.file %q is not a repo-relative path", policy.File)
 		}
+		// A quote, not a whole-file page source, so the attribution policy stays
+		// quotable from CONTRIBUTING.md at the repository root — but from
+		// nowhere the page roots and that root allowance do not cover. This is
+		// the field with the widest blast radius: policyQuote publishes the
+		// whole matched section whenever `part` is not first-bullet.
+		if err := refuseQuoteSource(bad, "record_pages.contributors.policy.file", policy.File, policySource); err != nil {
+			return err
+		}
 		if policy.Heading == "" {
 			return bad("record_pages.contributors.policy.heading is empty; the page quotes a span selected by heading")
 		}
 	}
 	// DEFERRED to `abcd site check`.
-	if b := m.Checks.UnresolvedReferenceBaseline; b != "" && !fsutil.ValidRelPath(b) {
-		return bad("checks.unresolved_reference_baseline %q is not a repo-relative path", b)
+	if b := m.Checks.UnresolvedReferenceBaseline; b != "" {
+		if !fsutil.ValidRelPath(b) {
+			return bad("checks.unresolved_reference_baseline %q is not a repo-relative path", b)
+		}
+		if err := refuseQuoteSource(bad, "checks.unresolved_reference_baseline", b, baselineSource); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// refuseGitDir refuses a manifest path that names the git directory. EVERY path
+// field passes it, deferred ones included: each names a file the build reads and
+// renders some span of, and fsutil.ValidRelPath accepts ".git/config" because it
+// is a clean, relative, in-root path. The refusal is fsutil.InsideGitDir, shared
+// with the positioning registry's identical gate (iss-150) so the two cannot
+// drift — a case-fold or a segment rule fixed in one is fixed in both.
+func refuseGitDir(bad func(string, ...any) error, key, p string) error {
+	if fsutil.InsideGitDir(p) {
+		return bad("%s %q is inside .git, which is not a composition source", key, p)
+	}
+	return nil
+}
+
+// refuseQuoteSource is the gate on the QUOTE-type path fields: every path the
+// build reads to select a span of, held to the closed set declared for that
+// field. The .git refusal runs first so the shared, case-folding message names
+// that destination for what it is rather than reporting it as merely out of set.
+func refuseQuoteSource(bad func(string, ...any) error, key, p string, q quoteSource) error {
+	if err := refuseGitDir(bad, key, p); err != nil {
+		return err
+	}
+	if q.admits(p) {
+		return nil
+	}
+	return bad("%s %q is outside %s — %s", key, p, q.describe(), q.what)
+}
+
+// refusePageSource is the gate on the two WHOLE-FILE page sources —
+// home.hero.page and home.chapters[].page. loadPage composes everything the
+// named file holds into `index.html`, so the selection is closed to the page
+// roots rather than merely denied the worst known destination: a denylist of
+// .git and .env leaves the gitignored local tier, the private record, and every
+// file a future contributor adds still reachable.
+func refusePageSource(bad func(string, ...any) error, key, p string) error {
+	if err := refuseGitDir(bad, key, p); err != nil {
+		return err
+	}
+	for _, prefix := range pageRootPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return nil
+		}
+	}
+	return bad("%s %q is outside %s — a composed page is inlined whole into the published site, so it comes from the documentation or the site's own source",
+		key, p, strings.Join(pageRootPrefixes, " or "))
 }
 
 // FeatureWants reports whether a chapter's feature block quotes the named part.

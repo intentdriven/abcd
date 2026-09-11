@@ -96,6 +96,10 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-164` — Licence vetting at source admission: `docs cite refresh` records each source's licence verdict into the committed baseline, and the zero-network gate refuses a new entry without one (builds on itd-163)
 - `itd-159` — the repo visibility model has a committed-record mode between private and public, with the matching fence-suppression (graduated from iss-223)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
+- `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091248200336; `builds_on` itd-118, whose worktree clause it supplies the store and the reclaim verb for)
+- `itd-2609091416295622` — A session sees the records its sibling worktrees hold before it mints or fixes one: a read-only ledger diff over `git worktree list --porcelain` (open there and absent here; open here and terminal there), a line on the `/abcd` board and on the record dispatch, no claim and no write (split from itd-2609091034175565 on the maintainer's ruling of 2026-09-09; the shippable piece)
+- `itd-2609091416304128` — `capture resolve` and `capture wontfix` refuse a record already terminal at the local `origin/main` ref as last fetched, stating the ref's age and performing no fetch; the same judgement rendered read-only on `abcd <record-id>` (split from itd-2609091034175565 on the same ruling; the third clause of iss-2609020716570699's remedy, RS001's answer moved earlier)
+- `itd-2609091034175565` — A record says who is working on it before anyone else starts: the claim verb, the session lease and the write-verb refusals, with the `claimed_by` stamp bounded by a two-release migration (promoted from iss-2609020716570699; the read-only listing and the upstream refusal were split out on 2026-09-09; not ready — carries the refusal-surface, liveness and pushed-price questions as open questions)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
@@ -114,6 +118,6 @@ for a capture pass:
 
 **Superseded addition (2026-08-28):** itd-145 (the acknowledgement convention arming itself, captured 2026-08-22) has been superseded by itd-163 in the list above, which delivers its mechanically checkable core, and moved to `intents/superseded/`. (See `superseded/itd-145-an-adopted-idea-cannot-ship-uncredited-abcd-enforces-its-own.md`.)
 
-Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>` and to `shipped/` via `/abcd:intent ship <itd-N>` (or automatically when the linked spec closes).
+Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>`. It reaches `shipped/` one way only: closing its linked spec, which moves the intent as its close-hook. There is no `intent ship` verb, so nothing promotes a record on its own — the close is a manual step run in the change that lands the work.
 
 The brief does not get re-versioned. What has shipped is defined by which phases are complete and which intents are in `shipped/`; this brief stays the canonical current-state design record.

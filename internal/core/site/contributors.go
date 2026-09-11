@@ -12,10 +12,19 @@ package site
 //
 // The bots-and-tools row is derived, not listed. An author is a tool when its
 // name carries the forge's own `[bot]` suffix, or when the repository's own
-// trailers name it as an assisting vendor — which is what a pre-policy commit
-// authored by the tool looks like from here. Deriving it means a second tool
-// that ever lands a commit appears in the right row without an edit, and means
-// no vendor name is written into this file.
+// trailers name it as an assisting vendor AND it commits from an address that is
+// structurally a machine's — which together are what a pre-policy commit authored
+// by the tool looks like from here. Deriving it means a second tool that ever
+// lands a commit appears in the right row without an edit, and means no vendor
+// name is written into this file.
+//
+// The second signal is a CONJUNCTION and that is the whole of it. A vendor token
+// is an ordinary word, so a name match alone says nothing: on its own it moved a
+// human author's entire shortlog count into the bots row the moment somebody
+// declared a trailer whose vendor happened to be that person's git name
+// (iss-2609081940550352). Neither half is sufficient either way round — a person
+// may well commit from a forge privacy address, and an unrelated tool name is not
+// evidence of anything.
 
 import (
 	"regexp"
@@ -33,6 +42,51 @@ var (
 	shortlogRe = regexp.MustCompile(`^\s*(\d+)\s+(.*?)\s*<([^>]*)>\s*$`)
 	botNameRe  = regexp.MustCompile(`\[bot\]$`)
 )
+
+// machineAddrRe matches an address that is structurally a machine's: a mailbox
+// literally named for not being read, a forge bot's own account, or a known
+// automation domain.
+//
+// It reads the LOCAL PART, never the host, and that distinction is the point. A
+// person routinely commits from `1234+name@users.noreply.github.com` — the forge's
+// privacy address, whose host says noreply but whose mailbox is the user's own
+// account — and treating that host as a machine signal would demote exactly the
+// contributors the page exists to credit. The mailbox `noreply@` names no account
+// at all.
+var machineAddrRe = regexp.MustCompile(`(?i)^(?:no-?reply|do-?not-?reply)@|\[bot\]@|@dependabot\.com$`)
+
+// The `Assisted-by:` trailer's grammar, held as the value half alone.
+//
+// `scripts/check-attribution.sh` decides this grammar and carries the reasoning
+// for it; that gate runs in CI without Go and cannot ask this package anything,
+// so the two cannot share code. They share a TEST instead:
+// TestAssistedByGrammarMatchesTheGate reconstructs the gate's whole `TRAILER_RE`
+// from these two constants and fails if either side moved alone. Copying the
+// regexp with no such tie is what would drift — the chart would go on charting a
+// shape the gate had started refusing.
+const (
+	assistedByTrailerKey   = "Assisted-by:"
+	assistedByValuePattern = `[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?`
+)
+
+// assistedByValueRe is that grammar anchored at the START of a trailer value
+// only. A value the convention accepts matches the whole of it; a value carrying
+// a conformant declaration followed by free text — "Vendor:model, with edits" —
+// matches its head, and the head is what is charted. See chartableModel.
+var assistedByValueRe = regexp.MustCompile(`^` + assistedByValuePattern)
+
+// chartableModel is the model a trailer value names, or "" when it names none.
+//
+// The chart is an inventory of MODELS, so a value has to name one to earn a bar.
+// A value that does not — a bare vendor with no version, which the convention
+// deliberately refuses, or a sentence somebody typed into the trailer block — is
+// still a disclosure and is still counted as one at the commit level; it simply
+// has no model to draw. Publishing the free text instead puts whatever was typed
+// onto the site as a label under a heading that reads as a list of models.
+//
+// A value whose HEAD conforms is CLIPPED to that head rather than dropped: the
+// model was named, and the trailing prose is the part with no place on a chart.
+func chartableModel(v string) string { return assistedByValueRe.FindString(v) }
 
 // Author is one authorship line.
 //
@@ -95,11 +149,16 @@ type Authorship struct {
 	// AssistedCommits is how many AUTHORED commits declare assistance — the
 	// commit-level count, and the numerator of the disclosure rate.
 	AssistedCommits int `json:"assisted_commits"`
-	// Assisted is the number of `Assisted-by:` trailer OCCURRENCES across
-	// authored commits. It is what the per-model tally sums to; it is not a
-	// number of commits, and a commit naming two models counts twice here and
-	// once in AssistedCommits. Rendering this one as a count of commits is the
-	// defect that published a disclosure rate well below the truth.
+	// Assisted is the number of `Assisted-by:` trailer occurrences that NAME A
+	// MODEL, across authored commits. It is what the per-model tally sums to —
+	// it is rendered as the chart's own total, so it can be nothing else; it is
+	// not a number of commits, and a commit naming two models counts twice here
+	// and once in AssistedCommits. Rendering this one as a count of commits is
+	// the defect that published a disclosure rate well below the truth.
+	//
+	// A declaration that names no model (see chartableModel) is counted in
+	// AssistedCommits and not here, so this can sit below that figure. The
+	// disclosure rate is computed from the commit-level counts and is unaffected.
 	Assisted int `json:"assisted"`
 	// MultiTrailerCommits is how many AUTHORED commits declare more than one
 	// model. It is counted per COMMIT rather than derived as Assisted minus
@@ -117,7 +176,8 @@ type Authorship struct {
 	// history predates the convention. Merges are excluded: nobody wrote them,
 	// so nothing was forgotten.
 	Undeclared int `json:"undeclared"`
-	// ByModel tallies each distinct declared value by OCCURRENCE, most first.
+	// ByModel tallies each distinct declared MODEL by OCCURRENCE, most first —
+	// the trailer-shaped values alone, clipped to the grammar.
 	ByModel []ModelTally `json:"by_model"`
 }
 
@@ -173,11 +233,18 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 				// total. It is stated separately, beneath the chart.
 				continue
 			}
-			tally[v]++
-			a.Assisted++
+			// The commit declares that something assisted, whatever shape the
+			// value is in; that fact is the disclosure and is counted first.
 			assisted = true
+			model := chartableModel(v)
+			if model == "" {
+				continue
+			}
+			tally[model]++
+			a.Assisted++
 			models++
-			vendors[strings.SplitN(v, ":", 2)[0]] = true
+			vendor, _, _ := strings.Cut(model, ":")
+			vendors[vendor] = true
 		}
 		if models > 1 {
 			a.MultiTrailerCommits++
@@ -216,7 +283,8 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 			continue
 		}
 		au := Author{Name: m[2], Commits: n, Profile: profileURL(m[3]), email: m[3]}
-		if botNameRe.MatchString(au.Name) || vendors[au.Name] {
+		if botNameRe.MatchString(au.Name) ||
+			(vendors[au.Name] && machineAddrRe.MatchString(au.email)) {
 			a.Bots = append(a.Bots, au)
 			continue
 		}

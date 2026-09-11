@@ -275,3 +275,29 @@ func TestRealExistingPath(t *testing.T) {
 		t.Errorf("RealExistingPath(\"\") = %q, want empty", got)
 	}
 }
+
+// TestOwnerUIDReportsTheCallersOwnUID pins the canonical ownership lookup on the
+// one case a single-uid test process can stage for real: a file it just created
+// is its own. The foreign-uid half cannot be staged here — a test cannot create
+// a second uid — so the callers that must refuse a foreign owner substitute this
+// lookup instead (internal/core/rules.ownerUID), the same predicate-substitution
+// idiom caseFoldingFS keeps in this package.
+func TestOwnerUIDReportsTheCallersOwnUID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mine")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{dir, path} {
+		got, err := fsutil.OwnerUID(target)
+		if err != nil {
+			t.Fatalf("OwnerUID(%q): %v", target, err)
+		}
+		if want := uint32(os.Getuid()); got != want {
+			t.Errorf("OwnerUID(%q) = %d, want this process's uid %d", target, got, want)
+		}
+	}
+	if _, err := fsutil.OwnerUID(filepath.Join(dir, "absent")); err == nil {
+		t.Error("OwnerUID must report an error for an absent path, never a uid the caller could read as its own")
+	}
+}

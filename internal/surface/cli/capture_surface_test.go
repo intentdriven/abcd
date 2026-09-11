@@ -18,6 +18,20 @@ import (
 
 var reIssueFile = regexp.MustCompile(`^iss-\d+-.*\.md$`)
 
+// captureLedgerRepo is the ground every test in this file stands on: a git
+// working tree, chdir'd into. The ledger is per-repository — a capture verb
+// resolves the checkout root and refuses when there is no checkout at all
+// (iss-2609090951291524) — so a bare temporary directory is no longer a place a
+// capture happens, and a fixture that used one was asserting against a store
+// nothing would ever have committed.
+func captureLedgerRepo(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	t.Chdir(repo)
+	return repo
+}
+
 // ledgerIssueCount walks a repo tree and counts written ledger issue files.
 func ledgerIssueCount(t *testing.T, root string) int {
 	t.Helper()
@@ -41,8 +55,7 @@ func ledgerIssueCount(t *testing.T, root string) int {
 // note` (a typo for `resolve`) must be refused with a did-you-mean, and must
 // not file a new issue. Before the fix it was swallowed as free text and wrote.
 func TestCaptureTypoSubcommandNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	out, err := runCLIErr(t, "capture", "resovle", "iss-1", "clear the flake")
 	if err == nil {
@@ -60,8 +73,7 @@ func TestCaptureTypoSubcommandNeverWrites(t *testing.T) {
 // capture whose first word merely resembles a subcommand (but is followed by
 // prose, not an iss-id) still files. The typo guard must be high-precision.
 func TestCaptureFreeTextStillWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	out := runCLI(t, "capture", "resolved a flaky parser test by widening the timeout", "--json")
 	var r struct {
@@ -82,8 +94,7 @@ func TestCaptureFreeTextStillWrites(t *testing.T) {
 // asked for --json, a command error is emitted as a JSON envelope, not raw Go
 // text. `capture list --json` (no state flag) is a stable erroring case.
 func TestJSONErrorShapeIsJSON(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"capture", "list", "--json"}, &stdout, &stderr)
@@ -105,8 +116,7 @@ func TestJSONErrorShapeIsJSON(t *testing.T) {
 // docs-lint config yields a clean, repo-relative diagnostic — never a raw
 // os.Open error leaking the absolute config path.
 func TestDocsLintMissingConfigCleanError(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"docs", "lint"}, &stdout, &stderr)
@@ -141,8 +151,7 @@ func TestDocsLintMissingConfigCleanError(t *testing.T) {
 // return. Exit 1 is reserved for a blocker finding, so a CI gate keying on >=2
 // must not read a lint that never ran as an ordinary findings-pass.
 func TestDocsLintEngineFaultExitsTwo(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	cfgDir := filepath.Join(repo, ".abcd")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -171,8 +180,7 @@ func TestDocsLintEngineFaultExitsTwo(t *testing.T) {
 // a regression that dropped any of those fields from the list surface — or that
 // failed to enumerate every open issue — would turn this red.
 func TestCaptureListOpenRendersIssueFields(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	captures := []struct {
 		text string
@@ -230,8 +238,7 @@ func TestCaptureListOpenRendersIssueFields(t *testing.T) {
 // (the config path is a directory → EISDIR): a *PathError's Error() embeds the
 // absolute path, so the branch must strip it. Guards the security-review BLOCK.
 func TestDocsLintUnreadableConfigNoPathLeak(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	// Make .abcd/docs-lint.json a directory so os.ReadFile fails with EISDIR.
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "docs-lint.json"), 0o755); err != nil {
 		t.Fatal(err)
@@ -260,8 +267,7 @@ func TestDocsLintUnreadableConfigNoPathLeak(t *testing.T) {
 // <iss-N> --json` reports the issue id, the minted intent id, and both
 // repo-relative paths; the minted draft and the stamped issue exist on disk.
 func TestCapturePromoteJSONContract(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	capOut := runCLI(t, "capture", "the parser eats trailing newlines", "--json")
 	var minted struct {
@@ -304,8 +310,7 @@ func TestCapturePromoteJSONContract(t *testing.T) {
 // provenance flags reports the written resolved_by members in --json, and an
 // unknown id refuses without writing.
 func TestCaptureResolveProvenanceJSON(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	capOut := runCLI(t, "capture", "a provenance-carrying issue", "--json")
 	var minted struct {
@@ -356,8 +361,7 @@ func TestCaptureResolveProvenanceJSON(t *testing.T) {
 // TestCaptureLoneWordNeverWrites is the headline: a single bare word must be
 // refused, and must file no issue.
 func TestCaptureLoneWordNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	out, err := runCLIErr(t, "capture", "nosuchthing")
 	if err == nil {
@@ -371,8 +375,7 @@ func TestCaptureLoneWordNeverWrites(t *testing.T) {
 // TestCaptureLoneRecordIDNeverWrites: `abcd capture iss-1` (a forgotten
 // sub-verb) must not become an issue titled with a record id.
 func TestCaptureLoneRecordIDNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	out, err := runCLIErr(t, "capture", "iss-1")
 	if err == nil {
@@ -388,8 +391,7 @@ func TestCaptureLoneRecordIDNeverWrites(t *testing.T) {
 // ("slug normalises to empty", exit 1); the guard now names it for what it is,
 // at the usage code. Either way nothing is written, which is the part that binds.
 func TestCaptureEmptyTextNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	out, err := runCLIErr(t, "capture", "")
 	if err == nil {
@@ -412,8 +414,7 @@ func TestCaptureEmptyTextNeverWrites(t *testing.T) {
 // clean but open/iss-N-users-alice-….md still carried the name. Redaction must
 // run BEFORE the slug is derived, so a finding can never reach the filename.
 func TestCaptureDerivedSlugNeverCarriesHomePathUsername(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	// A fake home path — deliberately NOT the caller's own HOME — so the
 	// assertion turns on the ordering of redaction vs slug derivation, not on the
@@ -458,8 +459,7 @@ func TestCaptureDerivedSlugNeverCarriesHomePathUsername(t *testing.T) {
 // renders the skipped roster; the bare status board must not undercount in
 // silence.
 func TestCaptureStatusBoardRendersSkipped(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	// One well-formed capture, so the ledger dirs exist and the board has a total.
 	runCLI(t, "capture", "a well formed observation", "--slug", "fine", "--json")
@@ -483,8 +483,7 @@ func TestCaptureStatusBoardRendersSkipped(t *testing.T) {
 // re-derived the value would leave a lapse entry stamped with its own write-up
 // time and nothing to say so.
 func TestCaptureLapsedAtWritesTheGivenInstant(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	const lapsedAt = "2026-08-28T09:15:00Z"
 	out := runCLI(t, "capture", "the discipline gave way here",
@@ -511,8 +510,7 @@ func TestCaptureLapsedAtWritesTheGivenInstant(t *testing.T) {
 // criterion rules out. The refusal that stood here is parked
 // (iss-2609091009111294): the record is written, and it carries no lapsed_at.
 func TestCaptureLapsedAtHasNoDefault(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	out := runCLI(t, "capture", "the discipline gave way here", "--category", "lapse", "--json")
 	var minted struct {
@@ -564,8 +562,7 @@ func writeReadingFixture(t *testing.T, repo, run, item string) {
 // it has to BE a front door: reachable from the CLI, refusing what the core
 // refuses, and writing nothing when it refuses.
 func TestCaptureDispositionRefusesEmptyGroundsAndWritesNothing(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	writeReadingFixture(t, repo, "rdg-2608300000000001", "rdi-2608300000000002")
 
 	out, err := runCLIErr(t, "capture", "disposition", "rdi-2608300000000002", "--state", "accepted")
@@ -583,8 +580,7 @@ func TestCaptureDispositionRefusesEmptyGroundsAndWritesNothing(t *testing.T) {
 
 // The happy path: one answer, one record, under a directory keyed by the item.
 func TestCaptureDispositionWritesTheKeyedRecord(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	writeReadingFixture(t, repo, "rdg-2608300000000001", "rdi-2608300000000002")
 
 	out := runCLI(t, "capture", "disposition", "rdi-2608300000000002",
@@ -619,8 +615,7 @@ func TestCaptureDispositionWritesTheKeyedRecord(t *testing.T) {
 // has answered is visible where a person actually looks, not only in a lint run
 // they have to remember to make.
 func TestCaptureBoardCarriesTheOutstandingRoster(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	writeReadingFixture(t, repo, "rdg-2608300000000001", "rdi-2608300000000002")
 
 	out := runCLI(t, "capture", "--json")
@@ -665,8 +660,7 @@ func TestCaptureBoardCarriesTheOutstandingRoster(t *testing.T) {
 // This is the wiring assertion for spc-67's leg — the rule and the board call one
 // function, and the person who looks at the board is the one who has to act.
 func TestCaptureBoardNamesAnUnadmittedProposal(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	run, item := "rdg-2608300000000001", "rdi-2608300000000002"
 	dir := filepath.Join(repo, ".abcd", "work", "issues", "readings", run)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -717,8 +711,7 @@ func TestCaptureBoardNamesAnUnadmittedProposal(t *testing.T) {
 // The flag is not free text — that is what keeps itd-178's "neither key was
 // supplied as free text by the operator" true while a flag exists at all.
 func TestCaptureProductionModeFlag(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	rec := captureRecordFields(t, repo, "a finding worth stamping", "--production-mode", "dictated-and-formatted")
 	if rec["production_mode"] != "dictated-and-formatted" {
@@ -747,8 +740,7 @@ func TestCaptureProductionModeFlag(t *testing.T) {
 // is the source of the default: a repo that declares one in its identity pin
 // stamps it without the operator naming it on every command.
 func TestCaptureProductionModeDefaultsToThePin(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "config"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -800,8 +792,7 @@ const cliGrounds = "pursued: we expect the recorded reasoning to outlive the ses
 // caller did not give. A MALFORMED value is still a usage error at exit 2
 // (TestCaptureMalformedGroundsExit2).
 func TestCapturePromoteMissingGroundsRecordsNone(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	capOut := runCLI(t, "capture", "an observation that may turn out to be a capability", "--json")
 	var minted struct {
@@ -843,8 +834,7 @@ func TestCapturePromoteMissingGroundsRecordsNone(t *testing.T) {
 // test is for — a writer that appended somewhere the record's own section reader
 // cannot see would still satisfy the core tests.
 func TestCaptureGroundsReachTheRecord(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 
 	mint := func(text string) string {
 		t.Helper()
@@ -904,8 +894,7 @@ func TestCaptureGroundsReachTheRecord(t *testing.T) {
 // exited 1, so a caller distinguishing usage errors from real failures learned
 // the wrong thing from the same flag. Every grounds refusal is a usage error.
 func TestCaptureMalformedGroundsExit2(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	capOut := runCLI(t, "capture", "an observation that may turn out to be a capability", "--json")
 	var minted struct {
@@ -957,8 +946,7 @@ func TestGroundsFlagUsageRendersAStringPlaceholder(t *testing.T) {
 // here would collect a conjecture nothing stores. The issue route, asserted by
 // TestCapturePromoteMissingGroundsExit2, is unaffected.
 func TestCapturePromoteReadingItemNeedsNoGrounds(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	const run, item = "rdg-2608300000000001", "rdi-2608300000000002"
 	writeReadingFixture(t, repo, run, item)
 	runCLI(t, "capture", "disposition", item,
@@ -982,8 +970,7 @@ func TestCapturePromoteReadingItemNeedsNoGrounds(t *testing.T) {
 // change rather than assumed to. Framework 7.1 keeps the value out of every
 // flag: it is derived from which command ran.
 func TestCapturePromoteReadingItemStampsTheOriginPair(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	const run, item = "rdg-2608300000000001", "rdi-2608300000000002"
 	writeReadingFixture(t, repo, run, item)
 	runCLI(t, "capture", "disposition", item,
@@ -1023,8 +1010,7 @@ func TestCapturePromoteReadingItemStampsTheOriginPair(t *testing.T) {
 // condition, on the surface: a draft already promoted from another item keeps
 // that edge, and BOTH renderings say which record stayed.
 func TestCapturePromoteReadingItemLinkReportsAKeptBackEdge(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	const run, first, second = "rdg-2608300000000001", "rdi-2608300000000002", "rdi-2608300000000003"
 	const third = "rdi-2608300000000004"
 	writeReadingFixture(t, repo, run, first)
@@ -1085,8 +1071,7 @@ func after(t *testing.T, doc, heading string) string {
 // value handed to it. Nothing on this route writes grounds, so accepting one
 // would report success over a conjecture that reached no record.
 func TestCapturePromoteReadingItemRefusesGrounds(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := captureLedgerRepo(t)
 	const run, item = "rdg-2608300000000001", "rdi-2608300000000002"
 	writeReadingFixture(t, repo, run, item)
 	runCLI(t, "capture", "disposition", item,
@@ -1101,5 +1086,55 @@ func TestCapturePromoteReadingItemRefusesGrounds(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Join(repo, cliDrafts)); len(entries) != 0 {
 		t.Fatalf("a refused promote minted %d draft(s), want 0", len(entries))
+	}
+}
+
+// iss-2609091647589392: capture shares the sub-verb guard (unrecognizedSubverb) with intent,
+// so it carried the same far-miss hole — `capture nosuchverb iss-1` is judged
+// subcommand-shaped and then filed as issue text because no sub-verb is near
+// enough to suggest.
+
+// TestCaptureFarMissSubcommandNeverWrites is the capture half of the headline.
+func TestCaptureFarMissSubcommandNeverWrites(t *testing.T) {
+	repo := captureLedgerRepo(t)
+
+	out, err := runCLIErr(t, "capture", "nosuchverb", "iss-1", "clear the flake")
+	if err == nil {
+		t.Fatalf("expected an error for the far-missed subcommand, got success:\n%s", out)
+	}
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("far-missed subcommand exited %d, want 2 (usage): %v", code, err)
+	}
+	for _, sub := range []string{"list", "resolve", "promote", "wontfix"} {
+		if !strings.Contains(err.Error(), sub) {
+			t.Fatalf("expected the refusal to list the sub-verb %q, got: %v", sub, err)
+		}
+	}
+	if n := ledgerIssueCount(t, repo); n != 0 {
+		t.Fatalf("a far-missed subcommand filed %d issue(s); it must write nothing", n)
+	}
+}
+
+// TestCaptureNearMissKeepsDidYouMean pins capture's unchanged near-miss half.
+func TestCaptureNearMissKeepsDidYouMean(t *testing.T) {
+	_ = captureLedgerRepo(t)
+
+	_, err := runCLIErr(t, "capture", "resovle", "iss-1", "clear the flake")
+	if err == nil {
+		t.Fatalf("expected an error for the near-missed subcommand")
+	}
+	if !strings.Contains(err.Error(), "did you mean") || !strings.Contains(err.Error(), `"resolve"`) {
+		t.Fatalf("expected a did-you-mean naming resolve, got: %v", err)
+	}
+}
+
+// TestCaptureFarMissProseStillWrites is capture's precision half: the same
+// unknown first token followed by prose still files an issue.
+func TestCaptureFarMissProseStillWrites(t *testing.T) {
+	repo := captureLedgerRepo(t)
+
+	runCLI(t, "capture", "nosuchverb", "the", "release", "gate", "before", "cutting")
+	if n := ledgerIssueCount(t, repo); n != 1 {
+		t.Fatalf("prose after an unknown first word wrote %d issue(s), want 1", n)
 	}
 }
