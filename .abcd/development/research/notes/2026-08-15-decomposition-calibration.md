@@ -1349,3 +1349,43 @@ Per hand-run, append:
   occupied, unlike the three preceding runs; the record has no comparable
   capability for any of them, which is consistent with the design documents
   having scheduled them for a later iteration.
+
+## 2026-09-11 — lifecycle symmetry across record families
+
+- **Proposal:** all artefacts must be consistent where possible: issues, specs
+  and intents should close the same way, and since issues are minted to avoid
+  conflicts, specs, intents, ADRs and everything else should be minted the same
+  way.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | Every write-side family mints through one allocator | already shipped | verify only (adr-45, `recordid.Minter`) |
+  | `CLAUDE.md` states ADRs keep a hand-numbered ordinal | defect | issue `iss-2609111002410678` |
+  | Terminal moves are asymmetric across families | capability | intent `itd-2609111003026787` |
+  | Supersede has no verb for intents or ADRs | capability | same intent (maintainer's routing) |
+
+- **Links:** `refines` adr-45 — it extends one-allocator to one-lifecycle-surface.
+  No reversal flagged.
+- **Verdict:** SPLIT, confirmed by the maintainer, who chose one intent plus one
+  issue over three offered alternatives (a single intent carrying the minting
+  audit as a criterion; two intents split by act; hold and file nothing).
+- **Notes:** the first run where a whole half of the proposal was found ALREADY
+  SHIPPED. The minting half needed no record: every write-side family already
+  holds a `recordid.Minter` and names its family tag, `core/decide` last on the
+  2026-09-01 ruling. The corpus reads as mixed (295 sequential ids against 34
+  minted) only because minting is forward-only, which is a property of ids as
+  citations rather than evidence of a split surface — a distinction a table that
+  counted filenames would have got backwards.
+
+  That finding was only reachable by measuring the tree and reading the package
+  map before routing. A decomposition run from the proposal's own words would
+  have filed an intent to build what exists. Worth generalising into the
+  protocol: check whether each part is already shipped BEFORE routing it, not
+  after.
+
+  The run also turned up a defect the proposal did not mention and could not
+  have: `CLAUDE.md` asserts the exact opposite of the shipped minting behaviour,
+  in the file the rules loader puts before every session. The table caught it
+  because verifying "already shipped" meant reading both the code and the rule
+  that describes it, and they disagreed.
