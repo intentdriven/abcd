@@ -1350,7 +1350,7 @@ Per hand-run, append:
   capability for any of them, which is consistent with the design documents
   having scheduled them for a later iteration.
 
-## 2026-09-11 — lifecycle symmetry across record families
+### 2026-09-11 — lifecycle symmetry across record families
 
 - **Proposal:** all artefacts must be consistent where possible: issues, specs
   and intents should close the same way, and since issues are minted to avoid
@@ -1365,8 +1365,36 @@ Per hand-run, append:
   | Terminal moves are asymmetric across families | capability | intent `itd-2609111003026787` |
   | Supersede has no verb for intents or ADRs | capability | same intent (maintainer's routing) |
 
-- **Links:** `refines` adr-45 — it extends one-allocator to one-lifecycle-surface.
-  No reversal flagged.
+- **Links:** `related_adrs: adr-45`, cited by analogy. The first routing said
+  `refines`, which is wrong twice: `refines` is not a field the schema knows
+  (`internal/core/lint/schema.go:113-115`), and adr-45's five rulings are about id
+  allocation, which this narrows none of. `related_intents: itd-34` was MISSED at
+  routing and is the run's blocking defect — see the correction below.
+- **Corrected after the two adversarial reviews (2026-09-11).** The run's
+  routing was WRONG in one part and the table's own method produced two false
+  numbers. Recorded here because the calibration corpus is worth less if it only
+  records the runs that went well.
+
+  **The blocking miss:** the table asserted "Supersede has no verb for intents or
+  ADRs". Half wrong. `itd-34` sits in `planned/` and already specifies
+  `/abcd:intent reclassify --kind superseded --by`, with a richer contract
+  (`kind_at_supersession`) than the draft proposed. The run's own stated lesson —
+  check whether each part is already shipped before routing it — was applied
+  against SHIPPED CODE only, never against PLANNED RECORDS, and that is exactly
+  the blind spot that produced the duplicate. The lesson generalises further than
+  it was written: check the record store, not just the tree.
+
+  **Why nothing caught it:** the draft omitted `## Prior Art`, which
+  `intents/README.md:206-209` makes required, and which exists precisely to
+  surface this. Four of the five minted-era drafts carry it; this was the only one
+  without.
+
+  **Two false numbers**, both from counting directory entries rather than
+  records: "7 superseded intents" (6 records plus a `README.md`) and "60 ADRs
+  carry a superseded edge" (5 carry an edge; 60 was the file count, and every ADR
+  carries `superseded_by:` as a null-initialised schema field written at mint by
+  `decide.go:222`). A count of files is not a count of acts.
+
 - **Verdict:** SPLIT, confirmed by the maintainer, who chose one intent plus one
   issue over three offered alternatives (a single intent carrying the minting
   audit as a criterion; two intents split by act; hold and file nothing).
