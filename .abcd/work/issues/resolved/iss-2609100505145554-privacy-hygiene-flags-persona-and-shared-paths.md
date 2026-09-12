@@ -9,6 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (lint, privacy-hygiene rule)"
+resolution: "The detector no longer fires on the two shapes the conventions themselves mandate: a persona home path from the committed registry, and anything beneath a shared system root. The persona exemption yields to the caller's own home, so a real leak of your own username still fires, and the roster comes from the set already embedded for the sibling device-name exemption rather than from a file the released binaries do not carry. Still firing: any non-roster username, a persona as prefix or suffix, a lookalike directory, and every traversal escape. One change removes a detection and is called out rather than buried: the shared-root exemption now covers the subtree rather than the directory alone, so a third party's name directly beneath a shared root yields no finding, where the committing user's own name there still hard-fails. That reverses a narrowing which entered in an implementation commit with no record of its own, against an original record that asked for the subtree."
+impact: fix
 ---
 
 The `privacy-hygiene` rule flags persona-derived absolute paths, which the same conventions require examples to use, so a repo that follows the convention cannot pass the lint. In a managed repository it produced 48 findings, 33 of them errors, and every single one was benign. A later run of the same repository's lint reported between 147 and 213 privacy errors, all of the same two classes.
@@ -22,3 +24,7 @@ The cost is measurable in the autonomous run this was observed in. Every worker 
 Needed: teach `privacy-hygiene` the persona names the conventions already fix, so a path under one of them is not a finding, the same way a persona-derived device name is not. A shared-directory system root is likewise not a personal path and is frequently a real product path that documentation has to state. Failing that, the rule should say in its message that the escape for a deliberately illustrative persona path is `abcd-lint:allow`, and the convention should say that a repo using persona paths is expected to carry that marker on every one. That is a worse answer, because it means annotating every example the conventions asked for.
 
 The shared-root half was reported upstream once before, in 2026-07, and had not landed in the release the run was using.
+
+## Grounds
+
+- pursued: we expect exempting the mandated shapes to restore the detector's readability without material loss, because a detector red at baseline is one nobody reads and the exempted shapes are declared rather than incidental; it is shown wrong if a real leak arrives in the shape of a persona name or beneath a shared root, which the subtree widening makes strictly more likely than before

@@ -45,7 +45,12 @@ color: green
   `cond-…` identity each one carries. Echo every identity **verbatim**; never
   invent one, never renumber them, and never key a disposition on your own
   paraphrase of a condition. If the intent records none, the block is empty.
-- `policy` — `rubric_hash` and `prompt_hash` the host computed; echo both.
+- `policy` — `rubric_hash` and `prompt_hash`, stated verbatim in the review
+  request's `## Provenance (host-computed …)` block. **Echo both exactly. Never
+  compute one yourself**, and never substitute a hash of the intent, the request
+  file, or this definition: the ingest recomputes both and refuses any other
+  value. If the request carries no such block, the host is too old to issue them
+  — say so in your report rather than inventing a value (iss-2609100505140261).
 - `verifier` — your own `{id, version}` (the dispatching agent + model id); echo.
 
 ## How to judge each criterion (rubric — apply harshly and consistently)
@@ -152,9 +157,12 @@ Rules the ingest enforces (so honour them or the verdict is rejected):
    acceptance verdicts, not change-review verdicts.
 4. `acceptance_rollup` counts must sum to the number of criteria.
 5. Every `criteria[].evidence` and every `gap_audit` entry cites ≥1 `ref`.
-6. `policy.rubric_hash` and `policy.prompt_hash` are both required (non-empty);
-   they pin the provenance the ingest records. A verdict missing either is
-   rejected.
+6. `policy.rubric_hash` and `policy.prompt_hash` are both required, and both
+   must be the pair the request's `## Provenance` block states. The ingest
+   recomputes them — `rubric_hash` over the rubric the request quotes,
+   `prompt_hash` over the request's prompt body (everything above the Provenance
+   block) — so a value you chose is refused outright and the receipt stays
+   parked. A missing or malformed one is dead-lettered.
 7. `scope_conditions` covers the intent's conditions EXACTLY: every supplied
    `cond-…` identity once, none omitted, none repeated, and no identity the
    intent does not carry. An intent that records no conditions takes an empty

@@ -408,6 +408,14 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
 or `noop`) and, for `dead_letter`, the reason.
 
+**Hand the auditor the whole request file.** `intent audit` writes it to the
+reported `request_path`, and its `## Provenance` block states the
+`rubric_hash` and `prompt_hash` the host computed. The auditor echoes both
+verbatim into `policy`; it never computes either itself. The ingest recomputes
+them and refuses a verdict carrying any other value, leaving the receipt parked
+so the request can be re-emitted and the audit re-run — so a made-up hash costs
+a whole review rather than quietly writing provenance nobody issued.
+
 The verdict also disposes the intent's scope conditions, keyed to the `cond-…`
 identity each one carries: every condition receives exactly one of `survived`,
 `narrowed`, `falsified` or `untested`, and a `narrowed` condition states what it

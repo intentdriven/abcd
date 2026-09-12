@@ -9,6 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (intent audit, intent audit ingest)"
+resolution: "The request now carries host-computed provenance and the ingest verifies rather than shape-checks it. The rubric hash covers the judging contract this binary enforces, serialised from the very rules the validator applies and written verbatim into the request, so the auditor is handed the exact bytes that were hashed. The prompt hash covers the request document minus the provenance block, which is a pure function of facts the ingest holds, so the ingest recomputes it. A hash the host never issued is refused outright rather than dead-lettered, because it means this is not the answer to this question, and refusing leaves the owed marker parked so a re-emit stays open. An absent or malformed hash keeps its existing path. The measured scale was far worse than recorded: not three verdicts but thirty-six, across thirteen distinct rubric values, with two digests appearing under both field names, so the field name carried no meaning across the corpus. The thirty-six already ingested are left exactly as they are, deliberately: the ingest no-ops on them, and hand-editing committed audit notes would fabricate a second layer of provenance over the first."
+impact: fix
 ---
 
 `abcd intent audit <itd-N>` emits a fidelity-review request that carries no `policy.rubric_hash` and no `policy.prompt_hash`, but `abcd intent audit ingest` rejects a verdict whose `policy` hashes are empty. The two halves of the same verb disagree, and the gap lands on whoever writes the verdict.
@@ -26,3 +28,7 @@ Needed: `intent audit` should emit the two hashes in the request it hands the au
 Workaround: none that preserves the record's integrity. The verdicts were left uningested pending a decision, because ingesting them would write 13 fabricated attestations into the durable record.
 
 Distinct from the sibling finding about the delivered DIFF RANGE the same request asks the host to supply: that one is about the range, this one is about the hashes, and fixing either leaves the other standing.
+
+## Grounds
+
+- pursued: we expect a hash the ingest can recompute to be the only kind worth requiring, because a hash it cannot recompute is unverifiable and that unverifiability is the defect; it is shown wrong if a legitimate re-audit is blocked by staleness more often than by a real mismatch, which is now load-bearing by design since editing criteria between emit and ingest moves the prompt hash

@@ -127,6 +127,23 @@ var personaNames = map[string]bool{
 	"kira": true, "liam": true, "maya": true, "nia": true,
 }
 
+// IsPersonaName reports whether seg is a given name from the persona registry,
+// compared the way a path segment spells it: case-folded, because a home
+// directory for the persona the conventions mandate is written `/Users/alice`
+// whatever case the registry entry uses.
+//
+// This is the SAME list personaDerivedHost consults for device names
+// (iss-2609100505145554): the record asks for a persona home path to be
+// treated "the same way a persona-derived device name is", and one list is what
+// makes the two answers agree. A caller applying it to a home path must scope it
+// to the username POSITION and must yield to the caller's own home — the case
+// folding that is harmless for a fixture hostname is not, on its own, enough for
+// a home path, because a real account for a person called Alice is spelled
+// exactly like the fixture.
+func IsPersonaName(seg string) bool {
+	return personaNames[strings.ToLower(seg)]
+}
+
 // nonHostLabels are names that carry a LAN suffix but name no host. abcd's own
 // local tier directory (.abcd/.work.local) appears as the bare string
 // "work.local" in product code and its tests, so the canonical set names it once

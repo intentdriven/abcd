@@ -377,6 +377,26 @@ fi
 path_entry=''
 [ -n "$home_dir" ] && path_entry="$home_dir/.abcd/path-entry"
 
+# path_entry_owned: the record is honoured only when it is THIS user's word — a
+# regular file (never a symlink, which `[ -f ]` follows), owned by the caller, and
+# not writable by group or other. The same three-part guard the Go reader applies
+# through fsutil.ReadDeclaration, and the one the two sibling declaration records
+# (~/.abcd/trusted-roots, ~/.abcd/local-transcript-roots) have always applied.
+#
+# It matters at BOTH uses below even though neither executes the recorded binary:
+# the first reads `path=` and then writes the release copy to it, and the second
+# preserves the recorded path and hash while re-stamping plugin_root — so an
+# unowned record can aim a write, or get laundered into a record that looks like
+# the user's own (iss-2609091927085132).
+#
+# One `find` establishes all four facts: the -maxdepth 0 idiom the lock rung
+# above already uses on both CI legs, printing the path only when every test
+# passes, so empty output is the refusal. A missing `find` or `id` fails closed.
+path_entry_owned() {
+	[ -n "$path_entry" ] || return 1
+	[ -n "$(find "$path_entry" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]
+}
+
 # 4. Concurrency lock. mkdir is atomic on POSIX, so the loser of the race is the
 #    process whose mkdir fails; it exits quietly rather than racing the winner.
 #    In cache mode the lock lives in the DATA dir, because per-root locks cannot
@@ -649,7 +669,7 @@ else
 		# or `ahoy` calls it foreign. So every branch that declines names what it
 		# left untouched and why, on the success notice — which is one line, and
 		# fires once per NEW release: a cache hit never reaches this block.
-		if [ -n "$path_entry" ] && [ -f "$path_entry" ]; then
+		if path_entry_owned; then
 			entry_path=$(sed -n 's/^path=//p' "$path_entry" 2>/dev/null | head -n 1 | tr -d '\000-\037\177')
 			entry_sha=$(meta_field "$path_entry" binary_sha256)
 			refresh_ok=yes
@@ -804,7 +824,7 @@ fi
 # keeps it current. Only an existing, well-formed record is rewritten (this
 # re-stamps provenance, never creates it); path + hash are preserved verbatim.
 # Runs for cache hits too, where the PATH-copy refresh above did not fire.
-if [ -n "$path_entry" ] && [ -f "$path_entry" ]; then
+if path_entry_owned; then
 	rec_path=$(sed -n 's/^path=//p' "$path_entry" 2>/dev/null | head -n 1 | tr -d '\000-\037\177')
 	rec_sha=$(meta_field "$path_entry" binary_sha256)
 	rec_ok=yes

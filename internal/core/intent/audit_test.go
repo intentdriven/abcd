@@ -49,14 +49,79 @@ func validVerdict(receiptID string) string {
 	return string(b)
 }
 
-// writeVerdict writes a verdict payload to a scratch file and returns its path.
+// writeVerdict writes a verdict payload to a scratch file and returns its path,
+// substituting validVerdict's PLACEHOLDER policy hashes for the pair the host
+// actually issued for the payload's receipt (iss-2609100505140261).
+//
+// The substitution lives in the shared fixture writer rather than at each call
+// site because a real verdict cannot carry anything else: the ingest recomputes
+// both hashes and refuses an echo it did not issue. Keeping the invented
+// `sha256:aa…`/`sha256:bb…` values in every fixture is what let the ingest's
+// shape-only check read as verified for so long, so the fixture writer is the
+// one place that can stop a future test reintroducing them by accident.
+//
+// It is keyed on the exact placeholder strings, so a test that deliberately
+// plants a malformed, empty or foreign hash keeps the value it planted —
+// writeVerdictRaw is the explicit form for that.
 func writeVerdict(t *testing.T, root, payload string) string {
+	t.Helper()
+	if p, ok := issuedPolicy(t, root, receiptIDOf(payload)); ok {
+		payload = strings.Replace(payload, placeholderRubricHash, p.RubricHash, 1)
+		payload = strings.Replace(payload, placeholderPromptHash, p.PromptHash, 1)
+	}
+	return writeVerdictRaw(t, root, payload)
+}
+
+// writeVerdictRaw writes a payload verbatim — the form for a test whose point IS
+// the policy hashes it planted.
+func writeVerdictRaw(t *testing.T, root, payload string) string {
 	t.Helper()
 	p := filepath.Join(root, "verdict.json")
 	if err := os.WriteFile(p, []byte(payload), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+const (
+	placeholderRubricHash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	placeholderPromptHash = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
+// receiptIDOf recovers the receipt id a payload keys on, best-effort: a fixture
+// that is not parseable JSON has no receipt to resolve and needs no substitution.
+func receiptIDOf(payload string) string {
+	var lenient struct {
+		ReceiptID string `json:"receipt_id"`
+	}
+	if err := json.Unmarshal([]byte(payload), &lenient); err != nil {
+		return ""
+	}
+	return lenient.ReceiptID
+}
+
+// issuedPolicy returns the provenance the host issues for rcp in this repo,
+// resolved the same way the ingest resolves it: the intent carrying the marker.
+// ok is false when no intent carries it (the unsolicited-receipt fixtures).
+func issuedPolicy(t *testing.T, root, rcp string) (auditPolicy, bool) {
+	t.Helper()
+	if rcp == "" {
+		return auditPolicy{}, false
+	}
+	corpus, err := Load(root)
+	if err != nil {
+		return auditPolicy{}, false
+	}
+	for _, it := range corpus.Intents {
+		data, err := os.ReadFile(filepath.Join(root, it.Path))
+		if err != nil {
+			continue
+		}
+		if _, ok := markerState(string(data), rcp); ok {
+			return auditPolicyFor(it, rcp, string(data)), true
+		}
+	}
+	return auditPolicy{}, false
 }
 
 // shipOne reconciles a fresh planned intent/spec pair and returns the receipt id
@@ -152,9 +217,16 @@ func TestIngestHappyPath(t *testing.T) {
 	if !strings.Contains(s, "OWED stub emitted at ship") {
 		t.Fatalf("gap-audit honoured claim not rendered:\n%s", s)
 	}
-	// The pinned provenance (policy hashes + input-attestation digest) is rendered.
-	if !strings.Contains(s, "Provenance:") || !strings.Contains(s, "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
-		t.Fatalf("provenance line (verifier + rubric_hash) not rendered:\n%s", s)
+	// The pinned provenance (policy hashes + input-attestation digest) is rendered
+	// — and it is the pair the HOST issued, not a value the payload chose. The
+	// assertion used to pin the placeholder, which is precisely why nothing
+	// noticed that the ingest never checked it (iss-2609100505140261).
+	issued, ok := issuedPolicy(t, root, rcp)
+	if !ok {
+		t.Fatal("no host-issued provenance for the parked receipt")
+	}
+	if !strings.Contains(s, "Provenance:") || !strings.Contains(s, issued.RubricHash) {
+		t.Fatalf("provenance line (verifier + host-issued rubric_hash %s) not rendered:\n%s", issued.RubricHash, s)
 	}
 	if !strings.Contains(s, "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc") {
 		t.Fatalf("input-attestation digest not rendered:\n%s", s)
