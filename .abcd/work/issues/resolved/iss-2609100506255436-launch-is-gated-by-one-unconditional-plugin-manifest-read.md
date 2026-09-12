@@ -9,6 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/launch/installsurface.go"
+resolution: "An absent plugin manifest is now absence rather than an error, at both sites. The record named one and the user-visible refusal it quoted came from a second, so fixing only the named line would have been inert and the changelog verb would still have died. Absence is reported by the payload tree's own answer rather than by classifying a read error, so a manifest that is present and unreadable or malformed still refuses, and a present but empty marketplace manifest still refuses for declaring no plugins. The fail-closed rationale is honoured rather than waived: a manifest that existed at the last release and is gone now is still caught, as a removal against the release baseline, which is the channel that guardrail exists for rather than an error that produces no verdict at all. The precedent was in the file already, being the decision that made the neighbouring release-shaped fact a declared per-repo contract instead of an assumption."
+impact: fix
 ---
 
 Sharpens iss-2608270559313719, which reports that abcd's release flow cannot serve a managed repo that is not a plugin. That record lists the symptoms; this one names the single line that causes most of them, and shows that abcd already solved the neighbouring problem, so the fix has a precedent inside the same file.
@@ -24,3 +26,7 @@ What this costs a non-plugin repo, in the order a maintainer meets it. `launch -
 Needed: let a repo declare its artefact kind, or treat an absent plugin manifest as an absent plugin rather than an unreadable payload, so that `InstallSurface` carries no plugin name instead of failing. A repo that ships a binary, an application bundle or a library could then use the derived changelog, the payload scan and the release gates, which is the part of `launch` that has nothing to do with being a plugin.
 
 Related, filed separately: the same repo's adoption gap (no launch payload config, no version location for a non-plugin artefact, `launch scaffold` writing a generic Linux Go workflow over a platform-specific one).
+
+## Grounds
+
+- pursued: we expect absence-is-absence to be the smaller and safer of the record's two options because it adds no configuration surface and leaves every present-manifest failure exactly as it was; it is shown wrong if a repository legitimately needs to declare that it has no plugin, rather than simply not having one

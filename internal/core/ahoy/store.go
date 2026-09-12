@@ -234,19 +234,24 @@ func scanPathEntries(pluginRoot string) []pathEntry {
 		if _, err := os.Lstat(candidate); err != nil {
 			continue
 		}
-		e := pathEntry{path: candidate, kind: classifyBinTarget(candidate, pluginRoot)}
-		// Stat FOLLOWS the link: a dangling entry is one whose target is gone. It
-		// is computed for EVERY entry, ours or not — a foreign dangling `abcd`
-		// still occupies the name and still shadows the entries behind it, and a
-		// scan that only looked at our own would report it as nothing at all. A
-		// stat error other than not-exist is not proof of a dangling link, so it
-		// reads as healthy rather than manufacturing a gap.
-		if present, err := fsutil.Exists(candidate); err == nil && !present {
-			e.dangling = true
-		}
+		e := pathEntry{path: candidate, kind: classifyBinTarget(candidate, pluginRoot), dangling: linkIsDangling(candidate)}
 		entries = append(entries, e)
 	}
 	return entries
+}
+
+// linkIsDangling reports whether the entry at path resolves to nothing — the
+// one question that separates an occupant abcd must not clobber from one that
+// cannot be anyone's install.
+//
+// Stat FOLLOWS the link, so this is asked of EVERY entry, ours or not: a
+// foreign dangling `abcd` still occupies the name and still shadows the entries
+// behind it, and a check that only looked at our own would report it as nothing
+// at all. A stat error other than not-exist is not proof of a dangling link, so
+// it reads as healthy rather than manufacturing a gap.
+func linkIsDangling(path string) bool {
+	present, err := fsutil.Exists(path)
+	return err == nil && !present
 }
 
 // ownedPathEntry returns the first healthy abcd-owned entry on PATH. That entry

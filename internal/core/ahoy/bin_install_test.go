@@ -810,3 +810,128 @@ func TestInstallBinDirOffPathIsDescribedAndRemovable(t *testing.T) {
 		t.Errorf("uninstall could not reach the --bin-dir entry: %+v", receipt.Symlink)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// iss-2609100506256636: a dangling entry abcd does not own is not a wall
+// ---------------------------------------------------------------------------
+
+// linkDanglingForeign plants the exact entry the field report found on a real
+// machine: an `abcd` symlink at the PATH target whose destination is a deleted
+// Go-test temp tree. The destination is NOT a sibling of the plugin root, so
+// strandedSiblingDest does not claim it, and it does not resolve to the plugin
+// binary either — the two rungs that make a dangling link "ours". It is
+// therefore the one shape the classifier had no rung for: a link abcd cannot
+// prove it wrote, that resolves to nothing at all.
+func linkDanglingForeign(t *testing.T, path string) string {
+	t.Helper()
+	dest := filepath.Join(t.TempDir(), "TestAhoyInstallAcceptsPipedAnswers", "001", "abcd")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dest, path); err != nil {
+		t.Fatal(err)
+	}
+	return dest
+}
+
+// TestDetectDanglingEntryAtTargetIsRepairableNotForeign is
+// iss-2609100506256636's detection half. A link whose target does not exist
+// runs nothing, shadows every later PATH entry, and cannot be anyone's working
+// install — so refusing to clear it is a permanent wall with no supported way
+// past it: symlink.foreign is `resolvable: false`, so `ahoy install` can never
+// finish on that machine.
+func TestDetectDanglingEntryAtTargetIsRepairableNotForeign(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	_ = pluginRoot
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	linkDanglingForeign(t, filepath.Join(binDir, "abcd"))
+
+	det, err := Detect(managedRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasGap(det.Gaps, "symlink.foreign") {
+		t.Errorf("a link that resolves to nothing was reported as a foreign occupant to hand-resolve: %+v", det.Gaps)
+	}
+	g := gapByID(det.Gaps, "symlink.dangling")
+	if g == nil {
+		t.Fatalf("a dangling entry at the PATH target produced no symlink.dangling gap: %+v", det.Gaps)
+	}
+	if !g.Resolvable {
+		t.Errorf("symlink.dangling at the target must be resolvable, or install can never finish: %+v", g)
+	}
+	if m, _ := det.Signals["install_mode"].(string); m == "pinned" {
+		t.Errorf("a dangling entry reported install_mode=pinned")
+	}
+}
+
+// TestInstallReplacesDanglingEntryAtTarget is the repair half: the install must
+// complete and leave an entry that resolves, rather than reporting nothing
+// written and no reason why.
+func TestInstallReplacesDanglingEntryAtTarget(t *testing.T) {
+	home, _ := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	target := filepath.Join(binDir, "abcd")
+	linkDanglingForeign(t, target)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi, serr := os.Stat(target)
+	if serr != nil {
+		dest, _ := os.Readlink(target)
+		t.Fatalf("install left the dangling entry in place: %s -> %s (%v); notes = %v", target, dest, serr, res.Notes)
+	}
+	if !fi.Mode().IsRegular() {
+		t.Fatalf("PATH entry %s did not resolve to a regular file (mode %v)", target, fi.Mode())
+	}
+}
+
+// TestDetectLiveForeignSymlinkStaysForeign is the negative control, and the
+// half the fix must NOT weaken. A symlink that RESOLVES is somebody's working
+// install — an attacker's plant included — and abcd still refuses to clobber
+// it. Danglingness is the whole discriminator: "runs nothing" versus "runs
+// something", never a guess about who wrote the link.
+func TestDetectLiveForeignSymlinkStaysForeign(t *testing.T) {
+	home, _ := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	elsewhere := filepath.Join(t.TempDir(), "somebody-elses-abcd")
+	writeForeign(t, elsewhere)
+	target := filepath.Join(binDir, "abcd")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, target); err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	det, err := Detect(managedRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasGap(det.Gaps, "symlink.foreign") {
+		t.Errorf("a live symlink abcd does not own must stay foreign: %+v", det.Gaps)
+	}
+	if hasGap(det.Gaps, "symlink.dangling") {
+		t.Errorf("a link that resolves is not dangling: %+v", det.Gaps)
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	dest, rerr := os.Readlink(target)
+	if rerr != nil || dest != elsewhere {
+		t.Fatalf("install clobbered a live symlink abcd does not own: %q (%v), want %q", dest, rerr, elsewhere)
+	}
+}

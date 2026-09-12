@@ -948,7 +948,12 @@ func (a *applyCtx) stepSymlink() {
 		// with no note the run reports nothing written and no reason why; under an
 		// explicit --bin-dir the detection gap does not even describe this location.
 		a.refuse("refused to write the PATH entry " + displayPath(target) +
-			": it is occupied by " + describeEntry(pathEntry{path: target, kind: kind}) +
+			// dangling is carried, not defaulted: clearDanglingEntry leaves a
+			// dangling link in place when there is no plugin binary to repoint
+			// it at, and that is the one way a dangling entry still reaches this
+			// refusal — describing it as an ordinary foreign link would name the
+			// wrong repair.
+			": it is occupied by " + describeEntry(pathEntry{path: target, kind: kind, dangling: linkIsDangling(target)}) +
 			". abcd never clobbers a binary it does not own — remove it, or choose another directory with `--bin-dir`.")
 		return
 	}

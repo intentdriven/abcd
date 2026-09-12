@@ -202,26 +202,39 @@ var declarationKeys = []struct {
 // marketplace listings with their sources resolved, and the union of the
 // convention and manifest surface entries.
 //
-// It returns an error only when a manifest cannot be read or parsed at all — a
-// payload whose declarations cannot even be enumerated. Everything else,
-// including a declaration pointing at nothing, is DATA: it becomes an entry, and
-// judging it is the assertion tier's job, not resolution's.
+// It returns an error only when a manifest is PRESENT and cannot be read or
+// parsed — a payload whose declarations cannot even be enumerated. Everything
+// else, including a declaration pointing at nothing, is DATA: it becomes an
+// entry, and judging it is the assertion tier's job, not resolution's.
+//
+// An ABSENT manifest is an absent declaration, not a broken payload
+// (iss-2609100506255436). The constant above fixes WHERE a plugin manifest
+// lives, because the harness discovers it at one location only; it says nothing
+// about WHETHER this artefact has one, and the two are separate facts. adr-19 is
+// the precedent for the distinction inside this same file: the neighbouring
+// release-shaped fact — where the VERSION lives — was made a per-repo declared
+// contract (version-location.json) instead of an assumption. So a payload whose
+// artefact is a binary, an application bundle or a library resolves to a surface
+// that carries no plugin name and no marketplace listing, rather than failing
+// resolution before anything else runs.
 func ResolveInstallSurface(tree PayloadTree) (InstallSurface, error) {
 	var surface InstallSurface
 
-	plugin, err := readManifest(tree, pluginManifestFile)
+	plugin, _, err := readOptionalManifest(tree, pluginManifestFile)
 	if err != nil {
 		return surface, err
 	}
 	surface.PluginName, _ = plugin["name"].(string)
 
-	market, err := readManifest(tree, marketplaceFile)
+	market, marketPresent, err := readOptionalManifest(tree, marketplaceFile)
 	if err != nil {
 		return surface, err
 	}
-	surface.Marketplace, err = resolveMarketplace(market)
-	if err != nil {
-		return surface, err
+	if marketPresent {
+		surface.Marketplace, err = resolveMarketplace(market)
+		if err != nil {
+			return surface, err
+		}
 	}
 
 	entries := conventionEntries(tree)
@@ -229,6 +242,28 @@ func ResolveInstallSurface(tree PayloadTree) (InstallSurface, error) {
 	entries = append(entries, hookCommandEntries(tree, plugin, surface.PluginName, entries)...)
 	surface.Entries = dedupeEntries(entries)
 	return surface, nil
+}
+
+// readOptionalManifest reads one manifest the payload MAY carry. present is
+// false, with no error, when the payload simply does not have it; every other
+// failure — an unreadable file, a body that is not a JSON object — is the error
+// readManifest already returns, because a manifest that is there and cannot be
+// enumerated is a broken payload.
+//
+// Absence is distinguished by asking the tree, not by classifying the read's
+// error: PayloadTree.Has is the interface's own answer to "is this file in the
+// payload", both implementations already give it, and an errors.Is over
+// fs.ErrNotExist would have to hold for every future implementation's error
+// wrapping as well.
+func readOptionalManifest(tree PayloadTree, rel string) (map[string]any, bool, error) {
+	if !tree.Has(rel) {
+		return nil, false, nil
+	}
+	doc, err := readManifest(tree, rel)
+	if err != nil {
+		return nil, true, err
+	}
+	return doc, true, nil
 }
 
 // readManifest reads and decodes one JSON manifest object from the payload.

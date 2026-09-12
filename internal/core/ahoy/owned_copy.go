@@ -92,12 +92,21 @@ type pathEntryRecord struct {
 // required fields are present and the hash parses — a truncated record vouches
 // for nothing. plugin_root is optional (a legacy record predating it, or a
 // degraded install, carries none); its absence never fails the read.
+//
+// It reads through fsutil.ReadDeclaration, the shared home-scoped declaration
+// read, rather than the bare guarded read: this record decides which binary the
+// hook shims EXECUTE, so a copy of it that group or other can write, or that
+// another uid owns, is not this session's word and vouches for nothing — the same
+// bar ~/.abcd/trusted-roots and ~/.abcd/local-transcript-roots are held to. An
+// unowned record reports not-ok exactly as a truncated one does
+// (iss-2609091927085132); that is NOT the accepted same-uid residual
+// (iss-2609012039107700), which this check neither closes nor claims to.
 func readPathEntry() (pathEntryRecord, bool) {
 	path := userPathEntryPath()
 	if path == "" {
 		return pathEntryRecord{}, false
 	}
-	raw, err := fsutil.ReadGuarded(path, maxPathEntryBytes)
+	raw, _, err := fsutil.ReadDeclaration(path, maxPathEntryBytes)
 	if err != nil {
 		return pathEntryRecord{}, false
 	}
