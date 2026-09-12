@@ -8,6 +8,8 @@ source: "agent-finding"
 found_during: "draining the real staging backlog after the retention fix"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "The instance is gone and the mechanism is not. On the owner's instruction the unredactable staged text was moved out of the store to their own directory with a note recording why it could never be processed, so nothing unredacted from a deleted repository now sits in abcd's store. The mechanism stands: a transcript is redacted under its own repository's configuration, so when that repository is gone no scanner can be built and the drain has nothing to run with. The three ways out are to make deletion of a repository a trigger that drains or discards first, to allow a drain under an explicitly named substitute configuration with the substitution recorded on the record, or to treat such a pile as terminal and offer only discard. Each changes what the store promises, so the choice is the maintainer's."
 found_at: "internal/core/history/staging.go"
 ---
 

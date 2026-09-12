@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-09/10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "This is a synthesis rather than a defect: the observation that the record verbs are sound and the failures are at the edges, where the tool knows something and does not say it. It cannot be fixed because it is not broken; it is a claim about where to look, and its value is as a lens over the individual findings that evidence it. Several of those are fixed in this cut, which is the only sense in which this record advances. It stays open deliberately, as the place the pattern is recorded."
 found_at: "internal/surface (refusal paths across verbs)"
 ---
 

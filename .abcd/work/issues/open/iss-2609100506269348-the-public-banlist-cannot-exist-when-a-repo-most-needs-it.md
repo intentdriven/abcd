@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-07/08; re-filed into abcd 2026-09-10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "The public banned-names list cannot be created on a fresh public repository, and the cause is a bootstrap paradox rather than a bug: the visibility fence is narrowed only on positive evidence that the record directory is committed, and the fence prevents that evidence from ever existing. Every route runs through what public visibility is declared to mean, which is a documented contract pinned as a literal. An earlier record already ends with three candidate reconciliations for a maintainer to pick between, and the intent it was promoted into is still an unfilled draft. Picking one is the product thinker's call."
 found_at: "internal (ahoy gitignore policy, banlist public layer)"
 ---
 

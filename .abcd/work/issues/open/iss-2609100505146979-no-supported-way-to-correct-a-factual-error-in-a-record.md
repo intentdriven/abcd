@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-07/08; re-filed into abcd 2026-09-10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "There is no supported way to correct a factual error in a durable record, and inventing one is a decision about what the record family promises. A record store whose entries can be edited says something different about its own history than one whose corrections are appended, and both are defensible. The record calls errata the fourth case beside resolve, wontfix and supersede, which is exactly the shape of a question that wants a ruling rather than an implementation."
 found_at: "internal (intent, decide, capture) / conventions"
 ---
 

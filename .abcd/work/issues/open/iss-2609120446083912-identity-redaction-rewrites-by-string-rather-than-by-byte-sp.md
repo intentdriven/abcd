@@ -8,6 +8,8 @@ source: "agent-finding"
 found_during: "fixing the reverse-DNS redaction corruption"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "The detection half of the corruption this sits behind is fixed in this cut. This is the rewrite half, and fixing it means making identity masking span-based rather than whole-string, which reverses a recorded design choice in the single write-time sanitiser that history, memory, capture, ideate, intent, decide and launch all write through, and reverses it in the fail-open direction. That is a decision about the sanitiser's contract rather than a patch to one detector, and the same mechanism carries the git-identity and real-name kinds, so the blast radius is every record abcd writes."
 found_at: "internal/adapter/scanner/redact.go"
 ---
 

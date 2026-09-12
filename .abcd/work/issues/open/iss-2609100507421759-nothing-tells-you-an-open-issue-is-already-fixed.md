@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-09/10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "Nothing tells you an open issue is already fixed on the default branch. Building that means deciding what counts as evidence of a fix, and the obvious candidate, an id named in a commit message, is the same signal the resolution gate already reads for a different purpose. Making it also a liveness check risks either a lint that fires on every mention of a record or one that quietly closes records nobody resolved. The rule wants stating before it is coded."
 found_at: "internal (capture, lint)"
 ---
 

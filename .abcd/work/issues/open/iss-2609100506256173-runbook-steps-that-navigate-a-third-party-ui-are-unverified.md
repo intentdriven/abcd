@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-07/08; re-filed into abcd 2026-09-10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "Runbook steps that navigate a third party's interface cannot be verified by anything abcd runs, and the record's own measurement shows doc-sourced instructions failing where screenshot-sourced ones held. What to do about instructions whose truth abcd cannot check is a question about what a runbook is allowed to claim, not a defect to patch."
 found_at: "conventions (agent runbook guidance for managed repos)"
 ---
 

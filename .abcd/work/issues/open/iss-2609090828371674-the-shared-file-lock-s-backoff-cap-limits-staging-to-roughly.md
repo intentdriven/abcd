@@ -8,6 +8,8 @@ source: "agent-finding"
 found_during: "sub-agent transcript capture implementation"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "The record states its own position plainly: the remedies are design-shaped and should be chosen rather than assumed. Raising the timeout, lowering the backoff ceiling, sharding the lock per agent, or moving to a lock-free append reconciled at drain are four different bargains between latency, contention and complexity, and the measurement that motivates them is a ceiling rather than a fault. Choosing among them is the maintainer's call and no reading of the evidence makes one of them obviously right."
 found_at: "internal/fsutil"
 ---
 

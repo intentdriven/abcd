@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-09/10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "Owed fidelity reviews accumulate and nothing counts them. Fixing it means deciding where the count belongs and what it should do: a number on a status board is one answer, a refusal at the cut is another, and they differ in how much a debt is allowed to block. The record's own line is the argument, that a debt nothing lists is a debt nobody pays, and it deserves a considered surface rather than a counter bolted to whichever verb was nearest."
 found_at: "internal (intent audit receipts, status render, lint)"
 ---
 

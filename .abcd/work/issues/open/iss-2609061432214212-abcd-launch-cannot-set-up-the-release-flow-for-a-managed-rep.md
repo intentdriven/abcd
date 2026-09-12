@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "adopting the release flow in a managed macOS app repo, 2026-09-06"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "This asks abcd to set up the release flow for a repository it manages, which is a capability rather than a defect. What the release flow should assume about a managed artefact that is not a plugin, what it should scaffold, and what it should refuse to guess are product questions, and the record lists them as open. One symptom is fixed in this cut: a repository declaring no plugin manifest no longer refuses at an unconditional manifest read, so the changelog verb gives an honest verdict where it previously died. The rest wants the capability designed rather than inferred."
 found_at: "internal (launch, changelog, scaffold)"
 ---
 

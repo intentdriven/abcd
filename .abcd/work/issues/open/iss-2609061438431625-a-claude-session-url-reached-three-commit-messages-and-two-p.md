@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "release-gate adoption in a managed public repo, 2026-09-06"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "Half of this is fixed in this cut and half of it cannot be, which is why the record stays open rather than being resolved. The CI half is closed: a check-direction primitive now judges outbound text against the same policy the scrubber holds, with its own front door, wired over every commit message in a pull request's range and over the pull request body. What is not closed is the local gate, and it cannot be without three product decisions nobody has taken. A git hook has no plugin root, so only the PATH rung of the hardened four-rung ladder survives in one, and the choice between failing closed on a missing binary, failing open, or baking an absolute path that a plugin update then invalidates is a decision whose blast radius is every managed repository. Whether such a hook installs by default or opt-in is a second decision with the same reach. Deferred so those are taken deliberately rather than inside a release. The exposure that remains is named in the record: a leaked message is already in the author's history before CI ever runs."
 found_at: "hooks (pre-commit name guard), internal (lint privacy-hygiene, guard)"
 ---
 

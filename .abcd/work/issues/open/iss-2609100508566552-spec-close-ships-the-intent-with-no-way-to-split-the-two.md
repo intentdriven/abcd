@@ -8,6 +8,8 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-09/10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "Closing a spec ships its intent unconditionally, with no way to close one without the other and no way to split an intent whose criteria are only half met. Both are lifecycle changes: what it should mean to close a spec against a partially delivered intent is a question about the lifecycle's shape, and a session that met this stopped and asked rather than close, which was the right instinct and is the reason the record exists."
 found_at: "internal (spec close, intent lifecycle)"
 ---
 

@@ -8,6 +8,8 @@ source: "agent-finding"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "Nothing records which session holds which worktree, branch or record, so every session rebuilds the picture by conversation. This cut adds evidence rather than a fix: two agents in this very checkout each reported a peer editing it, each named the other's files correctly, and neither was a peer. Designing the substrate means deciding what a claim is, who may write one, and what happens to a claim nobody released, and a coordination record that nobody updates is worse than the conversation it replaced."
 found_at: ".abcd/work"
 ---
 

@@ -8,6 +8,8 @@ source: "agent-finding"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-10"
 origin: researcher-authored
 production_mode: hand-written
+deferred_after: "v0.8.0"
+deferral_reason: "The premise this record was filed on was wrong and has been corrected in place: a citation resolver already exists and resolves both decision-record vintages, measured identical across all four record families. What remains is a gate over citations in prose, and it cannot be built without a convention being declared first, because the corpus holds at least four classes of legitimately unresolvable citation that are byte-identical to the defect, measured at 223 mentions across 35 ids and 67 files. Which citation sites count, how an illustrative or a forward-referencing id declares itself, and whether the existing mentions are baselined or the rule lands as a warning are all rulings, not code."
 found_at: ".abcd/development/decisions/adrs"
 ---
 
