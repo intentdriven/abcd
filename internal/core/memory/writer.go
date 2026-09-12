@@ -187,6 +187,17 @@ func WritePages(repoRoot string, writes []PageWrite, merge RegistryMerge, now ti
 	if len(writes) > 0 {
 		redacted := make([]PageWrite, 0, len(writes))
 		for _, w := range writes {
+			// The FILENAME first, and refused rather than rewritten
+			// (iss-2609020321100138). It is judged HERE, before renderWrites
+			// and before the store lock, because that placement covers by
+			// construction every place the slug lands: the page file and the
+			// log event are derived from this same rendered write, index.md is
+			// reconciled from the files on disk, and the registry back-link is
+			// merged inside writePagesLocked — none of which is reached once
+			// this returns an error.
+			if err := redactor.judgeFilename(w.Filename); err != nil {
+				return WriteReport{}, err
+			}
 			body, _, rerr := redactor.redactText(w.Body, w.Filename)
 			if rerr != nil {
 				return WriteReport{}, rerr

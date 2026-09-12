@@ -17,11 +17,17 @@ var (
 	visibilityChoices    = []string{"private", "public"}
 	docsTargetChoices    = []string{"claude_md", "agents_md", "both", "skip"}
 	oracleBackendChoices = []string{"host-delegated", "native", "cli", "api", "mcp"}
+	// scan.deep is a boolean, but it is collected and overridden as a string
+	// through the same choice-set seam as the enums above, so its vocabulary is
+	// declared once here rather than restated at each of the three sites that
+	// judge it (collect-missing, override, would-change).
+	scanDeepChoices = []string{"true", "false"}
 )
 
 const (
 	docsTargetDefault    = "both"
 	oracleBackendDefault = "host-delegated"
+	scanDeepDefault      = "false"
 )
 
 // Detect runs the full detection pass over cwd and returns the canonical
@@ -302,15 +308,12 @@ func detectHistoryStore(rootSHA string) []Gap {
 	if rootSHA == "" {
 		return gaps
 	}
+	// There is no gap for a missing transcript corpus. The store creates itself
+	// on first use — internal/core/history owns that path and bootstraps it —
+	// so "absent" is the ordinary state of a repo that has not been captured
+	// yet, not a gap install must close. Raising one would have this board
+	// assert that transcripts will not be captured, which is false (iss-95).
 	repoDir := filepath.Join(root, rootSHA)
-	if !fsutil.IsRealDir(filepath.Join(repoDir, "transcripts")) {
-		gaps = append(gaps, Gap{
-			ID: "history.transcripts_missing", Category: SafeAutocreate, Scope: "repo",
-			Title:   "history transcripts/ dir missing",
-			Detail:  "~/.abcd/history/" + shortSHA(rootSHA) + "/transcripts/ is absent or not a real directory.",
-			FixHint: "ahoy install creates the transcript directory.", Required: true, Resolvable: true,
-		})
-	}
 	if !fileExists(filepath.Join(repoDir, "meta.json")) {
 		gaps = append(gaps, Gap{
 			ID: "history.meta_missing", Category: UserState, Scope: "repo",
@@ -495,6 +498,7 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 			// Our own track-latest dev shim (abcd ahoy install --dev) — a valid
 			// install, not a foreign occupant. Surfaced via the install_mode signal.
 			installed = true
+			gaps = append(gaps, unrecordedEntryGap(target)...)
 		} else if isOwnedCopyFile(target) {
 			// The spc-35 owned copy: a regular file the data dir's path-entry
 			// vouches for, byte-for-byte. The healthy default install.
@@ -513,6 +517,7 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 			// Unreadable link: say nothing rather than guess.
 		case resolveSymlinkDest(target, dest) == resolvePath(pluginBinaryPath(pluginRoot)):
 			installed = true
+			gaps = append(gaps, unrecordedEntryGap(target)...)
 			// A working install TODAY, and a casualty of the next plugin
 			// update: the link points into a directory the harness replaces and
 			// garbage-collects (spc-35). Heal-able only while a verified cache
@@ -544,6 +549,36 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 	gaps = append(gaps, detectBinDirOnPath(filepath.Dir(target), installed)...)
 	gaps = append(gaps, detectShadowedEntry(pluginRoot, target)...)
 	return gaps
+}
+
+// unrecordedEntryGap reports an entry abcd owns that ~/.abcd/path-entry does
+// not name. It is the one state where the board and the hooks disagree in
+// silence: the entry is a working install by every filesystem test detection
+// makes, so it reports installed, while every hook shim refuses it at the
+// ownership rung and degrades — the rules loader inactive, the shell guard
+// UNGUARDED, the transcript uncaptured — with nothing on either surface
+// connecting the two.
+//
+// It is a gap and not merely a note because install is gated on gaps: a run
+// with zero actionable gaps returns already_up_to_date without building an
+// apply context, so without this the remedy every surface advertises would
+// write nothing on exactly the machines that need it.
+//
+// The owned copy can never raise it: that shape is CLASSIFIED by the record,
+// so an unrecorded one reads foreign and has its own gap already.
+func unrecordedEntryGap(target string) []Gap {
+	if pathEntryNames(target) {
+		return nil
+	}
+	return []Gap{{
+		ID: "symlink.unrecorded", Category: ConfigChange, Scope: "machine",
+		Title: "PATH entry is not recorded as this machine's abcd",
+		Detail: displayPath(target) + " is abcd's own entry, but ~/.abcd/path-entry does not record it. " +
+			"The plugin's hooks read that record before they will run an abcd off PATH, so they ignore this install: " +
+			"no rules loader, no shell guard, and no transcript capture.",
+		FixHint:  "ahoy install writes the record naming this entry — with --dev if the entry is the track-latest shim, which a plain install replaces with a pinned one.",
+		Required: true, Resolvable: true,
+	}}
 }
 
 // detectShadowedEntry reports an `abcd` that precedes abcd's own entry on PATH.

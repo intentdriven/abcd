@@ -46,11 +46,11 @@ func newHistoryReconstructCommand(asJSON *bool) *cobra.Command {
 		Short: "Render one session — the main thread and every sub-agent — as one artefact plus telemetry",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := history.Reconstruct(rootSHA, history.ReconstructOptions{
+			res, err := history.Reconstruct(repoRoot, rootSHA, history.ReconstructOptions{
 				SessionID:     args[0],
 				Mode:          history.ReconstructMode(mode),
 				MaxBlockBytes: maxBlock,

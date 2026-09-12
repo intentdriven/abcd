@@ -87,7 +87,7 @@ func TestIngestStoresOnlyWhatTheDestinationOwns(t *testing.T) {
 	if res.Skipped[0].RootSHA != otherRootSHA {
 		t.Errorf("the skip must name the owning repository by SHA, got %q", res.Skipped[0].RootSHA)
 	}
-	records, err := List(testRootSHA)
+	records, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestIngestPlacesASessionFromTheStoreWhenNoDirectorySurvives(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
 	fakeRepos(t, map[string]string{})
-	if err := NoteSessionRepo(testRootSHA, "sess-noted"); err != nil {
+	if err := NoteSessionRepo(repoRoot, testRootSHA, "sess-noted"); err != nil {
 		t.Fatal(err)
 	}
 	transcriptFile(t, filepath.Join(src, "proj-a"), "agent-a1.jsonl", "sess-noted", "a1", "/gone")
@@ -183,7 +183,7 @@ func TestIngestIgnoresAndReportsOrphans(t *testing.T) {
 	if strings.Contains(res.Orphans[0].Cwd, home) {
 		t.Errorf("the reported working directory must be home-redacted, got %q", res.Orphans[0].Cwd)
 	}
-	records, err := List(testRootSHA)
+	records, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestIngestIsIdempotent(t *testing.T) {
 	if _, err := Ingest(dest, []string{src}, IngestOptions{}); err != nil {
 		t.Fatalf("first Ingest: %v", err)
 	}
-	first, err := List(testRootSHA)
+	first, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestIngestIsIdempotent(t *testing.T) {
 	if len(res.Captured) != 1 || res.Captured[0].Wrote {
 		t.Errorf("a second ingest of the same bytes must report the file and write nothing, got %+v", res.Captured)
 	}
-	second, err := List(testRootSHA)
+	second, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -43,8 +43,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // transcriptSuffix is the extension a directory walk accepts. An explicitly
@@ -73,12 +73,18 @@ const (
 // It is a package var for the same reason scanGitleaks is: so a test can
 // substitute a table for a set of real git repositories, and so the one
 // heavyweight detection pass has a single seam.
+//
+// It resolves the key directly through gitutil rather than through
+// ahoy.Detect: internal/core/ahoy now depends on this package for the store's
+// location (Resolve), so reaching back into it from here would be an import
+// cycle. gitutil.RootCommit is the same call ahoy's own identity pass makes,
+// and it answers the only question asked here.
 var resolveRootSHA = func(cwd string) (string, bool) {
-	det, err := ahoy.Detect(cwd)
-	if err != nil || det.RootSHA == "" {
+	sha := gitutil.RootCommit(cwd)
+	if sha == "" {
 		return "", false
 	}
-	return det.RootSHA, true
+	return sha, true
 }
 
 // Destination is the repository a run of Ingest writes into: its root for the
@@ -172,7 +178,11 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 	if len(sources) == 0 {
 		return IngestResult{}, errors.New("history: ingest needs at least one source path; declare them in " + ConfigRelPath + " or name them on the command line")
 	}
-	if _, err := ownedDirsReal(dest.RootSHA); err != nil {
+	// Resolving is what creates the destination store when it is absent, and
+	// what migrates a corpus left at the legacy location into it (iss-95). It
+	// is done here, before any source is read, so a destination that cannot be
+	// opened refuses the whole run rather than failing per transcript.
+	if _, err := Resolve(dest.RepoRoot, dest.RootSHA); err != nil {
 		return IngestResult{}, err
 	}
 
@@ -556,15 +566,15 @@ func SessionOwner(sessionID string) (string, error) {
 	}
 }
 
-// storeSessionIndex maps every session id the stores under ~/.abcd/history know
-// about to the stores that know it — through a session note, or through a
+// storeSessionIndex maps every session id the user-level store's lanes know
+// about to the lanes that know it — through a session note, or through a
 // stored record's session_id.
 //
 // A store that cannot be listed is skipped rather than fatal: one unreadable
 // store is not a reason to refuse a placement every other store can make.
 func storeSessionIndex() map[string][]string {
 	index := map[string][]string{}
-	root, err := historyRoot()
+	root, err := userStoreBase()
 	if err != nil {
 		return index
 	}
@@ -585,7 +595,7 @@ func storeSessionIndex() map[string][]string {
 				}
 			}
 		}
-		records, err := listRecords(filepath.Join(root, e.Name(), "transcripts"))
+		records, err := listRecords(filepath.Join(root, e.Name(), recordsDirName))
 		if err == nil {
 			for _, r := range records {
 				seen[r.SessionID] = struct{}{}

@@ -953,6 +953,81 @@ func TestAuthorshipSeparatesToolsFromPeople(t *testing.T) {
 	}
 }
 
+// TestAuthorshipVendorTokenDoesNotDemoteAHuman pins the other half of the rule
+// above: the derivation is a MACHINE-IDENTITY test, not a name match.
+//
+// A trailer reads `Vendor:model`, and a vendor token is an ordinary word — a
+// person whose git name is that word is not a tool, and the shortlog cannot tell
+// the difference from the name alone. So the vendor half never decides by
+// itself: it demotes only alongside an address that is structurally a machine's,
+// which is what the pre-policy tool commit the test above pins actually carries.
+// Without the conjunct a conformant trailer moved a HUMAN author's whole
+// shortlog count into the bots-and-tools row (iss-2609081940550352).
+//
+// Both authors here are named for the same vendor and only the addresses differ,
+// so nothing but the address rule can separate them.
+func TestAuthorshipVendorTokenDoesNotDemoteAHuman(t *testing.T) {
+	f := newFixture(t)
+	// The person, at the forge privacy address a real contributor's commits
+	// carry: a noreply HOST, but a mailbox named for the user rather than for a
+	// machine.
+	f.write("person.txt", "a change by a person\n")
+	f.git("2026-03-07T09:00:00+00:00", "add", "-A")
+	f.git("2026-03-07T09:00:00+00:00",
+		"-c", "user.name=Nordic", "-c", "user.email=4242+nordic@users.noreply.github.com",
+		"commit", "-m", "docs: a change by a person")
+	// The tool of the same name, at an address no person reads.
+	f.write("machine.txt", "a pre-policy commit\n")
+	f.git("2026-03-08T09:00:00+00:00", "add", "-A")
+	f.git("2026-03-08T09:00:00+00:00",
+		"-c", "user.name=Nordic", "-c", "user.email=noreply@nordic.example.invalid",
+		"commit", "-m", "chore: written before the trailer convention")
+	// A conformant trailer naming that same word as the assisting vendor, which
+	// is what registers it as one at all.
+	f.write("assisted.txt", "assisted work\n")
+	f.commitAt("2026-03-09T09:00:00+00:00", "feat: assisted work", "Nordic:nordic-model-1")
+
+	a, err := LoadAuthorship(f.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	charted := false
+	for _, m := range a.ByModel {
+		if m.Model == "Nordic:nordic-model-1" {
+			charted = true
+		}
+	}
+	if !charted {
+		t.Fatalf("the trailer did not register the vendor at all: %+v", a.ByModel)
+	}
+
+	var human, machine int
+	for _, h := range a.Humans {
+		if h.Name == "Nordic" {
+			human++
+			if h.email != "4242+nordic@users.noreply.github.com" {
+				t.Errorf("the wrong Nordic is in the humans row: %q", h.email)
+			}
+		}
+	}
+	for _, b := range a.Bots {
+		if b.Name == "Nordic" {
+			machine++
+			if b.email != "noreply@nordic.example.invalid" {
+				t.Errorf("the wrong Nordic is in the bots row: %q", b.email)
+			}
+		}
+	}
+	if human != 1 {
+		t.Errorf("the humans row holds %d authors named Nordic, want the person alone: humans %+v, bots %+v",
+			human, a.Humans, a.Bots)
+	}
+	if machine != 1 {
+		t.Errorf("the bots row holds %d authors named Nordic, want the tool alone: humans %+v, bots %+v",
+			machine, a.Humans, a.Bots)
+	}
+}
+
 // TestBuildLandingCarriesProvenance asserts the property the single-source rule
 // is checked through: every composed block names the file and heading it came
 // from, and the only added words are ui.json's.

@@ -105,7 +105,10 @@ func reconstructFixture(t *testing.T, opts ReconstructOptions) Reconstruction {
 	if opts.SessionID == "" {
 		opts.SessionID = "sess-recon"
 	}
-	res, err := Reconstruct(testRootSHA, opts)
+	// The empty repo root is the user-level store, which is where this
+	// fixture's records are planted: a repo root only selects the per-repo
+	// opt-in, and this fixture declares none.
+	res, err := Reconstruct("", testRootSHA, opts)
 	if err != nil {
 		t.Fatalf("Reconstruct: %v", err)
 	}
@@ -649,13 +652,13 @@ func TestReconstructRefusesWhatItCannotAnswer(t *testing.T) {
 		{"negative cap", ReconstructOptions{SessionID: "sess-recon", MaxBlockBytes: -1}, "must not be negative"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Reconstruct(testRootSHA, tc.opts)
+			_, err := Reconstruct("", testRootSHA, tc.opts)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("want an error containing %q, got %v", tc.want, err)
 			}
 		})
 	}
-	if _, err := Reconstruct("not-a-sha", ReconstructOptions{SessionID: "sess-recon"}); err == nil {
+	if _, err := Reconstruct("", "not-a-sha", ReconstructOptions{SessionID: "sess-recon"}); err == nil {
 		t.Error("a malformed root SHA must be refused")
 	}
 }

@@ -15,6 +15,10 @@
 /go.sum @REPPL
 /.abcd/docs-lint.json @REPPL
 /.abcd/record-lint.json @REPPL
+# .abcd/site.json names WHERE every block of the published site comes from: a
+# path edited here changes which repository file the site inlines into the page
+# it serves.
+/.abcd/site.json @REPPL
 /mkdocs.yml @REPPL
 /wrangler.jsonc @REPPL
 # site-src/ is the site build's static input, including install.sh.tmpl — the

@@ -12,9 +12,9 @@ import (
 
 // stageRaw stages one raw transcript for the repo under test and returns the
 // staged file's path.
-func stageRaw(t *testing.T, rootSHA, session, body string) string {
+func stageRaw(t *testing.T, repoRoot, rootSHA, session, body string) string {
 	t.Helper()
-	res, err := history.Stage(rootSHA,
+	res, err := history.Stage(repoRoot, rootSHA,
 		history.StageMeta{Lineage: history.CaptureMeta{SessionID: session, Kind: "native"}},
 		[]byte(body))
 	if err != nil {
@@ -32,11 +32,11 @@ func stageRaw(t *testing.T, rootSHA, session, body string) string {
 func TestPromptRouterDrainsWhileTheSessionIsLive(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	repo, rootSHA := sessionEndRepo(t)
-	staged := stageRaw(t, rootSHA, "sess-live", "assistant: mid-session work\n")
+	staged := stageRaw(t, repo, rootSHA, "sess-live", "assistant: mid-session work\n")
 
 	stdout, stderr := runHook(t, hookInputJSON(t, "sess-live", repo, "carry on"), "hook", "prompt-router")
 
-	left, err := history.ListStaged(rootSHA)
+	left, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestPromptRouterDrainsWhileTheSessionIsLive(t *testing.T) {
 	if _, err := os.Stat(staged); err == nil {
 		t.Error("the raw staged file is still on disk after a live drain")
 	}
-	records, err := history.List(rootSHA)
+	records, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,11 +78,11 @@ func TestPromptRouterDrainsEvenWhenTheRulesLoaderFails(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".abcd", "rules.json"), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	stageRaw(t, rootSHA, "sess-rulesbroken", "assistant: still worth storing\n")
+	stageRaw(t, repo, rootSHA, "sess-rulesbroken", "assistant: still worth storing\n")
 
 	_, stderr := runHook(t, hookInputJSON(t, "sess-rulesbroken", repo, "carry on"), "hook", "prompt-router")
 
-	left, err := history.ListStaged(rootSHA)
+	left, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,14 +100,17 @@ func TestSessionStartReportsAnotherRepositorysBacklog(t *testing.T) {
 	repo, _ := sessionEndRepo(t)
 	home := os.Getenv("HOME")
 	const quietSHA = "cccccccccccccccccccccccccccccccccccccccc"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", quietSHA, "transcripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", quietSHA, "records"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", quietSHA), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".abcd", "history", quietSHA, "meta.json"),
 		[]byte(`{"root_commit":"`+quietSHA+`","name":"abandoned-project"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	stageRaw(t, quietSHA, "sess-abandoned", strings.Repeat("raw transcript text\n", 200))
+	stageRaw(t, "", quietSHA, "sess-abandoned", strings.Repeat("raw transcript text\n", 200))
 
 	_, stderr := runHook(t, `{"session_id":"s","hook_event_name":"SessionStart","cwd":`+
 		mustJSON(t, repo)+`}`, "hook", "session-start")
@@ -143,15 +146,18 @@ func TestHistoryStagedAllReposSurveysTheWholeStore(t *testing.T) {
 	t.Chdir(repo)
 	home := os.Getenv("HOME")
 	const quietSHA = "dddddddddddddddddddddddddddddddddddddddd"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", quietSHA, "transcripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", quietSHA, "records"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", quietSHA), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".abcd", "history", quietSHA, "meta.json"),
 		[]byte(`{"root_commit":"`+quietSHA+`","name":"the-quiet-one"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	stageRaw(t, quietSHA, "sess-quiet", "quiet\n")
-	stageRaw(t, rootSHA, "sess-here", "here\n")
+	stageRaw(t, "", quietSHA, "sess-quiet", "quiet\n")
+	stageRaw(t, repo, rootSHA, "sess-here", "here\n")
 
 	out := string(runCLI(t, "history", "staged", "--all-repos"))
 	if !strings.Contains(out, "the-quiet-one") {
@@ -175,7 +181,7 @@ func TestHistoryStagedAllReposSurveysTheWholeStore(t *testing.T) {
 func TestHistoryDiscardRefusesWithoutConfirmation(t *testing.T) {
 	repo, rootSHA := sessionEndRepo(t)
 	t.Chdir(repo)
-	staged := stageRaw(t, rootSHA, "sess-discard", "raw bytes\n")
+	staged := stageRaw(t, repo, rootSHA, "sess-discard", "raw bytes\n")
 	name := filepath.Base(staged)
 
 	out, err := runCLIErr(t, "history", "discard", name)

@@ -30,7 +30,7 @@ func TestHistoryCaptureSupersededPathIsHomeRedacted(t *testing.T) {
 	t.Chdir(repo)
 
 	rootSHA := gitCmd(t, repo, "rev-list", "--max-parents=0", "HEAD")
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", rootSHA, "transcripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", rootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 

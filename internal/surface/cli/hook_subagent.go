@@ -92,7 +92,7 @@ func newSubagentStopCommand() *cobra.Command {
 			if err != nil {
 				return warn("unreadable SubagentStop payload (%v); staging nothing", err)
 			}
-			rootSHA, via := resolveSubagentStore(in)
+			repoRoot, rootSHA, via := resolveSubagentStore(in)
 
 			// The absent-field case comes before the store check has any
 			// consequence, but after it has been attempted: the marker needs a
@@ -100,7 +100,7 @@ func newSubagentStopCommand() *cobra.Command {
 			// the thing the marker exists to name.
 			if in.AgentTranscriptPath == "" {
 				if rootSHA != "" {
-					if err := history.NoteSubagentGap(rootSHA, in.Event); err != nil {
+					if err := history.NoteSubagentGap(repoRoot, rootSHA, in.Event); err != nil {
 						fmt.Fprintf(cmd.ErrOrStderr(),
 							"abcd history: could not record the sub-agent payload gap (%v)\n", err)
 					}
@@ -130,7 +130,7 @@ func newSubagentStopCommand() *cobra.Command {
 			}
 
 			meta := subagentStageMeta(in)
-			res, err := history.Stage(rootSHA, meta, raw)
+			res, err := history.Stage(repoRoot, rootSHA, meta, raw)
 			if err != nil {
 				return warn("staging sub-agent %s failed (%v); this transcript was not captured", in.AgentID, err)
 			}
@@ -165,7 +165,15 @@ func newSubagentStopCommand() *cobra.Command {
 // A resolution through the cwd also RECORDS the tie, so the session's later
 // sub-agents can be resolved even if this one was the last to run in a real
 // directory.
-func resolveSubagentStore(in hookInput) (rootSHA, via string) {
+// The repository ROOT it returns is the directory the store resolves the
+// per-repo opt-in against, and it is empty on the session-note route by
+// construction: that route exists precisely because the sub-agent's working
+// directory is gone. A store this session opted into its own checkout is
+// therefore unreachable from that route, which is why the session note is
+// written into the resolved lane rather than a fixed path — a lane the lookup
+// cannot enumerate is one it correctly reports as not having seen the session,
+// instead of staging the transcript into a second store nothing drains.
+func resolveSubagentStore(in hookInput) (repoRoot, rootSHA, via string) {
 	cwd := in.Cwd
 	if cwd == "" {
 		if wd, err := os.Getwd(); err == nil {
@@ -173,18 +181,19 @@ func resolveSubagentStore(in hookInput) (rootSHA, via string) {
 		}
 	}
 	if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+		root := captureRoot(cwd)
 		if in.SessionID != "" {
 			// Best effort: a failure here degrades a fallback, never a capture.
-			_ = history.NoteSessionRepo(det.RootSHA, in.SessionID)
+			_ = history.NoteSessionRepo(root, det.RootSHA, in.SessionID)
 		}
-		return det.RootSHA, "cwd"
+		return root, det.RootSHA, "cwd"
 	}
 	if in.SessionID != "" {
 		if sha, err := history.SessionRepo(in.SessionID); err == nil {
-			return sha, "session"
+			return "", sha, "session"
 		}
 	}
-	return "", ""
+	return "", "", ""
 }
 
 // subagentStageMeta assembles the lineage for one sub-agent stage, running the

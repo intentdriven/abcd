@@ -127,7 +127,7 @@ func TestCaptureGitleaksLoudStagePropagates(t *testing.T) {
 		t.Fatalf("error does not name the opt-in: %q", err.Error())
 	}
 	// Nothing was written.
-	recs, lerr := List(testRootSHA)
+	recs, lerr := List(repoRoot, testRootSHA)
 	if lerr != nil {
 		t.Fatalf("List: %v", lerr)
 	}
@@ -175,7 +175,7 @@ func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 	if res.Wrote {
 		t.Error("Capture reported Wrote=true alongside a refusal")
 	}
-	tdir := filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")
+	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
 	entries, err := os.ReadDir(tdir)
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestCaptureFailsClosedOnUnlocatableGitleaksReport(t *testing.T) {
 	if !errors.Is(err, gitleaks.ErrFindingNotLocated) {
 		t.Fatalf("Capture did not fail closed on an unlocatable gitleaks report: %v", err)
 	}
-	recs, lerr := List(testRootSHA)
+	recs, lerr := List(repoRoot, testRootSHA)
 	if lerr != nil {
 		t.Fatalf("List: %v", lerr)
 	}

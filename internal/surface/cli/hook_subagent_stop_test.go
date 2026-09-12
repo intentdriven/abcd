@@ -72,7 +72,7 @@ func TestHookSubagentStopStagesLineage(t *testing.T) {
 	runHook(t, subagentPayload(t, "sess-parent", repo, "a1", tp, "general-purpose"),
 		"hook", "subagent-stop")
 
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("ListStaged: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestHookSubagentStopStagesRatherThanCaptures(t *testing.T) {
 	runHook(t, subagentPayload(t, "sess-p", repo, "a2", tp, "general-purpose"),
 		"hook", "subagent-stop")
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestHookSubagentStopReadsTheHarnessSidecar(t *testing.T) {
 	runHook(t, subagentPayload(t, "sess-p", repo, "a3", tp, "ruthless-reviewer"),
 		"hook", "subagent-stop")
 
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestHookSubagentStopResolvesTheRepoThroughTheSession(t *testing.T) {
 	_, errlog := runHook(t, subagentPayload(t, "sess-parent", gone, "a4", tp, "general-purpose"),
 		"hook", "subagent-stop")
 
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestHookSubagentStopMarksAMissingPayloadField(t *testing.T) {
 	if !strings.Contains(errlog, "agent_transcript_path") {
 		t.Errorf("stderr does not name the missing field: %q", errlog)
 	}
-	note, ok, err := history.SubagentGap(rootSHA)
+	note, ok, err := history.SubagentGap(repo, rootSHA)
 	if err != nil {
 		t.Fatalf("SubagentGap: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestHookSubagentStopWaitsForAnUnsettledTranscript(t *testing.T) {
 	_, errlog := runHook(t, subagentPayload(t, "sess-p", repo, "a6", tp, "general-purpose"),
 		"hook", "subagent-stop")
 
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestHookSubagentStopConcurrentCompletionsAllStage(t *testing.T) {
 			t.Errorf("concurrent completion %d exited non-zero: %s", i, f)
 		}
 	}
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ func TestSubagentStopThenSessionStartStoresTheRecord(t *testing.T) {
 	runHook(t, subagentPayload(t, "sess-e2e", repo, "a7", tp, "Explore"), "hook", "subagent-stop")
 	runSessionStart(startPayload("sess-next", repo), "hook", "session-start")
 
-	recs, err := history.List(rootSHA)
+	recs, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestSubagentStopThenSessionStartStoresTheRecord(t *testing.T) {
 	if r.ParentAgentID != "" {
 		t.Errorf("parent agent = %q, want empty — a depth-1 agent was spawned by the main thread", r.ParentAgentID)
 	}
-	staged, err := history.ListStaged(rootSHA)
+	staged, err := history.ListStaged(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}

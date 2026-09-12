@@ -1,6 +1,7 @@
 package fsutil
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -197,5 +198,155 @@ func TestReadGuardedRejectsSymlink(t *testing.T) {
 	// Oversize is refused with ErrTooBig.
 	if _, err := ReadGuarded(real, 2); err != ErrTooBig {
 		t.Errorf("ReadGuarded over cap = %v, want ErrTooBig", err)
+	}
+}
+
+// TestEnsureRealDirCreatesAtThePermGiven holds the parameter that let three
+// callers become one: the mode is the caller's, not the primitive's
+// (iss-2609091128479544). A private store under the caller's home is 0o700 and a
+// record directory in a shared worktree is 0o755, and a consolidation that
+// silently picked one would have changed the other's directories on disk.
+func TestEnsureRealDirCreatesAtThePermGiven(t *testing.T) {
+	base := t.TempDir()
+	for _, perm := range []os.FileMode{0o700, 0o755} {
+		dir := filepath.Join(base, "d"+perm.String())
+		if err := EnsureRealDir(dir, perm); err != nil {
+			t.Fatalf("EnsureRealDir(%v): %v", perm, err)
+		}
+		fi, err := os.Lstat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != perm {
+			t.Errorf("created %v, want %v", got, perm)
+		}
+	}
+}
+
+// TestEnsureRealDirLeavesAnExistingModeAlone is the other half of that contract.
+// Mkdir returns ErrExist without touching an existing directory, so re-running
+// the primitive over a directory the caller made themselves must not widen or
+// narrow it — otherwise every resolve would rewrite the operator's own choice.
+func TestEnsureRealDirLeavesAnExistingModeAlone(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "existing")
+	if err := os.Mkdir(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureRealDir(dir, 0o700); err != nil {
+		t.Fatalf("EnsureRealDir over an existing directory: %v", err)
+	}
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o750 {
+		t.Errorf("mode became %v; an existing directory must keep the mode it has", got)
+	}
+}
+
+// TestEnsureRealDirRefusesASymlinkedLeaf is the proof step. os.Mkdir over a
+// symlink returns EEXIST whether the link points at a directory or anywhere
+// else, so the ErrExist branch alone would accept a planted redirect and every
+// later write would land at the target.
+func TestEnsureRealDirRefusesASymlinkedLeaf(t *testing.T) {
+	base, elsewhere := t.TempDir(), t.TempDir()
+	planted := filepath.Join(base, "store")
+	if err := os.Symlink(elsewhere, planted); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	err := EnsureRealDir(planted, 0o700)
+	if err == nil {
+		t.Fatal("a symlinked leaf must be refused, not followed")
+	}
+	if !errors.Is(err, ErrNotRealDir) {
+		t.Errorf("want ErrNotRealDir, got %T: %v", err, err)
+	}
+}
+
+// TestEnsureRealDirRefusesAFileAtThePath covers the non-symlink half of the same
+// refusal: a regular file occupying the name is EEXIST too.
+func TestEnsureRealDirRefusesAFileAtThePath(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "occupied")
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureRealDir(p, 0o700); !errors.Is(err, ErrNotRealDir) {
+		t.Errorf("want ErrNotRealDir for a file at the path, got %v", err)
+	}
+}
+
+// TestEnsureRealDirAllRefusesASymlinkedAncestor is the hardening the
+// consolidation carries. os.MkdirAll follows a symlinked ancestor and creates
+// the rest of the chain under its target — the hole one of the absorbed copies
+// documented in its own doc comment — and walking level by level is what closes
+// it. The target must stay empty: refusing after creating is not refusing.
+func TestEnsureRealDirAllRefusesASymlinkedAncestor(t *testing.T) {
+	base, elsewhere := t.TempDir(), t.TempDir()
+	if err := os.Symlink(elsewhere, filepath.Join(base, "records")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	err := EnsureRealDirAll(base, "records/intents/drafts", 0o755)
+	if err == nil {
+		t.Fatal("a symlinked ancestor must be refused, not traversed")
+	}
+	if !errors.Is(err, ErrNotRealDir) {
+		t.Errorf("want ErrNotRealDir, got %T: %v", err, err)
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("the walk created %d entr(ies) through the symlink", len(entries))
+	}
+}
+
+// TestEnsureRealDirAllCreatesTheWholeChain is the ordinary path, and it also
+// pins that every level lands at the caller's mode rather than only the leaf.
+func TestEnsureRealDirAllCreatesTheWholeChain(t *testing.T) {
+	base := t.TempDir()
+	if err := EnsureRealDirAll(base, ".abcd/development/intents/drafts", 0o755); err != nil {
+		t.Fatalf("EnsureRealDirAll: %v", err)
+	}
+	dir := base
+	for _, seg := range []string{".abcd", "development", "intents", "drafts"} {
+		dir = filepath.Join(dir, seg)
+		fi, err := os.Lstat(dir)
+		if err != nil {
+			t.Fatalf("level %s: %v", dir, err)
+		}
+		if !fi.IsDir() {
+			t.Fatalf("level %s is not a directory", dir)
+		}
+		if got := fi.Mode().Perm(); got != 0o755 {
+			t.Errorf("level %s created %v, want 0755", dir, got)
+		}
+	}
+}
+
+// TestEnsureRealDirAllRefusesAnEscapingRel keeps the walk lexically bounded: a
+// relative path is the only thing that may name levels under the caller's root,
+// so an absolute path or a traversal is refused before a single Mkdir runs.
+func TestEnsureRealDirAllRefusesAnEscapingRel(t *testing.T) {
+	base := t.TempDir()
+	for _, rel := range []string{"", ".", "/etc/abcd", "../escaped", "a/../../b"} {
+		if err := EnsureRealDirAll(base, rel, 0o755); err == nil {
+			t.Errorf("rel %q was accepted; a path that is not a clean relative path must be refused", rel)
+		}
+	}
+	if entries, _ := os.ReadDir(base); len(entries) != 0 {
+		t.Errorf("a refused rel created %d entr(ies)", len(entries))
+	}
+}
+
+// TestEnsureRealDirAllRefusesAnUnrealBase closes the entry point: the walk
+// proves every level it creates, so it must prove the one it starts from too.
+func TestEnsureRealDirAllRefusesAnUnrealBase(t *testing.T) {
+	base, elsewhere := t.TempDir(), t.TempDir()
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(elsewhere, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := EnsureRealDirAll(link, "records", 0o755); !errors.Is(err, ErrNotRealDir) {
+		t.Errorf("want ErrNotRealDir for a symlinked base, got %v", err)
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("the walk created %d entr(ies) through the symlinked base", len(entries))
 	}
 }

@@ -60,7 +60,15 @@ import (
 // manifest shape are both what a reader and an auditor are PROMISED, which is
 // MINOR by this constant's own rule (adr-2609021016272867 as read there;
 // iss-2609021833302981, iss-2609021857343626).
-const AssemblerVersionCore = "1.7.0"
+// It goes 1.7.0 to 1.8.0 with the transcript store's relocation: the exclusion
+// floor's transcript-store row stops asserting an unreachability that is now
+// conditional — a checkout declared in ~/.abcd/local-transcript-roots keeps its
+// store inside the tree — and becomes a `directory` row naming
+// `.abcd/.work.local/transcripts`. Signal `directory` is enforced by
+// assertExclusions where `unreachable path` was enforced by nothing, so the
+// floor gains a refusal a reader can check, which is MINOR by this constant's
+// own rule (iss-95).
+const AssemblerVersionCore = "1.8.0"
 
 // AssemblerVersion is the core semver with the rendered include table's digest
 // as semver build metadata. The digest is computed, not declared, so a table
@@ -614,7 +622,21 @@ var Exclusions = []Exclusion{
 	{Rule: "the instrument's own output is never its input", Signal: "directory", Detail: "agents"},
 	{Rule: "the instrument's own output is never its input", Signal: "directory", Detail: "evals"},
 	{Rule: "the instrument's own output is never its input", Signal: "directory", Detail: "internal/core/reading"},
-	{Rule: "the store sits outside the repository tree", Signal: "unreachable path", Detail: "the session-transcript store"},
+	// The session-transcript store. The claim used to rest on unreachability —
+	// the store sits under HOME and the assembler walks no HOME path — and that
+	// still holds for the default location, ~/.abcd/transcripts/. It is no
+	// longer the WHOLE ground: a checkout declared in
+	// ~/.abcd/local-transcript-roots keeps its store at
+	// .abcd/.work.local/transcripts/ inside the tree (iss-95). The exclusion is
+	// unaffected, because that path is covered by the `.abcd/.work.local`
+	// directory row above — denied by the `.abcd` segment, dropped by the
+	// tracked-set intersection since the local tier is gitignored, and refused
+	// by assertExclusions on the prefix. The row says that instead of asserting
+	// an unreachability that is now conditional: brief invariant 16 in its
+	// more-than direction — an attestation never states more than the
+	// examination behind it establishes.
+	{Rule: "the store is out of tree by default, and inside it only under .abcd/.work.local, which is excluded above",
+		Signal: "directory", Detail: ".abcd/.work.local/transcripts"},
 	{
 		Rule:      "a reading's object excludes what it exists to change",
 		Signal:    "directory",

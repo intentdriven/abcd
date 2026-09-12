@@ -1,12 +1,18 @@
 // Package history is abcd's native session-transcript store: the write/read/
-// redact engine that populates ~/.abcd/history/<root-sha>/transcripts/ and
+// redact engine that populates ~/.abcd/transcripts/<root-sha>/records/ and
 // retires the specstory shim (adr-29). It is transport-agnostic — no stdout, no
 // os.Exit, no CLI knowledge — so any surface can drive it and marshal its
 // structured results.
 //
-// The index.json registry and per-repo meta.json (the store's substrate) are
-// owned by internal/core/ahoy and created at install time; this package only
-// writes transcript records into an already-bootstrapped transcripts/ dir.
+// The store's location, its root-SHA keying, the home-scoped opt-in that pulls
+// one repo's transcripts into that repo, and the migration off the legacy
+// location all live in location.go, behind the single Resolve seam this file's
+// verbs go through. The store creates itself; no install step is a precondition
+// of capture (iss-95).
+//
+// The index.json registry and per-repo meta.json are owned by
+// internal/core/ahoy and stay under ~/.abcd/history/; this package owns the
+// corpus and nothing else.
 //
 // Redaction is NOT reimplemented here. Every transcript is sanitised through
 // internal/adapter/scanner — the same detector and masking discipline the
@@ -153,17 +159,17 @@ func (e *RedactionResidualError) Error() string {
 }
 
 // Capture reads a raw session transcript, redacts it through the scanner
-// (two-stage, fail-closed), and writes a record into
-// ~/.abcd/history/<rootSHA>/transcripts/.
+// (two-stage, fail-closed), and writes a record into this repo's lane of the
+// store — ~/.abcd/transcripts/<rootSHA>/records/ by default.
 //
 // It is idempotent on the source's sha256: an identical source already stored
 // is a no-op (Wrote=false, existing record returned, mtime preserved). It is
 // fail-closed: if a blocking span survives redaction it returns a
 // *RedactionResidualError and writes nothing.
 //
-// Precondition: the transcripts/ dir must already exist (abcd ahoy install
-// created it). Capture re-validates that the store's owned dirs are real
-// directories; it never creates the index or meta.
+// There is no install precondition: Resolve creates the store when it is absent
+// and refuses anything on the path that is not a real directory. It never
+// touches ahoy's index or meta.
 func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureResult, error) {
 	// Boundary validation — external inputs.
 	if !rootSHARe.MatchString(rootSHA) {
@@ -174,10 +180,11 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	}
 	sessionID, kind := meta.SessionID, meta.Kind
 
-	tdir, err := ownedDirsReal(rootSHA)
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	tdir := store.Records
 
 	release, err := repoLock(tdir)
 	if err != nil {
@@ -403,28 +410,20 @@ func resolveSupersession(existing []Record, meta CaptureMeta, kind, body string)
 	return superseded, nil
 }
 
-// List returns the records under <rootSHA>/transcripts/, newest first. It reads
-// frontmatter only, never bodies. An absent transcripts dir returns no records
-// and no error (the store is simply not populated for this repo yet); a
-// symlinked owned dir is refused with an error.
-func List(rootSHA string) ([]Record, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return nil, errors.New(rootSHAErrMsg)
-	}
-	tdir, err := transcriptsDir(rootSHA)
+// List returns this repo's records, newest first. It reads frontmatter only,
+// never bodies. An empty store returns no records and no error (this repo has
+// simply not been captured yet); a store path that is not a real directory is
+// refused with an error.
+//
+// It goes through Resolve like every other verb, so a read is also the moment a
+// corpus left at the legacy location is migrated: a reader that skipped that
+// would report the store as empty while the transcripts sat one directory away.
+func List(repoRoot, rootSHA string) ([]Record, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Lstat(tdir); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if !fsutil.IsRealDir(tdir) {
-		return nil, &StorePathError{Path: tdir, Msg: "transcripts dir is a symlink; refusing"}
-	}
-	return listRecords(tdir)
+	return listRecords(store.Records)
 }
 
 // Read returns the metadata and full redacted body of one record. It never
@@ -437,8 +436,8 @@ func List(rootSHA string) ([]Record, error) {
 //  3. a session id, preferring the MAIN-THREAD record and newest first. A
 //     reader who names a session is asking for its spine, even when a sub-agent
 //     of it was captured more recently; ListForSession is how they get the rest.
-func Read(rootSHA, key string) (Record, []byte, error) {
-	records, err := List(rootSHA)
+func Read(repoRoot, rootSHA, key string) (Record, []byte, error) {
+	records, err := List(repoRoot, rootSHA)
 	if err != nil {
 		return Record{}, nil, err
 	}
@@ -487,8 +486,8 @@ func Read(rootSHA, key string) (Record, []byte, error) {
 // The main thread leads because it is what makes the rest legible: the branches
 // are only interpretable against the spine that spawned them. An empty result
 // is not an error — the session may simply have no records here.
-func ListForSession(rootSHA, sessionID string) ([]Record, error) {
-	records, err := List(rootSHA)
+func ListForSession(repoRoot, rootSHA, sessionID string) ([]Record, error) {
+	records, err := List(repoRoot, rootSHA)
 	if err != nil {
 		return nil, err
 	}

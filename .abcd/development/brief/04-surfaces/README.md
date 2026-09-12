@@ -1,59 +1,130 @@
 # Surfaces — User-Facing Commands
 
-The brief's user-facing command surface is the set enumerated below (not every row is shipped — see [`06-delivery/`](../06-delivery) for current delivery state). Each has its own file with the surface contract: purpose, flow, acceptance criteria. Operator-internal verbs are wiring rather than user-facing surface; [§ Operator-internal verbs](#operator-internal-verbs) lists every one the binary registers, with the record that delivered it. The autonomous-run operator surface over the pluggable run seam (`run status`/`pause`/`resume`/`preflight`) is a design target (itd-29, `intents/planned/`); no `run` verb or `commands/run.md` is on any shipped surface.
+This is the register of what a person can ask abcd to do. Each row names one
+command, says in one line what someone gets from it, and points at the chapter
+holding its contract. The one-liners are deliberately thin: a chapter is where a
+claim about behaviour belongs, and a summary that repeats it is a second copy to
+keep true.
+
+Not every row ships. The **Status** column is machine-checked, and
+[`06-delivery/`](../06-delivery) carries the delivery state in detail. Verbs that
+are wiring rather than user-facing surface are listed separately under
+[§ Operator-internal verbs](#operator-internal-verbs).
 
 | # | Command | Status | Purpose | File |
 |---|---|---|---|---|
-| 1 | `/abcd:ahoy` | shipped | Install / update abcd in any project | [`01-ahoy.md`](01-ahoy.md) |
-| 2 | `/abcd:disembark` | shipped | Pack a lifeboat from a repository out-of-tree (`disembark pack <repo> <dest>`): read-only over the source (a test hashes the tree before/after), behind a destination safety gate, secret-scanned before any write, with a pinned `manifest_sha256` and an append-only voyage ledger (adr-35). The read-only `probe`/`coverage`/`plan` verbs ship alongside it, and the three-layer graveyard ships inside every pack: deterministic git archaeology (`graveyard/archaeology.json`) and recorded abandonment (`graveyard/abandoned.json`), with host-delegated interpretation ingested by `disembark graveyard --lessons-json` under a cite-or-be-dropped validator (uncited lessons dropped, low-confidence quarantined). The `embark` round-trip ships alongside it (row 3), and so does post-pack synthesis: `disembark principles`/`press-release`/`review` each run deterministic (evidence-only) or delegated (`--*-json`, trust-gated, cite-or-be-dropped) mode, the review carrying the registered `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` verdict, with the four agent prompts and their injection canaries under `agents/` (itd-5, itd-88 M6). | [`02-disembark.md`](02-disembark.md) |
-| 3 | `/abcd:embark` | shipped | Unpack a packed lifeboat's record families back into a target repository (`embark from <lifeboat> [target]`), the inverse of `disembark`: the read-only `probe` verb inspects first, the lifeboat is verified against its `manifest_sha256` before any read (a symlink or oversize file anywhere inside is refused), and only the four record families (ADRs, issues, intents, specs) are written — verbatim, into their canonical locations — through two-layer containment (`os.Root` plus lexical validation). The write is **conflict-safe**: any per-file conflict (a differing target, a non-regular target, a non-directory parent) refuses the WHOLE write and exits non-zero with one bulk report (identical bytes are an idempotent skip; a re-run is a clean no-op). The current abcd marker block is re-injected into the target `CLAUDE.md` (never foreign prose), and the coverage blanks a human must answer are surfaced first (itd-88, M5, adr-35). The full embark chapter — the press-release interview, asset curation, and provenance ledger — remains a design target (M6). | [`03-embark.md`](03-embark.md) |
-| 4 | `/abcd:launch` | shipped | Preview the curated release bundle and gates (read-only), plus the **release cut**: `launch ship` derives the version and the record set from what shipped since the newest tag, runs the surface guardrail, and with `--changelog-json` validates the host-composed prose against that record set (the completeness bijection) before writing the dated `CHANGELOG.md` heading (itd-73, itd-67's changelog slice). `commands/launch.md` carries the emit → compose → ingest orchestration over the `release-changelog-composer` agent; the deterministic emit alone is `abcd changelog`. Packaging/publishing the artefact remains a design target (itd-72) — see [`04-launch.md`](04-launch.md) | [`04-launch.md`](04-launch.md) |
-| 5 | `/abcd:intent` | shipped | Intent lifecycle over the press-release record store: bare status, quoted-text create, the `ready <itd-N>` implement-readiness gate (exit 0/1/2; an unready intent is refused with remedies and routed to the host-run planning interview, whose human-confirmed `plan` is the acceptance-criteria sign-off — itd-94), plus `plan` / `link` / `audit` (itd-80, itd-46). `commands/intent.md` carries the surface and the interview script. The richer press-release verbs (refine / grill / ship / consistency / shape / reclassify; three review roles per [`05-intent.md § 7`](05-intent.md#7-the-intent-auditor-agent-three-roles-three-verbs)) remain design targets (backing intents in `intents/planned/`) | [`05-intent.md`](05-intent.md) |
-| 6 | `/abcd:capture` | shipped | Issue ledger (capture / list / promote / resolve / wontfix / disposition — `promote` mints an intent draft and stamps `promoted_to` natively per spc-24/itd-119; `resolve` writes the structured `resolved_by` provenance per spc-25/itd-120; both require `--grounds`, the conjecture being acted on, per itd-179/spc-57; `disposition` records the researcher's answer to one reading item as a record of its own, per itd-180/spc-58) | [`06-capture.md`](06-capture.md) |
-| 7 | `/abcd:memory` | shipped | Multi-upstream curated knowledge substrate (per itd-36) — `ingest` external sources / `ask` queries / `lint` health-checks. Component spec: [`05-internals/07-memory.md`](../05-internals/07-memory.md). | [`07-memory.md`](07-memory.md) |
-| 8 | `/abcd` | shipped | Top-level where-am-i status board (per itd-20, `intents/planned/`) — cross-command re-orientation. The shipped bare render is four read-only lines (directory, git repo, record present, `.abcd/` work tiers); the richer board (visibility, lifeboat, dev-sync, recent logbook, active intents, next actions) is a design target. `abcd <record-id>` (iss-N / itd-N / spc-N / adr-N) dispatches read-only to the record and its next move per spc-26/itd-121; there is no `status` alias (the binary has no `status` verb, and `abcd help` prints command usage). Read-only. | [`08-abcd.md`](08-abcd.md) |
-| 9 | `/abcd:reflect` | staged | Phase retrospective (per itd-24) — `/abcd:reflect <phase-id>` composes a five-section retrospective (went well / could improve / lessons / decisions / metrics) seeded by the spc-66 (predecessor store) phase-audit receipt. Phase-only grain — design target, not shipped: no `reflect` binary verb or `commands/reflect.md` (itd-24) | [`09-reflect.md`](09-reflect.md) |
-| 10 | `/abcd:docs` | shipped | Documentation-currency lint (`lint`) — change-narration, broken links, stray root markdown; read-only, the deterministic half of the docs release gate — and the `cite` sub-tree (`cite refresh` / `cite confirm`), the citation baseline's write half and the one place documentation work reaches the network, when a maintainer asks | [`10-docs.md`](10-docs.md) |
-| 11 | `/abcd:history` | shipped | Session-transcript store (`capture` / `drain` / `list` / `show` / `staged`) — per-repo, redact-on-write, keyed on the root-commit SHA; `staged` lists what the session-end hook parked and `drain` redacts it into the store | [`11-history.md`](11-history.md) |
-| 12 | `/abcd:version` | shipped | Print the installed abcd version — read-only | [`12-version.md`](12-version.md) |
-| 13 | `/abcd:consult` | shipped | Consult the local sources corpus (`~/.abcd/sources`) and record source→decision provenance — host-delegated command, no Go verb | [`13-consult.md`](13-consult.md) |
-| 14 | `/abcd:ingest` | shipped | Register a URL or document into the local sources corpus — host-delegated command, no Go verb | [`14-ingest.md`](14-ingest.md) |
-| 15 | `/abcd:prepare-this-repo` | shipped | Bring an owned repo up to abcd's conventions (interim bridge) — host-delegated command, no Go verb | [`15-prepare-this-repo.md`](15-prepare-this-repo.md) |
-| 16 | `/abcd:lint` | shipped | Check whether a repo conforms to the working conventions (three-tier layout, AGENTS.md router, durable decisions, docs currency, privacy hygiene, identity positioning) — read-only, tri-state exit; backs `prepare-this-repo`, and runs when a human types it rather than in any gate (itd-85; `/abcd:audit` stays reserved for itd-16) | [`16-lint.md`](16-lint.md) |
-| 17 | `/abcd:guard` | shipped | Shell-hazard guard (`check`) — decide one candidate command line against the bundled hazard registry merged with the repo's committed `.abcd/guard.json`, and answer allow / warn / block with the plain-language why and the safe successor. Read-only. The `hook` sub-verb is the host pre-tool-use adapter, live-wired from `hooks/hooks.json` behind a fail-open-loud shim; guard health (hook installed, binary reachable, registry loadable) is reported by `abcd ahoy` (itd-103, spc-16) | [`17-guard.md`](17-guard.md) |
-| 18 | `/abcd:ideate` | shipped | Idea-admission gauntlet (itd-104, spc-18): three host-run legs in a validated order — primary-source research, a record grill whose every hit is cited by an id the binary proves resolves, and a fresh-context/off-policy/unknown-authorship adversarial review — then `abcd ideate record <idea-slug> --verdict-json` writes the dated verdict record under `.abcd/development/research/notes/` and one pointer line in `.abcd/work/DECISIONS.md`. Recorded whether the idea survives or dies, with rejected alternatives that an explicit marker is required to leave empty. Optional and never a gate: the `intent` and `capture` routing help names it, nothing requires it | [`18-ideate.md`](18-ideate.md) |
-| 19 | `/abcd:identity` | shipped | Repo positioning: the canonical identity block (title, tagline, pitch) and every rendered surface held to it. Bare renders the block and each surface's verdict; `render` prints the proposed correction as a unified diff and writes nothing (autonomous rewriting is permanently out of scope); `init` records the block and the `.abcd/positioning.json` pointer at onboarding, adopting an existing block rather than re-interviewing. The drift check itself runs as the `identity-positioning` rule on every audit, warn-tier and per-repo upgradeable to blocker (itd-102, spc-19) | [`19-identity.md`](19-identity.md) |
-| 20 | `/abcd:banlist` | shipped | Banned names in two layers (itd-74, spc-20): the committed public family in `.abcd/docs-lint.json` — the same `banned_tokens` primitive the harness entries use, with verb-written entries under the `names/` id prefix — and the gitignored per-machine private store read by the committed `.githooks/pre-commit` guard, which refuses a matching commit naming the entry key alone and warns loudly when the store is absent. Bare invocation and `list` are read-only (private entries render by key only, public in full); `add` / `remove` name their layer explicitly. `ahoy` scaffolding of the guard artefacts and the honest-reach line on the status/report surfaces are the remaining slices | [`20-banlist.md`](20-banlist.md) |
-| 21 | `/abcd:update` | shipped | Complete a chosen update of the PATH-installed binary (itd-130, spc-32): fetch the named (or resolved-and-named) release, verify against the same release's `checksums.txt` over a pinned transport, swap atomically. Dispatch refuses — loudly, each with its remedy — the plugin-root binary (the plugin update owns it), the dev shim, a stranded entry, a Homebrew-owned install, and any file abcd cannot prove is its own. The verb is the explicit ask (adr-38): it and `version --check` are the only paths to the release origin | [`21-update.md`](21-update.md) |
-| 22 | `/abcd:site` | shipped | The website as a rendered surface of this repository and of nothing else (adr-47, adr-48): bare reports what the repo declares (composition manifest, interface-string allowlist, reference baseline) and what the output directory holds; `site build` composes the landing page from repository text selected by path and heading, derives `record.json` from the record-lint engine's own scan plus one git-history pass and the changelog, inlines committed SVG assets and copies rasters, and writes the redirect and header maps — deterministic, network-free, and confined to its output directory. The featured quotation, the Beta badge and the footer stamp are derived, never written. The `check` gates (provenance, banned tokens over composed text, snippet pinning, the baseline ratchet, the mobile audit) ship, as does the release-chain deploy workflow (adr-48); the abcdev.app root still serves MkDocs until the first tagged deploy moves it | [`22-site.md`](22-site.md) |
-| 23 | `/abcd:reading` | shipped | The cold-reading instrument surface — the assembler (itd-183 / spc-61), the four position definitions under `agents/` (itd-184 / spc-62), the `ingest` verb (itd-185 / spc-63), the size report (itd-198 / spc-68) and the scope operand (itd-199 / spc-69, adr-58). A positive include table at field granularity decides what a reading may see, the assembled input carries no repository path, and a hashed manifest names every passed item by path and field so a third party can re-run the assembly and diff it — two assemblies of one state give a byte-identical bundle and manifests differing in the run identifier alone. Two rules bind the table — no include names a directory containing a record family, and a reading's object excludes the material whose state it exists to change — so a family added later is excluded by construction. Bare invocation is a read-only render naming the definitions the binary resolves; `assemble` carries a position, a target state and a scope, and no prose at any position — the scope names what the reading is about, so an assembly passes the intersection of it with what the table admits rather than a position's whole corpus, the comparative position refuses because its object has no channel, and `--dry-run` reports what a reading would cost before one is commissioned; `ingest --reading-json` validates the output a reading returned against the regime its definition licenses and writes the reading records. The verb never runs a reading | [`23-reading.md`](23-reading.md) |
-| 24 | `/abcd:decide` | shipped | The ADR store's write verb: `abcd decide "<title>"` mints `adr-<yymmddHHMMSS><rrrr>` through the shared record-id seam, derives the slug and the date, and writes the store's skeleton to `.abcd/development/decisions/adrs/<stamp>-<slug>.md` — the id, the date, the filename and the four sections, and nothing else: the decision is the author's to write, and the record lands `proposed` until the author sets `accepted`. The mint reads no maximum, so two branches deciding on the same day cannot allocate one number — the collision the hand-numbered ordinal had by construction (the 2026-09-01 ruling, `.abcd/work/DECISIONS.md`, the turn adr-45 ruling 3 deferred). `0001`–`0058` keep their ids and filenames; every reader admits both vintages | [`24-decide.md`](24-decide.md) |
+| 1 | `/abcd:ahoy` | shipped | Install abcd into a project, and see what is installed and what is missing | [`01-ahoy.md`](01-ahoy.md) |
+| 2 | `/abcd:disembark` | shipped | Carry the reasoning out of a project into a portable lifeboat, without writing to the project | [`02-disembark.md`](02-disembark.md) |
+| 3 | `/abcd:embark` | shipped | Unpack a lifeboat's records into another repository, refusing the whole write on any conflict | [`03-embark.md`](03-embark.md) |
+| 4 | `/abcd:launch` | shipped | Preview what a release would ship, and cut one by deriving its version and changelog from the record | [`04-launch.md`](04-launch.md) |
+| 5 | `/abcd:intent` | shipped | Say what you want to build as a press release, and find out whether it is ready to implement | [`05-intent.md`](05-intent.md) |
+| 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
+| 7 | `/abcd:memory` | shipped | Curate what the project knows from outside sources, and query it | [`07-memory.md`](07-memory.md) |
+| 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`](08-abcd.md) |
+| 9 | `/abcd:reflect` | staged | Compose a phase retrospective from its audit receipt (design target, itd-24) | [`09-reflect.md`](09-reflect.md) |
+| 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
+| 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
+| 12 | `/abcd:version` | shipped | Know which abcd this is, how it was installed, and whether it is behind | [`12-version.md`](12-version.md) |
+| 13 | `/abcd:consult` | shipped | Ask the local sources corpus what prior work says, and record what it changed | [`13-consult.md`](13-consult.md) |
+| 14 | `/abcd:ingest` | shipped | Put a document or URL into the sources corpus with its reference metadata | [`14-ingest.md`](14-ingest.md) |
+| 15 | `/abcd:prepare-this-repo` | shipped | Bring an owned repo up to abcd's conventions (interim bridge until abcd manages repos directly) | [`15-prepare-this-repo.md`](15-prepare-this-repo.md) |
+| 16 | `/abcd:lint` | shipped | Check whether this repo still conforms to the working conventions | [`16-lint.md`](16-lint.md) |
+| 17 | `/abcd:guard` | shipped | Find out whether a shell command is safe to run, and what to run instead | [`17-guard.md`](17-guard.md) |
+| 18 | `/abcd:ideate` | shipped | Put a big, unproven idea through an admission gauntlet and record the verdict either way | [`18-ideate.md`](18-ideate.md) |
+| 19 | `/abcd:identity` | shipped | Make every surface say the same thing about the project, and see the diff that would fix one | [`19-identity.md`](19-identity.md) |
+| 20 | `/abcd:banlist` | shipped | Declare the names this repo must never publish, and stop them at commit time | [`20-banlist.md`](20-banlist.md) |
+| 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
+| 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
+| 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
+| 24 | `/abcd:decide` | shipped | Mint a decision record with its id, date and skeleton, ready to write the decision into | [`24-decide.md`](24-decide.md) |
+| 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 
-The **Status** column is machine-checked: the `surface_coverage` record-lint rule asserts every `shipped` row has a backing surface (`commands/<name>.md` or `skills/<name>/`) and every `staged` row (a design target) has none — and, in reverse, that every real surface has a row here. The bare `/abcd` top-level names no sub-verb, so its command file (`commands/abcd.md`) is the rule's configured `bare_command` and is exempt from the file check. Keeping this column honest is how the brief's surface set stays reconciled with the shipped binary; the semantic half — whether each row's *prose* matches binary behaviour — stays a release-gate agent check.
+## How much of this table a machine keeps honest
 
-The machine-checked grain extends **inside** each row (spc-27, adr-40 decision 6): every surface file in this directory whose verb registers sub-commands carries a `## Sub-verbs` table recording, per verb, its adr-40 **bucket** (`lint` / `review` / `audit` / `gate`, or `—` for a non-assessment verb) and its **status** (`shipped` / `staged`). The rule's sub-verb pass checks each table against the committed command-tree snapshot (`.abcd/development/release/surface.json`) in both directions — a `shipped` row must be registered, a `staged` row must not be, a registered sub-command must have a row, and a sub-command-bearing verb cannot lack a table (or a file) entirely. Host-delegated surfaces (`consult`, `ingest`, `prepare-this-repo`) and the bare command are exempt from the cobra comparison by explicit config, never silently; operator-internal verbs (`spec`, `rules`, `hook`, `completion`) are absent from this registry by design. The surface-grain `Status` enum stays two-valued — there is no `partial`: the sub-verb rows carry that granularity, so a row may honestly read `shipped` at surface grain while its table shows exactly which sub-verbs are still `staged`. The tables give every sub-verb one machine-checked home a prose claim can be corrected against (iss-246); the pass pins tables to the command tree — prose itself is not scanned, so a stale prose claim is still caught by review, not by this rule.
+The **Status** column is machine-checked: the `surface_coverage` record-lint rule
+asserts every `shipped` row has a backing surface (`commands/<name>.md` or
+`skills/<name>/`) and every `staged` row has none — and, in reverse, that every
+command file and skill directory has a row here. The bare `/abcd` top-level names
+no sub-verb, so its command file is the rule's configured bare command and is
+exempt from the file check.
 
-**Bare-command-as-status is a common abcd convention, not a universal one** — many verbs render read-only status when invoked without arguments (bare `abcd`, `abcd ahoy`, `abcd banlist`, `abcd capture`, `abcd identity`, `abcd intent`, `abcd memory`, `abcd reading`, `abcd site`, and `abcd spec` all render a board), but it does not hold everywhere: `version` prints a short version/install/vintage/staleness block rather than a board; the `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate` cobra parents print help/usage with no board; and bare `abcd launch` refuses with a hint to pass `--dry-run`. This paragraph is the one enumeration of where the convention holds — the chapters point here rather than restating it. The **suggested-next-actions** half of the convention is a design target: no shipped bare invocation emits next actions. The convention exists for discoverability: a user need not remember sub-command names to learn where they stand.
+The reverse sweep reaches those two directories and no others. The prompt files
+under `agents/`, which a harness registers as invocable agents, are checked in
+neither direction: nothing asserts that one has a row here, and nothing notices
+when one is added or removed (iss-110).
 
-**abcd ships zero skills** — the `/abcd:` surface is commands only. `/abcd:consult`, `/abcd:ingest`, and `/abcd:prepare-this-repo` (rows 13–15) were once shipped as skills but are commands: each mutates state (the sources corpus, its ledger, the target repo), which the boundary rule makes command-shaped. They are **host-delegated** commands (`commands/<name>.md`, no Go verb — the workflow runs in the host agent). The skill/command boundary is documented in [`05-internals/08-skills.md`](../05-internals/08-skills.md). (`/abcd:grill` was likewise proposed as a skill; its **design target** is promotion to a sub-verb of `/abcd:intent` — its mid-session glossary writes and per-session logbook output are command-shaped — but the `intent` parent ships no `grill` sub-verb yet.)
+The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
+file in this directory whose verb registers sub-commands carries a `## Sub-verbs`
+table recording, per verb, its adr-40 bucket (`lint` / `review` / `audit` /
+`gate`, or `—` for a non-assessment verb) and whether it is `shipped` or `staged`.
+The rule checks each table against the committed command-tree snapshot in both
+directions: a `shipped` row must be registered, a `staged` row must not be, a
+registered sub-command must have a row, and a sub-command-bearing verb cannot lack
+a table or a file entirely. Host-delegated surfaces and the bare command are
+exempt from that comparison by explicit configuration, never silently; operator-
+internal verbs are absent from this registry by design.
+
+The surface-grain `Status` enum stays two-valued: there is no `partial`, because
+the sub-verb rows carry that granularity, so a row may honestly read `shipped`
+while its table shows which sub-verbs are still `staged`.
+
+What none of this checks is prose. The tables pin sub-verbs to the command tree;
+a stale claim in a chapter's body is caught by review and by the release gate,
+never by this rule (iss-246).
+
+## Bare invocation
+
+Typing a verb with no arguments is how a person finds out where they stand
+without having to remember a sub-command name. Most verbs answer with a
+read-only render of their own state, and close on the next move where there is
+one to name.
+
+It is a convention rather than a universal, and the exceptions are where the
+tree does not yet meet its own discipline. Six parents print usage with no state
+at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
+`abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
+because its one operand is the quoted title it mints a record from. And `abcd
+update` is a mutating fetch-verify-swap rather than a render at all. This
+paragraph is the one enumeration of the exceptions; the chapters point here
+rather than restating it.
 
 ## Operator-internal verbs
 
-Five verbs the binary registers carry no `commands/*.md` surface and no row in the table above, by design: the `surface_coverage` registry is the user-facing set, and these are reached from the CLI or from the hook manifest alone. Each is listed here with the record that delivered it, so the two tables together name every verb the binary registers apart from the framework's own `help`.
+Some verbs the binary registers carry no `commands/*.md` surface and no row
+above, by design: the `surface_coverage` registry is the user-facing set, and
+these are reached from the CLI or from the hook manifest alone. Each is listed
+here with the record that delivered it, so the two tables together name every
+verb the binary registers apart from the framework's own `help`.
 
 | Verb | What it is | Delivered by |
 |---|---|---|
-| `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. `commands/launch.md`'s emit → compose → ingest orchestration invokes it; `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice — both in `intents/planned/`, the emit slice being what ships; documented in [`04-launch.md`](04-launch.md) |
-| `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md) |
+| `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
+| `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no verb: the verb itself is documented only in the generated CLI reference and the repo's own conventions router |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`). | itd-80 / spc-2 (intent lifecycle automation); documented in [`05-intent.md`](05-intent.md) |
-| `hook` | Hidden from `--help`: the host hook entrypoints `prompt-router`, `prompt-router-reset`, `session-start`, `session-end`, and `subagent-stop`, live-wired from `hooks/hooks.json`. `session-end` stages the session transcript beside the store, `subagent-stop` stages a finished sub-agent's own transcript there with its lineage, and `session-start` drains both in; the pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md) and [`11-history.md`](11-history.md) |
+| `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away. The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no entrypoint of its own: the two router entrypoints have no documented home in this brief, and the generated CLI reference omits them by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 
 ## The command files
 
-The surface itself is [`commands/`](../../../../commands) at the repo root, auto-loaded by compatible agent harnesses. Each markdown file there is a slash command whose body instructs the host agent to invoke the `abcd` binary and present the result — the markdown is the surface, the binary is the engine. Commands stay thin: they call `abcd <verb> --json` and format the result; they never reimplement behaviour that belongs in the core.
+The surface itself is [`commands/`](../../../../commands) at the repo root,
+auto-loaded by compatible agent harnesses. Most markdown files there are slash
+commands whose body instructs the host agent to invoke the `abcd` binary and
+present the result: the markdown is the surface, the binary is the engine. Those
+commands stay thin — they call `abcd <verb> --json` and format the result, and
+never reimplement behaviour that belongs in the core.
 
-The directory is **flat**, and that is load-bearing rather than tidiness. A harness maps each `commands/` subdirectory to an extra namespace segment, so a verb one level down in a subdirectory named after the plugin registers as `/abcd:abcd:<verb>` — the plugin name twice — and every `/abcd:<verb>` this brief documents is then an unknown command (iss-161). One file per verb, directly under `commands/`:
+The three host-delegated commands named below are the exception, and are
+configured as such rather than being silently different: `/abcd:consult`,
+`/abcd:ingest` and `/abcd:prepare-this-repo` back onto no verb of their own, so
+`consult.md` and `ingest.md` invoke the binary nowhere at all and carry the
+workflow itself, and `prepare-this-repo.md` calls other verbs on the way through.
+
+The directory is **flat**, and that is load-bearing rather than tidiness. A
+harness maps each `commands/` subdirectory to an extra namespace segment, so a
+verb one level down in a subdirectory named after the plugin registers as
+`/abcd:abcd:<verb>` — the plugin name twice — and every `/abcd:<verb>` this brief
+documents is then an unknown command (iss-161). One file per verb, directly under
+`commands/`:
 
 <!-- index: commands -->
 `abcd`, `ahoy`, `banlist`, `capture`, `consult`, `decide`, `disembark`, `docs`,
@@ -62,9 +133,33 @@ The directory is **flat**, and that is load-bearing rather than tidiness. A harn
 `version`.
 <!-- /index -->
 
-`abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`. The listing is gated rather than trusted: the `index_drift` record-lint rule holds the marked region to the contents of `commands/`, so a verb file added, renamed, or removed without the same edit here fails the record gate.
+`abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
+The listing is gated rather than trusted: the `index_drift` record-lint rule holds
+the marked region to the contents of `commands/`, so a verb file added, renamed,
+or removed without the same edit here fails the record gate.
 
-**This documentation lives here rather than in `commands/README.md` because the loader registers every markdown file under `commands/` as a slash command** — with no frontmatter requirement and no name exemption, as `agents/README.md` registering as an agent independently shows (iss-110). A readme beside the verbs is therefore a spurious `/abcd:README` on every installed surface (iss-160), and the only reliable fix is a home outside the auto-discovery root.
+**This documentation lives here rather than in `commands/README.md` because the
+loader registers every markdown file under `commands/` as a slash command** — with
+no frontmatter requirement and no name exemption, as `agents/README.md`
+registering as an agent independently shows (iss-110). A readme beside the verbs
+is therefore a spurious `/abcd:README` on every installed surface (iss-160), and
+the only reliable fix is a home outside the auto-discovery root.
+
+## No skills
+
+**abcd ships zero skills** — the `/abcd:` surface is commands only, and there is
+no `skills/` directory in the tree. `/abcd:consult`, `/abcd:ingest` and
+`/abcd:prepare-this-repo` were once shipped as skills and are commands: each
+mutates state — the sources corpus, its ledger, the target repo — which the
+boundary rule makes command-shaped. They are **host-delegated** commands, with a
+command page and no Go verb, so the workflow runs in the host agent. The
+skill/command boundary is documented in
+[`05-internals/08-skills.md`](../05-internals/08-skills.md).
+
+`/abcd:grill` was likewise proposed as a skill. Its design target is promotion to
+a sub-verb of `/abcd:intent`, since its mid-session glossary writes and
+per-session output are command-shaped, and the `intent` parent ships no `grill`
+sub-verb.
 
 ## Where to find related design
 

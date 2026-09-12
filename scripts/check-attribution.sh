@@ -16,8 +16,14 @@
 # abcd's own answer until that lands.
 #
 # Usage:
-#   check-attribution.sh commits <base-ref> <head-ref>   # every non-merge commit in the range
+#   check-attribution.sh commits <base-ref> <head-ref>   # every commit in the range
 #   check-attribution.sh body <file>                     # a pull-request body on stdin-file
+#
+# In commits mode the two halves have different reach, deliberately. The IDENTITY
+# half reads every commit in the range, merges included: a merge commit carries an
+# author and a committer like any other, and the contributor graph counts them. The
+# MESSAGE half skips merges, because `Merge pull request #N from …` is composed by
+# the forge and carries no trailer of its own.
 #
 # Exit 0 clean, 1 a violation, 2 a usage/environment fault.
 set -euo pipefail
@@ -112,6 +118,45 @@ COAUTHOR_RE='^[[:space:]]*[Cc]o-[Aa]uthored-[Bb]y:'
 # ban can only enumerate — extend both lists as new defaults are met in the wild.
 AI_IDENT_NAME_RE='^[[:space:]]*(claude|chatgpt|copilot|github copilot|gemini|codex|devin)[[:space:]]*$'
 AI_IDENT_MAIL_RE='@anthropic\.com$|@openai\.com$'
+
+# A MACHINE identity that is not an AI vendor. The rule is refuse-machines,
+# allow-humans — not an allowlist of one name. This repository takes outside
+# contributions (.abcd/work/intake.md) and already carries a commit from an
+# outside human, so a roster of permitted names would refuse the next one; the
+# enumeration above is a roster of REFUSED names and has the opposite failure
+# mode, but it is still an enumeration, and dependabot walked straight past it —
+# three dependency bumps stand in main authored `dependabot[bot]`, matching
+# neither list (iss-2609082001204831).
+#
+# So these two are STRUCTURAL rather than nominal: the `[bot]` suffix the forge
+# itself stamps on an app's account name, and the mailbox shape it stamps on the
+# address — `49699333+dependabot[bot]@users.noreply.github.com`, or the older
+# `name[bot]@…`. A second automation lands in the right place with no edit here.
+#
+# THE MAILBOX IS THE DISCRIMINATOR, NEVER THE HOST, and this is the line to read
+# twice before touching it. `1234+name@users.noreply.github.com` is a PERSON'S
+# forge privacy address — the host says noreply, the mailbox is that person's own
+# account — and it is how nearly every commit in this repository is authored.
+# Reading `users.noreply.github.com` as a machine signal would refuse the entire
+# history and every outside contributor with privacy switched on. `[bot]` inside
+# the mailbox is what makes dependabot's address a machine's.
+#
+# This matches internal/core/site/contributors.go's machineAddrRe, which draws
+# the same local-part/host distinction for the published contributors page
+# (iss-2609081940550352). The two cannot share code — that gate runs in CI
+# without Go — so they share a reading instead.
+MACHINE_NAME_RE='\[bot\][[:space:]]*$'
+MACHINE_MAIL_RE='\[bot\]@|@dependabot\.com$'
+
+# A mailbox literally named for not being read. Refused in the AUTHOR role only,
+# and the asymmetry is load-bearing rather than a hedge: `GitHub
+# <noreply@github.com>` is the COMMITTER of every merge and squash made through
+# the forge's web UI, on a human's click — 638 commits in this repository's main
+# are shaped exactly so, and refusing the mailbox in that role would turn the
+# whole history red while catching no machine that MACHINE_MAIL_RE misses. In the
+# author role there is no such reading: a person's forge address names their
+# account, and `noreply@` names none.
+AUTHOR_ONLY_MAIL_RE='^[[:space:]]*(no-?reply|do-?not-?reply)@'
 
 fail=0
 note() { echo "  $1" >&2; }
@@ -283,21 +328,36 @@ strip_fenced_blocks() {
 	'
 }
 
-# check_ident refuses an AI git identity in one role (author or committer) of
-# one commit; a human is the author of record, and the tool's disclosure lives
-# in the trailer, never in the identity fields the contributor graph reads.
+# check_ident refuses a MACHINE git identity in one role (author or committer) of
+# one commit; a human is the author of record, and machine assistance is disclosed
+# by the trailer, never by the identity fields the contributor graph reads.
+#
+# Returns non-zero when it refuses, so the caller can leave the message alone: a
+# machine-authored commit has no trailer, and reporting that too would hand back
+# the wrong remedy. "Add an Assisted-by: line" is not the fix for a dependency
+# bump; landing it as a human is.
 check_ident() {
-	local label="$1" role="$2" name="$3" mail="$4"
+	local label="$1" role="$2" name="$3" mail="$4" kind=""
 	if printf '%s' "$name" | grep -Eiq "$AI_IDENT_NAME_RE" ||
 		printf '%s' "$mail" | grep -Eiq "$AI_IDENT_MAIL_RE"; then
-		echo "check-attribution: $label has an AI $role identity: $name <$mail>" >&2
-		note "The human is the author of record (AGENTS.md); the contributor graph is built"
-		note "from these identity fields, so an AI here asserts an authorship the tool does"
-		note "not hold. Fix the commit identity (git commit --amend --reset-author with"
-		note "user.name/user.email set to the human) and disclose the tool in the trailer:"
-		note "Assisted-by: <Vendor>:<model-version>"
-		fail=1
+		kind="an AI"
+	elif printf '%s' "$name" | grep -Eiq "$MACHINE_NAME_RE" ||
+		printf '%s' "$mail" | grep -Eiq "$MACHINE_MAIL_RE"; then
+		kind="a machine"
+	elif [ "$role" = author ] && printf '%s' "$mail" | grep -Eiq "$AUTHOR_ONLY_MAIL_RE"; then
+		kind="a machine"
+	else
+		return 0
 	fi
+	echo "check-attribution: $label has $kind $role identity: $name <$mail>" >&2
+	note "The human is the author of record (AGENTS.md); the contributor graph is built"
+	note "from these identity fields, so a machine here asserts an authorship the tool"
+	note "does not hold. Fix the commit identity (git commit --amend --reset-author with"
+	note "user.name/user.email set to the human) and disclose any assistance in the"
+	note "trailer: Assisted-by: <Vendor>:<model-version>"
+	note "A dependency bump proposed by a bot is landed by a human, not merged as authored."
+	fail=1
+	return 1
 }
 
 # check_text applies both halves to one artefact: the banned footer must be
@@ -348,32 +408,38 @@ commits)
 	[ $# -eq 3 ] || usage
 	base="$2"
 	head="$3"
-	# --no-merges: a merge commit is generated by the forge, not authored here, and
-	# carries no trailer of its own.
-	range="$(git rev-list --no-merges "$base".."$head")"
+	# Every commit, MERGES INCLUDED. The identity half is what needs them: a merge
+	# commit carries an author and a committer like any other, and the contributor
+	# graph counts them, so `--no-merges` here was a blind spot rather than an
+	# exemption — 23f0a891 stands in main authored and committed as
+	# `Claude <noreply@anthropic.com>`, arriving as a merge from an autonomous round
+	# running with the tool's own git identity (iss-2609082001204831). The message
+	# half still skips them, below.
+	range="$(git rev-list "$base".."$head")"
 	if [ -z "$range" ]; then
-		echo "check-attribution: no non-merge commits in $base..$head — nothing to check"
+		echo "check-attribution: no commits in $base..$head — nothing to check"
 		exit 0
 	fi
 	while IFS= read -r sha; do
 		[ -n "$sha" ] || continue
-		# A bot's commit is exempt: dependabot cannot write a trailer, and failing its
-		# PRs would train the maintainer to discount a red gate on exactly the PRs where
-		# a red gate most needs to be trusted.
-		author_email="$(git show -s --format='%ae' "$sha")"
-		case "$author_email" in
-		*"[bot]@users.noreply.github.com" | *"@dependabot.com")
-			continue
-			;;
-		esac
 		label="commit ${sha:0:12} ($(git show -s --format='%s' "$sha" | cut -c1-50))"
 		{
 			IFS= read -r author_name
+			IFS= read -r author_email
 			IFS= read -r committer_name
 			IFS= read -r committer_email
-		} <<<"$(git show -s --format='%an%n%cn%n%ce' "$sha")"
-		check_ident "$label" author "$author_name" "$author_email"
-		check_ident "$label" committer "$committer_name" "$committer_email"
+			IFS= read -r parents
+		} <<<"$(git show -s --format='%an%n%ae%n%cn%n%ce%n%P' "$sha")"
+		ident_ok=1
+		check_ident "$label" author "$author_name" "$author_email" || ident_ok=0
+		check_ident "$label" committer "$committer_name" "$committer_email" || ident_ok=0
+		[ "$ident_ok" -eq 1 ] || continue
+		# A merge commit's MESSAGE is exempt: `Merge pull request #N from …` is
+		# composed by the forge, not authored here, and carries no trailer of its
+		# own. Its identity was read above, which is the half that was missing.
+		case "$parents" in
+		*" "*) continue ;;
+		esac
 		check_text "$label" "$(git show -s --format='%B' "$sha")"
 	done <<<"$range"
 	;;

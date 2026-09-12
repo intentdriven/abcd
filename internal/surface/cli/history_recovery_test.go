@@ -51,7 +51,7 @@ func secondRepo(t *testing.T) (repo, rootSHA string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", rootSHA, "transcripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", rootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return repo, rootSHA
@@ -94,7 +94,11 @@ func plantComposite(t *testing.T, rootSHA, stored, fullSession string) string {
 		`{"type":"user","sessionId":"` + fullSession + `"}`,
 		"",
 	}, "\n")
-	p := filepath.Join(home, ".abcd", "history", rootSHA, "transcripts", "20260101T000000.000000000Z-c.md")
+	dir := filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "20260101T000000.000000000Z-c.md")
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -209,14 +213,14 @@ func TestHistoryIngestWritesIntoTheNamedRepositoryNotTheWorkingDirectory(t *test
 	if !strings.Contains(out, "into ") {
 		t.Errorf("the run must say which repository it wrote into, got:\n%s", out)
 	}
-	dest, err := history.List(destSHA)
+	dest, err := history.List(destRepo, destSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(dest) != 1 || dest[0].SessionID != "sess-named" {
 		t.Errorf("the named destination must hold the transcript, got %+v", dest)
 	}
-	other, err := history.List(otherSHA)
+	other, err := history.List(otherRepo, otherSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +253,7 @@ func TestHistoryIngestPromptsForOrphansOnlyUnderThatPolicy(t *testing.T) {
 	if !strings.Contains(out, "orphan") {
 		t.Errorf("an orphan must be reported, got:\n%s", out)
 	}
-	records, err := history.List(rootSHA)
+	records, err := history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +277,7 @@ func TestHistoryIngestPromptsForOrphansOnlyUnderThatPolicy(t *testing.T) {
 	if !strings.Contains(errOut, "adopt") {
 		t.Errorf("the prompt must be asked out of band, got stderr:\n%s", errOut)
 	}
-	records, err = history.List(rootSHA)
+	records, err = history.List(repo, rootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1281,7 +1281,15 @@
     {
       "path": "abcd spec close",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "impact",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd update",

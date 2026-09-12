@@ -56,8 +56,9 @@ docs), `motion_picture` (video).
   read the piece: topics, named tools/techniques, the claims it makes. Never
   generic filler ("AI", "software").
 
-(`abcd-ingest <url-or-file>` is the human quick path to the same registrar;
-prefer explicit `add-source` flags here since you have better metadata.)
+There is no one-argument quick path, and none is assumed here: `add-source` with
+explicit flags is the registrar's front door, and the better one anyway, since
+you have just read the source and hold metadata a bare fetch could not recover.
 
 ## 4. Quality-check the extraction
 

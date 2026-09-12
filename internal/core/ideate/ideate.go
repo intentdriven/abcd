@@ -301,6 +301,11 @@ type Result struct {
 	KillAttempts int `json:"kill_attempts"`
 	// RejectedAlternatives counts the recorded alternatives.
 	RejectedAlternatives int `json:"rejected_alternatives"`
+	// Redactions counts the secret/PII spans the store-before-commit redactor
+	// rewrote out of the verdict's free text on the way to the record. It is
+	// reported rather than kept quiet because redacting in silence is how a
+	// composer learns nothing about the credential it just pasted (loud-staging).
+	Redactions int `json:"redactions"`
 }
 
 // recordDate renders the date a verdict record is filed under. UTC so the same

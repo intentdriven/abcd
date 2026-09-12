@@ -11,8 +11,7 @@ import (
 // list's fix stated class-wide. A consumer that iterates the value (jq `.[]`, an
 // agent following the command doc) errors on null; an empty array is safe.
 func TestJSONCollectionsAreEmptyArraysNotNull(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	cases := []struct {
 		name   string

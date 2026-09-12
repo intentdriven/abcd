@@ -119,69 +119,37 @@ type Quarantined struct {
 	Err string `json:"error,omitempty"`
 }
 
-// quarantineDirPath returns ~/.abcd/history/<rootSHA>/quarantine.
-func quarantineDirPath(rootSHA string) (string, error) {
-	root, err := historyRoot()
+// quarantineDirPath returns <lane>/quarantine for this repo's store.
+func quarantineDirPath(repoRoot, rootSHA string) (string, error) {
+	lane, err := laneDir(repoRoot, rootSHA)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, rootSHA, "quarantine"), nil
+	return filepath.Join(lane, "quarantine"), nil
 }
 
-// quarantineDirReal verifies the owned path and creates the leaf if absent, on
-// the same terms and for the same reasons as stagingDirReal: 0o700, parents
-// never created, a symlinked leaf refused.
-func quarantineDirReal(rootSHA string) (string, error) {
-	root, err := historyRoot()
+// quarantineDirReal creates the quarantine leaf under the resolved store, on
+// the same terms and for the same reasons as stagingDirReal: 0o700, and never
+// created through or as a symlink.
+func quarantineDirReal(repoRoot, rootSHA string) (string, error) {
+	qdir, err := quarantineDirPath(repoRoot, rootSHA)
 	if err != nil {
 		return "", err
 	}
-	repoDir := filepath.Join(root, rootSHA)
-	for _, d := range []string{root, repoDir} {
-		if !fsutil.IsRealDir(d) {
-			return "", &StorePathError{Path: d, Msg: "not a real directory (absent or symlink); run `abcd ahoy install` to bootstrap the store"}
-		}
-	}
-	qdir := filepath.Join(repoDir, "quarantine")
-	// 0o700: quarantined transcripts are unredacted, exactly as staged ones are.
-	if err := os.Mkdir(qdir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return "", &StorePathError{Path: qdir, Msg: "cannot create quarantine dir: " + err.Error()}
-	}
-	if !fsutil.IsRealDir(qdir) {
-		return "", &StorePathError{Path: qdir, Msg: "quarantine path is not a real directory (symlink?); refusing"}
+	if err := fsutil.EnsureRealDir(qdir, storeDirPerm); err != nil {
+		return "", storeDirFault(qdir, err)
 	}
 	return qdir, nil
 }
 
-// classifyDrainFailure turns one Capture error into the DrainFailure the caller
-// reports, quarantining the staged bytes when — and only when — the refusal is
-// deterministic.
-//
-// Deterministic today means exactly *RedactionResidualError: the two-stage
-// scanner found a blocking span that survived redaction, which is a property of
-// the transcript's own bytes. Every future drain reads the same bytes and
-// reaches the same refusal, so the entry is moved out of the queue rather than
-// re-scanned forever. Growth of the source file cannot rescue it either: the
-// drain only ever substitutes a source that STRICTLY EXTENDS the staged bytes,
-// and appending to a transcript cannot remove a blocking span already present
-// in its prefix.
-//
-// A corrupt staging sidecar is NOT this case and is deliberately absent from
-// it: an operator can rewrite or delete the sidecar and the same bytes then
-// drain normally, so it is a repairable fault, not a terminal one. It stays
-// staged, ages, and is reported as overdue like anything else that stops
-// moving.
-//
-// A quarantine that itself fails is reported in Err rather than swallowed: the
-// entry then stays exactly where it was, which is the safe direction.
-func classifyDrainFailure(sdir, rootSHA string, s Staged, stagedBytes []byte, capErr error) DrainFailure {
+func classifyDrainFailure(sdir, repoRoot, rootSHA string, s Staged, stagedBytes []byte, capErr error) DrainFailure {
 	f := DrainFailure{SessionID: s.SessionID, Path: s.Path, Err: capErr.Error()}
 	var rerr *RedactionResidualError
 	if !errors.As(capErr, &rerr) {
 		return f
 	}
 	f.Permanent = true
-	qdir, err := quarantineDirReal(rootSHA)
+	qdir, err := quarantineDirReal(repoRoot, rootSHA)
 	if err != nil {
 		f.Err += fmt.Sprintf("; could not open quarantine (%v), so the raw copy stays staged", err)
 		return f
@@ -273,11 +241,8 @@ func quarantineNotePathFor(rawPath string) string {
 
 // ListQuarantined returns this repo's quarantined transcripts, oldest first. An
 // absent quarantine dir is not an error: it means nothing has ever been parked.
-func ListQuarantined(rootSHA string) ([]Quarantined, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return nil, errors.New(rootSHAErrMsg)
-	}
-	qdir, err := quarantineDirPath(rootSHA)
+func ListQuarantined(repoRoot, rootSHA string) ([]Quarantined, error) {
+	qdir, err := quarantineDirPath(repoRoot, rootSHA)
 	if err != nil {
 		return nil, err
 	}
@@ -368,10 +333,7 @@ type DiscardResult struct {
 // name is a bare filename by design: a caller passing a path could delete
 // outside the store, and this function's whole risk profile is that it deletes.
 // It must end in the staged suffix and contain no separator.
-func Discard(rootSHA, name string) (DiscardResult, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return DiscardResult{}, errors.New(rootSHAErrMsg)
-	}
+func Discard(repoRoot, rootSHA, name string) (DiscardResult, error) {
 	if name == "" || name != filepath.Base(name) || strings.ContainsRune(name, filepath.Separator) ||
 		name == "." || name == ".." || strings.HasPrefix(name, ".") {
 		return DiscardResult{}, fmt.Errorf("history: %q is not a staged transcript filename", name)
@@ -379,11 +341,12 @@ func Discard(rootSHA, name string) (DiscardResult, error) {
 	if !strings.HasSuffix(name, stagedSuffix) {
 		return DiscardResult{}, fmt.Errorf("history: %q is not a staged transcript (it does not end in %s)", name, stagedSuffix)
 	}
-	sdir, err := stagingDirPath(rootSHA)
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return DiscardResult{}, err
 	}
-	qdir, err := quarantineDirPath(rootSHA)
+	sdir := store.Staging
+	qdir, err := quarantineDirPath(repoRoot, rootSHA)
 	if err != nil {
 		return DiscardResult{}, err
 	}
@@ -472,7 +435,7 @@ func (b RepoBacklog) Total() int64 { return b.StagedBytes + b.QuarantinedBytes }
 // key must not blind the survey to the other forty. A store that does not exist
 // yet returns nothing and no error.
 func SurveyBacklog() ([]RepoBacklog, error) {
-	root, err := historyRoot()
+	root, err := userStoreBase()
 	if err != nil {
 		return nil, err
 	}
@@ -491,8 +454,12 @@ func SurveyBacklog() ([]RepoBacklog, error) {
 		if !e.IsDir() || !rootSHARe.MatchString(e.Name()) {
 			continue
 		}
-		b := RepoBacklog{RootSHA: e.Name(), Name: storedRepoName(filepath.Join(root, e.Name(), "meta.json"))}
-		staged, err := listStaged(filepath.Join(root, e.Name(), "staging"))
+		// The corpus moved out of ahoy's namespace but the per-repo meta.json
+		// did not (iss-95), so the lane and the NAME of the repository that
+		// owns it are read from two different roots.
+		meta, _ := ahoyRepoMetaPath(e.Name())
+		b := RepoBacklog{RootSHA: e.Name(), Name: storedRepoName(meta)}
+		staged, err := listStaged(filepath.Join(root, e.Name(), stagingDirName))
 		if err == nil {
 			for _, s := range staged {
 				b.Staged++

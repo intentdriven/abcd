@@ -16,7 +16,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -49,7 +48,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Redact and store a raw session transcript (reads a file or stdin)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
@@ -72,11 +71,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if sess == "" {
 				return fmt.Errorf("history capture: --session <id> is required when reading from stdin")
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := history.Capture(captureRoot(cwd), rootSHA, raw,
+			res, err := history.Capture(repoRoot, rootSHA, raw,
 				history.CaptureMeta{SessionID: sess, Kind: orDefault(kind, "native")})
 			if err != nil {
 				return err
@@ -112,11 +107,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "List stored transcripts for this repo, newest first",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			records, err := history.List(rootSHA)
+			records, err := history.List(repoRoot, rootSHA)
 			if err != nil {
 				return err
 			}
@@ -167,18 +162,18 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if stagedAllRepos {
 				return renderBacklogSurvey(cmd, *asJSON)
 			}
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			staged, err := history.ListStaged(rootSHA)
+			staged, err := history.ListStaged(repoRoot, rootSHA)
 			if err != nil {
 				return err
 			}
 			// Quarantined transcripts are raw bytes on the same disk under the
 			// same 0o700, so a listing that omitted them would under-report
 			// exactly the transcripts that will never leave on their own.
-			quarantined, qerr := history.ListQuarantined(rootSHA)
+			quarantined, qerr := history.ListQuarantined(repoRoot, rootSHA)
 			if qerr != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"abcd history: the quarantine directory is unreadable (%s)\n",
@@ -195,7 +190,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			// agent_transcript_path stages nothing, and "no sub-agent
 			// transcripts" then reads as "this session delegated nothing"
 			// rather than "this harness cannot deliver them".
-			gap, hasGap, gapErr := history.SubagentGap(rootSHA)
+			gap, hasGap, gapErr := history.SubagentGap(repoRoot, rootSHA)
 			if gapErr != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(),
 					"abcd history: the sub-agent payload marker is unreadable (%s)\n",
@@ -292,15 +287,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Redact and store every staged transcript for this repo",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := history.Drain(captureRoot(cwd), rootSHA, history.DrainBudget{})
+			res, err := history.Drain(repoRoot, rootSHA, history.DrainBudget{})
 			if err != nil {
 				return err
 			}
@@ -346,11 +337,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Show one stored transcript's metadata and redacted body",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			rec, body, err := history.Read(rootSHA, args[0])
+			rec, body, err := history.Read(repoRoot, rootSHA, args[0])
 			if err != nil {
 				return err
 			}
@@ -401,7 +392,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		Short: "Permanently delete one staged or quarantined raw transcript (requires --yes)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
@@ -413,7 +404,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				return fmt.Errorf("history discard: %q holds the only copy of an unredacted transcript and deleting it is irreversible; pass --yes to confirm (`abcd history staged` shows what each file is)",
 					termsafe.Sanitize(args[0]))
 			}
-			res, err := history.Discard(rootSHA, args[0])
+			res, err := history.Discard(repoRoot, rootSHA, args[0])
 			if err != nil {
 				return err
 			}

@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -51,15 +50,10 @@ func newHistoryMigrateCommand(asJSON *bool) *cobra.Command {
 		Short: "Repair records filed under a composite session id (reports; writes only with --apply)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rootSHA, err := repoRootSHA()
+			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
 			}
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			repoRoot := captureRoot(cwd)
 			roots, err := resolveSidecarRoots(repoRoot, sidecarRoots)
 			if err != nil {
 				return err
@@ -155,6 +149,11 @@ func newHistoryIngestCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dest, err := resolveDestination(into)
 			if err != nil {
+				return err
+			}
+			// The destination is an operand here, so this verb cannot go
+			// through historyStore — but it owes the seam the same voice.
+			if err := printStoreNotes(cmd, dest.RepoRoot, dest.RootSHA); err != nil {
 				return err
 			}
 			cfg, err := history.LoadConfig(dest.RepoRoot)

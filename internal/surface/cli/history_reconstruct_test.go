@@ -25,7 +25,11 @@ func plantForReconstruct(t *testing.T, rootSHA, name string, fields []string, bo
 		"redacted_secrets: 0",
 		"redacted_home_paths: 0",
 	}, fields...)
-	p := filepath.Join(home, ".abcd", "history", rootSHA, "transcripts", name)
+	dir := filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, []byte(strings.Join(head, "\n")+"\n---\n"+body), 0o644); err != nil {
 		t.Fatal(err)
 	}

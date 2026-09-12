@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -382,7 +383,7 @@ func TestBanlistRootIsTheGitToplevel(t *testing.T) {
 	want := strings.TrimSpace(string(out))
 
 	t.Chdir(repo)
-	got, err := banlistRoot()
+	got, err := banlistRoot(io.Discard)
 	if err != nil {
 		t.Fatalf("banlistRoot: %v", err)
 	}

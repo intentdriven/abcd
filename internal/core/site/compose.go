@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
@@ -1285,13 +1286,67 @@ func plainPressReleaseText(body string) string {
 // met, and none not met. The rollup line is the audit's own machine-readable
 // summary (`internal/core/intent`), so this reads what the auditor wrote rather
 // than re-grading anything.
+//
+// Two things it reads narrowly, and both matter, because between them they are
+// the whole difference between quoting an intent the audit passed and quoting
+// one it did not.
+//
+// It reads THE `## Audit Notes` section — the first one, and only where there
+// is exactly one. An intent has one audit, so a second section of that title,
+// at any heading level, is not a second verdict; it is evidence that the file is
+// not the shape it claims. Accumulating across every matching section instead
+// let a duplicate reading `MET 1` lift an honest concerns-only rollup, whose
+// notMet is already zero, straight onto the homepage: the fenced-line failure
+// below, reached by duplication rather than by fencing, and no harder to write
+// (iss-2609090951277880). A duplicate is refused on the same ground a negative
+// count is — a malformed record is not evidence that the criteria were met.
+//
+// It reads that section through the same fence-aware walk every other reader of
+// these files uses, and only the prose of it. A rollup
+// line elsewhere in the document — in the frontmatter, in another section, or
+// quoted inside a fenced block as an example of the shape — is not a verdict
+// about this intent, and a whole-file substring scan cannot tell the difference.
+// A fenced `Acceptance rollup: MET 1` needs no negative to do damage: it lifts a
+// concerns-only rollup, whose notMet is already 0, straight past the met > 0
+// test.
+//
+// And it refuses a negative count outright. No audit writes one, `%d` accepts
+// one, and one negative NOT_MET cancels a real one — so a rollup carrying a
+// negative anywhere is malformed, and a malformed rollup is not evidence that
+// the criteria were met.
 func (c *composer) auditIsMet(rel string) bool {
 	data, err := fsutil.ReadGuardedInRoot(c.root, rel, maxPageBytes)
 	if err != nil {
 		return false
 	}
+	body, consumed := StripFrontmatter(string(data))
+	secs, err := Sections(rel, body, consumed)
+	if err != nil {
+		return false
+	}
+	notes, found := Section{}, false
+	for _, s := range secs {
+		if s.Title != "Audit Notes" {
+			continue
+		}
+		if found {
+			return false
+		}
+		notes, found = s, true
+	}
+	if !found {
+		return false
+	}
 	met, notMet := 0, 0
-	for _, line := range strings.Split(string(data), "\n") {
+	fence := false
+	for _, line := range strings.Split(notes.Body, "\n") {
+		if isFenceLine(line) {
+			fence = !fence
+			continue
+		}
+		if fence {
+			continue
+		}
 		_, after, ok := strings.Cut(line, "Acceptance rollup:")
 		if !ok {
 			continue
@@ -1301,8 +1356,13 @@ func (c *composer) auditIsMet(rel string) bool {
 			if len(fields) != 2 {
 				continue
 			}
-			n := 0
-			fmt.Sscanf(fields[1], "%d", &n)
+			n, err := strconv.Atoi(fields[1])
+			if err != nil {
+				continue
+			}
+			if n < 0 {
+				return false
+			}
 			switch fields[0] {
 			case "MET":
 				met += n
@@ -1318,14 +1378,39 @@ func (c *composer) auditIsMet(rel string) bool {
 // changelog is the record of what shipped when, and the intent id is how an
 // entry says which promise it delivered, so the version is a lookup rather than
 // a thing anyone types onto the page.
+//
+// A credit is the record's OWN handle, matched at a word boundary: `itd-1990`
+// names a different record, not a longer spelling of `itd-199`. A substring
+// test cannot tell the two apart, and because the walk takes the newest dated
+// section first, the answer it gave a short handle was whichever longer handle
+// happened to sit above it — `itd-1` stamped with the release that credits
+// itd-130, `itd-9` with the one that credits itd-93. Worse than wrong once: a
+// superstring landing in a FUTURE section restamps the featured record without
+// anything about that record changing.
+//
+// And it is a credit in the changelog's PROSE. The walk tracks fences the way
+// every other reader of these files does, because a handle inside a fenced
+// block is a shell example, a sample entry or a quoted diff — an illustration
+// of the shape rather than a claim that this release delivered that promise.
+// The fence check comes first, ahead of the dated-heading test, so a fenced
+// heading moves no version cursor either: both failures are silent, rendering a
+// plausible wrong version rather than none (iss-2609090951287232).
 func (c *composer) releaseOf(id string) string {
 	data, err := fsutil.ReadGuardedInRoot(c.root, "CHANGELOG.md", changelog.MaxChangelogBytes)
 	if err != nil {
 		return ""
 	}
 	version := ""
-	low := strings.ToLower(id)
+	want := normalizeHandle(id)
+	fence := false
 	for _, line := range strings.Split(string(data), "\n") {
+		if isFenceLine(line) {
+			fence = !fence
+			continue
+		}
+		if fence {
+			continue
+		}
 		if changelog.IsDatedHeading(line) {
 			if _, after, ok := strings.Cut(line, "["); ok {
 				version, _, _ = strings.Cut(after, "]")
@@ -1333,9 +1418,63 @@ func (c *composer) releaseOf(id string) string {
 			}
 			continue
 		}
-		if version != "" && strings.Contains(strings.ToLower(line), low) {
+		if version != "" && creditsHandle(line, want) {
 			return version
 		}
 	}
 	return ""
+}
+
+// creditsHandle reports whether a changelog line names want — an already
+// normalised handle — as a handle in its own right.
+//
+// The boundary comes from bodyHandleRe, this package's one definition of a
+// record handle as it appears in prose: every handle on the line is read out
+// and compared whole. bodyHandleRe knows the four record families the graph
+// exports, and a family it does not know would find no credit at all — which
+// fails closed, with the page carrying no version stamp, rather than open, with
+// the page carrying somebody else's.
+//
+// That pattern ends in `\b`, which closes the handle against a word character
+// — and `-` is not one, so a hyphen COMPOUND still yields the short handle:
+// `fix/itd-199-cleanup` returns itd-199, and `iss-0100-*.md` returns iss-100
+// once the zero-padding normalises. Branch names, file stems and run ids of
+// exactly that shape are ordinary changelog prose, and because releaseOf walks
+// newest-first, one of them in a newer section out-stamps the release that
+// actually credits the record — silently, with a plausible wrong version rather
+// than none. So a hyphen on EITHER side disqualifies the match: the leading
+// `\b` no more sees a hyphen than the trailing one does, and a handle glued to
+// one is part of a longer token whichever end it is glued at
+// (iss-2609090951280114).
+func creditsHandle(line, want string) bool {
+	for _, at := range bodyHandleRe.FindAllStringIndex(line, -1) {
+		if normalizeHandle(line[at[0]:at[1]]) != want {
+			continue
+		}
+		if at[0] > 0 && line[at[0]-1] == '-' {
+			continue
+		}
+		if at[1] < len(line) && line[at[1]] == '-' {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// normalizeHandle lower-cases a record handle and strips the leading zeros from
+// its number, so `ITD-007` and `itd-7` are the same record — the same
+// normalisation the record.json mentions pass applies to a handle it finds in
+// prose. A value that is not a handle is returned lower-cased and otherwise
+// untouched, and so matches only itself.
+func normalizeHandle(h string) string {
+	m := bodyHandleRe.FindStringSubmatch(h)
+	if m == nil || m[0] != h {
+		return strings.ToLower(h)
+	}
+	n := strings.TrimLeft(m[2], "0")
+	if n == "" {
+		n = "0"
+	}
+	return strings.ToLower(m[1]) + "-" + n
 }

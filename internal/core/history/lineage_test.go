@@ -13,7 +13,7 @@ import (
 // test can pin how a record written by an EARLIER binary reads back.
 func planted(t *testing.T, home, name, content string) string {
 	t.Helper()
-	p := filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts", name)
+	p := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records", name)
 	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestSchemaOneRecordReadsAsMainThread(t *testing.T) {
 		"",
 	}, "\n"))
 
-	rec, body, err := Read(testRootSHA, "sess-old")
+	rec, body, err := Read(repoRoot, testRootSHA, "sess-old")
 	if err != nil {
 		t.Fatalf("a schema-1 record must still be readable: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestLineageRoundTripsThroughTheRecord(t *testing.T) {
 		t.Fatalf("Capture: %v", err)
 	}
 
-	recs, err := List(testRootSHA)
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil || len(recs) != 1 {
 		t.Fatalf("List = (%d records, %v)", len(recs), err)
 	}
@@ -141,11 +141,12 @@ func TestLineageFieldsAreRedactedWithTheBody(t *testing.T) {
 	user := "zzlineageuser42"
 	home := filepath.Join(base, user)
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := Capture(t.TempDir(), testRootSHA, []byte("assistant: done\n"), CaptureMeta{
+	repoRoot := t.TempDir()
+	res, err := Capture(repoRoot, testRootSHA, []byte("assistant: done\n"), CaptureMeta{
 		SessionID:        "sess-redactfm",
 		Kind:             "native",
 		AgentID:          "agent-redactfm",
@@ -163,7 +164,7 @@ func TestLineageFieldsAreRedactedWithTheBody(t *testing.T) {
 	if strings.Contains(string(onDisk), user) {
 		t.Errorf("the caller's home survived in the frontmatter:\n%s", onDisk)
 	}
-	rec, _, err := Read(testRootSHA, "agent-redactfm")
+	rec, _, err := Read(repoRoot, testRootSHA, "agent-redactfm")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -208,7 +209,7 @@ func TestBlockingSpanInAgentTypeRefusesTheWrite(t *testing.T) {
 		t.Fatalf("Capture = (wrote=%v, err=%v); a surviving blocking span in agent_type must refuse the write",
 			res.Wrote, err)
 	}
-	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts"))
+	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +247,7 @@ func TestTwoSubagentsWithIdenticalBytesBothStore(t *testing.T) {
 	if second.Record.Path == first.Record.Path {
 		t.Fatal("two sub-agents must not share a record path")
 	}
-	recs, err := List(testRootSHA)
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,14 +299,14 @@ func TestReadResolvesFilenameThenAgentThenSession(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if rec, _, err := Read(testRootSHA, filepath.Base(subRes.Record.Path)); err != nil ||
+	if rec, _, err := Read(repoRoot, testRootSHA, filepath.Base(subRes.Record.Path)); err != nil ||
 		rec.AgentID != "agent-res" {
 		t.Errorf("step 1 (record filename) resolved to %+v (%v)", rec, err)
 	}
-	if rec, _, err := Read(testRootSHA, "agent-res"); err != nil || rec.AgentID != "agent-res" {
+	if rec, _, err := Read(repoRoot, testRootSHA, "agent-res"); err != nil || rec.AgentID != "agent-res" {
 		t.Errorf("step 2 (agent id) resolved to %+v (%v)", rec, err)
 	}
-	rec, _, err := Read(testRootSHA, "sess-res")
+	rec, _, err := Read(repoRoot, testRootSHA, "sess-res")
 	if err != nil {
 		t.Fatalf("step 3 (session id): %v", err)
 	}
@@ -338,7 +339,7 @@ func TestListForSessionReturnsMainThreadAndEverySubagent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := ListForSession(testRootSHA, "sess-all")
+	got, err := ListForSession(repoRoot, testRootSHA, "sess-all")
 	if err != nil {
 		t.Fatalf("ListForSession: %v", err)
 	}
@@ -452,7 +453,7 @@ func TestASecondStopSupersedesTheFirstRecord(t *testing.T) {
 	if _, err := os.Stat(first.Record.Path); !os.IsNotExist(err) {
 		t.Errorf("the superseded record is still on disk (%v); the agent now appears twice", err)
 	}
-	recs, err := ListForSession(testRootSHA, "sess-twostop")
+	recs, err := ListForSession(repoRoot, testRootSHA, "sess-twostop")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +491,7 @@ func TestAShorterRearrivalDoesNotWriteASecondRecord(t *testing.T) {
 	if again.Record.Path != full.Record.Path {
 		t.Errorf("the no-op must return the stored record, got %q want %q", again.Record.Path, full.Record.Path)
 	}
-	recs, err := ListForSession(testRootSHA, "sess-short")
+	recs, err := ListForSession(repoRoot, testRootSHA, "sess-short")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -515,7 +516,7 @@ func TestTheMainThreadSpineIsSupersededToo(t *testing.T) {
 	if _, err := Capture(repoRoot, testRootSHA, secondEnd, meta); err != nil {
 		t.Fatal(err)
 	}
-	recs, err := ListForSession(testRootSHA, "sess-spine")
+	recs, err := ListForSession(repoRoot, testRootSHA, "sess-spine")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,7 +544,7 @@ func TestDivergentTranscriptsForOneAgentBothStore(t *testing.T) {
 	if _, err := Capture(repoRoot, testRootSHA, []byte("another thing entirely\n"), meta); err != nil {
 		t.Fatal(err)
 	}
-	recs, err := ListForSession(testRootSHA, "sess-diverge")
+	recs, err := ListForSession(repoRoot, testRootSHA, "sess-diverge")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,11 +576,11 @@ func TestUnknownSpawnIsDistinguishableFromNoParent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	known, _, err := Read(testRootSHA, "agent-known")
+	known, _, err := Read(repoRoot, testRootSHA, "agent-known")
 	if err != nil {
 		t.Fatal(err)
 	}
-	unknown, _, err := Read(testRootSHA, "agent-unknown")
+	unknown, _, err := Read(repoRoot, testRootSHA, "agent-unknown")
 	if err != nil {
 		t.Fatal(err)
 	}

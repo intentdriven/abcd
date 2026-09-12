@@ -50,26 +50,62 @@ func safeIDSegment(id string) bool {
 	return sessionIDRe.MatchString(id) && id != "." && id != ".."
 }
 
-// sessionsDirReal returns ~/.abcd/history/<rootSHA>/sessions, creating the leaf
-// if absent. Like staging, the parents are NOT created: a note written under a
-// store nothing bootstrapped would be a note nothing ever reads.
-func sessionsDirReal(rootSHA string) (string, error) {
-	root, err := historyRoot()
+// laneDir returns this repo's lane inside the resolved store —
+// <base>/<rootSHA> — the directory records/, staging/, quarantine/ and the
+// session notes all sit under.
+//
+// It goes through Resolve and nothing else, so a caller wanting a sibling leaf
+// of records/ still pays the store's creation, its symlink discipline and its
+// migration off the legacy location exactly once. Nothing in this package may
+// join a store path by hand.
+func laneDir(repoRoot, rootSHA string) (string, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return "", err
 	}
-	repoDir := filepath.Join(root, rootSHA)
-	for _, d := range []string{root, repoDir} {
-		if !fsutil.IsRealDir(d) {
-			return "", &StorePathError{Path: d, Msg: "not a real directory (absent or symlink); run `abcd ahoy install` to bootstrap the store"}
-		}
+	return filepath.Join(store.Base, rootSHA), nil
+}
+
+// userStoreBase is the user-level store root for the two readers that have no
+// repository in hand: the cross-repo backlog survey, and the session→store
+// lookup a vanished worktree falls back to. Neither has a repoRoot to hand
+// Resolve, and neither creates anything — they enumerate lanes that already
+// exist.
+//
+// A repo that opted its transcripts into its own checkout (LocalRootsRelPath)
+// is therefore invisible to both, which is the honest answer rather than a
+// silent one: its lane is inside a working tree this call knows nothing about.
+func userStoreBase() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("history: cannot resolve the caller's home directory: %v", err)
 	}
-	dir := filepath.Join(repoDir, "sessions")
-	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return "", &StorePathError{Path: dir, Msg: "cannot create sessions dir: " + err.Error()}
+	return filepath.Join(home, filepath.FromSlash(userStoreRelPath)), nil
+}
+
+// ahoyRepoMetaPath is the per-repo meta.json, which ahoy owns and which stays
+// under ~/.abcd/history/: only the corpus moved out (iss-95). A survey that
+// wants a repository's NAME reads it there while reading its transcripts from
+// the lane Resolve returns.
+func ahoyRepoMetaPath(rootSHA string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", fmt.Errorf("history: cannot resolve the caller's home directory: %v", err)
 	}
-	if !fsutil.IsRealDir(dir) {
-		return "", &StorePathError{Path: dir, Msg: "sessions path is not a real directory (symlink?); refusing"}
+	return filepath.Join(home, filepath.FromSlash(legacyStoreRelPath), rootSHA, "meta.json"), nil
+}
+
+// sessionsDirReal returns <lane>/sessions, creating the leaf if absent. The
+// parents are Resolve's business, and the leaf is held to the same bar: 0o700,
+// and never created through or as a symlink.
+func sessionsDirReal(repoRoot, rootSHA string) (string, error) {
+	lane, err := laneDir(repoRoot, rootSHA)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(lane, "sessions")
+	if err := fsutil.EnsureRealDir(dir, storeDirPerm); err != nil {
+		return "", storeDirFault(dir, err)
 	}
 	return dir, nil
 }
@@ -81,14 +117,14 @@ func sessionsDirReal(rootSHA string) (string, error) {
 // the session's own cwd, and SubagentStop when its cwd still resolves — and read
 // by the one that sometimes cannot. Writing it is best-effort by construction:
 // a failure here degrades a fallback, never a capture.
-func NoteSessionRepo(rootSHA, sessionID string) error {
+func NoteSessionRepo(repoRoot, rootSHA, sessionID string) error {
 	if !rootSHARe.MatchString(rootSHA) {
 		return errors.New(rootSHAErrMsg)
 	}
 	if !safeIDSegment(sessionID) {
 		return fmt.Errorf("history: sessionID must be non-empty, match [A-Za-z0-9._-]+ and not be a directory reference")
 	}
-	dir, err := sessionsDirReal(rootSHA)
+	dir, err := sessionsDirReal(repoRoot, rootSHA)
 	if err != nil {
 		return err
 	}
@@ -120,8 +156,8 @@ func pruneSessionNotes(dir string) {
 
 // SessionRepo returns the root-commit SHA of the store that noted sessionID.
 //
-// It reads no transcript: one directory listing of ~/.abcd/history and one stat
-// per repository under it. A session id that two stores claim is refused rather
+// It reads no transcript: one directory listing of the user-level store and one
+// stat per repository lane under it. A session id that two stores claim is refused rather
 // than guessed — a transcript filed against the wrong repository is redacted by
 // the wrong repository's scanner configuration, which is a privacy fault, not a
 // misfiling. An unknown session returns an error naming that.
@@ -129,7 +165,7 @@ func SessionRepo(sessionID string) (string, error) {
 	if !safeIDSegment(sessionID) {
 		return "", fmt.Errorf("history: sessionID must be non-empty, match [A-Za-z0-9._-]+ and not be a directory reference")
 	}
-	root, err := historyRoot()
+	root, err := userStoreBase()
 	if err != nil {
 		return "", err
 	}
@@ -174,33 +210,29 @@ type SubagentGapNote struct {
 }
 
 // gapNotePath returns the marker's path beside the staging directory.
-func gapNotePath(rootSHA string) (string, error) {
-	root, err := historyRoot()
+func gapNotePath(repoRoot, rootSHA string) (string, error) {
+	lane, err := laneDir(repoRoot, rootSHA)
 	if err != nil {
 		return "", err
 	}
-	repoDir := filepath.Join(root, rootSHA)
-	if !fsutil.IsRealDir(repoDir) {
-		return "", &StorePathError{Path: repoDir, Msg: "not a real directory (absent or symlink); run `abcd ahoy install` to bootstrap the store"}
-	}
-	return filepath.Join(repoDir, subagentGapFilename), nil
+	return filepath.Join(lane, subagentGapFilename), nil
 }
 
 // NoteSubagentGap records a SubagentStop payload that carried no
 // agent_transcript_path. The first sighting sets FirstSeen and every sighting
 // moves LastSeen and the count, so a reader can tell a harness that has never
 // delivered the field from one that stopped, or started.
-func NoteSubagentGap(rootSHA, event string) error {
+func NoteSubagentGap(repoRoot, rootSHA, event string) error {
 	if !rootSHARe.MatchString(rootSHA) {
 		return errors.New(rootSHAErrMsg)
 	}
-	path, err := gapNotePath(rootSHA)
+	path, err := gapNotePath(repoRoot, rootSHA)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
 	note := SubagentGapNote{Schema: 1, FirstSeen: now, Event: event}
-	if prior, ok, err := SubagentGap(rootSHA); err == nil && ok {
+	if prior, ok, err := SubagentGap(repoRoot, rootSHA); err == nil && ok {
 		note.FirstSeen = prior.FirstSeen
 		note.Count = prior.Count
 	}
@@ -215,15 +247,12 @@ func NoteSubagentGap(rootSHA, event string) error {
 
 // SubagentGap reads the marker. A missing marker is not an error: it means this
 // harness has always delivered the field, or has never fired the event.
-func SubagentGap(rootSHA string) (SubagentGapNote, bool, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return SubagentGapNote{}, false, errors.New(rootSHAErrMsg)
-	}
-	root, err := historyRoot()
+func SubagentGap(repoRoot, rootSHA string) (SubagentGapNote, bool, error) {
+	path, err := gapNotePath(repoRoot, rootSHA)
 	if err != nil {
 		return SubagentGapNote{}, false, err
 	}
-	data, err := fsutil.ReadGuarded(filepath.Join(root, rootSHA, subagentGapFilename), maxStageSidecarBytes)
+	data, err := fsutil.ReadGuarded(path, maxStageSidecarBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return SubagentGapNote{}, false, nil

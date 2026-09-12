@@ -1,11 +1,14 @@
 package rules
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -259,4 +262,356 @@ func TestResolveRootAcceptsAPlausibleGitMarker(t *testing.T) {
 			t.Errorf("ResolveRoot(%q) = %q, want the linked worktree's root %q", sub, got, want)
 		}
 	})
+}
+
+// --- ownership of the git-refused fallback root (iss-2609020259564193) -------
+//
+// The fallback accepts a marker root only when it LOOKS like a repository, which
+// stops the one-command plant but not a real one: `git init` in a shared
+// directory owned by another uid produces a genuine repository, and git's
+// refusal on ownership under abcd's isolated environment is the SAME signal in
+// that attack as in the case the fallback exists for. /Users/Shared (root-owned,
+// mode 1777) and a root-owned /tmp are both real instances an unprivileged local
+// user can lay a repository in.
+//
+// The policy: a marker root whose owner is not the caller is REFUSED by default,
+// loudly, with an explicit home-scoped opt-in that re-admits it.
+
+// resolvedPath is EvalSymlinks with a lexical fallback — the same normalisation
+// Resolve applies, so a fixture path and the path the resolver hands the owner
+// lookup compare equal on a host whose temp root is a symlink.
+func resolvedPath(p string) string {
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	return filepath.Clean(p)
+}
+
+// foreignUID is a uid this process is not. A detector for an ownership refusal
+// needs a second uid, which a test process cannot create; the repository's
+// established answer to a branch the host cannot provoke is to substitute the
+// predicate (fsutil.caseFoldingFS, and the launch/lifeboat copies its comment
+// names), and that is what ownedByAnother does.
+func foreignUID() uint32 { return uint32(os.Getuid()) + 1 }
+
+// ownedByAnother makes the owner lookup report a foreign uid for each named
+// path, delegating every other path to the real one — so a single fixture can
+// hold a foreign-owned root AND a caller-owned home, and the caller-owned cases
+// in the same file keep running against the real filesystem.
+func ownedByAnother(t *testing.T, paths ...string) {
+	t.Helper()
+	real := ownerUID
+	foreign := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		foreign[resolvedPath(p)] = true
+	}
+	ownerUID = func(path string) (uint32, error) {
+		if foreign[resolvedPath(path)] {
+			return foreignUID(), nil
+		}
+		return real(path)
+	}
+	t.Cleanup(func() { ownerUID = real })
+}
+
+// layPlausibleRepository lays the shape `git init` leaves and plausibleRepository
+// accepts: a .git directory carrying HEAD. The detectors below do not shell out
+// to git for it, because the point under test is the fallback that runs when git
+// will not answer at all.
+func layPlausibleRepository(t *testing.T, root string) {
+	t.Helper()
+	mustDir(t, filepath.Join(root, ".git"))
+	if err := os.WriteFile(filepath.Join(root, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// plantConfiguration writes the two files the resolved root governs: the rules
+// kill switch and a guard registry. Both carry "disabled": true, so whether they
+// were READ is observable rather than inferred from the resolved path alone.
+func plantConfiguration(t *testing.T, root string) {
+	t.Helper()
+	mustDir(t, filepath.Join(root, ".abcd"))
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "rules.json"),
+		[]byte(`{"schema_version":1,"disabled":true,"domains":{}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "guard.json"),
+		[]byte(`{"schema_version":1,"disabled":true,"entries":{}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// declareTrusted writes the home-scoped opt-in naming each root.
+func declareTrusted(t *testing.T, home string, roots ...string) string {
+	t.Helper()
+	path := filepath.Join(home, filepath.FromSlash(TrustedRootsRelPath))
+	mustDir(t, filepath.Dir(path))
+	body := "# roots this machine's owner has declared trustworthy\n"
+	for _, r := range roots {
+		body += r + "\n"
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// foreignPlant is the whole fixture: a real-shaped repository at plant, owned by
+// another uid, carrying a rules kill switch and a guard kill switch, with the
+// session's working directory a plain directory beneath it. home is an isolated
+// user scope the detector controls.
+func foreignPlant(t *testing.T) (plant, victim, home string) {
+	t.Helper()
+	outer := mustDir(t, t.TempDir())
+	home = mustDir(t, filepath.Join(outer, "home"))
+	t.Setenv("HOME", home)
+	plant = mustDir(t, filepath.Join(outer, "plant"))
+	layPlausibleRepository(t, plant)
+	plantConfiguration(t, plant)
+	victim = mustDir(t, filepath.Join(plant, "victim"))
+	return plant, victim, home
+}
+
+// assertPlantNotRead proves the refusal in the terms that matter: neither the
+// planted rules.json nor the planted guard.json reached the loaders. Resolving
+// somewhere else is the mechanism; not reading those two files is the property.
+func assertPlantNotRead(t *testing.T, root string) {
+	t.Helper()
+	rs, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load(%q): %v", root, err)
+	}
+	if rs.Disabled {
+		t.Errorf("the planted rules.json was read: the loader kill switch is in force at %q", root)
+	}
+	reg, err := guard.Load(root)
+	if err != nil {
+		t.Fatalf("guard.Load(%q): %v", root, err)
+	}
+	if reg.Disabled {
+		t.Errorf("the planted guard.json was read: the hazard registry is switched off at %q", root)
+	}
+}
+
+// noteMentioning returns the first note containing want, or "".
+func noteMentioning(notes []string, want string) string {
+	for _, n := range notes {
+		if strings.Contains(n, want) {
+			return n
+		}
+	}
+	return ""
+}
+
+// TestResolveRootRefusesAMarkerRootTheCallerDoesNotOwn: the ruling. A marker
+// root owned by another uid, with no opt-in, does not govern the session — and
+// the refusal is loud and names the remedy, because a resolution that silently
+// declined to read a repository's own configuration is the failure mode the
+// bound itself was written to avoid (loud-staging).
+func TestResolveRootRefusesAMarkerRootTheCallerDoesNotOwn(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+	ownedByAnother(t, plant)
+
+	res := Resolve(victim)
+	if res.Root != victim {
+		t.Errorf("Resolve(%q).Root = %q; a marker root owned by another uid must not govern the session", victim, res.Root)
+	}
+	assertPlantNotRead(t, res.Root)
+
+	if len(res.Notes) == 0 {
+		t.Fatalf("the refusal is silent: Resolve(%q) produced no note", victim)
+	}
+	note := noteMentioning(res.Notes, TrustedRootsDisplay)
+	if note == "" {
+		t.Fatalf("no note names the remedy %q; notes = %q", TrustedRootsDisplay, res.Notes)
+	}
+	if !strings.Contains(note, filepath.Base(plant)) {
+		t.Errorf("the refusal does not name the root it refused (%q): %s", plant, note)
+	}
+}
+
+// TestResolveRootAdmitsAForeignRootDeclaredInTheUserHome: the opt-in exists so a
+// container bind mount, a foreign-uid checkout and a shared CI checkout have a
+// supported route. Declared, the same root governs the session exactly as it did
+// before the ownership policy — kill switch and all — and says nothing.
+func TestResolveRootAdmitsAForeignRootDeclaredInTheUserHome(t *testing.T) {
+	plant, victim, home := foreignPlant(t)
+	ownedByAnother(t, plant)
+	declareTrusted(t, home, plant)
+
+	res := Resolve(victim)
+	if got, want := resolvedPath(res.Root), resolvedPath(plant); got != want {
+		t.Fatalf("Resolve(%q).Root = %q, want the declared root %q", victim, got, want)
+	}
+	if len(res.Notes) != 0 {
+		t.Errorf("a declared root must resolve quietly; notes = %q", res.Notes)
+	}
+	rs, err := Load(res.Root)
+	if err != nil {
+		t.Fatalf("Load(%q): %v", res.Root, err)
+	}
+	if !rs.Disabled {
+		t.Errorf("the declared root's rules.json was not read: its kill switch is not in force")
+	}
+}
+
+// TestResolveRootAdmitsAMarkerRootTheCallerOwns: the ordinary case, unchanged.
+// The owner lookup is NOT substituted here, so this runs against the real
+// filesystem — the fixture is genuinely this process's own.
+func TestResolveRootAdmitsAMarkerRootTheCallerOwns(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+
+	res := Resolve(victim)
+	if got, want := resolvedPath(res.Root), resolvedPath(plant); got != want {
+		t.Fatalf("Resolve(%q).Root = %q, want the caller's own checkout root %q", victim, got, want)
+	}
+	if len(res.Notes) != 0 {
+		t.Errorf("a root the caller owns must resolve quietly; notes = %q", res.Notes)
+	}
+	rs, err := Load(res.Root)
+	if err != nil {
+		t.Fatalf("Load(%q): %v", res.Root, err)
+	}
+	if !rs.Disabled {
+		t.Errorf("the caller's own rules.json was not read: its kill switch is not in force")
+	}
+}
+
+// TestResolveRootIgnoresATrustDeclarationInsideTheRootItself: the circularity
+// bar. A tree that could vouch for itself would be no bar at all, so the
+// declaration is read ONLY from the user-scope home — never from the root under
+// judgement, at any spelling.
+func TestResolveRootIgnoresATrustDeclarationInsideTheRootItself(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+	ownedByAnother(t, plant)
+	// The same file the home scope would honour, written inside the foreign
+	// root: at the repo-relative spelling, and bare at its top level.
+	declareTrusted(t, plant, plant)
+	if err := os.WriteFile(filepath.Join(plant, "trusted-roots"), []byte(plant+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res := Resolve(victim)
+	if res.Root != victim {
+		t.Errorf("Resolve(%q).Root = %q; a root that declares ITSELF trusted must still be refused", victim, res.Root)
+	}
+	assertPlantNotRead(t, res.Root)
+}
+
+// TestResolveRootHonoursOnlyACallerOwnedDeclaration: the declaration is
+// caller-controlled or it is nothing. A ~/.abcd/trusted-roots this process does
+// not own, or one anyone can write, was not necessarily written by the caller —
+// so it re-admits nothing, and says why.
+func TestResolveRootHonoursOnlyACallerOwnedDeclaration(t *testing.T) {
+	t.Run("owned by another uid", func(t *testing.T) {
+		plant, victim, home := foreignPlant(t)
+		decl := declareTrusted(t, home, plant)
+		ownedByAnother(t, plant, decl)
+
+		res := Resolve(victim)
+		if res.Root != victim {
+			t.Errorf("Resolve(%q).Root = %q; a declaration the caller does not own must re-admit nothing", victim, res.Root)
+		}
+		assertPlantNotRead(t, res.Root)
+		if noteMentioning(res.Notes, TrustedRootsDisplay) == "" {
+			t.Errorf("the ignored declaration is silent; notes = %q", res.Notes)
+		}
+	})
+	t.Run("writable by anyone", func(t *testing.T) {
+		plant, victim, home := foreignPlant(t)
+		decl := declareTrusted(t, home, plant)
+		if err := os.Chmod(decl, 0o666); err != nil {
+			t.Fatal(err)
+		}
+		ownedByAnother(t, plant)
+
+		res := Resolve(victim)
+		if res.Root != victim {
+			t.Errorf("Resolve(%q).Root = %q; a world-writable declaration must re-admit nothing", victim, res.Root)
+		}
+		assertPlantNotRead(t, res.Root)
+	})
+}
+
+// TestResolveRootOwnershipLeavesTheGitAnsweringPathAlone: the policy is a bound
+// on the FALLBACK, not a new condition on resolution. When git answers, the
+// toplevel it names is the answer whoever owns it — that is a repository git
+// itself vouched for, and narrowing it here would break every legitimate
+// foreign-uid checkout on a host whose git is configured for it.
+func TestResolveRootOwnershipLeavesTheGitAnsweringPathAlone(t *testing.T) {
+	outer := mustDir(t, t.TempDir())
+	t.Setenv("HOME", mustDir(t, filepath.Join(outer, "home")))
+	repo := filepath.Join(outer, "checkout")
+	gitInitAt(t, repo)
+	plantConfiguration(t, repo)
+	sub := mustDir(t, filepath.Join(repo, "internal", "deep"))
+	if _, err := gitutil.Run(sub, "rev-parse", "--show-toplevel"); err != nil {
+		t.Skipf("git does not answer for the fixture: %v", err)
+	}
+	ownedByAnother(t, repo)
+
+	res := Resolve(sub)
+	if got, want := resolvedPath(res.Root), resolvedPath(repo); got != want {
+		t.Fatalf("Resolve(%q).Root = %q, want the toplevel git named, %q", sub, got, want)
+	}
+	if len(res.Notes) != 0 {
+		t.Errorf("the git-answering path must be untouched by the ownership policy; notes = %q", res.Notes)
+	}
+	rs, err := Load(res.Root)
+	if err != nil {
+		t.Fatalf("Load(%q): %v", res.Root, err)
+	}
+	if !rs.Disabled {
+		t.Errorf("the repo's own rules.json was not read: its kill switch is not in force")
+	}
+}
+
+// ownerUnreadable makes the owner lookup FAIL for path — the condition a
+// fail-closed gate must not spell the same way as "mine". It cannot be staged
+// on a real filesystem here either, so it goes through the same seam.
+func ownerUnreadable(t *testing.T, path string) {
+	t.Helper()
+	real := ownerUID
+	target := resolvedPath(path)
+	ownerUID = func(p string) (uint32, error) {
+		if resolvedPath(p) == target {
+			return 0, errors.New("owner lookup failed")
+		}
+		return real(p)
+	}
+	t.Cleanup(func() { ownerUID = real })
+}
+
+// TestResolveRootRefusesAMarkerRootWhoseOwnerCannotBeRead: "I could not learn
+// who owns this" and "I own this" are different answers, and a gate that folds
+// the first into the second admits exactly the root it exists to refuse.
+func TestResolveRootRefusesAMarkerRootWhoseOwnerCannotBeRead(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+	ownerUnreadable(t, plant)
+
+	res := Resolve(victim)
+	if res.Root != victim {
+		t.Errorf("Resolve(%q).Root = %q; a root whose owner could not be read must not govern the session", victim, res.Root)
+	}
+	assertPlantNotRead(t, res.Root)
+	if noteMentioning(res.Notes, "could not be read") == "" {
+		t.Errorf("the refusal does not say the owner was unreadable; notes = %q", res.Notes)
+	}
+}
+
+// TestResolveRootMatchesADeclaredRootExactly: the declaration names ROOTS, one
+// per line, and admits those and nothing else. Reading it as a containment rule
+// would silently widen every entry into a subtree — a single `/tmp` line would
+// re-admit every plant beneath it, which is the defect the gate closes.
+func TestResolveRootMatchesADeclaredRootExactly(t *testing.T) {
+	plant, victim, home := foreignPlant(t)
+	ownedByAnother(t, plant)
+	declareTrusted(t, home, filepath.Dir(plant))
+
+	res := Resolve(victim)
+	if res.Root != victim {
+		t.Errorf("Resolve(%q).Root = %q; declaring an ANCESTOR of a root must not admit the root", victim, res.Root)
+	}
+	assertPlantNotRead(t, res.Root)
 }

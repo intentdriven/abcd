@@ -319,11 +319,27 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 		fmt.Fprintf(w, "  decided by: %s\n", termsafe.Sanitize(strings.Join(cut.DecidedBy, ", ")))
 	}
 	fmt.Fprintf(w, "  guard:      %s\n", guardLine(cut.Guard))
+	fmt.Fprintf(w, "  findings:   %s\n", findingsLine(cut.Findings))
+	// A waived finding is named in the terminal render, not only in --json. A
+	// deferral an operator cannot see in the report they actually read is
+	// indistinguishable from having ignored the finding, which is the thing the
+	// waiver exists to be the opposite of.
+	for _, f := range cut.Findings.Waived {
+		fmt.Fprintf(w, "    deferred: %s [%s] — %s\n",
+			termsafe.Sanitize(f.ID), termsafe.Sanitize(f.Severity), termsafe.Sanitize(f.Reason))
+	}
 	renderEntries(w, "added", cut.Added)
 	renderEntries(w, "removed", cut.Removed)
 	for _, refusal := range cut.Refusals {
 		fmt.Fprintf(w, "  refused (%s):\n", refusal.Kind)
-		for _, line := range strings.Split(termsafe.Sanitize(refusal.Reason), "\n") {
+		// SanitizeBlock, not Sanitize: a refusal reason IS lines — the surface
+		// guard names one break per line, the stale-intent refusal one intent,
+		// this gate one finding — and Sanitize masks a newline to '?', so the
+		// split that follows found nothing to split and printed the whole list
+		// as one unreadable line. The line breaks here are the render's own, not
+		// injected by an untrusted value, which is exactly the case
+		// SanitizeBlock exists for.
+		for _, line := range strings.Split(termsafe.SanitizeBlock(refusal.Reason), "\n") {
 			fmt.Fprintf(w, "    %s\n", strings.TrimRight(line, " "))
 		}
 	}
@@ -363,6 +379,24 @@ func guardLine(g changelog.SurfaceGuard) string {
 	}
 	if len(g.Breaks) > 0 {
 		line += fmt.Sprintf(" (%d surface change(s))", len(g.Breaks))
+	}
+	return line
+}
+
+// findingsLine renders the unfixed-findings verdict, counting both what blocks
+// the cut and what was consciously deferred past it. The waived count is shown
+// on a PASS: a release that carries deferrals is a different fact from one that
+// carries none, and a line that reported only "passed" would hide it.
+func findingsLine(g changelog.FindingGuard) string {
+	line := string(g.Status)
+	if line == "" {
+		line = "(not run)"
+	}
+	if len(g.Unfixed) > 0 {
+		line += fmt.Sprintf(" (%d unfixed finding(s) captured since %s)", len(g.Unfixed), g.BaseTag)
+	}
+	if len(g.Waived) > 0 {
+		line += fmt.Sprintf(" (%d deferred)", len(g.Waived))
 	}
 	return line
 }

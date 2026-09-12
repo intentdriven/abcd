@@ -63,10 +63,40 @@ type ScanResult struct {
 	// plaintext such as an uncompressed tar's entries or PNG tEXt metadata),
 	// but a compressed region is invisible to it, so they are NOT counted as
 	// content-verified and the report says so rather than claiming coverage
-	// it does not have. The label keys on the name, so a zip renamed .png is
-	// labelled by its name; whether the gate should refuse them, and on what
-	// evidence, is iss-2608291832160371 — today they do not refuse on their own.
+	// it does not have. It is what remains AFTER the decoder (container.go)
+	// has had its turn: the formats abcd cannot decode, the streams that
+	// would not inflate, and the ones a decode bound refused. Every entry
+	// carries its reason in ContentUnverifiedWhy and the format detected from
+	// its magic bytes in ContentFormat. They do not refuse on their own.
 	ContentUnverified []string `json:"content_unverified,omitempty"`
+	// ContentDecoded lists skip-listed bundle files whose container format the
+	// scanner DECODES (container.go): the archive was opened or the compressed
+	// regions inflated, under the decode bounds, and every decoded region was
+	// scanned with the same byte rules. A file reaches this list only when the
+	// walk could ACCOUNT for the whole of its content — a zip whose entries do
+	// not tile it, a tar with bytes after its end marker, a stream with a
+	// trailer, an entry the walk could not read, a region only part of which
+	// reads as text, a structural field carrying a container signature: each of
+	// those stays in ContentUnverified with the reason, because the claim this
+	// list makes is that the bytes were read, not that the parts that were read
+	// looked fine. The residuals the claim does NOT cover are written down at
+	// container.go's coverStructuralField. So "decoded and clean" and "could
+	// not be read" are two tiers and never one green (iss-2608291832160371).
+	// The rules applied are the byte rules, as everywhere on this branch: a
+	// text file inside an archive is scanned as bytes, not with the full
+	// prose-and-identity set it would get loose in the payload.
+	ContentDecoded []string `json:"content_decoded,omitempty"`
+	// ContentUnverifiedWhy carries, per ContentUnverified path, why the content
+	// could not be read: no decoder for the detected format, an unrecognised
+	// format, a stream that would not inflate, an entry that is itself opaque,
+	// or one of the decode bounds (output budget, nesting depth, entry count)
+	// refusing a bomb.
+	ContentUnverifiedWhy map[string]string `json:"content_unverified_why,omitempty"`
+	// ContentFormat carries, per byte-branch path, the format detected from the
+	// file's MAGIC BYTES — never its extension, so a zip renamed .png reports
+	// "zip" and is decoded as one, which the record names as the defect in the
+	// old name-keyed label.
+	ContentFormat map[string]string `json:"content_format,omitempty"`
 }
 
 // maxBinaryScanBytes caps how much of a skip-listed (binary) bundle file the
@@ -934,12 +964,33 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 				unscanned(f.LogicalPath, guardedReadWhy(err))
 				continue
 			}
+			res.Findings = append(res.Findings, s.scanBytes(data, secrets, f.LogicalPath)...)
 			if _, ok := plaintextNames[strings.ToLower(filepath.Ext(f.LogicalPath))]; ok {
 				res.ScannedBinary = append(res.ScannedBinary, f.LogicalPath)
-			} else {
-				res.ContentUnverified = append(res.ContentUnverified, f.LogicalPath)
+				continue
 			}
-			res.Findings = append(res.Findings, s.scanBytes(data, secrets, f.LogicalPath)...)
+			// The raw scan covers the plaintext regions only, so the decoder
+			// gets its turn: it keys on the file's MAGIC BYTES, opens the
+			// formats abcd knows under the decode bounds, and scans what comes
+			// out with the same byte rules. A file whose content was read
+			// whole is content-verified; anything the decoder could not read
+			// stays ContentUnverified exactly as before, saying which it is
+			// and why (iss-2608291832160371).
+			format, decodedFindings, decoded, why := s.decodeContent(data, secrets, f.LogicalPath)
+			res.Findings = append(res.Findings, decodedFindings...)
+			if res.ContentFormat == nil {
+				res.ContentFormat = map[string]string{}
+			}
+			res.ContentFormat[f.LogicalPath] = format
+			if decoded {
+				res.ContentDecoded = append(res.ContentDecoded, f.LogicalPath)
+				continue
+			}
+			res.ContentUnverified = append(res.ContentUnverified, f.LogicalPath)
+			if res.ContentUnverifiedWhy == nil {
+				res.ContentUnverifiedWhy = map[string]string{}
+			}
+			res.ContentUnverifiedWhy[f.LogicalPath] = why
 			continue
 		}
 		data, err := os.ReadFile(f.ResolvedPath)
@@ -972,7 +1023,7 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 	// counts the byte-scanned files and the unread ones separately so neither
 	// is called something it is not.
 	if len(files) > 0 && res.FilesScanned == 0 && !res.Unavailable {
-		byteScanned := len(res.ScannedBinary) + len(res.ContentUnverified)
+		byteScanned := len(res.ScannedBinary) + len(res.ContentUnverified) + len(res.ContentDecoded)
 		res.Unavailable = true
 		res.UnavailableReason = "scanner covered zero of " + strconv.Itoa(len(files)) +
 			" bundle files with the full rule set: " + strconv.Itoa(byteScanned) + " of " +

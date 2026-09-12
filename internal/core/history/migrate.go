@@ -141,10 +141,11 @@ func Migrate(rootSHA string, opts MigrateOptions) (MigrateResult, error) {
 	if opts.RepoRoot == "" {
 		return MigrateResult{}, errors.New("history: migrate needs the destination repository root; the lineage it recovers is redacted under that repository's scanner configuration")
 	}
-	tdir, err := ownedDirsReal(rootSHA)
+	store, err := Resolve(opts.RepoRoot, rootSHA)
 	if err != nil {
 		return MigrateResult{}, err
 	}
+	tdir := store.Records
 	// Fail closed on a degraded scanner exactly as Capture does. A migration
 	// that could not redact what it learned would write externally supplied
 	// text into frontmatter with less coverage than the repository asked for.

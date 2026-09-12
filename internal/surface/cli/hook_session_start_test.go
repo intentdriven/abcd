@@ -3,17 +3,20 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // gitRepoNoStore builds an isolated git repo with one commit and a hermetic HOME
 // whose ~/.abcd does NOT exist — the "plugin enabled but never installed" state
-// iss-95 is about. Returns the repo dir.
-func gitRepoNoStore(t *testing.T) string {
+// iss-95 is about. Returns the repo dir and that HOME.
+func gitRepoNoStore(t *testing.T) (string, string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
@@ -31,8 +34,22 @@ func gitRepoNoStore(t *testing.T) string {
 			t.Fatalf("git %v: %v: %s", args, err, out)
 		}
 	}
-	t.Setenv("HOME", t.TempDir()) // hermetic, empty: no ~/.abcd
-	return repo
+	home := t.TempDir() // hermetic, empty: no ~/.abcd
+	t.Setenv("HOME", home)
+	return repo, home
+}
+
+// rootSHAOf returns the repo's root-commit SHA, the key the store is laid out on.
+func rootSHAOf(t *testing.T, repo string) string {
+	t.Helper()
+	cmd := exec.Command("git", "rev-list", "--max-parents=0", "HEAD")
+	cmd.Dir = repo
+	cmd.Env = gittest.Env(t)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git rev-list: %v", err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // startPayload is the SessionStart-hook JSON the harness writes to stdin.
@@ -62,42 +79,46 @@ func runSessionStart(stdin string, args ...string) (stdout, stderr string, code 
 	return so.String(), se.String(), 1
 }
 
-// TestHookSessionStartWarnsWhenStoreMissing is iss-95: a session that begins in a
-// repo where abcd is not installed must SAY SO — visibly — so the user isn't left
-// with a silently non-accruing transcript corpus.
+// TestHookSessionStartBootstrapsTheStore is iss-95's resolution. A session that
+// begins on a machine where `abcd ahoy install` has never run must end up with a
+// store, silently — not with a notice telling the user to go and install one.
 //
-// The DELIVERY contract changed under iss-2608241115201044 and this test changed
-// with it, twice. It used to require a non-zero exit, on the assumption that
-// SessionStart renders a hook's stderr when the hook exits non-zero. The harness
-// instead renders an opaque "SessionStart:startup hook error" banner and drops the
-// stderr text, so the old assertion pinned a behaviour that delivered nothing.
-//
-// The first correction put the notice TEXT on stdout, and an adversarial review
-// showed why that is wrong: SessionStart's stdout is injected into the session's
-// context, and these notices interpolate repo-derived strings from a TRACKED
-// config file. So stdout carries a constant and a count, the text stays on
-// stderr, and the exit code is 0 because a notice is not a hook failure. Both
-// channels are asserted, because the point is that each carries the right thing.
-func TestHookSessionStartWarnsWhenStoreMissing(t *testing.T) {
-	repo := gitRepoNoStore(t)
+// The notice this replaces was the half-measure: it made the not-installed case
+// loud, but it left the corpus not accruing until someone acted on it, and the
+// hook that would actually have captured the session still stored nothing. Under
+// the ruling the store is user-level and creates itself, so the state the notice
+// described no longer exists — and a notice asserting that transcripts will not
+// be captured would now be false. Silence plus a store on disk is the whole
+// contract.
+func TestHookSessionStartBootstrapsTheStore(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	noAmbientPluginRoot(t)
+	rootSHA := rootSHAOf(t, repo)
+
 	stdout, stderr, code := runSessionStart(startPayload("s1", repo), "hook", "session-start")
 
 	if code != 0 {
-		t.Errorf("a notice is not a hook failure; got exit %d, which the harness renders as an opaque error banner with the text dropped", code)
+		t.Errorf("bootstrapping the store is not a hook failure; got exit %d (stderr %q)", code, stderr)
 	}
-	if !strings.Contains(stderr, "ahoy install") {
-		t.Errorf("the notice text must reach stderr; stderr = %q", stderr)
+	if stdout != "" || stderr != "" {
+		t.Errorf("a self-creating store must start a session silently; stdout=%q stderr=%q", stdout, stderr)
 	}
-	if !strings.Contains(stdout, "session-start notice") {
-		t.Errorf("stdout must say notices exist so the session knows to look; stdout = %q", stdout)
+	records := filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+	fi, err := os.Stat(records)
+	if err != nil || !fi.IsDir() {
+		t.Fatalf("the session start must leave a store at %s: %v", records, err)
 	}
-	// The guard that matters: nothing repo-derived may reach the context channel.
-	if strings.Contains(stdout, "ahoy install") || strings.Contains(stdout, repo) {
-		t.Errorf("repo-derived text reached SessionStart stdout, which is injected into "+
-			"the session's context; stdout = %q", stdout)
+
+	// And it captures: the store the hook just made is the one session-end uses.
+	if _, err := history.Stage(repo, rootSHA, history.StageMeta{Lineage: history.CaptureMeta{SessionID: "s1", Kind: "native"}}, []byte("assistant: hi\n")); err != nil {
+		t.Fatalf("staging into the bootstrapped store failed: %v", err)
 	}
-	if !strings.Contains(stderr, "ahoy install") {
-		t.Errorf("the notice must tell the user how to fix it (ahoy install); stderr = %q", stderr)
+	if _, err := history.Drain(repo, rootSHA, history.DrainBudget{}); err != nil {
+		t.Fatalf("draining the bootstrapped store failed: %v", err)
+	}
+	recs, err := history.List(repo, rootSHA)
+	if err != nil || len(recs) != 1 {
+		t.Fatalf("a machine that never installed must still capture: %v (%d records)", err, len(recs))
 	}
 }
 
@@ -117,7 +138,7 @@ func noAmbientPluginRoot(t *testing.T) {
 // TestHookSessionStartSilentWhenStoreReady is the common case: an installed repo
 // must start with no notice at all.
 func TestHookSessionStartSilentWhenStoreReady(t *testing.T) {
-	repo, _ := sessionEndRepo(t) // creates the hermetic store's transcripts dir
+	repo, _ := sessionEndRepo(t) // hermetic HOME; the store makes itself
 	noAmbientPluginRoot(t)
 	stdout, stderr, code := runSessionStart(startPayload("s2", repo), "hook", "session-start")
 

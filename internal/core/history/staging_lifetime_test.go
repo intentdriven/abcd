@@ -45,18 +45,18 @@ func ageStage(t *testing.T, rawPath string, age time.Duration) {
 // and four files aged up to a fortnight on the author's own disk with every
 // listing calling them "awaiting redaction".
 func TestStagedEntryPastTheLimitReportsOverdue(t *testing.T) {
-	_, _ = setupStore(t)
-	fresh, err := Stage(testRootSHA, mainStage("sess-fresh"), []byte("fresh\n"))
+	repoRoot, _ := setupStore(t)
+	fresh, err := Stage(repoRoot, testRootSHA, mainStage("sess-fresh"), []byte("fresh\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := Stage(testRootSHA, mainStage("sess-old"), []byte("old\n"))
+	old, err := Stage(repoRoot, testRootSHA, mainStage("sess-old"), []byte("old\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ageStage(t, old.Staged.Path, StagedTTL+48*time.Hour)
 
-	staged, err := ListStaged(testRootSHA)
+	staged, err := ListStaged(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +76,24 @@ func TestStagedEntryPastTheLimitReportsOverdue(t *testing.T) {
 	_ = fresh
 }
 
+// recordsDirOf names this repo's records leaf under a redirected HOME.
+func recordsDirOf(home, rootSHA string) string {
+	return filepath.Join(home, ".abcd", "transcripts", rootSHA, "records")
+}
+
+// sealRecordsDir makes the records leaf unwritable, so a capture into it fails
+// on the record lock. It is the standing way to provoke a store-side, RETRYABLE
+// capture failure now that the store creates itself: removing the directory
+// proves nothing, because the next resolve puts it back.
+func sealRecordsDir(t *testing.T, home, rootSHA string) {
+	t.Helper()
+	dir := recordsDirOf(home, rootSHA)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+}
+
 // TestOverdueEntryIsNeverDeletedByAge is the constraint the age mechanism must
 // not break. Losing the only copy of a transcript is worse than keeping it —
 // that is the premise staging is built on — so an expiry that discarded raw
@@ -83,15 +101,16 @@ func TestStagedEntryPastTheLimitReportsOverdue(t *testing.T) {
 func TestOverdueEntryIsNeverDeletedByAge(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	// A transcript whose capture cannot succeed, so nothing but expiry could
-	// remove it: the store's transcripts dir is taken away after the stage.
-	res, err := Stage(testRootSHA, mainStage("sess-ancient"), []byte("keep me\n"))
+	// remove it. The records dir is made unwritable rather than removed: the
+	// store creates itself now (iss-95), so an absent directory is no longer a
+	// failure anything could observe — a dir the caller cannot take the record
+	// lock in is.
+	res, err := Stage(repoRoot, testRootSHA, mainStage("sess-ancient"), []byte("keep me\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	ageStage(t, res.Staged.Path, 400*24*time.Hour)
-	if err := os.RemoveAll(filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")); err != nil {
-		t.Fatal(err)
-	}
+	sealRecordsDir(t, home, testRootSHA)
 	if _, err := Drain(repoRoot, testRootSHA, DrainBudget{}); err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
@@ -110,10 +129,10 @@ func TestOverdueEntryIsNeverDeletedByAge(t *testing.T) {
 // ordering alone puts the fresh one at the head.
 func TestDrainTakesOverdueEntriesFirst(t *testing.T) {
 	repoRoot, _ := setupStore(t)
-	if _, err := Stage(testRootSHA, mainStage("sess-new"), []byte("new spine\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-new"), []byte("new spine\n")); err != nil {
 		t.Fatal(err)
 	}
-	oldSub, err := Stage(testRootSHA, subAgentStage("sess-gone", "agent-gone"), []byte("old branch\n"))
+	oldSub, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-gone", "agent-gone"), []byte("old branch\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +184,7 @@ func forceResidualRefusal(t *testing.T) {
 func TestDeterministicRefusalIsQuarantinedNotRetriedForever(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	forceResidualRefusal(t)
-	res, err := Stage(testRootSHA, mainStage("sess-refused"), []byte("api_key = "+gitleaksResidueSecret+"\n"))
+	res, err := Stage(repoRoot, testRootSHA, mainStage("sess-refused"), []byte("api_key = "+gitleaksResidueSecret+"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +206,7 @@ func TestDeterministicRefusalIsQuarantinedNotRetriedForever(t *testing.T) {
 	if _, err := os.Stat(res.Staged.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the refused transcript is still in staging (%v); every later drain will re-read and re-refuse it", err)
 	}
-	qdir := filepath.Join(home, ".abcd", "history", testRootSHA, "quarantine")
+	qdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "quarantine")
 	qpath := filepath.Join(qdir, filepath.Base(res.Staged.Path))
 	body, err := os.ReadFile(qpath)
 	if err != nil {
@@ -213,13 +232,13 @@ func TestDeterministicRefusalIsQuarantinedNotRetriedForever(t *testing.T) {
 func TestQuarantineHoldsUnredactedTextAtOwnerOnlyModes(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	forceResidualRefusal(t)
-	if _, err := Stage(testRootSHA, mainStage("sess-modes"), []byte("api_key = "+gitleaksResidueSecret+"\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-modes"), []byte("api_key = "+gitleaksResidueSecret+"\n")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Drain(repoRoot, testRootSHA, DrainBudget{}); err != nil {
 		t.Fatal(err)
 	}
-	qdir := filepath.Join(home, ".abcd", "history", testRootSHA, "quarantine")
+	qdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "quarantine")
 	fi, err := os.Stat(qdir)
 	if err != nil {
 		t.Fatalf("quarantine dir: %v", err)
@@ -247,13 +266,11 @@ func TestQuarantineHoldsUnredactedTextAtOwnerOnlyModes(t *testing.T) {
 // so the entry must stay exactly where it is and stay queued.
 func TestRetryableFailureStaysStagedAndRetryable(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	res, err := Stage(testRootSHA, mainStage("sess-transient"), []byte("body\n"))
+	res, err := Stage(repoRoot, testRootSHA, mainStage("sess-transient"), []byte("body\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.RemoveAll(filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")); err != nil {
-		t.Fatal(err)
-	}
+	sealRecordsDir(t, home, testRootSHA)
 	dr, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
@@ -268,7 +285,7 @@ func TestRetryableFailureStaysStagedAndRetryable(t *testing.T) {
 		t.Errorf("a retryable failure moved the staged transcript: %v", err)
 	}
 	// And it really is retryable.
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts"), 0o755); err != nil {
+	if err := os.Chmod(recordsDirOf(home, testRootSHA), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	again, err := Drain(repoRoot, testRootSHA, DrainBudget{})
@@ -287,7 +304,7 @@ func TestRetryableFailureStaysStagedAndRetryable(t *testing.T) {
 // being stored.
 func TestCorruptSidecarIsNotTreatedAsPermanent(t *testing.T) {
 	repoRoot, _ := setupStore(t)
-	res, err := Stage(testRootSHA, subAgentStage("sess-cs", "agent-cs"), []byte("body\n"))
+	res, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-cs", "agent-cs"), []byte("body\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,19 +333,23 @@ func TestCorruptSidecarIsNotTreatedAsPermanent(t *testing.T) {
 // grows without bound is in the repository nobody opens, and until this nothing
 // in abcd could see it from anywhere.
 func TestSurveyBacklogSeesEveryRepositoryInTheStore(t *testing.T) {
-	_, home := setupStore(t)
+	repoRoot, home := setupStore(t)
 	const otherSHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", otherSHA, "transcripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "transcripts", otherSHA, "records"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The corpus moved out of ahoy's namespace; the per-repo meta.json did not.
+	if err := os.MkdirAll(filepath.Join(home, ".abcd", "history", otherSHA), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(home, ".abcd", "history", otherSHA, "meta.json"),
 		[]byte(`{"root_commit":"`+otherSHA+`","name":"a-quiet-repo"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Stage(testRootSHA, mainStage("sess-here"), []byte("here\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-here"), []byte("here\n")); err != nil {
 		t.Fatal(err)
 	}
-	quiet, err := Stage(otherSHA, mainStage("sess-there"), []byte("over there, forever\n"))
+	quiet, err := Stage(repoRoot, otherSHA, mainStage("sess-there"), []byte("over there, forever\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +404,7 @@ func TestSurveyBacklogSkipsRepositoriesHoldingNothing(t *testing.T) {
 func TestDiscardRemovesOneTranscriptAndItsMetadata(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	forceResidualRefusal(t)
-	res, err := Stage(testRootSHA, subAgentStage("sess-d", "agent-d"), []byte("api_key = "+gitleaksResidueSecret+"\n"))
+	res, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-d", "agent-d"), []byte("api_key = "+gitleaksResidueSecret+"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,9 +412,9 @@ func TestDiscardRemovesOneTranscriptAndItsMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	name := filepath.Base(res.Staged.Path)
-	qdir := filepath.Join(home, ".abcd", "history", testRootSHA, "quarantine")
+	qdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "quarantine")
 
-	out, err := Discard(testRootSHA, name)
+	out, err := Discard(repoRoot, testRootSHA, name)
 	if err != nil {
 		t.Fatalf("Discard: %v", err)
 	}
@@ -415,7 +436,7 @@ func TestDiscardRemovesOneTranscriptAndItsMetadata(t *testing.T) {
 // its argument comes from a command line. A path would let it delete outside
 // the store entirely.
 func TestDiscardRefusesAnythingButABareStagedFilename(t *testing.T) {
-	_, _ = setupStore(t)
+	repoRoot, _ := setupStore(t)
 	for _, name := range []string{
 		"../transcripts/20260101T000000.000000000Z-sess.md",
 		"/etc/passwd",
@@ -424,7 +445,7 @@ func TestDiscardRefusesAnythingButABareStagedFilename(t *testing.T) {
 		"",
 		".lock",
 	} {
-		if _, err := Discard(testRootSHA, name); err == nil {
+		if _, err := Discard(repoRoot, testRootSHA, name); err == nil {
 			t.Errorf("Discard(%q) was accepted; it must take a bare staged filename and nothing else", name)
 		}
 	}

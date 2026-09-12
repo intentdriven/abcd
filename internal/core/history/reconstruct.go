@@ -295,7 +295,7 @@ type Telemetry struct {
 // record of any kind — is an error, because the caller asked about something
 // that is not there. A session whose MAIN THREAD is missing is not: it renders,
 // labelled, because that is the majority shape of the sub-agent corpus.
-func Reconstruct(rootSHA string, opts ReconstructOptions) (Reconstruction, error) {
+func Reconstruct(repoRoot, rootSHA string, opts ReconstructOptions) (Reconstruction, error) {
 	if !rootSHARe.MatchString(rootSHA) {
 		return Reconstruction{}, errors.New(rootSHAErrMsg)
 	}
@@ -314,7 +314,7 @@ func Reconstruct(rootSHA string, opts ReconstructOptions) (Reconstruction, error
 		return Reconstruction{}, fmt.Errorf("history: maxBlockBytes must not be negative, got %d", opts.MaxBlockBytes)
 	}
 
-	records, err := ListForSession(rootSHA, opts.SessionID)
+	records, err := ListForSession(repoRoot, rootSHA, opts.SessionID)
 	if err != nil {
 		return Reconstruction{}, err
 	}

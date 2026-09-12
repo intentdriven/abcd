@@ -28,7 +28,7 @@ func subAgentStage(sessionID, agentID string) StageMeta {
 
 // stagingDir is the staging directory for the test store.
 func stagingDir(home string) string {
-	return filepath.Join(home, ".abcd", "history", testRootSHA, "staging")
+	return filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
 }
 
 // TestStageWritesLineageSidecar is the point of step 2. A staged file used to be
@@ -37,9 +37,9 @@ func stagingDir(home string) string {
 // defect adr-2609090636172016 removed, one directory earlier. So the lineage
 // goes in a sidecar and the filename goes back to being just a name.
 func TestStageWritesLineageSidecar(t *testing.T) {
-	_, home := setupStore(t)
+	repoRoot, home := setupStore(t)
 
-	res, err := Stage(testRootSHA, subAgentStage("sess-parent", "agent-abc"), []byte("hello\n"))
+	res, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-parent", "agent-abc"), []byte("hello\n"))
 	if err != nil {
 		t.Fatalf("Stage failed: %v", err)
 	}
@@ -89,11 +89,11 @@ func TestStageWritesLineageSidecar(t *testing.T) {
 // reads it. Nothing else can — the drain has no other source for the lineage it
 // hands Capture.
 func TestListStagedReadsSidecarLineage(t *testing.T) {
-	_, _ = setupStore(t)
-	if _, err := Stage(testRootSHA, subAgentStage("sess-p", "agent-1"), []byte("body\n")); err != nil {
+	repoRoot, _ := setupStore(t)
+	if _, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-p", "agent-1"), []byte("body\n")); err != nil {
 		t.Fatalf("Stage failed: %v", err)
 	}
-	staged, err := ListStaged(testRootSHA)
+	staged, err := ListStaged(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatalf("ListStaged: %v", err)
 	}
@@ -112,20 +112,20 @@ func TestListStagedReadsSidecarLineage(t *testing.T) {
 // first one's staged transcript and the first would be lost silently — the
 // precise failure staging exists to end.
 func TestStageIdempotencyIsPerSessionAndAgent(t *testing.T) {
-	_, home := setupStore(t)
+	repoRoot, home := setupStore(t)
 	for _, a := range []string{"agent-1", "agent-2"} {
-		if _, err := Stage(testRootSHA, subAgentStage("sess-x", a), []byte("body of "+a+"\n")); err != nil {
+		if _, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-x", a), []byte("body of "+a+"\n")); err != nil {
 			t.Fatalf("Stage(%s): %v", a, err)
 		}
 	}
-	if _, err := Stage(testRootSHA, mainStage("sess-x"), []byte("the spine\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-x"), []byte("the spine\n")); err != nil {
 		t.Fatalf("Stage(main): %v", err)
 	}
 	if names := stagedNames(t, home); len(names) != 3 {
 		t.Fatalf("want 3 staged files (two agents and the main thread), got %d: %v", len(names), names)
 	}
 	// Identical bytes for the same (session, agent) is still a no-op.
-	res, err := Stage(testRootSHA, subAgentStage("sess-x", "agent-1"), []byte("body of agent-1\n"))
+	res, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-x", "agent-1"), []byte("body of agent-1\n"))
 	if err != nil {
 		t.Fatalf("re-Stage: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestStageIdempotencyIsPerSessionAndAgent(t *testing.T) {
 		t.Error("re-staging identical bytes for the same (session, agent) wrote again")
 	}
 	// Different bytes for the same (session, agent) replace in place.
-	res, err = Stage(testRootSHA, subAgentStage("sess-x", "agent-1"), []byte("body of agent-1, longer\n"))
+	res, err = Stage(repoRoot, testRootSHA, subAgentStage("sess-x", "agent-1"), []byte("body of agent-1, longer\n"))
 	if err != nil {
 		t.Fatalf("re-Stage longer: %v", err)
 	}
@@ -185,11 +185,11 @@ func TestLegacyStagedFileWithoutSidecarStillDrains(t *testing.T) {
 func TestDrainTakesMainThreadFirst(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	for _, a := range []string{"agent-1", "agent-2"} {
-		if _, err := Stage(testRootSHA, subAgentStage("sess-order", a), []byte("branch "+a+"\n")); err != nil {
+		if _, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-order", a), []byte("branch "+a+"\n")); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := Stage(testRootSHA, mainStage("sess-order"), []byte("the spine\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-order"), []byte("the spine\n")); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Drain(repoRoot, testRootSHA, DrainBudget{MaxEntries: 1})
@@ -215,7 +215,7 @@ func TestDrainByteBudgetBoundsThePass(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	body := strings.Repeat("x", 1000) + "\n"
 	for _, id := range []string{"sess-b1", "sess-b2", "sess-b3"} {
-		if _, err := Stage(testRootSHA, mainStage(id), []byte(body)); err != nil {
+		if _, err := Stage(repoRoot, testRootSHA, mainStage(id), []byte(body)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -236,7 +236,7 @@ func TestDrainByteBudgetBoundsThePass(t *testing.T) {
 // by every pass forever — the failure the budget exists to bound, inverted.
 func TestDrainByteBudgetAlwaysMakesProgress(t *testing.T) {
 	repoRoot, _ := setupStore(t)
-	if _, err := Stage(testRootSHA, mainStage("sess-huge"), []byte(strings.Repeat("y", 5000)+"\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-huge"), []byte(strings.Repeat("y", 5000)+"\n")); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Drain(repoRoot, testRootSHA, DrainBudget{MaxBytes: 10})
@@ -252,7 +252,7 @@ func TestDrainByteBudgetAlwaysMakesProgress(t *testing.T) {
 // hook staged must reach the stored record, or the sidecar is decoration.
 func TestDrainCarriesSidecarLineageIntoTheRecord(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	if _, err := Stage(testRootSHA, subAgentStage("sess-l", "agent-z"), []byte("branch body\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-l", "agent-z"), []byte("branch body\n")); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
@@ -293,7 +293,7 @@ func TestDrainRereadsALongerSource(t *testing.T) {
 	}
 	meta := subAgentStage("sess-r", "agent-r")
 	meta.SourcePath = src
-	if _, err := Stage(testRootSHA, meta, []byte("line one\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, meta, []byte("line one\n")); err != nil {
 		t.Fatal(err)
 	}
 	// The harness finishes writing between the stage and the drain.
@@ -312,7 +312,7 @@ func TestDrainRereadsALongerSource(t *testing.T) {
 	if res.Extended != 1 {
 		t.Errorf("Extended = %d, want 1 — a completed source went uncounted", res.Extended)
 	}
-	_, body, err := Read(testRootSHA, "agent-r")
+	_, body, err := Read(repoRoot, testRootSHA, "agent-r")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -332,7 +332,7 @@ func TestDrainIgnoresADivergentSource(t *testing.T) {
 	}
 	meta := subAgentStage("sess-d", "agent-d")
 	meta.SourcePath = src
-	if _, err := Stage(testRootSHA, meta, []byte("staged bytes\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, meta, []byte("staged bytes\n")); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(src, []byte("a completely different, much longer transcript\n"), 0o600); err != nil {
@@ -345,7 +345,7 @@ func TestDrainIgnoresADivergentSource(t *testing.T) {
 	if dr.Extended != 0 {
 		t.Errorf("Extended = %d, want 0 — a divergent source was counted as a caught truncation", dr.Extended)
 	}
-	_, body, err := Read(testRootSHA, "agent-d")
+	_, body, err := Read(repoRoot, testRootSHA, "agent-d")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestDrainIgnoresADivergentSource(t *testing.T) {
 // transcript under a session that does not exist. It is reported and left.
 func TestUnreadableSidecarIsReportedNotMisattributed(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	res, err := Stage(testRootSHA, subAgentStage("sess-c", "agent-c"), []byte("body\n"))
+	res, err := Stage(repoRoot, testRootSHA, subAgentStage("sess-c", "agent-c"), []byte("body\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +390,7 @@ func TestUnreadableSidecarIsReportedNotMisattributed(t *testing.T) {
 // OUTSIDE the lock or a burst serialises on it and the slowest completions are
 // refused with a contention error.
 func TestConcurrentSubAgentStagesAllLand(t *testing.T) {
-	_, home := setupStore(t)
+	repoRoot, home := setupStore(t)
 	const n = 16
 	var wg sync.WaitGroup
 	errs := make([]error, n)
@@ -399,7 +399,7 @@ func TestConcurrentSubAgentStagesAllLand(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			id := "agent-" + string(rune('a'+i))
-			_, errs[i] = Stage(testRootSHA, subAgentStage("sess-burst", id),
+			_, errs[i] = Stage(repoRoot, testRootSHA, subAgentStage("sess-burst", id),
 				[]byte("branch "+id+"\n"))
 		}()
 	}
@@ -412,7 +412,7 @@ func TestConcurrentSubAgentStagesAllLand(t *testing.T) {
 	if names := stagedNames(t, home); len(names) != n {
 		t.Fatalf("want %d staged files from %d concurrent completions, got %d", n, n, len(names))
 	}
-	staged, err := ListStaged(testRootSHA)
+	staged, err := ListStaged(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}

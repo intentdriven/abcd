@@ -9,6 +9,18 @@ argument-hint: "[<empty>] | ingest <path-or-https-url> [--keep-original] | ask <
 The per-project compounding-curated knowledge substrate at `.abcd/memory/`.
 Bare invocation **performs zero writes**.
 
+**The substrate addressed is the checkout's, from anywhere in the tree.** Every
+verb here resolves the repository root before it reads or writes, so a bare
+render run from a package directory reports the checkout's pages rather than
+"store not present", and an ingest lands in the checkout's store rather than
+laying a second one under the directory you happen to be standing in. Outside a
+repository there is no substrate to address: the verb exits **2**, reads
+nothing and writes nothing, because pages filed outside every checkout are
+committed by nothing and read by nothing. If a memory store also exists below
+the repository root, the verb names it on stderr and leaves it alone; relay that
+line, because pages sitting there are read by no `ask`, no `lint`, and no reader
+of the checkout's store.
+
 ## Status (bare)
 
 ```bash

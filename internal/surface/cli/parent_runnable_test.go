@@ -109,7 +109,7 @@ func TestFreeTextParentsStillFileProse(t *testing.T) {
 			continue
 		}
 		t.Run(name, func(t *testing.T) {
-			t.Chdir(t.TempDir())
+			_ = captureLedgerRepo(t)
 			var out, errOut strings.Builder
 			if code := Run([]string{name, "widen the public api for downstream callers"}, &out, &errOut); code != 0 {
 				t.Fatalf("abcd %s \"<prose>\" exited %d, want 0 (a genuine title must still file).\nstdout:\n%s\nstderr:\n%s",
