@@ -15,6 +15,11 @@ const otherRootSHA = "cccccccccccccccccccccccccccccccccccccccc"
 // these tests need no git repositories and no filesystem outside t.TempDir.
 // The behaviour under test is the placement POLICY — session before file, one
 // owner or none — not the detection primitive, which has its own tests.
+//
+// The DESTINATION's own root belongs in the table too: Ingest proves the pair
+// (root, key) names one repository (iss-2609091911060345), so a table that maps
+// only the transcripts' recorded directories describes a destination Ingest
+// refuses before it reads a source.
 func fakeRepos(t *testing.T, table map[string]string) {
 	t.Helper()
 	prior := resolveRootSHA
@@ -70,7 +75,7 @@ func TestIngestRefusesWithoutAnExplicitDestination(t *testing.T) {
 func TestIngestStoresOnlyWhatTheDestinationOwns(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{"/mine": testRootSHA, "/theirs": otherRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA, "/theirs": otherRootSHA})
 	transcriptFile(t, filepath.Join(src, "proj-a"), "s1.jsonl", "sess-mine", "", "/mine")
 	transcriptFile(t, filepath.Join(src, "proj-b"), "s2.jsonl", "sess-theirs", "", "/theirs")
 
@@ -105,7 +110,7 @@ func TestIngestPlacesTheSessionBeforeTheFile(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
 	// Only the parent's directory resolves; the worktree is gone.
-	fakeRepos(t, map[string]string{"/mine": testRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA})
 	proj := filepath.Join(src, "proj-a")
 	transcriptFile(t, proj, "sess-w.jsonl", "sess-w", "", "/mine")
 	transcriptFile(t, filepath.Join(proj, "subagents"), "agent-a1.jsonl", "sess-w", "a1", "/gone-worktree")
@@ -143,7 +148,7 @@ func TestIngestPlacesTheSessionBeforeTheFile(t *testing.T) {
 func TestIngestPlacesASessionFromTheStoreWhenNoDirectorySurvives(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA})
 	if err := NoteSessionRepo(repoRoot, testRootSHA, "sess-noted"); err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +169,7 @@ func TestIngestPlacesASessionFromTheStoreWhenNoDirectorySurvives(t *testing.T) {
 func TestIngestIgnoresAndReportsOrphans(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA})
 	transcriptFile(t, filepath.Join(src, "some-project"), "s1.jsonl", "sess-orphan", "", home+"/gone")
 
 	res, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{src}, IngestOptions{})
@@ -197,7 +202,7 @@ func TestIngestIgnoresAndReportsOrphans(t *testing.T) {
 func TestIngestAdoptsOnlyProjectsNamedByTheDestination(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA})
 	transcriptFile(t, filepath.Join(src, "claimed"), "s1.jsonl", "sess-claimed", "", "/gone")
 	transcriptFile(t, filepath.Join(src, "unclaimed"), "s2.jsonl", "sess-unclaimed", "", "/gone")
 
@@ -227,7 +232,7 @@ func TestIngestAdoptsOnlyProjectsNamedByTheDestination(t *testing.T) {
 func TestIngestIsIdempotent(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{"/mine": testRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA})
 	transcriptFile(t, filepath.Join(src, "proj-a"), "s1.jsonl", "sess-idem", "", "/mine")
 	dest := Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}
 
@@ -259,7 +264,7 @@ func TestIngestIsIdempotent(t *testing.T) {
 func TestIngestRefusesAnAmbiguousOwner(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{"/mine": testRootSHA, "/theirs": otherRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA, "/theirs": otherRootSHA})
 	transcriptFile(t, filepath.Join(src, "proj-a"), "s1.jsonl", "sess-two", "", "/mine", "/theirs")
 
 	res, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{src}, IngestOptions{})
@@ -288,7 +293,7 @@ func TestIngestRedactsUnderTheDestinationsOwnConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{"/mine": testRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA})
 	proj := filepath.Join(src, "proj-a")
 	if err := os.MkdirAll(proj, 0o755); err != nil {
 		t.Fatal(err)
@@ -319,7 +324,7 @@ func TestIngestRedactsUnderTheDestinationsOwnConfiguration(t *testing.T) {
 func TestIngestEnrichesASubAgentFromTheLineageRung(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{"/mine": testRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA})
 	proj := filepath.Join(src, "proj-a")
 	transcriptFile(t, proj, "sess-e.jsonl", "sess-e", "", "/mine")
 	agentPath := transcriptFile(t, proj, "agent-a1.jsonl", "sess-e", "a1", "/mine")
@@ -364,7 +369,7 @@ func TestIngestEnrichesASubAgentFromTheLineageRung(t *testing.T) {
 func TestIngestSkipsAFileThatIsNotOneTranscript(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 	src := t.TempDir()
-	fakeRepos(t, map[string]string{"/mine": testRootSHA})
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, "/mine": testRootSHA})
 	proj := filepath.Join(src, "proj-a")
 	if err := os.MkdirAll(proj, 0o755); err != nil {
 		t.Fatal(err)
@@ -380,5 +385,61 @@ func TestIngestSkipsAFileThatIsNotOneTranscript(t *testing.T) {
 	}
 	if len(res.Captured) != 0 || len(res.Skipped) != 1 || res.Skipped[0].Reason != SkipNoSession {
 		t.Fatalf("want one no-session-id skip and nothing captured, got %+v", res)
+	}
+}
+
+// TestIngestRefusesADestinationWhoseRootAndKeyDisagree is iss-2609091911060345.
+//
+// The destination is a PAIR: the repository root the redaction scanner is built
+// from, and the root-commit key that selects the store the records land in.
+// Ingest refused an empty root and shape-checked the key, and then trusted that
+// the two named the same repository. A mismatched pair redacts a transcript
+// under one repository's configuration and files it into another's corpus —
+// exactly the fault the explicit-destination seam exists to prevent. The seam
+// must defend its own invariant rather than relying on its one caller deriving
+// both halves from a single detection.
+func TestIngestRefusesADestinationWhoseRootAndKeyDisagree(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	src := t.TempDir()
+	// The destination root IS a repository — it is simply not the repository the
+	// store key names.
+	fakeRepos(t, map[string]string{repoRoot: otherRootSHA, "/mine": testRootSHA})
+	transcriptFile(t, filepath.Join(src, "proj-a"), "s1.jsonl", "sess-mine", "", "/mine")
+
+	_, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{src}, IngestOptions{})
+	if err == nil {
+		t.Fatal("Ingest must refuse a destination whose repository root and store key name different repositories")
+	}
+	for _, want := range []string{otherRootSHA, testRootSHA} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name both halves of the pair it rejected (missing %q): %v", want, err)
+		}
+	}
+	records, err := List(repoRoot, testRootSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Errorf("a refused destination must store nothing, got %d record(s)", len(records))
+	}
+}
+
+// TestIngestRefusesADestinationRootThatIsNoRepository is the other half of the
+// same invariant: a root whose own root commit cannot be resolved is not a
+// destination this may reason about. Fail closed — an unresolvable root is not
+// evidence that the pair agrees.
+func TestIngestRefusesADestinationRootThatIsNoRepository(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	src := t.TempDir()
+	// Nothing maps repoRoot, so its own root commit does not resolve.
+	fakeRepos(t, map[string]string{"/mine": testRootSHA})
+	transcriptFile(t, filepath.Join(src, "proj-a"), "s1.jsonl", "sess-mine", "", "/mine")
+
+	_, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{src}, IngestOptions{})
+	if err == nil {
+		t.Fatal("Ingest must refuse a destination root whose own root commit cannot be resolved")
+	}
+	if !strings.Contains(err.Error(), "root commit") {
+		t.Errorf("the refusal must say what it could not resolve: %v", err)
 	}
 }

@@ -37,3 +37,5 @@ is the one that is wrong.
 
 Severity is left as filed; three independent hits argue for raising it, which is
 the maintainer's call.
+
+A third independent hit, 2026-09-12, from a second autonomous-run experiment in a managed repository: `capture --severity medium` is refused as malformed frontmatter without naming the vocabulary, and the accepted set of critical, major, minor and nitpick is discoverable only by reading existing records. That is the third of the verb's three closed enumerations to be hit this way, after source and category, by three different sessions, none of which had seen the others' reports. The pattern is now strong enough to state as a rule rather than a list of instances: every closed enumeration this verb validates against will be met blind by somebody, because the refusal names the value it rejected and never the set it was checking against, and the help names the flag and never its vocabulary. Fixing the three fields one at a time would leave the fourth to be discovered the same way.

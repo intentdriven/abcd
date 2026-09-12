@@ -26,7 +26,7 @@ positional is refused as an unknown command.
 **Flags:**
 
 ```
-      --json       emit machine-readable JSON
+      --json       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
       --no-color   render the banner without color
 ```
 
@@ -163,14 +163,14 @@ Capture issues to the ledger; bare invocation is read-only status
 
 ```
       --blocked-by string        comma-separated iss-ids this issue is blocked by
-      --category string          issue category (default observation)
+      --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
       --found-at string          optional repo-relative path or conceptual location
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --severity string          severity: nitpick | minor | major | critical (default minor)
       --slug string              override the slug derived from the text
-      --source string            surfacing channel (default user-observation)
+      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation (default user-observation)
 ```
 
 #### `abcd capture disposition`
@@ -598,7 +598,13 @@ Redact and store transcripts already on disk into a named destination repository
 
 List stored transcripts for this repo, newest first
 
-**Usage:** `abcd history list`
+**Usage:** `abcd history list [flags]`
+
+**Flags:**
+
+```
+      --session string   list one session's whole set — its main-thread record and every sub-agent it spawned, main thread first
+```
 
 #### `abcd history migrate`
 
@@ -812,6 +818,27 @@ Check this repo against the working conventions (read-only)
 
 ```
       --root string   repo root to lint (default: current working directory)
+```
+
+#### `abcd lint outbound`
+
+Refuse outbound text that breaks the session-URL / tool-footer policy (read-only)
+
+**Usage:** `abcd lint outbound [FILE] [flags]`
+
+Judge one outbound artefact — a commit message, a pull-request body, an issue, a
+comment, a release note — against abcd's outbound policy: never a live
+agent-session URL, never a tool's own attribution footer.
+
+Reads FILE, or standard input when FILE is absent or `-`. It REPORTS and REFUSES;
+it never rewrites the text it was given, because the text belongs to whoever
+wrote it. Exit 0 clean, 1 the artefact is refused, 2 the check could not run.
+
+**Flags:**
+
+```
+      --label string   what the artefact is (commit-message, pr-body, issue, comment) — it names the artefact in the report (default "outbound-artefact")
+      --root string    repo root supplying the scanner configuration (default: current working directory)
 ```
 
 ### `abcd memory`

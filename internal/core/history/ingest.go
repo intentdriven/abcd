@@ -16,7 +16,10 @@ package history
 // applied to another repository's. Getting that wrong is a privacy fault rather
 // than a misfiling, and the working directory is exactly the wrong authority:
 // an operator recovering a backlog is not standing in the repository the
-// transcripts belong to.
+// transcripts belong to. The destination is also a PAIR — a root and a store
+// key — and Destination.verify proves the two name one repository, so the seam
+// defends its own invariant rather than trusting a caller to derive both halves
+// from a single detection (iss-2609091911060345).
 //
 // The OWNER is resolved from the cwd recorded INSIDE the transcript lines, and
 // never by decoding the harness's project-directory name. That name is not
@@ -92,6 +95,37 @@ var resolveRootSHA = func(cwd string) (string, bool) {
 type Destination struct {
 	RepoRoot string `json:"repo_root"`
 	RootSHA  string `json:"root_sha"`
+}
+
+// verify proves the two halves of the destination name ONE repository
+// (iss-2609091911060345).
+//
+// A Destination is a pair, and the whole point of making it an operand was that
+// a transcript is redacted under the configuration of the repository it is
+// stored in. Shape-checking each half separately does not establish that: a
+// mismatched pair builds the scanner from repository A's pii.json and
+// gitleaks.json and then files the redacted record into repository B's lane,
+// which is a privacy fault rather than a misfiling. No front door can reach it
+// today — the one caller derives both halves from a single detection — and that
+// is exactly why the check belongs here: the seam's argument is that a
+// destination is never inferred, so it cannot rest on its callers inferring
+// both halves correctly. A second caller, in core or in a later surface, would
+// re-open the fault silently.
+//
+// It fails CLOSED on a root whose own root commit does not resolve. An
+// unresolvable root is not evidence that the pair agrees, and accepting one
+// would leave the invariant defended only where it happens to be checkable.
+func (d Destination) verify() error {
+	sha, ok := resolveRootSHA(d.RepoRoot)
+	if !ok || sha == "" {
+		return fmt.Errorf("history: ingest cannot resolve the root commit of the destination repository at %s, so it cannot prove that root owns the store key %s; name a git repository with commits as the destination",
+			fsutil.RedactHome(d.RepoRoot), d.RootSHA)
+	}
+	if sha != d.RootSHA {
+		return fmt.Errorf("history: ingest destination is inconsistent — the repository at %s has root commit %s, not the store key %s; the pair must name ONE repository, because the scanner is built from the root and the records are filed under the key, and a mismatch redacts under one repository's configuration while filing into another's corpus",
+			fsutil.RedactHome(d.RepoRoot), sha, d.RootSHA)
+	}
+	return nil
 }
 
 // IngestOptions carries the policy a run applies.
@@ -174,6 +208,9 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 	}
 	if !rootSHARe.MatchString(dest.RootSHA) {
 		return IngestResult{}, errors.New(rootSHAErrMsg)
+	}
+	if err := dest.verify(); err != nil {
+		return IngestResult{}, err
 	}
 	if len(sources) == 0 {
 		return IngestResult{}, errors.New("history: ingest needs at least one source path; declare them in " + ConfigRelPath + " or name them on the command line")

@@ -9,6 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli (intent)"
+resolution: "Fixed in v0.8.0. A whitespace-free token followed by a record id is now judged a subcommand call whatever its edit distance, so the verb exits 2 and lists the registered sub-verbs instead of filing the typo as a draft's title. Verified against the current binary: intent status itd-123 refuses, names the five sub-verbs, and says nothing was created. Genuine prose of two or more words still files."
+impact: fix
 ---
 
 An unknown sub-verb is treated as press-release text and mints a draft intent from its own name. Two independent sessions hit this in the same run, which makes it a likelihood rather than a possibility.
@@ -18,3 +20,7 @@ An unknown sub-verb is treated as press-release text and mints a draft intent fr
 The help text does say that quoted text files a draft. That is not the problem. The problem is that a bare record id, or a single common sub-verb name like `status` or `show`, is far more likely a query than a press release, and abcd already applies exactly this reasoning elsewhere: the lone-token rule refuses a single word rather than filing it.
 
 Wanted: refuse a first positional argument that looks like a sub-verb name or contains a record id, with a did-you-mean, instead of filing it. And, as a cheap second guard, print the path the verb is about to create before writing it, so an operator who is about to mint something unintended sees it happen.
+
+## Grounds
+
+- pursued: we expect the shape rule to be the whole answer, because a token with no whitespace followed by an id cannot be a press release; it is shown wrong if a genuine one-word-plus-id title is ever refused, which the two-or-more-words carve-out is there to prevent

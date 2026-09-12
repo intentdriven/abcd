@@ -90,6 +90,13 @@ const (
 	// RefusalUnfixedFinding: a consequential finding this cycle captured is
 	// still open, with no recorded decision to defer it.
 	RefusalUnfixedFinding RefusalKind = "unfixed-finding"
+	// RefusalDeletedFinding: a consequential record the anchor held in open/ has
+	// been removed from the ledger rather than answered. It is a kind of its own
+	// rather than a shape of unfixed-finding because the remedy differs — the
+	// record has to come back before it can be resolved, waived or wontfixed —
+	// and because a front door acting on the refusal cannot open a file that is
+	// no longer there.
+	RefusalDeletedFinding RefusalKind = "deleted-finding"
 	// RefusalEmptyCut: nothing user-facing shipped, so there is no release.
 	RefusalEmptyCut RefusalKind = "empty-cut"
 )
@@ -207,8 +214,17 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 		return Cut{}, err
 	}
 	cut.Findings = findings
-	if findings.Status != changelog.FindingGuardPassed {
+	if len(findings.Unfixed) > 0 {
 		cut.Refusals = append(cut.Refusals, unfixedRefusal(findings))
+	}
+	if len(findings.Deleted) > 0 {
+		cut.Refusals = append(cut.Refusals, deletedRefusal(findings))
+	}
+	// The guard's own verdict is the backstop: a failure it reports through
+	// neither list would otherwise pass silently, which is the fail-open shape
+	// this whole gate exists to close.
+	if findings.Status != changelog.FindingGuardPassed && len(findings.Unfixed) == 0 && len(findings.Deleted) == 0 {
+		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalUnfixedFinding, Reason: findings.Reason})
 	}
 	if !derivation.Bumped {
 		cut.Refusals = append(cut.Refusals, Refusal{
@@ -265,8 +281,21 @@ func derivationRefusal(d changelog.Derivation) Refusal {
 // naming the blocking records in Records so a front door can act on the refusal
 // without parsing its prose — the same shape the unlabelled-record refusal takes.
 func unfixedRefusal(g changelog.FindingGuard) Refusal {
-	ref := Refusal{Kind: RefusalUnfixedFinding, Reason: g.Reason}
+	ref := Refusal{Kind: RefusalUnfixedFinding, Reason: g.UnfixedReason()}
 	for _, f := range g.Unfixed {
+		ref.Records = append(ref.Records, f.ID)
+	}
+	return ref
+}
+
+// deletedRefusal is unfixedRefusal's twin for the records the cut removed from
+// the ledger instead of answering (iss-2609091143455568). It names them in
+// Records for the same reason — a front door acts on the ids, not on the prose —
+// and the id is all it can name: the path it carries is where the record USED to
+// be, at the anchor.
+func deletedRefusal(g changelog.FindingGuard) Refusal {
+	ref := Refusal{Kind: RefusalDeletedFinding, Reason: g.DeletedReason()}
+	for _, f := range g.Deleted {
 		ref.Records = append(ref.Records, f.ID)
 	}
 	return ref

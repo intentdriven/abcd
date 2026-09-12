@@ -249,7 +249,12 @@ func NewRootCommand() *cobra.Command {
 			})
 		},
 	}
-	root.PersistentFlags().BoolVar(&asJSON, "json", false, "emit machine-readable JSON")
+	// The help states WHERE the outcome lands and how a refusal is recognised,
+	// because this flag's whole audience is a consumer that has to tell one from
+	// the other without reading prose (iss-2609100519128005). It is the one line
+	// the generated reference page carries about the contract.
+	root.PersistentFlags().BoolVar(&asJSON, "json", false,
+		`emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero`)
 	// Root-local by design: colour exists only on the bare invocation, so a
 	// persistent flag would be dead surface on every subcommand (itd-112).
 	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner without color")
@@ -3104,9 +3109,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: nitpick | minor | major | critical (default minor)")
-	captureCmd.Flags().StringVar(&category, "category", "", "issue category (default observation)")
-	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel (default user-observation)")
+	// Every closed enum's help NAMES ITS SET, rendered from the one copy in
+	// core/issueschema. --severity always did; --category and --source did not,
+	// and an operator who typed an unknown category had the accepted values in
+	// neither the help nor the refusal (iss-2609100519128005).
+	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: "+enumHelp(issueschema.Severities)+" (default minor)")
+	captureCmd.Flags().StringVar(&category, "category", "", "issue category: "+enumHelp(issueschema.Categories)+" (default observation)")
+	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
 	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path or conceptual location")
@@ -4195,11 +4204,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			msg += "\nabcd: " + note
 		}
 		// Honour --json for the error surface too: a caller that asked for
-		// machine output must get a JSON envelope, never raw Go text (iss-29).
+		// machine output must get a JSON envelope, never raw Go text (iss-29) —
+		// and it goes to STDOUT, where a machine-readable consumer reads
+		// (iss-2609100519128005).
 		if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
-			enc := json.NewEncoder(stderr)
+			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
-			_ = enc.Encode(errorEnvelope{Error: msg})
+			_ = enc.Encode(newErrorEnvelope(msg, code))
 		} else {
 			fmt.Fprintln(stderr, "abcd:", msg)
 		}
@@ -4207,10 +4218,49 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// errorEnvelope is the --json error shape: a single {"error": "..."} object so
-// a machine caller can parse a failure the same way it parses a success.
+// errorEnvelope is the --json refusal shape, and it is written to STDOUT.
+//
+// Two things about it are the fix for iss-2609100519128005, and both come from
+// one field report. An operator ran a `--json` capture that was refused, merged
+// stderr into stdout, parsed the merged stream as JSON, never read the exit
+// status, and concluded two captures had been silently lost. Nothing was lost:
+// the refusal is atomic, wrote nothing, and DID reach them as a well-formed JSON
+// object. The defect is that they could not tell it from a success.
+//
+//   - It is on STDOUT. A run invoked with --json is being read by a machine, and
+//     a machine reads stdout; putting the outcome on the other stream means a
+//     machine-readable invocation produced no machine-readable output. Nothing
+//     is written to stderr in this mode, deliberately: a prose line there would
+//     make the merged stream the report described stop being JSON, which trades
+//     one unparseable shape for another.
+//
+//   - It ANNOUNCES ITSELF. `"abcd": "error"` is a self-describing discriminator —
+//     no success envelope in the tree carries a top-level `abcd` key, and a
+//     reader needs no foreknowledge of abcd's shapes to see what it is holding.
+//     `exit_code` carries the status the stream merge discarded back INTO the
+//     document, so the one fact the consumer threw away is recoverable from the
+//     bytes they kept.
+//
+// Two verbs render a document and then fail: `history drain` reports what it
+// stored before refusing the exit code for what it could not, and `reading
+// assemble` hands out the data its refusal's remedy needs. Those runs put two
+// JSON documents on stdout, which is what they already put across the two
+// streams. Stdout under --json is therefore a STREAM of documents, and the
+// refusal is always the LAST of them, because Run writes it after the command has
+// returned. A consumer decoding a stream (encoding/json's Decoder, or jq) reads
+// them all and finds the outcome at the end.
 type errorEnvelope struct {
-	Error string `json:"error"`
+	// Abcd is always "error". It leads the struct so it leads the encoded
+	// object, where a reader — human or machine — meets it first.
+	Abcd     string `json:"abcd"`
+	Error    string `json:"error"`
+	ExitCode int    `json:"exit_code"`
+}
+
+// newErrorEnvelope builds the refusal envelope, so the discriminator is stated
+// in one place and cannot be forgotten at a call site.
+func newErrorEnvelope(msg string, code int) errorEnvelope {
+	return errorEnvelope{Abcd: "error", Error: msg, ExitCode: code}
 }
 
 // scrubPaths renders err for machine/stderr output with the DEVELOPER-IDENTITY
@@ -4297,3 +4347,8 @@ func render(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
 	text(w)
 	return nil
 }
+
+// enumHelp renders a closed enum's accepted values for a flag's help line. It
+// reads the same slice the reader's membership test and its refusal message read,
+// so a value added to core/issueschema reaches all three at once.
+func enumHelp(vals []string) string { return strings.Join(vals, " | ") }

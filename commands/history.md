@@ -1,7 +1,7 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
-argument-hint: "list | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
+description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. list --session reaches one session's whole set — its main thread and every sub-agent it spawned. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
+argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
 ---
 
 # `/abcd:history` — session-transcript store
@@ -66,11 +66,27 @@ forever, and `discard` is the only thing that removes it.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" history list --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" history list --session <session-id> --json
 ```
 
 Summarise each record newest-first: `captured_at`, `session_id`, `source_kind`,
 and the `redacted_secrets` / `redacted_home_paths` counts. An empty list means
 no transcripts are stored for this repo yet.
+
+A record produced by a **sub-agent** carries its lineage as well: `agent_id`,
+`agent_type` (what kind of agent it was), `parent_agent_id`, `spawn_depth` and
+`spawn_attribution`. All of them are absent on a main-thread record, which is how
+one is recognised. Report `agent_type` whenever it is present and say the type is
+unknown when an `agent_id` carries none — that record was captured with nothing
+to attribute it, which is a fact about the capture rather than about the agent.
+
+`--session <id>` lists **one session's whole set**: its main-thread record and
+every sub-agent it spawned, at any depth, the main thread first because the
+branches are only legible against the spine that spawned them. Reach for it
+whenever the user asks what a session did, or what one of its agents did — a
+sub-agent's record holds the full session id, so the session identifier alone is
+enough and no filtering by hand is needed. An empty result names the session it
+found nothing for, so a mistyped id never reads as a repo with no transcripts.
 
 ## Show
 
@@ -78,9 +94,16 @@ no transcripts are stored for this repo yet.
 "${CLAUDE_PLUGIN_ROOT}/abcd" history show <session-id-or-filename> --json
 ```
 
-Fetch one record's metadata and its full redacted `body`, matched by session id
-(newest when a session has several records) or by the record filename. Present
-the metadata and, if the user wants it, the body.
+Fetch one record's metadata and its full redacted `body`, matched by record
+filename, by an exact `agent_id`, or by session id — and a session id resolves to
+its **main-thread** record, newest first, even when a sub-agent of it was
+captured more recently. That is deliberate: a reader who names a session is
+asking for its spine. Present the metadata and, if the user wants it, the body.
+
+A sub-agent's record shows which agent produced it and what kind of agent that
+was, and points at `history list --session <id>` for the rest of the set. To read
+a whole session, take the set from `list --session` and show each record; to
+render it as one artefact instead, use `reconstruct`.
 
 ## Staged
 

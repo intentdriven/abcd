@@ -129,7 +129,18 @@ same result.
 ```
 
 The unfiltered form `abcd capture list` exits 2 with a "choose a filter"
-message; there is no implicit default. Summarise each issue's `id`, `status`,
+message; there is no implicit default.
+
+**One id, one status folder.** Every read — `list`, the bare `abcd capture`
+board, and `abcd <iss-N>` — refuses when one id is claimed by two record files,
+naming both. The status folder *is* the record's status, so an id sitting in
+`open/` and `resolved/` at once has no defined status to report, and rendering it
+would mean printing two contradictory rows or picking one arbitrarily. The state
+is a merge artefact rather than a hand edit: a record committed to the default
+branch after a branch was cut from it, and then resolved on that branch, arrives
+as an add on one side and a delete-plus-add on the other, which rename detection
+does not pair. Relay the refusal; the fix is to move or remove one of the two
+files so the ledger says which status the record is in. Summarise each issue's `id`, `status`,
 `severity`, and `slug`. The list is returned in **derived-priority order**:
 unblocked issues first, then by severity (`critical` → `nitpick`); rows still
 blocked by an open dependency are demoted and annotated `[blocked-by iss-N,…]`.

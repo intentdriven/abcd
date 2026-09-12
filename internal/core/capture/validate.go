@@ -61,14 +61,22 @@ func validateStrict(fm map[string]any) error {
 	if !reSlug.MatchString(fm["slug"].(string)) {
 		return fmt.Errorf("%w: slug %q is not kebab-case", ErrMalformedFrontmatter, fm["slug"])
 	}
+	// A closed enum's refusal NAMES THE SET IT ACCEPTS. It has the legal values
+	// in hand, and withholding them turns one round trip into several: an
+	// operator told only that their value was rejected has to go looking, and
+	// the field report behind iss-2609100519128005 is what that costs — a
+	// refusal naming an invalid category with no accepted set, arriving as JSON
+	// on a stream the operator was not reading, made them doubt the store rather
+	// than the flag. The set is rendered from the ONE copy in core/issueschema,
+	// so it can never drift from the membership test on the line above it.
 	if !validSeverities[Severity(fm["severity"].(string))] {
-		return fmt.Errorf("%w: invalid severity %q", ErrMalformedFrontmatter, fm["severity"])
+		return fmt.Errorf("%w: invalid severity %q; %s", ErrMalformedFrontmatter, fm["severity"], acceptedValues(issueschema.Severities))
 	}
 	if !validCategories[Category(fm["category"].(string))] {
-		return fmt.Errorf("%w: invalid category %q", ErrMalformedFrontmatter, fm["category"])
+		return fmt.Errorf("%w: invalid category %q; %s", ErrMalformedFrontmatter, fm["category"], acceptedValues(issueschema.Categories))
 	}
 	if !validSources[Source(fm["source"].(string))] {
-		return fmt.Errorf("%w: invalid source %q", ErrMalformedFrontmatter, fm["source"])
+		return fmt.Errorf("%w: invalid source %q; %s", ErrMalformedFrontmatter, fm["source"], acceptedValues(issueschema.Sources))
 	}
 	if strings.TrimSpace(fm["found_during"].(string)) == "" {
 		return fmt.Errorf("%w: found_during must be non-empty", ErrMalformedFrontmatter)
@@ -344,4 +352,13 @@ func groundsEntries(body string) []string {
 		out = append(out, g.String())
 	}
 	return out
+}
+
+// acceptedValues renders a closed enum's legal set for a refusal message.
+//
+// One helper rather than three literal lists, so the message and the membership
+// test read the same slice: a value added to core/issueschema appears in the
+// refusal without anyone remembering to add it.
+func acceptedValues(vals []string) string {
+	return "accepted values: " + strings.Join(vals, " | ")
 }

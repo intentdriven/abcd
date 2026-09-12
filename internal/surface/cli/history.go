@@ -101,8 +101,18 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	captureCmd.Flags().StringVar(&kind, "kind", "", "source kind: native | specstory-import (default native)")
 	historyCmd.AddCommand(captureCmd)
 
-	// list — records newest-first for this repo.
-	historyCmd.AddCommand(&cobra.Command{
+	// list — records newest-first for this repo, or one session's whole set.
+	//
+	// --session is ListForSession's front door (iss-2609091915475296). The core
+	// could reach a session's main thread plus every sub-agent it spawned from
+	// the session identifier alone, and nothing an operator could type did: the
+	// only route was this verb's --json output plus hand-filtering on a field
+	// the plugin page did not document. It belongs on `list` rather than on
+	// `show` because `list` is the SET verb and `show` deliberately answers with
+	// one record — a session names its spine there, and that is a decision, not
+	// a gap.
+	var listSession string
+	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List stored transcripts for this repo, newest first",
 		Args:  cobra.NoArgs,
@@ -111,7 +121,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			records, err := history.List(repoRoot, rootSHA)
+			records, err := historyRecords(repoRoot, rootSHA, listSession)
 			if err != nil {
 				return err
 			}
@@ -129,16 +139,30 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, records, func(w io.Writer) {
 				if len(records) == 0 {
+					// An empty set for a NAMED session says which session, so a
+					// mistyped identifier cannot read as a repo with no
+					// transcripts.
+					if listSession != "" {
+						fmt.Fprintf(w, "abcd history — no transcript stored for session %s in this repo\n", termsafe.Sanitize(listSession))
+						return
+					}
 					fmt.Fprintln(w, "abcd history — no transcripts stored for this repo")
 					return
 				}
 				for _, r := range records {
 					fmt.Fprintf(w, "%s  %s  %s  redacted secrets=%d home=%d\n",
-						r.CapturedAt.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(r.SessionID), termsafe.Sanitize(r.SourceKind), r.Secrets, r.HomePaths)
+						r.CapturedAt.Format("2006-01-02T15:04:05Z"), recordWho(r), termsafe.Sanitize(r.SourceKind), r.Secrets, r.HomePaths)
+				}
+				if listSession != "" {
+					fmt.Fprintf(w, "\n%d record(s) for session %s — the main thread first, then every sub-agent it spawned.\n",
+						len(records), termsafe.Sanitize(listSession))
 				}
 			})
 		},
-	})
+	}
+	listCmd.Flags().StringVar(&listSession, "session", "",
+		"list one session's whole set — its main-thread record and every sub-agent it spawned, main thread first")
+	historyCmd.AddCommand(listCmd)
 
 	// staged — what ended but is not yet stored. This is the outcome axis the
 	// store never had: before staging existed, "absent from the store" spanned
@@ -361,6 +385,23 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				// at write time but not re-validated on the read path, so pass
 				// them through too.
 				fmt.Fprintf(w, "session:    %s\n", termsafe.Sanitize(rec.SessionID))
+				// A sub-agent's record names the agent and its KIND, so a reader
+				// can tell what produced the transcript they are holding without
+				// reading the JSON (iss-2609091915475296). A main-thread record
+				// prints none of these lines: every lineage field is empty on
+				// one, which is also exactly how a schema-1 record parses.
+				if rec.AgentID != "" {
+					fmt.Fprintf(w, "agent:      %s\n", agentWho(rec))
+					if rec.ParentAgentID != "" {
+						fmt.Fprintf(w, "parent:     %s\n", termsafe.Sanitize(rec.ParentAgentID))
+					}
+					if rec.SpawnDepth > 0 {
+						fmt.Fprintf(w, "depth:      %d\n", rec.SpawnDepth)
+					}
+					// The whole session's set is one command away, and a reader
+					// holding one branch is the reader who wants it.
+					fmt.Fprintf(w, "siblings:   abcd history list --session %s\n", termsafe.Sanitize(rec.SessionID))
+				}
 				fmt.Fprintf(w, "captured:   %s\n", rec.CapturedAt.Format("2006-01-02T15:04:05Z"))
 				fmt.Fprintf(w, "source:     %s\n", termsafe.Sanitize(rec.SourceKind))
 				fmt.Fprintf(w, "path:       %s\n", termsafe.Sanitize(rec.Path))
@@ -428,6 +469,48 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	historyCmd.AddCommand(newHistoryReconstructCommand(asJSON))
 
 	return historyCmd
+}
+
+// historyRecords reads the whole repo's records, or one session's whole set when
+// a session was named.
+//
+// The branch lives here rather than in the RunE body so the verb has one result
+// to render either way, and so the choice between the store's two read seams is
+// stated once: List is every record, ListForSession is the main thread plus every
+// sub-agent of one session, main thread first.
+func historyRecords(repoRoot, rootSHA, sessionID string) ([]history.Record, error) {
+	if sessionID != "" {
+		return history.ListForSession(repoRoot, rootSHA, sessionID)
+	}
+	return history.List(repoRoot, rootSHA)
+}
+
+// recordWho renders WHO produced one record: the session, and on a sub-agent's
+// record the agent and its kind too.
+//
+// It mirrors the `staged` listing's idiom deliberately — a staged entry and the
+// stored record it becomes must not describe the same sub-agent in two different
+// shapes.
+func recordWho(r history.Record) string {
+	who := termsafe.Sanitize(r.SessionID)
+	if r.AgentID == "" {
+		return who
+	}
+	return who + " " + agentWho(r)
+}
+
+// agentWho renders a sub-agent's identity: the agent id and its type.
+//
+// An agent id with no type is reported as unknown rather than left blank. That
+// is a real state and not an omission — a record captured with no sidecar to
+// attribute it carries `spawn_attribution: unattributed` — and a blank would read
+// as a record nobody bothered to label.
+func agentWho(r history.Record) string {
+	kind := "type unknown"
+	if r.AgentType != "" {
+		kind = termsafe.Sanitize(r.AgentType)
+	}
+	return "agent " + termsafe.Sanitize(r.AgentID) + " (" + kind + ")"
 }
 
 // renderBacklogSurvey renders `history staged --all-repos`: every repository in
