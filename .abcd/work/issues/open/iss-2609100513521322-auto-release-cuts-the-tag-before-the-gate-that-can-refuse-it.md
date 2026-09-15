@@ -9,8 +9,8 @@ found_during: "v0.8.0 release, runs 34403815697"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/auto-release.yml"
-deferred_after: "v0.7.1"
-deferral_reason: "Found while cutting v0.8.0, and the remedy changes the release pipeline itself, which is not a thing to reorder underneath a release that is mid-flight. The workaround is recorded and was exercised end to end, so the next cut is not blocked on this. The waiver lapses at v0.8.0 and the finding returns to the gate, which is the right moment: the reorder wants to be the first change of a cycle, proven by a release, not the last change of one."
+deferred_after: "v0.8.0"
+deferral_reason: "Renewed at v0.8.0, and this cycle adds a reason the first waiver did not have. The v0.7.1 waiver deferred the reorder because the remedy changes the release pipeline underneath a release that was mid-flight; that is still true, the next cut is in flight now, and auto-release is unchanged since v0.8.0 - detect, then tag, then release, which is where verify runs. What is new is that this is the second time the same ruling has had to be made. adr-52 moved the semantic receipt gate to the safe side of the tag on 2026-08-23, on the stated premise that the deterministic gates did not have this problem because they run in verify, before tag. Run 34403815697 falsified that premise: verify runs inside the release job, which needs tag, so the deterministic gate sits on the wrong side of the tag too and adr-52 closed only half of the shape it named. The remedy is therefore no longer a new design but the completion of a ruling already accepted, with adr-52's accepted cost already understood and paid once. The condition the first waiver named still decides the timing: the reorder wants to be the first change of a cycle, proven by a release, not the last change of one. Waits on an ADR extending adr-52's ruling to the deterministic gate, taken at the top of the cycle after this cut."
 ---
 
 `auto-release` cuts the version tag **before** the gate that could refuse the
