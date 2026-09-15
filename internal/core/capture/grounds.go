@@ -4,9 +4,11 @@ package capture
 // routes record the conjecture being acted on, in the vocabulary core/grounds
 // holds once for every writer.
 //
-// Promote and resolve REFUSE without it. They mint the value in the same call
-// and have no corpus to fix, so there is nothing to stage: a route recorded
-// without its reasoning is exactly the evaporation the argument closes. Wontfix
+// Promote and resolve record it when it is given and write nothing for it when
+// it is not: the refusal that stood on an absent value is parked, not lifted
+// (iss-2609091009111294), until the rethink of the reading work settles what a
+// human is asked for at a triage. A value that IS given is held to the
+// vocabulary and the floor exactly as before. Wontfix
 // needs no new required flag — transition already refuses an empty
 // wontfix_reason, so a wontfix can never be recorded without grounds — what it
 // lacked was the TYPE, which it now stamps as `declined:`.
@@ -43,6 +45,22 @@ func requireGrounds(repoRoot, verb, raw string) (g grounds.Grounds, redacted int
 		return grounds.Grounds{}, 0, "", fmt.Errorf("%s: %w: %v; nothing written", verb, ErrGroundsRefused, err)
 	}
 	return validated, n, deg, nil
+}
+
+// optionalGrounds is requireGrounds with absence allowed: a blank operand
+// returns a nil entry and no error, and everything else is judged exactly as
+// requireGrounds judges it. The refusal is not deleted, it is not reached — the
+// ordinary flow must not stop for a sentence the gate cannot judge
+// (iss-2609091009111294).
+func optionalGrounds(repoRoot, verb, raw string) (g *grounds.Grounds, redacted int, degraded string, err error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, 0, "", nil
+	}
+	v, n, deg, err := requireGrounds(repoRoot, verb, raw)
+	if err != nil {
+		return nil, 0, "", err
+	}
+	return &v, n, deg, nil
 }
 
 // wontfixGrounds resolves the grounds a wontfix stamps: `declined: <reason>`

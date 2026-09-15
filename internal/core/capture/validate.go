@@ -107,18 +107,14 @@ func validateStrict(fm map[string]any) error {
 			}
 		}
 	}
-	// lapsed_at is optional for every category and REQUIRED for lapse (spc-60).
-	// It is checked after the type loop above, so a non-string value is reported as
-	// the type error it is rather than as an absent timestamp. Which category
-	// requires it, and what a well-formed value is, are read from the ONE shared
-	// definition in core/issueschema — the same one the committed-ledger gate
-	// reads, so a record this reader refuses (and therefore SKIPS, making it
-	// invisible to every capture surface) is never lint-green.
+	// lapsed_at is optional for every category, lapse included, and an RFC 3339
+	// instant whenever it is present. spc-60 made it REQUIRED on a lapse; that
+	// refusal is parked (iss-2609091009111294) until the rethink of the reading
+	// work settles what a lapse record must carry. The format half is checked
+	// after the type loop above, so a non-string value is reported as the type
+	// error it is, and it reads the ONE shared definition in core/issueschema —
+	// the same one the committed-ledger gate reads.
 	lapsedAt := strings.TrimSpace(asString(fm["lapsed_at"]))
-	if issueschema.LapsedAtRequired(fm["category"].(string)) && lapsedAt == "" {
-		return fmt.Errorf("%w: a %q record must carry 'lapsed_at', the instant the discipline gave way",
-			ErrMissingRequiredField, issueschema.CategoryLapse)
-	}
 	if lapsedAt != "" && !issueschema.ValidLapsedAt(lapsedAt) {
 		return fmt.Errorf("%w: lapsed_at %q is not an RFC 3339 instant (want 2026-08-28T00:00:00Z)",
 			ErrMalformedFrontmatter, lapsedAt)

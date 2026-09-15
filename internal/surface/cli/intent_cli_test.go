@@ -490,10 +490,11 @@ func TestIntentPlanStampsAPlannedRecord(t *testing.T) {
 	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
 		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n")
 
-	// The gate names the remedy...
+	// The gate names the remedy (the row is advisory since iss-2609091009111294,
+	// so it reports without refusing)...
 	report, _, err := runCLISplit(t, "intent", "ready", "itd-10")
-	if exitCodeOf(err) != 1 || !strings.Contains(report, "abcd intent plan itd-10") {
-		t.Fatalf("gate must refuse and name the remedy: exit=%d\n%s", exitCodeOf(err), report)
+	if err != nil || !strings.Contains(report, "abcd intent plan itd-10") {
+		t.Fatalf("gate must report the remedy without refusing: err=%v\n%s", err, report)
 	}
 	// ...and running exactly that remedy has to work.
 	out := string(runCLI(t, "intent", "plan", "itd-10"))

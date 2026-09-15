@@ -262,7 +262,7 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 	if err != nil {
 		return TransitionResult{}, err
 	}
-	g, gRedacted, gDegraded, err := requireGrounds(rr, "resolve", req.Grounds)
+	g, gRedacted, gDegraded, err := optionalGrounds(rr, "resolve", req.Grounds)
 	if err != nil {
 		return TransitionResult{}, err
 	}
@@ -300,7 +300,7 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 		extras = append(extras, kv{"resolved_by", members})
 	}
 	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolve", "resolution", req.Resolution,
-		extras, &g, req.ProductionMode, StateResolved)
+		extras, g, req.ProductionMode, StateResolved)
 	if err != nil {
 		return TransitionResult{}, err
 	}

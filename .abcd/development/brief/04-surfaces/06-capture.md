@@ -4,7 +4,7 @@ Write down the thing you just noticed without losing your place. One command
 files it with a stable id, a schema and a folder that says its state, so a
 finding survives the session it was found in and can be counted, queried,
 promoted into an intent, or resolved with the change that fixes it. That is the
-whole trade: a few seconds and a required sentence of grounds at capture time,
+whole trade: a few seconds and a sentence of grounds at capture time,
 against a note that would otherwise be a scratch line nobody reads again.
 
 The ledger lives in the repo at `.abcd/work/issues/`, folder-as-status
@@ -67,9 +67,11 @@ into an intent draft. One invocation mints the draft under `intents/drafts/`
 with the slug reused and the body a by-id pointer rather than a copy, and
 stamps the issue's `promoted_to` with the minted id; the draft's
 `promoted_from` is the reciprocal edge. It works from any status folder,
-because promotion is orthogonal to fix-status. `--grounds` is required on the
-issue route and refused on the reading route, whose conjecture already stands
-in the item's disposition. `--intent` is the stamp-only mode that links an
+because promotion is orthogonal to fix-status. `--grounds` is recorded when
+given on the issue route and refused on the reading route, whose conjecture
+already stands in the item's disposition; its absence is reported rather than
+refused, parked by iss-2609091009111294 until the reading work is rethought.
+A value that IS given is held to the vocabulary and the floor as before. `--intent` is the stamp-only mode that links an
 existing draft: the repair path after a post-mint stamp failure, which the
 error names.
 
@@ -86,8 +88,9 @@ join a machine derived. Two hold-shaping flags are reserved and dormant, and a
 populated value is refused until activation is ruled.
 
 **`/abcd:capture resolve`** marks an issue resolved and moves it to
-`resolved/`. Impact and grounds are both required, and resolving without either
-is refused with nothing written. Three optional provenance flags name what fixed
+`resolved/`. Impact is required, and resolving without it is refused with
+nothing written; grounds are recorded when given, their absence parked by
+iss-2609091009111294. Three optional provenance flags name what fixed
 it: an intent, a spec, or a commit sha. A fourth, `--shipped-in`, is migration
 use only: it names the release that already carried the work, so the record
 stays out of the current cut.
@@ -134,7 +137,7 @@ category: bug|documentation|drift|inconsistency|tech-debt|security|ux|process|ar
 source: plan-review|impl-review|manual-test|review-followup|agent-finding|agent-observation|user-observation|drift-detection|memory-curation
 found_during: <session-or-command-context>
 found_at: <path-or-conceptual>
-lapsed_at: <rfc3339>       # required when category is lapse: the instant the discipline gave way, not the write-up
+lapsed_at: <rfc3339>       # on a lapse: the instant the discipline gave way, not the write-up (absence parked, iss-2609091009111294)
 origin: researcher-authored|extracted-from-record|contributed-by-reading <rdg-N>/<rdi-N>
 production_mode: hand-written|dictated-and-formatted|scribe-transcribed
 details: "<text>"          # optional structured detail
@@ -225,7 +228,8 @@ for ad-hoc scribbles.
   "<text>"`, **then** a new file exists under `.abcd/work/issues/open/` with
   frontmatter populated and the captured text in the body.
 - **Given** an existing open issue, **when** the user runs `/abcd:capture
-  resolve` with an impact and grounds (both required, neither defaulted),
+  resolve` with an impact, and grounds if they are given (impact is required
+  and never defaulted),
   **then** the file moves to `resolved/` with the resolution recorded.
 - **Given** an existing issue in any status folder, **when** the user runs
   `/abcd:capture promote` with grounds, **then** one invocation files a new

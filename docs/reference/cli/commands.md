@@ -210,12 +210,12 @@ List issues by state (one of --open/--resolved/--wontfix/--all required)
 
 Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)
 
-**Usage:** `abcd capture promote <iss-N> --grounds "<token>: <text>" | promote <rdi-N> [flags]`
+**Usage:** `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
 
 **Flags:**
 
 ```
-      --grounds string           REQUIRED — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+      --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
       --intent string            stamp-only mode: link this existing itd-N instead of minting a draft
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
@@ -224,13 +224,13 @@ Graduate an issue or a dispositioned reading item into an intent draft (mints + 
 
 Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it
 
-**Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds "<token>: <text>" [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
+**Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds "<token>: <text>"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
 
 **Flags:**
 
 ```
       --commit string            resolved_by provenance: the fixing commit sha (7-64 hex chars, shape-checked only)
-      --grounds string           REQUIRED — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+      --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
       --impact string            product impact: additive|breaking|fix|internal (required)
       --intent string            resolved_by provenance: the itd-N that fixed it (must exist)
       --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
@@ -697,7 +697,7 @@ Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on
 
 #### `abcd intent ready`
 
-Report whether an intent is ready to implement (planned + AC + claims + written spec + recorded grounds); exit 1 when not
+Report whether an intent is ready to implement (planned + AC + written spec; claims and grounds reported, never refused); exit 1 when not
 
 **Usage:** `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
 
