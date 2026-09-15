@@ -261,8 +261,15 @@ func TestStatusLineOfferDeclinedWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Writes) != 0 {
-		t.Errorf("a declined offer wrote: %v", res.Writes)
+	// The dependency step reports the scanners it would have the user install
+	// under Writes too ("dependency: brew install …"), and on a machine without
+	// them that entry is legitimate and unrelated to the offer; the tree hashes
+	// below are what prove nothing was written. Here only the two files the
+	// offer owns may not appear.
+	for _, w := range res.Writes {
+		if strings.Contains(w, statusline.SettingsFileName) || strings.Contains(w, harnessSettingsFile) {
+			t.Errorf("a declined offer wrote: %v", res.Writes)
+		}
 	}
 	if msg, ok := sameTree(homeBefore, treeHash(t, home)); !ok {
 		t.Errorf("home changed after a declined offer: %s", msg)
