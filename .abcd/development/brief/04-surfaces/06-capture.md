@@ -26,6 +26,7 @@ binary.
 |---|---|---|
 | `disposition` | — | shipped |
 | `list` | — | shipped |
+| `mentions` | — | shipped |
 | `promote` | — | shipped |
 | `resolve` | — | shipped |
 | `wontfix` | — | shipped |
@@ -61,6 +62,21 @@ rejected with exit 2 and a message naming the four. These flags are the only
 earned exception to the naming discipline under this surface, and each must
 appear immediately adjacent to `list`. There is no implicit default: bare
 `/abcd:capture` is what renders status.
+
+**`/abcd:capture mentions`** is the advisory listing (iss-2609100507421759):
+open records whose ids are named by the default branch's commit messages, with
+the evidence that named them and no resolution behind them. It reads the ledger
+and the history and writes nothing — it never resolves and never moves a record,
+which is the whole point of listing rather than linting. Evidence is ranked
+`resolves` (a commit declared `Resolves:` and the record is still in `open/`)
+over `tree` (a commit that changed something outside `.abcd/`) over `record`
+(only the record tiers changed). Two mentions are deliberately silent: the
+commit that FILED the record, which is provenance rather than evidence, and a
+commit that declared `Refs:`, whose author said in so many words that it was
+touched and not fixed. It is the backward-looking half of a rule whose
+forward-looking half is a merge gate (RS004 in
+`scripts/check-issue-resolution.sh`), which cannot reach the history a
+repository already has.
 
 **`/abcd:capture promote`** graduates an issue, or an accepted reading item,
 into an intent draft. One invocation mints the draft under `intents/drafts/`

@@ -31,6 +31,13 @@ func captureLedgerFixture(t *testing.T, n int) (repo, sub string, ids []string) 
 	t.Setenv("HOME", t.TempDir())
 	repo = t.TempDir()
 	gitInitAt(t, repo)
+	// One empty root commit, so the tree is a checkout with a history rather than
+	// an unborn branch. A read-only verb that walks history (`capture mentions`)
+	// cannot be asked which ledger it addressed in a repository that has no
+	// commit to walk; the commit is deliberately empty, so it adds no evidence of
+	// its own and every other case in this file sees exactly the tree it saw
+	// before.
+	gitCommitAt(t, repo, "fixture: the checkout's first commit")
 	repo = realPath(t, repo)
 	sub = filepath.Join(repo, "internal", "core")
 	if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -173,6 +180,32 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 				}
 				if len(res.Issues) != len(ids) {
 					t.Errorf("list returns %d open issue(s) from the subdirectory, want the checkout's %d", len(res.Issues), len(ids))
+				}
+			},
+		},
+		// The advisory listing reads TWO things — the ledger and the history — and
+		// both must be the checkout's. The open count is what proves the ledger
+		// half from a subdirectory; the ref it reports proves it found a history
+		// at all rather than degrading to an empty, reassuring answer.
+		"mentions": {
+			args: func([]string, string) []string { return []string{"capture", "mentions", "--json"} },
+			check: func(t *testing.T, _ string, ids []string, _ string, out []byte, err error) {
+				if err != nil {
+					t.Fatalf("capture mentions: %v\n%s", err, out)
+				}
+				var res struct {
+					Ref         string `json:"ref"`
+					OpenRecords int    `json:"open_records"`
+				}
+				if jerr := json.Unmarshal(out, &res); jerr != nil {
+					t.Fatalf("capture mentions --json: not JSON: %v\n%s", jerr, out)
+				}
+				if res.OpenRecords != len(ids) {
+					t.Errorf("mentions reports %d open record(s) from the subdirectory, want the checkout's %d",
+						res.OpenRecords, len(ids))
+				}
+				if res.Ref == "" {
+					t.Errorf("mentions names no ref: it walked no history and said so nowhere")
 				}
 			},
 		},

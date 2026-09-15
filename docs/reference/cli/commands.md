@@ -206,6 +206,18 @@ List issues by state (one of --open/--resolved/--wontfix/--all required)
       --wontfix    issues currently in wontfix/
 ```
 
+#### `abcd capture mentions`
+
+List open issues named by default-branch history with no resolution behind them (read-only)
+
+**Usage:** `abcd capture mentions [--ref <branch>] [flags]`
+
+**Flags:**
+
+```
+      --ref string   history to walk (default: the repository's default branch)
+```
+
 #### `abcd capture promote`
 
 Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)

@@ -22,10 +22,17 @@ name: attribution
 # (a per-repo declared preference every surface reads); this enforces abcd's own
 # answer meanwhile.
 #
+# It also hosts RS004's pull-request half — a title or body that names an iss-N
+# must declare its relation to it — for the trigger reason below, not because the
+# rule belongs to attribution. The rule itself stays in
+# scripts/check-issue-resolution.sh alongside RS001-RS003.
+#
 # `edited` is in the trigger list deliberately: without it, a body that passed at
 # open can be edited afterwards and the gate never re-runs. It is a separate
 # workflow rather than a job in ci.yml precisely so a body edit re-runs THIS and
-# not the two-platform build matrix.
+# not the two-platform build matrix. That trigger is also why RS004's form half
+# is hosted here: ci.yml takes the default pull_request type list, so an edited
+# title would never be re-judged there.
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
@@ -128,6 +135,44 @@ jobs:
           fi
           printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
           bash scripts/check-attribution.sh body "$RUNNER_TEMP/pr-body.md"
+
+      # RS004 on the pull-request FORM: a title or body that names an iss-N must
+      # declare its relation to it (`Resolves:` or `Refs:`).
+      #
+      # THE RULE IS NOT HERE. It lives in scripts/check-issue-resolution.sh with
+      # RS001-RS003, which already own the record-id shapes, the `Resolves:`
+      # vocabulary and the ledger's folders; a second spelling of any of that in a
+      # second script is how two gates end up disagreeing about what an id is.
+      # Only the TRIGGER lives here, and that is the whole reason this step is in
+      # this workflow rather than beside its siblings in ci.yml: this is the one
+      # workflow that re-runs on `edited`. ci.yml's `pull_request:` takes the
+      # default type list (opened, synchronize, reopened), so a title edited after
+      # the pull request opened — the cheapest way to add or remove a mention —
+      # would never be judged there. The commit half of RS004 stays in ci.yml's
+      # issue-resolution job, where the base/head range already is.
+      #
+      # Same env-var handling as the body step above: attacker-controlled text
+      # reaches the shell only through the environment, never spliced into the
+      # script the runner executes.
+      - name: Record mentions in the pull-request form declare themselves (RS004)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            echo "attribution: merge-queue run — no pull-request form to check (validated on the pull request before queueing), nothing was checked."
+            exit 0
+          fi
+          if [ "$PR_AUTHOR_TYPE" = "Bot" ]; then
+            echo "attribution: pull request authored by a bot — form check exempt, nothing was checked."
+            exit 0
+          fi
+          printf '%s' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body-rs004.md"
+          bash scripts/check-issue-resolution.sh pr "$RUNNER_TEMP/pr-title.txt" "$RUNNER_TEMP/pr-body-rs004.md"
 
       # The gate's own rules are proven in CI, not only asserted. iss-214 asked for
       # this: the trailer regex must be checked against the forms actually in this

@@ -393,6 +393,19 @@
       ]
     },
     {
+      "path": "abcd capture mentions",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "ref",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture promote",
       "hidden": false,
       "flags": [

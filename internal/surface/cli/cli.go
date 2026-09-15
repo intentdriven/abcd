@@ -3165,6 +3165,51 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	listCmd.Flags().BoolVar(&lsAll, "all", false, "issues across all three states")
 	captureCmd.AddCommand(listCmd)
 
+	// mentions — the advisory listing (iss-2609100507421759). Strictly
+	// read-only: it reads the default branch's history and the ledger, and
+	// resolves nothing. The operator reads the row and decides; that division is
+	// the point, and it is why this is a listing rather than a lint that closes
+	// records.
+	var mentionsRef string
+	mentionsCmd := &cobra.Command{
+		Use:   "mentions [--ref <branch>]",
+		Short: "List open issues named by default-branch history with no resolution behind them (read-only)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Mentions(capture.MentionsRequest{RepoRoot: repoRoot, Ref: mentionsRef})
+			if err != nil {
+				return err
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
+					termsafe.Sanitize(res.Ref), res.OpenRecords, res.Commits, len(res.Rows))
+				for _, row := range res.Rows {
+					// The core ranks each row's evidence strongest-first, so the
+					// exemplar shown here is the commit an operator must read —
+					// not merely the latest one that named the record.
+					top := row.Evidence[0]
+					// A subject is a commit author's free text; it reaches a
+					// terminal, so it is sanitised like every other echoed value.
+					fmt.Fprintf(w, "%s  %-8s  %s  %s%s\n", row.ID, row.Strength, top.Commit[:12],
+						termsafe.Sanitize(top.Subject), moreEvidenceNote(len(row.Evidence)))
+				}
+				for _, sk := range res.Skipped {
+					fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+				}
+				if len(res.Rows) > 0 {
+					fmt.Fprintf(w, "\nA mention is not a fix. Read the commit, then resolve what it fixed:\n"+
+						"  abcd capture resolve <iss-N> \"<what fixed it>\" --impact <…> --grounds \"<…>\" --commit <sha>\n")
+				}
+			})
+		},
+	}
+	mentionsCmd.Flags().StringVar(&mentionsRef, "ref", "", "history to walk (default: the repository's default branch)")
+	captureCmd.AddCommand(mentionsCmd)
+
 	// resolve — open -> resolved with a note, a required product impact, and
 	// optional resolved_by provenance (spc-25): the intent, spec, or commit
 	// that fixed it.
@@ -3776,6 +3821,18 @@ func blockedNote(iss capture.Issue) string {
 		return ""
 	}
 	return " [blocked-by " + strings.Join(iss.BlockedByOpen, ",") + "]"
+}
+
+// moreEvidenceNote renders the tail of a `capture mentions` row: the render shows
+// the row's FIRST evidence in full and says how many others named the same
+// record, so a row stays one line and nothing is silently dropped. First means
+// strongest, and newest among equals — the core ranks the slice before it leaves,
+// so this render and --json lead with the same commit. The full set is in --json.
+func moreEvidenceNote(n int) string {
+	if n <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("  (+%d more)", n-1)
 }
 
 func orDefault(v, def string) string {
