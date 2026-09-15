@@ -39,6 +39,15 @@ import (
 // cacheAttestationFile is the record's name under ~/.abcd.
 const cacheAttestationFile = "cache-attestation"
 
+// afterCacheBound is a test seam, nil in production: it runs after the
+// binding check has accepted a data dir and before the artefact is read, which
+// is the window a writer in the attested directory can use to swap the
+// artefact and its record for a self-consistent forgery. The promotion is
+// correct only if nothing read in that window decides anything — the artefact
+// is hashed against the ATTESTED value, never against the record beside it —
+// and the seam is how a test occupies the window deterministically.
+var afterCacheBound func(dataDir string)
+
 // cacheAttestation is the parsed record: the data dir the bootstrap was
 // handed by the harness, the hash the published manifest vouched for, and the
 // trust vocabulary the bootstrap's cache_trust already uses.
@@ -96,3 +105,4 @@ func readCacheAttestation() (cacheAttestation, bool) {
 	}
 	return rec, true
 }
+

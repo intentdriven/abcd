@@ -237,7 +237,11 @@ func ownedCopySourceReady(cwd, pluginRoot string) bool {
 // predicate and install performs it on exactly this predicate, so the two can
 // never disagree about the same directory.
 func cacheSourceReady(dataDir, cwd string) bool {
-	return cachePresent(dataDir, cwd) && cacheBindingProblem(dataDir) == ""
+	if !cachePresent(dataDir, cwd) {
+		return false
+	}
+	_, problem := cacheBindingProblem(dataDir)
+	return problem == ""
 }
 
 // cachePresent reports whether dataDir holds an artefact for this platform
@@ -264,19 +268,27 @@ func cachePresent(dataDir, cwd string) bool {
 // run that authenticated them — an environment variable, a rewritten cache —
 // and nothing in it is a verified release artefact (GHSA-4q78-ccfv-f374). Every
 // path in the reason is rendered in tilde form.
-func cacheBindingProblem(dataDir string) string {
+//
+// On success the attestation itself is handed back, and it is the ONLY record
+// a caller may act on afterwards: the co-located binary-meta is compared here
+// and never read again, because a writer in the attested directory can swap
+// the artefact and that record for a self-consistent forgery in the window
+// between this check and the promotion (found in the security review of the
+// first cut, reproduced in 0.25 s). The promotion hashes the artefact against
+// the attested value, so a pair flipped after the binding fails the hash.
+func cacheBindingProblem(dataDir string) (cacheAttestation, string) {
 	record := "~/.abcd/" + cacheAttestationFile
 	att, ok := readCacheAttestation()
 	if !ok {
-		return "no " + record + " record binds it — a session that authenticates the cache against the published release manifest writes one"
+		return cacheAttestation{}, "no " + record + " record binds it — a session that authenticates the cache against the published release manifest writes one"
 	}
 	if resolvePath(att.dataDir) != resolvePath(dataDir) {
-		return record + " names a different directory (" + displayPath(att.dataDir) + "), so this one was chosen by something other than the session that authenticated the cache"
+		return cacheAttestation{}, record + " names a different directory (" + displayPath(att.dataDir) + "), so this one was chosen by something other than the session that authenticated the cache"
 	}
 	if cacheRecordedSHA(dataDir) != att.sha {
-		return "its recorded binary_sha256 is not the one " + record + " attests, so the cache changed after it was authenticated"
+		return cacheAttestation{}, "its recorded binary_sha256 is not the one " + record + " attests, so the cache changed after it was authenticated"
 	}
-	return ""
+	return att, ""
 }
 
 // RefreshPathEntryDigest re-records the provenance hash for the owned PATH

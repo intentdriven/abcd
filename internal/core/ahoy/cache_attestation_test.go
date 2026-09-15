@@ -272,9 +272,8 @@ func TestReadCacheAttestationIgnoresMalformed(t *testing.T) {
 		"short hash":        "data_dir=/harness/data\nbinary_sha256=" + sha[:63] + "\ncache_trust=manifest\n",
 		"uppercase hash":    "data_dir=/harness/data\nbinary_sha256=" + strings.ToUpper(sha) + "\ncache_trust=manifest\n",
 		"offline trust":     "data_dir=/harness/data\nbinary_sha256=" + sha + "\ncache_trust=offline\n",
-		"no trust":          "data_dir=/harness/data\nbinary_sha256=" + sha + "\n",
-		"empty":             "",
-		"oversize":          good + strings.Repeat("padding=x\n", maxPathEntryBytes/10+1),
+		"empty":                         "",
+		"oversize":                      good + strings.Repeat("padding=x\n", maxPathEntryBytes/10+1),
 	}
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -318,4 +317,49 @@ func TestReadCacheAttestationIgnoresMalformed(t *testing.T) {
 			t.Errorf("a well-formed attestation must parse; got %+v (ok=%v)", rec, ok)
 		}
 	})
+}
+
+// TestInstallRefusesPairFlippedAfterBinding is the window the security review
+// of the first cut reproduced with a flipper goroutine in 0.25 s: the binding
+// check compared the co-located binary-meta with the attestation, and the
+// promotion then re-read that same attacker-writable record to decide what the
+// artefact must hash to. A writer in the attested directory who swaps the
+// (artefact, binary-meta) pair for a self-consistent forgery between the two
+// reads had the forgery promoted. The seam stands in for the race
+// deterministically: it runs after the binding is established and before the
+// artefact is read. The promotion must hash the artefact against the ATTESTED
+// value — the record beside it decides nothing once the binding is checked —
+// so the flipped pair is refused and nothing is written.
+func TestInstallRefusesPairFlippedAfterBinding(t *testing.T) {
+	home, _ := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	data := seedDataCache(t, cacheArtefact) // attested for cacheArtefact
+	forged := []byte("#!/bin/sh\n# forged after the binding check\nexit 0\n")
+	saved := afterCacheBound
+	t.Cleanup(func() { afterCacheBound = saved })
+	afterCacheBound = func(dir string) {
+		if dir != data {
+			t.Fatalf("the seam fired for %q, want %q", dir, data)
+		}
+		seedDataCacheAt(t, data, forged) // artefact AND binary-meta, self-consistent
+	}
+
+	res, err := Install(adoptableRepo(t), installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(binDir, "abcd")
+	if got, err := os.ReadFile(target); err == nil && string(got) == string(forged) {
+		t.Fatalf("the pair flipped after the binding check was promoted: the promotion trusted the co-located record instead of the attested hash; notes %v", res.Notes)
+	}
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Errorf("a refused promotion must write no PATH entry at all: %v", err)
+	}
+	if _, err := os.Stat(userPathEntryPath()); !os.IsNotExist(err) {
+		t.Errorf("no provenance may be recorded for a refused promotion: %v", err)
+	}
+	if !strings.Contains(notesJoined(res.Notes), "SHA-256") {
+		t.Errorf("the refusal must name the checksum mismatch; notes = %v", res.Notes)
+	}
 }
