@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
 // nativeSources returns the Tier-2 adapters: brief sections derivable from an
@@ -132,8 +134,10 @@ const (
 )
 
 // nativeIssueStates are the capture-ledger subdirectories, in a fixed order so
-// the count citation is deterministic.
-var nativeIssueStates = []string{"open", "resolved", "wontfix"}
+// the count citation is deterministic. It is issueschema.StatusDirs, the ledger's
+// ONE status list: a lifeboat that counted a set of folders the ledger no longer
+// keeps (or missed one it gained) would cite a number no surface agrees with.
+var nativeIssueStates = issueschema.StatusDirs
 
 // nativeCountRecords counts the entries directly under dir whose name has the
 // given prefix and a .md suffix (e.g. "iss-" issues, "itd-" intents).

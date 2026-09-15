@@ -140,8 +140,8 @@ func destinationGate(dest, source string) error {
 	// to sit outside of. Resolving the deepest existing prefix (dest may not exist
 	// yet) and the source closes that bypass without refusing ordinary symlinked
 	// ancestors like macOS's /tmp -> /private/tmp.
-	destReal := realExistingPath(dest)
-	sourceReal := realExistingPath(source)
+	destReal := fsutil.RealExistingPath(dest)
+	sourceReal := fsutil.RealExistingPath(source)
 
 	for _, seg := range strings.Split(filepath.ToSlash(destReal), "/") {
 		if seg == ".git" {
@@ -174,34 +174,6 @@ func destinationGate(dest, source string) error {
 		return fmt.Errorf("pack: destination is not empty and carries no parseable %s; refusing to overwrite a directory abcd did not produce", ProvenanceName)
 	}
 	return nil
-}
-
-// realExistingPath resolves symlinks in the deepest existing prefix of p and
-// rejoins the non-existent remainder. A destination that does not exist yet
-// still resolves through its real parent, so the gate compares real locations
-// rather than lexical strings a symlinked ancestor could disguise.
-func realExistingPath(p string) string {
-	p = filepath.Clean(p)
-	rest := ""
-	for {
-		if resolved, err := filepath.EvalSymlinks(p); err == nil {
-			if rest == "" {
-				return resolved
-			}
-			return filepath.Join(resolved, rest)
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			// Reached the root with nothing resolvable; fall back to the lexical
-			// path (cleaned) rather than inventing one.
-			if rest == "" {
-				return p
-			}
-			return filepath.Join(p, rest)
-		}
-		rest = filepath.Join(filepath.Base(p), rest)
-		p = parent
-	}
 }
 
 // pathOverlaps reports whether a and b are the same directory or one contains

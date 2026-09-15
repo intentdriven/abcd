@@ -46,7 +46,13 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"allow, warn, or block. A blocker exits 1 and names the safe successor; a\n" +
 			"warn exits 0 with the warning rendered; an allow exits 0. A guard that\n" +
 			"cannot be evaluated at all (an unparsable command line, a malformed\n" +
-			"registry) exits 2, so a caller never reads silence as clearance.\n\n" +
+			"registry) exits 2, so a caller never reads silence as clearance. Unparsable\n" +
+			"means an unterminated quote in COMMAND text, which no shell runs either;\n" +
+			"an unterminated quote inside a here-document body is document text and is\n" +
+			"not one. Grammar a shell does run gets a verdict instead: a trailing\n" +
+			"backslash is read as bash reads it, and a here-document whose delimiter\n" +
+			"line never comes is a block, because the rest of the input may be commands\n" +
+			"the guard did not check.\n\n" +
 			"Matching is shell-token-aware and applies in command position only, so a\n" +
 			"hazard named inside a quoted argument never fires.\n\n" +
 			"The guard is a MISTAKE FILTER, not a security boundary. It catches a hazard\n" +
@@ -90,7 +96,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
-			reg, err := loadGuardRegistry()
+			reg, err := loadGuardRegistry(cmd.ErrOrStderr())
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
@@ -155,7 +161,11 @@ func newGuardHookCommand() *cobra.Command {
 			"tool call that is not a shell command, an unparsable command line, a\n" +
 			"registry that will not load — allows the command and warns loudly on\n" +
 			"stderr. A guard that cannot answer never stops a session, and is never\n" +
-			"silently absent.",
+			"silently absent. Unparsable means an unterminated quote in COMMAND text,\n" +
+			"which no shell runs either — a quote inside a here-document body is\n" +
+			"document text and is not one. A trailing backslash and a here-document with\n" +
+			"no delimiter line are grammar a shell does run, so each gets a verdict —\n" +
+			"the backslash is read as bash reads it, the unterminated document blocks.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// failOpen is the single exit for every non-decision path, so the
@@ -203,7 +213,7 @@ func newGuardHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
-			reg, err := guard.Load(rulesRoot(cwd))
+			reg, err := guard.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
 			// A repo-layer error is fail-SAFE, not fail-open: guard.Load returns the
 			// bundled defaults alongside the error, so the built-in hazards stay
 			// armed even though the repo's own overrides were dropped. We check
@@ -310,14 +320,15 @@ func guardCandidate(cmd *cobra.Command, flag string) (string, error) {
 }
 
 // loadGuardRegistry resolves the repo root the same way the modular-rules loader
-// does — the nearest ancestor holding a .abcd directory — so `.abcd/guard.json`
-// is honoured from any nested working directory, kill switch included.
-func loadGuardRegistry() (guard.Registry, error) {
+// does — the nearest .abcd directory inside the git working tree, never one
+// planted above it — so `.abcd/guard.json` is honoured from any nested working
+// directory, kill switch included, and only the repo's own file can throw it.
+func loadGuardRegistry(w io.Writer) (guard.Registry, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return guard.Registry{}, err
 	}
-	return guard.Load(rulesRoot(cwd))
+	return guard.Load(rulesRoot(cwd, w))
 }
 
 // guardHealthLine renders ahoy's one-line guard-health verdict. A guard that

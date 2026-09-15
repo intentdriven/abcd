@@ -224,3 +224,31 @@ func TestTrackedFilesRepoShapedButUnanswerable(t *testing.T) {
 		t.Error("RepoShaped(subdirectory of a repo-shaped tree) = false, want true")
 	}
 }
+
+// TestRootCommit pins the identity probe: the first root commit of a
+// repository with history, and "" — never an error — outside one or before the
+// first commit.
+func TestRootCommit(t *testing.T) {
+	repo := newRepo(t, "")
+	if got := gitutil.RootCommit(repo); got != "" {
+		t.Errorf("RootCommit(repo with no commits) = %q, want empty", got)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, repo)
+	want, err := runGit(t, repo, "rev-list", "--max-parents=0", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := gitutil.RootCommit(repo); got != strings.TrimSpace(want) {
+		t.Errorf("RootCommit = %q, want %q", got, strings.TrimSpace(want))
+	}
+	if got := gitutil.RootCommit(t.TempDir()); got != "" {
+		t.Errorf("RootCommit(non-repo) = %q, want empty", got)
+	}
+}

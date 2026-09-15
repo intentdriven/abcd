@@ -90,25 +90,41 @@ type ResolvedBy struct {
 
 // Issue is a fully-read ledger entry (frontmatter + provenance + body).
 type Issue struct {
-	SchemaVersion  int         `json:"schema_version"`
-	ID             string      `json:"id"`
-	Slug           string      `json:"slug"`
-	Severity       Severity    `json:"severity"`
-	Category       Category    `json:"category"`
-	Source         Source      `json:"source"`
-	FoundDuring    string      `json:"found_during"`
-	FoundAt        string      `json:"found_at,omitempty"`
-	RelatedIntents []string    `json:"related_intents,omitempty"`
-	RelatedSpecs   []string    `json:"related_specs,omitempty"`
-	RelatedIssues  []string    `json:"related_issues,omitempty"`
-	BlockedBy      []string    `json:"blocked_by,omitempty"` // iss-N dependency edges
-	PromotedTo     string      `json:"promoted_to,omitempty"`
-	Resolution     string      `json:"resolution,omitempty"`
-	WontfixReason  string      `json:"wontfix_reason,omitempty"`
-	ResolvedBy     *ResolvedBy `json:"resolved_by,omitempty"`
-	Status         State       `json:"status"` // derived from folder
-	Path           string      `json:"path"`   // repo-relative locator (iss-81)
-	Body           string      `json:"body"`
+	SchemaVersion int      `json:"schema_version"`
+	ID            string   `json:"id"`
+	Slug          string   `json:"slug"`
+	Severity      Severity `json:"severity"`
+	Category      Category `json:"category"`
+	Source        Source   `json:"source"`
+	FoundDuring   string   `json:"found_during"`
+	FoundAt       string   `json:"found_at,omitempty"`
+	// LapsedAt is the RFC 3339 instant at which a recorded discipline gave way —
+	// the lapse itself, never the write-up (spc-60). Required exactly when
+	// Category is lapse; optional, and rarely meaningful, for every other.
+	LapsedAt       string   `json:"lapsed_at,omitempty"`
+	RelatedIntents []string `json:"related_intents,omitempty"`
+	RelatedSpecs   []string `json:"related_specs,omitempty"`
+	RelatedIssues  []string `json:"related_issues,omitempty"`
+	BlockedBy      []string `json:"blocked_by,omitempty"` // iss-N dependency edges
+	PromotedTo     string   `json:"promoted_to,omitempty"`
+	// Grounds is the record's recorded conjectures, in the order they were
+	// written: one `<token>: <text>` value in the shared core/grounds vocabulary
+	// per grounds-bearing act. Appended by promote, resolve and wontfix; never by
+	// the create path, because an observation being filed is not yet a conjecture
+	// being pursued.
+	//
+	// It is a LIST because recording is append-only. A record promoted and then
+	// resolved carries both conjectures, and the earlier one is precisely what a
+	// later reader checks the outcome against (iss-2608301657354776). The values
+	// live in the body's `## Grounds` section, not in frontmatter: a frontmatter
+	// scalar is set, and setting is what destroyed the first of them.
+	Grounds       []string    `json:"grounds,omitempty"`
+	Resolution    string      `json:"resolution,omitempty"`
+	WontfixReason string      `json:"wontfix_reason,omitempty"`
+	ResolvedBy    *ResolvedBy `json:"resolved_by,omitempty"`
+	Status        State       `json:"status"` // derived from folder
+	Path          string      `json:"path"`   // repo-relative locator (iss-81)
+	Body          string      `json:"body"`
 	// BlockedByOpen is the derived subset of BlockedBy whose targets are still in
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.
@@ -117,19 +133,29 @@ type Issue struct {
 
 // CaptureRequest is the input to Capture (append a new issue).
 type CaptureRequest struct {
-	RepoRoot       string
-	IssuesRoot     string
-	Text           string // markdown body
-	Severity       Severity
-	Category       Category
-	Source         Source
-	Slug           string // caller-supplied; normalised to kebab-case
-	FoundDuring    string // required, non-empty
-	FoundAt        string // optional; "" omits the field
+	RepoRoot    string
+	IssuesRoot  string
+	Text        string // markdown body
+	Severity    Severity
+	Category    Category
+	Source      Source
+	Slug        string // caller-supplied; normalised to kebab-case
+	FoundDuring string // required, non-empty
+	FoundAt     string // optional; "" omits the field
+	// LapsedAt is the RFC 3339 instant the discipline gave way. There is no
+	// default and none may be invented: the wall clock at write-up is exactly the
+	// value the lapse log exists to distinguish itself from (spc-60).
+	LapsedAt       string
 	RelatedIntents []string
 	RelatedSpecs   []string
 	BlockedBy      []string // iss-N dependency edges; each must match ^iss-[0-9]+$
 	ForceID        string   // migrator-only; "" = auto-allocate
+	// ProductionMode is how the issue's text was produced (itd-178): one of the
+	// closed provenance vocabulary, or empty for the vocabulary's default. There
+	// is no free-text form. The record's `origin` has no request member at all —
+	// it is derived from which command ran, and a capture is researcher-authored
+	// by construction.
+	ProductionMode string
 }
 
 // CaptureResult is the outcome of a successful Capture. The timestamp-numeric
@@ -175,6 +201,19 @@ type ResolveRequest struct {
 	ByIntent string // itd-N
 	BySpec   string // spc-N
 	ByCommit string // 7–64 hex chars (64 covers a SHA-256 repo)
+	// Grounds is the REQUIRED conjecture behind the resolution, in the shared
+	// `<token>: <text>` grammar (core/grounds). There is no default and none may
+	// be invented: a route recorded without its reasoning is the evaporation
+	// itd-179 exists to close, and resolve mints the value in the same call, so
+	// it has no corpus to fix and refuses from the start.
+	Grounds string
+	// ProductionMode RESTAMPS the record's production_mode (itd-178). A
+	// resolution note is new text with its own mode, so the key is not frozen at
+	// mint — but an empty value leaves the existing stamp alone rather than
+	// overwriting it with a default, because a transition that declares nothing
+	// has made no claim about how the note was produced. `origin` is never
+	// rewritten: where a record came from does not change when it is resolved.
+	ProductionMode string
 }
 
 // WontfixRequest moves an open issue to wontfix/.
@@ -183,6 +222,16 @@ type WontfixRequest struct {
 	IssuesRoot string
 	ID         string
 	Reason     string
+	// Grounds optionally overrides the text stamped as `declined: <text>`. A
+	// wontfix can never be recorded without grounds — transition already refuses
+	// an empty Reason — so what it lacked was the TYPE, not the text, and the
+	// reason supplies the default. The override exists because the user-facing
+	// reason and the conjecture are not always the same sentence. The token stays
+	// declined: a non-action is what that value names.
+	Grounds string
+	// ProductionMode restamps production_mode on the same terms as
+	// ResolveRequest's: declared restamps, absent leaves the stamp alone.
+	ProductionMode string
 }
 
 // TransitionResult is the outcome of a Resolve or Wontfix. ResolvedBy echoes
@@ -250,6 +299,14 @@ var (
 	ErrAllocatorContention = errors.New("allocator contention")
 	// ErrChecksumMismatch means a concurrent edit occurred during a transition.
 	ErrChecksumMismatch = errors.New("checksum mismatch")
+	// ErrGroundsRefused means the triage's grounds argument was absent, outside
+	// the closed vocabulary, malformed, or below the substance floor. It is one
+	// sentinel for every one of those because they are one thing to a caller —
+	// the argument was not usable and nothing was written — and a surface that
+	// distinguished them by exit code would teach a script that a misspelled
+	// token is a different KIND of failure from a missing one
+	// (iss-2608300930057882).
+	ErrGroundsRefused = errors.New("grounds refused")
 	// ErrInvariantViolation means frontmatter passed the schema but violates a
 	// folder-status cross-field invariant.
 	ErrInvariantViolation = errors.New("invariant violation")
@@ -286,10 +343,35 @@ var (
 	// filename<->frontmatter slug agreement, which stays on the stricter
 	// recordid.SplitRecordFilename (validate.go) because that check EXTRACTS and
 	// compares the slug; detection only needs the ordinal.
-	issFileNumRe  = recordid.FilenameNumRe(issFamily)
-	reAbcdListID  = regexp.MustCompile(`^(itd|fn|iss)-[0-9]+$`)
-	reSortIssID   = regexp.MustCompile(`^iss-([0-9]+)(-|$|\.)`)
-	reScalarKey   = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	statusDirs    = [3]State{StateOpen, StateResolved, StateWontfix}
-	statusDirName = map[State]string{StateOpen: "open", StateResolved: "resolved", StateWontfix: "wontfix"}
+	issFileNumRe = recordid.FilenameNumRe(issFamily)
+	reAbcdListID = regexp.MustCompile(`^(itd|fn|iss)-[0-9]+$`)
+	reSortIssID  = regexp.MustCompile(`^iss-([0-9]+)(-|$|\.)`)
+	reScalarKey  = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	// statusDirs is the ledger's status list projected into State, and
+	// statusDirName its inverse. Both are DERIVED from issueschema.StatusDirs —
+	// the one canonical list the allocator provisions, the readers scan and the
+	// deterministic gates scope to — rather than restated here, so the State
+	// projection and the directory names cannot disagree about what a status is.
+	statusDirs    = stateProjection()
+	statusDirName = dirNameProjection()
 )
+
+// stateProjection renders the canonical status list as States, in the same order.
+func stateProjection() []State {
+	out := make([]State, 0, len(issueschema.StatusDirs))
+	for _, d := range issueschema.StatusDirs {
+		out = append(out, State(d))
+	}
+	return out
+}
+
+// dirNameProjection is stateProjection's inverse: a State back to the directory
+// name it names. A State and its directory are the same string by construction,
+// which is the point — the two spellings cannot drift because there is only one.
+func dirNameProjection() map[State]string {
+	out := make(map[State]string, len(issueschema.StatusDirs))
+	for _, d := range issueschema.StatusDirs {
+		out[State(d)] = d
+	}
+	return out
+}

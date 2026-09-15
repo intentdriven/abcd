@@ -8,11 +8,11 @@
   "verificationResult": "PROMOTE",
   "judgeModel": "claude-opus-4-8",
   "tier": "full",
-  "manifestHash": "sha256:c74d40824c9d39689715b735f894b6bc4ea08c2891c510b34f4c8f1a7742d6f8",
+  "manifestHash": "sha256:790aaec8dbde790dcc20766e29afbf85ce044fd4a31bbd851318fc4e564a6f11",
   "policy": {
     "detector": "iss35-brief-surface-crosscheck",
     "version": "1",
-    "promptHash": "sha256:6b4a388e596e159a04f73417af8c2d08699968dd01031b9c08aeac65596d8064",
+    "promptHash": "sha256:d6c104306721c7f537f03b3e630fba2a88b977d78e204436939dfdcfc1aa8c6d",
     "briefVersion": "…"
   },
   "categories": { "false-claim": 0, "undocumented-surface": 0, "fictional-layout": 0, "criterion-violation": 0, "stale-count": 0 },

@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 const (
@@ -17,64 +19,20 @@ const (
 	intentsBase = ".abcd/development/intents"
 )
 
-func TestNextIDEmptyRepo(t *testing.T) {
-	root := t.TempDir()
-	got, _, err := NextID(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "spc-1" {
-		t.Fatalf("NextID(empty) = %q, want spc-1", got)
-	}
-}
-
-// itd-3 is shipped with spec_id: spc-1 but has no spec-store file. NextID must
-// still skip spc-1 so a freshly minted spec never collides with that reservation.
-func TestNextIDReservedByIntent(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, intentsBase+"/shipped/itd-3-rules-loader.md",
-		"---\nid: itd-3\nslug: rules-loader\nspec_id: spc-1\nkind: standalone\n---\n# ok\n")
-
-	got, _, err := NextID(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "spc-2" {
-		t.Fatalf("NextID = %q, want spc-2 (spc-1 reserved by itd-3)", got)
-	}
-}
-
-func TestNextIDMaxAcrossSpecsAndIntents(t *testing.T) {
-	root := t.TempDir()
-	// A spec-store file at spc-5 (higher than any intent reservation).
-	writeFile(t, root, specsOpen+"/spc-5-existing.md",
-		"---\nid: spc-5\nslug: existing\nintent: itd-9\n---\n# ok\n")
-	// An intent reserving spc-2 via the tolerated spc-N-<slug> form (lower; must
-	// not lower the max). record-lint accepts this shape, so the store must too.
-	writeFile(t, root, intentsBase+"/planned/itd-20-x.md",
-		"---\nid: itd-20\nslug: x\nspec_id: spc-2-thing\nkind: standalone\n---\n# ok\n")
-
-	got, _, err := NextID(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "spc-6" {
-		t.Fatalf("NextID = %q, want spc-6", got)
-	}
-}
-
 func TestCreateRoundTrip(t *testing.T) {
 	root := t.TempDir()
-	sp, _, err := Create(root, "itd-9", "my-feature")
+	sp, err := Create(root, "itd-9", "my-feature", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sp.ID != "spc-1" || sp.Intent != "itd-9" || sp.Status != StatusOpen {
+	if !nativeSpecIDRe.MatchString(sp.ID) || sp.Intent != "itd-9" || sp.Status != StatusOpen {
 		t.Fatalf("Create returned %+v", sp)
 	}
+	if sp.Path != filepath.Join(specsOpen, sp.ID+"-my-feature.md") {
+		t.Fatalf("Create path = %q, want the minted id and the slug under open/", sp.Path)
+	}
 
-	abs := filepath.Join(root, specsOpen, "spc-1-my-feature.md")
-	data, err := os.ReadFile(abs)
+	data, err := os.ReadFile(filepath.Join(root, sp.Path))
 	if err != nil {
 		t.Fatalf("expected spec file on disk: %v", err)
 	}
@@ -87,30 +45,30 @@ func TestCreateRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, ok := store.Lookup("spc-1"); !ok || s.Intent != "itd-9" {
+	if s, ok := store.Lookup(sp.ID); !ok || s.Intent != "itd-9" {
 		t.Fatalf("Load/Lookup after Create = %+v, %v", s, ok)
 	}
-	if s, ok := store.ByIntent("itd-9"); !ok || s.ID != "spc-1" {
+	if s, ok := store.ByIntent("itd-9"); !ok || s.ID != sp.ID {
 		t.Fatalf("Load/ByIntent after Create = %+v, %v", s, ok)
 	}
 }
 
 func TestCreateRejectsBadIntent(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Create(root, "itd-../../etc", "slug"); err == nil {
+	if _, err := Create(root, "itd-../../etc", "slug", ""); err == nil {
 		t.Fatal("Create with traversal intent id must fail")
 	}
-	if _, _, err := Create(root, "spc-1", "slug"); err == nil {
+	if _, err := Create(root, "spc-1", "slug", ""); err == nil {
 		t.Fatal("Create with non-itd intent id must fail")
 	}
 }
 
 func TestCreateRejectsBadSlug(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Create(root, "itd-9", "../../etc"); err == nil {
+	if _, err := Create(root, "itd-9", "../../etc", ""); err == nil {
 		t.Fatal("Create with traversal slug must fail")
 	}
-	if _, _, err := Create(root, "itd-9", "Bad Slug"); err == nil {
+	if _, err := Create(root, "itd-9", "Bad Slug", ""); err == nil {
 		t.Fatal("Create with non-kebab slug must fail")
 	}
 }
@@ -146,11 +104,12 @@ func TestLoadRejectsTraversalID(t *testing.T) {
 
 func TestCloseMovesOpenToClosed(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Create(root, "itd-9", "my-feature"); err != nil {
+	minted, err := Create(root, "itd-9", "my-feature", "")
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	sp, err := Close(root, "spc-1")
+	sp, err := Close(root, minted.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,10 +117,11 @@ func TestCloseMovesOpenToClosed(t *testing.T) {
 		t.Fatalf("Close returned %+v", sp)
 	}
 
-	if _, err := os.Stat(filepath.Join(root, specsOpen, "spc-1-my-feature.md")); !os.IsNotExist(err) {
+	name := minted.ID + "-my-feature.md"
+	if _, err := os.Stat(filepath.Join(root, specsOpen, name)); !os.IsNotExist(err) {
 		t.Fatal("open file should be gone after Close")
 	}
-	if _, err := os.Stat(filepath.Join(root, specsClosed, "spc-1-my-feature.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, specsClosed, name)); err != nil {
 		t.Fatalf("closed file should exist after Close: %v", err)
 	}
 
@@ -170,7 +130,7 @@ func TestCloseMovesOpenToClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s, ok := store.Lookup("spc-1"); !ok || s.Status != StatusClosed {
+	if s, ok := store.Lookup(minted.ID); !ok || s.Status != StatusClosed {
 		t.Fatalf("after Close, Lookup = %+v, %v", s, ok)
 	}
 }
@@ -179,21 +139,23 @@ func TestCloseMovesOpenToClosed(t *testing.T) {
 // clobbering a same-name spec already sitting in closed/.
 func TestCloseRefusesWhenClosedTargetExists(t *testing.T) {
 	root := t.TempDir()
-	if _, _, err := Create(root, "itd-9", "my-feature"); err != nil {
+	minted, err := Create(root, "itd-9", "my-feature", "")
+	if err != nil {
 		t.Fatal(err)
 	}
 	// A same-name spec already occupies closed/.
-	writeFile(t, root, specsClosed+"/spc-1-my-feature.md",
-		"---\nid: spc-1\nslug: my-feature\nintent: itd-9\n---\n# pre-existing\n")
+	name := minted.ID + "-my-feature.md"
+	writeFile(t, root, specsClosed+"/"+name,
+		"---\nid: "+minted.ID+"\nslug: my-feature\nintent: itd-9\n---\n# pre-existing\n")
 
-	if _, err := Close(root, "spc-1"); err == nil {
+	if _, err := Close(root, minted.ID); err == nil {
 		t.Fatal("Close must refuse to overwrite an existing closed target")
 	}
 	// The open file is untouched (still there), the closed one not clobbered.
-	if _, err := os.Stat(filepath.Join(root, specsOpen, "spc-1-my-feature.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, specsOpen, name)); err != nil {
 		t.Fatalf("open file must remain after refusal: %v", err)
 	}
-	body, err := os.ReadFile(filepath.Join(root, specsClosed, "spc-1-my-feature.md"))
+	body, err := os.ReadFile(filepath.Join(root, specsClosed, name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,20 +177,6 @@ func TestCloseAlreadyClosedFails(t *testing.T) {
 		"---\nid: spc-1\nslug: done\nintent: itd-9\n---\n# done\n")
 	if _, err := Close(root, "spc-1"); err == nil {
 		t.Fatal("Close on an already-closed spec must fail")
-	}
-}
-
-// TestNextIDRejectsUnreservableSpecID (iss-68 P5) proves a non-null spec_id with
-// no parseable reservation number ("spc-oops") fails NextID closed rather than
-// being silently dropped from the reservation scan (which could hand out a
-// colliding id). A well-formed "spc-N" / "spc-N-<slug>" is accepted (see
-// TestNextIDMaxAcrossSpecsAndIntents); only a numberless one is rejected.
-func TestNextIDRejectsUnreservableSpecID(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, intentsBase+"/planned/itd-20-x.md",
-		"---\nid: itd-20\nslug: x\nspec_id: spc-oops\nkind: standalone\n---\n# ok\n")
-	if _, _, err := NextID(root); err == nil {
-		t.Fatal("NextID must fail closed on a spec_id with no reservable number, not silently drop it")
 	}
 }
 
@@ -258,10 +206,13 @@ func TestLoadRejectsFifoSpecFile(t *testing.T) {
 	}
 }
 
-// Concurrent Create runs in the same worktree must mint distinct ids. Without a
-// mint lock every goroutine reads the same empty store, observes max=0, and
-// mints spc-1 — the store ends with N specs sharing one id. With the lock the
-// scan+write serializes and ids are spc-1..spc-N.
+// Concurrent Create runs in the same worktree must mint distinct ids, and the
+// lock is what makes that hold when two of them draw the same candidate: the
+// presence check and the write serialize, so the second run sees the first's
+// file and redraws instead of writing a duplicate under a different slug.
+// Live entropy makes that draw rare, so the run below asserts the invariant
+// rather than provoking the clash; the scripted-entropy test in mint_test.go
+// forces it.
 func TestCreateConcurrentMintsDistinctIDs(t *testing.T) {
 	root := t.TempDir()
 
@@ -277,7 +228,7 @@ func TestCreateConcurrentMintsDistinctIDs(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start // release all goroutines together to maximise the collision window
-			sp, _, err := Create(root, "itd-1", fmt.Sprintf("slug-%d", i))
+			sp, err := Create(root, "itd-1", fmt.Sprintf("slug-%d", i), "")
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -300,5 +251,48 @@ func TestCreateConcurrentMintsDistinctIDs(t *testing.T) {
 		if count != 1 {
 			t.Errorf("id %s minted %d times", id, count)
 		}
+	}
+}
+
+// TestSpecCreateStampsProvenance proves the spec store's mint carries the same
+// disclosure pair as every other write path. A spec is minted by a verb a person
+// invoked, so its arrival path is researcher-authored — the value is derived from
+// which command ran, never asked for.
+func TestSpecCreateStampsProvenance(t *testing.T) {
+	root := t.TempDir()
+	sp, err := Create(root, "itd-9", "my-feature", "scribe-transcribed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, sp.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := frontmatter.Fields(strings.Split(string(data), "\n"))
+	if got := fields["origin"].Value; got != "researcher-authored" {
+		t.Errorf("origin = %q, want researcher-authored", got)
+	}
+	if got := fields["production_mode"].Value; got != "scribe-transcribed" {
+		t.Errorf("production_mode = %q, want scribe-transcribed", got)
+	}
+
+	// An unset mode takes the default rather than writing no line: a record
+	// written through a command carries BOTH keys.
+	sp2, err := Create(root, "itd-10", "second-feature", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(filepath.Join(root, sp2.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields = frontmatter.Fields(strings.Split(string(data), "\n"))
+	if got := fields["production_mode"].Value; got != "hand-written" {
+		t.Errorf("defaulted production_mode = %q, want hand-written", got)
+	}
+
+	// An out-of-vocabulary mode is refused before the id is minted.
+	if _, err := Create(root, "itd-11", "third-feature", "typed"); err == nil {
+		t.Error("an out-of-vocabulary production mode must be refused")
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -200,7 +201,7 @@ func runPlanner(lifeboatDir, targetDir string) (plannerResult, error) {
 	// Schema gate: refuse a lifeboat newer than this abcd understands, message
 	// mirroring the graveyard lessons ingest.
 	if prov.SchemaVersion > SchemaVersion {
-		return plannerResult{}, fmt.Errorf("lifeboat schema v%d; this abcd knows up to v%d — upgrade abcd",
+		return plannerResult{}, update.TooNew("lifeboat",
 			prov.SchemaVersion, SchemaVersion)
 	}
 	if err := VerifyManifest(lifeboatAbs); err != nil {

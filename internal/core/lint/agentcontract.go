@@ -167,7 +167,10 @@ func checkAgentTrustContract(repoRoot, dir string, p agentPrompt, severity strin
 
 	declared, ok := p.fields["reads_untrusted_input"]
 	if !ok {
-		return append(out, add("agent prompt declares no 'reads_untrusted_input': the itd-5 trust contract "+
+		// Reported, not returned: the prompt_version check below is owed to
+		// every prompt, declared or not, and checkAgentChangelog relies on it
+		// having run when it treats an empty version as already reported.
+		out = append(out, add("agent prompt declares no 'reads_untrusted_input': the itd-5 trust contract "+
 			"(agents/README.md) is declared, never inferred — an undeclared prompt reads as safe to every reader "+
 			"and to this gate, which is how a prompt that reads attacker-influenceable input ships without a canary. "+
 			"Declare 'reads_untrusted_input: true' (and carry the contract fields) or 'false'"))

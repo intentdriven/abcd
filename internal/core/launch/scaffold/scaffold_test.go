@@ -92,7 +92,7 @@ func itoa(n int) string {
 // build, no semantic gate, and no abcd-specific step — yet still a valid, gated
 // workflow with the rehearsal.
 func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
-	rendered, err := Render(BareSubstitutions("trunk", "1.23"))
+	rendered, err := Render(BareSubstitutions("trunk"))
 	if err != nil {
 		t.Fatalf("render bare profile: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 	// The abcd-specific detectors and steps must be gone.
 	for _, needle := range []string{
 		"record-lint", "docs-currency-reviewer", "iss35-brief-surface-crosscheck",
-		"check-reviews.sh", "make smoke", "make build", "abcd docs lint",
+		"check-reviews.sh", "make smoke", "make build", "make fmt-check", "abcd docs lint",
 		"semantic-release-gate", "Cross-compile the four binaries",
 		"./internal/...",
 	} {
@@ -112,7 +112,8 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 	// The generic build + deterministic gates + rehearsal must be present. The
 	// race leg runs over the whole module, not the abcd-specific internal/ tree.
 	for _, needle := range []string{
-		"go build ./...", "go test -race ./...", "go-version: '1.23'", "gofmt -l .",
+		"go build ./...", "go test -race ./...", "go-version-file: go.mod",
+		`"$goroot/bin/gofmt" -l .`,
 		"workflow_dispatch:", "rehearsal:", "gh release create",
 	} {
 		if !strings.Contains(rel, needle) {
@@ -134,7 +135,7 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 // generic five when no extra gate is configured, so a managed repo's own lockstep
 // check stays green.
 func TestBareRunbookGateListMatchesWorkflow(t *testing.T) {
-	rendered, err := Render(BareSubstitutions("main", "1.25"))
+	rendered, err := Render(BareSubstitutions("main"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +179,7 @@ func TestAbcdRunbookNumbersExtraGates(t *testing.T) {
 // TestGeneratedYAMLIsGithubTokenOnly proves both profiles run on the built-in
 // token alone — no personal access token, no standing secret beyond GITHUB_TOKEN.
 func TestGeneratedYAMLIsGithubTokenOnly(t *testing.T) {
-	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main", "1.25")} {
+	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main")} {
 		rendered, err := Render(subs)
 		if err != nil {
 			t.Fatal(err)
@@ -235,7 +236,7 @@ func isIdent(b byte) bool {
 // workflow_dispatch, holds contents: read only, and contains no publish verb — no
 // Release creation, tag push, or attestation. Both profiles.
 func TestRehearsalPublishesNothing(t *testing.T) {
-	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main", "1.25")} {
+	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main")} {
 		rendered, err := Render(subs)
 		if err != nil {
 			t.Fatal(err)

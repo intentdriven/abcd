@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
@@ -99,13 +100,26 @@ func validateStrict(fm map[string]any) error {
 	}
 
 	// Optional scalar strings.
-	for _, opt := range []string{"found_at", "details", "suggested_fix", "wontfix_reason", "resolution", "promoted_to"} {
+	for _, opt := range []string{"found_at", "lapsed_at", "details", "suggested_fix", "wontfix_reason", "resolution", "promoted_to"} {
 		if v, present := fm[opt]; present {
 			if _, isStr := v.(string); !isStr {
 				return fmt.Errorf("%w: %q must be a string", ErrMalformedFrontmatter, opt)
 			}
 		}
 	}
+	// lapsed_at is optional for every category, lapse included, and an RFC 3339
+	// instant whenever it is present. spc-60 made it REQUIRED on a lapse; that
+	// refusal is parked (iss-2609091009111294) until the rethink of the reading
+	// work settles what a lapse record must carry. The format half is checked
+	// after the type loop above, so a non-string value is reported as the type
+	// error it is, and it reads the ONE shared definition in core/issueschema —
+	// the same one the committed-ledger gate reads.
+	lapsedAt := strings.TrimSpace(asString(fm["lapsed_at"]))
+	if lapsedAt != "" && !issueschema.ValidLapsedAt(lapsedAt) {
+		return fmt.Errorf("%w: lapsed_at %q is not an RFC 3339 instant (want 2026-08-28T00:00:00Z)",
+			ErrMalformedFrontmatter, lapsedAt)
+	}
+
 	if v, present := fm["promoted_to"]; present {
 		if !reItdID.MatchString(v.(string)) {
 			return fmt.Errorf("%w: promoted_to %q does not match ^itd-[0-9]+$", ErrMalformedFrontmatter, v)
@@ -270,7 +284,9 @@ func issueFromFrontmatter(fm map[string]any, status State, path, body string) Is
 		Source:        Source(asString(fm["source"])),
 		FoundDuring:   asString(fm["found_during"]),
 		FoundAt:       asString(fm["found_at"]),
+		LapsedAt:      asString(fm["lapsed_at"]),
 		PromotedTo:    asString(fm["promoted_to"]),
+		Grounds:       groundsEntries(body),
 		Resolution:    asString(fm["resolution"]),
 		WontfixReason: asString(fm["wontfix_reason"]),
 		Status:        status,
@@ -302,4 +318,26 @@ func asStrList(v any) []string {
 		return nil
 	}
 	return l
+}
+
+// groundsEntries reads the record's `## Grounds` section through core/grounds's
+// own reader, so what an ENTRY is has one definition and a bullet one writer
+// appends is a bullet the other finds.
+//
+// It asks ParseSection where the intent half asks ParseSectionAboveFloor: the
+// two families read the same section by the same rules and part company on the
+// FLOOR alone. A wontfix stamps its grounds from a reason whose own contract is
+// merely non-empty, so applying the floor here would drop entries the ledger has
+// always accepted and leave a surface reporting no recorded grounds about a
+// record that visibly carries one.
+func groundsEntries(body string) []string {
+	entries := grounds.ParseSection(body)
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(entries))
+	for _, g := range entries {
+		out = append(out, g.String())
+	}
+	return out
 }

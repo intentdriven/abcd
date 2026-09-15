@@ -292,7 +292,12 @@ func TestBootstrapNewReleaseRefreshesCacheAndPathEntry(t *testing.T) {
 // TestBootstrapNewReleaseLeavesForeignPathFileAlone: the PATH refresh replaces
 // only a file that still matches the provenance hash path-entry records.
 // Anything else at that path is not abcd's to touch — whatever put it there
-// owns it.
+// owns it. And it SAYS so (iss-2609012111160075): the refresh is a promotion
+// out of the cache, itd-132 ac-5 promises every promotion refuses loudly on a
+// mismatch, and a user whose PATH copy quietly stopped being refreshed had no
+// signal until `abcd update` or `ahoy` called it foreign. The note rides the
+// success notice — the one line the SessionStart hook relays — and names the
+// path in tilde form, the way every abcd surface prints a user-scope path.
 func TestBootstrapNewReleaseLeavesForeignPathFileAlone(t *testing.T) {
 	root := bootstrapRoot(t)
 	data := t.TempDir()
@@ -302,7 +307,10 @@ func TestBootstrapNewReleaseLeavesForeignPathFileAlone(t *testing.T) {
 	seedBootstrapCache(t, data, "v9.9.8", old)
 	oldSum := sha256.Sum256(old)
 	home := t.TempDir()
-	pathDir := t.TempDir()
+	pathDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(pathDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	pathCopy := filepath.Join(pathDir, "abcd")
 	if err := os.WriteFile(pathCopy, foreign, 0o755); err != nil {
 		t.Fatal(err)
@@ -318,6 +326,88 @@ func TestBootstrapNewReleaseLeavesForeignPathFileAlone(t *testing.T) {
 	if got, err := os.ReadFile(pathCopy); err != nil || string(got) != string(foreign) {
 		t.Errorf("a file that does not match the recorded provenance hash must never be replaced; got %q (%v)", got, err)
 	}
+	// The record keeps vouching for the bytes it recorded — never for the
+	// foreign ones — so a later owned copy cannot inherit the claim.
+	entryRaw, err := os.ReadFile(homePathEntry(home))
+	if err != nil {
+		t.Fatalf("path-entry must survive a refused refresh: %v", err)
+	}
+	if !strings.Contains(string(entryRaw), "path="+pathCopy+"\n") || !strings.Contains(string(entryRaw), "binary_sha256="+hex.EncodeToString(oldSum[:])+"\n") {
+		t.Errorf("a refused refresh must leave the recorded path and hash exactly as they were; got %q", entryRaw)
+	}
+	assertPathRefreshRefusedLoudly(t, out, home, pathCopy, "no longer matches the provenance")
+}
+
+// assertPathRefreshRefusedLoudly holds the shape every refused PATH refresh
+// shares: the success still leads the one visible line, the note names the
+// copy it left alone in tilde form (never the raw home directory), gives the
+// reason, and points at `ahoy` for the install's health — through the
+// path-qualified binary, because a bare `abcd` is not a name this reader's
+// shell is known to resolve (iss-207).
+func assertPathRefreshRefusedLoudly(t *testing.T, out, home, pathCopy, reason string) {
+	t.Helper()
+	if got := firstLine(out); !strings.HasPrefix(got, "abcd bootstrap: installed") {
+		t.Errorf("the success must still lead the first visible line; first line = %q", got)
+	}
+	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
+		t.Errorf("the notice must stay one line — only the first line of a hook's stderr reaches the transcript; output %q", out)
+	}
+	shown := "~" + strings.TrimPrefix(pathCopy, home)
+	for _, want := range []string{"was NOT refreshed", "(" + shown + ")", reason, "ahoy shows"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refused PATH refresh must say so; want %q in output %q", want, out)
+		}
+	}
+	if strings.Contains(out, pathCopy) {
+		t.Errorf("the note must render the PATH copy in tilde form, never the raw home directory; output %q", out)
+	}
+}
+
+// TestBootstrapNewReleaseReportsAnUnwritablePathRefresh: the replacement copy
+// is written beside the owned copy and re-verified before the rename, and a
+// copy that cannot be written (or does not verify) leaves the old one in place
+// — which must be said, for the same reason the mismatch is: the reader's PATH
+// copy is quietly serving a release older than the one just installed.
+func TestBootstrapNewReleaseReportsAnUnwritablePathRefresh(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions, so an unwritable directory cannot be staged")
+	}
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	old := []byte("#!/bin/sh\n# old release\nexit 0\n")
+	fresh := []byte("#!/bin/sh\n# new release\nexit 0\n")
+	seedBootstrapCache(t, data, "v9.9.8", old)
+	oldSum := sha256.Sum256(old)
+	home := t.TempDir()
+	pathDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(pathDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pathCopy := filepath.Join(pathDir, "abcd")
+	if err := os.WriteFile(pathCopy, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The owned copy matches its record, but nothing can be written beside it.
+	// Registered after TempDir so it runs before the directory is removed.
+	if err := os.Chmod(pathDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(pathDir, 0o755) })
+	entry := "path=" + pathCopy + "\nbinary_sha256=" + hex.EncodeToString(oldSum[:]) + "\n"
+	seedHomePathEntry(t, home, entry)
+	fx := bootstrapServer(t, fresh, bootstrapManifest(fresh))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("the install itself must proceed, got %d (output %q)", code, out)
+	}
+	if got, err := os.ReadFile(pathCopy); err != nil || string(got) != string(old) {
+		t.Errorf("a refresh that cannot stage its copy must leave the owned copy in place; got %q (%v)", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "abcd")); err != nil || string(got) != string(fresh) {
+		t.Errorf("the root must still be provisioned with the new release; got %q (%v)", got, err)
+	}
+	assertPathRefreshRefusedLoudly(t, out, home, pathCopy, "could not be written")
 }
 
 // TestBootstrapNewReleaseSkipsAbsentPathCopy is the sibling overclaim of
@@ -336,7 +426,7 @@ func TestBootstrapNewReleaseSkipsAbsentPathCopy(t *testing.T) {
 	oldSum := sha256.Sum256(old)
 	home := t.TempDir()
 	// The recorded PATH copy does not exist on disk.
-	pathCopy := filepath.Join(t.TempDir(), "abcd")
+	pathCopy := filepath.Join(home, ".local", "bin", "abcd")
 	entry := "path=" + pathCopy + "\nbinary_sha256=" + hex.EncodeToString(oldSum[:]) + "\n"
 	seedHomePathEntry(t, home, entry)
 	fx := bootstrapServer(t, fresh, bootstrapManifest(fresh))
@@ -348,6 +438,10 @@ func TestBootstrapNewReleaseSkipsAbsentPathCopy(t *testing.T) {
 	if _, err := os.Stat(pathCopy); !os.IsNotExist(err) {
 		t.Errorf("bootstrap created a PATH copy at an absent recorded path — ownership it cannot prove: %v", err)
 	}
+	// Not writing there is right; not saying so is the silent no-op
+	// iss-2609012111160075 names: a record that vouches for a copy that is gone
+	// is a state the reader can act on only if told.
+	assertPathRefreshRefusedLoudly(t, out, home, pathCopy, "no longer holds a regular file")
 }
 
 // TestBootstrapCorruptCacheRefusesLoudly is the trust bar at rest: every
@@ -439,6 +533,16 @@ func TestBootstrapAuthenticatesCacheAgainstPublishedManifest(t *testing.T) {
 	if !strings.Contains(out, "verified") {
 		t.Errorf("the notice must name the verification the install rests on; output %q", out)
 	}
+	// A discarded cache is a verification mismatch, and a verification
+	// mismatch is said out loud (iss-2609012111160075): the reader learns that
+	// the artefact in the persistent cache was not the published one — evidence
+	// of tampering or corruption that a silent re-download would erase.
+	if !strings.Contains(out, "was not the one the published release manifest lists") {
+		t.Errorf("the discarded cache must be reported, not silently replaced; output %q", out)
+	}
+	if got := firstLine(out); !strings.HasPrefix(got, "abcd bootstrap: installed") {
+		t.Errorf("the success must still lead the first visible line; first line = %q", got)
+	}
 }
 
 // TestBootstrapDegradesLoudlyWithoutDataDir is AC 7: a harness that exports no
@@ -449,10 +553,19 @@ func TestBootstrapDegradesLoudlyWithoutDataDir(t *testing.T) {
 	root := bootstrapRoot(t)
 	body := []byte("#!/bin/sh\nexit 0\n")
 	fx := bootstrapServer(t, body, bootstrapManifest(body))
+	// A stale stamp from an earlier cache-mode provision of this root would
+	// route a terminal `ahoy install` to a data dir this binary did not come
+	// from; the degraded path leaves no such record behind.
+	if err := os.WriteFile(filepath.Join(root, ".data-dir"), []byte("data_dir="+t.TempDir()+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	out, code := runBootstrap(t, root, fx, "")
 	if code != 0 {
 		t.Fatalf("the degraded per-root fetch must still install, got %d (output %q)", code, out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".data-dir")); !os.IsNotExist(err) {
+		t.Errorf("the degraded path must leave no .data-dir stamp, since no data dir provisioned this root: %v", err)
 	}
 	if got, err := os.ReadFile(filepath.Join(root, "abcd")); err != nil || string(got) != string(body) {
 		t.Errorf("the degraded path must install the verified download; got %q (%v)", got, err)
@@ -539,14 +652,20 @@ func TestBootstrapMigratesVerifiedRootBinaryIntoCache(t *testing.T) {
 	}
 }
 
-// TestBootstrapMigrationIgnoresMismatchedRootBinary: a root binary that does
-// not match its own recorded hash is not evidence of anything — it is ignored,
-// nothing is seeded, and the next fresh root fetches from the release host as
-// spc-21 always did.
-func TestBootstrapMigrationIgnoresMismatchedRootBinary(t *testing.T) {
+// TestBootstrapMigrationRefusesMismatchedRootBinaryLoudly: a root binary that
+// does not match its own recorded hash is not evidence of anything — nothing is
+// seeded, and the next fresh root fetches from the release host as spc-21
+// always did. The seed is a promotion into the trusted location, and itd-132
+// ac-5 promises every promotion re-verifies and refuses LOUDLY on a mismatch;
+// this one refused in silence (iss-2609012111160075), so a root whose binary
+// had been swapped under its record gave no signal at all. The refusal is a
+// notice, not a fault: the session's binary is already in place, so the fast
+// path still exits 0 — but it says what it did not do and why.
+func TestBootstrapMigrationRefusesMismatchedRootBinaryLoudly(t *testing.T) {
 	root := bootstrapRoot(t)
 	data := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "abcd"), []byte("#!/bin/sh\n# replaced\nexit 0\n"), 0o755); err != nil {
+	replaced := []byte("#!/bin/sh\n# replaced\nexit 0\n")
+	if err := os.WriteFile(filepath.Join(root, "abcd"), replaced, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	other := sha256.Sum256([]byte("the bytes that were actually verified"))
@@ -559,6 +678,33 @@ func TestBootstrapMigrationIgnoresMismatchedRootBinary(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(data, "cache", bootstrapAsset())); !os.IsNotExist(err) {
 		t.Errorf("a hash-mismatched root binary must never seed the cache: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "cache", "binary-meta")); !os.IsNotExist(err) {
+		t.Errorf("a refused seed must write no cache provenance record: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "abcd")); err != nil || string(got) != string(replaced) {
+		t.Errorf("the refusal must leave the root binary exactly as it found it; got %q (%v)", got, err)
+	}
+	if n := atomic.LoadInt32(fx.hits); n != 0 {
+		t.Errorf("the refused seed must touch no network, got %d request(s)", n)
+	}
+	if _, err := os.Stat(filepath.Join(data, ".bootstrap.lock")); !os.IsNotExist(err) {
+		t.Error("the refused seed must release the cache lock")
+	}
+	// The notice: what was not done (the cache was not seeded), why (the binary
+	// does not match the checksum its record vouches for), and where the
+	// install's health is shown. One line, on the same stderr channel the
+	// SessionStart hook relays.
+	for _, want := range []string{"abcd bootstrap: the plugin cache was not seeded", "does not match", "ahoy"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refused seed must say so; want %q in output %q", want, out)
+		}
+	}
+	if strings.Contains(out, "\n\n") || strings.Count(strings.TrimSpace(out), "\n") != 0 {
+		t.Errorf("the notice must be one line — only the first line of a hook's stderr reaches the transcript; output %q", out)
+	}
+	if strings.Contains(out, "ahoy install") {
+		t.Errorf("`ahoy install` is not the remedy for a root whose binary was replaced, and a bare `abcd` may not resolve for this reader; output %q", out)
 	}
 }
 
@@ -676,5 +822,92 @@ func TestBootstrapCachePathsStayOutOfMessagesRaw(t *testing.T) {
 	}
 	if strings.ContainsRune(out, 0x1b) {
 		t.Errorf("the refusal must strip control characters from the cache path it echoes; output %q", out)
+	}
+}
+
+// TestBootstrapCacheProvisionRecordsDataDirInRoot is iss-2609012111168716: the
+// success notice tells the reader to run '<plugin-root>/abcd' ahoy install
+// from a terminal, where CLAUDE_PLUGIN_DATA is not exported, so a root
+// provisioned out of the cache records the data dir it came from beside the
+// binary — one data_dir= line in .data-dir — and the terminal verb reaches the
+// verified cache through it. Both cache-mode provisions write it: the cache
+// hit and the download-into-cache.
+func TestBootstrapCacheProvisionRecordsDataDirInRoot(t *testing.T) {
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	fx := bootstrapServer(t, cached, bootstrapManifest(cached))
+
+	hit := bootstrapRoot(t)
+	hitData := t.TempDir()
+	seedBootstrapCache(t, hitData, bootstrapTag, cached)
+	out, code := runBootstrapWithData(t, hit, hitData, fx, "")
+	if code != 0 {
+		t.Fatalf("the cache hit must install, got %d (output %q)", code, out)
+	}
+	if got, err := os.ReadFile(filepath.Join(hit, ".data-dir")); err != nil || string(got) != "data_dir="+hitData+"\n" {
+		t.Errorf("a cache-provisioned root must record the data dir it was provisioned from; got %q (%v) (output %q)", got, err, out)
+	}
+
+	fresh := bootstrapRoot(t)
+	freshData := t.TempDir()
+	out, code = runBootstrapWithData(t, fresh, freshData, fx, "")
+	if code != 0 {
+		t.Fatalf("the download-into-cache provision must install, got %d (output %q)", code, out)
+	}
+	if got, err := os.ReadFile(filepath.Join(fresh, ".data-dir")); err != nil || string(got) != "data_dir="+freshData+"\n" {
+		t.Errorf("a root provisioned from a freshly filled cache must record the data dir too; got %q (%v) (output %q)", got, err, out)
+	}
+}
+
+// TestBootstrapRefreshesAOneLinerInstalledPathCopy is the verification half of
+// iss-2609012111159045, which reported that a PATH copy installed by the README
+// one-liner "writes no ~/.abcd/path-entry provenance record", so nothing ever
+// refreshes it. The one-liners now write that record — two lines, `path=` and
+// `binary_sha256=`, and deliberately NO `plugin_root` — and this pins the
+// consequence the record doubted: a copy installed that way is refreshed by the
+// very block that refreshes an `ahoy install` copy, and gains the plugin_root
+// stamp in the process. The fixture's record shape is read off the SHIPPED
+// one-liner rather than hand-asserted, so changing the one-liner's output
+// breaks this test instead of silently retiring the route again.
+func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
+	const oneLinerRecord = `printf "path=%s\nbinary_sha256=%s\n"`
+	for _, page := range []string{"README.md", "docs/how-to/install.md"} {
+		if !strings.Contains(mustReadFile(t, bootstrapRepoFile(t, page)), oneLinerRecord) {
+			t.Fatalf("%s must install with a one-liner that writes the two-line path-entry record (%s); the refresh route is gated on it", page, oneLinerRecord)
+		}
+	}
+
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	old := []byte("#!/bin/sh\n# old release\nexit 0\n")
+	fresh := []byte("#!/bin/sh\n# new release\nexit 0\n")
+	seedBootstrapCache(t, data, "v9.9.8", old)
+	oldSum := sha256.Sum256(old)
+	home := t.TempDir()
+	pathDir := t.TempDir()
+	pathCopy := filepath.Join(pathDir, "abcd")
+	if err := os.WriteFile(pathCopy, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Exactly what the one-liner writes: no plugin_root line at all.
+	seedHomePathEntry(t, home, "path="+pathCopy+"\nbinary_sha256="+hex.EncodeToString(oldSum[:])+"\n")
+	fx := bootstrapServer(t, fresh, bootstrapManifest(fresh))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("a new release must install, got %d (output %q)", code, out)
+	}
+	if got, err := os.ReadFile(pathCopy); err != nil || string(got) != string(fresh) {
+		t.Fatalf("a one-liner-installed PATH copy must be refreshed to the new release; got %q (%v)", got, err)
+	}
+	if !strings.Contains(out, "was refreshed") {
+		t.Errorf("the refresh must say so on the notice: %q", out)
+	}
+	entryRaw := mustReadFile(t, homePathEntry(home))
+	freshSum := sha256.Sum256(fresh)
+	if !strings.Contains(entryRaw, hex.EncodeToString(freshSum[:])) {
+		t.Errorf("path-entry must record the refreshed hash; got %q", entryRaw)
+	}
+	if !strings.Contains(entryRaw, "plugin_root="+root+"\n") {
+		t.Errorf("the refresh must stamp the live plugin root onto a record that carried none; got %q", entryRaw)
 	}
 }

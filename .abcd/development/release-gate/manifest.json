@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "detector": "iss35-brief-surface-crosscheck",
-  "_comment": "Pinned input manifest for the iss-35 brief<->surface cross-check (iss-122). This is the reproducibility anchor: two honest runs of the same tier mean the same thing because the doc list, the directions, the checker count, and the prompt are fixed here rather than chosen per run. A receipt echoes this file's sha256 as manifestHash; receipt_gate refuses a receipt whose manifestHash does not match this file's actual hash. Compute the hash with `printf 'sha256:'; shasum -a 256 .abcd/development/release-gate/manifest.json | cut -d' ' -f1`.",
+  "_comment": "Pinned input manifest for the iss-35 brief<->surface cross-check (iss-122). This is the reproducibility anchor: two honest runs of the same tier mean the same thing because the doc list, the directions, the checker count, and the prompt are fixed here rather than chosen per run. A receipt echoes this file's sha256 as manifestHash; receipt_gate refuses a receipt whose manifestHash does not match this file's actual hash. checkerCount is briefDocs plus surfaces, and promptHash is sha256 over context, directionA and directionB joined by blank lines; TestReleaseGateManifestIsCurrent holds both to that, and holds the pinned rosters and the brief-doc list to the tree. Compute the hash with `printf 'sha256:'; shasum -a 256 .abcd/development/release-gate/manifest.json | cut -d' ' -f1`.",
   "tiers": {
     "full": "both directions over the full brief-doc list; required for a feature (additive) or breaking release",
     "shallow": "Direction B only (surface->brief); sufficient for a patch (fix/internal) release"
@@ -41,7 +41,16 @@
     ".abcd/development/brief/04-surfaces/20-banlist.md",
     ".abcd/development/brief/04-surfaces/21-update.md",
     ".abcd/development/brief/04-surfaces/22-site.md",
-    ".abcd/development/brief/05-internals/08-skills.md"
+    ".abcd/development/brief/04-surfaces/23-reading.md",
+    ".abcd/development/brief/04-surfaces/24-decide.md",
+    ".abcd/development/brief/04-surfaces/README.md",
+    ".abcd/development/brief/02-constraints/04-naming.md",
+    ".abcd/development/brief/05-internals/01-agents.md",
+    ".abcd/development/brief/05-internals/03-configuration.md",
+    ".abcd/development/brief/05-internals/05-prompt-quality.md",
+    ".abcd/development/brief/05-internals/08-skills.md",
+    ".abcd/development/brief/06-delivery/01-build-sequence.md",
+    ".abcd/development/brief/06-delivery/02-verification-matrix.md"
   ],
   "surfaces": [
     {
@@ -70,10 +79,10 @@
       "probe": "list skills/ (abcd ships zero skills; the directory is empty or absent)"
     }
   ],
-  "checkerCount": 28,
-  "promptHash": "sha256:6b4a388e596e159a04f73417af8c2d08699968dd01031b9c08aeac65596d8064",
+  "checkerCount": 37,
+  "promptHash": "sha256:5b3df0f6bf3c3b624682de7da097fee1c53aef09ef04ea7c419963cc9f7ccd8b",
   "prompt": {
-    "context": "Repo root: the current working directory — use repo-relative paths\nthroughout, never absolute local paths. Ground truth is the SHIPPED surface,\nverified empirically: build the binary (make build produces bin/abcd-<goos>-<arch>)\nand run it (`abcd --help` and `abcd <verb> --help`), and list commands/\nand skills/. abcd currently ships ZERO skills — the whole /abcd: surface is\ncommands under commands/ (ahoy, capture, consult, ingest, prepare-this-repo,\ndocs, history, launch, memory, version); skills/ is empty or absent. The brief's\nsurface chapters are .abcd/development/brief/04-surfaces/*.md and\n05-internals/08-skills.md. Report DISCREPANCIES ONLY — where record and reality\ndisagree, or one side is missing. A brief row explicitly marked staged (its\nStatus column is \"staged\") / probe-only / later-phase is NOT a discrepancy; an\nunmarked claim about a surface that does not exist IS. Do not fix anything.",
+    "context": "Repo root: the current working directory — use repo-relative paths\nthroughout, never absolute local paths. Ground truth is the SHIPPED surface,\nverified empirically: build the binary (make build produces bin/abcd-<goos>-<arch>)\nand run it (`abcd --help` and `abcd <verb> --help`), and list commands/, agents/\nand skills/. abcd currently ships ZERO skills — the whole /abcd: surface is\ncommands under commands/ (abcd, ahoy, banlist, capture, consult, decide, disembark, docs, embark, guard,\nhistory, ideate, identity, ingest, intent, launch, lint, memory, mode,\nprepare-this-repo, reading, site, update, version)\nand agent prompts under agents/ (cold-reading-comparative, cold-reading-detection, cold-reading-entailment,\ncold-reading-widening, docs-currency-reviewer, graveyard-interpreter,\nintent-auditor, lifeboat-reviewer, press-release-composer,\nprinciple-distiller, release-changelog-composer, ruthless-reviewer, scribe,\nsecurity-reviewer, sota-researcher);\nskills/ is empty or absent. The brief chapters that carry surface claims are\npinned in this manifest's briefDocs: .abcd/development/brief/04-surfaces/*.md\n(the index README included) and the 02-constraints, 05-internals and 06-delivery\nchapters that count or enumerate verbs, sub-verbs, agents, hooks and the plugin\ntree. That list says where to LOOK, not what may be REPORTED: a surface claim\nin any other brief chapter is in scope, and a real surface whose only\ndocumented home lies outside the pinned list is reported with that location.\nReport DISCREPANCIES ONLY — where record and reality disagree, or one side is\nmissing. A brief row explicitly marked staged (its Status column is \"staged\")\n/ probe-only / later-phase is NOT a discrepancy; an unmarked claim about a\nsurface that does not exist IS. Do not fix anything.",
     "directionA": "Direction A. Read ${doc} fully. Extract every checkable claim\nabout the shipped surface (verbs, sub-verbs, flags, skill names, counts,\nfile layouts, \"abcd ships N ...\" statements) and verify each against\nreality. Return item=\"${doc}\" and the discrepancy list.",
     "directionB": "Direction B. The real surface \"${s.name}\" (${s.kind}) exists:\ninspect it (${s.probe}). Search the brief's surface chapters for its\ndocumented home (grep .abcd/development/brief/). If no brief row documents\nit — or the brief documents it under a wrong name/shape — that is a\ndiscrepancy. Return item=\"${s.name}\" and the discrepancy list (empty if\nproperly documented)."
   }

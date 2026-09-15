@@ -26,7 +26,11 @@ ADRs are *not* used for:
 
 ## ADR IDs
 
-ADR IDs follow the pattern `adr-N` (unpadded, mirrors `itd-N` / `rfc-N`) as the prose handle. Filenames are the zero-padded four-digit sequential form `NNNN-<slug>.md` (`adr-7` lives in `0007-<slug>.md`), a stable cross-reference handle per [ADR-30](0030-record-information-architecture.md).
+ADR IDs follow the pattern `adr-N` (unpadded, mirrors `itd-N` / `rfc-N`) as the prose handle, and the filename is `<N>-<slug>.md` — the number the handle carries, then the slug ([ADR-30](0030-record-information-architecture.md)).
+
+**An ADR is minted by the binary, not numbered by hand:** `abcd decide "<title>"` draws `adr-<yymmddHHMMSS><rrrr>` through the same record-id seam captures, intents and specs mint through ([ADR-45](0045-record-ids-are-timestamp-numeric-and-capture-stable.md), and the ruling of 2026-09-01 in [`.abcd/work/DECISIONS.md`](../../../work/DECISIONS.md) that this is the family ADR-45's rollout note 3 deferred). The mint reads no maximum anywhere, which is the property being bought: a hand-allocated ordinal is read off the directory, so two branches deciding on the same day allocate the same number — `0055` and `0056` were each minted twice, for different decisions, on the day the ruling was taken.
+
+**`0001`–`0058` keep their IDs and their filenames.** Nothing is renumbered. Those records carry the zero-padded four-digit ordinal (`adr-7` lives in `0007-<slug>.md`); a minted record carries the sixteen-digit stamp (`adr-2609021016286571` lives in `2609021016286571-<slug>.md`). Every reader of an ADR ID admits both vintages through one derivation — the citation resolver, the `abcd <record-id>` dispatch, the `record_schema` and citation-currency gates, the website's decisions index, and the lifeboat packer. Every ordinal is shorter and numerically smaller than every stamp, so the hand-numbered records sort first in both the directory listing and the derived index order.
 
 IDs are capture-stable. Once assigned, an ADR's ID never changes — superseding ADRs use new IDs and link backwards.
 
@@ -47,7 +51,7 @@ Transitions are deliberate. Accepted ADRs are retained in the record. A supersed
 
 ## Format
 
-Every ADR has frontmatter (machine-readable) plus a Markdown body following this structure:
+`abcd decide "<title>"` writes this shape — the frontmatter, the H1, and the four sections, each carrying the question it answers. Every ADR has frontmatter (machine-readable) plus a Markdown body following this structure:
 
 ```markdown
 ---
@@ -91,9 +95,9 @@ What's now easier; what's now harder; what new obligations the decision creates
 
 | File | Frontmatter field |
 |---|---|
-| `adrs/NNNN-<slug>.md` | `related_intents: [itd-N, ...]` (intents whose framework this ADR justifies) |
-| `adrs/NNNN-<slug>.md` | `related_rfcs: [rfc-N, ...]` (RFCs that informed this decision) |
-| `adrs/NNNN-<slug>.md` | `supersedes: <handle>` / `superseded_by: <handle>` (chain) — **both directions are required**: if A declares `superseded_by: B`, B declares `supersedes: A`. A supersession may cross stores (an ADR that redecides the question an intent rested on retires that intent), so a handle here is `adr-N` or `itd-N`. `record_schema` enforces the pair. |
+| `adrs/<N>-<slug>.md` | `related_intents: [itd-N, ...]` (intents whose framework this ADR justifies) |
+| `adrs/<N>-<slug>.md` | `related_rfcs: [rfc-N, ...]` (RFCs that informed this decision) |
+| `adrs/<N>-<slug>.md` | `supersedes: <handle>` / `superseded_by: <handle>` (chain) — **both directions are required**: if A declares `superseded_by: B`, B declares `supersedes: A`. A supersession may cross stores (an ADR that redecides the question an intent rested on retires that intent), so a handle here is `adr-N` or `itd-N`. `record_schema` enforces the pair. |
 | `intents/{drafts,planned,shipped,disciplines}/itd-N-<slug>.md` | `related_adrs: [adr-N, ...]` (when an intent references an ADR) |
 | `rfcs/rfc-N-<slug>.md` | `related_adrs: [adr-N, ...]` (when an RFC references an ADR or its resolution becomes one) |
 
@@ -103,9 +107,9 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 
 ## Index
 
-> **Index maintenance:** allocating the next `adr-N` and materialising the ADR
-> file is race-safe, but appending the row to this index table is a manual edit;
-> add the row by hand when an ADR is captured.
+> **Index maintenance:** `abcd decide` mints the ID and materialises the ADR
+> file, but appending the row to this index table is a manual edit; add the row
+> by hand when an ADR is captured.
 
 | ID | Title | Status | Date |
 |---|---|---|---|
@@ -129,7 +133,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-26](0026-native-spec-layer-ccpm-backend.md) | A native minimal spec layer with the companion harness `ccpm` as the primary deeper backend | accepted | 2026-07-06 |
 | [adr-27](0027-autonomous-run-pluggable-seam.md) | The autonomous run is a pluggable seam, not a Ralph port (supersedes adr-16) | accepted | 2026-07-06 |
 | [adr-28](0028-single-repo-curated-release.md) | One repository, a curated release artifact — no dev→public mirror (supersedes adr-18) | accepted | 2026-07-06 |
-| [adr-29](0029-native-transcript-corpus.md) | A native local redacted transcript corpus | accepted | 2026-07-06 |
+| [adr-29](0029-native-transcript-corpus.md) | A native local redacted transcript corpus (superseded by adr-2609090717039680, which relocates the store and makes it create itself) | superseded | 2026-07-06 |
 | [adr-30](0030-record-information-architecture.md) | Design-record information architecture — flat artefact-type folders | accepted | 2026-07-06 |
 | [adr-31](0031-derived-versioning-from-intents.md) | The release version is derived from the intents in it, never authored (extends adr-19, adr-20) | accepted | 2026-07-07 |
 | [adr-32](0032-issue-ledger-is-working-tier-data.md) | The issue ledger is working-tier data, not authored record — move to `.abcd/work/issues/`, drop git-inferable timestamps, derive priority (supersedes adr-12) | accepted | 2026-07-08 |
@@ -153,3 +157,8 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-50](0050-framing-traces-never-enter-the-record.md) | Framing traces never enter the record, and automated reviewers never read them | accepted | 2026-08-22 |
 | [adr-51](0051-intents-declare-mechanism-and-scope-conditions.md) | An intent can declare its mechanism claim and its scope conditions — optional sections, enforcement deferred | accepted | 2026-08-22 |
 | [adr-52](0052-the-semantic-gate-sits-on-the-wrong-side-of-the-tag.md) | The semantic release gate runs after tagging, so a refusal consumes the version rather than blocking it — problem and options recorded, no decision | proposed | 2026-08-23 |
+| [adr-55](0055-the-construal-stands-in-the-record-its-history-does-not.md) | The construal stands in the record; its history does not — refines adr-50 | accepted | 2026-08-28 |
+| [adr-2609090717039680](2609090717039680-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md) | The transcript corpus is a sibling store that creates itself, and the per-repo location is an opt-in pull (supersedes adr-29; superseded by adr-2609091248201071, which names the canonical directory primitive the store calls) | superseded | 2026-09-09 |
+| [adr-2609091014087993](2609091014087993-a-tool-never-creates-directories-in-user-owned-project-space.md) | A tool never creates directories in user-owned project space; agent and session scratch is machine-scoped (superseded by adr-2609091248200336, which states the split: the store's location binds now, its verbs bind when the store ships) | superseded | 2026-09-09 |
+| [adr-2609091248200336](2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md) | A tool never creates directories in user-owned project space; the store's location binds now and its verbs bind when the store ships (supersedes adr-2609091014087993) | accepted | 2026-09-09 |
+| [adr-2609091248201071](2609091248201071-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md) | The transcript corpus is a sibling store that creates itself through the canonical directory primitive (supersedes adr-2609090717039680) | accepted | 2026-09-09 |

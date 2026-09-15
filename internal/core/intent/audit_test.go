@@ -22,9 +22,9 @@ func validVerdict(receiptID string) string {
 		// verdicts and their markers are format-frozen across the spc-28 rename,
 		// so this fixture doubles as the stays-valid assertion.
 		"verifier": map[string]any{"id": "intent-fidelity-reviewer", "version": "claude-opus-4-8"},
-		"policy":   map[string]any{"rubric_hash": "sha256:aa", "prompt_hash": "sha256:bb"},
+		"policy":   map[string]any{"rubric_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "prompt_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
 		"input_attestations": []any{
-			map[string]any{"kind": "diff", "ref": "main..auto/x", "digest": "sha256:cc"},
+			map[string]any{"kind": "diff", "ref": "main..auto/x", "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
 		},
 		"criteria": []any{
 			map[string]any{
@@ -65,7 +65,7 @@ func shipOne(t *testing.T, root string) string {
 	t.Helper()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestReconcileEmitDeterministicReceipt(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	// Re-run reconcile (idempotent): same receipt, single OWED marker.
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,10 +153,10 @@ func TestIngestHappyPath(t *testing.T) {
 		t.Fatalf("gap-audit honoured claim not rendered:\n%s", s)
 	}
 	// The pinned provenance (policy hashes + input-attestation digest) is rendered.
-	if !strings.Contains(s, "Provenance:") || !strings.Contains(s, "sha256:aa") {
+	if !strings.Contains(s, "Provenance:") || !strings.Contains(s, "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
 		t.Fatalf("provenance line (verifier + rubric_hash) not rendered:\n%s", s)
 	}
-	if !strings.Contains(s, "sha256:cc") {
+	if !strings.Contains(s, "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc") {
 		t.Fatalf("input-attestation digest not rendered:\n%s", s)
 	}
 }
@@ -321,10 +321,10 @@ func TestIngestNeutralisesForgedMarker(t *testing.T) {
 func TestIngestPartialCriteriaDeadLetters(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
-		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n"+
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n"+
 			"# alpha\n\n## Acceptance Criteria\n\n- one\n- two\n- three\n\n## Audit Notes\n")
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestIngestPartialCriteriaDeadLetters(t *testing.T) {
 func TestIngestMissingPolicyHashDeadLetters(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
-	payload := strings.Replace(validVerdict(rcp), `"rubric_hash": "sha256:aa"`, `"rubric_hash": ""`, 1)
+	payload := strings.Replace(validVerdict(rcp), `"rubric_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`, `"rubric_hash": ""`, 1)
 	vp := writeVerdict(t, root, payload)
 
 	r, err := IngestVerdict(root, vp)
@@ -416,11 +416,13 @@ func TestFullReviewCycle(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 
-	pr, err := Plan(root, "itd-10")
+	pr, err := Plan(root, "itd-10", "")
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	rr, err := Reconcile(root, pr.Spec.ID)
+	// The seeded draft declares no impact, so the close supplies the judgement —
+	// the drafts -> shipped path a real intent takes when the seed deferred it.
+	rr, err := Reconcile(root, pr.Spec.ID, "fix")
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -517,5 +519,54 @@ func TestReEmitAuditToleratesSpecIDSpelling(t *testing.T) {
 	}
 	if res.ReceiptID == "" || res.Status != "owed" {
 		t.Fatalf("ReEmitAudit result = %+v, want an owed receipt", res)
+	}
+}
+
+// TestIngestNeutralisesLinkSyntax (iss-2608311504353427) proves a verdict that
+// faithfully quotes code of the shape `items[0](itm-0001)` — a bracket followed
+// immediately by a parenthesis — cannot write a live markdown link into the
+// shipped intent's Audit Notes. Before the fix the record-lint links_resolve
+// gate refused the whole tree on the record the ingest had just written, because
+// the link's target resolves to nothing. The neutralised text must stay legible
+// (the quoted code is still readable) and the gate must pass over the result.
+func TestIngestNeutralisesLinkSyntax(t *testing.T) {
+	root := t.TempDir()
+	rcp := shipOne(t, root)
+	const quoted = "items[0](itm-0001)"
+	payload := strings.Replace(validVerdict(rcp),
+		"the ship-move writes the OWED stub and request file",
+		"the element path "+quoted+" is quoted verbatim, as is [text][label] and <https://example.invalid/x>", 1)
+	payload = strings.Replace(payload, "func emitAuditForIntent(", quoted, 1)
+	payload = strings.Replace(payload, "OWED stub emitted at ship", "the path "+quoted+" resolves", 1)
+	vp := writeVerdict(t, root, payload)
+
+	res, err := IngestVerdict(root, vp)
+	if err != nil || res.Status != "ingested" {
+		t.Fatalf("ingest = %+v, err %v", res, err)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, shippedDir, "itd-10-alpha.md"))
+	s := string(body)
+	if strings.Contains(s, "](") || strings.Contains(s, "][") || strings.Contains(s, "<https://") {
+		t.Fatalf("live link syntax survived into the record:\n%s", s)
+	}
+	// Legibility: the quoted code is still readable as the code it quotes.
+	if !strings.Contains(s, "items[0]") || !strings.Contains(s, "(itm-0001)") {
+		t.Fatalf("neutralisation destroyed the quoted code:\n%s", s)
+	}
+
+	cfg := lint.Config{
+		Roots: []string{".abcd/development"},
+		Rules: map[string]lint.RuleConfig{
+			"links_resolve": {Enabled: true, Severity: "blocker"},
+		},
+	}
+	findings, err := lint.Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range findings {
+		if f.RuleID == "links_resolve" {
+			t.Fatalf("links_resolve finding on the ingested record: %s:%d %s\n%s", f.File, f.Line, f.Message, s)
+		}
 	}
 }

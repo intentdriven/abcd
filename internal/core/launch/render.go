@@ -167,13 +167,13 @@ type PayloadPrecheck struct {
 func PrecheckPayload(repoRoot, dest string) (PayloadPrecheck, error) {
 	var pre PayloadPrecheck
 
-	pre.Root = resolveExistingPrefix(repoRoot)
-	pre.Dest = resolveExistingPrefix(dest)
+	pre.Root = fsutil.RealExistingPath(repoRoot)
+	pre.Dest = fsutil.RealExistingPath(dest)
 	if pre.Dest == "" || pre.Root == "" {
 		return pre, errors.New("both the repository root and the payload destination must be named")
 	}
 	// Containment is compared through the canonical primitive, case-folded on a
-	// filesystem that folds case: resolveExistingPrefix does not case-canonicalise
+	// filesystem that folds case: RealExistingPath does not case-canonicalise
 	// (Go's darwin EvalSymlinks keeps the caller's spelling for every non-symlink
 	// component), so a byte-sensitive prefix test reads a case-variant
 	// --payload-dir — or a case-variant $PWD-derived root — as out-of-tree and
@@ -451,32 +451,4 @@ func setPointer(doc any, pointer string, value any) error {
 		}
 	}
 	return fmt.Errorf("pointer %s resolves to nothing writable", pointer)
-}
-
-// resolveExistingPrefix returns path made absolute with its longest EXISTING
-// prefix symlink-resolved. Containment checks compare a destination that may not
-// exist yet against a repo root that does; on a platform where the temp root is
-// itself a symlink (/var → /private/var on macOS), comparing unresolved paths
-// would silently miss an overlap.
-func resolveExistingPrefix(path string) string {
-	if path == "" {
-		return ""
-	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return filepath.Clean(path)
-	}
-	rest := ""
-	cur := abs
-	for {
-		if real, err := filepath.EvalSymlinks(cur); err == nil {
-			return filepath.Join(real, rest)
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return abs
-		}
-		rest = filepath.Join(filepath.Base(cur), rest)
-		cur = parent
-	}
 }

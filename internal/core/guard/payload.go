@@ -199,11 +199,50 @@ func isShellFamily(cmd string) bool {
 	// (gh-315). rbash (restricted bash, a bash symlink on Debian/Ubuntu) and yash
 	// (Yet Another Shell) are real POSIX shells whose `-c` runs the same grammar —
 	// the unswept siblings of the closed zsh/ksh fix (gh-353).
-	switch strings.ToLower(cmd) {
-	case "sh", "bash", "dash", "zsh", "ksh", "mksh", "ash", "rbash", "yash":
-		return true
+	return containsString(shellFamily, strings.ToLower(cmd))
+}
+
+// shellFamily is the interpreter set isShellFamily tests; one list so the glob
+// compare below and the literal one cannot drift apart. `eval` is not a member
+// (see isShellFamily) and is tested separately where it matters.
+var shellFamily = []string{"sh", "bash", "dash", "zsh", "ksh", "mksh", "ash", "rbash", "yash"}
+
+// shellFamilyGlob resolves a globbed command name to the interpreter (or the
+// eval builtin) it can expand to, fail-closed: the first name the pattern
+// matches wins, which is enough because every member's payload is read the
+// same way. Behind zsh's noglob the caller never asks.
+func shellFamilyGlob(pattern string) (string, bool) {
+	pattern = strings.ToLower(pattern)
+	for _, name := range append(append([]string(nil), shellFamily...), "eval") {
+		if globMatches(pattern, name) {
+			return name, true
+		}
 	}
-	return false
+	return "", false
+}
+
+// shellNameGuessed reports whether the execute-a-string reading of this segment
+// rests on expanding a GLOBBED command name — `* -c <words>`, `s? -c <words>`.
+// Such a reading is a guess about which program runs: the pattern can expand to
+// `sh`, and it can equally expand to a program nothing here names. Reading the
+// payload on that guess is worth doing, but only IN ADDITION to Tier 2: the
+// unrecognised-launcher warn is what adr-42 decision 2 keeps loud when the guard
+// cannot say what runs the rest of the line, and letting the guess satisfy
+// speculate's carriesPayload gate dropped it — `* -c gh api -X DELETE
+// repos/owner/repo` went from a warn to a silent allow, because `sh -c` reads
+// only `gh` as the payload and the operands after it become the payload's own
+// positional parameters.
+func shellNameGuessed(s segment) bool {
+	ci, noglob := commandIndex(s)
+	if ci < 0 || noglob || !s.globAt(ci) {
+		return false
+	}
+	cmd, _ := commandOf(s)
+	if isShellFamily(cmd) || cmd == "eval" {
+		return false // the literal name is already an interpreter: no guess
+	}
+	_, ok := shellFamilyGlob(cmd)
+	return ok
 }
 
 // singleStringLaunchers run a command handed to them as a single operand by
@@ -287,6 +326,18 @@ func classifySegment(s segment) (kind int, family, payload string, trailing []st
 		return kindExecString, verb, v, nil, true
 	}
 	cmd, args := commandOf(s)
+	// A globbed interpreter name (`s? -c '<hazard>'`) is read as the pattern
+	// it is, for the same reason matchSegment reads a globbed command name:
+	// bash expands it before exec, and a payload behind a name this lookup
+	// does not open is one opaque token nothing else reaches — a SILENT
+	// allow, unlike a globbed wrapper name, which Tier 2 still warns on.
+	// This reading is a GUESS about which program runs, so speculate takes it
+	// IN ADDITION to Tier 2, never instead of it (shellNameGuessed).
+	if shellNameGuessed(s) {
+		if name, ok := shellFamilyGlob(cmd); ok {
+			cmd = name
+		}
+	}
 	switch {
 	case isShellFamily(cmd) || cmd == "eval":
 		switch p, state := shellCPayload(cmd, args); state {

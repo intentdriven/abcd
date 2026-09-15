@@ -7,7 +7,7 @@ category: "observation"
 source: "user-observation"
 found_during: "style-guide-review"
 found_at: ".abcd/rules.json"
-resolution: "DOCUMENTATION domain gains the pre-present protocol line: drafted docs artefacts run abcd docs lint before presentation; conversational replies stay unlinted (the artefact-gated verdict from the 2026-08-28 audience research)"
+resolution: "This repository's DOCUMENTATION domain override in .abcd/rules.json gains the pre-present protocol line: drafted docs artefacts run abcd docs lint before presentation; conversational replies stay unlinted (the artefact-gated verdict from the 2026-08-28 audience research). The bundled default domain is unchanged."
 impact: additive
 ---
 

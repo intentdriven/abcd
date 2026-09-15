@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -265,5 +266,71 @@ func TestBlocks(t *testing.T) {
 		if got := (Result{Status: s}).Blocks(); got != want {
 			t.Errorf("Status %v: Blocks()=%v, want %v", s, got, want)
 		}
+	}
+}
+
+// TestLoadPinReadsProductionModeDefault proves the itd-91 attribution seam is
+// EXTENDED rather than duplicated: the repo's default production mode is an
+// optional member of the pin the repo already commits, read by the one reader
+// that already exists (spc-56). A second config file would be a second reader.
+func TestLoadPinReadsProductionModeDefault(t *testing.T) {
+	isolate(t)
+	dir := t.TempDir()
+	writePin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com","production_mode":"dictated-and-formatted"}`)
+	pin, ok, err := LoadPin(dir)
+	if err != nil || !ok {
+		t.Fatalf("LoadPin: ok=%v err=%v", ok, err)
+	}
+	if pin.ProductionMode != "dictated-and-formatted" {
+		t.Fatalf("pin production_mode = %q, want dictated-and-formatted", pin.ProductionMode)
+	}
+	got, err := DeclaredProductionMode(dir)
+	if err != nil {
+		t.Fatalf("DeclaredProductionMode: %v", err)
+	}
+	if string(got) != "dictated-and-formatted" {
+		t.Fatalf("DeclaredProductionMode = %q, want dictated-and-formatted", got)
+	}
+}
+
+// TestLoadPinRefusesUnknownProductionMode proves the member is validated at the
+// boundary exactly as a malformed pin already is: a value outside the closed set
+// is an error, never a silently-ignored member that would let every record the
+// repo mints carry a mode nothing can read.
+func TestLoadPinRefusesUnknownProductionMode(t *testing.T) {
+	isolate(t)
+	dir := t.TempDir()
+	writePin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com","production_mode":"typed"}`)
+	if _, _, err := LoadPin(dir); err == nil {
+		t.Fatal("want an error on an out-of-vocabulary production_mode, got nil")
+	}
+	if _, err := DeclaredProductionMode(dir); err == nil {
+		t.Fatal("DeclaredProductionMode: want an error on an out-of-vocabulary pin, got nil")
+	}
+}
+
+// TestLoadPinAbsentMemberDefaultsHandWritten proves the member is optional in
+// both directions: a pin written before it existed loads unchanged, and a repo
+// with no pin at all still has a default. An absent member means hand-written.
+func TestLoadPinAbsentMemberDefaultsHandWritten(t *testing.T) {
+	isolate(t)
+	dir := t.TempDir()
+	writePin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com"}`)
+	pin, ok, err := LoadPin(dir)
+	if err != nil || !ok {
+		t.Fatalf("LoadPin: ok=%v err=%v", ok, err)
+	}
+	if pin.ProductionMode != "" {
+		t.Fatalf("pin production_mode = %q, want the member absent", pin.ProductionMode)
+	}
+	got, err := DeclaredProductionMode(dir)
+	if err != nil || got != provenance.DefaultMode {
+		t.Fatalf("DeclaredProductionMode with an absent member = %q, %v; want %q", got, err, provenance.DefaultMode)
+	}
+	// A repo that has not adopted the identity gate at all still has a default.
+	unpinned := t.TempDir()
+	got, err = DeclaredProductionMode(unpinned)
+	if err != nil || got != provenance.DefaultMode {
+		t.Fatalf("DeclaredProductionMode with no pin = %q, %v; want %q", got, err, provenance.DefaultMode)
 	}
 }

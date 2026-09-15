@@ -52,6 +52,25 @@ func ValidRelPath(p string) bool {
 	return true
 }
 
+// InsideGitDir reports whether the repo-relative path p names the git directory
+// or anything under it.
+//
+// ValidRelPath accepts ".git/config" — it is clean, relative, and inside the
+// containment root — so a configuration value that arrives as data and is then
+// READ AND PUBLISHED needs this second gate on top of it: .git/config carries a
+// credential-bearing remote URL (on a CI runner, the checkout token in an
+// `http.…extraheader` line), and nothing under .git is ever a legitimate source
+// of rendered text. The first segment is compared case-insensitively, because a
+// case-folding filesystem reaches the same .git through ".GIT" (iss-150).
+//
+// Only the leading segment is examined, so ".github/workflows/ci.yml" and
+// ".gitignore" — different directories that merely start with the same bytes —
+// are not caught.
+func InsideGitDir(p string) bool {
+	first, _, _ := strings.Cut(p, "/")
+	return strings.EqualFold(first, ".git")
+}
+
 // CaseFoldingFS reports whether the platform's default filesystem folds case.
 // macOS (APFS/HFS+ default) and Windows do; abcd assumes this default rather
 // than probing each volume, and the only cost of a false assumption is a
@@ -120,6 +139,44 @@ func PathWithin(child, parent string, fold bool) bool {
 // the other — either way a write under one touches the other.
 func PathsOverlap(a, b string, fold bool) bool {
 	return PathWithin(a, b, fold) || PathWithin(b, a, fold)
+}
+
+// RealExistingPath returns p made absolute with its longest EXISTING prefix
+// symlink-resolved and the absent remainder rejoined lexically. A destination
+// that does not exist yet still resolves through its real parent, so a
+// containment gate compares real locations rather than lexical strings a
+// symlinked ancestor could disguise — and on a platform whose temp root is
+// itself a symlink (/var -> /private/var on macOS) an unresolved comparison
+// would silently miss an overlap. An empty p is returned empty rather than
+// resolved to the working directory.
+//
+// It is the canonical existing-prefix resolver: the launch payload-destination
+// gate, the lifeboat pack destination gate and the site output-directory gate
+// all route through it rather than keeping divergent copies. It does not
+// case-canonicalise (Go's darwin EvalSymlinks keeps the caller's spelling for
+// every non-symlink component), so compare its results with PathWithin under
+// CaseFoldingFS.
+func RealExistingPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	rest := ""
+	cur := abs
+	for {
+		if real, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return abs
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
 }
 
 // RepoRel renders target as a path relative to base — the repo root, or the
@@ -382,4 +439,34 @@ func ModuleRoot(start string) (string, error) {
 		}
 		dir = parent
 	}
+}
+
+// ErrOwnerUnknown is OwnerUID's sentinel for a path that exists but whose owning
+// uid the platform did not report. abcd builds only darwin and linux, where
+// os.FileInfo.Sys() always carries a *syscall.Stat_t, so it cannot arise there —
+// it exists so a fail-closed caller has a named condition to refuse on rather
+// than an "ok" it never earned.
+var ErrOwnerUnknown = errors.New("fsutil: owning uid unavailable")
+
+// OwnerUID reports the uid that owns path, following symlinks (the caller has
+// usually resolved the path already, and a link's own uid is not the uid that
+// controls its content). It is the canonical ownership lookup: code asking "is
+// this directory mine?" compares this against os.Getuid() instead of reaching
+// for syscall.Stat_t itself, so exactly one place knows the platform's stat
+// shape.
+//
+// The error is returned rather than folded into a boolean because ownership is
+// a fail-closed question: a caller that cannot learn the owner must be able to
+// tell that from learning the owner is itself, and a (uid, bool) shape makes the
+// two look alike at the call site.
+func OwnerUID(path string) (uint32, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, ErrOwnerUnknown
+	}
+	return uint32(st.Uid), nil
 }

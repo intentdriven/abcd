@@ -1,0 +1,226 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "c2c237419a6d283d26e00777b1f0e8146d6b1156"
+    }
+  },
+  "verifier": {
+    "id": "maintainer@release"
+  },
+  "timeVerified": "2026-08-29T22:18:53Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "shallow",
+  "manifestHash": "sha256:20b7f07e8a676e6515d01e98aa2ca8da21465166550ee250bc616f6527ed9ef7",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:6b4a388e596e159a04f73417af8c2d08699968dd01031b9c08aeac65596d8064",
+    "briefVersion": "0.6.9"
+  },
+  "categories": {
+    "false-claim": 10,
+    "undocumented-surface": 1,
+    "fictional-layout": 0,
+    "criterion-violation": 0,
+    "stale-count": 2
+  },
+  "failing": [
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:222-226",
+      "item": "hook entrypoints",
+      "class": "false-claim",
+      "claim": "\"Every event command is a self-provisioning shim, not a plain binary call: the non-SessionStart shims attempt `hooks/bootstrap.sh` when the plugin-root binary is missing (throttled by a `.bootstrap.attempt` marker within a 10-minute window), then fall back to a PATH-resolved `abcd` before failing loudly.\"",
+      "reality": "hooks/hooks.json: the SessionEnd shim never invokes hooks/bootstrap.sh and never touches .bootstrap.attempt \u2014 it checks $CLAUDE_PLUGIN_ROOT/abcd, falls back to a PATH-resolved abcd, else prints the missing-binary message and exits 1. Only UserPromptSubmit, PreToolUse and PreCompact self-provision; SessionStart runs bootstrap.sh directly.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/01-ahoy.md:222-227 \u2014 \"Every event command is a self-provisioning shim, not a plain binary call\"",
+        "hooks/hooks.json \u2014 UserPromptSubmit, PreToolUse and PreCompact each carry `[ -x \"$r/hooks/bootstrap.sh\" ]` plus the `: > \"$r/.bootstrap.attempt\"` throttle; the SessionEnd command is `if [ -f \"$r/abcd\" ] && [ -x \"$r/abcd\" ]; then exec \"$r/abcd\" hook session-end; fi; if command -v abcd ...` then the 'transcript was not captured' refusal (exit 1) \u2014 no bootstrap branch, no marker",
+        "git diff v0.6.8..c2c23741 -- hooks/ .abcd/development/brief/04-surfaces/01-ahoy.md: empty on both sides"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-2 (same file, same line range, same claim; itself a reuse of run-1's :222-227). Three of four non-SessionStart shims self-provision, so the blanket 'every event command' is false for SessionEnd. Same finding as the v0.6.8 receipt."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:367-375",
+      "item": "hook entrypoints",
+      "class": "false-claim",
+      "claim": "\"every event command runs through a self-provisioning shim\"; bootstrap.sh is \"referenced by every event command\"; \"The four non-SessionStart event shims also self-provision: when $CLAUDE_PLUGIN_ROOT/abcd is missing they attempt hooks/bootstrap.sh (throttled by a .bootstrap.attempt marker within a 10-minute window)\"",
+      "reality": "hooks/hooks.json: the SessionEnd command does not reference hooks/bootstrap.sh at all \u2014 three of the four non-SessionStart shims (UserPromptSubmit, PreToolUse, PreCompact) attempt it; SessionEnd only tries the plugin-root binary, then PATH abcd, then fails loudly.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/03-configuration.md:367 (\"every event command runs through a self-provisioning shim\"), :368 (\"referenced by every event command\") and :373-375 (\"The four non-SessionStart event shims also self-provision\")",
+        "Parsing hooks/hooks.json and testing each event command for the substring 'bootstrap.sh': UserPromptSubmit True, SessionStart True, PreToolUse True, PreCompact True, SessionEnd False \u2014 so bootstrap.sh is referenced by four of the five event commands, and the `.bootstrap.attempt` throttle by three",
+        "git diff v0.6.8..c2c23741 -- hooks/hooks.json .abcd/development/brief/05-internals/03-configuration.md: empty"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-2 for the two shim clauses (:367, :373-375), with the third clause verified fresh: ':368 referenced by every event command' was not covered by run-1 or run-2 and is independently false \u2014 SessionEnd references bootstrap.sh nowhere. All three clauses fail on the same SessionEnd shim. Same finding as the v0.6.8 receipt."
+    },
+    {
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:10",
+      "item": "skills surface",
+      "class": "false-claim",
+      "claim": "`/abcd:ahoy dry-run` \"Drives the Claude Code skill's two-pass approval protocol\" \u2014 describes ahoy as a skill",
+      "reality": "abcd ships zero skills and skills/ is absent; ahoy is a command (commands/ahoy.md backed by the `ahoy` Go verb with `dry-run` sub-verb). 08-skills.md and 04-surfaces/README.md both state the /abcd: namespace is commands only.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/02-constraints/04-naming.md:10 \u2014 \"`/abcd:ahoy dry-run` \u2026 Drives the Claude Code skill's two-pass approval protocol.\"",
+        "`abcd ahoy --help` -> doctor, dry-run, identity-check, install, remote, uninstall \u2014 a binary-backed verb whose surface is commands/ahoy.md; `ls skills` -> \"No such file or directory\"",
+        ".abcd/development/brief/05-internals/08-skills.md:3 and 04-surfaces/README.md:36 \u2014 \"abcd ships zero skills\"; 08-skills.md:48-49 \u2014 \"The registration list is empty \u2026 There is no `skills/` directory in the tree\""
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-2 (same file, same line, same claim). The naming table attributes ahoy's approval protocol to a skill that exists on no shipped surface, contradicting the two chapters that own the skill/command boundary. Not in the v0.6.8 receipt, but the file is byte-identical to that tag."
+    },
+    {
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:93",
+      "item": "skills surface",
+      "class": "false-claim",
+      "claim": "`intent_source_hash` is \"Written by grill skill as `grilled_intent_hash`\" \u2014 names a grill skill as the writer, row not marked staged",
+      "reality": "No grill skill exists (skills/ absent); 08-skills.md:9 says grill's design target is an `intent` sub-verb and `abcd intent --help` lists only audit, link, new, plan, ready \u2014 no grill.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/02-constraints/04-naming.md:93 \u2014 \"`intent_source_hash` \u2026 Written by grill skill as `grilled_intent_hash`; copied to PRD as `source_intent_hash`.\" Source column reads \"spc-3 task .5\" with no staged marker",
+        "`abcd intent --help` -> audit, link, new, plan, ready \u2014 no `grill`; `ls skills` -> No such file or directory; `grep -rn grilled_intent_hash internal/ commands/ agents/` -> no hits (rc=1), so neither the skill nor the field it is said to write exists on any shipped surface",
+        ".abcd/development/brief/05-internals/08-skills.md:9 \u2014 grill's \"**design target** is promotion to a sub-verb of `/abcd:intent`\" and \"`grill` is not among its sub-verbs\"; 08-skills.md:19 lists `grill` among the intent parent's design targets"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. VERIFIED FRESH \u2014 this is a different row from run-1's `04-naming.md:91` (the `task_classes` enum row) and a different claim, so no reuse applied. A naming-constraint row names a non-existent skill as the writer of a frontmatter field that itself appears nowhere in the tree, with no staged marker, while the skills chapter records grill as an unshipped intent sub-verb. Both sides unchanged since v0.6.8."
+    },
+    {
+      "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:29",
+      "item": "skills surface",
+      "class": "false-claim",
+      "claim": "Milestone 0 stands up \"the markdown surfaces (`commands/`, `agents/`, `skills/`) that shell to the binary\" \u2014 lists skills/ as a shipped markdown surface",
+      "reality": "Only commands/ and agents/ exist; skills/ is absent and 08-skills.md:48-49 states there is no skills/ directory in the tree.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/06-delivery/01-build-sequence.md:29 \u2014 \"(`commands/`, `agents/`, `skills/`) that shell to the binary load cleanly\", no staged marker",
+        "`ls skills` -> \"No such file or directory\"; `.claude-plugin/plugin.json` declares no `skills` key; `.abcd/config/launch-payload.json` includes [.claude-plugin, commands, agents, hooks, scripts, docs, README.md, LICENSE, .gitignore]; `ls commands/` -> 21 files",
+        ".abcd/development/brief/05-internals/08-skills.md:48-49 and 04-surfaces/04-launch.md:47 both state `skills/` does not exist in the tree"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 and run-2 (same file, same line, same claim). The M0 surface list names a directory three other chapters explicitly say does not exist. Same finding as the v0.6.8 receipt (recorded there as false-claim)."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/README.md row 10 (`/abcd:docs`)",
+      "item": "CLI verb tree",
+      "class": "stale-count",
+      "claim": "Purpose column names the verb's sub-verbs as `lint` only: \"Documentation-currency lint (`lint`) \u2014 change-narration, broken links, stray root markdown\"",
+      "reality": "bin/abcd-darwin-arm64 docs --help registers two sub-verbs: `lint` and `cite` (with nested `cite confirm` / `cite refresh`). The chapter 10-docs.md `## Sub-verbs` table does list all four as shipped, so only the README summary row is stale.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/README.md:16 \u2014 row 10 \"Documentation-currency lint (`lint`) \u2026 read-only, the deterministic half of the docs release gate\"",
+        "`abcd docs --help` -> Available Commands: cite, lint; .abcd/development/release/surface.json:492-549 registers `abcd docs cite`, `abcd docs cite confirm`, `abcd docs cite refresh`, `abcd docs lint`; commands/docs.md:4 argument-hint \"[lint | cite refresh | cite confirm <url>...]\"",
+        ".abcd/development/brief/04-surfaces/10-docs.md:18-23 marks all four rows shipped"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 (README row 10 is line :16; same claim). The row names one sub-verb of four and calls the surface read-only, while `docs cite refresh` and `docs cite confirm` are baseline-maintaining write paths. Not in the v0.6.8 receipt; both files unchanged since that tag."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/README.md row 11 (`/abcd:history`)",
+      "item": "CLI verb tree",
+      "class": "stale-count",
+      "claim": "Purpose column enumerates the store's sub-verbs as `capture` / `list` / `show`",
+      "reality": "bin/abcd-darwin-arm64 history --help registers five sub-verbs: `capture`, `drain`, `list`, `show`, `staged`. The chapter 11-history.md `## Sub-verbs` table lists all five as shipped, so only the README summary row is stale.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/README.md:17 \u2014 row 11 \"Session-transcript store (`capture` / `list` / `show`)\"",
+        "`abcd history --help` -> capture, drain, list, show, staged; .abcd/development/release/surface.json:619-654 registers all five; commands/history.md:4 argument-hint lists all five",
+        ".abcd/development/brief/04-surfaces/11-history.md sub-verb table marks all five shipped"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 and run-2 (README row 11 is line :17; same claim). The row omits `drain` and `staged`, which the chapter's own machine-checked table lists as shipped. Same finding as the v0.6.8 receipt."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/README.md:40 (\"The command files\")",
+      "item": "plugin command surface",
+      "class": "false-claim",
+      "claim": "\"Each markdown file there is a slash command whose body instructs the host agent to invoke the `abcd` binary and present the result ... Commands stay thin: they call `abcd <verb> --json` and format the result.\"",
+      "reality": "commands/consult.md and commands/ingest.md contain zero `abcd` invocations (the workflow runs entirely in the host agent; there is no consult/ingest Go verb in `abcd --help`). The same README (line 36) and 05-internals/08-skills.md already describe these two plus prepare-this-repo as host-delegated with no Go verb, so the generalisation at line 40 is contradicted by its own file rather than by an undocumented surface. Everything else checks out empirically: commands/ holds exactly the 21 files listed in the README's `<!-- index: commands -->` region and its 22-row table (row 9 `/abcd:reflect` is marked staged and has no file); the 17 binary-backed verbs named in 08-skills.md each exist in `abcd --help` with a commands/<name>.md; `changelog`, `rules`, `spec` are CLI-only with no commands file; `hook` is hidden with exactly the four entrypoints named (prompt-router, prompt-router-reset, session-start, session-end) wired from hooks/hooks.json; the directory is flat with no commands/README.md; every sub-command-bearing verb's chapter carries a `## Sub-verbs` table; `make record-lint` (surface_coverage + index_drift) exits 0; skills/ does not exist.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/README.md:40 \u2014 \"Each markdown file there is a slash command whose body instructs the host agent to invoke the `abcd` binary \u2026 Commands stay thin: they call `abcd <verb> --json`\"",
+        "`grep -cE '\\$\\{?CLAUDE_PLUGIN_ROOT' commands/*.md` -> consult.md 0, ingest.md 0, against capture.md 8, docs.md 6, prepare-this-repo.md 8; a grep for any `abcd <verb>` / `abcd <verb> --json` invocation shape in commands/consult.md and commands/ingest.md returns nothing (rc=1) \u2014 both drive `~/.abcd/sources/bin/*` scripts and plain shell instead",
+        ".abcd/development/brief/04-surfaces/README.md:36 (rows 13-15 host-delegated, no Go verb) and 05-internals/08-skills.md:21 say the same, contradicting the generalisation at :40"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-2 (same file, same line, same claim). The universal 'each markdown file \u2026 invokes the abcd binary' is false for 2 of the 21 command files, and the same index says so four lines above \u2014 a record-internal contradiction, which is also how the finding's own reality note frames it. The finding's extensive corroboration tail (21 command files, the 17 binary-backed verbs, CLI-only changelog/rules/spec, a clean record-lint) is consistent with what I observed and raises no separate discrepancy. Both files unchanged since v0.6.8."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:91 (frontmatter table, `reads_untrusted_input` row)",
+      "item": "plugin agent surface",
+      "class": "false-claim",
+      "claim": "A fixture-presence prompt-lint in `internal/core/lint` is a design target \u2014 \"no shipped check enforces it (the M6 agents ship conforming files, not the linter)\"; the field is described as conditional (only agents that read untrusted input declare it).",
+      "reality": "The check ships: `internal/core/lint/agentcontract.go` implements the record-lint `agent_contract` rule (configured at `.abcd/record-lint.json:259-263`, `agents_dir: agents`), which requires `<name>/fixtures/injection-canary.json` (a regular non-empty file) for every untrusted-input prompt and refuses any prompt that omits the `reads_untrusted_input` declaration outright (agentcontract.go:168-176 \u2014 the declaration is required of ALL prompts, true or false). `agents/README.md` \u00a7 Lint interaction documents the shipped rule; the brief contradicts it.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:91 \u2014 Required column \"conditional (agents that read untrusted input)\", and the trailing sentence \"a fixture-presence prompt-lint in `internal/core/lint` is a design target \u2014 no shipped check enforces it\"",
+        "internal/core/lint/agentcontract.go:168-176 makes an absent `reads_untrusted_input` a finding on EVERY prompt (\"Declare 'reads_untrusted_input: true' \u2026 or 'false'\", test agentcontract_test.go:129 TestAgentContractUndeclaredUntrustedInput); :206-226 Lstats `agents/<name>/fixtures/injection-canary.json` and refuses absent, non-regular or zero-byte (tests :161 TestAgentContractMissingCanary, :314 TestAgentContractRefusesAnEmptyCanary); .abcd/record-lint.json:259-263 enables `agent_contract` at severity `blocker`",
+        "agents/README.md:34-35 and :95-97 \u2014 \"record-lint's `agent_contract` rule enforces it (itd-151)\" and \"the declaration is required of ALL of them\"; all ten prompts declare the field and ship a canary"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 (the fixture-presence half) and run-2 (the conditional-field half) \u2014 run-3 bundles both sub-claims into one finding and both were independently confirmed. Both halves are false: the canary check ships at blocker severity, and the declaration is required unconditionally, closing exactly the omission-opt-out the brief's 'conditional' wording leaves open. The fixture half matches the v0.6.8 receipt (marked introducedInRelease=true there, as the rule landed in v0.6.8); pre-existing at v0.6.9 \u2014 the only agentcontract.go change since the tag turns one early return into a non-returning append."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:90 (frontmatter table, `capability_scope` row)",
+      "item": "plugin agent surface",
+      "class": "false-claim",
+      "claim": "\"Set-membership lint in internal/core/lint against the task_classes closed enum ... is a design target \u2014 no shipped check reads the field.\"",
+      "reality": "The shipped `agent_contract` rule reads the field: `internal/core/lint/agentcontract.go:195-203` refuses an untrusted-input prompt missing `capability_scope.task_classes` or `capability_scope.designed_for`, and lines 409-440 parse the nested block (inline-list only). Only the enum set-membership half is unshipped \u2014 the row claims no check reads the field at all.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:90 \u2014 \"Set-membership lint \u2026 is a design target \u2014 no shipped check reads the field\"",
+        "internal/core/lint/agentcontract.go:193-204 requires `capability_scope.task_classes` and `capability_scope.designed_for` present and non-empty; :409-440 parses the nested block (inline list only); agentcontract_test.go:87 TestAgentContractMissingTrustFields asserts the message names `capability_scope.task_classes`",
+        "No enum ships: `grep -rn task_classes internal/ --include=*.go` hits only agentcontract.go and its test, and no `task_classes.json` exists anywhere in the tree"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 and run-2 (same file, same line, same claim). The field IS read by a shipped blocker-severity check; only the closed-enum set-membership half remains unbuilt, and the row claims no check reads it at all. Same finding as the v0.6.8 receipt."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:80-92 (`## Agent prompt frontmatter`, \"Current fields\" table)",
+      "item": "plugin agent surface",
+      "class": "undocumented-surface",
+      "claim": "The current agent frontmatter fields are `name`, `description`, `color`, `prompt_version`, `capability_scope`, `reads_untrusted_input`.",
+      "reality": "Shipped prompts also carry harness fields the table omits: `tools:` on four prompts (`docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer` = Read, Grep, Glob, Bash; `sota-researcher` = WebSearch, WebFetch, Read, Grep, Glob) and `model: opus` on `ruthless-reviewer` and `security-reviewer`. `05-prompt-quality.md:17` acknowledges `tools`/`model` as existing fields (and over-claims that every prompt carries them \u2014 six of ten carry neither), but the catalog chapter's field table does not.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:84-91 (the `## Agent prompt frontmatter` \"Current fields\" table, cited here as :80-92) \u2014 name, description, color, prompt_version, capability_scope, reads_untrusted_input",
+        "Frontmatter of the ten shipped prompts: `tools:` on docs-currency-reviewer, ruthless-reviewer, security-reviewer (Read, Grep, Glob, Bash) and sota-researcher (WebSearch, WebFetch, Read, Grep, Glob); `model: opus` on ruthless-reviewer and security-reviewer",
+        "git diff v0.6.8..c2c23741 -- agents/ .abcd/development/brief/05-internals/01-agents.md: empty on both sides"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 (:84-91 is the same table and claim; run-3 simply cites a wider range). Two harness-registration fields the shipped prompts carry are absent from the table presented as the current field set. The finding's aside about 05-prompt-quality.md:17 over-claiming `tools`/`model` on every prompt was separately confirmed in run-1 (six of ten carry neither) and is consistent. Same finding as the v0.6.8 receipt."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:17 (`press-release-composer` catalog row, Status **shipped**)",
+      "item": "plugin agent surface",
+      "class": "false-claim",
+      "claim": "Outputs: `press-release.json` \"+ invokes the oracle seam for a product-thinker audit (host-delegated by default) \u2192 `audit/press-release-oracle-<ts>.json`\"; inputs: \"spec-essence, decisions, principles, source CLAUDE.md/README/metadata\".",
+      "reality": "`abcd disembark press-release <lifeboat-dir> [--press-release-json]` (binary help) and `internal/core/lifeboat/synthesis_pressrelease.go` write only `press-release.json` (+ `.md`) into the lifeboat; no oracle-audit artefact and no `audit/press-release-oracle-*` path exists anywhere in `internal/`. The prompt (`agents/press-release-composer.md`) reads the packed brief, `rescue/spine.md` and `principles.json` \u2014 there is no `spec-essence` input (its producer `flow-essence` is itself a Phase-6 design target). The row is marked shipped without a staged marker on these inputs/outputs.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:17 \u2014 press-release-composer row, Status **shipped**; inputs \"spec-essence, decisions, principles, source CLAUDE.md/README/metadata\"; outputs \"press-release.json + invokes the oracle seam for a product-thinker audit \u2026 \u2192 audit/press-release-oracle-<ts>.json\"",
+        "Output half: `grep -rn 'press-release-oracle|audit/press-release' internal/ agents/ commands/` -> no hits (rc=1); internal/core/lifeboat/synthesis_pressrelease.go:83-95 writes exactly `press-release.json` and `press-release.md` into the lifeboat; `abcd disembark press-release --help` exposes one flag, `--press-release-json`",
+        "Input half: agents/press-release-composer.md:18-25 \u00a7 What you read \u2014 `brief/01-product/01-press-release.md`, `brief/**`, `rescue/spine.md`, `principles.json` only; `grep -rn 'spec-essence|spec_essence' internal/ agents/ commands/` -> no hits (rc=1), and its named producer `flow-essence` is marked \"design target \u2014 Phase 6\" at 01-agents.md:11"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 for the output half (the oracle-audit artefact), with the input half VERIFIED FRESH \u2014 run-3 extends the finding to the inputs column, which run-1 did not cover. Both halves hold: a row marked **shipped** names an oracle-audit step and artefact path that exist nowhere, and an input (`spec-essence`) produced only by a Phase-6 design-target agent, with no staged marker on either. Not in the v0.6.8 receipt; every cited file is unchanged since that tag."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:14 (`principle-distiller` catalog row, Status **shipped**)",
+      "item": "plugin agent surface",
+      "class": "false-claim",
+      "claim": "Inputs: `.abcd/memory/`, ADRs, conventions, `spec-essence.json` (spine), `code-principles.json`, `candidate-pitfalls.json` (from review-collator), Pass B distiller deltas; output `principles.json` \"domain-grouped, with four-source pitfall dedup by topic-hash\".",
+      "reality": "`abcd disembark principles <lifeboat-dir> [--principles-json]` is \"deterministic from the ADRs\" (binary help; `internal/core/lifeboat/synthesis_principles.go`), and the prompt (`agents/principle-distiller.md` \u00a7 What you read) reads the packed lifeboat's `docs/adrs/*.md` and record ids only. `spec-essence.json`, `code-principles.json`, `candidate-pitfalls.json` and Pass B deltas come from agents the same table marks as Phase-6 design targets (`flow-essence`, `code-rescuer`, `review-collator`, `chat-distiller`), so a shipped row lists inputs that do not exist, with no staged marker.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:14 \u2014 principle-distiller row, Status **shipped**; inputs `.abcd/memory/`, ADRs, conventions, `spec-essence.json`, `code-principles.json`, `candidate-pitfalls.json`, Pass B deltas; output \"principles.json (domain-grouped, with four-source pitfall dedup by topic-hash)\"",
+        "agents/principle-distiller.md:17-26 \u00a7 What you read \u2014 the packed lifeboat's `docs/adrs/*.md`, `rescue/intents/**`, `activity/issues/**`, `graveyard/archaeology.json` + `abandoned.json`, and nothing else; `grep -rn 'code-principles|candidate-pitfalls' internal/ agents/ commands/` -> no hits (rc=1)",
+        "internal/core/lifeboat/synthesis_types.go:114-119 \u2014 `type Principle struct { ID, Principle, Confidence, Evidence }`, a flat list with no domain grouping, no pitfall field and no topic-hash; the named producers flow-essence, code-rescuer, review-collator and chat-distiller are all marked \"design target \u2014 Phase 6\" at 01-agents.md:11-15"
+      ],
+      "disposition": "accepted: pre-existing design-record lag, not release content; routed to the iss-2608231346137587 corpus. REUSED from run-1 (same file, same line, same claim; run-3 adds only that `disembark principles` is deterministic from the ADRs, which agrees). A row marked **shipped** lists inputs produced only by design-target agents and an output schema richer than the one the binary validates, with no marker separating the shipped slice from the design target. Not in the v0.6.8 receipt; unchanged since that tag."
+    }
+  ],
+  "_reviewProvenance": "Host-run shallow-tier run of the pinned detector against this content commit: the release's strongest impact is fix, so Direction B alone (5 surface checkers; 5 returned, 0 errors) is the required depth. The run returned 13 unique discrepancies, every one independently re-verified against the tree at this commit by a separate pass (evaluator outside the loop): 13 confirmed, 0 partial, 0 refuted, 0 created by changes since v0.6.8; 7 also appear in the v0.6.8 receipt. The only brief page this release edits is 04-surfaces/22-site.md, which no finding cites; hooks/, agents/, commands/ and the surface registry are byte-identical to v0.6.8, and the one code change touching a cited claim (agentcontract.go) converts an early return into an append, leaving every check already live at v0.6.8. PROMOTE is the maintainer's decision under verifier-selects-gates-decide on the footing the v0.6.8 gate recorded: every finding is the design record lagging the shipped surface (iss-2608231346137587, whose corpus rule forbids hand-fixing the brief ahead of the intent that mines it), not something this release introduced or ships (.abcd/development/brief/ is in no release, adr-28). Two earlier runs of the same detector on this release at the pre-amend content commits (23 discrepancies at a51c3e5f: 21 confirmed, 2 partial, 0 refuted; 14 at bce682de: 13 confirmed, 1 refuted) and their verification passes are retained in the local work tier. The promptHash echoes the manifest's pinned value: the gate verifies manifestHash and does not compute or verify promptHash, as the decision log records."
+}

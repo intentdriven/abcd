@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestRunGitIgnoresInheritedGitDir proves an inherited GIT_DIR cannot redirect
-// runGit at a different repository: rootCommitSHA must answer about `cwd`, not
+// runGit at a different repository: RootCommit must answer about `cwd`, not
 // the env-selected repo. Without the IsolatedEnv scrub, GIT_DIR overrides `-C`,
 // so the wrong root-commit SHA (and origin URL) would be registered against the
 // cross-repo history store under a supposedly immutable key.
@@ -35,7 +36,7 @@ func TestRunGitIgnoresInheritedGitDir(t *testing.T) {
 	// pointing at repoB.
 	t.Setenv("GIT_DIR", filepath.Join(repoB, ".git"))
 
-	if got := rootCommitSHA(repoA); got != shaA {
-		t.Errorf("rootCommitSHA(repoA) = %q under inherited GIT_DIR=repoB; want repoA's root %q (GIT_DIR hijacked the query)", got, shaA)
+	if got := gitutil.RootCommit(repoA); got != shaA {
+		t.Errorf("RootCommit(repoA) = %q under inherited GIT_DIR=repoB; want repoA's root %q (GIT_DIR hijacked the query)", got, shaA)
 	}
 }

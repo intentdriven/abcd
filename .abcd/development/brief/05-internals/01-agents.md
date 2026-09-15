@@ -1,101 +1,267 @@
 # Agent Catalog
 
-The catalog below declares the **16-agent design roster** (not all are shipped yet; the **Status** column marks which of these exist today, and [`06-delivery/`](../06-delivery) carries current delivery state); the shipped agents that live outside this roster are listed under [§ Shipped agents outside the design roster](#shipped-agents-outside-the-design-roster). Ten agent prompt files ship in `agents/` today. Each catalog agent declares JSON inputs/outputs (schemas owned by the core, `internal/core/schema`). Agents are **markdown**, host-delegated reviewers the host dispatches (adr-25); markdown is rendered, not authored by agents.
+abcd hands every judgement call to a model the host already runs, and keeps the
+deterministic half for itself. What that buys a user: the default install needs no
+API key and no model configuration, and every judgement comes back as JSON a verb
+validates, so a model that hallucinates a citation produces a refusal rather than
+a record. What it costs: abcd cannot judge anything on its own, and a verb whose
+agent was never dispatched has no fallback verdict to offer.
 
-`agents/` also holds two plain docs — `agents/README.md` and `agents/CHANGELOG.md` — that carry no agent frontmatter. Because `.claude-plugin/plugin.json` declares no `agents` key, the plugin loader globs the flat `agents/*.md` set and registers both as harness agents (`abcd:README`, `abcd:CHANGELOG`) alongside the real prompt files; iss-110 tracks the mis-registration.
+An agent here is a **markdown prompt file** under `agents/`, host-delegated by
+design (adr-25). The host owns model choice, credentials and execution; abcd
+assembles the input, states the output contract, and checks what comes back.
 
-| Agent | Pass | Status | Inputs (JSON) | Outputs (JSON) |
-|---|---|---|---|---|
-| `flow-essence` | A | design target — Phase 6 | native spec store (newest-first) | `spec-essence.json` |
-| `decision-archaeologist` | A | design target — Phase 6 | ADRs, CLAUDE.md, git log | `decisions-timeline.json` |
-| `review-collator` | A | design target — Phase 6 | `.abcd/.work.local/logs/<verb>/<ts>/` (per-invocation oracle artefacts; the reviews charter excludes them from `work/reviews/`) | `reviews-consolidated.json` |
-| `code-rescuer` | A | design target — Phase 6 | codemap adapter (when wired) or spec-window file selection | `code-principles.json` |
-| `chat-distiller` | B | design target — Phase 6 | spine entry + time-windowed transcript subset (per call) | per-call: emits `rationale-fill`, `unrecorded-decision`, `pitfall` delta entries; aggregated across calls into `research/rationale-fills.json`, `research/unrecorded-decisions.json`, `research/pitfalls.json` (delta). Density measured on user-message denominator per Phase 0 Measurement Deviation; see `research/phase/0/transcript-sampling.md`. |
-| `principle-distiller` | C | **shipped** — `disembark principles` | `.abcd/memory/`, ADRs, conventions, `spec-essence.json` (spine), `code-principles.json`, `candidate-pitfalls.json` (from review-collator), Pass B distiller deltas | `principles.json` (domain-grouped, with four-source pitfall dedup by topic-hash) |
-| `artefact-curator` | C | design target — Phase 6 | user-docs (tutorials/guides/reference/explanation), assets (logos/charts/screenshots) | `assets/_manifest.json` with per-item classification: `keep` (copy verbatim), `adapt` (suggest adaptation, embark prompts user), `drop` (skip silently). Also writes `docs/` lifeboat copies. |
-| `brief-composer` | C | design target — Phase 6 | `spec-essence.json`, `decisions-timeline.json`, `principles.json`, `code-principles.json`, `reviews-consolidated.json`, `rationale-fills.json`, `unrecorded-decisions.json`, `pitfalls.json`, `assets/_manifest.json` | `README.json` (lifeboat brief synthesising all Pass A/B/C inputs) |
-| `press-release-composer` | C | **shipped** — `disembark press-release` | spec-essence, decisions, principles, source CLAUDE.md/README/metadata | `press-release.json` + invokes the oracle seam for a product-thinker audit (host-delegated by default) → `audit/press-release-oracle-<ts>.json` |
-| `issue-scout` | C (opt-in) | design target — Phase 6 | `.abcd/work/issues/<slug>.md` entries | annotated entries with "Related upstream" sections; uses `gh` CLI. **Peer-preferred:** delegates to a peer github-scout over MCP when one is present; this native agent is the default. Default: disabled in `config.json`; ahoy asks. |
-| `lifeboat-reviewer` | C (review) | **shipped** — `disembark review` | rendered MD + JSON corpus | `review/review-<manifest12>.json` |
-| `embark-scaffolder` | embark | design target — Phase 6 | lifeboat JSONs + target probe | `scaffold-plan.json` + extended responsibilities for doc-architecture at scaffold time (legacy harvest) |
-| `launch-gatekeeper` | launch | design target — itd-65 (gate suite, per [adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)) | scan results + payload manifest | `preflight.json` + extended responsibilities for doc updates and OWASP/security auditing at promotion time (legacy harvest) |
-| `intent-auditor` | intent — **three roles, three verbs** (`audit` / `consistency` / `shape`) | **shipped** (`audit` discipline subset, spc-12); `consistency` / `shape` design targets (spc-29) | varies by role (see [`04-surfaces/05-intent.md § 7`](../04-surfaces/05-intent.md#7-the-intent-auditor-agent-three-roles-three-verbs)) | varies by role |
-| `documentation-auditor` | subagent (pre-pack, post-scaffold, pre-promotion) | design target — Phase 6 (disembark/embark) + itd-65 (launch pre-promotion) | source `docs/` directory or lifeboat `docs/` directory | `documentation-audit-<ts>.json` — invoked by disembark (pre-pack), embark (post-scaffold), and launch (pre-promotion). Subagent-only; not user-invoked. Lifted from legacy `~/ABCDevelopment/.claude/agents/documentation-auditor` |
-| `reflection-composer` | reflect | design target — spc-83 (thin V1) | selected spc-66 phase-audit receipt (`.abcd/logbook/audit/phase-<ts>/report.json`) — per-bullet acceptance verdicts + `member_specs` + `done_total` | single JSON object with the five retrospective section keys (`went_well` / `could_improve` / `lessons_learned` / `decisions_made` / `metrics`); the deterministic reflect writer (`internal/core/reflect`) renders `.abcd/retrospectives/<phase-id>/README.md`. Dispatched by `/abcd:reflect <phase-id>` (itd-24). Phase-only grain. |
+## What ships
 
-## Shipped agents outside the design roster
+Fifteen agent prompts ship in `agents/` today, in four groups:
 
-Six further agent prompts ship in `agents/` today, outside the 16-agent design roster above — lifeboat/launch synthesis helpers and repo-workflow reviewers, each a **markdown**, host-delegated agent the host dispatches:
+- **Lifeboat and release synthesis**, each feeding one verb that validates its
+  output under a cite-or-be-dropped rule: `principle-distiller`
+  (`disembark principles`), `press-release-composer` (`disembark press-release`),
+  `lifeboat-reviewer` (`disembark review`), `graveyard-interpreter`
+  (`disembark graveyard`), and `release-changelog-composer` (`launch ship`).
+- **The intent auditor**, `intent-auditor`, which judges a shipped intent's
+  promise against delivered reality (below).
+- **Repo-workflow reviewers and researchers**, dispatched by a human rather than
+  by a verb: `docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer`,
+  and `sota-researcher`.
+- **The cold-reading instrument**: the four position definitions and the ledger
+  `scribe` (below).
 
-| Agent | Purpose |
-|---|---|
-| `graveyard-interpreter` | Interpret a packed lifeboat's graveyard into cited lessons (each citing the layer-1/2 finding ids it rests on) — feeds `abcd disembark graveyard <lifeboat-dir> --lessons-json`. |
-| `release-changelog-composer` | Compose one release cut's changelog prose, every line citing the record id it reports so the binary can prove the cut — feeds `abcd launch ship --changelog-json`. |
-| `docs-currency-reviewer` | Semantic docs-currency review — verifies every user-facing claim against the code that implements it (the release-gate docs check). |
-| `ruthless-reviewer` | Demanding senior code review — correctness, resource handling, error paths, API misuse, dead code — run before presenting a non-trivial diff. |
-| `security-reviewer` | Adversarial security review of a diff or design touching a trust boundary (auth, secrets, network, input parsing, subprocess). |
-| `sota-researcher` | Deep state-of-the-art research — ranked recommendations with evidence tiers and source attributions. |
+Each declares its inputs and outputs as JSON, and the schemas are the core's
+rather than the prompt's. The record families — the issue schema, admissions and
+surprises, dispositions, and the cold-reading run and item contract — share one
+package, `internal/core/issueschema`, deliberately: the verb that writes a record
+and the gate that judges the committed tree have to agree on what a well-formed
+record carries, and two hand-kept copies drift the moment one side gains a field.
+So the cold-reading item contract does not live with cold reading; the reading
+package imports it from there.
 
-## `intent-auditor`'s three roles, three verbs
+`agents/` also holds two plain docs, its README and its changelog, which carry no
+agent frontmatter. Because the plugin manifest declares no agents key, the loader
+globs the flat `agents/*.md` set and registers both as harness agents alongside
+the real prompt files; iss-110 tracks the mis-registration.
 
-The catalog row above declares one agent with three roles, sharing the agent's prompt scaffolding, oracle backend resolution, and receipts. Each role has its own user-facing verb under `/abcd:intent` — no role-by-kind dispatch:
+## The design roster still to be built
 
-1. **Single-document fidelity → `/abcd:intent audit <itd-N>`** (per the itd-1 discipline). **Inputs (updated by spc-3/itd-27):** shipped intent's press release + acceptance criteria + delivered reality + **`terminology/` glossary** (when present) + **frozen PRD at `.abcd/intents/<itd-N>/prd.md`** (when present). **Outputs (updated by spc-3/itd-27):** per-criterion verdicts (MET/MET_WITH_CONCERNS/NOT_MET/INCONCLUSIVE) + three-bucket prose audit (honoured/diverged/missing) + **term-drift findings** (terms used in delivered reality that have drifted from `terminology/` canonical definitions) + **PRD-fidelity findings** (delivered reality vs the frozen PRD's user stories and implementation/testing decisions — what was honoured, diverged, or missing). **Two passes, two destinations:** the itd-1 acceptance pass (a shipped intent) writes per-criterion verdicts into the intent's own `## Audit Notes` (the verdict of record) plus a per-run `audit/review-<ts>/` logbook report; the itd-37 `MG004` pass (a native spec's `## Modification Grammar`) writes its `PASS`/`FAIL` verdict to an `audit/spec-mg-<ts>/` logbook receipt (native specs have no `## Audit Notes` section). For bundles, runs per-member-intent against the same delivered reality. The verb name is `audit` per adr-40 (family-2 promise-vs-reality verdicts); the top-level `/abcd:audit` stays reserved for itd-16's hash-chain fidelity surface, and `plan-review` / `impl-review` / `completion-review` remain family-1 nouns. **spc-12 ships the discipline-judgement subset only** — the itd-1 per-criterion acceptance verdicts and the itd-37 `MG004` boilerplate check, with their writers and receipts; the broader prose / term-drift / PRD-fidelity outputs above are **deferred** to a later spec. spc-12 ships the **manual** `/abcd:intent audit` surface. spc-28 then shipped the **on-close lifecycle hook**: when a linked native spec closes, the intent moves `planned/` → `shipped/` and a review is **queued** on that transition (spc-28 also backfilled already-shipped intents that never had a review queued). What remains deferred is **automatic firing of the reviewer** off the queue — the move and the queue entry are produced automatically, but running `intent-auditor` on a queued entry is still a manual `/abcd:intent audit <itd-N>` step (spc-6 disowned auto-firing; no spec currently owns it).
-2. **Cross-document fidelity → `/abcd:intent consistency [<itd-N>]`** (introduced by itd-48, which superseded itd-31). Inputs: brief + every intent. Outputs: five judgement-category findings (terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts) at `.abcd/logbook/audit/consistency-<ts>/report.{json,md}`. **Design target** — no `consistency` sub-verb is registered; it shipped in the predecessor store under spc-29 and did not carry over. The intended shape is the judgement half on demand via `/abcd:intent consistency` (bare = whole corpus; with `<itd-N>` = one intent vs the rest). Per [adr-40](../../decisions/adrs/0040-review-audit-lint-are-three-verbs.md) this surface is multi-act as designed — its five finding categories span both `lint` and `audit` — so it is split into single-act surfaces when built. **Deferred follow-up** (recorded in the `.abcd/work/issues/` ledger under `[spc-29 follow-up]`): the Role 2 mechanical half (schema/state contradictions, reference rot, acknowledgement gaps) and pre-commit hook scheduling that would let consistency findings block commits.
-3. **Kind classification → `/abcd:intent shape [<itd-N>]`** (introduced alongside the three intent kinds in itd-34). Inputs: intent corpus (cross-references, scope sections, supersession candidates). Outputs: suggested reclassifications across the three live `suggestion_type` values (`kind_change`, `bundle`, `supersession`) at `.abcd/logbook/audit/shape-<ts>/report.{json,md}`. **Design target** — no `shape` sub-verb is registered; it shipped in the predecessor store under spc-29 and did not carry over. The intended shape is the on-demand surface only: `/abcd:intent shape` (bare = corpus; with `<itd-N>` = one intent). Bare `/abcd:intent` (status+help) *surfaces the latest cached shape suggestions* in its summary output — bare invocation never runs a fresh scan or mutates the report. User accepts via `/abcd:intent reclassify`; declined suggestions are logged so they aren't re-surfaced. Concurrency between any future scheduled invocation and the on-demand verb is mediated by `flock(2)` on `.abcd/coordination/shape.lock` — see `04-surfaces/05-intent.md § 7` for the contract. **Deferred follow-up** (recorded in the `.abcd/work/issues/` ledger under `[spc-29 follow-up]`): pre-commit hook wiring for continuous shape scanning (`shape(...)`'s `mode="pre_commit"` parameter is preserved as a seam but no hook invokes it).
+The lifeboat pipeline is drawn around a larger roster than the one that ships.
+The rest are **design targets**, sequenced with
+[Phase 6](../../roadmap/phases/phase-6-lifeboat.md), and none of them exists in
+`agents/`:
 
-The `intent-auditor`'s three roles still share **one** catalog entry — the count grows by user-facing responsibility, not by role. The roster reached **16** when spc-83 added `reflection-composer` (the `/abcd:reflect` retrospective composer, itd-24) — a genuinely new user-facing responsibility, not a role of an existing agent. See [`04-surfaces/05-intent.md § 7`](../04-surfaces/05-intent.md#7-the-intent-auditor-agent-three-roles-three-verbs) for the user-facing description of the reviewer's roles.
+| Agent | Pass | What it would produce |
+|---|---|---|
+| `flow-essence` | A | the spec spine, newest-first, with superseded decisions kept |
+| `decision-archaeologist` | A | a decisions timeline from ADRs, conventions and git log |
+| `review-collator` | A | consolidated reviews plus candidate pitfalls extracted from them |
+| `code-rescuer` | A | code-level principles from a spec-window file selection |
+| `chat-distiller` | B | rationale fills, unrecorded decisions and pitfalls from a time-windowed transcript subset |
+| `artefact-curator` | C | an asset manifest classifying each item keep / adapt / drop, plus the lifeboat's docs copies |
+| `brief-composer` | C | the lifeboat brief synthesising every Pass A/B/C input |
+| `issue-scout` | C (opt-in) | issue entries annotated with related upstream work; prefers a peer scout over MCP when one is present, and is disabled by default |
+| `embark-scaffolder` | embark | a scaffold plan for a target repo |
+| `launch-gatekeeper` | launch | a release preflight over scan results and the payload manifest (itd-65, adr-33) |
+| `documentation-auditor` | subagent | a documentation audit over a source or lifeboat `docs/` tree, invoked by other verbs rather than by a user |
+| `reflection-composer` | reflect | the five retrospective sections, from a phase-audit receipt (itd-24) |
+
+## The cold-reading definitions
+
+The four `cold-reading-*` prompts are the reading positions of the cold-reading
+instrument (itd-184 / spc-62), dispatched by the host over the input
+`abcd reading assemble` produces
+([`04-surfaces/23-reading.md`](../04-surfaces/23-reading.md)).
+
+Each carries two frontmatter fields no other prompt has: the `position` it reads
+at, and the `regime` that position reads under. The binary reads both. Bare `abcd
+reading` names the definitions it resolves, and `reading ingest` resolves the
+run's position to its definition, recomputes the definition's hash against what
+the reading's output claims, and takes the regime from the definition rather than
+from any operand or configuration key, so an output claiming a different regime is
+refused.
+
+A definition holds five parts, and a test asserts exactly that composition:
+`## Object`, `## Question`, `## The blindness core`, `## Regime`, and
+`## Item shape`. The repository sources the assembler admits at that position are
+stated inside `## Object` rather than standing as a part of their own. The
+blindness core is byte-identical across all four — a test holds it so — and states
+what is true of every reading whatever its position; a definition that edited its
+own copy would be claiming a licence its position does not hold. `## Item shape`
+is what the ingest contract validates against: its body fields are read out of the
+schema `reading ingest` uses, so a definition and the contract cannot drift, and
+it carries exactly one fenced JSON block.
+
+The sources named in `## Object` are what the position **may** read; the bundle
+states what **this** run was given, and where the two disagree the bundle governs.
+
+## `intent-auditor`: one agent, three roles
+
+The auditor is one agent with three roles, sharing its prompt scaffolding, oracle
+resolution and receipts. Each role has its own verb, so there is no dispatch by
+record kind. Only the first ships.
+
+1. **Single-document fidelity → `abcd intent audit <itd-N>`** (shipped). It reads
+   a shipped intent's acceptance criteria and the delivered reality, and returns
+   per-criterion verdicts plus a three-bucket prose audit (honoured / diverged /
+   missing), each claim carrying a cited evidence pointer. The acceptance pass
+   writes its verdicts into the intent's own `## Audit Notes`, which is the verdict
+   of record; the per-run artefact beside it is an ephemeral review request in the
+   gitignored local tier. The verb name is `audit` per adr-40, which reserves it
+   for promise-versus-reality verdicts; the top-level `/abcd:audit` stays reserved
+   for itd-16's hash-chain surface. Running it is manual: closing a spec moves the
+   linked intent to `shipped/`, but nothing fires the auditor off that transition
+   (spc-6 disowned auto-firing, and no spec owns it now). The term-drift,
+   PRD-fidelity and modification-grammar outputs the role was drawn with are
+   **deferred**: none is in the shipped prompt or in any lint.
+2. **Cross-document fidelity → `abcd intent consistency`** (**design target**). It
+   would read the brief and every intent and report terminology drift, premise
+   contradictions, scope leakage, sequencing impossibilities and naming conflicts.
+   No `consistency` sub-verb is registered. Per adr-40 the surface as drawn is
+   multi-act — its finding categories span both `lint` and `audit` — so it is split
+   into single-act surfaces when built.
+3. **Kind classification → `abcd intent shape`** (**design target**). It would read
+   the intent corpus and suggest reclassifications, supersessions and bundles. No
+   `shape` sub-verb is registered, and no cached suggestions exist for bare
+   `abcd intent` to surface.
+
+The three roles share **one** catalogue entry: the roster grows by user-facing
+responsibility, not by role.
 
 ## Oracle backend resolution
 
-**Scope, per adr-25:** agents that need a model reach it through the `oracle` seam ([`02-adapters.md`](02-adapters.md)). The default is **host-delegated**: abcd's core does the deterministic work and hands a **prompt** to the host's subagent dispatch (the agent harness driving abcd); the host owns model choice, credentials, and execution, and abcd consumes the structured result. The default install needs no API keys and no model config — abcd emits prompts and the host runs them.
+**Scope, per adr-25:** an agent that needs a model reaches it through the `oracle`
+seam ([`02-adapters.md`](02-adapters.md)). The default is **host-delegated**: abcd
+does the deterministic work and hands a prompt to the host's subagent dispatch,
+which owns model choice, credentials and execution, and abcd consumes the
+structured result.
 
-Concrete oracle backends are **opt-in adapters** behind the same seam, selected when an operator wants abcd to reach a model directly:
+Concrete backends are **opt-in adapters** behind the same seam, selected when an
+operator wants abcd to reach a model directly: a local model, a model CLI run as a
+subprocess, a provider API, or a model over MCP. The `oracle.backend` config key
+records the choice, defaulting to host-delegated; an unreachable adapter degrades
+to that default rather than blocking. Per
+[`04-universal-patterns.md § 7`](04-universal-patterns.md#7-vendor-agnostic-adapters-with-environment-branching)
+the seam is one interface with a native default and opt-in shapes, never a fixed
+cascade the core imposes.
 
-- **native** — abcd calls a local model itself.
-- **cli** — abcd shells to a model CLI (e.g. `codex exec`) as a non-interactive subprocess.
-- **api** — abcd calls a provider API directly.
-- **mcp** — abcd calls a model over MCP (e.g. RepoPrompt routing to the user's configured model, or codex over MCP).
-
-`oracle.backend` config: `"host-delegated"` (default) `| "native" | "cli" | "api" | "mcp"`. The default needs no external tool; an explicit value selects a wired adapter, and an unreachable adapter degrades to the host-delegated default rather than blocking. Per [`04-universal-patterns.md § 7`](04-universal-patterns.md#7-vendor-agnostic-adapters-with-environment-branching), the `oracle` seam is one interface with a native default and opt-in adapter shapes — never a fixed cascade the core imposes.
-
-**Adapter guidance for high-stakes reviews (adr-25).** When an operator wires two oracle adapters, a **scoped** reviewer (seeing only a selection) and a **broad** reviewer (reasoning over the whole repo) have complementary blind spots and are trusted **asymmetrically** — the scoped verdict gates, the broad reviewer is mined for findings, and the review-fix loop declares its stopping rule up front. This is advice the adapter layer offers, not a pipeline the core imposes.
-
-The same seam serves multiple purposes:
-- `lifeboat-reviewer` — generic content-fidelity review ("does the lifeboat match the source?")
-- `press-release-composer` — product-thinker audit on the press release ("would a product person come away with a true mental model?")
-- `intent-auditor` — three roles share the seam: single-document fidelity (per itd-1), cross-document fidelity (per itd-48, which superseded itd-31), and shape classification (per itd-34)
-- Future audits use the same `oracle` seam with their own prompt templates.
+**Adapter guidance for high-stakes reviews (adr-25).** When an operator wires two
+adapters, a **scoped** reviewer seeing only a selection and a **broad** reviewer
+reasoning over the whole repo have complementary blind spots and are trusted
+asymmetrically: the scoped verdict gates, the broad reviewer is mined for
+findings, and the review-fix loop declares its stopping rule up front. That is
+advice the adapter layer offers rather than a pipeline the core imposes.
 
 ## Verdict-tag protocol
 
-Two verdict-enum families are in play across abcd:
+Two verdict enums are in play, and they are deliberately disjoint.
 
-**1. Review verdicts** (oracle reviews of plans, implementations, completions; emitted as `<verdict>...</verdict>` tags in oracle output): `{SHIP, NEEDS_WORK, MAJOR_RETHINK}`. This is abcd's native review-verdict enum and a **shared convention** at the `spec`/`run` seam boundary (adr-24, adr-26): a review gates a **receipt** in the native run loop (adr-27) or a wired peer loop alike, so any abcd-produced review is portable across the seam without a tool-specific validator.
+**1. Review verdicts** — `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` — assess a *change*.
+They are emitted as tags in oracle output and are a shared convention at the
+`spec`/`run` seam boundary (adr-24, adr-26), so any abcd-produced review is
+portable across the seam without a tool-specific validator.
 
-**2. Per-criterion intent acceptance verdicts** (per itd-1, used by `intent-auditor`): `{MET, MET_WITH_CONCERNS, NOT_MET, INCONCLUSIVE}`. These describe whether each acceptance bullet was honoured; rollup logic lives in [`04-surfaces/05-intent.md § 7`](../04-surfaces/05-intent.md). Different category from review verdicts — review verdicts assess a *change*, criterion verdicts assess a *promise vs reality*.
+**2. Per-criterion acceptance verdicts** — `{MET, MET_WITH_CONCERNS, NOT_MET,
+INCONCLUSIVE}` — assess a *promise against reality*, per itd-1. Rollup logic lives
+in [`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md).
 
-These two enums are deliberately disjoint and never mixed. Reviews emit family 1; auditors emit family 2.
+Reviews emit family 1; auditors emit family 2. The two are never mixed.
+
+## The scribe protocol
+
+The `scribe` is machine assistance in maintaining the ledger, and its access rule
+is the exact inverse of the assembler's (invariant 15 in
+[`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md), which
+binds this section). The assembler passes a reading a positively included slice of
+the shipped repository and no ledger; the scribe receives ledger content plus the
+reading output it is transcribing, and never the shipped repository as an object
+of judgement. **No session holds both a reading and the ledger.** The scribe is
+also not a consumer of the session-transcript store: that store's consumer list is
+enumerated in the same invariant, and adding the scribe to it is an invariant
+change rather than a code path.
+
+The scribe's inputs block is an allow list rather than a deny list, because
+positive inclusion is what excludes the path nobody thought to name, including a
+record type the list has never heard of. Two tests in `internal/core/lint` hold the
+definition to that, and their reach is exactly what they say: they prove the
+definition names the right paths, not that a host assembled the right context.
+Mechanical assembly belongs to the ingest verb.
+
+The mechanical path exists beside the scribe: `abcd reading ingest` validates the
+output a reading returned and writes its reading records, and `abcd capture
+disposition` writes the researcher's answer to one item. The scribe is the
+transcription assistant of the session in which that material is prepared, and
+four rules bind that session:
+
+1. **Entries are transcribed when the reading returns**, not later. A protocol
+   invented under time pressure is a protocol that gets skipped, and a batch of
+   readings held for transcription is the pressure that invents one.
+2. **The reading run and the scribe run are separate host sessions**, always. Each
+   is retained under its own session id, and the transcript store is what shows
+   two distinct sessions. The honest limit: the store shows that two sessions
+   exist and that neither carries the other's material; it cannot enforce that the
+   practice held, because the separation happens in the host before anything is
+   retained.
+3. **The transcribed material is committed through the ordinary record path.** The
+   reading and disposition stores are declared record families, so `record_schema`
+   holds each record to its shape at the gate, and the writing verbs validate
+   before they write. A record the scribe transcribed reaches the tree through a
+   verb, never by a hand-placed file.
+4. **A fidelity flag is carried to the researcher unresolved.** The scribe may flag
+   an internal inconsistency in the material it is transcribing, because that is
+   transcription fidelity rather than judgement. It may never propose a
+   resolution. The flag is a named field beside the transcribed material, so it can
+   be counted and answered rather than buried in prose.
+
+Anything the scribe is explicitly asked to produce **beyond formatting** opens
+with a contribution stamp that travels with the material if it is adopted, and an
+unstamped contribution is never delivered — a refusal in the definition, not a
+preference. The stamp is the hand-run form of the record's origin and
+production-mode keys (itd-178), which the writing verbs stamp on every record they
+mint.
 
 ## Agent prompt frontmatter
 
-Every agent's prompt file carries declared frontmatter. Current fields:
+Every prompt carries declared frontmatter. The fields:
 
-| Field | Required | Source | Purpose |
-|---|---|---|---|
-| `name` | yes | harness registration | The agent's registered name; the flat-glob harness registration this chapter describes runs on `name` + `description` |
-| `description` | yes | harness registration | When the host should dispatch this agent (the harness's dispatch hint) |
-| `color` | optional | harness presentation | Presentation hint; carried today by the five reviewer/researcher prompts (`intent-auditor`, `docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer`, `sota-researcher`) |
-| `prompt_version` | yes | itd-5 | Semver of the agent prompt; bumps on any prompt change |
-| `capability_scope` | yes (every shipped prompt) | itd-5 extension (idea-4 jagged-frontier) | Declared task classes the agent is designed for. Object: `{ task_classes: [<token>, ...], designed_for: "<free-text 1-line>" }`. **`task_classes` is authored as a YAML inline list** — `task_classes: [spec_planning, audit]` on one line, never a block list of `- token` items (the frontmatter parser does not support a block list nested under a nested key). Carried today by all ten shipped prompts — the five synthesis/composer prompts and the five reviewer/researcher prompts alike (e.g. `intent-auditor` declares `task_classes: [intent_audit]`, `ruthless-reviewer` and `security-reviewer` `[oracle_review]`). Set-membership lint in `internal/core/lint` against the `task_classes` closed enum (owned by `internal/core/schema`; prose counterpart in `02-constraints/04-naming.md`, PR-to-extend) is a design target — no shipped check reads the field. Cites Dell'Acqua et al. 2023 ("Navigating the Jagged Technological Frontier") as the framing source. |
-| `reads_untrusted_input` | conditional (agents that read untrusted input) | itd-5 | Boolean. `true` declares the agent reads attacker-influenceable input (transcripts, lifeboats, GitHub issues, commit messages, model-emitted reviews). When `true`, the agent MUST carry at least one canary fixture under `agents/<name>/fixtures/`; a fixture-presence prompt-lint in `internal/core/lint` is a design target — no shipped check enforces it (the M6 agents ship conforming files, not the linter — see `agents/README.md`). |
+| Field | Required | Purpose |
+|---|---|---|
+| `name` | yes | The agent's registered name; the flat-glob harness registration runs on `name` and `description` |
+| `description` | yes | When the host should dispatch this agent |
+| `color` | optional | A presentation hint. Nine prompts carry one: the four cold-reading definitions (cyan), `docs-currency-reviewer` (blue), `ruthless-reviewer` (orange), `security-reviewer` (red), `sota-researcher` (purple), and `intent-auditor` (green). It tracks no group — the auditor carries one and `lifeboat-reviewer` does not — so it is decoration a prompt opts into, not a signal to read |
+| `tools` / `model` | optional | Tool allow-list and model hint for the host's dispatch, carried by the repo-workflow reviewer and researcher prompts |
+| `prompt_version` | yes | Semver of the prompt, bumped on any prompt change; the changelog entry is keyed on it |
+| `capability_scope` | yes | `{ task_classes: [...], designed_for: "<one line>" }`: the task classes the agent is designed for. `task_classes` is authored as a YAML inline list, never a block list, because the frontmatter parser does not support one nested there |
+| `position` | cold-reading definitions | The reading position this definition is for; the locator resolves a position to its definition by this field |
+| `regime` | cold-reading definitions | The supply regime that position reads under; `reading ingest` takes it from here and refuses an output whose own claim differs |
+| `reads_untrusted_input` | yes | Whether the agent reads attacker-influenceable input: transcripts, lifeboats, forge issues, commit messages, model-emitted reviews |
 
-**Deliberately omitted from agent frontmatter** (boundary against scope creep, per idea-4's static/dynamic split): `known_failure_modes` (runtime-appended events), per-task-class `model_id` history, plan-time capability gating output. These belong to the later-phase Frontier Awareness intent — capture-stable, no ID reserved.
+A shipped check reads these. Record-lint's `agent_contract` rule, armed at blocker
+severity over `agents/`, requires the declaration on every prompt whatever its
+value — a rule that fired only on `true` is one a prompt opts out of by deleting a
+line — and, on a prompt declaring `true`, both `capability_scope` fields plus an
+injection-canary fixture that is present, a regular file and non-empty. An empty
+file or a symlink is refused, because a canary that asserts nothing reports the
+contract met without testing it. Every shipped prompt declares
+`reads_untrusted_input: true` and carries a canary.
 
-**Why `capability_scope` is in itd-5 (cheap) and not its own discipline:**
+What is still a design target is the narrower half: set-membership of
+`task_classes` against a closed enum. No enum file and no owning schema package
+exists, so a token outside the intended set passes the gate. The reserved-
+vocabulary table in
+[`02-constraints/04-naming.md`](../02-constraints/04-naming.md) is the token set's
+source of truth today, PR-to-extend (iss-265).
 
-- Same artefact class as `prompt_version`: agent frontmatter, versioned with the prompt, mechanical to write at v1.0.0 lock.
-- ~5 min/agent at v1.0.0 lock; itd-5 stays cheap.
-- Lint validation in `internal/core/lint` is strictly set-membership (every `task_classes` token must be in the `task_classes` enum). NEVER inference — the linter does not read `designed_for` prose or task descriptions to judge scope. Anything fuzzier (semantic judgement: "is THIS task within agent X's frontier?") is the later-phase Frontier Awareness Role 2 sub-check.
+**Deliberately omitted** from agent frontmatter, as a boundary against scope
+creep: runtime-appended failure modes, per-task-class model history, and
+plan-time capability gating output. Those belong to the later-phase Frontier
+Awareness intent.
 
-**Oracle seam contract preserved.** The `oracle` seam (host-delegated by default, opt-in adapters per adr-25, with the framing in [`04-universal-patterns.md § 7`](04-universal-patterns.md#7-vendor-agnostic-adapters-with-environment-branching)) is unchanged by the `capability_scope` field. Capability-aware routing — when it ships in a later phase — is a *pre-dispatch selector* layer above the seam, NOT a modification to the seam contract. Selector consumes `(task_class, agent, model_id) → preferred oracle backend`; the seam consumes `(backend) → host-delegated-or-adapter dispatch`. Thin seam.
+**Why `capability_scope` rides in itd-5 rather than earning its own discipline:**
+it is the same artefact class as `prompt_version` — agent frontmatter, versioned
+with the prompt, mechanical to write — and its validation stays mechanical. The
+linter never reads `designed_for` prose to judge scope, in either direction.
+Anything fuzzier is the later-phase Frontier Awareness sub-check.
+
+**The oracle seam contract is unchanged by it.** Capability-aware routing, when it
+ships, is a pre-dispatch selector layer *above* the seam rather than a
+modification to it: the selector consumes task class, agent and model to pick a
+backend; the seam consumes a backend to dispatch. Thin seam.

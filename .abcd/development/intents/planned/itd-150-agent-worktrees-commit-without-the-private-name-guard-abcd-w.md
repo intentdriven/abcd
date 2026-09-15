@@ -20,6 +20,10 @@ promoted_from: iss-370
 
 Graduated from `iss-370`: Agent worktrees commit without the private name-guard: .abcd/.work.local/ is per-worktree, so every isolated-worktree agent commit runs with the banlist layer absent — loudly warned, per design, but the isolated-agent pattern now systematically bypasses a protection the main checkout has. Candidate remedies: the worktree-creation path seeds a pointer to the primary checkout's store, or the hook falls back to reading the primary worktree's local tier. Read that issue record for the source observation.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a name recorded in the private banlist of the primary checkout's `.work.local` store but absent from any store inside a linked git worktree, **when** an agent stages a commit whose content carries that name from within the linked worktree, **then** the guard hook resolves the banlist from the primary checkout and blocks the commit on that name.

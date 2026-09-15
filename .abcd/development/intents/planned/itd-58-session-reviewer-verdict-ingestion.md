@@ -37,6 +37,10 @@ Until this lands, the seam enforces A4 as a **denial without a counterpart**: no
 - Non-seam runners: this ingestion is scoped to the pluggable autonomous seam; any runner driven outside the seam is out of scope.
 - Any change to how the advance gate DENIES (that is the enforcement wiring + the existing gate); this intent only adds the trusted INGESTION half.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

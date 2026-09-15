@@ -23,7 +23,7 @@ func TestIngestEncodesHiddenRunesInFetchedOrigin(t *testing.T) {
 		"RLO override": 0x202e,
 		"zero-width":   0x200b,
 	}
-	poison := "http://example.com/a?q=v"
+	poison := "https://example.com/a?q=v"
 	for _, r := range attacks {
 		poison += string(r)
 	}
@@ -43,7 +43,7 @@ func TestIngestEncodesHiddenRunesInFetchedOrigin(t *testing.T) {
 
 	res, err := Ingest(IngestRequest{
 		RepoRoot:  repo,
-		Source:    "http://example.com/a",
+		Source:    "https://example.com/a",
 		Distiller: echoDistiller,
 		Fetcher:   fetcher,
 		Now:       fixedNow,

@@ -135,3 +135,69 @@ func TestCitedIDReGrammar(t *testing.T) {
 		}
 	}
 }
+
+// TestResolverAdmitsBothADRVintages is the 2026-09-01 ruling at the read side:
+// the ADR store now holds two id vintages side by side — the hand-numbered
+// ordinals 0001–0058, which keep their ids and filenames, and the minted
+// timestamp form — and one resolver answers for both. Nothing here parses the
+// filename as anything but a run of digits, so a 4-digit name and a 16-digit
+// one are judged on the same axis.
+func TestResolverAdmitsBothADRVintages(t *testing.T) {
+	root := t.TempDir()
+	for _, rel := range []string{
+		".abcd/development/decisions/adrs/0058-a-reading-is-commissioned.md",
+		".abcd/development/decisions/adrs/2609012206053814-adrs-mint-timestamp-ids.md",
+	} {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte("# record\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, err := NewResolver(root)
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	for id, want := range map[string]string{
+		"adr-58":               ".abcd/development/decisions/adrs/0058-a-reading-is-commissioned.md",
+		"adr-2609012206053814": ".abcd/development/decisions/adrs/2609012206053814-adrs-mint-timestamp-ids.md",
+	} {
+		got, ok := r.Lookup(id)
+		if !ok {
+			t.Errorf("%s did not resolve", id)
+			continue
+		}
+		if got != want {
+			t.Errorf("%s resolved to %q, want %q", id, got, want)
+		}
+	}
+	// The cited-id grammar every ingest boundary bounds a citation with must
+	// admit the minted spelling too, or a cite of a fresh decision is refused
+	// before it is ever looked up.
+	if !CitedIDRe.MatchString("adr-2609012206053814") {
+		t.Error("CitedIDRe refuses a minted ADR id")
+	}
+}
+
+// TestADRFileIDIsTheOneDerivation pins the shared ADR filename→id derivation:
+// the ordinal's padding is trimmed, the stamp is passed through, and a name that
+// is not an ADR record yields nothing. It is exported because the mint's
+// presence check and the read-side resolver must judge exactly the same files.
+func TestADRFileIDIsTheOneDerivation(t *testing.T) {
+	cases := map[string]string{
+		"0001-three-layer-mental-model.md":            "adr-1",
+		"0058-a-reading-is-commissioned.md":           "adr-58",
+		"2609012206053814-adrs-mint-timestamp-ids.md": "adr-2609012206053814",
+		"README.md":    "",
+		"0000-zero.md": "",
+		"adr-58-x.md":  "",
+		"0058-a-slug":  "",
+	}
+	for name, want := range cases {
+		if got := ADRFileID(name); got != want {
+			t.Errorf("ADRFileID(%q) = %q, want %q", name, got, want)
+		}
+	}
+}

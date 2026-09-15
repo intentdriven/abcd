@@ -133,6 +133,10 @@ Two live exemplars from the maintainer's private toolchain set the bar
 - Windows terminals: "any terminal" means the shipped release targets
   (darwin/linux); abcd ships no Windows binary.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 Adopted by the maintainer 2026-08-22 at the planning interview.

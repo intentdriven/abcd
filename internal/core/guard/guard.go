@@ -280,8 +280,9 @@ func Validate(r Registry) error {
 			if strings.TrimSpace(prefix) == "" {
 				return fmt.Errorf("%w: entry %s argument prefix %d is empty and would match every argument", ErrInvalidEntry, id, i)
 			}
-			// A prefix constrains an OPERAND, and `operands` never returns a
-			// token that starts with a dash — it reads those as flags. A dashed
+			// A prefix constrains an OPERAND, and `operandIndexes` never
+			// returns a token that starts with a dash — it reads those as
+			// flags. A dashed
 			// prefix therefore describes an argument nothing can be: the silent
 			// defang again, one field along. A flag belongs in Flags.
 			if strings.HasPrefix(prefix, "-") {
@@ -375,6 +376,16 @@ func (r Registry) Check(command string) (Decision, error) {
 	// raises a synthetic (entry-less) signal folded in by severity below.
 	segs, signals := expandPayloads(segs)
 
+	// git rewrites its own subcommand from configuration carried IN the command
+	// line, and the operand walk was built to step exactly those values over
+	// (gh-299). The pre-pass reads them and appends the command git would
+	// actually run, so the entries that already exist match it. It runs after the
+	// payload expansion so a git command inside an `sh -c` payload is reached too
+	// (GHSA-m2r8-fx7r-rq34).
+	aliasSegs, aliasSignals := r.expandGitAliases(segs)
+	segs = aliasSegs
+	signals = append(signals, aliasSignals...)
+
 	// A brace group the tokenizer could not expand is folded in the same way,
 	// and AFTER the payload expansion so a group hidden inside an inspectable
 	// payload counts too. One signal is enough however many segments carry a
@@ -383,6 +394,14 @@ func (r Registry) Check(command string) (Decision, error) {
 	for _, s := range segs {
 		if s.braceGroup {
 			signals = append(signals, braceExpansionBlockSignal())
+			break
+		}
+	}
+	// An unterminated here-document is the same shape: a tokenizer state that
+	// is bash grammar, not a fault, which the hook would otherwise fail open on.
+	for _, s := range segs {
+		if s.heredocUnterminated {
+			signals = append(signals, heredocBlockSignal())
 			break
 		}
 	}

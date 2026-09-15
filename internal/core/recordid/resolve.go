@@ -3,11 +3,11 @@ package recordid
 // resolve.go is the READ side of this package: given a repository, which record
 // ids actually exist?
 //
-// MaxAcrossRefs answers "what is the next free id"; a resolver answers "does the
-// id this payload cites name a real record". Both questions are about the same
-// id space and the same filename grammar, so they share a home — a second
-// resolver living next to a consumer (an ingest seam, a lint rule) would drift
-// from the minting side the first time a family moved.
+// The mint answers "what is a fresh id"; a resolver answers "does the id this
+// payload cites name a real record". Both questions are about the same id space
+// and the same filename grammar, so they share a home — a second resolver living
+// next to a consumer (an ingest seam, a lint rule) would drift from the minting
+// side the first time a family moved.
 //
 // Only the four ID-BEARING families are resolvable. The brief and the principles
 // carry no per-entry id, so a citation of one cannot be validated by id at all;
@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -39,6 +40,55 @@ var CitedIDRe = regexp.MustCompile(`^(?:adr|itd|iss|spc)-[0-9]+$`)
 // are the one family whose file does not carry its own id spelling, so the id is
 // derived from the numeric prefix.
 var adrFileRe = regexp.MustCompile(`^([0-9]+)-[^/]*\.md$`)
+
+// adrHandleRe matches an ADR id in every spelling the record writes it in. It is
+// case-insensitive and tolerant of padding because `adr-0012`, `adr-12` and
+// `ADR-12` are one handle, not three records — the reading the record-lint gate,
+// the citation resolver and the `abcd <id>` dispatch all already take.
+var adrHandleRe = regexp.MustCompile(`(?i)^adr-([0-9]+)$`)
+
+// CanonADRID canonicalises an ADR id to the one spelling every claimant of that
+// decision resolves to: lower-case `adr-` and the number with its leading zeros
+// trimmed. "" when the string is not an ADR id at all.
+//
+// ADRs are the one family carrying TWO id vintages: the hand-numbered ordinals
+// 0001–0058, which keep their ids and filenames, and the minted
+// `adr-<yymmddHHMMSS><rrrr>` form the 2026-09-01 ruling adopted. Both are the
+// same `[0-9]+` grammar, so one canonicaliser serves both — which is the point of
+// keeping it here rather than once per reader.
+func CanonADRID(id string) string { return canonADRNum(adrHandleRe, id) }
+
+// ADRFileID derives an ADR's canonical id from its filename: `0037-<slug>.md` →
+// `adr-37`, `2609012206053814-<slug>.md` → `adr-2609012206053814`. "" when the
+// name is not an ADR record's.
+//
+// It is exported because two sides must judge exactly the same files: the read-side
+// resolver below, and the mint's presence check (core/decide), which redraws when a
+// candidate id already names a record. A second copy of this derivation would let
+// the mint re-issue an id the resolver already answers for.
+func ADRFileID(name string) string { return canonADRNum(adrFileRe, name) }
+
+// canonADRNum is the shared body of the two above: match, trim the leading zeros,
+// render the canonical handle.
+//
+// The trim is TEXTUAL, never an integer parse. A minted id is 16 digits and an
+// ordinal is 4, but neither the grammar nor any record bounds the width — and a
+// parse that overflows returns "", which reads to every caller as "not a record"
+// and drops a present decision in silence. Trimming text has no such edge and
+// agrees with the parse for every number a parse can represent.
+func canonADRNum(re *regexp.Regexp, s string) string {
+	m := re.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	// An all-zero number is not an id: no adr-0 was ever issued, and admitting one
+	// would let `0000-x.md` claim a handle no citation can name.
+	trimmed := strings.TrimLeft(m[1], "0")
+	if trimmed == "" {
+		return ""
+	}
+	return "adr-" + trimmed
+}
 
 // maxScanEntries bounds how many directory entries one resolver may read across
 // every family. A repository with more records than this is pathological or
@@ -152,18 +202,11 @@ func (r *Resolver) record(prefix, relDir, name string) {
 
 // fileID derives a record id from a filename within its family. The three
 // slug-prefixed families spell their own id (itd-104-<slug>.md); ADRs carry a
-// zero-padded ordinal instead (0037-<slug>.md → adr-37).
+// bare number instead (0037-<slug>.md → adr-37), read through the one exported
+// derivation the mint's presence check also calls.
 func fileID(prefix, name string) string {
 	if prefix == "adr" {
-		m := adrFileRe.FindStringSubmatch(name)
-		if m == nil {
-			return ""
-		}
-		n, err := strconv.Atoi(m[1])
-		if err != nil || n <= 0 {
-			return ""
-		}
-		return "adr-" + strconv.Itoa(n)
+		return ADRFileID(name)
 	}
 	m := idRe(prefix).FindStringSubmatch(name)
 	if m == nil {

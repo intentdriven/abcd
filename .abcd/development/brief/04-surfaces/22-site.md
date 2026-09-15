@@ -1,14 +1,26 @@
 # `/abcd:site` — The Website as a Rendered Surface
 
-`/abcd:site` renders abcdev.app from this repository and from nothing else
+A project website drifts from the project. The tagline on the landing page is a
+version behind, the install snippet no longer matches the CLI, a statistic was
+true last quarter. `/abcd:site` removes the drift by removing the second copy:
+every sentence the site publishes is a span of a repository file, selected by path
+and heading, and a gate refuses to publish text that is not
 ([adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md)).
+
+What that costs a maintainer: a sentence that would improve the site has to be
+written into `docs/` or the record, where it must also read true on the forge.
+What it buys: the site cannot say anything the repository does not, and nobody has
+to remember to update it.
+
 The bare form is **strictly read-only**: it reports what the repository has
-declared and what the output directory holds. `build` is the render, and it
-writes only inside the directory it is given.
+declared and what the output directory holds. `build` is the render, and it writes
+only inside the directory it is given; `check` gates a rendered tree, and renders
+first when the directory holds no `index.html` — the one write path besides
+`build`, confined to the same directory.
 
 It answers a different question from `/abcd:launch`: `launch` prepares what a
-release ships to users who install the binary; `site` prepares what a reader
-sees who never installs anything. The cadence that connects them is
+release ships to users who install the binary; `site` prepares what a reader sees
+who never installs anything. The cadence that connects them is
 [adr-48](../../decisions/adrs/0048-website-deploys-on-release-not-on-merge.md)'s:
 production renders from the tag, with the released bytes.
 
@@ -16,8 +28,11 @@ production renders from the tag, with the released bytes.
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
@@ -26,130 +41,145 @@ production renders from the tag, with the released bytes.
 
 ## The single-source rule
 
-No text is written for the website. Every sentence it renders is a span of a
-repository file, selected by path and heading through `.abcd/site.json`; the
-only words the generator may add are the interface strings in
-`site-src/ui.json`, plus numbers, dates, file names and asset names. A sentence
-that would improve the site is written into `docs/` or the record, where it must
-also read true on the forge.
+No text is written for the website. The only words the generator may add are the
+interface strings in its own allowlist file, plus numbers, dates, file names and
+asset names.
 
 Two mechanisms keep that from being a promise nobody can check. Every rendered
-block carries `data-src="path#heading"`, so each one names its own source in the
-markup. And `site-src/ui.json` is decoded against a closed struct with unknown
-fields refused, so a word added to that file which no field reads fails the
-build rather than reaching a reader unreviewed.
+block carries a `data-src` attribute naming the file and heading it came from, so
+each block names its own source in the markup. And the interface-string file is
+decoded against a closed struct with unknown fields refused, so a word added there
+which no field reads fails the build rather than reaching a reader unreviewed.
 
 Every picture is a committed asset under `docs/assets/img/`, referenced from a
-docs page like any other image. SVGs are inlined so their `var(--token,
-fallback)` colours follow the reader's theme; rasters are copied verbatim. The
-build never draws.
+docs page like any other image. SVGs are inlined so their colours follow the
+reader's theme; rasters are copied verbatim. The build never draws.
 
 ## Behaviour
 
 ```bash
-abcd site                    # what is declared, and what the last build left; exit 0
+abcd site                    # what is declared, and what the last build left
 abcd site build              # render into ./site
-abcd site build --out DIR    # render into DIR
-abcd site build --preview    # stamp the render as unreleased · <commit>
-abcd site check --out DIR    # gate an already-rendered tree; exit 1 on findings
+abcd site build --preview    # stamp the render as unreleased at this commit
+abcd site check              # gate the rendered tree; exit 1 on findings
 ```
 
-`--preview` is for a build of an untagged tree: the stamp renders the
-`ui.json` word `unreleased` with the commit in place of a version,
-`record.json` carries `"preview": true`, and pinning `--version` alongside it
-refuses. A build into a non-empty directory purges it only when the tree
-carries the `.abcd-site-build` marker a previous build wrote, and refuses
-loudly otherwise: the build cannot remove a directory it did not write.
+Both write paths take `--out` to name a different directory, and the bare board
+reports on whichever directory it is pointed at.
 
-`build` reads, and reads nothing else:
+The build stamp is injectable in all three of its parts — version, commit and date
+— so a caller that knows better than the defaults can say so. That is what keeps
+the render free of a clock read, and what lets a test pin the whole export byte for
+byte. `--preview` is for an untagged tree: the stamp renders the word `unreleased`
+with the commit in place of a version, the record export marks itself a preview,
+and pinning a version alongside it refuses.
 
-| Input | What it supplies |
-|---|---|
-| `.abcd/site.json` | the composition: which span of which file becomes which block |
-| `site-src/ui.json` | the closed allowlist of words the generator may add |
-| `.abcd/record-lint.json` | where the record stores are, so the graph scan finds them |
-| `.abcd/site-baseline.json` | the unresolved-reference ratchet the health block counts against (the path is `checks.unresolved_reference_baseline`'s, defaulting to this one) |
-| `.abcd/development/**`, `.abcd/work/issues/**` | the record itself, through the record-lint engine's own scan — one parser, not a second |
-| git history | one `git log --reverse --name-status --diff-merges=first-parent` pass, plus `shortlog` and the `Assisted-by:` trailers |
-| `CHANGELOG.md` | the dated release headings |
-| `docs/**` | the composed pages and their committed assets |
-| `site-src/{site.css,site.js,record.js,redirects,headers}`, `site-src/install.sh.tmpl` | the static inputs copied into the output tree, and the install script the site serves |
-| `CONTRIBUTING.md`, `ACKNOWLEDGEMENTS.md` | the credit sources the contributors and references pages render (the footer also probes `SECURITY.md` and `CITATION.cff` for their existence) |
-| `.claude-plugin/plugin.json` | the package's forge URL, licence and author, for links and the footer |
+A build into a non-empty directory purges it only when the tree carries the build
+marker a previous build of this repository wrote and git tracks nothing in it, and
+refuses loudly otherwise. The build cannot remove a directory it did not write, so
+a repository that commits its built site is refused and must be pointed at an
+untracked output directory, and a tree with no root commit has no identity a marker
+could name, so its non-empty output is emptied by hand. An output path with a
+symlink at its leaf or at an ancestor inside the checkout, the repository root or a
+directory containing it, and any directory holding `.git` are refused before
+anything is read; the bare board reports the same refusal instead of counting
+through it.
 
-It writes the landing page, the explorer's pages, `record.json`,
-`install.sh` (the committed template plus one build-stamp comment), the
-`_redirects` and `_headers` maps, the stylesheets and scripts, every
-referenced raster, and the `.abcd-site-build` marker. Nothing else, nowhere
-else, and no network at any point.
+The build reads the repository and nothing else — no network at any point. Its
+inputs are the composition declaration and the interface-string allowlist; the
+record itself, read through the record-lint engine's own frontmatter scan so there
+is one parser rather than two; the bibliography and the glossary through their own
+parsers; one pass of git history; `CHANGELOG.md`; the two root prose files whose
+text the site publishes, which are the acknowledgements behind the references page
+and the authorship section of the contribution guide behind the contributors page;
+and `docs/` with its committed assets. It writes the landing page, the record explorer, the machine-readable
+record export, the install script from its committed template, the redirect and
+header maps, the stylesheets and scripts, every referenced raster, and its own
+build marker. Nothing else, nowhere else.
+
+One input reaches past the durable record into the working tier, and it is off
+unless a repository asks for it. The composition declaration carries an
+issue-ledger switch: turned on, the explorer publishes the issue records
+alongside the record families the site always reads, and the bare board reports
+in a line of its own whether the ledger is published. Left alone, it is not, so a
+repository publishes its working tier only by deciding to.
+
+The explorer includes a **glossary page set** and the term links that reach it: the
+first use of a glossary term on a record page is a link to that term's entry, and
+only the first. A use inside a code span, a heading, a link already there, or on
+the term's own entry page is left exactly as the record wrote it. Both halves are
+graceful absences: a repository that keeps no glossary gets no pages, no navigation
+entry and no links.
 
 ## The gates
 
-`abcd site check` runs seven independent checks over a rendered tree and
-reports every failure, not the first: the provenance walk (each visible text
-node sits in a resolvable `data-src` span or matches the allowlist of
-interface strings, numbers, dates, file and asset names), the hero against
-the Identity block, docs-lint's banned tokens over composed text, `abcd …`
-snippets against the generated CLI reference, the unresolved-reference
-ratchet (growing fails, shrinking is invited), the static mobile checks over
-every page, and the loop-figure labels against their page. Scope follows
-adr-47 decision 3 exactly: composed surfaces are `/` and every
-manifest-selected span, the verbatim record rendering under `/record/` is
-exempt, and the attribution escape is a verification — a name on
-`/contributors/` must match a trailer or contributor git actually carries.
-The rendered-overflow screenshot audit is CI's optional, non-gating job; the
-static gates here are what a browserless binary can assert, and the two are
-complementary by design.
+`abcd site check` runs seven independent gates over a rendered tree and reports
+every failure rather than the first: provenance, hero drift against the identity
+block, banned tokens over composed text, `abcd …` snippets against the generated
+CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
+loop-figure labels. `abcd site check --help` names the same seven, kept beside the
+code that runs them.
 
-Two of those inputs are **declared deviations** from itd-140's generic-side
-input contract, and are recorded here rather than argued away.
-`.claude-plugin/plugin.json` is this repository's package manifest; a repo
-without one renders without the forge links and the copyright line rather than
-failing. `.abcd/site-baseline.json` is per-repo site configuration, and
-`record.json`'s `health` block counts against it — which is the same opt-in
-shape as `.abcd/site.json` itself, and the reason it is acceptable: the record
-DATA proper stays record-format plus git plus `CHANGELOG.md`, and only the
-health measurement consults a configured ratchet.
+Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
+every manifest-selected span; the verbatim record rendering is exempt; and the
+attribution escape is a verification, so a name on the contributors page must match
+a trailer or contributor git actually carries. The externally-generated docs tree
+is dropped from the page walk before any gate sees it, the mobile checks included,
+so they say nothing about that subtree: its words are gated at the source by
+docs-lint instead. In production the two trees share one output directory, so
+"every page" means every page this build wrote.
 
-The rendered `<title>` and `<meta name="description">` carry Identity-block text
-without a `data-src` attribute, because neither element can hold visible text a
-provenance walk would reach. `abcd site check` special-cases both.
+The rendered-overflow screenshot audit is CI's optional, non-gating job. The static
+gates here are what a browserless binary can assert, and the two are complementary
+by design.
+
+Two inputs are **declared deviations** from the generic input contract, recorded
+here rather than argued away. The plugin manifest is this repository's package
+manifest; a repo without one renders without the forge links and the copyright line
+rather than failing. The reference baseline is per-repo site configuration that the
+health block counts against, which is the same opt-in shape as the composition
+declaration itself: the record data proper stays record-format plus git plus the
+changelog, and only the health measurement consults a configured ratchet.
+
+The rendered `<title>` and `<meta name="description">` carry identity-block text
+with no provenance attribute, because neither element holds visible text a
+provenance walk would reach. The check special-cases both.
 
 The render is **deterministic**: sorted inputs, a fixed layout seed, coordinates
-published at the precision the chart draws them, and no clock read beyond the
-build stamp the caller injects. Two builds of one tree are byte-identical, which
-is what lets `record.json` be a build artifact nobody commits.
+published at the precision the chart draws them, and no clock read beyond the build
+stamp the caller injects. Two builds of one tree are byte-identical, which is what
+lets the record export be a build artefact nobody commits.
 
-Three things are derived rather than decided. The featured quotation is the
-newest shipped intent whose audit rollup records met criteria and none unmet,
-dated by the day its file entered `shipped/`. The Beta badge renders while the
-newest dated changelog version's major is 0. The footer's version and commit are
-the build stamp.
+Three things are derived rather than decided. The featured quotation is the newest
+shipped intent whose audit rollup records met criteria and none unmet, dated by the
+day its file entered `shipped/`, with the id descending as the tie-break; an intent
+whose press release is still, in its entirety, the minted seed template is skipped,
+because the site would otherwise quote the placeholder back at the reader as the
+project's own words. The Beta badge renders while the newest dated changelog
+version's major is 0. The footer's version and commit are the build stamp.
 
-Graceful absence throughout: no `CHANGELOG.md` omits the release badge, the
-release pill and the releases list, and the build succeeds; no Identity block
-omits the hero's eyebrow, tagline and pitch, and the headline and lede that
-carry the page stay.
+Graceful absence throughout: no changelog omits the release badge, the release pill
+and the releases list, and the build succeeds; no identity block omits the hero's
+eyebrow, tagline and pitch, and the headline and lede that carry the page stay.
 
 ## The markdown subset
 
-The renderer carries what the record actually writes: ATX and setext
-headings, paragraphs, CommonMark emphasis and code spans, links (inline,
-reference and autolink), images, fenced code, pipe tables, thematic breaks,
-nested lists, and blockquotes with structure inside them. Anything else is a
-build error naming file and line. Passing an unknown construct through
-unrendered publishes raw markdown to readers; dropping it publishes a hole. A
-build that stops and says which line is the only outcome anybody can act on.
+The renderer carries what the record actually writes: ATX and setext headings,
+paragraphs, CommonMark emphasis and code spans, links, images, fenced code, pipe
+tables, thematic breaks, nested lists, and blockquotes with structure inside them.
+Anything else is a build error naming file and line. Passing an unknown construct
+through unrendered publishes raw markdown to readers; dropping it publishes a hole.
+A build that stops and says which line is the only outcome anybody can act on.
 
-## `record.json`
+## The record export
 
-The record graph as one file: nodes with their lifecycle, title, dates and
-degree; typed links with each mirrored pair collapsed once (an intent's
-`spec_id` and its spec's `intent` are one link); body mentions deduplicated
-against those links; counts by store and lifecycle; releases; authorship and the
-`Assisted-by:` tallies; the unresolved references measured against the committed
-baseline; and both precomputed chart arrangements. It is a build artifact and is
-never committed.
+The build derives one machine-readable file holding the record graph: nodes with
+their lifecycle, title, dates and degree; typed links with each mirrored pair
+collapsed once; body mentions deduplicated against those links; counts by store,
+lifecycle and status; releases; authorship and assistance tallies; the unresolved
+references measured against the committed baseline; the precomputed chart
+arrangements; and a summary of the git walk the dates came from. It is a build
+artefact and is never committed.
 
 ## References
 

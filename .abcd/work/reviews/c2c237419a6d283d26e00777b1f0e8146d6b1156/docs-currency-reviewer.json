@@ -1,0 +1,52 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "c2c237419a6d283d26e00777b1f0e8146d6b1156"
+    }
+  },
+  "verifier": {
+    "id": "maintainer@release"
+  },
+  "timeVerified": "2026-08-29T22:18:16Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:20b7f07e8a676e6515d01e98aa2ca8da21465166550ee250bc616f6527ed9ef7",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.6.9"
+  },
+  "categories": {
+    "false-claim": 0,
+    "undocumented-surface": 1,
+    "fictional-layout": 0,
+    "criterion-violation": 2,
+    "stale-count": 0
+  },
+  "failing": [
+    {
+      "where": "CHANGELOG.md (0.6.9, Security line 3, iss-2608291807455620)",
+      "class": "criterion-violation",
+      "claim": "the line groups the repository-root and .git-holder refusals under 'refuse a symlink in the output path'",
+      "reality": "those two are refusals of what the output path is, not of a symlink there; the brief page 22-site.md states the two clauses separately; every listed case is refused (internal/core/site/outdir.go)",
+      "disposition": "accepted: non-blocking precision note; every stated case is genuinely refused, so nothing in the line is false; a wording pass on the record is a follow-up docs pass, not release content."
+    },
+    {
+      "where": "CHANGELOG.md (0.6.9, Security line 1, iss-2608291807456485)",
+      "class": "criterion-violation",
+      "claim": "'named gitleaks \u2014 a wrapper or renamed binary is refused' reads as judging the resolved target",
+      "reality": "the name rule judges the configured spelling (filepath.Base of the lexical candidate) so a Homebrew Cellar symlink keeps working; a wrapper spelled .../gitleaks is admitted; matches the record's resolution and the code's stated intent (internal/adapter/gitleaks/gitleaks.go)",
+      "disposition": "accepted: non-blocking precision note; the line states a necessary condition that holds; the judged-spelling nuance lives in the code comment and the record."
+    },
+    {
+      "where": "internal/adapter/gitleaks/gitleaks.go (resolveBinary and admitBinary lead comments)",
+      "class": "undocumented-surface",
+      "claim": "the lead sentences enumerate absolute, outside the repository, regular, executable and omit the name rule a later paragraph adds",
+      "reality": "cosmetic internal comment drift; no user-facing surface affected",
+      "disposition": "accepted: non-blocking code-comment drift, out of the docs audit's scope; a one-line comment fix is a follow-up, not release content."
+    }
+  ],
+  "_reviewProvenance": "Host-run agent-harness semantic review of the 0.6.9 CHANGELOG section (14 lines, 14 record citations, each verified against implementing code), the edited brief page 04-surfaces/22-site.md, the corrected issue records, and README.md and docs/** against the code at this commit. Three passes over this release: the first, at content commit a51c3e5f, HELD on two Security lines whose source records lagged the last two anchor fixes (both halves of the home anchor are waived on bytes; a punctuation suffix such as /root-cause is swept under the alphanumeric-only name rule) and advised two more; each was fixed at the source record (and one brief sentence), and the section recomposed through the changelog composer and re-ingested, never hand-edited. The second, at bce682de, PROMOTED with two advisories (the gitleaks binary must also be named gitleaks, landed after the record was written; an attribution headline that over-read its record), both taken at source and recomposed the same way. The third, at this commit, PROMOTED: all fourteen lines current, the citation bijection exact, [Unreleased] empty, no README or docs claim made false. The three findings recorded here are non-blocking precision notes, knowingly shipped. Two environment notes are not findings: the two launch payload tests fail on the release machine only through the recorded account-name collision (iss-2608291444328326) and pass under an aliased HOME and in CI; and the standalone docs-currency-lint's hit on the writing-style page's banned-token row carries an in-repo allow and is byte-identical to v0.6.8. Evidence retained in the local work tier."
+}

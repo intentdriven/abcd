@@ -14,6 +14,8 @@ nowhere, lint families marked "Delivered" that `internal/core/lint` does not
 implement, and a gofmt gate attributed to `make preflight` that preflight does
 not run.
 
+**Instance of a general rule.** This is a special case of [itd-195](../intents/disciplines/itd-195-a-claim-about-how-the-code-behaves-is-executable-or-it-is-no.md), adopted 2026-08-31: a claim about how the code behaves is executable, or it is not made. Stub pointer only — the relationship is recorded, not yet worked through.
+
 **Bounds.**
 
 - This is stricter than the general present-tense docs rule: an enforcement

@@ -58,12 +58,65 @@ attempts the bootstrap itself, silently and at most once per ten-minute window.
 Session end is the deliberate exception: it resolves the plugin root then
 `PATH` but never downloads, because a fetch there would race the host's
 shutdown and lose the very transcript it exists to capture — so it says in one
-line if the transcript was not captured rather than blocking on a bootstrap. A
-session where provisioning cannot succeed degrades loudly rather than noisily:
-each affected hook says in one line what is inactive (the rules loader, the
-shell guard, the transcript capture) and that the [install](#cli) one-liner
-restores it — after which the hooks resolve the `PATH` binary with no session
-restart needed.
+line if the transcript was not captured rather than blocking on a bootstrap.
+Session start is the other exception, in the other direction: it resolves the
+plugin root alone, and when that is empty it fails closed rather than reaching
+for `PATH` at all. A session where provisioning cannot succeed degrades loudly
+rather than silently: each affected hook says in one line what is inactive (the
+rules loader, the shell guard, the transcript capture) and that the
+[install](#cli) one-liner restores it — after which the hooks resolve the
+`PATH` binary with no session restart needed, because that install also records
+the binary as this machine's own.
+
+That `PATH` rung is narrow on purpose, and it is owned-only. A hook takes an
+`abcd` from `PATH` only when the lookup yields an absolute path, in a directory
+outside the one the session is working in, that is not world-writable, **and**
+`~/.abcd/path-entry` records that exact path as the `abcd` installed on this
+machine. The [install](#cli) one-liner writes that record, and so does abcd's
+own install verb — whichever entry it leaves on `PATH`: the copy of the
+verified release binary it prefers, the symlink it degrades to when there is no
+verified copy to make, and the track-latest shim `--dev` writes. Uninstalling
+takes the record away with the entry, so nothing that lands in that directory
+later inherits the claim. A binary nothing recorded is ignored with one line
+naming it and the reason, and the hook takes its degraded path instead; an
+entry an earlier release left unrecorded is named as a gap by `abcd ahoy`, and
+re-running the install records it in place. The rule is what
+stands between the session and a plausible `abcd` earlier on `PATH` than yours:
+a `.` entry, a vendored directory inside a checkout, a shared world-writable
+directory, or simply a file someone else put there. For `PreToolUse` the
+degraded path is the loud `UNGUARDED` line and exit 1, which this hook protocol
+reads as non-blocking: the command you asked for still runs, unguarded, with
+that line in front of you. Exit 1 is the one status that both lets the command
+through and puts the warning where a human sees it, because a `PreToolUse` hook
+that exits 0 has its stderr discarded. What the degraded path never returns is
+that exit 0, the status the harness reads as the guard's own approval — a
+binary abcd cannot vouch for is never given the guard's verdict to answer with.
+Blocking is exit 2, and only a real `block` verdict from a resolved binary
+reaches it. A repository you have merely cloned does not get to supply the shell
+guard or the rules loader for the session that is reading it.
+
+The same principle bounds where those two read their configuration. The rules
+loader and the shell guard both read `.abcd/` from one repository root resolved
+for the session, and that root is never taken from a directory above your
+working tree. When `git` will not name the tree — a checkout owned by a
+different user account, a container bind mount, a shared CI checkout — the root
+is recovered from the `.git` marker instead, and a root your account does not
+own is refused: the session falls back to its own working directory, the
+bundled rule defaults and bundled hazard registry stand in for the
+repository's, and one line names the directory refused. Laying out a real
+repository in a shared directory anyone can write is otherwise enough to supply
+both, and no property of the tree tells that apart from a checkout that is
+honestly someone else's. If such a checkout is genuinely yours to trust,
+declare it once, from an account you control:
+
+```sh
+mkdir -p ~/.abcd && printf '%s\n' '/path/to/checkout' >> ~/.abcd/trusted-roots
+```
+
+One absolute path per line; `#` starts a comment. The declaration is read only
+from your home directory, and only while that file is yours and not writable by
+others — a file inside the checkout can never vouch for the checkout. Nothing
+infers the exception for you.
 
 That covers the hooks. For the `abcd` command in your own terminal, keep the
 [install](#cli) below, or put the plugin-root binary on your `PATH` by
@@ -88,6 +141,49 @@ path. A plugin root provisioned from the cache carries no root-local
 cached provenance you control if you want a hand-built binary to stop reporting
 a release it did not come from.
 
+## The status line
+
+Where the agent harness renders a status line by running a command, `abcd ahoy
+install` offers to make that line abcd's own in the repositories abcd manages.
+It explains the offer, asks once, and lets you switch each element after the
+badge on or off. On consent the line leads with a badge saying whether abcd is
+here and whose answer the loop is waiting on, followed by the repository, the
+branch, the model, the context and usage figures, and the record's intent and
+issue counts; in every other repository the status command you had before runs
+untouched, because abcd records it and hands the payload straight through.
+Declining writes nothing. `--yes` never takes this choice for you. Switch the
+line off, or change which elements show, at any time in
+`~/.abcd/statusline.json`; `abcd ahoy uninstall` restores the previous
+command.
+
+## Where your session transcripts are kept
+
+Session transcripts go into one store on your machine, at
+`~/.abcd/transcripts/`, filed under each repository's root-commit id so one
+repository's sessions are never mixed with another's. Nothing has to be set up
+first: the store is created the first time a session ends, so a repository where
+you have only enabled the plugin still records. Every stored transcript is
+redacted on write — no live secret and no absolute home path survives into a
+record — and `abcd history list`, `show` and `staged` read it back.
+
+If you would rather one checkout kept its own transcripts with it, say so once,
+from your own home directory:
+
+```sh
+mkdir -p ~/.abcd && printf '%s\n' '/path/to/checkout' >> ~/.abcd/local-transcript-roots
+```
+
+One absolute path per line; `#` starts a comment. That checkout then keeps its
+transcripts at `.abcd/.work.local/transcripts/` inside itself — a directory
+git ignores, so they are never a commit candidate. As with `trusted-roots`
+above, the declaration is read only from your home directory and only while
+that file is yours and not writable by others: a file inside a checkout can
+never decide where your session record is kept.
+
+If you have transcripts from an earlier abcd under `~/.abcd/history/`, they
+are moved into the store the first time abcd looks at it, with a line saying
+how many moved and a `transcripts.moved` note left at the old path.
+
 ## CLI
 
 One line, checksum-verified, no administrator rights. Pick your operating
@@ -100,13 +196,13 @@ single-user location.
 ### macOS
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; grep " $b$" checksums.txt | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; "$HOME/.local/bin/abcd" version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" version'
 ```
 
 ### Linux
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; grep " $b$" checksums.txt | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; "$HOME/.local/bin/abcd" version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" version'
 ```
 
 ### Windows
@@ -124,7 +220,10 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 The one-liners above take no options — they always install to `~/.local/bin`
-and print no `PATH` warning. `abcd ahoy` reports the same gap as a named
+and print no `PATH` warning — and they record that install as this machine's
+`abcd` in `~/.abcd/path-entry`, replacing whatever the record named before, so
+run the one-liner only for the install you want the hooks to use. `abcd ahoy`
+reports the same gap as a named
 finding with the same one-line fix, and the `install` sub-verb it points at
 writes its own `PATH` entry to `~/.local/bin` unless you point it elsewhere
 with `--bin-dir`. abcd never escalates privileges: a
@@ -138,19 +237,28 @@ not own.
 
 Prefer to inspect before running? The command is exactly what it says: two
 downloads from [the latest release](https://github.com/intentdriven/abcd/releases/latest),
-a checksum verification, and a copy into a directory you own. You can do the
-same by hand — grab the binary for your platform plus `checksums.txt` from the
-releases page, run `shasum -a 256 -c` (or `sha256sum -c`) against the matching
-line, and copy the binary anywhere on your `PATH`. Every release is built and
-published by CI from the exact tagged commit, with the checksums generated
-over the same bytes that are uploaded.
+a checksum verification, a copy into a directory you own, and one two-line
+record in `~/.abcd/path-entry` naming what it just installed and that binary's
+SHA-256. The record is what the plugin's hooks read before they will run an
+`abcd` off your `PATH`. You can do the same by hand — grab the binary for your
+platform plus `checksums.txt` from the releases page, run `shasum -a 256 -c`
+(or `sha256sum -c`) against the matching line, and copy the binary anywhere on
+your `PATH`; write the same two lines yourself (`path=<where you put it>` and
+`binary_sha256=<its digest>`) if you want the hooks to accept it as well as
+your terminal. Every release is built and published by CI from the exact tagged
+commit, with the checksums generated over the same bytes that are uploaded.
+
+To move a `~/.local/bin` install to a later release, run `abcd update`; `abcd
+version --check` reports whether one is available and names the command your
+install shape takes, since a plugin-root binary takes a plugin update and a
+package-manager install takes the manager's own upgrade.
 
 ## Build
 
 ```bash
 make preflight   # the pre-push gate: lint-reviews, lint-issues, lint-decisions,
-                 # record-lint, docs-lint and site-render, then build, vet, test
-                 # and race
+                 # record-lint, docs-lint, site-render, smoke and
+                 # evals-cold-reading, then build, vet, test and race
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd version    # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

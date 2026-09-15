@@ -50,6 +50,10 @@ Promoted from the open ledger issue iss-100.
 - **New extraction dependencies** — both adapters reuse abcd's own read surface (see SOTA).
 - **The missing `evidence/open-questions` conventions adapter** — that is iss-99 / itd-95, a sibling intent.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md). Some bars reference decisions still open in § Open Questions; they are written to hold whichever way those resolve._

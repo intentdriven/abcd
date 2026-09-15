@@ -3,11 +3,9 @@ package ahoy
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/vintage"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -30,6 +28,11 @@ func SetCurrentVintageForTest(f func() vintage.Current) (restore func()) {
 	currentVintage = f
 	return func() { currentVintage = prev }
 }
+
+// VintageSourceCheckoutTip is the VintageStatus.Source a dogfood comparison
+// reports — the one reference that is ancestry-guarded and so the one whose
+// staleness may claim a direction (see Staleness).
+const VintageSourceCheckoutTip = "checkout tip"
 
 // VintageStatus is the assembled vintage picture for a repo: the install mode,
 // the comparator's report, and the human name of the reference compared against.
@@ -76,7 +79,7 @@ func vintageFrom(cur vintage.Current, mode, cwd, version, pinTag string) Vintage
 	// non-dogfood cwd yields Unknown here and falls through to the pinned
 	// comparison below rather than reporting a spurious stale.
 	if rep := vintage.Compare(cur, vintage.CheckoutTip(cwd, cur.Revision)); rep.Outcome != vintage.Unknown {
-		return VintageStatus{Mode: mode, Report: rep, Source: "checkout tip", RepoRoot: cwd}
+		return VintageStatus{Mode: mode, Report: rep, Source: VintageSourceCheckoutTip, RepoRoot: cwd}
 	}
 	// Everywhere else: the stamped version against the plugin-cache manifest pin.
 	// A "dev"/empty version is itself undeterminable as a pinned vintage.
@@ -194,7 +197,7 @@ func (v VintageStatus) Staleness() string {
 		// binary newer than its pin is the same inequality read the other way —
 		// so it stays non-directional ("differs from"), the caution skew.go and
 		// VersionTransition already take.
-		if v.Source == "checkout tip" {
+		if v.Source == VintageSourceCheckoutTip {
 			return "stale — behind the checkout tip (" + ref + ")"
 		}
 		src := v.Source
@@ -244,14 +247,15 @@ func recordedSetupVersion(cwd string) string {
 // this root's binary (a migrated pre-cache root included, whose binary stays
 // put while the shared cache moves on). A cache-provisioned root carries no
 // root-local record; for it the tag comes from the persistent data dir's
-// cache/binary-meta (spc-35). The same precedence lives in
+// cache/binary-meta (spc-35), reached through the hook's environment or the
+// root's .data-dir stamp (pluginDataDir). The same precedence lives in
 // internal/surface/cli/skew.go's readSkewMeta; the two readers should be
 // consolidated if either record changes shape again.
 func readPinnedTag(pluginRoot string) string {
 	if tag := metaReleaseTag(filepath.Join(pluginRoot, ".binary-meta")); tag != "" {
 		return tag
 	}
-	if data := pluginDataDir(); data != "" {
+	if data := pluginDataDir(pluginRoot).dir; data != "" {
 		return metaReleaseTag(filepath.Join(data, "cache", "binary-meta"))
 	}
 	return ""
@@ -260,17 +264,7 @@ func readPinnedTag(pluginRoot string) string {
 // metaReleaseTag extracts release_tag from one bootstrap-written key=value
 // record, or "" when the file is absent, unreadable, or carries no tag.
 func metaReleaseTag(path string) string {
-	const maxBytes = 4 << 10
-	data, err := fsutil.ReadGuarded(path, maxBytes)
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if k, val, ok := strings.Cut(strings.TrimSpace(line), "="); ok && k == "release_tag" {
-			return val
-		}
-	}
-	return ""
+	return metaField(path, "release_tag")
 }
 
 // isHexSHA reports whether s is a full 40-character hex commit SHA — the shape

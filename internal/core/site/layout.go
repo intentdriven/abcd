@@ -305,6 +305,7 @@ func (a *Arrangements) coil(nodes []LayoutNode) {
 	pos := make([]Point, n)
 	pr := make([]float64, n)
 	placed := make([]int, 0, n)
+	scratch := make([]interval, 0, n)
 	phi := 0.0
 
 	for k, i := range a.Order {
@@ -326,7 +327,7 @@ func (a *Arrangements) coil(nodes []LayoutNode) {
 		}
 		phi += clear
 		ux, uy := math.Cos(phi), math.Sin(phi)
-		rho := clearOutward(math.Max(0, prho-inwardDip*need), ux, uy, r, placed, pos, pr)
+		rho := clearOutward(math.Max(0, prho-inwardDip*need), ux, uy, r, placed, pos, pr, scratch)
 
 		pos[i] = Point{X: rho * ux, Y: rho * uy}
 		pr[i] = r
@@ -362,15 +363,25 @@ func (a *Arrangements) coil(nodes []LayoutNode) {
 	}
 }
 
+// interval is the span of rho along a ray that one resting bubble forbids.
+type interval struct{ lo, hi float64 }
+
 // clearOutward walks a bubble outward along a ray from the centre until it
 // clears every bubble already at rest. Each resting bubble forbids an interval
 // of rho along the ray; the walk jumps past each interval the current rho falls
 // inside and repeats until a pass changes nothing, because a later interval can
 // push rho back into an earlier one. It is the coil's packing rule, and the
 // by-links arrangement settles under the same one.
-func clearOutward(rho, ux, uy, r float64, placed []int, pos []Point, pr []float64) float64 {
-	type interval struct{ lo, hi float64 }
-	var forbidden []interval
+//
+// The intervals need no order: every jump lands on the far end of an interval
+// that covers the current rho, so the walk never crosses an uncovered point
+// and comes to rest at the least uncovered rho at or beyond where it started
+// whatever order the intervals are visited in. scratch is the caller's
+// interval buffer, reused across the rays it fires so the pass allocates once
+// per bubble rather than once per ray; it must have room for every placed
+// bubble.
+func clearOutward(rho, ux, uy, r float64, placed []int, pos []Point, pr []float64, scratch []interval) float64 {
+	forbidden := scratch[:0]
 	for _, j := range placed {
 		rr := pr[j] + r + coilGap
 		proj := pos[j].X*ux + pos[j].Y*uy
@@ -381,7 +392,6 @@ func clearOutward(rho, ux, uy, r float64, placed []int, pos []Point, pr []float6
 		half := math.Sqrt(math.Max(rr*rr-perp2, 0))
 		forbidden = append(forbidden, interval{proj - half, proj + half})
 	}
-	sort.SliceStable(forbidden, func(x, y int) bool { return forbidden[x].lo < forbidden[y].lo })
 	for changed := true; changed; {
 		changed = false
 		for _, iv := range forbidden {
@@ -417,6 +427,7 @@ func settle(pos []Point, radii []float64, members []int, compact bool) {
 	sort.SliceStable(order, func(x, y int) bool { return rho[order[x]] < rho[order[y]] })
 
 	placed := make([]int, 0, len(order))
+	scratch := make([]interval, 0, len(order))
 	for _, i := range order {
 		theta := 0.0
 		if rho[i] > 0 {
@@ -442,7 +453,7 @@ func settle(pos []Point, radii []float64, members []int, compact bool) {
 			for _, side := range [2]float64{1, -1} {
 				th := theta + side*float64(k)*step
 				ux, uy := math.Cos(th), math.Sin(th)
-				d := clearOutward(from, ux, uy, radii[i], placed, pos, radii)
+				d := clearOutward(from, ux, uy, radii[i], placed, pos, radii, scratch)
 				p := Point{X: d * ux, Y: d * uy}
 				// Compacting, the ray that leaves the bubble nearest the centre
 				// wins, so the region closes over its own gaps; settling, the one
@@ -690,6 +701,7 @@ func (a *Arrangements) byLinks(nodes []LayoutNode, typed [][2]int) {
 	// it was overpacked by construction; a band that winds is packed by what it
 	// actually holds.
 	placed := append([]int(nil), core...)
+	scratch := make([]interval, 0, len(core)+len(iso))
 	phi, prev := 0.0, -1
 	for _, i := range iso {
 		r := a.Radius[i]
@@ -708,7 +720,7 @@ func (a *Arrangements) byLinks(nodes []LayoutNode, typed [][2]int) {
 			rho = math.Max(coreOuter, prho-inwardDip*need)
 		}
 		ux, uy := math.Cos(phi), math.Sin(phi)
-		rho = clearOutward(rho, ux, uy, r, placed, pos, a.Radius)
+		rho = clearOutward(rho, ux, uy, r, placed, pos, a.Radius, scratch)
 		pos[i] = Point{X: rho * ux, Y: rho * uy}
 		placed = append(placed, i)
 		prev = i

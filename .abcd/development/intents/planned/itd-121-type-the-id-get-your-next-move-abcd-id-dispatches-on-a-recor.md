@@ -31,6 +31,10 @@ answers *what is this, and what is my next move*. SD001-safe — a positional on
 the namespace root is not a `show` sub-verb. Duplicate-checked against itd-86
 (a blind document-review pass) and itd-112 (the startup banner): no overlap.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

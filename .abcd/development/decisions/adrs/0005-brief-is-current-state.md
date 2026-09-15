@@ -64,3 +64,5 @@ Generalises ADR-3 (directory-as-truth-for-lifecycle) to the brief itself: the li
 **Downstream consequences:**
 - Future intent-driven work that previously would have triggered "v6 changelog" entries instead lands as commits + (when inflection-shaped) a new ADR.
 - The "What is the brief's purpose post-v1?" question now has a single answer: the brief IS the project's current state, always. There is no post-v1.
+
+**Refined 2026-09-01** (decision log, that date; sequenced as [Phase 8](../../roadmap/phases/phase-8-brief-currency.md)): brief, record and release stay in sync, with one legitimate lead — a brief edited after a release was cut is ahead of that release until the next cut.

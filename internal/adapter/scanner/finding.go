@@ -137,11 +137,12 @@ func (f Finding) MarshalJSON() ([]byte, error) {
 // for a credential (it says which one leaked) and precisely the wrong one for an
 // identifier, where the head and tail — a MAC's OUI, an address's prefix and
 // interface id, a hostname's first label and suffix — are what re-identify the
-// machine. Redact already draws that line for the on-disk path (redact.go); the
-// JSON surface is archived by CI and owes the same. Full starring preserves rune
+// machine; a PEM span is whole too, its tail being key bytes (maskedWhole).
+// Redact already draws that line for the on-disk path (redact.go); the JSON
+// surface is archived by CI and owes the same. Full starring preserves rune
 // length, so the snippet still truncates where the raw line did.
 func maskMatched(kind, matched string) string {
-	if IsIdentityKind(kind) {
+	if maskedWhole(kind) {
 		return strings.Repeat("*", utf8.RuneCountInString(matched))
 	}
 	return maskSecret(matched)

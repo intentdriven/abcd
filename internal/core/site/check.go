@@ -263,16 +263,11 @@ type sourceFile struct {
 // rendered yet is asking the same question as one who has.
 func Check(req CheckRequest) (CheckResult, error) {
 	repoRoot := req.RepoRoot
-	outDir := req.OutDir
-	if outDir == "" {
-		outDir = DefaultOutDir
-	}
-	if !filepath.IsAbs(outDir) {
-		abs, err := filepath.Abs(outDir)
-		if err != nil {
-			return CheckResult{}, err
-		}
-		outDir = abs
+	// The same gate the build's writes pass: the check reads the directory it
+	// is handed, and builds into it when it holds no index.html.
+	outDir, err := resolveOutDir(repoRoot, req.OutDir)
+	if err != nil {
+		return CheckResult{}, err
 	}
 
 	// Every collection is non-nil from the start: the JSON envelope is a machine

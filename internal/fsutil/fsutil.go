@@ -9,6 +9,12 @@
 // (the one-canonical-primitive invariant, guarded by
 // TestNoNonCanonicalAtomicWritePrimitives).
 //
+// Directory validation is the same story one level up. IsRealDir answers the
+// question; EnsureRealDir and EnsureRealDirAll are the create-then-prove
+// sequence built on it, and the lifeboat voyage log, the intent record store and
+// the transcript store all call them rather than each carrying the sequence
+// (iss-2609091128479544).
+//
 // Each read/write primitive comes in two forms. The plain form takes a path and
 // guards the LEAF only; the …InRoot form takes an *os.Root and resolves every
 // component inside it, which is what contains a path whose ANCESTOR is a symlink
@@ -24,6 +30,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -329,6 +336,78 @@ func syncParent(dir string) {
 func IsRealDir(path string) bool {
 	fi, err := os.Lstat(path)
 	return err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0
+}
+
+// ErrNotRealDir is the directory-validation sentinel: the path exists, and it is
+// a symlink or a non-directory rather than a real directory. Callers map it onto
+// their own typed refusal with errors.Is.
+var ErrNotRealDir = errors.New("fsutil: not a real directory")
+
+// EnsureRealDir creates dir at perm if it is absent — a single, non-following
+// Mkdir, never MkdirAll — and then PROVES the result is a real directory rather
+// than a symlink or a non-directory. It is the canonical directory-validation
+// primitive: exactly one place knows that "create it" and "prove it" are two
+// steps and that the second one is not optional.
+//
+// The proof is the part a bare os.Mkdir cannot give. Mkdir on an existing
+// symlink returns EEXIST whether the link points at a directory the caller meant
+// or at somewhere it never did, so the ErrExist branch on its own accepts a
+// planted redirect; the Lstat afterwards is what refuses it. Creating one level
+// at a time is the other half — MkdirAll on a leaf follows a symlinked ancestor
+// and creates directories under its target — which is why EnsureRealDirAll walks
+// rather than delegating to MkdirAll.
+//
+// perm is the mode a NEW directory is created with, and it is a parameter
+// because callers differ legitimately: 0o700 for a private store under the
+// caller's home, 0o755 for a record directory in a shared worktree. An
+// already-existing dir keeps whatever mode it has — Mkdir returns ErrExist
+// without touching it — so this never widens or narrows a directory the caller
+// made themselves, and consolidating callers onto it changes no directory's mode.
+//
+// A create that fails for any other reason returns os.Mkdir's error unwrapped
+// enough for errors.Is and os.IsPermission. A path occupied by the wrong kind of
+// thing returns ErrNotRealDir inside an *os.PathError, so the offending path is
+// in the message and the class is testable.
+func EnsureRealDir(dir string, perm os.FileMode) error {
+	if err := os.Mkdir(dir, perm); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	if !IsRealDir(dir) {
+		return &os.PathError{Op: "ensurerealdir", Path: dir, Err: ErrNotRealDir}
+	}
+	return nil
+}
+
+// EnsureRealDirAll is EnsureRealDir over a chain: it creates every missing level
+// of rel under base and proves EACH level real, so a symlinked ANCESTOR is
+// refused rather than followed. That is the guarantee os.MkdirAll cannot make,
+// and the one a caller's private copy carried as a documented hole before this
+// primitive absorbed it.
+//
+// base must already exist and is itself proved real; nothing above it is created
+// or inspected. The bound is deliberate rather than incidental — a walk that ran
+// to the filesystem root would refuse the platform's own symlinked prefixes
+// (/tmp and /var are symlinks on macOS, and the test temp directory lives under
+// one) — so the caller's trusted root is where the proof starts.
+//
+// rel is a slash-separated relative path held to ValidRelPath: a path that
+// arrives as data has no business creating directories, and a caller that joins
+// an untrusted segment onto its root gets a refusal rather than an escape.
+func EnsureRealDirAll(base, rel string, perm os.FileMode) error {
+	if !IsRealDir(base) {
+		return &os.PathError{Op: "ensurerealdir", Path: base, Err: ErrNotRealDir}
+	}
+	if !ValidRelPath(rel) {
+		return &os.PathError{Op: "ensurerealdir", Path: rel, Err: os.ErrInvalid}
+	}
+	dir := base
+	for _, seg := range strings.Split(rel, "/") {
+		dir = filepath.Join(dir, seg)
+		if err := EnsureRealDir(dir, perm); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // CreateExclusiveIn writes data to rel INSIDE root, failing if rel already

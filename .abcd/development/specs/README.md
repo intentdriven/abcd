@@ -33,43 +33,29 @@ skipped by the store yet still linted. A file matching neither shape — this
 README included — is not a spec to either.
 
 **The mint.** `Create` validates the intent id and the slug *before* any path is
-built (the slug becomes a filename), then performs the whole allocation under an
-exclusive advisory lock: `flock(2)` on the `specs/` directory's own file
-descriptor, opened `O_NOFOLLOW`, waited on for up to five seconds. Holding the
-lock across the scan *and* the write is what stops two concurrent `intent plan`
-runs from observing the same maximum and minting a duplicate — the filenames
-differ by slug, so neither the atomic write nor the clobber guard would catch it.
-Locking the directory descriptor itself leaves no lock artefact in the committed
-record tree.
+built (the slug becomes a filename), then mints the id through the shared
+record-id seam (`recordid.Minter`, per
+[adr-45](../decisions/adrs/0045-record-ids-are-timestamp-numeric-and-capture-stable.md)):
+`spc-<yymmddHHMMSS><rrrr>`, a UTC second stamp and four uniform random digits.
+The mint consults no maximum — not the store's, not the intents' `spec_id`
+reservations, not the refs' — so two checkouts minting in the same window
+allocate distinct ids by construction, with no coordination and no network. The
+ordinal ids minted before the seam (`spc-1` … `spc-69`) stay exactly as minted;
+the store is dual-vintage but single-grammar, and every consumer parses both.
 
-Under that lock, `NextID` allocates:
-
-```
-max( N over spec-store files
-   ∪ N over every intent's `spec_id` frontmatter across the five intent buckets
-   ∪ N over spec-store filenames on every other git ref ) + 1
-```
-
-Each term earns its place. The intent-reservation term keeps a fresh mint off a
-*reserved* id: itd-3 carries `spec_id: spc-1` with no spec file behind it, so a
-store-only scan would hand `spc-1` out again — folding reservations in is why the
-first minted id is `spc-2`. The cross-ref term (`recordid.MaxAcrossRefs`) keeps
-two branches from re-minting the same id once either commits, seeing a spec file
-that is absent from the current working tree. When that ref scan degrades to
-working-tree-only — git absent, not a repository, a failed ref query — `Create`
-returns a mint warning that its caller must surface, so the weaker guarantee is
-never silent. A count near the integer ceiling is refused outright rather than
-wrapped into a negative id.
-
-**The lock is scoped to one checkout.** An advisory lock on one worktree's
-`specs/` directory cannot see a sibling worktree, and an uncommitted mint is on
-no ref, so two checkouts minting in the same window still allocate the same
-`spc-N` by construction. Say which family you are about to mint into, or mint
-from one checkout.
+The write happens under an exclusive advisory lock: `flock(2)` on the `specs/`
+directory's own file descriptor, opened `O_NOFOLLOW`, waited on for up to five
+seconds. The lock serialises minters *inside one checkout* — a candidate that
+already names a spec here (the same-second, same-suffix coincidence) is redrawn
+rather than bumped, and the lock is what makes that presence check and the
+write one critical section. It cannot see a sibling checkout and does not need
+to. Locking the directory descriptor itself leaves no lock artefact in the
+committed record tree.
 
 **IDs are capture-stable.** A spec keeps its `spc-N` for life; closing it moves
 the file and renumbers nothing. The `spec_id_unique` record-lint rule is the
-backstop that flags a number claimed by two files across both buckets.
+armed assertion that the scheme held, flagging a number claimed by two files
+across both buckets.
 
 ---
 

@@ -40,6 +40,10 @@ The mechanical layer blocks **literal identifying strings**. It cannot detect a 
 
 A convention-first scaffold (corpus layout, ledger, guard scripts, and an agent-side consultation skill) was prototyped for this repo's development and is recorded in the plan ([`2026-07-08-confidential-sources-scaffold.md`](../../plans/2026-07-08-confidential-sources-scaffold.md)) and the SOTA survey ([`2026-07-08-confidential-sources-provenance-sota.md`](../../research/notes/2026-07-08-confidential-sources-provenance-sota.md)); no live corpus currently exists on the development machine. The feature is to deliver these as abcd verbs so any managed repo inherits them — and re-establishing this repo's own corpus through those verbs is the first validation.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - Given a document and its metadata, when Alice runs `abcd source add` declaring it confidential, then the corpus gains a CSL-JSON entry (with the `custom` block) and the document plus extracted text land under `confidential/<key>/` — folder location *is* the classification.

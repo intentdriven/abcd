@@ -52,7 +52,7 @@ the prompt-quality discipline, and record-lint's `agent_contract` rule enforces 
   [`02-constraints/04-naming.md`](../.abcd/development/brief/02-constraints/04-naming.md)
   (`oracle_review`, `intent_audit`, `spec_planning`, `code_rescue`,
   `principle_distillation`, `lifeboat_packing`, `audit`, `lint`, `surface_render`,
-  `cross_document_audit`). `designed_for` is a free-text one-liner for human readers
+  `cross_document_audit`, `cold_reading`). `designed_for` is a free-text one-liner for human readers
   — it never participates in scope inference.
 
 ### Injection canaries

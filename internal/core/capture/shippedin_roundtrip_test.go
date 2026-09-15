@@ -37,6 +37,7 @@ func TestResolveWritesAShippedInTheDerivationHonours(t *testing.T) {
 	r.Git("tag", "v0.1.0")
 
 	res, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: r.Root(), ID: "iss-1", Resolution: "released long ago",
 		Impact: "fix", ShippedIn: "v0.1.0",
 	})
@@ -87,6 +88,7 @@ func TestResolveRefusesABadShippedInBeforeWriting(t *testing.T) {
 			r.Commit("an open record")
 
 			if _, err := Resolve(ResolveRequest{
+				Grounds:  testGrounds,
 				RepoRoot: r.Root(), ID: "iss-1", Resolution: "note",
 				Impact: "fix", ShippedIn: bad,
 			}); err == nil {

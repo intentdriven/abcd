@@ -450,8 +450,8 @@ func TestEmbarkProbeGates(t *testing.T) {
 		dest, _ := packInto(t, repo, okScan)
 		bumpProvenanceSchema(t, dest, 99)
 		_, err := EmbarkProbe(dest, t.TempDir())
-		if err == nil || !strings.Contains(err.Error(), "upgrade abcd") {
-			t.Errorf("schema-too-new must return the upgrade message, got: %v", err)
+		if err == nil || !strings.Contains(err.Error(), "update abcd:") {
+			t.Errorf("schema-too-new must return the update message, got: %v", err)
 		}
 	})
 

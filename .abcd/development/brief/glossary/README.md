@@ -72,13 +72,21 @@ glossary/
 ├── core/
 │   ├── README.md
 │   ├── brief.md
+│   ├── construal.md
 │   ├── disembark.md
 │   ├── intent.md
+│   ├── ledger.md
 │   ├── lifeboat.md
+│   ├── loop.md
 │   ├── oracle.md
 │   ├── persona.md
 │   ├── phase.md
+│   ├── plan.md
+│   ├── reading-position.md
+│   ├── record.md
+│   ├── roadmap.md
 │   ├── spec.md
+│   ├── surface.md
 │   ├── transport.md
 │   └── voyage.md
 ├── distribution/
@@ -86,10 +94,21 @@ glossary/
 │   ├── end-user.md
 │   ├── release.md
 │   └── version.md
-└── interview/
+├── interview/
+│   ├── README.md
+│   ├── embark.md
+│   └── session.md
+└── ledger/
     ├── README.md
-    ├── embark.md
-    └── session.md
+    ├── admission.md
+    ├── cold-reading.md
+    ├── construal.md
+    ├── disposition.md
+    ├── lapse.md
+    ├── position.md
+    ├── read-block.md
+    ├── regime.md
+    └── warm.md
 ```
 <!-- END GENERATED: glossary-layout -->
 
@@ -170,13 +189,21 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | Term | Status | Definition |
 |---|---|---|
 | [brief](core/brief.md) | stable | The living root document that holds a project's purpose, constraints, and success criteria — always the project's current state, revised in place as the project moves. |
+| [construal](core/construal.md) | stable | The statement of what the situation is being treated as, in one or two sentences, held at the top of the brief's framing chapter as the frame a widening reading reads against; one of adr-55's three framing surfaces, beside the committed glossary terms and the committed scope. The ledger context's entry governs the term inside the cold-reading experiment. |
 | [disembark](core/disembark.md) | stable | The act of packing a lifeboat — `abcd disembark <source-repo> to <dest>` reads a source repository without writing to it and distils its settled artefacts, decisions, and configuration into a portable lifeboat directory at a destination outside that repository, which a fresh context can later unpack via `/abcd:embark`. |
 | [intent](core/intent.md) | stable | A press-release-shaped description of a feature written before implementation begins, capturing the user problem, proposed solution, and success criteria. |
+| [ledger](core/ledger.md) | stable | An append-or-move store a command writes and a human reads back, the issue ledger under .abcd/work/issues/ when the word stands bare; inside the cold-reading experiment the word means the warm material and its stores, which the read-block keeps from a reading (the ledger context's entries govern that sense). Four further ledgers share the word and are always named in full. |
 | [lifeboat](core/lifeboat.md) | stable | A portable directory artefact packed by `/abcd:disembark` that captures the distilled knowledge and configuration of a source project so it can be unpacked into a fresh context by `/abcd:embark`. It always lands outside the source repository, at an operator-chosen destination. |
+| [loop](core/loop.md) | draft | The record loop — brief to intent to spec to shipped work to audited verdict and back onto the brief — which shipping closes twice, once by grading the acceptance criteria and once by rewriting the brief passage. Two other loops carry the word and are always qualified: the autonomous-run loop and the lifeboat round-trip. |
 | [oracle](core/oracle.md) | stable | An AI model invoked to review, reason over, or validate a project's artefacts — host-delegated by default, or reached through an opt-in oracle adapter. |
 | [persona](core/persona.md) | stable | A placeholder stakeholder character drawn from the abcd personas registry, used in press releases, intents, and design documents to represent a real user archetype without using real names. |
-| [phase](core/phase.md) | stable | An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. |
+| [phase](core/phase.md) | stable | An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. Unqualified it always carries that sense, the brief's own numbered build milestones being plumbing-phases. |
+| [plan](core/plan.md) | stable | The maintainer's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Three further senses share the word — the ordered build plan the phase docs hold, a dated design plan under development/plans/, and a session's planning brief — and each is qualified where it appears. |
+| [reading-position](core/reading-position.md) | stable | One of the four questions a cold reading can be commissioned to answer — widening, entailment, comparative or detection. The position fixes the reading's object, its question and the supply regime its output is validated against; `abcd reading assemble --position` names it. |
+| [record](core/record.md) | stable | One identified, filed document that a command mints and a lint gate reads — an itd-N, spc-N, adr-N, iss-N or rdg-id. "The development record" is the whole durable corpus those records make up, and "a record family" is one lifecycle-bucketed set of them; each of the three is qualified where the other two could be read. |
+| [roadmap](core/roadmap.md) | stable | The sequencing folder .abcd/development/roadmap/, which holds the phase docs and the RFCs. Its README is the roadmap dashboard, a separate sense — a live status render that reads the native spec store and the intent buckets rather than the phase docs. |
 | [spec](core/spec.md) | stable | A specced block of work in abcd's native spec store that implements one or more intents, broken into ordered tasks with acceptance criteria. |
+| [surface](core/surface.md) | stable | A verb's front door — the markdown command file under commands/ plus the transport package under internal/surface/ that reaches the core. "A surface chapter" is the brief's design record for one such front door, and "a rendered surface" is a public text held to the repository's identity block; both are qualified. |
 | [transport](core/transport.md) | stable | The mechanism by which curated context and artefacts are packaged and delivered to an oracle for review or reasoning. |
 | [voyage](core/voyage.md) | stable | The operations namespace at `~/.abcd/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried. |
 
@@ -194,6 +221,20 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 |---|---|---|
 | [embark](interview/embark.md) | stable | The opening move of a grill session in which the oracle reads the target intent, identifies the primary ambiguities, and poses the first round of Socratic questions. |
 | [session](interview/session.md) | stable | One complete interactive exchange between a human and the abcd grill sub-verb, spanning all rounds of Socratic questioning through PRD synthesis for a single intent or brief section. |
+
+### ledger/
+
+| Term | Status | Definition |
+|---|---|---|
+| [admission](ledger/admission.md) | draft | The researcher's act of taking a widening reading's proposed configuration into the candidate set, recorded with grounds, as distinct from declining it. |
+| [cold-reading](ledger/cold-reading.md) | draft | A reading of committed artefacts by a disinterested party that has command of established patterns and no investment in the framing, receiving its input only through the assembler and producing items that each name the pattern they apply. |
+| [construal](ledger/construal.md) | draft | The statement of what the situation is being treated as, in one or two sentences, held in the brief's framing chapter as the frame a widening reading reads against. |
+| [disposition](ledger/disposition.md) | draft | The researcher's recorded response to one reading item, written as a separate record keyed to the item, in one of four states: accepted, rejected, declined or held. |
+| [lapse](ledger/lapse.md) | draft | A recorded point at which the recording discipline was suspended, deferred or evaded, captured as its own category in the issue ledger and timestamped at the lapse rather than at write-up. |
+| [position](ledger/position.md) | draft | One of the four places in the loop at which a cold reading is commissioned, each with its own object, question and supply regime: widening, entailment, comparative and detection. |
+| [read-block](ledger/read-block.md) | draft | The wall that keeps ledger content from a cold reading: positive inclusion at the assembler, field projection out of files that hold both cold and warm material, a manifest that enumerates what was passed, and an eval that fails when warm material reaches a reading. |
+| [regime](ledger/regime.md) | draft | The licence a reading holds at its position, naming what it may produce and what the ingest verb refuses or flags: generative, explicative, evaluative or registrative. |
+| [warm](ledger/warm.md) | draft | The researcher's reserved reasoning, and the ledger material it is performed against: frame origination and admission, selection, explanation, the judgement of when to stop, and every record of how a prior tension was raised or settled. |
 <!-- END GENERATED: glossary-index -->
 
 ---

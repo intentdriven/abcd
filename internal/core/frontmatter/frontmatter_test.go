@@ -1,6 +1,9 @@
 package frontmatter
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestFieldsReadsLeadingBlock(t *testing.T) {
 	lines := []string{
@@ -281,5 +284,60 @@ func TestBOMBeforeOpeningDelimiter(t *testing.T) {
 	dupLines := []string{"\ufeff---", "id: a", "id: b", "---"}
 	if got := Duplicates(dupLines); len(got) != 1 {
 		t.Fatalf("Duplicates = %+v, want one duplicate past a leading BOM", got)
+	}
+}
+
+// TestSplitIsLossless: the two halves must concatenate back to the input byte
+// for byte, or a writer that splices an edited body onto the head returns a file
+// different from the one it read in ways nobody asked for.
+func TestSplitIsLossless(t *testing.T) {
+	for name, text := range map[string]string{
+		"record":              "---\nid: iss-1\n---\n\nbody\n",
+		"crlf":                "---\r\nid: iss-1\r\n---\r\n\r\nbody\r\n",
+		"no trailing newline": "---\nid: iss-1\n---\nbody",
+		"padded delimiter":    "---\nid: iss-1\n--- \n\nbody\n",
+		"bom":                 "\ufeff---\nid: iss-1\n---\n\nbody\n",
+		"no frontmatter":      "# a plain document\n\nbody\n",
+		"unterminated":        "---\nid: iss-1\n\nbody\n",
+		"empty":               "",
+	} {
+		head, body := Split(text)
+		if head+body != text {
+			t.Fatalf("%s: Split is lossy: head+body = %q, want %q", name, head+body, text)
+		}
+	}
+}
+
+// TestSplitHoldsBackOnlyTheFrontmatter: what the body must NOT contain is the
+// block, and what it must contain is everything after it. A text with no
+// frontmatter, and a block nothing closes, are both all body — holding back
+// prose no reader treats as frontmatter would hide it from the caller that asked
+// for the body.
+func TestSplitHoldsBackOnlyTheFrontmatter(t *testing.T) {
+	head, body := Split("---\nid: iss-1\n# Grounds\n---\n\n## Grounds\n\n- pursued: a conjecture\n")
+	if !strings.Contains(head, "\n# Grounds\n") {
+		t.Fatalf("the frontmatter comment is not in the head: %q", head)
+	}
+	if strings.Contains(body, "\n# Grounds\n") {
+		t.Fatalf("the frontmatter comment leaked into the body: %q", body)
+	}
+	if !strings.Contains(body, "\n## Grounds\n") {
+		t.Fatalf("the body section is missing: %q", body)
+	}
+
+	// An indented `---` is not a close, exactly as the strict ledger parser reads
+	// it, so the block runs to the next un-indented one.
+	head, body = Split("---\nfoo: |\n  ---\n---\nbody\n")
+	if !strings.Contains(head, "\n  ---\n") || body != "body\n" {
+		t.Fatalf("an indented --- closed the block early: head=%q body=%q", head, body)
+	}
+
+	for name, text := range map[string]string{
+		"no frontmatter": "# a plain document\n\nbody\n",
+		"unterminated":   "---\nid: iss-1\n\nbody\n",
+	} {
+		if head, body := Split(text); head != "" || body != text {
+			t.Fatalf("%s: Split = (%q, %q), want the whole text as body", name, head, body)
+		}
 	}
 }

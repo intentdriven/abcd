@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // gitFixture builds an isolated git repo with the given commits applied in
@@ -535,11 +537,11 @@ func itoa(n int64) string {
 	return string(b)
 }
 
-// TestFirstRootSHAOctopusMerge pins the canonical root over a history with more
+// TestRootCommitOctopusMerge pins the canonical root over a history with more
 // than one root commit: an octopus merge joins three unrelated roots, and
-// firstRootSHA must report the same one git's own `rev-list -n 1` does — the
+// RootCommit must report the same one git's own `rev-list -n 1` does — the
 // identity every cross-repo mapping keys on.
-func TestFirstRootSHAOctopusMerge(t *testing.T) {
+func TestRootCommitOctopusMerge(t *testing.T) {
 	r := gvNewRepo(t)
 	r.write("a.txt", "a\n")
 	r.addCommit("root one")
@@ -562,8 +564,8 @@ func TestFirstRootSHAOctopusMerge(t *testing.T) {
 	r.git("reset", "-q", "--hard", "main")
 
 	want := strings.TrimSpace(r.git("rev-list", "-n", "1", "--max-parents=0", "HEAD"))
-	if got := firstRootSHA(r.dir); got != want {
-		t.Errorf("firstRootSHA = %q, want %q", got, want)
+	if got := gitutil.RootCommit(r.dir); got != want {
+		t.Errorf("RootCommit = %q, want %q", got, want)
 	}
 }
 

@@ -162,13 +162,33 @@ Capture issues to the ledger; bare invocation is read-only status
 **Flags:**
 
 ```
-      --blocked-by string     comma-separated iss-ids this issue is blocked by
-      --category string       issue category (default observation)
-      --found-at string       optional repo-relative path or conceptual location
-      --found-during string   session/command context (default manual-capture)
-      --severity string       severity: nitpick | minor | major | critical (default minor)
-      --slug string           override the slug derived from the text
-      --source string         surfacing channel (default user-observation)
+      --blocked-by string        comma-separated iss-ids this issue is blocked by
+      --category string          issue category (default observation)
+      --found-at string          optional repo-relative path or conceptual location
+      --found-during string      session/command context (default manual-capture)
+      --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
+      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --severity string          severity: nitpick | minor | major | critical (default minor)
+      --slug string              override the slug derived from the text
+      --source string            surfacing channel (default user-observation)
+```
+
+#### `abcd capture disposition`
+
+Answer one reading item (a separate record, keyed to the item)
+
+**Usage:** `abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> [--grounds <text>] [--exit-condition <text>] [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]`
+
+**Flags:**
+
+```
+      --exit-condition string        what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)
+      --grounds string               disposition_grounds: why this answer (free text; required on every state except held)
+      --hold-frame-location string   RESERVED (dormant): the frame element a hold sits at; a populated value is refused until activation is ruled
+      --hold-moscow string           RESERVED (dormant): must | should | could | wont; a populated value is refused until activation is ruled
+      --recurs string                comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join
+      --state string                 the answer: accepted | rejected | declined | held (availability varies by the item's position)
+      --supersedes string            the standing dsp-N this answer replaces; required once an item already carries one
 ```
 
 #### `abcd capture list`
@@ -188,43 +208,72 @@ List issues by state (one of --open/--resolved/--wontfix/--all required)
 
 #### `abcd capture promote`
 
-Graduate an issue into an intent draft (mints + stamps promoted_to)
+Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)
 
-**Usage:** `abcd capture promote <iss-N> [flags]`
+**Usage:** `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
 
 **Flags:**
 
 ```
-      --intent string   stamp-only mode: link this existing itd-N instead of minting a draft
+      --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+      --intent string            stamp-only mode: link this existing itd-N instead of minting a draft
+      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
 #### `abcd capture resolve`
 
 Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it
 
-**Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
+**Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds "<token>: <text>"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
 
 **Flags:**
 
 ```
-      --commit string       resolved_by provenance: the fixing commit sha (7-64 hex chars, shape-checked only)
-      --impact string       product impact: additive|breaking|fix|internal (required)
-      --intent string       resolved_by provenance: the itd-N that fixed it (must exist)
-      --shipped-in string   MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start
-      --spec string         resolved_by provenance: the spc-N that fixed it (must exist)
+      --commit string            resolved_by provenance: the fixing commit sha (7-64 hex chars, shape-checked only)
+      --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+      --impact string            product impact: additive|breaking|fix|internal (required)
+      --intent string            resolved_by provenance: the itd-N that fixed it (must exist)
+      --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
+      --shipped-in string        MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start
+      --spec string              resolved_by provenance: the spc-N that fixed it (must exist)
 ```
 
 #### `abcd capture wontfix`
 
 Record an explicit non-action decision (open/ -> wontfix/)
 
-**Usage:** `abcd capture wontfix <iss-N> <reason>`
+**Usage:** `abcd capture wontfix <iss-N> <reason> [--grounds "declined: <text>"] [flags]`
+
+**Flags:**
+
+```
+      --grounds string           override the recorded grounds text (the token stays declined — a wontfix IS that non-action)
+      --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
+```
 
 ### `abcd changelog`
 
 Preview the next release cut — derived version, records, guardrail (read-only, no prose)
 
 **Usage:** `abcd changelog`
+
+### `abcd decide`
+
+Mint a decision record (ADR) and lay its skeleton
+
+**Usage:** `abcd decide "<title>"`
+
+Mint an architecture decision record: allocate its id through the shared record-id
+seam and write the store's skeleton under .abcd/development/decisions/adrs/.
+
+The id is `adr-<yymmddHHMMSS><rrrr>` and the filename is ordered by that stamp, so two
+branches deciding on the same day cannot allocate the same number — the collision a
+hand-numbered ordinal has by construction. The hand-numbered records 0001-0058 keep
+their ids and their filenames; nothing is renumbered, and every reader admits both.
+
+The verb writes an EMPTY record: it owns the id, the date, the filename and the four
+sections, and states nothing. The decision is the author's to write, and the status it
+lands with is `proposed` until the author sets `accepted`.
 
 ### `abcd disembark`
 
@@ -418,7 +467,13 @@ bundled defaults merged with this repo's `.abcd/guard.json` — and reports
 allow, warn, or block. A blocker exits 1 and names the safe successor; a
 warn exits 0 with the warning rendered; an allow exits 0. A guard that
 cannot be evaluated at all (an unparsable command line, a malformed
-registry) exits 2, so a caller never reads silence as clearance.
+registry) exits 2, so a caller never reads silence as clearance. Unparsable
+means an unterminated quote in COMMAND text, which no shell runs either;
+an unterminated quote inside a here-document body is document text and is
+not one. Grammar a shell does run gets a verdict instead: a trailing
+backslash is read as bash reads it, and a here-document whose delimiter
+line never comes is a block, because the rest of the input may be commands
+the guard did not check.
 
 Matching is shell-token-aware and applies in command position only, so a
 hazard named inside a quoted argument never fires.
@@ -483,7 +538,11 @@ Anything the adapter cannot turn into a decision — an unreadable payload, a
 tool call that is not a shell command, an unparsable command line, a
 registry that will not load — allows the command and warns loudly on
 stderr. A guard that cannot answer never stops a session, and is never
-silently absent.
+silently absent. Unparsable means an unterminated quote in COMMAND text,
+which no shell runs either — a quote inside a here-document body is
+document text and is not one. A trailing backslash and a here-document with
+no delimiter line are grammar a shell does run, so each gets a verdict —
+the backslash is read as bash reads it, the unterminated document blocks.
 
 ### `abcd history`
 
@@ -590,7 +649,8 @@ Intent lifecycle; bare invocation is read-only status, quoted text files a draft
 **Flags:**
 
 ```
-      --impact string   stamp the draft's product impact: additive|breaking|fix (optional)
+      --impact string            stamp the draft's product impact: additive|breaking|fix (optional)
+      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
 #### `abcd intent audit`
@@ -625,15 +685,27 @@ Deprecated alias for `abcd intent "<text>"` (files a draft from the text)
 
 #### `abcd intent plan`
 
-Plan a draft intent: mint its spec, link both sides, move drafts -> planned
+Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions
 
-**Usage:** `abcd intent plan <itd-N>`
+**Usage:** `abcd intent plan <itd-N> [flags]`
+
+**Flags:**
+
+```
+      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+```
 
 #### `abcd intent ready`
 
-Report whether an intent is ready to implement (planned + AC + written spec); exit 1 when not
+Report whether an intent is ready to implement (planned + AC + written spec; claims and grounds reported, never refused); exit 1 when not
 
-**Usage:** `abcd intent ready <itd-N>`
+**Usage:** `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
+
+**Flags:**
+
+```
+      --grounds string   record the conjecture behind this gate decision: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+```
 
 ### `abcd launch`
 
@@ -706,9 +778,9 @@ Query memory and synthesise a cited answer
 
 #### `abcd memory ingest`
 
-Distil an external source into cited memory pages
+Distil an external source into cited memory pages (https URLs only)
 
-**Usage:** `abcd memory ingest <path-or-url> [flags]`
+**Usage:** `abcd memory ingest <path-or-https-url> [flags]`
 
 **Flags:**
 
@@ -723,11 +795,156 @@ Curator health-check over the whole memory store
 
 **Usage:** `abcd memory lint`
 
+### `abcd mode`
+
+Print or set whose answer the agent loop is waiting on (managed, facilitator, product-thinker)
+
+**Usage:** `abcd mode [<state>]`
+
+Print or set the waiting-on state behind the status line's badge.
+
+Bare `abcd mode` prints the stored state: `managed` (abcd is here and nobody
+is waiting), `facilitator` (the loop is parked on the facilitator, the person
+at the terminal running the agents), or `product-thinker` (the loop is parked
+on the product thinker, who answers on a surface of their own). An absent
+store reads as `managed`.
+
+`abcd mode <state>` sets it. Two writers share the verb: the agent runs it
+when it stops for a verdict, naming whom it is addressing, and the human runs
+it by hand to say which hat they wear. The state lives per checkout at
+`.abcd/.work.local/mode`, so only a repository abcd manages — one that has
+the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
+nothing. The next status-line refresh and the bare `abcd` board read the
+same file.
+
+Where this machine has no status surface — no `~/.abcd/statusline.json`, or
+one with `disabled` set — the set form prints one line naming whose answer
+is owed, once, because the verb call is the stop. Setting `managed` owes
+nobody and prints nothing; with a surface installed nothing is printed at
+all. With --json the notice is a field. Both forms make no network request.
+
+Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
+and nothing is written on any of them.
+
+### `abcd reading`
+
+Cold-reading input assembler: what a reading sees, and the manifest proving it
+
+**Usage:** `abcd reading`
+
+Assemble the input a cold reading is handed.
+
+Blindness is a property of the input, not a promise the reader makes: a positive include
+table names what may travel, fields are projected out of records rather than files copied
+whole, and a hashed manifest records what was passed so a reader can judge contamination
+rather than accept a disclosure on trust.
+
+Bare `abcd reading` renders the assembler's state and writes nothing.
+
+#### `abcd reading assemble`
+
+Assemble one reading's input and its manifest
+
+**Usage:** `abcd reading assemble --position <position> --target <HEAD|sha> [flags]`
+
+Walk the repository under the include table at one reading position and write two
+artefacts: the assembled input, which carries no repository path, and the manifest,
+which maps every passed item back to its path, its field and its hash.
+
+The invocation is a position and a target state, and nothing else. --position takes
+one of four closed tokens; --target takes HEAD or a hexadecimal commit sha of 7 to 40
+digits, because a branch or a tag moves and the manifest's re-runnability rests on a
+reference that cannot. Both are required.
+
+What the reading is handed comes from the committed preset entry for the position, in
+.abcd/config/reading-presets.json, applied with no operand. Changing it is a commit to
+that file, reviewed and inside the dirty gate; the manifest records the entry applied
+and its hash, so a run is reproducible from the commit it names.
+
+**Flags:**
+
+```
+      --dry-run           write nothing; with --out the two artefacts still land in that directory
+      --out string        an empty or absent directory the assembled input and the manifest are written to
+                          (default: the local-tier run directory)
+      --position string   the reading position: widening, entailment, comparative, detection
+                          (comparative derives its candidate set from the record: the one committed
+                          widening run at the target whose items carry no disposition and no
+                          admission — at the target, or at an ancestor of it across which only the
+                          readings store and the issue ledger changed, so a run's own records can be
+                          committed between its ingest and this assembly. None, or more than one,
+                          refuses and lists the runs)
+      --target string     the commit the assembly describes: HEAD, or a hexadecimal sha of 7 to 40 digits
+```
+
+**Example:**
+
+```
+abcd reading assemble --position widening --target HEAD --dry-run
+  abcd reading assemble --position entailment --target HEAD \
+    --out .abcd/.work.local/scratch/reading-runs/manual --json
+```
+
+#### `abcd reading ingest`
+
+Validate one reading's returned output and write its records
+
+**Usage:** `abcd reading ingest --reading-json <path> [flags]`
+
+Validate the JSON a cold reading returned and write its reading records.
+
+The verb checks what the reading was LICENSED to produce, not only what it saw: the
+supply regime is read from the position's definition and compared with the output's own
+claim, and an item carrying a reserved name as one of its own fields is refused with the
+licence stated. The reserved-name table is read at the run's own regime, one row per
+regime, and the generative regime has no row: no name is reserved at the generative
+position.
+
+Item identifiers are minted here. The payload carries none, so a supplied one is refused
+as an unknown field. A refusal becomes DURABLE once the run's identity is proven — the run
+id resolving to a parked manifest whose content hash matches — and from there a list-level
+refusal writes refusal.json under the run's directory; before that point nothing durable is
+written anywhere. No OTHER run's durable state is touched until the whole payload validates:
+a refusal after the run is proven writes its refusal record and nothing else, and the one
+delete it makes is on its OWN run id — the records of an earlier attempt at it that never
+committed. The reading records land as one batch and the run metadata is written last as the
+commit marker: a run without one never happened.
+
+An ingest interrupted before that marker leaves an orphaned stage, and every invocation names
+it. Only the next one whose payload validates sweeps it: where the run reached no commit
+marker the sweep ROLLS THAT RUN'S READING RECORDS OUT OF THE COMMITTED LEDGER, because the
+run never happened; where the marker is there the run stands and only the stage goes. A
+refused run reports the orphans it left in place, and the ids a sweep removed are reported as
+rolled_back_records on every exit, including a failing one.
+
+**Flags:**
+
+```
+      --reading-json string   path to the JSON the cold reading returned
+```
+
+**Example:**
+
+```
+abcd reading ingest --reading-json ./reading-output.json --json
+```
+
 ### `abcd rules`
 
 Render the active rule set; a positional DOMAIN scopes to one (read-only)
 
 **Usage:** `abcd rules [domain]`
+
+Render the rule set the modular-rules loader injects: the bundled default
+domains merged with this repo's .abcd/rules.json. Bare, it renders every active
+domain; a positional DOMAIN (case-insensitive) renders that one domain regardless
+of its state or the kill switch, so a dormant domain is still inspectable.
+
+Every domain says which layer it came from. A domain the repo override names —
+its rules replaced, its state changed, or a custom domain declared — renders as
+"## NAME (repo override)" here, in the injected block and in the hook's
+diagnostic, and carries "source": "repo" in --json; an untouched bundled domain
+renders bare and carries "source": "bundled". Read-only.
 
 ### `abcd site`
 
@@ -779,7 +996,42 @@ Native spec store; bare invocation is read-only status
 
 Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)
 
-**Usage:** `abcd spec close <spc-N>`
+**Usage:** `abcd spec close <spc-N> [flags]`
+
+**Flags:**
+
+```
+      --impact string   product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)
+```
+
+### `abcd statusline`
+
+Render abcd's status-line row from the harness payload on stdin (harness-invoked)
+
+**Usage:** `abcd statusline`
+
+Render abcd's row for the host harness's status line.
+
+The harness runs this on every status refresh, with its JSON status
+payload on stdin, and shows what it prints. In a checkout abcd manages the
+row is abcd's own: the presence badge first — `abcd`, `waiting: facilitator`
+or `waiting: product thinker`, from the state `abcd mode` stores — then the
+repository name, the branch, the model, the context percentage, the
+five-hour and seven-day usage percentages, and the record's counts of
+intents not yet shipped and open issues. Each element after the badge is
+switchable in `~/.abcd/statusline.json`; a payload field the harness did not
+supply drops its element with no placeholder.
+
+Outside a managed checkout, or with `disabled` set in the user-level
+setting, it runs the status command recorded there at install time with the
+same stdin and passes its output and exit code through unchanged, so the
+user's own line is untouched everywhere abcd does not manage. With none
+recorded it prints nothing and exits 0.
+
+The checkout is resolved from the payload's `cwd` (falling back to the
+working directory). Empty stdin is an empty payload. Nothing here prompts,
+reads a terminal, or touches the network. With --json the row is emitted as
+its ordered elements, each with a key, a rendered and a plain form.
 
 ### `abcd update`
 
@@ -792,7 +1044,10 @@ verifies the platform binary against the same release's checksums.txt, and
 swaps the PATH-installed copy atomically. The verb is the only ask: abcd
 never checks for or applies updates on its own (adr-38). A plugin-root
 binary, the dev shim, and package-manager installs are refused with the
-command that owns them.
+command that owns them. The file being replaced must be provably abcd's:
+the binary running the command, an install ~/.abcd/path-entry records, or
+a digest a published release still names. Anything else is refused with a
+remedy that reinstalls over it — never one that deletes it.
 
 **Flags:**
 

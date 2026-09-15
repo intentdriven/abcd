@@ -112,27 +112,41 @@ func (e *explorer) recordPage(n ExportNode) (string, error) {
 	return e.shell(RecordRoute(n), shortTitle(n), "", b.String()), nil
 }
 
-// recordBody renders the record's Markdown.
+// recordBody renders the record's Markdown, with the first use of each glossary
+// term linked to its entry.
+func (e *explorer) recordBody(n ExportNode) (string, error) {
+	body, err := e.renderMarkdownBody(n.Path)
+	if err != nil {
+		return "", err
+	}
+	return e.linkTerms(body, ""), nil
+}
+
+// renderMarkdownBody renders one repository Markdown file as page body.
 //
 // The H1 is dropped because the page already carries it as its heading; every
 // other heading keeps its own level and its anchor, so a link into the middle of
 // a record still lands where it points.
-func (e *explorer) recordBody(n ExportNode) (string, error) {
-	data, err := fsutil.ReadGuardedInRoot(e.c.root, n.Path, maxRecordBodyBytes)
+//
+// A record's page and a glossary entry's page are the same rendering of the same
+// kind of file, so they share it: a second copy would be a second answer to what
+// a repo-relative link becomes and which images are assets.
+func (e *explorer) renderMarkdownBody(rel string) (string, error) {
+	data, err := fsutil.ReadGuardedInRoot(e.c.root, rel, maxRecordBodyBytes)
 	if err != nil {
 		return "", err
 	}
 	text, consumed := StripFrontmatter(string(data))
-	secs, err := Sections(n.Path, text, consumed)
+	secs, err := Sections(rel, text, consumed)
 	if err != nil {
 		return "", err
 	}
-	dir := path.Dir(n.Path)
+	dir := path.Dir(rel)
 	r := &Renderer{
 		UI:    e.c.ui,
 		Refs:  LinkDefinitions(text),
 		Image: func(src, alt string, at Source) (string, error) { return e.c.assets.render(dir, src, alt, at) },
-		Link:  func(href string, at Source) string { return e.href(n.Path, href) },
+		Link:  func(href string, at Source) string { return e.href(rel, href) },
 	}
 	var b strings.Builder
 	for _, s := range secs {
@@ -142,13 +156,13 @@ func (e *explorer) recordBody(n ExportNode) (string, error) {
 				level = 6
 			}
 			tag := "h" + string(rune('0'+level))
-			inner, err := r.inline(Source{Path: n.Path, Line: s.Line}, s.Title)
+			inner, err := r.inline(Source{Path: rel, Line: s.Line}, s.Title)
 			if err != nil {
 				return "", err
 			}
 			b.WriteString("<" + tag + ` id="` + escapeAttr(s.Anchor) + `">` + inner + "</" + tag + ">")
 		}
-		h, err := r.RenderBlocks(n.Path, Blocks(s.Body, s.BodyLine))
+		h, err := r.RenderBlocks(rel, Blocks(s.Body, s.BodyLine))
 		if err != nil {
 			return "", err
 		}
@@ -203,14 +217,22 @@ func (e *explorer) frontmatterTable(n ExportNode) string {
 // The path is a file name, which the generator may print; everything else here
 // is a ui.json label.
 func (e *explorer) fileLinks(n ExportNode) string {
-	blob := e.forgeBlob(n.Path)
+	return e.forgeFileLinks(n.Path, n.Dates.Touched != "")
+}
+
+// forgeFileLinks is fileLinks for any repository file the site puts a page on —
+// a record's, or a glossary entry's. history says whether the commit-history
+// link is offered: a record whose file git has never touched has no history to
+// show, and offering the link anyway would promise a page that is empty.
+func (e *explorer) forgeFileLinks(rel string, history bool) string {
+	blob := e.forgeBlob(rel)
 	if blob == "" {
-		return `<p class="reclinks mono">` + escapeText(n.Path) + `</p>`
+		return `<p class="reclinks mono">` + escapeText(rel) + `</p>`
 	}
 	var b strings.Builder
-	b.WriteString(`<p class="reclinks"><span class="mono">` + escapeText(n.Path) + `</span><br>`)
+	b.WriteString(`<p class="reclinks"><span class="mono">` + escapeText(rel) + `</span><br>`)
 	b.WriteString(`<a href="` + escapeAttr(blob) + `">` + escapeText(e.c.ui.Record.OpenOnForge) + ` ↗</a>`)
-	if commits := e.forgeCommits(n.Path); commits != "" && n.Dates.Touched != "" {
+	if commits := e.forgeCommits(rel); commits != "" && history {
 		b.WriteString(` · <a href="` + escapeAttr(commits) + `">` +
 			escapeText(e.c.ui.Record.CommitHistory) + ` ↗</a>`)
 	}

@@ -110,7 +110,13 @@ func parseFrontmatterBlock(lines []string) (map[string]any, error) {
 			return nil, fmt.Errorf("%w: line is not key: value %q", ErrMalformedFrontmatter, raw)
 		}
 		key := strings.TrimSpace(raw[:idx])
-		rest := strings.TrimSpace(raw[idx+1:])
+		// A trailing comment is not part of the value, and the rule is the shared
+		// scanner's — the same call record-lint's reader makes. A strip on one
+		// side alone would put the permissive verdict on the gate: this parser
+		// refusing `severity: minor # todo` as out-of-enum while the gate that
+		// exists to refuse exactly what this parser refuses read it as `minor`
+		// (iss-2608301744268001).
+		rest := strings.TrimSpace(frontmatter.StripComment(raw[idx+1:]))
 		if key == "" {
 			return nil, fmt.Errorf("%w: empty key in %q", ErrMalformedFrontmatter, raw)
 		}
@@ -150,7 +156,7 @@ func parseFrontmatterBlock(lines []string) (map[string]any, error) {
 				if sidx < 0 {
 					return nil, fmt.Errorf("%w: nested line is not key: value %q", ErrMalformedFrontmatter, subRaw)
 				}
-				sval, err := parseScalarOrList(strings.TrimSpace(subTrim[sidx+1:]))
+				sval, err := parseScalarOrList(strings.TrimSpace(frontmatter.StripComment(subTrim[sidx+1:])))
 				if err != nil {
 					return nil, err
 				}
@@ -257,33 +263,11 @@ func splitInlineListItems(inner string) []string {
 // decodeScalar decodes a single non-list scalar token.
 func decodeScalar(s string) (any, error) {
 	if strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) && len(s) >= 2 {
-		return unquote(s[1 : len(s)-1]), nil
+		return frontmatter.Unquote(s[1 : len(s)-1]), nil
 	}
 	if n, err := strconv.Atoi(s); err == nil {
 		return n, nil
 	}
 	// Bare token (unquoted string, e.g. an abcd id or a legacy value).
 	return s, nil
-}
-
-// unquote reverses yamlScalar's backslash + dquote escaping.
-func unquote(s string) string {
-	var b strings.Builder
-	esc := false
-	for _, r := range s {
-		if esc {
-			b.WriteRune(r)
-			esc = false
-			continue
-		}
-		if r == '\\' {
-			esc = true
-			continue
-		}
-		b.WriteRune(r)
-	}
-	if esc {
-		b.WriteRune('\\')
-	}
-	return b.String()
 }

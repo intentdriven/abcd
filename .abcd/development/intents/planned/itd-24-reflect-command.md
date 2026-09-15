@@ -59,6 +59,10 @@ A phase audit and a phase retrospective are **distinct activities**, the same sp
 - **Team retrospectives** — abcd is single-developer-shaped (or pair-shaped); team retrospective patterns belong elsewhere.
 - **Automatic triggering** — reflection requires the persona's deliberate engagement; no auto-prompting after phase close.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** an abcd repo with a completed phase (`phase-1-substrate.md` exists, every spec carrying `phase: phase-1-substrate` is closed, and a phase audit has been recorded), **when** the persona runs `/abcd:reflect phase-1-substrate`, **then** the reflection-composer agent runs an interview *seeded by the phase audit's per-bullet verdicts* and writes `.abcd/retrospectives/phase-1-substrate/README.md` with all five required sections populated.

@@ -40,13 +40,25 @@ type fixture struct {
 	root string
 }
 
+// fixtureRootDate dates the first commit; the fixture is deterministic, so two
+// fixtures built with the same date are the SAME repository as far as the
+// root-commit SHA can tell.
+const fixtureRootDate = "2026-01-05T09:00:00+00:00"
+
 // newFixture builds the whole repository and returns it at HEAD.
 func newFixture(t *testing.T) *fixture {
+	t.Helper()
+	return newFixtureRootedAt(t, fixtureRootDate)
+}
+
+// newFixtureRootedAt is newFixture with the first commit at rootDate, for a
+// test that needs a second repository with a different identity.
+func newFixtureRootedAt(t *testing.T, rootDate string) *fixture {
 	t.Helper()
 	r := gittest.NewRepo(t)
 	f := &fixture{t: t, repo: r, root: r.Root()}
 	f.writeSources()
-	f.commitAt("2026-01-05T09:00:00+00:00", "feat: the record and the pages", "")
+	f.commitAt(rootDate, "feat: the record and the pages", "")
 	f.shipTheIntent()
 	f.writeChangelog()
 	f.commitAt("2026-03-02T09:00:00+00:00", "docs: two releases", "None")
@@ -302,7 +314,7 @@ func (f *fixture) writeSources() {
             "discipline": "disciplines", "commits": "commits"},
   "record_nav": {"dashboard": "Dashboard", "graph": "Relationships", "timeline": "Genealogy",
                  "foundations": "Foundation", "development": "Work", "health": "Health",
-                 "contributors": "Contributors"},
+                 "glossary": "Glossary", "contributors": "Contributors"},
   "health": {"unresolved": "References a record the tree does not hold",
              "isolated": "Linked to nothing, and nothing links to it",
              "same_author": "Two author names, one contributor",

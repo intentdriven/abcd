@@ -17,7 +17,10 @@ section, not a rework of an existing one). Receives the committed framing
 products of
 [itd-142](itd-142-the-brief-creation-interview-abcd-elicits-a-repository-s-bri.md);
 only committed products land here — framing traces stay local per
-[adr-50](../../decisions/adrs/0050-framing-traces-never-enter-the-record.md).
+[adr-50](../../decisions/adrs/0050-framing-traces-never-enter-the-record.md),
+as refined by adr-55: the construal as it presently stands is committed
+record and readable by automated readers (the cold reading included); its
+history is not.
 
 ## Press Release
 
@@ -50,6 +53,25 @@ the record rather than in a transcript that is discarded.
   best from conventions, grounded only abcd-native — like `product/personas`,
   framing is a question for a human, not an extraction).
 - This repository's own framing section, written as the first instance.
+- The construal statement the section opens with: what the situation is
+  treated as, in one or two sentences — the surface a widening reading reads
+  against; where it describes an intention rather than a commitment it
+  carries the not-yet-real marker.
+- The not-yet-real marker's form (ratified 2026-08-30): a blockquote line
+  holding exactly `**Status: NOT YET REAL.**`, a blank line, then the
+  statement as the first paragraph — the file-level `Status: LIVE`
+  convention carried to passage level. One exact token, reader-visible in
+  the rendered prose, lintable later without new machinery.
+- **Ruled (facilitator, 2026-08-28; decision log):** the construal is sited as a brief
+  section — this section — and adr-50 is extended to distinguish construal
+  from revision history, the extension filed as an ADR in Iteration 1
+  *before* the construal surface is built (it files first in the build sequence; adr-55 is that extension). Ground: dropping the Step 2 reading
+  would forfeit the position of greatest exposure; a glossary-only reading
+  is a defensible fallback but must be stated as a bound, never passed off
+  as the full reading.
+- Construal revision passes the prior construal to the local ledger side
+  rather than retaining it in the section — the brief holds the present
+  (adr-5) and version control serves history; no in-section version trail.
 
 ## What's Out of Scope
 
@@ -73,6 +95,16 @@ the record rather than in a transcript that is discarded.
 - **Given** an itd-142 interview that commits framing products, **when** they
   land, **then** they land in this section with confirmation provenance, and
   nothing uncommitted lands at all.
+- **Given** the framing section, **when** it is read, **then** it opens with
+  a one-or-two-sentence construal statement, and any passage describing an
+  intention rather than a commitment carries the not-yet-real marker.
+- **Given** a construal revision, **when** the section is rewritten, **then**
+  the prior construal exists on the local ledger side and not in the brief.
+- **Given** the framing section, **when** it is projected, **then** the
+  construal statement and its load-bearing vocabulary are
+  machine-extractable — fixed section heading, statement-first layout, the
+  exact marker token — so the framing vocabulary can be pulled from the
+  brief retrospectively (facilitator review requirement, 2026-08-28).
 
 ## Open Questions
 

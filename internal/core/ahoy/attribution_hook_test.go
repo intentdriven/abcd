@@ -365,3 +365,82 @@ func TestAttributionHookHoldsItsContract(t *testing.T) {
 		}
 	})
 }
+
+// TestAttributionOptInPersistFailureIsLoud pins the loud-staging half of the
+// PERSISTED contract: when the opt-in cannot be recorded — here a config.json
+// the read-modify-write refuses to parse — the hook may still land, but the
+// receipt must say the opt-in did not, exactly as registerRepo reports a
+// skipped history registration. A silent miss leaves attributionOptedIn false,
+// raises no gap, and makes every later plain install drop the hook.
+func TestAttributionOptInPersistFailureIsLoud(t *testing.T) {
+	setupHermetic(t)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(repo, attributionOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attributionOptedIn(repo) {
+		t.Fatal("the malformed config was rewritten; the failure under test did not occur")
+	}
+	found := false
+	for _, c := range res.Changes {
+		if strings.Contains(c, "attribution opt-in not persisted") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the opt-in was not persisted and nothing said so (status=%q changes=%v)", res.Status, res.Changes)
+	}
+}
+
+// TestAttributionOptInFailureNoteCarriesNoAbsolutePath pins the note to the
+// receipt scrub: a config the guarded read cannot open yields an os.PathError
+// naming the repo's absolute path, and the note that reports it must render
+// through the same seam every written path does, so the receipt and --json
+// output name neither the repo nor the home directory.
+func TestAttributionOptInFailureNoteCarriesNoAbsolutePath(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file modes")
+	}
+	home, _ := setupHermetic(t)
+	repo := filepath.Join(home, "proj")
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(repo, ".abcd", "config.json")
+	if err := os.Chmod(cfg, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cfg, 0o644) })
+	res, err := Install(repo, attributionOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var note string
+	for _, c := range res.Changes {
+		if strings.Contains(c, "attribution opt-in not persisted") {
+			note = c
+		}
+	}
+	if note == "" {
+		t.Fatalf("the failed opt-in was not reported (changes=%v)", res.Changes)
+	}
+	if strings.Contains(note, repo) {
+		t.Errorf("the note names the repo's absolute path: %q", note)
+	}
+	if strings.Contains(note, home) {
+		t.Errorf("the note names the home directory: %q", note)
+	}
+}

@@ -62,11 +62,12 @@ func TestShippedInRemovesARecordFromALaterCut(t *testing.T) {
 // value leaves the record in the cut and reports itself.
 func TestAnUnreadableShippedInDoesNotRemoveARecord(t *testing.T) {
 	for _, bad := range []string{
-		"0.1.0",       // no leading v
-		"v0.1",        // not three components
-		"v0.1.0-rc1",  // a pre-release, which this repository does not tag
-		"yesterday",   // prose
-		"v0.1.0 # eh", // trailing junk
+		"0.1.0",      // no leading v
+		"v0.1",       // not three components
+		"v0.1.0-rc1", // a pre-release, which this repository does not tag
+		"yesterday",  // prose
+		"v0.1.0 eh",  // trailing junk
+		"v0.1.0#eh",  // a hash with no whitespace in front of it is part of the value
 	} {
 		t.Run(bad, func(t *testing.T) {
 			r := baseRepo(t)
@@ -96,6 +97,29 @@ func TestAnUnreadableShippedInDoesNotRemoveARecord(t *testing.T) {
 				t.Errorf("the report must quote the offending value; got %q", found.ShippedInErr)
 			}
 		})
+	}
+}
+
+// A trailing comment is not part of the value, and this field is where the old
+// reading failed in the more expensive direction: `shipped_in: v0.1.0 # swept`
+// read as the unparseable string `v0.1.0 # swept`, so a record that states it
+// already shipped stayed in the cut and would be announced a second time. The
+// strip lives in the ONE same-line scanner (iss-2608301744268001), so this
+// consumer inherited it without a second rule of its own.
+func TestShippedInHonoursAValueBehindAComment(t *testing.T) {
+	r := baseRepo(t)
+	r.write(resolvedDir+"iss-2-swept.md",
+		"---\nid: iss-2\nimpact: fix\nshipped_in: v0.1.0 # closed by the sweep\n---\n# iss-2\n")
+	r.commit("a swept record whose shipped_in carries a comment")
+
+	set, err := ShippedSince(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("ShippedSince: %v", err)
+	}
+	for _, rec := range set.Added {
+		if rec.ID == "iss-2" {
+			t.Errorf("shipped_in behind a comment was not honoured: %+v", rec)
+		}
 	}
 }
 

@@ -963,3 +963,457 @@ Per hand-run, append:
   mint. **Ruling (same day):** the maintainer ruled itd-145 superseded —
   the link is `supersedes`, itd-145 moved to `superseded/` with both
   sides stamped, and itd-163 is the canonical credit-enforcement intent.
+
+### 2026-08-30 — claim typing and scope-condition identity (itd-177, hand-run at filing)
+
+- **Proposal:** an intent's claims are typed and its scope conditions keep
+  their identity across edits — the readiness gate refuses an intent that
+  leaves a context claim unrecorded.
+- **Initial routing:** three parts — the typing and the identity marker at the
+  gate (capability | intent, itd-177); the gradient's rationale, nullity
+  grammar and staging (standing rule | discipline, itd-190); the dispositions
+  the identity makes attachable (capability | a second intent, itd-181).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** SPLIT, proposed and confirmed; filed as itd-177 with itd-190
+  and itd-181 carrying the other two parts.
+- **Notes:** the identity marker is stamped by `intent plan`, never hand-typed;
+  adr-51 is consumed rather than reopened, so no ADR part arose.
+
+### 2026-08-30 — origin and production-mode keys (itd-178, hand-run at filing)
+
+- **Proposal:** every record written through a command carries its origin and
+  its production mode, stamped by the command and never typed by hand.
+- **Initial routing:** two parts — the two keys, resolver support, the
+  command-side stamping on every write path and the hand-edit lint (capability
+  | intent, itd-178); the three-term production-mode vocabulary (already ruled
+  | the decision log, not re-minted here).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** the attribution seam is itd-91's `.abcd/config/identity.json`,
+  extended rather than duplicated. Population is forward-only, so no backfill
+  part exists to route — the absent stamp is information, not a gap.
+
+### 2026-08-30 — grounds at conjecture granularity (itd-179, hand-run at filing)
+
+- **Proposal:** readiness and triage record grounds for the conjecture being
+  acted on, not only for the decision reached.
+- **Initial routing:** one part — the grounds argument and its three-value
+  vocabulary on `intent ready` and the capture triage routes, refusing on
+  absence (capability | intent, itd-179). The ADR family's
+  decision-granularity grounds are explicitly out of scope.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** routed as one part because the refusal and the vocabulary land on
+  the same command surface. No ADR: the finer grain sits beside the existing
+  grounds rather than redeciding them.
+
+### 2026-08-30 — reading records and disposition records (itd-180, hand-run at filing)
+
+- **Proposal:** a cold reading's findings land as reading records and the
+  researcher's response is a separate disposition record — two acts, two
+  writes, never collapsed.
+- **Initial routing:** two workstream items collapsed to one part — one record
+  type with a position-typed body plus the separately written disposition
+  record (capability | intent, itd-180), `refines` itd-86. The reserved hold
+  field's home question is not a part: it stays with iss-2608220750029991.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS, as one record rather than two.
+- **Notes:** the interesting call is a merge, not a split — four record types
+  were rejected for one envelope, giving one lint, one disposition surface and
+  one identifier scheme.
+
+### 2026-08-30 — scope-condition disposition (itd-181, hand-run at filing)
+
+- **Proposal:** a shipped intent's scope conditions are dispositioned by the
+  fidelity verdict — what was assumed ex ante and what survived are recorded
+  as different things.
+- **Initial routing:** one part — the four-value disposition surface keyed to
+  condition identity, populated at verdict ingest (capability | intent,
+  itd-181), depending on itd-177's identity marker.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** SPLIT, as the disposition half of the itd-177 proposal;
+  confirmed.
+- **Notes:** kept separate because it lands in `intent audit` ingest and the
+  auditor contract, not the readiness gate — different surface, different
+  owner, so a single record would have spanned two gates.
+
+### 2026-08-30 — the lapse capture category (itd-182, hand-run at filing)
+
+- **Proposal:** the record's own discipline failures are recorded — a lapse is
+  a capture category, timestamped at the lapse rather than at write-up.
+- **Initial routing:** two parts — the `lapse` value in capture's validated
+  category list (capability | intent, itd-182, one enum line); the first three
+  lapse entries (not an intent | ledger captures, written at the outset).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** the smallest record of the cycle, and the only one whose code part
+  landed ahead of its intent — the enum line went in first so the three
+  entries had a category to be filed under.
+
+### 2026-08-30 — the cold-reading input assembler (itd-183, hand-run at filing)
+
+- **Proposal:** the cold reading sees exactly what the assembler passes —
+  positive inclusion, field projection, and a per-run manifest.
+- **Initial routing:** four parts — the assembler with its per-position include
+  table and field projection (capability | bundle-member intent, itd-183); the
+  per-run manifest (same record, it is the assembler's own output); the
+  read-block eval (capability | its own intent, itd-186); the amnesia eval
+  (capability | its own intent, itd-187).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** SPLIT, proposed and confirmed — the two evals to their own
+  drafts.
+- **Notes:** the split is on falsifiability: an eval whose oracle reads the
+  assembler's include table can only assert that table. The two assembler
+  rules ruled the same day stay inside this record — they make the include
+  list derivable rather than remembered.
+
+### 2026-08-30 — the four cold-reading definitions (itd-184, hand-run at filing)
+
+- **Proposal:** four cold-reading definitions over one blindness core — each
+  position licenses a different output, and none may hold another's licence.
+- **Initial routing:** one part — four agent definitions holding object,
+  question, byte-identical core, regime value and item shape (capability |
+  bundle-member intent, itd-184). The criteria the comparative definition
+  consumes route out to itd-191 rather than into this record.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** the count of definitions and the count of contexts are different
+  countings and are compatible — four instances within one detector context.
+  The ruling is implemented as stated, not re-litigated at filing.
+
+### 2026-08-30 — the cold-reading output contract (itd-185, hand-run at filing)
+
+- **Proposal:** one ingest verb validates every cold-reading output, including
+  what the reading was licensed to produce, not only what it saw.
+- **Initial routing:** two workstream items collapsed to one part — the ingest
+  verb with its strict schema and the supply-regime gate (capability |
+  bundle-member intent, itd-185), so the read-block and the contract are
+  written in one place.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS, as one record.
+- **Notes:** the regime gate is the enforcement half of
+  `widen-options-never-recommend`, whose promotion moves to the staged rung in
+  the same filing. Whether the signatures lint cleanly in practice stays an
+  open question inside the record rather than a routed-out part.
+
+### 2026-08-30 — the read-block eval (itd-186, hand-run at filing)
+
+- **Proposal:** planted warm content that reaches a reading fails the build
+  loudly.
+- **Initial routing:** one part — the sentinel fixture state, one plant per
+  warm location class, and field-level absence assertions with an oracle
+  independent of the include table (capability | intent, itd-186).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** SPLIT, as the first of the two instruments taken out of the
+  itd-183 proposal; confirmed.
+- **Notes:** separate because it carries its own claim and its own verdict.
+  Folding it into the assembler would put the falsifier inside the thing it
+  exists to falsify.
+
+### 2026-08-30 — the amnesia eval (itd-187, hand-run at filing)
+
+- **Proposal:** the same state assembled twice is byte-identical, so no case
+  run is spent evidencing amnesia.
+- **Initial routing:** one part — the double-assembly comparison with the
+  manifest excluded, and the determinism preconditions it enforces on the
+  assembler (capability | intent, itd-187).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** SPLIT, the second instrument out of the itd-183 proposal;
+  confirmed.
+- **Notes:** filing it as a repository eval is exactly what keeps amnesia off
+  the closing case run's list of properties — the routing decision and the
+  epistemic claim are the same decision here.
+
+### 2026-08-30 — the scribe context (itd-188, hand-run at filing)
+
+- **Proposal:** machine assistance in maintaining the ledger, without any
+  context that holds both ledger content and a reading.
+- **Initial routing:** three parts, all routed to one record — the scribe
+  definition with the assembler's inverse access rule; the fidelity-flag
+  permission and the contribution stamp; the hand-run protocol until the
+  ingest verb lands (capability | intent, itd-188, the last part marked
+  [HAND]).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** kept whole because each part qualifies one access rule rather than
+  standing alone. The contribution stamp is explicitly the precursor of
+  itd-178's keys and retires when they ship, which is why it is staging inside
+  this record and not a record of its own.
+
+### 2026-08-30 — step-2 admission records (itd-189, hand-run at filing)
+
+- **Proposal:** what the widening reading proposes is admitted or declined on
+  the record — grounds on admission, dispositions on declines, and surprises
+  as their own entries.
+- **Initial routing:** three shapes collapsed into one schema-only record —
+  the admission-grounds record, the declined-proposal disposition, and the
+  surprise entry (capability | intent, itd-189); schema this cycle, command
+  enforcement next.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** [HAND] this iteration — no reading runs, so there is nothing to
+  record yet. The surprise entry is deliberately a third shape rather than a
+  disposition variant: the reading's output, the researcher's response, and
+  the surprise that occasions abduction are three acts.
+
+### 2026-08-30 — the claim recording gradient (itd-190, hand-run at filing)
+
+- **Proposal:** an intent's three claim kinds carry three recording
+  requirements, and the readiness gate holds them.
+- **Initial routing:** one part — the gradient, the nullity grammar, the
+  forward-only population rule and the discipline-kind exemption (standing rule
+  | discipline record, itd-190), `builds_on` itd-1.
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** SPLIT, the rationale-and-staging half of the itd-177 proposal;
+  confirmed.
+- **Notes:** routed to a discipline rather than a principle because it imposes
+  an acceptance gate every other intent inherits, which is the discipline
+  family's own test. itd-1 already owns the criterion claim, so the gradient
+  extends a rule rather than founding one.
+
+### 2026-08-30 — the selection criteria (itd-191, hand-run at filing)
+
+- **Proposal:** a candidate is characterised and selected against criteria the
+  record states, never criteria supplied at invocation.
+- **Initial routing:** one part — the six-criterion slate, amendable only by
+  ordinary discipline amendment, consumed by the comparative definition
+  (standing rule | discipline record, itd-191).
+- **Confirmed routing:** confirmed by the orchestrator under the
+  facilitator's standing authorisation, decision (20) of 2026-08-28, no
+  per-run human confirmation — the autonomy is itself under observation this
+  cycle.
+- **Verdict:** FILE-AS-IS.
+- **Notes:** a taxonomy ambiguity the record states about itself — these
+  criteria govern selection rather than delivery, so the discipline family is
+  the nearest home rather than an exact fit, filed there in preference to
+  minting a record family for one record. Feeds the open question on the enum.
+
+### 2026-08-30 — the exclusion floor (itd-194, hand-run at filing)
+
+- **Proposal:** the cold-reading exclusion floor leaks, on ten records, and
+  itd-183 shipped over the residue under a facilitator ruling that the floor be
+  carried as its own intent.
+- **Initial routing:** four parts. (1) The capability: the include table
+  refuses what the floor cannot parse, so admission and comprehension describe
+  one set (intent, itd-194), `builds_on` itd-183. (2) The trust rule: an
+  exclusion control asserts only what it can prove, so a manifest may not claim
+  a refusal the floor did not perform (ADR + brief invariant). (3) The stance:
+  a control that declines to run must say so rather than report a clean pass.
+  (4) The plumbing: the include table's narrowing is a scope decision it makes
+  and the floor inherits unstated, which belongs in the brief.
+- **Confirmed routing:** confirmed by the orchestrator under the facilitator's
+  standing authorisation, decision (20) of 2026-08-28, no per-run human
+  confirmation. The design fork underneath part (1) was NOT absorbed into the
+  ceremony: iss-2608301450065320 states the remedy is a design question and
+  declines to pick, so it was put to the facilitator, who ruled on 2026-08-30
+  for narrowing admission rather than widening the floor's parse.
+- **Verdict:** SPLIT, into (1) and (2); (3) files nowhere and (4) rides with
+  the ADR.
+- **Notes:** part (3) is the calibration's own result this run. The stance is
+  already held by the `loud-staging` principle, whose letter covers a stage that
+  no-ops or degrades saying so, and the floor declining to scan while the
+  manifest reports exclusion is that principle's exact shape. Routing it to a
+  new principle would have been a third copy of a rule the repository already
+  states once, so the hand-run cites `loud-staging` instead of minting against
+  it. That is the first time this table has retired a part by finding its home
+  already occupied, and it is the outcome the one-canonical-primitive rule
+  predicts should be common.
+
+### 2026-08-30 — the review-round cost calibration (hand-run at recording)
+
+- **Proposal:** the maximal review discipline run in cycle 1 was an experiment
+  to measure verification overhead; the evidence is in, and what it says should
+  bind the remainder of this phase and future phases in abcd and abcd-managed
+  repos.
+- **Initial routing:** three parts. (1) The stance — review effort scales with
+  what CHANGED, not only with what is being crossed (principle). (2) The
+  evidence — per-intent commits, rounds and diff sizes, the token accounting,
+  and the delta-versus-full-diff waste (dated research note). (3) Any tooling
+  that would scope a review to the delta mechanically (a future capability,
+  not filed).
+- **Confirmed routing:** confirmed by the orchestrator under the facilitator's
+  standing authorisation, decision (20) of 2026-08-28. The facilitator set the
+  frame explicitly: run it all-in first to see the overhead, then state what
+  should be done with the evidence in hand.
+- **Verdict:** SPLIT into (1) and (2), with (3) recorded as a future rung
+  inside the note rather than filed.
+- **Notes:** part (1) did NOT mint a principle. `adversarial-review-scales-
+  with-blast-radius` already holds the stance for record crossings and simply
+  said nothing about build rounds, so the run EXTENDED it with a build-round
+  half rather than adding a near-synonym beside it. That is the second
+  consecutive hand-run to close a part by finding the home already occupied
+  (the previous one retired a stance into `loud-staging`), which is now enough
+  of a pattern to say the table's most common non-trivial outcome is
+  consolidation rather than minting.
+
+### 2026-08-31 — a claim about behaviour is executable (itd-195, hand-run at filing)
+
+- **Proposal:** prose stating how another part of the codebase behaves is backed
+  by something that runs, or it is not written; and the existing corpus is swept
+  for the shape.
+- **Initial routing:** three parts. (1) The rule every change inherits, with a
+  gate (discipline record, itd-195). (2) The codebase-wide sweep, which is the
+  rule's own staging work rather than a separate capability. (3) The stance —
+  checked against the principles shelf first, per the last two runs.
+- **Confirmed routing:** confirmed by the orchestrator under the facilitator's
+  standing authorisation; the facilitator asked for the filing directly
+  ("record it as a future intent ... this probably becomes a discipline"), so
+  the routing question put to them was the SHAPE, not whether to file.
+- **Verdict:** FILE-AS-IS as a discipline, with the sweep carried inside it.
+- **Notes:** part (3) is the interesting one and it did NOT close the way the
+  last two did. The shelf holds two near neighbours and neither is the home.
+  `enforcement-claims-are-facts` forbids describing a gate that does not run —
+  a claim about EXISTENCE, judged true or false when written. This rule is about
+  a claim STAYING true, which that one cannot reach, because a comment can be
+  exactly right the day it is written and false six months later.
+  `guards-prove-themselves` is the same instinct scoped to refusal paths. So the
+  new record is the GENERAL form and the two adopted principles are its special
+  cases; it is filed beside them with that relationship stated, and if adopted
+  they should say they are instances of it. Three consecutive hand-runs have now
+  turned on "is the home already occupied" — twice yes, once no — which is
+  becoming the table's most load-bearing question rather than an afterthought.
+
+### 2026-09-02 — the Iteration 2 cold-reading intents (hand-run at filing, eight proposals)
+
+- **Proposal:** the eight capabilities the design documents require before
+  Iteration 2 can open: the comparative channel, the admission and surprise
+  verbs, the scribe verbs, the reading-occasioned origin, the calibrated
+  presets, the reframe record, the knowledge-record extension, and the
+  condition disposition from a reading run.
+- **Initial routing:** one intent each, with every part named as capability.
+- **Confirmed routing:** the record-discipline adversarial review, run before
+  the interview under the maintainer's instruction to plan the eight into
+  specs, split two trust rules, one ruling, one record-architecture decision
+  and one piece of brief plumbing out of the intents: the
+  comparative channel's positional exception to the prior-run exhaust (ADR plus
+  brief invariant), the two-sessions property behind the scribe (ADR plus brief
+  invariant, with the bundle-shape change as brief plumbing), the rule over
+  every construal rewrite (ADR refining adr-55, or a discipline), and the
+  principles family becoming a declared record store (ADR on the adr-30
+  pattern). Each is captured as an issue in the same change and flagged in the
+  intent it left. The scanner fix for absence as a class was routed out of the
+  admission intent to its two existing issue records, which is a consolidation
+  on the pattern of the three preceding runs rather than a split, so the
+  admission intent counts as filed as-is. The maintainer confirmed
+  the routing by instruction to file and plan; the reversal flags (itd-199's
+  comparative-preset refusal withdrawn, itd-186's exhaust rule gaining an
+  exception, adr-55 refined) stay advisory until adopted.
+- **Verdict:** SPLIT on four of eight (comparative, scribe, reframe,
+  knowledge); FILE-AS-IS on the other four (admission, origin, presets,
+  condition), each with typed `refines` links to the record it extends.
+- **Notes:** every split was the same shape, a trust rule riding inside a
+  capability, which is the failure the table exists to catch and the first
+  time it has caught four in one run. None of the eight found its home already
+  occupied, unlike the three preceding runs; the record has no comparable
+  capability for any of them, which is consistent with the design documents
+  having scheduled them for a later iteration.
+
+### 2026-09-11 — lifecycle symmetry across record families
+
+- **Proposal:** all artefacts must be consistent where possible: issues, specs
+  and intents should close the same way, and since issues are minted to avoid
+  conflicts, specs, intents, ADRs and everything else should be minted the same
+  way.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | Every write-side family mints through one allocator | already shipped | verify only (adr-45, `recordid.Minter`) |
+  | `CLAUDE.md` states ADRs keep a hand-numbered ordinal | defect | issue `iss-2609111002410678` |
+  | Terminal moves are asymmetric across families | capability | intent `itd-2609111003026787` |
+  | Supersede has no verb for intents or ADRs | capability | same intent (maintainer's routing) |
+
+- **Links:** `related_adrs: adr-45`, cited by analogy. The first routing said
+  `refines`, which is wrong twice: `refines` is not a field the schema knows
+  (`internal/core/lint/schema.go:113-115`), and adr-45's five rulings are about id
+  allocation, which this narrows none of. `related_intents: itd-34` was MISSED at
+  routing and is the run's blocking defect — see the correction below.
+- **Corrected after the two adversarial reviews (2026-09-11).** The run's
+  routing was WRONG in one part and the table's own method produced two false
+  numbers. Recorded here because the calibration corpus is worth less if it only
+  records the runs that went well.
+
+  **The blocking miss:** the table asserted "Supersede has no verb for intents or
+  ADRs". Half wrong. `itd-34` sits in `planned/` and already specifies
+  `/abcd:intent reclassify --kind superseded --by`, with a richer contract
+  (`kind_at_supersession`) than the draft proposed. The run's own stated lesson —
+  check whether each part is already shipped before routing it — was applied
+  against SHIPPED CODE only, never against PLANNED RECORDS, and that is exactly
+  the blind spot that produced the duplicate. The lesson generalises further than
+  it was written: check the record store, not just the tree.
+
+  **Why nothing caught it:** the draft omitted `## Prior Art`, which
+  `intents/README.md:206-209` makes required, and which exists precisely to
+  surface this. Four of the five minted-era drafts carry it; this was the only one
+  without.
+
+  **Two false numbers**, both from counting directory entries rather than
+  records: "7 superseded intents" (6 records plus a `README.md`) and "60 ADRs
+  carry a superseded edge" (5 carry an edge; 60 was the file count, and every ADR
+  carries `superseded_by:` as a null-initialised schema field written at mint by
+  `decide.go:222`). A count of files is not a count of acts.
+
+- **Verdict:** SPLIT, confirmed by the maintainer, who chose one intent plus one
+  issue over three offered alternatives (a single intent carrying the minting
+  audit as a criterion; two intents split by act; hold and file nothing).
+- **Notes:** the first run where a whole half of the proposal was found ALREADY
+  SHIPPED. The minting half needed no record: every write-side family already
+  holds a `recordid.Minter` and names its family tag, `core/decide` last on the
+  2026-09-01 ruling. The corpus reads as mixed (295 sequential ids against 34
+  minted) only because minting is forward-only, which is a property of ids as
+  citations rather than evidence of a split surface — a distinction a table that
+  counted filenames would have got backwards.
+
+  That finding was only reachable by measuring the tree and reading the package
+  map before routing. A decomposition run from the proposal's own words would
+  have filed an intent to build what exists. Worth generalising into the
+  protocol: check whether each part is already shipped BEFORE routing it, not
+  after.
+
+  The run also turned up a defect the proposal did not mention and could not
+  have: `CLAUDE.md` asserts the exact opposite of the shipped minting behaviour,
+  in the file the rules loader puts before every session. The table caught it
+  because verifying "already shipped" meant reading both the code and the rule
+  that describes it, and they disagreed.

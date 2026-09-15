@@ -148,3 +148,56 @@ func TestUpdateRejectsMalformedTag(t *testing.T) {
 		t.Fatalf("a malformed tag must refuse by shape, got: %v\n%s", err, out.String())
 	}
 }
+
+// TestUpdateReceiptNamesTheUnpublishedBuildItReplaced: when the file abcd
+// replaced belongs to no release the forge still serves, the receipt must say
+// so by digest and name the proof that let abcd touch it at all. Rendering
+// "updated ~/.local/bin/abcd:  -> v0.7.0" with an empty left-hand side would
+// read as a bug in the very receipt that has to be trusted here
+// (iss-2609012000222546).
+func TestUpdateReceiptNamesTheUnpublishedBuildItReplaced(t *testing.T) {
+	digest := strings.Repeat("ab", 32)
+	var out bytes.Buffer
+	renderUpdateReport(&out, false, update.Report{
+		Action:     update.ActionSwapped,
+		Origin:     "https://example.invalid/abcd",
+		TargetPath: "~/.local/bin/abcd",
+		OldDigest:  digest,
+		Ownership:  update.OwnedByRunningExecutable,
+		NewVersion: "v0.7.0",
+		Digest:     strings.Repeat("cd", 32),
+	})
+	got := out.String()
+	if !strings.Contains(got, "an unpublished build") {
+		t.Errorf("the receipt must name what it replaced when no version could be derived:\n%s", got)
+	}
+	if !strings.Contains(got, digest) {
+		t.Errorf("the receipt must carry the replaced file's digest:\n%s", got)
+	}
+	if !strings.Contains(got, update.OwnedByRunningExecutable.Prose()) {
+		t.Errorf("the receipt must name the ownership proof that allowed the swap:\n%s", got)
+	}
+}
+
+// TestUpdateReceiptKeepsTheOrdinaryVersionLine: the digest line is the
+// exception, not the new normal — a provable old build still renders as a
+// plain old -> new version pair with no digest noise.
+func TestUpdateReceiptKeepsTheOrdinaryVersionLine(t *testing.T) {
+	var out bytes.Buffer
+	renderUpdateReport(&out, false, update.Report{
+		Action:     update.ActionSwapped,
+		Origin:     "https://example.invalid/abcd",
+		TargetPath: "~/.local/bin/abcd",
+		OldVersion: "v0.6.9",
+		Ownership:  update.OwnedByManifest,
+		NewVersion: "v0.7.0",
+		Digest:     strings.Repeat("cd", 32),
+	})
+	got := out.String()
+	if !strings.Contains(got, "v0.6.9 -> v0.7.0") {
+		t.Errorf("the ordinary receipt line changed:\n%s", got)
+	}
+	if strings.Contains(got, "unpublished") {
+		t.Errorf("a provable old build must not be reported as unpublished:\n%s", got)
+	}
+}

@@ -11,9 +11,11 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // audit.go — the intent-audit outbox+inbox (itd-80 phase 4; renamed from
@@ -56,18 +58,40 @@ var verdictEnum = map[string]bool{
 	"MET": true, "MET_WITH_CONCERNS": true, "NOT_MET": true, "INCONCLUSIVE": true,
 }
 
+// dispositionUntested is the disposition vocabulary's word for the absence of a
+// judgement — the value the quarantine path records, and the only one exempt
+// from the cited-evidence rule.
+const dispositionUntested = "untested"
+
+// dispositionNarrowed is the one disposition that requires a stated narrowing —
+// and the only one permitted to carry one.
+const dispositionNarrowed = "narrowed"
+
+// dispositionEnum is the closed set of scope-condition dispositions (spc-59).
+// It is deliberately disjoint from verdictEnum: a condition is not a criterion,
+// and an acceptance verdict is not a judgement about an ex-ante assumption.
+var dispositionEnum = map[string]bool{
+	"survived": true, dispositionNarrowed: true, "falsified": true, dispositionUntested: true,
+}
+
 var (
 	// rcpIDRe constrains a receipt id so it can never build a path that escapes
 	// the reviews dir (path-traversal defence). 12 lowercase hex chars.
 	rcpIDRe = regexp.MustCompile(`^rcp-[0-9a-f]{12}$`)
 	// auditHeadingRe matches the `## Audit Notes` heading (any heading depth).
 	auditHeadingRe = regexp.MustCompile(`^#{1,6}\s+Audit Notes\s*$`)
-	// bulletRe matches a TOP-LEVEL markdown list item. Acceptance-Criteria bullets
-	// are numbered positionally ac-1..ac-K, so only column-0 bullets count — an
-	// indented sub-bullet is detail of its parent, not a separate criterion.
-	bulletRe = regexp.MustCompile(`^[-*]\s+\S`)
-	// markerRe matches a parked review marker line inside the Audit Notes.
-	markerRe = regexp.MustCompile(`<!-- abcd-review: (OWED|INGESTED|DEAD_LETTER) receipt=(rcp-[0-9a-f]+) -->`)
+	// markerRe matches a parked review marker LINE inside the Audit Notes. It is
+	// line-anchored and whole-line on purpose: the marker is the ledger's own
+	// review state, and an unanchored pattern would find one anywhere in the
+	// record's bytes — mid-sentence inside a rendered verdict field, for instance,
+	// where an untrusted payload put it. termsafe's cleaner is the primary defence
+	// (it breaks `<!` and `-->` in every field it writes, code span or not); this
+	// is the second, so a marker has to occupy a line of its own to count.
+	//
+	// It is still a byte pattern rather than a grammar: it does not know a fenced
+	// block from prose, so a marker-shaped line inside a fence still matches
+	// (iss-2609020529185438). Both defences are needed; neither is sufficient.
+	markerRe = regexp.MustCompile(`(?m)^<!-- abcd-review: (OWED|INGESTED|DEAD_LETTER) receipt=(rcp-[0-9a-f]+) -->\r?$`)
 	// auditPlaceholderRe matches an intent template's Audit Notes placeholder,
 	// dropped when the first real review block lands so a populated audit carries no
 	// stale "Empty" claim. It tolerates both delimiter styles the templates have
@@ -78,12 +102,12 @@ var (
 	auditPlaceholderRe = regexp.MustCompile(`^\s*[_<]Empty\b.*[_>]\s*$`)
 	// criterionIDRe validates a criterion id shape before it is positionally bounded.
 	criterionIDRe = regexp.MustCompile(`^ac-([0-9]+)$`)
-	// linkRefDefRe matches a markdown link-reference definition (`[label]: dest`),
-	// up to three leading spaces per CommonMark. A shipped intent can park such a
-	// definition at the tail of its Audit Notes section (itd-114's `[iss-80]:` ref);
-	// a new review block must be inserted ABOVE the trailing run of them rather than
-	// appended below it (iss-2608210737265820).
-	linkRefDefRe = regexp.MustCompile(`^ {0,3}\[[^\]]+\]:\s+\S`)
+	// sha256FieldRe is the shape the auditor's contract publishes for the two
+	// policy hashes and for an attestation digest: `sha256:<64 lowercase hex>`.
+	// A field is a validated shape only where a validator says so — the
+	// alternative is free text under a structural name, which is how a home path
+	// arrived in a field the record called a hash (iss-2609022002241168).
+	sha256FieldRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 )
 
 // ---------------------------------------------------------------------------
@@ -99,6 +123,7 @@ type verdict struct {
 	Criteria          []verdictCriterion `json:"criteria"`
 	AcceptanceRollup  map[string]int     `json:"acceptance_rollup"`
 	GapAudit          verdictGapAudit    `json:"gap_audit"`
+	ScopeConditions   []verdictCondition `json:"scope_conditions"`
 }
 
 type verdictVerifier struct {
@@ -126,6 +151,18 @@ type verdictCriterion struct {
 	CriterionID string            `json:"criterion_id"`
 	Verdict     string            `json:"verdict"`
 	Rationale   string            `json:"rationale"`
+	Evidence    []verdictEvidence `json:"evidence"`
+}
+
+// verdictCondition is one scope-condition disposition, keyed to the identity
+// spc-55 minted for the condition rather than to its wording — so a reworded
+// condition keeps its judgement and a narrowing is stated rather than implied by
+// edited prose.
+type verdictCondition struct {
+	ConditionID string            `json:"condition_id"`
+	Disposition string            `json:"disposition"`
+	Rationale   string            `json:"rationale"`
+	Narrowing   string            `json:"narrowing"`
 	Evidence    []verdictEvidence `json:"evidence"`
 }
 
@@ -162,6 +199,11 @@ type IngestVerdictResult struct {
 	MetWithConcern int    `json:"met_with_concerns"`
 	NotMet         int    `json:"not_met"`
 	Inconclusive   int    `json:"inconclusive"`
+	Conditions     int    `json:"conditions"`
+	Survived       int    `json:"survived"`
+	Narrowed       int    `json:"narrowed"`
+	Falsified      int    `json:"falsified"`
+	Untested       int    `json:"untested"`
 	DeadLetterPath string `json:"dead_letter_path,omitempty"`
 	Reason         string `json:"reason,omitempty"`
 }
@@ -230,8 +272,8 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 	res := AuditEmitResult{ReceiptID: rcp, IntentID: it.ID}
 	block := owedBlock(rcp)
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := fsutil.WriteFileAtomic(abs, []byte(updated), 0o644); err != nil {
-		return AuditEmitResult{}, fmt.Errorf("intent: writing OWED stub to %s: %w", it.Path, err)
+	if err := writeIntentFile(abs, it.Path, updated); err != nil {
+		return AuditEmitResult{}, err
 	}
 	if err := writeAuditRequest(repoRoot, it, rcp, updated); err != nil {
 		return AuditEmitResult{}, err
@@ -278,7 +320,7 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 		return fmt.Errorf("intent: receipt id %q is malformed; refusing to build a request path", rcp)
 	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
-	if err := ensureRealDir(dir, reviewsRelDir); err != nil {
+	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return err
 	}
 	ac := strings.TrimSpace(sectionBody(content, acHeadingRe))
@@ -353,23 +395,36 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
 	}
 
+	// The free-text renderer for this write, built ONCE and before anything is
+	// composed. Both paths below persist agent-produced prose into a committed
+	// record, so a degraded detector has to stop the write here rather than
+	// halfway through the block it was about to render.
+	free, err := newVerdictProse(repoRoot)
+	if err != nil {
+		return IngestVerdictResult{}, err
+	}
+
 	// Full schema + semantic validation. Any failure with a resolvable receipt
 	// quarantines the payload rather than corrupting the record.
 	v, verr := validateVerdict(raw, rcp, content)
 	if verr != nil {
-		return deadLetter(repoRoot, it, content, rcp, raw, verr.Error())
+		return deadLetter(repoRoot, it, content, rcp, raw, verr.Error(), free)
 	}
 
 	rollup := countVerdicts(v)
-	block := ingestedBlock(rcp, v, rollup)
+	block := ingestedBlock(rcp, v, rollup, free)
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := fsutil.WriteFileAtomic(filepath.Join(repoRoot, it.Path), []byte(updated), 0o644); err != nil {
-		return IngestVerdictResult{}, fmt.Errorf("intent: writing verdict to %s: %w", it.Path, err)
+	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
+		return IngestVerdictResult{}, err
 	}
+	split := countDispositions(v)
 	return IngestVerdictResult{
 		Status: "ingested", ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
 		Met: rollup["MET"], MetWithConcern: rollup["MET_WITH_CONCERNS"],
 		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
+		Conditions: len(v.ScopeConditions), Survived: split["survived"],
+		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
+		Untested: split[dispositionUntested],
 	}, nil
 }
 
@@ -414,6 +469,31 @@ func validateVerdict(raw []byte, rcp, intentContent string) (verdict, error) {
 	// VSA-shaped verdict rather than an unverifiable opinion; require both.
 	if strings.TrimSpace(v.Policy.RubricHash) == "" || strings.TrimSpace(v.Policy.PromptHash) == "" {
 		return verdict{}, fmt.Errorf("policy.rubric_hash and policy.prompt_hash are both required")
+	}
+	// And both must be the shape the contract publishes. Presence alone left the
+	// two fields as free text under a structural name: the block renders them
+	// unredacted on the stated ground that a hash is a validated shape, and
+	// nothing was validating them.
+	for _, h := range [][2]string{
+		{"policy.rubric_hash", v.Policy.RubricHash},
+		{"policy.prompt_hash", v.Policy.PromptHash},
+	} {
+		if !sha256FieldRe.MatchString(h[1]) {
+			return verdict{}, fmt.Errorf("%s %q is not a sha256 digest (want sha256:<64 lowercase hex>)", h[0], h[1])
+		}
+	}
+	// An attestation digest is `sha256:<if-known>` in the contract, so ABSENCE is
+	// legitimate and a present-but-wrong shape is not. `kind` and `ref` carry no
+	// declared shape — a real ref is a commit range with prose beside it — so
+	// they are free text and are redacted at render rather than validated here.
+	for i, a := range v.InputAttestations {
+		if strings.TrimSpace(a.Digest) == "" {
+			continue
+		}
+		if !sha256FieldRe.MatchString(a.Digest) {
+			return verdict{}, fmt.Errorf("input_attestations[%d].digest %q is not a sha256 digest "+
+				"(want sha256:<64 lowercase hex>, or empty where the digest is not known)", i, a.Digest)
+		}
 	}
 	if len(v.Criteria) == 0 {
 		return verdict{}, fmt.Errorf("criteria is empty")
@@ -473,31 +553,117 @@ func validateVerdict(raw []byte, rcp, intentContent string) (verdict, error) {
 			}
 		}
 	}
+
+	if err := validateConditionDispositions(v, intentContent); err != nil {
+		return verdict{}, err
+	}
 	return v, nil
+}
+
+// validateConditionDispositions checks the scope-condition dispositions against
+// the identities the RECORD carries, never against the payload's own claims —
+// the conditions are read through ParseClaims (spc-55's single claim reader), so
+// no second parser can disagree with the readiness gate about what a condition
+// is.
+//
+// The two directions are separate refusals: a verdict disposing a condition the
+// intent does not record is judging something the record does not claim, and a
+// verdict disposing only some of them is the partial judgement the criteria
+// check already refuses one level down. That symmetry is what makes the staged
+// rollout safe — an intent shipped before the identity mint existed carries no
+// conditions, so the check is vacuous rather than blocking.
+func validateConditionDispositions(v verdict, intentContent string) error {
+	conds := ParseClaims(intentContent).Conditions
+	known := map[string]bool{}
+	for _, c := range conds {
+		// An unstamped condition has no identity for a disposition to attach to,
+		// so accepting the verdict would leave it permanently undisposed — which
+		// is exactly the absence itd-181 refuses. The readiness gate reports the
+		// same fault, but it only reports: it is read-only, and it refuses a
+		// shipped bucket outright — which is the only bucket the ingest ever
+		// sees. So this is the gate, not a second opinion.
+		if c.ID == "" {
+			return fmt.Errorf("scope condition %d carries no minted identity, so no disposition can be keyed to it", c.Ordinal)
+		}
+		known[c.ID] = true
+	}
+	// Two bullets sharing one identity collapse into a single entry in `known`,
+	// so the set-sized coverage check below would accept one disposition for two
+	// conditions and leave the second silently undisposed. A copy-pasted bullet
+	// keeps its invisible marker and nothing re-stamps a shipped record, so the
+	// state is reachable. DuplicateConditionIDs is the canonical detector — the
+	// same one the readiness gate reports with — never a second notion of it.
+	if dupes := DuplicateConditionIDs(conds); len(dupes) > 0 {
+		return fmt.Errorf("scope condition identity %q is carried by more than one condition, so a disposition cannot be keyed to either", dupes[0])
+	}
+	if len(known) == 0 {
+		if len(v.ScopeConditions) != 0 {
+			return fmt.Errorf("verdict disposes %d scope condition(s) but the intent records none", len(v.ScopeConditions))
+		}
+		return nil
+	}
+
+	seen := map[string]bool{}
+	for i, c := range v.ScopeConditions {
+		if !known[c.ConditionID] {
+			return fmt.Errorf("scope_conditions[%d] id %q is not an identity the intent carries", i, c.ConditionID)
+		}
+		if seen[c.ConditionID] {
+			return fmt.Errorf("scope condition %q is disposed more than once", c.ConditionID)
+		}
+		seen[c.ConditionID] = true
+		if !dispositionEnum[c.Disposition] {
+			return fmt.Errorf("scope condition %q has out-of-enum disposition %q", c.ConditionID, c.Disposition)
+		}
+		// `narrowing` is required on `narrowed` and empty everywhere else — the
+		// rule the definition publishes, gated in both directions. A narrowing
+		// carried by a `survived` condition renders a stated narrowing into the
+		// record while the split reports no narrowed condition at all.
+		if c.Disposition == dispositionNarrowed && strings.TrimSpace(c.Narrowing) == "" {
+			return fmt.Errorf("scope condition %q is narrowed but states no narrowing", c.ConditionID)
+		}
+		if c.Disposition != dispositionNarrowed && strings.TrimSpace(c.Narrowing) != "" {
+			return fmt.Errorf("scope condition %q is %s but states a narrowing; only a narrowed condition carries one", c.ConditionID, c.Disposition)
+		}
+		// `untested` is by definition the absence of evidence; every other
+		// disposition is a claim about delivered reality and must cite one.
+		if c.Disposition != dispositionUntested && !hasCitedEvidence(c.Evidence) {
+			return fmt.Errorf("scope condition %q cites no evidence ref", c.ConditionID)
+		}
+	}
+	if len(seen) != len(known) {
+		return fmt.Errorf("verdict disposes %d of %d scope conditions (every condition must be disposed exactly once)", len(seen), len(known))
+	}
+	return nil
 }
 
 // deadLetter quarantines a bad-but-resolvable verdict: it retains the raw payload
 // under the ephemeral reviews dir and replaces the parked marker with a
 // DEAD_LETTER block recording all criteria INCONCLUSIVE. Never partial.
-func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string) (IngestVerdictResult, error) {
+func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string, free proseField) (IngestVerdictResult, error) {
 	if !rcpIDRe.MatchString(rcp) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
 	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
-	if err := ensureRealDir(dir, reviewsRelDir); err != nil {
+	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return IngestVerdictResult{}, err
 	}
 	dlRel := filepath.Join(reviewsRelDir, rcp+".deadletter.json")
 	if err := fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".deadletter.json"), raw, 0o644); err != nil {
 		return IngestVerdictResult{}, fmt.Errorf("intent: retaining dead-letter payload %s: %w", dlRel, err)
 	}
-	block := deadLetterBlock(rcp, reason, dlRel)
+	untested := untestedDispositions(content)
+	block := deadLetterBlock(rcp, reason, dlRel, untested, free)
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := fsutil.WriteFileAtomic(filepath.Join(repoRoot, it.Path), []byte(updated), 0o644); err != nil {
-		return IngestVerdictResult{}, fmt.Errorf("intent: writing dead-letter marker to %s: %w", it.Path, err)
+	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
+		return IngestVerdictResult{}, err
 	}
+	// The counts exist so a surface reports the split WITHOUT re-reading the
+	// record, so they must agree with what was just written there: the quarantine
+	// records every condition untested, and says so here too.
 	return IngestVerdictResult{
 		Status: "dead_letter", ReceiptID: rcp, IntentID: it.ID,
+		Conditions: len(untested), Untested: len(untested),
 		DeadLetterPath: dlRel, Reason: reason,
 	}, nil
 }
@@ -565,7 +731,7 @@ func upsertReviewBlock(content, rcp, newBlock string) string {
 		end := len(lines)
 		for j := start + 1; j < len(lines); j++ {
 			t := strings.TrimRight(lines[j], "\r")
-			if markerRe.MatchString(t) || headingRe.MatchString(t) {
+			if markerRe.MatchString(t) || mdrecord.IsHeading(t) {
 				end = j
 				break
 			}
@@ -597,7 +763,7 @@ func appendToAuditNotes(content, block string) string {
 	// Find the end of the Audit Notes section (next heading or EOF).
 	end := len(lines)
 	for j := head + 1; j < len(lines); j++ {
-		if headingRe.MatchString(strings.TrimRight(lines[j], "\r")) {
+		if mdrecord.IsHeading(strings.TrimRight(lines[j], "\r")) {
 			end = j
 			break
 		}
@@ -621,7 +787,7 @@ func appendToAuditNotes(content, block string) string {
 	// definition parked at the end of the Audit Notes belongs below the review
 	// prose, and appending the block after it detaches the block from the section
 	// it documents (iss-2608210737265820).
-	trailingRefs := peelTrailingLinkRefs(&section)
+	trailingRefs := mdrecord.PeelTrailingLinkRefs(&section)
 	rebuilt := make([]string, 0, len(lines)+8)
 	rebuilt = append(rebuilt, lines[:head+1]...)
 	rebuilt = append(rebuilt, "")
@@ -639,46 +805,6 @@ func appendToAuditNotes(content, block string) string {
 	return strings.Join(rebuilt, "\n")
 }
 
-// peelTrailingLinkRefs removes a trailing run of markdown link-reference
-// definitions (and any blank lines interspersed with them) from *section and
-// returns that run, so appendToAuditNotes can re-emit it BELOW the new review
-// block. The run must contain at least one real definition — a tail of pure blank
-// lines is not refs and is left to the caller's blank-trimming. Both the newly
-// exposed end of *section and the leading blanks of the returned run are trimmed,
-// so the caller reinstates exactly one separator on each side.
-func peelTrailingLinkRefs(section *[]string) []string {
-	s := *section
-	start := len(s)
-	for i := len(s) - 1; i >= 0; i-- {
-		t := strings.TrimRight(s[i], "\r")
-		if strings.TrimSpace(t) == "" || linkRefDefRe.MatchString(t) {
-			start = i
-			continue
-		}
-		break
-	}
-	hasRef := false
-	for _, ln := range s[start:] {
-		if linkRefDefRe.MatchString(strings.TrimRight(ln, "\r")) {
-			hasRef = true
-			break
-		}
-	}
-	if !hasRef {
-		return nil
-	}
-	refs := s[start:]
-	s = s[:start]
-	for len(s) > 0 && strings.TrimSpace(s[len(s)-1]) == "" {
-		s = s[:len(s)-1]
-	}
-	for len(refs) > 0 && strings.TrimSpace(refs[0]) == "" {
-		refs = refs[1:]
-	}
-	*section = s
-	return refs
-}
-
 // ---------------------------------------------------------------------------
 // Block rendering (deterministic; no timestamps)
 // ---------------------------------------------------------------------------
@@ -687,29 +813,58 @@ func owedBlock(rcp string) string {
 	return fmt.Sprintf("<!-- abcd-review: OWED receipt=%s -->\nFidelity review OWED (receipt %s).", rcp, rcp)
 }
 
-func deadLetterBlock(rcp, reason, dlRel string) string {
-	// reason is derived from untrusted payload content (e.g. an out-of-enum token),
-	// so it is sanitised before it lands in the committed record.
-	return fmt.Sprintf("<!-- abcd-review: DEAD_LETTER receipt=%s -->\n"+
+// deadLetterBlock renders the quarantine block. conds are the record's own scope
+// conditions, every one of them recorded `untested`: the acceptance vocabulary
+// already says INCONCLUSIVE here, and the disposition vocabulary's word for the
+// same state is `untested`, so the quarantine stays honest in both without
+// inventing a fifth value.
+func deadLetterBlock(rcp, reason, dlRel string, conds []verdictCondition, free proseField) string {
+	var b strings.Builder
+	// reason is derived from untrusted payload content (e.g. an out-of-enum token
+	// quoted back), so it is free text and goes through the same redact-then-
+	// neutralise path as the rest: a quarantine that leaks is still a leak.
+	fmt.Fprintf(&b, "<!-- abcd-review: DEAD_LETTER receipt=%s -->\n"+
 		"Fidelity review DEAD_LETTER (receipt %s): %s. Raw payload retained at %s. "+
-		"All criteria recorded INCONCLUSIVE.", rcp, rcp, oneLine(reason), dlRel)
+		"All criteria recorded INCONCLUSIVE.\n", rcp, rcp, free(reason), dlRel)
+	renderDispositions(&b, conds, free)
+	return strings.TrimRight(b.String(), "\n")
 }
 
-func ingestedBlock(rcp string, v verdict, rollup map[string]int) string {
+// untestedDispositions is every identified scope condition the record carries,
+// recorded `untested`. A condition with no minted identity is skipped: there is
+// nothing to key a disposition on, and the ingest refuses such a record anyway.
+func untestedDispositions(intentContent string) []verdictCondition {
+	conds := ParseClaims(intentContent).Conditions
+	out := make([]verdictCondition, 0, len(conds))
+	for _, c := range conds {
+		if c.ID == "" {
+			continue
+		}
+		out = append(out, verdictCondition{ConditionID: c.ID, Disposition: dispositionUntested})
+	}
+	return out
+}
+
+func ingestedBlock(rcp string, v verdict, rollup map[string]int, free proseField) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<!-- abcd-review: INGESTED receipt=%s -->\n", rcp)
 	fmt.Fprintf(&b, "Fidelity review — receipt %s (verifier %s %s).\n\n",
-		rcp, orDash(v.Verifier.ID), orDash(v.Verifier.Version))
+		rcp, orFree(v.Verifier.ID, free), orFree(v.Verifier.Version, free))
 	// Pinned provenance: the verifier identity, the policy hashes it attested to,
-	// and every input attestation. All fields are untrusted, so route each through
-	// the oneLine neutraliser before it lands in the committed record.
+	// and every input attestation. All of it is untrusted, and the split is by
+	// whether the contract gives the field a SHAPE. The two hashes and a digest
+	// are validated `sha256:<64 hex>` by the time this runs, so they carry
+	// nothing to redact and keep oneLine alone. The verifier identity, its
+	// version, and an attestation's kind and ref have no declared shape — a real
+	// ref is a commit range with prose beside it — so they are free text and go
+	// through the same redact-then-neutralise path the rationales use.
 	fmt.Fprintf(&b, "Provenance: %s@%s · rubric_hash %s · prompt_hash %s\n",
-		orDash(v.Verifier.ID), orDash(v.Verifier.Version),
+		orFree(v.Verifier.ID, free), orFree(v.Verifier.Version, free),
 		orDash(v.Policy.RubricHash), orDash(v.Policy.PromptHash))
 	if len(v.InputAttestations) > 0 {
 		b.WriteString("Input attestations:")
 		for _, a := range v.InputAttestations {
-			fmt.Fprintf(&b, " %s:%s@%s;", orDash(a.Kind), orDash(a.Ref), orDash(a.Digest))
+			fmt.Fprintf(&b, " %s:%s@%s;", orFree(a.Kind, free), orFree(a.Ref, free), orDash(a.Digest))
 		}
 		b.WriteString("\n")
 	}
@@ -719,36 +874,79 @@ func ingestedBlock(rcp string, v verdict, rollup map[string]int) string {
 
 	b.WriteString("Per-criterion verdicts:\n")
 	for _, c := range v.Criteria {
-		fmt.Fprintf(&b, "- %s — %s: %s\n", c.CriterionID, c.Verdict, oneLine(c.Rationale))
+		fmt.Fprintf(&b, "- %s — %s: %s\n", c.CriterionID, c.Verdict, free(c.Rationale))
 		for _, e := range c.Evidence {
-			fmt.Fprintf(&b, "  evidence: %s\n", renderEvidence(e))
+			fmt.Fprintf(&b, "  evidence: %s\n", renderEvidence(e, free))
 		}
 	}
 	b.WriteString("\nGap audit:\n")
-	renderBucket(&b, "honoured", v.GapAudit.Honoured)
-	renderBucket(&b, "diverged", v.GapAudit.Diverged)
-	renderBucket(&b, "missing", v.GapAudit.Missing)
+	renderBucket(&b, "honoured", v.GapAudit.Honoured, free)
+	renderBucket(&b, "diverged", v.GapAudit.Diverged, free)
+	renderBucket(&b, "missing", v.GapAudit.Missing, free)
+	renderDispositions(&b, v.ScopeConditions, free)
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func renderBucket(b *strings.Builder, name string, entries []verdictGapEntry) {
+// renderDispositions writes the scope-condition disposition block — the ONE
+// renderer both the INGESTED and the DEAD_LETTER path use, so the two can never
+// disagree about the shape of the surface. An intent that records no conditions
+// gets no block at all: a heading over nothing asserts a surface the record does
+// not carry, and its absence is what keeps the staged rollout invisible to every
+// intent shipped before the identity mint existed.
+//
+// Every field is agent-produced and lands in a committed record, so all of them
+// go through oneLine — the same neutraliser the per-criterion render uses, so no
+// payload can forge an `<!-- abcd-review: … -->` marker and spoof review state.
+// The FREE-TEXT ones go through free, which redacts first: an identifier and an
+// enum token are validated shapes that carry nothing to redact, while a
+// rationale and a narrowing are prose an agent wrote.
+func renderDispositions(b *strings.Builder, conds []verdictCondition, free proseField) {
+	if len(conds) == 0 {
+		return
+	}
+	b.WriteString("\nScope-condition dispositions:\n")
+	for _, c := range conds {
+		fmt.Fprintf(b, "- %s — %s", oneLine(c.ConditionID), oneLine(c.Disposition))
+		if r := free(c.Rationale); r != "" {
+			fmt.Fprintf(b, ": %s", r)
+		}
+		b.WriteString("\n")
+		if n := free(c.Narrowing); n != "" {
+			fmt.Fprintf(b, "  narrowing: %s\n", n)
+		}
+		for _, e := range c.Evidence {
+			fmt.Fprintf(b, "  evidence: %s\n", renderEvidence(e, free))
+		}
+	}
+}
+
+func renderBucket(b *strings.Builder, name string, entries []verdictGapEntry, free proseField) {
 	if len(entries) == 0 {
 		fmt.Fprintf(b, "- %s: (none)\n", name)
 		return
 	}
 	fmt.Fprintf(b, "- %s:\n", name)
 	for _, e := range entries {
-		fmt.Fprintf(b, "  - %s\n", oneLine(e.Claim))
+		fmt.Fprintf(b, "  - %s\n", free(e.Claim))
 		for _, ev := range e.Evidence {
-			fmt.Fprintf(b, "    evidence: %s\n", renderEvidence(ev))
+			fmt.Fprintf(b, "    evidence: %s\n", renderEvidence(ev, free))
 		}
 	}
 }
 
-func renderEvidence(e verdictEvidence) string {
-	ref := oneLine(e.Ref)
-	if q := oneLine(e.Quote); q != "" {
-		return fmt.Sprintf("%s — %q", ref, q)
+// renderEvidence writes one evidence pointer. The quote is delimited with plain
+// quotation marks rather than %q, and that is not a style choice: %q REWRITES the
+// cleaned bytes — it doubles every backslash — and the cleaner's guarantees are
+// stated over the exact string it returned (see the invariant note in
+// internal/termsafe/prose.go). The backslash the cleaner writes to escape a stray
+// backtick came back through %q doubled — an escaped backslash followed by a LIVE
+// backtick — putting an unpaired run into a committed record and reopening the
+// re-pairing hole this file's other embeddings close. Both fields are already
+// newline-free and control-rune-free, which is all %q was buying here.
+func renderEvidence(e verdictEvidence, free proseField) string {
+	ref := free(e.Ref)
+	if q := free(e.Quote); q != "" {
+		return fmt.Sprintf(`%s — "%s"`, ref, q)
 	}
 	return ref
 }
@@ -758,23 +956,17 @@ func renderEvidence(e verdictEvidence) string {
 // ---------------------------------------------------------------------------
 
 // sectionBody returns the text of the section introduced by the first heading
-// matching headRe, up to the next heading or end of file.
+// matching headRe, up to the next heading or end of file. It reads the section
+// through mdrecord.SectionLineRange, the single notion of where a section
+// starts and stops; an absent section and an empty one both read as ""
+// here, and a caller that must tell them apart asks for the bounds directly.
 func sectionBody(content string, headRe *regexp.Regexp) string {
 	lines := strings.Split(content, "\n")
-	for i, ln := range lines {
-		if !headRe.MatchString(strings.TrimRight(ln, "\r")) {
-			continue
-		}
-		var body []string
-		for _, b := range lines[i+1:] {
-			if headingRe.MatchString(strings.TrimRight(b, "\r")) {
-				break
-			}
-			body = append(body, b)
-		}
-		return strings.Join(body, "\n")
+	start, end, ok := mdrecord.SectionLineRange(lines, headRe)
+	if !ok {
+		return ""
 	}
-	return ""
+	return strings.Join(lines[start:end], "\n")
 }
 
 // countAcceptanceCriteria counts the top-level list bullets in the intent's
@@ -782,7 +974,7 @@ func sectionBody(content string, headRe *regexp.Regexp) string {
 func countAcceptanceCriteria(content string) int {
 	n := 0
 	for _, ln := range strings.Split(sectionBody(content, acHeadingRe), "\n") {
-		if bulletRe.MatchString(strings.TrimRight(ln, "\r")) {
+		if mdrecord.IsTopLevelBullet(strings.TrimRight(ln, "\r")) {
 			n++
 		}
 	}
@@ -797,6 +989,16 @@ func countVerdicts(v verdict) map[string]int {
 	return m
 }
 
+// countDispositions is the per-value split of the scope-condition dispositions,
+// so a surface reports it without re-reading the record.
+func countDispositions(v verdict) map[string]int {
+	m := map[string]int{"survived": 0, dispositionNarrowed: 0, "falsified": 0, dispositionUntested: 0}
+	for _, c := range v.ScopeConditions {
+		m[c.Disposition]++
+	}
+	return m
+}
+
 func hasCitedEvidence(ev []verdictEvidence) bool {
 	for _, e := range ev {
 		if strings.TrimSpace(e.Ref) != "" {
@@ -806,22 +1008,89 @@ func hasCitedEvidence(ev []verdictEvidence) bool {
 	return false
 }
 
+// maxNoteFieldBytes caps one untrusted verdict field rendered into the committed
+// Audit Notes. It matches the release ingest's per-entry cap: a rationale, a
+// claim or a quoted line is a sentence or a few, and an unbounded field is the
+// one a hostile verdict uses to bury the record.
+const maxNoteFieldBytes = 4096
+
 // oneLine sanitises an untrusted verdict string before it is rendered into the
-// committed Audit Notes. It collapses newlines (so injected content cannot break
-// out of its line) AND neutralises HTML-comment delimiters, so untrusted content
-// can never forge an `<!-- abcd-review: <STATE> receipt=<rcp> -->` marker to spoof
-// review state, misroute a future ingest, or poison idempotency into a false
-// no-op. Every untrusted field rendered into the record passes through here.
+// committed Audit Notes. It is termsafe.CleanProseLine under this package's cap,
+// NOT a second sanitiser: that package is the canonical home for the
+// untrusted-prose cleaner every host-delegated ingest boundary needs, and routing
+// through it is what gives this record the same guarantees the others have —
+// newlines collapse (so injected content cannot break out of its line), HTML
+// comment delimiters are broken apart (so untrusted content can never forge an
+// `<!-- abcd-review: <STATE> receipt=<rcp> -->` marker to spoof review state,
+// misroute a future ingest, or poison idempotency into a false no-op), raw HTML
+// cannot open, terminal-display attack runes are masked, and markdown link
+// syntax is neutralised so a faithful quotation of code such as
+// `items[0](itm-0001)` cannot trip the links_resolve gate on the record this
+// ingest just wrote (iss-2608311504353427). Every untrusted field rendered into
+// the record passes through here.
 func oneLine(s string) string {
-	s = strings.ReplaceAll(s, "\r", " ")
-	s = strings.ReplaceAll(s, "\n", " ")
-	s = strings.ReplaceAll(s, "<!--", "< !--")
-	s = strings.ReplaceAll(s, "-->", "-- >")
-	return strings.TrimSpace(s)
+	return termsafe.CleanProseLine(s, maxNoteFieldBytes)
+}
+
+// proseField renders one FREE-TEXT verdict field into the committed Audit Notes:
+// privacy redaction first, then oneLine's neutralisation.
+//
+// The two do different jobs and both are needed. oneLine protects the RECORD's
+// structure — a payload cannot forge a review marker or open raw HTML through it
+// — and it has always run here. It knows nothing about privacy, so a rationale,
+// a narrowing, a gap-audit claim or an evidence pointer carrying an absolute
+// home path, a hostname or a person's name was written into the shipped intent
+// verbatim, with only the committed-file privacy lint downstream to notice
+// (iss-2608300924205748). AGENTS.md's rule governs what lands in a committed
+// file, and framework 7.1 puts Audit Notes squarely there: a verdict is revision
+// history carried by the intent record.
+//
+// The ORDER is load-bearing in both directions. Redacting first means the
+// detector sees the agent's bytes rather than a neutralised paraphrase of them;
+// neutralising last means the final bytes still carry oneLine's guarantees, and
+// the masks it is handed (`[redacted-path]` and its siblings) are inert to every
+// rule oneLine applies.
+//
+// It is applied to free text ALONE, and what counts as free text is decided by
+// whether a VALIDATOR constrains the field — never by whether its name sounds
+// structural. A criterion id, an enum verdict, a disposition value, a condition
+// id, and the two policy hashes and an attestation digest under sha256FieldRe
+// are validated shapes with nothing to redact, and running a name matcher over
+// them would corrupt a value the record is keyed on rather than protect
+// anything. Those keep oneLine by itself.
+//
+// Everything else is free text, the verifier's id and version and an
+// attestation's kind and ref included. Those four were once excused here as
+// validated shapes while nothing validated them, and an attestation ref is prose
+// by construction — the contract's own example is a commit range with a
+// parenthetical beside it (iss-2609022002241168).
+type proseField func(string) string
+
+// newVerdictProse builds the free-text renderer for one ingest, failing closed
+// on a degraded scanner before any block is composed.
+func newVerdictProse(repoRoot string) (proseField, error) {
+	redact, err := newIntentRedactor(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return func(s string) string {
+		redacted, _ := redact(s)
+		return oneLine(redacted)
+	}, nil
 }
 
 func orDash(s string) string {
 	if s = oneLine(s); s == "" {
+		return "-"
+	}
+	return s
+}
+
+// orFree is orDash for a FREE-TEXT field: the same em-dash for an empty value,
+// with proseField's privacy redaction ahead of oneLine's neutralisation. It is
+// what a provenance field takes when the contract gives it no shape.
+func orFree(s string, free proseField) string {
+	if s = free(s); s == "" {
 		return "-"
 	}
 	return s

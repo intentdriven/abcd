@@ -20,6 +20,10 @@ promoted_from: iss-136
 
 Graduated from `iss-136`: itd-88's fidelity gap audit found a missing press-release claim: Pass B is promised to ship as a declared exemption in _provenance.json, never a silent gap, but no exemption field or marker exists anywhere in the lifeboat package or the Provenance struct — a promise with no implementing code, recorded in itd-88's Audit Notes (receipt rcp-4d07032fc6ab). Read that issue record for the source observation.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a lifeboat package in which Pass B is exempt, **when** its `_provenance.json` is written, **then** the Provenance record carries an explicit Pass-B exemption marker rather than a silent gap.

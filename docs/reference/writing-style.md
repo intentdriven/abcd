@@ -76,6 +76,7 @@ the whole machine-enforced surface:
 | Citations are well-formed, crosswalked, and within source policy. | machine-enforced (the `citation_*` rules) |
 | User-facing prose stays host-agnostic; naming a specific tool is confined to attribution. | machine-enforced (the `harness/*` rules) |
 | Reserved names the repository has banned do not appear (e.g. a record file naming itself). | machine-enforced (the verb-managed `names/*` rules) |
+| No live agent-session URL and no tool attribution footer in user-facing prose. | machine-enforced (`harness_leak`) |
 
 ## Escapes
 

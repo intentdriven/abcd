@@ -20,6 +20,22 @@ plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
 
 binary="$plugin_root/abcd"
 
+# Every instruction printed below names the binary by this ABSOLUTE path, in
+# SINGLE quotes — the same form internal/core/ahoy's shSingleQuote produces —
+# because the strings are printed to be pasted into a shell by a reader for whom
+# `abcd` is not a name the shell can resolve (iss-207), and the plugin root is
+# not a path this script chose. Double quotes carry a space or an apostrophe
+# safely and then leave $, a backtick and a " live: a path holding one of those
+# would expand, substitute, or terminate the string on paste. The sed rewrites
+# each embedded ' as '\'' — close, escape, reopen — which is the one form that
+# survives every byte a path can contain.
+binary_quoted="'$(printf '%s' "$binary" | sed "s/'/'\\\\''/g")'"
+
+# HOME is a filesystem destination here, never a fetch origin: it locates the
+# owned-copy provenance record (below) and renders user-scope paths in their
+# tilde form. Empty when HOME is unset, which every use guards.
+home_dir="${HOME:-}"
+
 # The persistent data dir is taken from the harness or not at all. Its
 # documented path shape could be derived from the plugin root, but a wrong
 # guess would plant a trusted artefact in an untracked location, so the
@@ -187,6 +203,22 @@ meta_field() {
 	sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1 | tr -d '\000-\037\177' | cut -c1-120
 }
 
+# tilde renders a path under the home directory in its ~ form, the way every
+# abcd surface prints a user-scope path (internal/fsutil.RedactHome): a notice
+# that names the reader's PATH copy should not carry their username with it.
+# Anything else, and everything when HOME is unset, is printed as it is.
+tilde() {
+	if [ -n "$home_dir" ] && [ "$1" = "$home_dir" ]; then
+		printf '~'
+	elif [ -n "$home_dir" ] && [ "${1#"$home_dir"/}" != "$1" ]; then
+		# The literal ~ is the output wanted, not an expansion left undone.
+		# shellcheck disable=SC2088
+		printf '~/%s' "${1#"$home_dir"/}"
+	else
+		printf '%s' "$1"
+	fi
+}
+
 # 1. Fast path: a steady-state session pays a file test and no network. A
 #    regular file, not merely something with an execute bit — a directory is
 #    executable too (matching internal/core/ahoy's isExecutableFile).
@@ -247,7 +279,26 @@ if [ -f "$binary" ] && [ -x "$binary" ]; then
 	mkdir "$tmp" 2>/dev/null || exit 0
 	cp "$binary" "$tmp/artefact" 2>/dev/null || exit 0
 	got=$(sha256_file "$tmp/artefact")
-	[ "$got" = "$want" ] || exit 0
+	if [ "$got" != "$want" ]; then
+		# A mismatch seeds nothing — and says so. The seed is a promotion into
+		# the trusted location, and itd-132 ac-5 promises every promotion
+		# refuses LOUDLY on a mismatch; a silent exit here left a root whose
+		# binary had been swapped under its record with no signal at all
+		# (iss-2609012111160075). It is a notice, not a refusal: this session's
+		# binary is already in place, so the hooks run, and nothing changed.
+		# There is no once-per-state memory to draw on, so the line repeats
+		# each session the state holds — which is also exactly how long this
+		# copy-and-hash was already being repeated for nothing; the state ends
+		# at the next plugin update, whose fresh root downloads and fills the
+		# cache, or when the stale .binary-meta is removed from this root.
+		if [ -n "$got" ]; then
+			seed_why='does not match the SHA-256 checksum its provenance record (.binary-meta) vouches for — the binary was replaced after it was verified, or the record is stale'
+		else
+			seed_why='cannot be hashed, because neither shasum nor sha256sum is available, so it cannot be verified against its provenance record'
+		fi
+		notice "$(printf 'abcd bootstrap: the plugin cache was not seeded from this plugin root, because the binary at %s %s. Nothing was changed: this session runs the binary already in place, and the next plugin update downloads a fresh checksum-verified copy instead of promoting this one. %s ahoy shows the health of the install.' \
+			"$(tilde "$binary")" "$seed_why" "$binary_quoted")"
+	fi
 	mig_tag=$(meta_field "$root_meta" release_tag)
 	mig_sha=$(meta_field "$root_meta" release_sha)
 	case "$mig_sha" in *[!0-9a-f]*) mig_sha=unknown ;; esac
@@ -321,11 +372,9 @@ fi
 # The owned-copy provenance record is HOME-scoped, never in the data dir: a
 # terminal (where `ahoy install`/`uninstall` and `abcd update` run) has HOME but
 # not CLAUDE_PLUGIN_DATA, so a record behind that variable would be unreadable
-# exactly where those verbs run (iss-2608210934566230, adr-46 decision 4). HOME
-# is a filesystem destination here, never a fetch origin. Empty when HOME is
-# unset, which every use below guards.
+# exactly where those verbs run (iss-2608210934566230, adr-46 decision 4).
+# Empty when HOME is unset, which every use below guards.
 path_entry=''
-home_dir="${HOME:-}"
 [ -n "$home_dir" ] && path_entry="$home_dir/.abcd/path-entry"
 
 # 4. Concurrency lock. mkdir is atomic on POSIX, so the loser of the race is the
@@ -445,6 +494,7 @@ fi
 # here — the version-skew notice surfaces it, `abcd update` is the explicit path.
 use_cache=''
 cache_trust=''
+stale_note=''
 if [ -n "$cached_sha" ]; then
 	if [ -z "$resolved_tag" ]; then
 		use_cache=yes
@@ -460,10 +510,15 @@ if [ -n "$cached_sha" ]; then
 			if [ -n "$published" ] && [ "$published" = "$cached_sha" ]; then
 				use_cache=yes
 				cache_trust=manifest
+			else
+				# Mismatch or an unlisted asset leaves use_cache empty: the cache
+				# is tampered or stale, so it is discarded and the download path
+				# below re-fetches and re-verifies over it — and the notice says
+				# the cache was discarded, because a re-download that silently
+				# heals over a tampered artefact erases the one piece of evidence
+				# the reader had (iss-2609012111160075).
+				stale_note=' The cached artefact was not the one the published release manifest lists, so it was discarded and replaced by this fresh verified download.'
 			fi
-			# Mismatch or an unlisted asset leaves use_cache empty: the cache is
-			# tampered or stale, so it is discarded and the download path below
-			# re-fetches and re-verifies over it.
 		else
 			# The tag resolved but the manifest is unreachable: treat as offline.
 			rm -rf "$auth_tmp"
@@ -478,6 +533,7 @@ meta_note=''
 cache_note=''
 path_note=''
 from_note=''
+stamp_note=''
 
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
@@ -586,26 +642,45 @@ else
 		# vouches for the bytes it recorded, and an absent path is not those bytes,
 		# so creating one there would claim an ownership the record cannot prove.
 		# The replacement is re-verified before the rename, like every promotion.
+		#
+		# Leaving the copy alone is right; doing it in silence was not
+		# (iss-2609012111160075): the reader's abcd then quietly serves a release
+		# older than the one just installed, with no signal until `abcd update`
+		# or `ahoy` calls it foreign. So every branch that declines names what it
+		# left untouched and why, on the success notice — which is one line, and
+		# fires once per NEW release: a cache hit never reaches this block.
 		if [ -n "$path_entry" ] && [ -f "$path_entry" ]; then
 			entry_path=$(sed -n 's/^path=//p' "$path_entry" 2>/dev/null | head -n 1 | tr -d '\000-\037\177')
 			entry_sha=$(meta_field "$path_entry" binary_sha256)
 			refresh_ok=yes
+			# A record with no usable path or hash vouches for nothing, so there
+			# is nothing to refresh and no copy to report against; `ahoy` shows
+			# the record's own health.
 			[ -n "$entry_path" ] || refresh_ok=''
 			case "$entry_sha" in *[!0-9a-f]*) refresh_ok='' ;; esac
 			[ "${#entry_sha}" -eq 64 ] || refresh_ok=''
+			shown_path=$(tilde "$entry_path")
+			path_tail=" — $binary_quoted ahoy shows the health of the install."
 			if [ -n "$refresh_ok" ]; then
 				# Ownership-check unconditionally: an absent recorded path is NOT
 				# an owned copy, so it never short-circuits to "refresh it".
 				if [ -f "$entry_path" ] && [ ! -L "$entry_path" ]; then
 					cur_sha=$(sha256_file "$entry_path")
-					[ "$cur_sha" = "$entry_sha" ] || refresh_ok=''
+					if [ "$cur_sha" != "$entry_sha" ]; then
+						refresh_ok=''
+						path_note=" The abcd command on your PATH ($shown_path) was NOT refreshed: it no longer matches the provenance abcd recorded for it, so it is not abcd's to replace and was left untouched, still serving whatever it holds now$path_tail"
+					fi
 				else
 					refresh_ok=''
+					path_note=" The abcd command on your PATH ($shown_path) was NOT refreshed: the recorded path no longer holds a regular file, so there is no owned copy to replace and nothing was written there$path_tail"
 				fi
 			fi
 			if [ -n "$refresh_ok" ]; then
 				path_tmp="$(dirname "$entry_path")/.abcd-path-refresh.$$"
 				rm -f "$path_tmp"
+				# Assumed failed until the rename lands: the copy beside it could
+				# not be written, or did not verify, and the old copy stands.
+				path_note=" The abcd command on your PATH ($shown_path) was NOT refreshed: the replacement copy could not be written beside it or did not verify against the release checksum, so the copy in place still serves the previous release$path_tail"
 				if cp "$cache_binary" "$path_tmp" 2>/dev/null; then
 					new_sha=$(sha256_file "$path_tmp")
 					if [ "$new_sha" = "$binary_sha256" ] &&
@@ -656,6 +731,26 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 		refuse "the verified binary cannot be made executable"
 	mv -f "$root_tmp/abcd" "$binary" 2>/dev/null ||
 		refuse "the verified binary cannot be installed at $binary"
+
+	# Record, beside the binary, the data dir this root was provisioned from.
+	# CLAUDE_PLUGIN_DATA reaches hook processes only, and the one-time `ahoy
+	# install` the notice below asks for runs from a terminal, where it is
+	# unset: without this stamp that run finds no cache and degrades to a
+	# symlink into this root, which dies at the next plugin update — the
+	# very shape the cache replaced (iss-2609012111168716). The stamp is a
+	# route, never a trust claim: the reader follows it only to an existing
+	# absolute directory and re-hashes the artefact against the cache's
+	# recorded binary_sha256 before any copy, like every promotion. Written
+	# into the same temp dir as the binary and renamed in; a directory at the
+	# stamp path would swallow the rename, so it is reported instead.
+	stamp_path="$plugin_root/.data-dir"
+	if [ -e "$stamp_path" ] && [ ! -f "$stamp_path" ]; then
+		stamp_note=' (the .data-dir record could not be written because that path exists and is not a regular file, so `ahoy install` run from a terminal will not find the plugin cache)'
+	else
+		printf 'data_dir=%s\n' "$data_dir" > "$root_tmp/data-dir" 2>/dev/null &&
+			mv -f "$root_tmp/data-dir" "$stamp_path" 2>/dev/null ||
+			stamp_note=' (the .data-dir record could not be written, so `ahoy install` run from a terminal will not find the plugin cache)'
+	fi
 	rm -rf "$root_tmp"
 	root_tmp=''
 else
@@ -666,6 +761,11 @@ else
 		refuse "the downloaded $asset cannot be made executable"
 	mv -f "$tmp/$asset" "$binary" 2>/dev/null ||
 		refuse "the verified $asset cannot be installed at $binary"
+
+	# No data dir provisioned this root, so no stamp may say one did: a stale
+	# record from an earlier cache-mode provision of the same root would route
+	# a terminal `ahoy install` to a cache this binary did not come from.
+	rm -f "$plugin_root/.data-dir" 2>/dev/null
 
 	# The root-local provenance record, written only on this path: cache-mode
 	# roots read the cache meta instead, and the skew notice compares the LIVE
@@ -738,13 +838,7 @@ fi
 # copy-pasteable, and keep the success leading the first word: only the first
 # line of a hook's stderr reaches the transcript.
 #
-# The path is wrapped in SINGLE quotes, the same form internal/core/ahoy's
-# shSingleQuote produces, because this string is printed to be pasted into a
-# shell and the plugin root is not a path this script chose. Double quotes carry
-# a space or an apostrophe safely and then leave $, a backtick and a " live: a
-# path holding one of those would expand, substitute, or terminate the string on
-# paste. The sed rewrites each embedded ' as '\'' — close, escape, reopen — which
-# is the one form that survives every byte a path can contain.
-binary_quoted="'$(printf '%s' "$binary" | sed "s/'/'\\\\''/g")'"
-notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$release_tag" "$from_note" "$path_note" "$meta_note" "$cache_note" "$degrade_note" "$binary_quoted")"
+# The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
+# the reason given there: this string is printed to be pasted into a shell.
+notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$degrade_note" "$binary_quoted")"

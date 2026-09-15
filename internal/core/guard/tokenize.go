@@ -20,6 +20,49 @@ type segment struct {
 	// tokenizer does not expand it, so it cannot say what the argv will be; the
 	// flag is how it says so, and Check turns it into a fail-closed block.
 	braceGroup bool
+	// heredocUnterminated records that this command opened a here-document
+	// whose delimiter line never came, so the tokenizer read the rest of the
+	// input as body without knowing whether it WAS body. bash runs such a line
+	// (it recovers silently), so it cannot be an error — the hook maps an error
+	// to fail-open — and it cannot be an allow either, because a `<<` the
+	// classifier misread has swallowed every later command. Check turns the
+	// flag into a fail-closed block, the braceGroup precedent.
+	heredocUnterminated bool
+	// globbed is parallel to tokens and records, per token, that it carried an
+	// UNQUOTED, unescaped `*`, `?` or `[` — a word bash expands against the
+	// working directory before the command runs, so the bytes here are a
+	// PATTERN and the argv may be any word it matches. nil when no token is
+	// globbed, which is nearly every segment. Like braceGroup it is a record of
+	// what the tokenizer could not resolve, per token instead of per segment,
+	// because a glob's expansion IS decidable at the positions an entry
+	// constrains (match.go) where a brace group's is not.
+	globbed []bool
+}
+
+// globAt reports whether token i carried an unquoted glob metacharacter.
+func (s segment) globAt(i int) bool {
+	return i >= 0 && i < len(s.globbed) && s.globbed[i]
+}
+
+// globSlice returns the globbed record for tokens[lo:hi], or nil when nothing in
+// the range is globbed — the shape a sub-segment built from a token window
+// (Tier 2) carries forward.
+func (s segment) globSlice(lo, hi int) []bool {
+	if s.globbed == nil {
+		return nil
+	}
+	if hi > len(s.globbed) {
+		hi = len(s.globbed)
+	}
+	if lo >= hi {
+		return nil
+	}
+	for _, g := range s.globbed[lo:hi] {
+		if g {
+			return s.globbed[lo:hi]
+		}
+	}
+	return nil
 }
 
 // tokenize splits a candidate command line into command-position segments,
@@ -47,6 +90,12 @@ func tokenize(line string) ([]segment, error) {
 		// anywhere in it makes the whole command unexpandable, so the flag is
 		// raised once and lands on the segment flushSegment emits.
 		braceGroup bool
+		// curGlob rides with the WORD being built and globs with the segment:
+		// an unquoted `*`, `?` or `[` marks the word as a pattern bash expands.
+		// Only the default branch sets it — bytes that arrive through a quote,
+		// a backslash or an ANSI-C decode are literal to bash too.
+		curGlob bool
+		globs   []bool
 		// braceBudget is the look-ahead braceExpansionAt may spend across this
 		// whole call. See braceScanBudget: without a shared cap the per-`{`
 		// forward scan is quadratic in the length of one word.
@@ -55,19 +104,46 @@ func tokenize(line string) ([]segment, error) {
 		// (`&&`, `||`, `|`), whose newline is a line continuation rather than a
 		// new command — `cd scratch &&\nrm -rf *` is one chain, not two.
 		lastList bool
+		// parens is the stack of grouping constructs still open at this point,
+		// innermost last. It exists for one question — whether a `<<` reached
+		// here is an arithmetic shift or a here-document redirection — and that
+		// question is answered by what ENCLOSES the operator, never by the bytes
+		// after it. See inArithmetic and the `<<` branch.
+		parens []parenFrame
 	)
+	// inArithmetic reports whether the innermost construct that can change how a
+	// `<<` reads is an arithmetic one. A plain `(` is skipped rather than
+	// answered on: inside `$(( … ))` it is sub-expression grouping, and at the
+	// top level it is a subshell, whose own enclosing context is what decides —
+	// either way the frame below it has the answer. A `$(` or a backtick stops
+	// the walk, because it starts a FRESH command string, where a here-document
+	// is possible again.
+	inArithmetic := func() bool {
+		for n := len(parens) - 1; n >= 0; n-- {
+			switch parens[n].kind {
+			case parenArithmetic:
+				return true
+			case parenCommandSub, parenBacktick:
+				return false
+			}
+		}
+		return false
+	}
 	flushToken := func() {
 		if hasCur {
 			toks = append(toks, string(cur))
+			globs = append(globs, curGlob)
 			cur = nil
 			hasCur = false
+			curGlob = false
 		}
 	}
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
-			segs = append(segs, segment{tokens: toks, chain: chain, braceGroup: braceGroup})
+			segs = append(segs, segment{tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs)})
 			toks = nil
+			globs = nil
 			braceGroup = false
 		}
 	}
@@ -77,7 +153,17 @@ func tokenize(line string) ([]segment, error) {
 		switch {
 		case c == '\\':
 			if i+1 >= len(line) {
-				return nil, fmt.Errorf("%w: trailing backslash", ErrUnparsableCommand)
+				// A backslash as the LAST byte is bash grammar, not a parse
+				// fault: bash 3.2 (the macOS /bin/bash and /bin/sh) and zsh drop
+				// it and run the line. bash 5.3 and dash keep it as a literal
+				// word instead, under which a hazard flag spelled `--force\`
+				// would not run — so "drop" is the reading under which the hazard
+				// executes, and the fail-safe one. Returning an error here was
+				// worse than either: the pre-tool-use hook maps a tokenizer
+				// error to fail-OPEN, so one appended byte walked any command
+				// past every blocker (GHSA-5wx3-2c86-fjpx).
+				i++
+				continue
 			}
 			if line[i+1] == '\n' {
 				// Line continuation: the newline is removed, the chain continues.
@@ -136,15 +222,31 @@ func tokenize(line string) ([]segment, error) {
 		case c == '\n':
 			flushSegment()
 			i++
-			// A pending heredoc body starts once the command LINE is complete,
-			// and is DATA, not commands: writing a document that names a hazard
-			// must never read as running one. A line ending in a list operator
-			// is not complete, so the body waits — what follows it is still
-			// command text.
-			if len(pending) > 0 && !lastList {
+			// A pending heredoc body starts on the NEXT LINE, and is DATA, not
+			// commands: writing a document that names a hazard must never read
+			// as running one. It starts there even when the redirection line
+			// ends in a list operator and the command list continues after the
+			// document — bash collects the bodies at the end of the PHYSICAL
+			// line that carried the `<<`, so `cat <<EOF &&` / body / `EOF` /
+			// `echo ok` runs `echo ok` with the body as data. Waiting for the
+			// list to complete read the body as command text instead: an
+			// apostrophe in a document became ErrUnparsableCommand, which the
+			// hook maps to fail-OPEN, and a delimiter line reached early
+			// swallowed the real commands that followed it as body.
+			if len(pending) > 0 {
 				next, ok := skipHeredocBodies(line, i, pending)
 				if !ok {
-					return nil, fmt.Errorf("%w: unterminated here-document body", ErrUnparsableCommand)
+					// The delimiter line never came. bash RUNS this (it recovers
+					// silently, taking input-to-EOF as the body), so an error is
+					// the wrong route for the same reason as the brace group: the
+					// hook maps it to fail-open, and `<hazard> <<EOF` plus a
+					// newline walked past every blocker (GHSA-5wx3-2c86-fjpx).
+					// Succeeding quietly is wrong too — a `<<` the classifier
+					// misread has just swallowed every later line as body, and
+					// the classifier has been wrong twice (iss-184). The command
+					// that opened the document carries the flag; Check turns it
+					// into a fail-closed block on both front doors.
+					markHeredocUnterminated(&segs, chain)
 				}
 				i = next
 				pending = nil
@@ -169,27 +271,45 @@ func tokenize(line string) ([]segment, error) {
 			lastList = false
 			i += 3
 		case c == '<' && strings.HasPrefix(line[i:], "<<"):
-			// A heredoc redirection (`<<`, `<<-`) — but only when a delimiter
-			// word follows. `$((1<<20))` is an arithmetic shift, and taking it
-			// for a heredoc would swallow every later line as body text and
-			// silently unguard them.
+			// A heredoc redirection (`<<`, `<<-`) — but only when nothing
+			// arithmetic encloses the operator and a delimiter word follows.
+			// `$((1<<20))` is an arithmetic shift, and taking it for a heredoc
+			// would swallow every later line as body text and silently unguard
+			// them.
+			//
+			// WHAT ENCLOSES the `<<` is what tells the two apart. Inside an
+			// arithmetic context — a `$(( … ))` expansion or the bare `(( … ))`
+			// command — bash has no redirection at all, so a `<<` there is a
+			// shift, full stop; outside one, a delimiter-shaped word opens a
+			// document. Deciding instead on the bytes AFTER the delimiter word
+			// ("does a paren pair close right here?") reads only the flattest
+			// shift: `$(( (1 << n) + 1 ))` closes its sub-expression with a
+			// SINGLE `)`, so `n` was taken for a delimiter — and a later line
+			// equal to `n` then swallowed every command between the two with no
+			// signal at all, while a bit mask with no such line blocked as an
+			// unterminated document.
+			//
+			// The check comes BEFORE readHeredocDelim so an arithmetic
+			// expression can never reach that reader's unterminated-quote error,
+			// which the pre-tool-use hook maps to fail-OPEN. Where the enclosing
+			// context stays ambiguous — an arithmetic frame left open on an
+			// earlier construct, a `$(` in between — the reading falls to the
+			// here-document side, and skipHeredocBodies' fail-closed block below
+			// is the answer, never an error.
+			if inArithmetic() {
+				cur = append(cur, '<', '<')
+				hasCur = true
+				lastList = false
+				i += 2
+				continue
+			}
 			hd, next, err := readHeredocDelim(line, i+2)
 			if err != nil {
 				return nil, err
 			}
-			// A real heredoc delimiter is never immediately followed by a bare
-			// paren: its body and terminator line have to come first, so nothing
-			// legitimate places `(` or `)` directly against the delimiter word
-			// with no separator. `$((expr<<ident))` produces exactly this shape
-			// -- readHeredocDelim reads the shift's right-hand identifier as if
-			// it were a delimiter and stops at the arithmetic expression's own
-			// closing paren. Catching this at classification time (rather than
-			// only an unterminated body, below) matters: without it, an
-			// attacker can supply a later line that happens to equal the
-			// misread "delimiter" and have it swallow real commands with no
-			// error at all.
-			followedByParen := next < len(line) && (line[next] == '(' || line[next] == ')')
-			if !hd.quoted && (!isDelimStart(hd.delim) || followedByParen) {
+			// A word that cannot start an unquoted delimiter — `20` in a
+			// `$((1<<20))` reached outside any paren — is not one.
+			if !hd.quoted && !isDelimStart(hd.delim) {
 				cur = append(cur, '<', '<')
 				hasCur = true
 				lastList = false
@@ -232,6 +352,7 @@ func tokenize(line string) ([]segment, error) {
 			if hasCur && isAllDigits(cur) {
 				cur = nil
 				hasCur = false
+				curGlob = false
 			} else {
 				flushToken()
 			}
@@ -289,6 +410,36 @@ func tokenize(line string) ([]segment, error) {
 			// its `$( … )` twin blocked (gh-312). Inside single quotes the byte is
 			// literal and never reaches here, matching the shell.
 			flushSegment()
+			switch c {
+			case '(':
+				// `((` and `$((` — two parens with NOTHING between them — open
+				// an arithmetic context, which is how bash lexes them too;
+				// `( (cmd) )` and `$( (cmd) )`, which have a separator, do not.
+				// The inner paren converts the frame the outer one pushed, so
+				// both halves close it and `$(((a))` reads as arithmetic plus
+				// one ordinary group.
+				kind := parenGroup
+				if i > 0 && line[i-1] == '$' {
+					kind = parenCommandSub
+				}
+				if n := len(parens); n > 0 && parens[n-1].pos == i-1 && parens[n-1].kind != parenArithmetic {
+					parens[n-1].kind = parenArithmetic
+					kind = parenArithmetic
+				}
+				parens = append(parens, parenFrame{kind: kind, pos: i})
+			case ')':
+				if n := len(parens); n > 0 {
+					parens = parens[:n-1]
+				}
+			case '`':
+				// A backtick is its own closer, so it toggles: an open one on
+				// the stack is popped, anything else pushes a fresh frame.
+				if n := len(parens); n > 0 && parens[n-1].kind == parenBacktick {
+					parens = parens[:n-1]
+				} else {
+					parens = append(parens, parenFrame{kind: parenBacktick, pos: i})
+				}
+			}
 			if (c == '&' || c == '|') && i+1 < len(line) && line[i+1] == c {
 				lastList = true
 				i += 2
@@ -324,6 +475,15 @@ func tokenize(line string) ([]segment, error) {
 			lastList = false
 			i++
 		default:
+			// An unquoted glob metacharacter makes the word a PATTERN: bash
+			// expands it against the working directory before exec, so
+			// `pus?` is `push` whenever a file called push exists. The bytes are
+			// kept — the matcher compares them as a pattern where an entry
+			// constrains the position (GHSA-3w99-pgv4-8g55) — and the record
+			// is what lets it tell this `*` from a quoted one.
+			if c == '*' || c == '?' || c == '[' {
+				curGlob = true
+			}
 			cur = append(cur, c)
 			hasCur = true
 			lastList = false
@@ -331,7 +491,54 @@ func tokenize(line string) ([]segment, error) {
 		}
 	}
 	flushSegment()
+	// A here-document still pending when the INPUT ends is in the same state as
+	// one whose delimiter line never came, and takes the same fail-closed
+	// verdict. Reaching the end of the input without ever crossing a newline
+	// dropped the pending document silently, which split the two front doors:
+	// `guard hook` sees the candidate as the host sent it (`cat <<EOF` and its
+	// newline) and blocked, while `guard check` trims a trailing newline off
+	// stdin and cleared the very same command. The verdict belongs to the
+	// command, not to whether its last byte is a newline.
+	if len(pending) > 0 {
+		markHeredocUnterminated(&segs, chain)
+	}
 	return segs, nil
+}
+
+// parenKind names what an unclosed `(` opened, to the one precision the
+// tokenizer needs: whether a `<<` inside it is an arithmetic shift.
+type parenKind uint8
+
+const (
+	// parenGroup is a plain `(`: a subshell at the top level, sub-expression
+	// grouping inside arithmetic. It decides nothing on its own.
+	parenGroup parenKind = iota
+	// parenCommandSub is the `(` of a `$( … )` — a fresh command string.
+	parenCommandSub
+	// parenBacktick is an open backtick: command substitution in its other
+	// spelling, and its own closer.
+	parenBacktick
+	// parenArithmetic is one half of a `((` or `$((` pair.
+	parenArithmetic
+)
+
+// parenFrame is one unclosed grouping construct: its kind, and the offset of the
+// byte that opened it — which is what lets the next `(` see that it is adjacent
+// and convert the pair into an arithmetic context.
+type parenFrame struct {
+	kind parenKind
+	pos  int
+}
+
+// globsOrNil returns the per-token glob record, or nil when no token in it is
+// globbed — the common case, kept allocation-free for the matcher's compares.
+func globsOrNil(globs []bool) []bool {
+	for _, g := range globs {
+		if g {
+			return globs
+		}
+	}
+	return nil
 }
 
 const (
@@ -342,6 +549,14 @@ const (
 	braceEntryID = "brace-expansion-unexpanded"
 
 	familyBrace = "brace expansion"
+
+	// heredocEntryID is the reserved id an unterminated here-document is
+	// reported under: another verdict the Pattern language cannot express ("the
+	// rest of this input may be commands or may be a document"), so no registry
+	// entry may claim it and it must never index Registry.Entries.
+	heredocEntryID = "heredoc-unterminated"
+
+	familyHeredoc = "here-document"
 
 	// braceScanBudget bounds the TOTAL look-ahead braceExpansionAt may spend
 	// across one tokenize call. The scan reads forward from every structural
@@ -719,15 +934,31 @@ type heredoc struct {
 	quoted bool
 }
 
-// isDelimStart reports whether a word looks like a here-document delimiter: an
-// unquoted one starts with a letter or an underscore, which is what separates
-// `cat <<EOF` from the `<<` of an arithmetic shift.
+// isDelimStart reports whether a word can begin an unquoted here-document
+// delimiter. bash accepts a WORD there, not an identifier: `cat <<20` reads a
+// document ended by a line saying 20, `cat <<$D` reads one ended by whatever
+// $D expands to, and `let mask=1<<20` is a here-document too — the shell
+// tokenises the redirection before the `let` builtin ever sees an arithmetic
+// expression. Restricting the set to letters and `_` therefore sent those to
+// the shift branch, where the DOCUMENT was tokenised as commands: one
+// apostrophe in the body became ErrUnparsableCommand, which the pre-tool-use
+// hook maps to fail-OPEN, and any hazard below it ran unguarded.
+//
+// The set is the conservative superset of what a delimiter word ordinarily
+// starts with — a letter, a digit, `_`, or a `$`-led word. bash accepts more
+// (`<<!`, `<</tmp/x`); those stay out, because a `<<` reached in an arithmetic
+// context this tokenizer does not model would otherwise swallow the rest of
+// the input on the strength of an operator. What actually separates a shift
+// from a document is the ENCLOSING context (inArithmetic), which is checked
+// before this; the unmodelled contexts that remain — bash's deprecated
+// `$[ … ]` — are a named residual, not a discriminator this word test can fix.
 func isDelimStart(delim string) bool {
 	if delim == "" {
 		return false
 	}
 	c := delim[0]
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	return c == '_' || c == '$' ||
+		(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // readHeredocDelim reads the delimiter word after a `<<` at pos, honouring the
@@ -760,7 +991,10 @@ func readHeredocDelim(line string, pos int) (heredoc, int, error) {
 			continue
 		case '\\':
 			if pos+1 >= len(line) {
-				return heredoc{}, 0, fmt.Errorf("%w: trailing backslash", ErrUnparsableCommand)
+				// The twin of tokenize's own trailing-backslash site: dropped,
+				// as bash 3.2 reads it, never an error the hook fails open on.
+				hd.delim = string(w)
+				return hd, pos + 1, nil
 			}
 			w = append(w, line[pos+1])
 			pos += 2
@@ -776,6 +1010,35 @@ func readHeredocDelim(line string, pos int) (heredoc, int, error) {
 	return hd, pos, nil
 }
 
+// markHeredocUnterminated flags the command that opened an unterminated
+// here-document: the last segment emitted, or — for a line that holds the
+// redirection and nothing else — an empty segment carrying only the flag, so
+// the verdict is raised even when there is no command to hang it on.
+func markHeredocUnterminated(segs *[]segment, chain int) {
+	if n := len(*segs); n > 0 {
+		(*segs)[n-1].heredocUnterminated = true
+		return
+	}
+	*segs = append(*segs, segment{chain: chain, heredocUnterminated: true})
+}
+
+// heredocBlockSignal is the fail-closed verdict for a here-document whose
+// delimiter line never came. It is a BLOCK rather than a warn because the
+// tokenizer has just read everything after the redirection as data: if the
+// `<<` was a misclassified shift or a typo, the "document" is commands the guard
+// did not check, and it has no way to tell the two apart.
+func heredocBlockSignal() payloadSignal {
+	return payloadSignal{
+		id:      heredocEntryID,
+		verdict: VerdictBlock,
+		family:  familyHeredoc,
+		reason: "This command opens a here-document whose delimiter line never comes, so the shell would take the rest of the input as the document — " +
+			"and the guard cannot tell whether that rest is a document or commands it did not check.",
+		successor: "Terminate the here-document with its delimiter on a line of its own, or quote a `<<` that is not one, " +
+			"so the guard checks the command that actually runs.",
+	}
+}
+
 // skipHeredocBodies consumes the body of every pending here-document, starting
 // at pos (the first byte after the newline that ended the command line), and
 // returns the position just past the last body. The second return is false if
@@ -784,8 +1047,8 @@ func readHeredocDelim(line string, pos int) (heredoc, int, error) {
 // mistook for one (an identifier-operand arithmetic shift, `$((1<<shift))`,
 // reads as a delimiter word). Either way, silently consuming the remainder of
 // the line as unchecked "body" text would swallow real commands with no
-// signal; the caller turns a false result into ErrUnparsableCommand so the
-// guard fails open LOUDLY on it instead of silently.
+// signal; the caller flags the opening command so Check fails CLOSED on it,
+// never an error, which the hook would turn into a fail-open.
 func skipHeredocBodies(line string, pos int, pending []heredoc) (int, bool) {
 	for _, hd := range pending {
 		found := false

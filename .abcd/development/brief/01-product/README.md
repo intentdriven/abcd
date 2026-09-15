@@ -25,5 +25,6 @@ underpins every other section of the brief.
 | 3 | [`03-mental-model.md`](03-mental-model.md) | The four-layer model (brief / intent / spec / phase) that organises all development work |
 | 4 | [`04-scope.md`](04-scope.md) | What the brief covers — bounded by the planned phases and explicit later-phase slates |
 | 5 | [`05-personas.md`](05-personas.md) | Placeholder personas that voice intent customer quotes without leaking real identities |
+| 6 | [`06-framing.md`](06-framing.md) | The macro-why home: the construal the project reasons inside, statement-first, with the not-yet-real marker where it describes an intention |
 
 For the chapters around this one, see the [brief index](../README.md).

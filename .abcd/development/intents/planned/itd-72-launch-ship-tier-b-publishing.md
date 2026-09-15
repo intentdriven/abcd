@@ -75,6 +75,10 @@ safety refusal built in.
 - The pre-flight gate suite (spc-79 owns it; `ship` invokes it)
 - Release retention pruning of prior tags/Releases (itd-70)
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by

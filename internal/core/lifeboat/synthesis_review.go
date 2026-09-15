@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -274,7 +275,7 @@ func validateReview(abs string, raw []byte) (ReviewVerdict, []ReviewFinding, rev
 		return "", nil, rep, errors.New("review payload is missing schema_version")
 	}
 	if in.SchemaVersion > ReviewSchemaVersion {
-		return "", nil, rep, fmt.Errorf("review schema v%d; this abcd knows up to v%d — upgrade abcd",
+		return "", nil, rep, update.TooNew("review",
 			in.SchemaVersion, ReviewSchemaVersion)
 	}
 	if in.SchemaVersion != ReviewSchemaVersion {

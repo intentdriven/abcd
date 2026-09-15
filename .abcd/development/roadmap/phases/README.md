@@ -7,6 +7,11 @@ way the project organises *what ships together, in what order*. See
 exists and [`01-product/03-mental-model.md`](../../brief/01-product/03-mental-model.md)
 for where it sits among brief / phase / intent / spec.
 
+**Two things are called a phase.** This one, and the brief's numbered
+plumbing-phases that a phase bundles from — the glossary entry
+[`phase`](../../brief/glossary/core/phase.md) names both senses, fixes one
+spelling for each, and records that the two numberings are not a mapping.
+
 ## What a phase document is
 
 Each phase is a **product-reflection point**. A phase doc opens with the product
@@ -64,8 +69,9 @@ that backend is attached) via the Go CLI.
 | Phase 4 — Native spec and task engine | `intent → plan → ship` over the native store, with the companion harness `ccpm` as the deeper backend | [phase-4-spec-engine.md](phase-4-spec-engine.md) |
 | Phase 5 — Autonomous run seam | A pluggable run seam (native loop / Workflows / the companion harness's loop) drives specs unattended | [phase-5-run-seam.md](phase-5-run-seam.md) |
 | Phase 6 — Lifeboat round-trip | `/abcd:disembark` + `/abcd:embark`; a faithful lifeboat round-trips | [phase-6-lifeboat.md](phase-6-lifeboat.md) |
+| Phase 7 — Provenance ledger and cold reading | Origin and grounds stamped at the point of commitment; the cold-reading instrument built, unrun | [phase-7-ledger.md](phase-7-ledger.md) |
 
-Phases 1–6 are organised by **user-capability moment** — each one ends in a
+Phases 1–7 are organised by **user-capability moment** — each one ends in a
 milestone a contributor can demo. **Install and launch (Phase 1) is the first
 milestone**, and the delivery order is MVP → the companion harness → Claude Code. Phase 0 is
 the exception: it delivers no product-capability user moment, and is numbered 0
@@ -76,10 +82,10 @@ the substrate inspecting itself, not a product capability; see
 but their *contents* may run in any dependency-respecting order — see each
 phase's `## Dependency rationale`.
 
-## Beyond Phase 6
+## Beyond Phase 7
 
-Phase 6 closes abcd's loop with the lifeboat round-trip; it is not the end of
-the work. Most of the intent corpus is not yet phased — an intent listed in no
+Phase 6 closes abcd's loop with the lifeboat round-trip and Phase 7 makes the
+record show where human judgement went; neither is the end of the work. Most of the intent corpus is not yet phased — an intent listed in no
 phase doc's `## Scope` is implicitly unscheduled (per adr-9), and that is a valid
 state. Further phases will be authored as that work is committed to.
 

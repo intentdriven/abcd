@@ -1,4 +1,3 @@
-<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 ---
 term: transport
 bounded_context: core
@@ -12,6 +11,7 @@ ends_when: null
 not_to_be_confused_with: core/oracle
 versions: null
 ---
+<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # transport
 

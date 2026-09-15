@@ -234,6 +234,11 @@
       "severity": "blocker",
       "issues_dir": ".abcd/work/issues"
     },
+    "reading_outstanding": {
+      "enabled": true,
+      "severity": "info",
+      "issues_dir": ".abcd/work/issues"
+    },
     "spec_lifecycle": {
       "enabled": true,
       "severity": "blocker",
@@ -253,8 +258,17 @@
         "adr": ".abcd/development/decisions/adrs",
         "itd": ".abcd/development/intents",
         "spc": ".abcd/development/specs",
-        "iss": ".abcd/work/issues"
+        "iss": ".abcd/work/issues",
+        "rdi": ".abcd/work/issues/readings",
+        "dsp": ".abcd/work/issues/dispositions",
+        "rdg": ".abcd/development/readings",
+        "adm": ".abcd/work/issues/admissions",
+        "srp": ".abcd/work/issues/surprises"
       }
+    },
+    "record_provenance": {
+      "enabled": true,
+      "severity": "blocker"
     },
     "agent_contract": {
       "enabled": true,

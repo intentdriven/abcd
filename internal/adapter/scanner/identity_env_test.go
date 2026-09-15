@@ -3,6 +3,7 @@ package scanner
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -67,6 +68,53 @@ func TestProbeIdentityRemoteHostCaseInsensitive(t *testing.T) {
 		mustGitIdentity(t, dir, "remote", "add", "origin", remote)
 		if id := ProbeIdentity(dir); id.GitRemoteUsername != "alice" {
 			t.Errorf("remote %q: GitRemoteUsername = %q, want alice", remote, id.GitRemoteUsername)
+		}
+	}
+}
+
+// TestProbeIdentityUnionsTheEnvironmentIdentity: GIT_AUTHOR_NAME/EMAIL and
+// GIT_COMMITTER_NAME/EMAIL are an identity scope `git config --get-all` never
+// reports, and they outrank every config file when a commit is written. A CI
+// runner, a direnv profile or a rebase wrapper sets them routinely, so the
+// persona that AUTHORS the caller's commits was absent from the matcher set
+// and every write-time redactor stored it in clear.
+func TestProbeIdentityUnionsTheEnvironmentIdentity(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	dir := t.TempDir()
+	mustGitIdentity(t, dir, "init")
+	mustGitIdentity(t, dir, "config", "user.email", "config@example.com")
+	mustGitIdentity(t, dir, "config", "user.name", "Config Name")
+
+	t.Setenv("GIT_AUTHOR_NAME", "Author Persona")
+	t.Setenv("GIT_AUTHOR_EMAIL", "author@ci.example")
+	t.Setenv("GIT_COMMITTER_NAME", "Committer Persona")
+	t.Setenv("GIT_COMMITTER_EMAIL", "committer@ci.example")
+
+	id := ProbeIdentity(dir)
+	if id.GitUserEmail != "config@example.com" || id.GitUserName != "Config Name" {
+		t.Fatalf("the environment displaced the configured identity: %q <%s>", id.GitUserName, id.GitUserEmail)
+	}
+	for _, want := range []string{"author@ci.example", "committer@ci.example"} {
+		if !containsFold(id.OtherGitUserEmails, want) {
+			t.Errorf("OtherGitUserEmails %v lacks the environment address %q", id.OtherGitUserEmails, want)
+		}
+	}
+	for _, want := range []string{"Author Persona", "Committer Persona"} {
+		if !containsFold(id.OtherGitUserNames, want) {
+			t.Errorf("OtherGitUserNames %v lacks the environment name %q", id.OtherGitUserNames, want)
+		}
+	}
+
+	text := "signed off by Author Persona <author@ci.example> and committer@ci.example"
+	findings := ScanText(text, id, DefaultPatterns(), DefaultIdentitySeverities(), "t")
+	out, _ := Redact(text, findings)
+	for _, leak := range []string{"author@ci.example", "committer@ci.example", "Author Persona"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("the environment identity %q survives redaction: %q", leak, out)
 		}
 	}
 }

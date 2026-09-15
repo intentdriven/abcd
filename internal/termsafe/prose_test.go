@@ -121,3 +121,64 @@ func TestCleanProseTruncationStaysValidUTF8(t *testing.T) {
 		}
 	}
 }
+
+// TestCleanProseNeutralisesLinkSyntax proves no prose field can carry a live
+// markdown link into the record it lands in (iss-2608311504353427). A faithful
+// quotation of code such as `items[0](itm-0001)` is an inline link whose target
+// resolves to nothing, and the links_resolve gate then refuses the whole tree on
+// a record the ingest itself wrote. The neutralisation is the one the comment
+// delimiters already get — a single space breaking the adjacency CommonMark
+// requires — so the quoted text stays legible and the brackets themselves are
+// left alone.
+func TestCleanProseNeutralisesLinkSyntax(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"inline-link", "the path items[0](itm-0001) is quoted", "the path items[0] (itm-0001) is quoted"},
+		{"inline-link-with-title", `[x](y "t")`, `[x] (y "t")`},
+		{"image", "![alt](x.svg)", "![alt] (x.svg)"},
+		{"full-reference-link", "see [text][label] here", "see [text] [label] here"},
+		{"collapsed-reference-link", "see [label][] here", "see [label] [] here"},
+		{"autolink", "<https://example.invalid/x>", "< https://example.invalid/x>"},
+		{"email-autolink", "<someone@example.invalid>", "< someone@example.invalid>"},
+		// Brackets and parentheses that open no link are untouched.
+		{"index-kept", "items[0] and f(x)", "items[0] and f(x)"},
+		{"shortcut-kept", "a [label] alone", "a [label] alone"},
+		{"spaced-kept", "already [x] (y)", "already [x] (y)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := CleanProse(c.in, 200); got != c.want {
+				t.Errorf("CleanProse(%q) = %q, want %q", c.in, got, c.want)
+			}
+			if got := CleanProseLine(c.in, 200); got != c.want {
+				t.Errorf("CleanProseLine(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestCleanProseIsIdempotent proves a second pass over cleaned prose changes
+// nothing: every neutralisation inserts a form the same rule no longer matches,
+// so a field that is re-ingested, re-rendered or re-cleaned by a downstream
+// caller does not drift further from what was written.
+func TestCleanProseIsIdempotent(t *testing.T) {
+	inputs := []string{
+		"items[0](itm-0001) and [t][l] and [l][] and <https://example.invalid>",
+		"text <!-- hidden --> and <script>x</script>",
+		"one\ntwo\r\nthree" + string(rune(0x1b)) + "[31m",
+		"a  b\tc [d](e)",
+	}
+	for _, in := range inputs {
+		once := CleanProse(in, 200)
+		if twice := CleanProse(once, 200); twice != once {
+			t.Errorf("CleanProse not idempotent on %q:\n once  %q\n twice %q", in, once, twice)
+		}
+		onceL := CleanProseLine(in, 200)
+		if twiceL := CleanProseLine(onceL, 200); twiceL != onceL {
+			t.Errorf("CleanProseLine not idempotent on %q:\n once  %q\n twice %q", in, onceL, twiceL)
+		}
+	}
+}

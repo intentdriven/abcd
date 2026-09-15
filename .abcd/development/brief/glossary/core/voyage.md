@@ -1,4 +1,3 @@
-<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 ---
 term: voyage
 bounded_context: core
@@ -12,6 +11,7 @@ ends_when: Never by abcd's hand — the log is append-only, outlives any single 
 not_to_be_confused_with: core/lifeboat
 versions: null
 ---
+<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # voyage
 

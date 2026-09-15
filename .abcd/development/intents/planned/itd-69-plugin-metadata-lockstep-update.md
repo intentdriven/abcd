@@ -66,6 +66,10 @@ turns that latent drift into an early, loud refusal.
 - Version WRITES — owned by spc-77 / spc-80; this checker never bumps a version.
 - Preflight WIRING of the checker into the launch gate suite — spc-79 / spc-80.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

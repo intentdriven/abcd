@@ -95,6 +95,7 @@ func TestIngestWritesTheDatedSection(t *testing.T) {
 	want := "# Changelog\n\n" +
 		"## [Unreleased]\n\n" +
 		"## [0.4.1] - 2026-07-21\n\n" +
+		sectionNotice + "\n\n" +
 		"### Added\n\n" +
 		"- **A version is a fact.** Derived, not typed. (itd-73)\n\n" +
 		"### Fixed\n\n" +
@@ -191,7 +192,7 @@ func TestIngestBijection(t *testing.T) {
 		{
 			name: "an internal record is cited — it is in the cut but earns no line",
 			entries: append(goodEntries(),
-				ChangelogEntry{Section: SectionChanged, Records: []string{"iss-97"}, Text: "plumbing."}),
+				ChangelogEntry{Section: SectionAdded, Records: []string{"iss-97"}, Text: "plumbing."}),
 			wantInternal: []string{"iss-97"},
 		},
 	}
@@ -285,7 +286,10 @@ func TestIngestRequiresAnUnlabelledRemovedRecord(t *testing.T) {
 		t.Errorf("Missing = %v, want [itd-40] — the unlabelled record that left shipped/", incomplete.Missing)
 	}
 
-	cited := append(omitted, ChangelogEntry{Section: SectionRemoved, Records: []string{"itd-40"}, Text: "superseded."})
+	// The supersession is reported as an Added line stating what replaced it:
+	// Removed is a claim about the previous release's surface, which the composer
+	// cannot see (iss-2609011207114761).
+	cited := append(omitted, ChangelogEntry{Section: SectionAdded, Records: []string{"itd-40"}, Text: "superseded by the derived cut."})
 	res, err = Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.4.1", cited), cutAt)
 	if err != nil {
 		t.Fatalf("Ingest refused an honest payload that cites the unlabelled removed record: %v", err)
@@ -352,7 +356,7 @@ func TestIngestPayloadGuards(t *testing.T) {
 		{
 			name:     "a schema from the future",
 			raw:      `{"schema_version":99,"prompt_version":"1.0.0","next_tag":"v0.4.1","entries":[]}`,
-			wantSaid: "upgrade abcd",
+			wantSaid: "update abcd:",
 		},
 		{
 			name:     "no prompt_version",
@@ -566,5 +570,176 @@ func TestIngestResultJSONShape(t *testing.T) {
 	cut, _ := generic["cut"].(map[string]any)
 	if _, ok := cut["next_tag"]; !ok {
 		t.Errorf("the nested cut lost its wire shape: %v", cut)
+	}
+}
+
+// TestIngestRefusesSectionsTheComposerCannotSee pins the 2026-09-01 ruling
+// (iss-2609011207114761): the composer's inputs are the records that shipped and
+// their bodies, never the base tag's surface, and Changed, Deprecated and Removed
+// are claims about that surface. A payload carrying one refuses whole, names the
+// section and the ruling, and leaves the file byte-identical. Security is refused
+// on the same rule: the writable set is Added and Fixed, and nothing else.
+func TestIngestRefusesSectionsTheComposerCannotSee(t *testing.T) {
+	for _, section := range []Section{SectionChanged, SectionDeprecated, SectionRemoved, SectionSecurity} {
+		t.Run(string(section), func(t *testing.T) {
+			r := shippableRepo(t)
+			before := readChangelog(t, r.Root())
+			entries := []ChangelogEntry{
+				{Section: SectionFixed, Records: []string{"iss-51"}, Text: "the crash is gone."},
+				{Section: section, Records: []string{"itd-73"}, Text: "a claim about the previous release."},
+			}
+			res, err := Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.4.1", entries), cutAt)
+			if err == nil {
+				t.Fatalf("Ingest accepted a %s section (written=%v); the composer cannot see the previous release",
+					section, res.Written)
+			}
+			for _, want := range []string{string(section), "iss-2609011207114761", "Added", "Fixed"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal %q does not name %q", err, want)
+				}
+			}
+			if res.Written {
+				t.Error("a refused ingest reported a write")
+			}
+			if after := readChangelog(t, r.Root()); after != before {
+				t.Errorf("a refused ingest modified CHANGELOG.md:\n%q", after)
+			}
+		})
+	}
+}
+
+// TestIngestAcceptsEveryWritableSection is the ruling's other half: each section
+// in the canonical writable set lands, so the refusal above cannot have closed
+// the set by accident.
+func TestIngestAcceptsEveryWritableSection(t *testing.T) {
+	if got := strings.Join(sectionNames(writableSections), "|"); got != "Added|Fixed" {
+		t.Fatalf("writableSections = %s, want Added|Fixed — the ruling names exactly those two", got)
+	}
+	for _, section := range writableSections {
+		t.Run(string(section), func(t *testing.T) {
+			r := shippableRepo(t)
+			entries := []ChangelogEntry{
+				{Section: section, Records: []string{"iss-51"}, Text: "the crash is gone."},
+				{Section: section, Records: []string{"itd-73"}, Text: "derived versions."},
+			}
+			res, err := Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.4.1", entries), cutAt)
+			if err != nil {
+				t.Fatalf("Ingest refused a payload written entirely under %s: %v", section, err)
+			}
+			if !res.Written {
+				t.Fatalf("nothing was written; cut refusals = %v", refusalKinds(res.Cut))
+			}
+			if got := readChangelog(t, r.Root()); !strings.Contains(got, "### "+string(section)+"\n") {
+				t.Errorf("the written section has no ### %s heading:\n%s", section, got)
+			}
+		})
+	}
+}
+
+// TestIngestNoticeAppearsOncePerCut pins the sentence every derived section
+// carries under its heading: it names each writable section, it appears exactly
+// once in a cut, and a second cut carries its own — never a second copy in the
+// first — so the rule reads as a rule in every dated section.
+func TestIngestNoticeAppearsOncePerCut(t *testing.T) {
+	for _, section := range writableSections {
+		if !strings.Contains(strings.ToLower(sectionNotice), strings.ToLower(string(section))) {
+			t.Errorf("the notice %q does not name the writable section %s", sectionNotice, section)
+		}
+	}
+
+	r := shippableRepo(t)
+	if _, err := Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.4.1", goodEntries()), cutAt); err != nil {
+		t.Fatalf("first Ingest: %v", err)
+	}
+	if n := strings.Count(readChangelog(t, r.Root()), sectionNotice); n != 1 {
+		t.Fatalf("after one cut the notice appears %d times, want 1", n)
+	}
+
+	r.Commit("the 0.4.1 release record")
+	r.Git("tag", "v0.4.1")
+	r.Record(resolvedDir+"iss-60-second.md", "iss-60", "fix")
+	r.Commit("resolve one more issue")
+	second := []ChangelogEntry{{Section: SectionFixed, Records: []string{"iss-60"}, Text: "a second fix."}}
+	res, err := Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.4.2", second), cutAt.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("second Ingest: %v", err)
+	}
+	if !res.Written {
+		t.Fatalf("second cut wrote nothing; refusals = %v", refusalKinds(res.Cut))
+	}
+	got := readChangelog(t, r.Root())
+	if n := strings.Count(got, sectionNotice); n != 2 {
+		t.Fatalf("after two cuts the notice appears %d times, want 2 (once per dated section):\n%s", n, got)
+	}
+	// Each dated section carries it directly under its heading, and once.
+	for _, heading := range []string{"## [0.4.2] - 2026-07-22", "## [0.4.1] - 2026-07-21"} {
+		_, body, ok := strings.Cut(got, heading+"\n\n")
+		if !ok {
+			t.Fatalf("heading %q not found in:\n%s", heading, got)
+		}
+		if !strings.HasPrefix(body, sectionNotice+"\n\n### ") {
+			t.Errorf("the section under %q does not open with the notice:\n%s", heading, body)
+		}
+	}
+}
+
+// TestIngestBreakingRecordRendersUnderAdded pins the mapping a `breaking` record
+// takes under the ruling: an Added line that states the break, never a Changed or
+// Removed section — the composer cannot see whether the surface it narrows was
+// reachable in the previous release.
+func TestIngestBreakingRecordRendersUnderAdded(t *testing.T) {
+	r := shippableRepo(t)
+	r.Record(shippedDir+"itd-80-scope-required.md", "itd-80", "breaking")
+	r.Commit("ship a breaking intent")
+
+	entries := append(goodEntries(), ChangelogEntry{
+		Section: SectionAdded, Records: []string{"itd-80"},
+		Text: "**`--scope` is required.** An invocation without one is refused; scripts add a scope.",
+	})
+	res, err := Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.5.0", entries), cutAt)
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if !res.Written {
+		t.Fatalf("nothing was written; cut refusals = %v", refusalKinds(res.Cut))
+	}
+	got := readChangelog(t, r.Root())
+	if !strings.Contains(got, "### Added\n\n- **A version is a fact.** Derived, not typed. (itd-73)\n- **`--scope` is required.** An invocation without one is refused; scripts add a scope. (itd-80)\n") {
+		t.Errorf("the breaking line is not under Added in composer order:\n%s", got)
+	}
+	for _, absent := range []string{"### Changed", "### Deprecated", "### Removed", "### Security"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("the written section carries %q:\n%s", absent, got)
+		}
+	}
+}
+
+// TestComposerPromptNamesOnlyTheWritableSections ties the host-delegated prompt
+// to the canonical list: the section table in
+// agents/release-changelog-composer.md offers exactly writableSections, so the
+// composer's instructions and the ingest's refusal cannot drift apart.
+func TestComposerPromptNamesOnlyTheWritableSections(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := fsutil.ModuleRoot(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "agents", "release-changelog-composer.md"))
+	if err != nil {
+		t.Fatalf("reading the composer prompt: %v", err)
+	}
+	rowRe := regexp.MustCompile("(?m)^\\| `([A-Z][a-z]+)` \\|")
+	var offered []string
+	for _, m := range rowRe.FindAllStringSubmatch(string(data), -1) {
+		offered = append(offered, m[1])
+	}
+	if got, want := strings.Join(offered, "|"), strings.Join(sectionNames(writableSections), "|"); got != want {
+		t.Errorf("the composer's section table offers %s, want exactly the writable set %s", got, want)
+	}
+	if !strings.Contains(string(data), "iss-2609011207114761") {
+		t.Error("the composer prompt does not cite the ruling that closes its section set")
 	}
 }

@@ -95,7 +95,11 @@ type RecordNav struct {
 	Development string `json:"development"`
 	// Health names the page that collects every finding the record can be
 	// checked against itself for.
-	Health       string `json:"health"`
+	Health string `json:"health"`
+	// Glossary names the page set that publishes the record's own terms — the
+	// one place a word the record uses in more than one sense is pinned to a
+	// spelling per sense.
+	Glossary     string `json:"glossary"`
 	Contributors string `json:"contributors"`
 }
 

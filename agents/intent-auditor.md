@@ -5,7 +5,7 @@ description: >-
   Acceptance Criteria and the delivered code diff, and emits one VSA-shaped
   verdict JSON: a per-criterion acceptance verdict plus a honoured/diverged/
   missing audit, every claim carrying a cited file:line evidence pointer.
-prompt_version: 0.2.0
+prompt_version: 0.3.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [intent_audit]
@@ -41,6 +41,10 @@ color: green
   every criterion; never reorder, reword, invent, or drop one.
 - `delivered` — a diff and/or commit range that constitutes the delivered work,
   plus read access to the repository at that state.
+- `scope_conditions` — the intent's `## Scope Conditions` bullets with the
+  `cond-…` identity each one carries. Echo every identity **verbatim**; never
+  invent one, never renumber them, and never key a disposition on your own
+  paraphrase of a condition. If the intent records none, the block is empty.
 - `policy` — `rubric_hash` and `prompt_hash` the host computed; echo both.
 - `verifier` — your own `{id, version}` (the dispatching agent + model id); echo.
 
@@ -62,6 +66,26 @@ delivered reality you relied on. Then pick exactly one:
   inputs. Never guess a `MET` to be agreeable and never infer a delivered state
   you cannot cite. Missing evidence ⇒ `INCONCLUSIVE` with what you could not
   verify. This is the correct verdict for a vacuum, not `MET`.
+
+## How to dispose each scope condition (rubric — apply as harshly)
+
+A scope condition is what the intent ASSUMED ex ante. What was assumed and what
+held are different things, and the difference is itself a finding. For each
+condition, keyed by its `cond-…` identity, pick exactly one:
+
+- **`survived`** — the delivered reality is consistent with the condition and you
+  can cite the artefact that shows it holding. No citation ⇒ not `survived`.
+- **`narrowed`** — it holds, but over a smaller range than the intent claimed.
+  You MUST state the narrowing: what the condition now holds under, said
+  outright. A narrowing implied by reworded condition prose is not a narrowing —
+  the identity is what the disposition attaches to, so the prose may not have
+  moved at all.
+- **`falsified`** — the delivered reality contradicts the condition. Record what
+  the condition assumed and what is actually the case.
+- **`untested`** — the delivery neither exercised nor contradicted the condition.
+  This is the correct disposition for a vacuum, not `survived`; it is the only
+  one that may cite no evidence, because it IS the absence of evidence. Never
+  guess a `survived` to be agreeable.
 
 Then produce a three-bucket `gap_audit` over the press release as a whole:
 `honoured` (promises the delivery kept), `diverged` (promises delivered
@@ -104,7 +128,16 @@ in every bucket carries at least one cited `evidence` pointer.
     "honoured": [ { "claim": "…", "evidence": [ { "ref": "path:line", "quote": "…" } ] } ],
     "diverged": [ { "claim": "…", "evidence": [ { "ref": "path:line", "quote": "…" } ] } ],
     "missing":  [ { "claim": "…", "evidence": [ { "ref": "path:line", "quote": "…" } ] } ]
-  }
+  },
+  "scope_conditions": [
+    {
+      "condition_id": "cond-<echoed verbatim>",
+      "disposition": "survived",
+      "rationale": "one line: what the delivered reality showed about the assumption",
+      "narrowing": "required on 'narrowed', empty otherwise: what it now holds under",
+      "evidence": [ { "ref": "internal/core/spec/store.go:42", "quote": "func Close(...)" } ]
+    }
+  ]
 }
 ```
 
@@ -122,6 +155,16 @@ Rules the ingest enforces (so honour them or the verdict is rejected):
 6. `policy.rubric_hash` and `policy.prompt_hash` are both required (non-empty);
    they pin the provenance the ingest records. A verdict missing either is
    rejected.
+7. `scope_conditions` covers the intent's conditions EXACTLY: every supplied
+   `cond-…` identity once, none omitted, none repeated, and no identity the
+   intent does not carry. An intent that records no conditions takes an empty
+   list — and a non-empty list for such an intent is rejected, because it judges
+   something the record does not claim.
+8. Every `disposition` is one of `survived | narrowed | falsified | untested`
+   (the acceptance vocabulary is NOT the disposition vocabulary — `MET` here is
+   rejected). `narrowing` is required on `narrowed` and MUST be empty on every
+   other disposition — a narrowing stated beside a `survived` is rejected, not
+   quietly kept. Every disposition except `untested` cites ≥1 `evidence` ref.
 
 ## Error verdict (only when you genuinely cannot proceed)
 
@@ -135,7 +178,8 @@ Criteria`, emit a single object instead:
 ## Worked example (shape only)
 
 An intent with three criteria where the second was delivered with a signed-off
-narrower scope and the third's evidence is not resolvable:
+narrower scope and the third's evidence is not resolvable, carrying three scope
+conditions of which one survived, one narrowed and one was never exercised:
 
 ```json
 {
@@ -160,6 +204,20 @@ narrower scope and the third's evidence is not resolvable:
     "honoured": [ { "claim": "directory-as-truth ship move", "evidence": [ { "ref": "internal/core/intent/reconcile.go:31", "quote": "os.Rename" } ] } ],
     "diverged": [ { "claim": "all kinds ship", "evidence": [ { "ref": "internal/core/intent/reconcile.go:20", "quote": "standalone only" } ] } ],
     "missing":  [ { "claim": "dead-letter retention test", "evidence": [ { "ref": "CHANGELOG.md:0", "quote": "not present" } ] } ]
-  }
+  },
+  "scope_conditions": [
+    { "condition_id": "cond-2608300112233445", "disposition": "survived",
+      "rationale": "the ship move is still a rename on one checkout, as the condition assumed",
+      "narrowing": "",
+      "evidence": [ { "ref": "internal/core/intent/reconcile.go:31", "quote": "os.Rename" } ] },
+    { "condition_id": "cond-2608300112233446", "disposition": "narrowed",
+      "rationale": "only the standalone kind is reconciled, so the assumption holds for one kind",
+      "narrowing": "holds for standalone intents only, not for every kind",
+      "evidence": [ { "ref": "internal/core/intent/reconcile.go:20", "quote": "standalone only" } ] },
+    { "condition_id": "cond-2608300112233447", "disposition": "untested",
+      "rationale": "nothing in the supplied diff exercises the multi-worktree assumption",
+      "narrowing": "",
+      "evidence": [] }
+  ]
 }
 ```

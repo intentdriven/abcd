@@ -6,7 +6,7 @@ target, enforcement, conditions, bypass actors, rules — no volatile ids or
 timestamps) so every gate claim in the contribution documents has a source of truth
 in the tree rather than only a web console.
 
-- `main-protection.json` — deletion/force-push protection, the eight required
+- `main-protection.json` — deletion/force-push protection, the nine required
   status checks (strict), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
 - `main-review.json` — the pull-request rule requiring a code-owner review on

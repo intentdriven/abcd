@@ -23,7 +23,7 @@ import (
 // post-fix the racing commit never reports success.
 func TestOrphanSweepDoesNotDeleteCommittedFile(t *testing.T) {
 	repo, ir := ledger(t)
-	if err := ensureLedgerDirs(ir); err != nil {
+	if err := ensureLedgerDirs(repo, ir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -51,7 +51,7 @@ func TestOrphanSweepDoesNotDeleteCommittedFile(t *testing.T) {
 	result := make(chan error, 1)
 	go func() {
 		<-trigger
-		_, err := commitCapture(ir, req, "iss-1", "stall", placeholder)
+		_, err := commitCapture(repo, ir, req, "iss-1", "stall", placeholder)
 		result <- err
 	}()
 
@@ -76,7 +76,7 @@ func TestOrphanSweepDoesNotDeleteCommittedFile(t *testing.T) {
 	defer func() { beforeOrphanRemoveHook = nil }()
 
 	// Run the sweep through the production preamble so post-fix it holds the lock.
-	if err := mutationPreamble(ir); err != nil {
+	if err := mutationPreamble(repo, ir); err != nil {
 		t.Fatalf("mutationPreamble: %v", err)
 	}
 

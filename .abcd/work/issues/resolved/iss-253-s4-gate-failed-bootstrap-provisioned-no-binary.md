@@ -8,7 +8,7 @@ source: "manual-test"
 found_during: "Cut A s4 manual gate, 2026-08-16"
 found_at: "hooks/bootstrap.sh"
 promoted_to: itd-154
-resolution: "bootstrap.sh now announces provisioning before the environment-sensitive work and closes with exactly one terminal line on every path, an EXIT trap converting a silent death into the same loud refusal; the launch bundler denies released platform artefacts structurally rather than by omission; and the Cut A section 4 assertions run as an automated fresh-install self-check on a Go-free PATH"
+resolution: "bootstrap.sh now closes with exactly one terminal line on every path, an EXIT trap converting a silent death into the same loud refusal; the launch bundler denies released platform artefacts structurally rather than by omission; and the Cut A section 4 assertions run as an automated fresh-install self-check on a Go-free PATH"
 impact: fix
 resolved_by:
   intent: "itd-154"

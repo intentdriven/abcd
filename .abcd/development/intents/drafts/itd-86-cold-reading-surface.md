@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: standalone
 reclassification_history: []
-related_adrs: []
+related_adrs: [adr-55]
 prd_path: null
 severity: minor
 ---
@@ -32,6 +32,7 @@ This is the Specification pass of the ABCD sensemaking method (see [the method n
 - The three prohibitions that define the output: propose no fixes, rank nothing (detections come in document order), pre-judge no intentionality (no "this may be deliberate, but…").
 - Re-raising a previously surfaced tension that is still present in the document, per [`recurrence-is-signal`](../../principles/recurrence-is-signal.md) — the cold reading is the detector that principle is written for.
 - A settled-enough check: a visibly mid-draft target (placeholders, TODOs, half-specified sections) is flagged in one line as likely to yield incompleteness rather than genuine constraint divergence, with the pass offered anyway.
+- Each detection lands as a reading record in the issue tier via the cold-reading output contract — carrying a run-scoped identifier minted on the adr-45 mint, never content-derived, so a re-raised tension is countable as recurrence rather than collapsed into its first appearance.
 
 ## What's Out of Scope
 
@@ -52,5 +53,5 @@ This is the Specification pass of the ABCD sensemaking method (see [the method n
 
 ## Open Questions
 
-- **Is the blindness enforceable, or only instructed?** A host-delegated reading is instructed not to use context it may already hold in its window. That is a weaker guarantee than a reader that structurally cannot see the ledger. Whether the surface must run in a context-isolated subagent to make the contract real — rather than merely asked for — is the central design question and should be settled before build.
-- The two disposition axes the method names (frame-location, MoSCoW priority) belong to the ledger, not here — but the detection shape may need to carry enough for a human to assign them later.
+- ~~**Is the blindness enforceable, or only instructed?**~~ **Settled by design:** blindness is a property of what the input assembler passes, not an instruction to the reader. The reading runs only over an assembled input (positive inclusion, field projection, exclusion asserted by eval), invoked with no free-text argument, and its manifest makes what was passed auditable after the fact. Instructed-blindness is retired as the mechanism; the eval is what falsifies the contract rather than asserting it.
+- ~~The two disposition axes~~ **Narrowed:** the disposition record reserves the two-axis hold field (frame-location crossed with MoSCoW priority), present in the schema and unpopulated — deferred by decision, reserved so retrofitting is never needed. The detection shape itself stays three-element; the axes belong to the human's disposition, never to the reading.

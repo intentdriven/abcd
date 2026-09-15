@@ -66,6 +66,10 @@ The brief is already structured for selective loading — numbered sections, inv
 - **Grilling against shipped *code*** — Tier 3 reads shipped *intents*, not the implementation. Delivered-reality comparison remains `intent-fidelity-reviewer`'s job at the shipped transition.
 - **A new sub-verb or command** — this is a capability of the existing `/abcd:intent grill`, not a sibling verb.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline._

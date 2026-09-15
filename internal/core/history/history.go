@@ -1,12 +1,18 @@
 // Package history is abcd's native session-transcript store: the write/read/
-// redact engine that populates ~/.abcd/history/<root-sha>/transcripts/ and
+// redact engine that populates ~/.abcd/transcripts/<root-sha>/records/ and
 // retires the specstory shim (adr-29). It is transport-agnostic — no stdout, no
 // os.Exit, no CLI knowledge — so any surface can drive it and marshal its
 // structured results.
 //
-// The index.json registry and per-repo meta.json (the store's substrate) are
-// owned by internal/core/ahoy and created at install time; this package only
-// writes transcript records into an already-bootstrapped transcripts/ dir.
+// The store's location, its root-SHA keying, the home-scoped opt-in that pulls
+// one repo's transcripts into that repo, and the migration off the legacy
+// location all live in location.go, behind the single Resolve seam this file's
+// verbs go through. The store creates itself; no install step is a precondition
+// of capture (iss-95).
+//
+// The index.json registry and per-repo meta.json are owned by
+// internal/core/ahoy and stay under ~/.abcd/history/; this package owns the
+// corpus and nothing else.
 //
 // Redaction is NOT reimplemented here. Every transcript is sanitised through
 // internal/adapter/scanner — the same detector and masking discipline the
@@ -66,7 +72,7 @@ type CaptureResult struct {
 
 // RedactionResidualError is returned by Capture when the stage-two re-scan finds
 // a BLOCKING span that survived redaction — any identity or network span
-// whatever its severity, plus every hard_fail one (blockingResidual). NO file is
+// whatever its severity, plus every hard_fail one (scanner.BlockingResidual). NO file is
 // written. It carries the surviving findings' kinds/locations only — the scanner
 // has already masked their Matched fields, so no raw secret material is exposed.
 type RedactionResidualError struct {
@@ -83,17 +89,17 @@ func (e *RedactionResidualError) Error() string {
 }
 
 // Capture reads a raw session transcript, redacts it through the scanner
-// (two-stage, fail-closed), and writes a record into
-// ~/.abcd/history/<rootSHA>/transcripts/.
+// (two-stage, fail-closed), and writes a record into this repo's lane of the
+// store — ~/.abcd/transcripts/<rootSHA>/records/ by default.
 //
 // It is idempotent on the source's sha256: an identical source already stored
 // is a no-op (Wrote=false, existing record returned, mtime preserved). It is
 // fail-closed: if a blocking span survives redaction it returns a
 // *RedactionResidualError and writes nothing.
 //
-// Precondition: the transcripts/ dir must already exist (abcd ahoy install
-// created it). Capture re-validates that the store's owned dirs are real
-// directories; it never creates the index or meta.
+// There is no install precondition: Resolve creates the store when it is absent
+// and refuses anything on the path that is not a real directory. It never
+// touches ahoy's index or meta.
 func Capture(repoRoot, rootSHA, sessionID string, raw []byte, kind string) (CaptureResult, error) {
 	// Boundary validation — external inputs.
 	if !rootSHARe.MatchString(rootSHA) {
@@ -106,10 +112,11 @@ func Capture(repoRoot, rootSHA, sessionID string, raw []byte, kind string) (Capt
 		return CaptureResult{}, fmt.Errorf("history: source kind %q is not one of native, specstory-import", kind)
 	}
 
-	tdir, err := ownedDirsReal(rootSHA)
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	tdir := store.Records
 
 	release, err := repoLock(tdir)
 	if err != nil {
@@ -174,16 +181,23 @@ func Capture(repoRoot, rootSHA, sessionID string, raw []byte, kind string) (Capt
 	// heuristic dropped would slip through both stages. This literal sweep
 	// collapses every remaining occurrence of the resolved $HOME to "~", then
 	// fails closed if any absolute path still reveals the caller's own home.
-	if home := callerHome(); home != "" {
-		redacted = strings.ReplaceAll(redacted, home, "~")
-		if resid := survivingCallerHome(redacted, home); len(resid) > 0 {
+	if home := scanner.CallerHome(); home != "" {
+		redacted = scanner.SweepCallerHome(redacted, home)
+		var resid []scanner.Finding
+		redacted, resid = scanner.SurvivingCallerHome(redacted, home)
+		if len(resid) > 0 {
 			return CaptureResult{Residual: resid}, &RedactionResidualError{Residual: resid}
 		}
 	}
 
 	// Stage two — verify. Re-scan the redacted text; a surviving finding that
-	// carries a leak blocks the write (fail-closed).
-	residual := blockingResidual(sc.ScanText(redacted, "transcript"))
+	// carries a leak blocks the write (fail-closed). The native re-scan cannot
+	// see an augmented span — a different detector found it — so every
+	// augmented finding is verified by its bytes instead, and a survivor blocks
+	// the write the same way: verification is symmetric with detection
+	// (GHSA-j7v5-q7x6-v3rp).
+	residual := scanner.BlockingResidual(sc.ScanText(redacted, "transcript"))
+	residual = append(residual, unsealedAugmented(redacted, extra)...)
 	if len(residual) > 0 {
 		return CaptureResult{Residual: residual}, &RedactionResidualError{Residual: residual}
 	}
@@ -214,35 +228,27 @@ func Capture(repoRoot, rootSHA, sessionID string, raw []byte, kind string) (Capt
 	return CaptureResult{Record: rec, Wrote: true}, nil
 }
 
-// List returns the records under <rootSHA>/transcripts/, newest first. It reads
-// frontmatter only, never bodies. An absent transcripts dir returns no records
-// and no error (the store is simply not populated for this repo yet); a
-// symlinked owned dir is refused with an error.
-func List(rootSHA string) ([]Record, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return nil, errors.New(rootSHAErrMsg)
-	}
-	tdir, err := transcriptsDir(rootSHA)
+// List returns this repo's records, newest first. It reads frontmatter only,
+// never bodies. An empty store returns no records and no error (this repo has
+// simply not been captured yet); a store path that is not a real directory is
+// refused with an error.
+//
+// It goes through Resolve like every other verb, so a read is also the moment a
+// corpus left at the legacy location is migrated: a reader that skipped that
+// would report the store as empty while the transcripts sat one directory away.
+func List(repoRoot, rootSHA string) ([]Record, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := os.Lstat(tdir); err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	if !fsutil.IsRealDir(tdir) {
-		return nil, &StorePathError{Path: tdir, Msg: "transcripts dir is a symlink; refusing"}
-	}
-	return listRecords(tdir)
+	return listRecords(store.Records)
 }
 
 // Read returns the metadata and full redacted body of one record, matched by
 // session id (newest when a session has several records) or by the record
 // filename. It never un-redacts; the stored bytes are already sanitised.
-func Read(rootSHA, sessionOrFile string) (Record, []byte, error) {
-	records, err := List(rootSHA)
+func Read(repoRoot, rootSHA, sessionOrFile string) (Record, []byte, error) {
+	records, err := List(repoRoot, rootSHA)
 	if err != nil {
 		return Record{}, nil, err
 	}
@@ -268,20 +274,39 @@ func Read(rootSHA, sessionOrFile string) (Record, []byte, error) {
 	return rec, []byte(body), nil
 }
 
-// blockingResidual filters a stage-two rescan to the findings that must refuse
-// the write. Severity alone is the wrong gate here: the two hostname patterns
-// are shape heuristics and therefore warn by design, so a LAN host or device
-// name that survived Stage-1 redaction was written to disk in silence — the very
-// class of leak this store exists to stop. Any surviving IDENTITY or NETWORK
-// span fails the write whatever its severity; everything else still gates on
-// hard_fail. After the Stage-1 detector fixes this path is rarely reachable,
-// which is what a backstop is for.
-func blockingResidual(findings []scanner.Finding) []scanner.Finding {
+// unsealedAugmented returns, for every augmented finding whose reported bytes
+// still occur anywhere in the redacted text, a finding naming its kind and
+// declared position with the bytes withheld (the error it feeds lists kinds
+// only). Presence anywhere is the right test, not the declared span: the
+// adapter locates every occurrence of a value across the whole text and
+// secret kinds are sealed length-preservingly, so after Redact no occurrence
+// of a located value can legitimately remain, while a span compare would drift
+// under the identity placeholders Redact rewrites after the seal (they change
+// line lengths) and would miss a finding whose declared position Redact could
+// not apply at all — the exact case in which the record would otherwise count
+// a redaction it never performed. Re-running gitleaks over the redacted text
+// is the other symmetric shape; it doubles a 30 s-timeout subprocess and is not
+// deterministic across rule sets, so the bytes the adapter reported are what
+// is checked.
+//
+// Presence-anywhere is only safe because the adapter detects at the same scope:
+// it locates every occurrence of every line of a reported value across the
+// whole text, so a line that recurs outside the value is sealed rather than
+// left as a survivor this check would then refuse the write on for good
+// (iss-2609020231145566).
+func unsealedAugmented(redacted string, extra []scanner.Finding) []scanner.Finding {
 	var out []scanner.Finding
-	for _, f := range findings {
-		if f.Severity == scanner.SeverityHardFail || scanner.IsIdentityKind(f.Kind) {
-			out = append(out, f)
+	for _, f := range extra {
+		if f.Matched == "" || !strings.Contains(redacted, f.Matched) {
+			continue
 		}
+		out = append(out, scanner.Finding{
+			File:     f.File,
+			Line:     f.Line,
+			Column:   f.Column,
+			Kind:     f.Kind,
+			Severity: f.Severity,
+		})
 	}
 	return out
 }

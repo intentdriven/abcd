@@ -12,13 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
@@ -26,22 +26,13 @@ import (
 // here. Anything else stays on the unknown-command path, byte-for-byte.
 var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr)-[0-9]+$`)
 
-// adrHandleRe parses a frontmatter id into its family prefix and zero-stripped
-// number, so the ADR confirm compares parsed handles the way record-lint
-// (schema.go) and the citation resolver (recordid) do — a quoted, zero-padded,
-// or case-shifted id (`"adr-12"`, `adr-0012`, `ADR-12`) is the same handle as
-// its bare canonical spelling, not a different record.
-var adrHandleRe = regexp.MustCompile(`^([A-Za-z]+)-0*([0-9]+)$`)
-
-// adrFileOrdinalRe pulls the leading numeric ordinal off an ADR filename
-// (`NNNN-slug.md`). The dispatch routes by comparing this number to the asked id,
-// not by a fixed %04d prefix, so a differently-padded ADR file — which record-lint
-// and the citation resolver both already accept (they compare numerically) — is
-// not reported absent by the one reader that pinned four-digit padding.
-var adrFileOrdinalRe = regexp.MustCompile(`^([0-9]+)-`)
-
-// adrsRelDir is where decisions live; files are NNNN-slug.md with an id:
-// adr-N frontmatter line.
+// adrsRelDir is where decisions live. A file is <N>-<slug>.md carrying an
+// `id: adr-N` frontmatter line, in either of the store's two id vintages: the
+// hand-numbered ordinals `0001`–`0058` and the minted `<yymmddHHMMSS><rrrr>`
+// stamp (the 2026-09-01 ruling). One derivation reads both — recordid.ADRFileID
+// for the filename, recordid.CanonADRID for the asked id and the frontmatter
+// confirm — so this reader can never be the one that reports a present decision
+// as absent.
 const adrsRelDir = ".abcd/development/decisions/adrs"
 
 // Description is the structured answer to "what is this, and what is my next
@@ -145,8 +136,8 @@ func describeIssue(repoRoot, id string) (Description, error) {
 			}
 		case iss.Status == capture.StateOpen:
 			d.NextMoves = []string{
-				"graduate it into an intent: `abcd " + verbCapturePromote + " " + id + "`",
-				"or close it: `abcd " + verbCaptureResolve + " " + id + " \"<note>\" --impact <...>` / `abcd " + verbCaptureWontfix + " " + id + " \"<reason>\"`",
+				"graduate it into an intent: `abcd " + verbCapturePromote + " " + id + " --grounds \"<pursued|deferred|declined>: <text>\"`",
+				"or close it: `abcd " + verbCaptureResolve + " " + id + " \"<note>\" --impact <...> --grounds \"<pursued|deferred|declined>: <text>\"` / `abcd " + verbCaptureWontfix + " " + id + " \"<reason>\"`",
 			}
 		default:
 			d.NextMoves = []string{"none — the issue is " + string(iss.Status) + "; the trail is above"}
@@ -271,16 +262,15 @@ func describeSpec(repoRoot, id string) (Description, error) {
 	return d, nil
 }
 
-// describeADR probes decisions/adrs/ for the NNNN- file carrying the id and
+// describeADR probes decisions/adrs/ for the numbered file carrying the id and
 // renders it read-only. Decisions are read, never acted on.
 func describeADR(repoRoot, id string) (Description, error) {
-	n, err := strconv.Atoi(strings.TrimPrefix(id, "adr-"))
-	if err != nil {
-		return Description{}, fmt.Errorf("record: malformed adr id %q", id)
-	}
 	// The number the caller asked for is the identity; render the canonical
 	// spelling of it regardless of how the caller or the file spelled it.
-	canonical := "adr-" + strconv.Itoa(n)
+	canonical := recordid.CanonADRID(id)
+	if canonical == "" {
+		return Description{}, fmt.Errorf("record: malformed adr id %q", id)
+	}
 	dir := filepath.Join(repoRoot, adrsRelDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -293,28 +283,21 @@ func describeADR(repoRoot, id string) (Description, error) {
 		if !e.Type().IsRegular() || filepath.Ext(e.Name()) != ".md" {
 			continue
 		}
-		// Route by the filename's numeric ordinal, padding-agnostic.
-		fm := adrFileOrdinalRe.FindStringSubmatch(e.Name())
-		if fm == nil {
-			continue
-		}
-		if fo, err := strconv.Atoi(fm[1]); err != nil || fo != n {
+		// Route by the id the filename claims, padding- and width-agnostic.
+		if recordid.ADRFileID(e.Name()) != canonical {
 			continue
 		}
 		rel := filepath.Join(adrsRelDir, e.Name())
 		fields, title := readRecordHead(filepath.Join(dir, e.Name()), strings.TrimSuffix(e.Name(), ".md"))
-		// The filename ordinal routes; the frontmatter id confirms. Compare
-		// parsed handles, not raw bytes: a quoted/zero-padded/case-shifted id is
-		// the same handle its record-lint and citation-resolver siblings accept,
-		// so the dispatch must not be the one reader that reports a present
-		// record as absent. A refused/empty head yields an empty value that
-		// matches no handle, preserving the hostile-leaf guard.
+		// The filename routes; the frontmatter id confirms. Both go through the
+		// canonicaliser rather than a byte compare: a quoted, zero-padded or
+		// case-shifted id is the same handle its record-lint and citation-resolver
+		// siblings accept, so the dispatch must not be the one reader that reports
+		// a present record as absent. A refused/empty head yields an empty value
+		// that canonicalises to "" and matches no handle, preserving the
+		// hostile-leaf guard.
 		got := strings.Trim(strings.TrimSpace(fields["id"].Value), `"'`)
-		m := adrHandleRe.FindStringSubmatch(got)
-		if m == nil || !strings.EqualFold(m[1], "adr") {
-			continue
-		}
-		if fn, err := strconv.Atoi(m[2]); err != nil || fn != n {
+		if recordid.CanonADRID(got) != canonical {
 			continue
 		}
 		d := Description{

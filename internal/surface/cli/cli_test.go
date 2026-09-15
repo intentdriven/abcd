@@ -230,6 +230,10 @@ func hermeticRepo(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	// The harness's settings resolve under HOME once this is empty, so a
+	// machine that names its own configuration directory never offers its real
+	// status line to a hermetic install (spc-70).
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("ABCD_BIN_TARGET", filepath.Join(t.TempDir(), "bin", "abcd"))
 
 	repo := t.TempDir()
@@ -371,6 +375,21 @@ func runCLIStdin(t *testing.T, stdin string, args ...string) []byte {
 	return out
 }
 
+// gitCommit is gitCmd with a commit identity pinned.
+//
+// gittest.Env deliberately pins NO identity — its doc says a caller that needs
+// one supplies it — so a bare `git commit` resolves whatever the machine
+// happens to carry. That is an ambient dependency: it passes on any developer
+// machine with a system or global user.name, and fails with "Author identity
+// unknown" on a CI runner that has neither. The sibling fixture in
+// internal/core/reading pins one; this surface did not, and eleven tests failed
+// the first time they ever ran in CI (iss-2609010759382400).
+func gitCommit(t *testing.T, repo string, args ...string) string {
+	t.Helper()
+	ident := []string{"-c", "user.name=abcd test", "-c", "user.email=test@example.invalid"}
+	return gitCmd(t, repo, append(ident, args...)...)
+}
+
 func gitCmd(t *testing.T, repo string, args ...string) string {
 	t.Helper()
 	full := append([]string{"-C", repo}, args...)
@@ -398,7 +417,7 @@ func TestHistoryListEmptyStoreIsJSONArray(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitCmd(t, repo, "add", ".")
-	gitCmd(t, repo, "commit", "-m", "init")
+	gitCommit(t, repo, "commit", "-m", "init")
 	t.Chdir(repo)
 
 	out := strings.TrimSpace(string(runCLI(t, "history", "list", "--json")))
@@ -423,7 +442,7 @@ func TestHistoryCaptureWiredAndRedacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitCmd(t, repo, "add", ".")
-	gitCmd(t, repo, "commit", "-m", "init")
+	gitCommit(t, repo, "commit", "-m", "init")
 	t.Chdir(repo)
 
 	// Create the store dir exactly as `abcd ahoy install` would (Capture never
@@ -505,7 +524,7 @@ func TestHistoryShowSanitisesTranscriptBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	gitCmd(t, repo, "add", ".")
-	gitCmd(t, repo, "commit", "-m", "init")
+	gitCommit(t, repo, "commit", "-m", "init")
 	t.Chdir(repo)
 
 	rootSHA := gitCmd(t, repo, "rev-list", "--max-parents=0", "HEAD")
@@ -544,8 +563,7 @@ func TestHistoryShowSanitisesTranscriptBody(t *testing.T) {
 // token is rejected at the boundary, and that the derived-priority view renders
 // unblocked-first with a [blocked-by …] annotation on the blocked row.
 func TestCaptureBlockedByWiredAndAnnotated(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	_ = captureLedgerRepo(t)
 
 	// iss-1: the blocker target (minor, unblocked).
 	out := runCLI(t, "capture", "root cause", "--slug", "root", "--json")
@@ -807,7 +825,7 @@ func hermeticGitRepo(t *testing.T) (repo, rootSHA string) {
 	gitCmd(t, repo, "init", "-q")
 	gitCmd(t, repo, "config", "user.email", "dev@example.com")
 	gitCmd(t, repo, "config", "user.name", "Dev")
-	gitCmd(t, repo, "commit", "-q", "--allow-empty", "-m", "root")
+	gitCommit(t, repo, "commit", "-q", "--allow-empty", "-m", "root")
 	rootSHA = gitCmd(t, repo, "rev-list", "--max-parents=0", "HEAD")
 	t.Chdir(repo)
 	return repo, rootSHA
@@ -915,5 +933,89 @@ func TestAhoyDoctorResolvesCentralLocationFromIndex(t *testing.T) {
 	}
 	if !staleFound {
 		t.Fatalf("doctor did not resolve the central location from index.json (no history.path_stale): %+v", stale.AuditGaps)
+	}
+}
+
+// TestAhoyDoctorJSONCarriesNoHomePrefix is the surface pin for
+// GHSA-m8pg-chhv-hxvq: a stale registered path under the home directory must
+// reach doctor's JSON in tilde form, never as the raw absolute path.
+func TestAhoyDoctorJSONCarriesNoHomePrefix(t *testing.T) {
+	_, _ = hermeticGitRepo(t)
+	runCLI(t, "ahoy", "install", "--yes", "--adopt",
+		"--visibility", "private", "--docs-target", "both",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
+
+	home := os.Getenv("HOME")
+	indexPath := filepath.Join(home, ".abcd", "history", "index.json")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	repos := raw["repos"].([]any)
+	repos[0].(map[string]any)["path"] = filepath.Join(home, "elsewhere", "repo")
+	patched, _ := json.MarshalIndent(raw, "", "  ")
+	if err := os.WriteFile(indexPath, patched, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := runCLI(t, "ahoy", "doctor", "--json")
+	var report struct {
+		AuditGaps []struct {
+			ID     string `json:"id"`
+			Detail string `json:"detail"`
+		} `json:"audit_gaps"`
+	}
+	if err := json.Unmarshal(out, &report); err != nil {
+		t.Fatalf("doctor output not JSON: %v\n%s", err, out)
+	}
+	found := false
+	for _, g := range report.AuditGaps {
+		if g.ID != "history.path_stale" {
+			continue
+		}
+		found = true
+		if strings.Contains(g.Detail, home) {
+			t.Fatalf("path_stale detail leaks the home directory: %q", g.Detail)
+		}
+		if !strings.Contains(g.Detail, "~/elsewhere/repo") {
+			t.Fatalf("path_stale detail = %q, want the registered path in tilde form", g.Detail)
+		}
+	}
+	if !found {
+		t.Fatalf("doctor reported no history.path_stale: %+v", report.AuditGaps)
+	}
+	if strings.Contains(string(out), home) {
+		t.Fatalf("doctor --json carries the home directory somewhere in its output:\n%s", out)
+	}
+}
+
+// TestAhoyDoctorNamesTheDiagnosticsNoInstallCanFix: doctor's text render is the
+// read-only surface an operator reaches for when something is wrong, and it
+// printed two integers. A required gap that is deliberately NOT resolvable —
+// config.malformed is the case that matters, since abcd will never touch the
+// file again until a human repairs it — is exactly the one no later `install`
+// will clear, so a count that cannot be acted on is the wrong report. Name each
+// such diagnostic and its detail.
+func TestAhoyDoctorNamesTheDiagnosticsNoInstallCanFix(t *testing.T) {
+	repo, _ := hermeticGitRepo(t)
+	runCLI(t, "ahoy", "install", "--yes", "--adopt",
+		"--visibility", "private", "--docs-target", "both",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
+
+	cfg := filepath.Join(repo, ".abcd", "config.json")
+	if err := os.WriteFile(cfg, []byte("{\"repo\":{\"visibility\":\"private\"}\n<<<<<<<\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := string(runCLI(t, "ahoy", "doctor"))
+	if !strings.Contains(out, "config.malformed") {
+		t.Fatalf("doctor did not name the diagnostic no install can fix:\n%s", out)
+	}
+	if !strings.Contains(out, "could not be parsed") {
+		t.Fatalf("doctor named the gap but not what is wrong with it:\n%s", out)
 	}
 }

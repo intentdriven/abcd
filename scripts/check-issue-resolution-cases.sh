@@ -74,6 +74,53 @@ expect() {
 	esac
 }
 
+# expect_refusal_naming <repo> <label> <pattern> -- <gate args...>
+#
+# The message half of a refusal. On a branch 235 commits behind main RS001's
+# exit code was right and its text was wrong (iss-2609012023256534): 84
+# violations, each telling the reader to resolve a record the base already held
+# as terminal, and not one line naming the rebase that was the only remedy. A
+# gate that refuses for the right reason and diagnoses the wrong one sends the
+# reader to fix the wrong thing, so these cases assert the diagnosis as well as
+# the refusal: exit 1, AND the output carries the pattern.
+expect_refusal_naming() {
+	local repo="$1" label="$2" pattern="$3"
+	shift 4
+	local out rc=0
+	out="$(cd "$repo" && bash "$GATE" "$@" 2>&1)" || rc=$?
+	if [ "$rc" -ne 1 ]; then
+		printf 'cases: FAIL %s — expected a refusal (exit 1), got exit %d:\n%s\n' "$label" "$rc" "$out" >&2
+		failures=$((failures + 1))
+	elif ! printf '%s\n' "$out" | grep -qE -- "$pattern"; then
+		printf 'cases: FAIL %s — refused, but the message does not carry the diagnosis (want /%s/):\n%s\n' "$label" "$pattern" "$out" >&2
+		failures=$((failures + 1))
+	else
+		printf 'cases: ok   %s (refused, naming the diagnosis)\n' "$label"
+	fi
+}
+
+# expect_refusal_not_naming <repo> <label> <pattern> -- <gate args...>
+#
+# The mirror: a refusal whose message must NOT carry the pattern. A remedy that
+# is right for one shape and wrong for its neighbour is the drift this pins —
+# a rebase cures a stale branch and cures nothing for a trailer that names an
+# issue resolved before the branch ever diverged.
+expect_refusal_not_naming() {
+	local repo="$1" label="$2" pattern="$3"
+	shift 4
+	local out rc=0
+	out="$(cd "$repo" && bash "$GATE" "$@" 2>&1)" || rc=$?
+	if [ "$rc" -ne 1 ]; then
+		printf 'cases: FAIL %s — expected a refusal (exit 1), got exit %d:\n%s\n' "$label" "$rc" "$out" >&2
+		failures=$((failures + 1))
+	elif printf '%s\n' "$out" | grep -qE -- "$pattern"; then
+		printf 'cases: FAIL %s — refused, but the message names a remedy that does not apply (/%s/):\n%s\n' "$label" "$pattern" "$out" >&2
+		failures=$((failures + 1))
+	else
+		printf 'cases: ok   %s (refused, without the misleading remedy)\n' "$label"
+	fi
+}
+
 # newrepo makes a scratch repo with one baseline commit and an open issue.
 newrepo() {
 	local d="$tmproot/$1"
@@ -187,6 +234,130 @@ git -C "$d" commit -qm "fix: address a fresh finding
 
 Resolves: iss-777"
 expect pass "$d" "RS001 trailer with a same-change capture-and-resolve" -- commits main HEAD
+
+# --- RS001 on a stale branch: the diagnosis, not just the refusal -------------
+#
+# The shape that produced 84 misdirected violations (iss-2609012023256534): the
+# branch resolved its issue honestly, the work was squash- or rebase-merged so
+# the BASE now holds the moved record too, and the branch was never rebased. The
+# two-dot diff of the two trees shows the record entering nothing, because both
+# trees already hold it in resolved/, so the trailer goes unsatisfied within the
+# range. The refusal stands — a rebase makes the range honest, and the merged
+# commits vanish from it — but the message must say what the script can prove:
+# the record is already terminal at the base, which base-side commit put it
+# there, how far behind the head is, and that a rebase is the remedy.
+d="$(newrepo rs001-stale-branch)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+# The squash merge of that same work, landing on main after the branch diverged.
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something (squash of work)"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 on a stale branch names the base-side resolution and a rebase" \
+	"already sits in $ISS_DIR/resolved/ at main .*squash of work.*1 commit\\(s\\) behind main.*[Rr]ebase onto main" -- commits main HEAD
+
+# The neighbour a rebase does NOT cure: the record was terminal at the merge
+# base, before the branch diverged, and a branch commit still claims to resolve
+# it. The trailer is simply wrong, and the remedy is to drop it. The base holds
+# an unrelated commit the head lacks, so a behind-count alone cannot tell the
+# two apart — only the base-side history of the record can.
+d="$(newrepo rs001-terminal-before-divergence)"
+git -C "$d" checkout -q main
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve a stale issue"
+git -C "$d" checkout -q -B work main
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something else
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+echo "unrelated" >"$d/unrelated.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: unrelated base-side commit"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 on a record terminal before divergence says to drop the trailer" \
+	"already sat in $ISS_DIR/resolved/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 on a record terminal before divergence does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+# A trailer naming a record the head tree does not hold at all, while the base
+# does: the branch predates the record (a cherry-pick from main onto a stale
+# branch produces exactly this). The rebase brings the record; the message must
+# say the record is missing HERE and present THERE, not "resolve it in this
+# change", which cannot be done for a record the tree lacks.
+d="$(newrepo rs001-record-absent-here)"
+git -C "$d" checkout -q main
+cat >"$d/$ISS_DIR/resolved/iss-555-born-on-main.md" <<'EOF'
+---
+schema_version: 1
+id: "iss-555"
+---
+A record captured and resolved on main after the branch diverged.
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: on main
+
+Resolves: iss-555"
+git -C "$d" checkout -q work
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: replayed onto the stale branch
+
+Resolves: iss-555"
+expect_refusal_naming "$d" "RS001 on a record absent from the head names the base's copy and a rebase" \
+	"iss-555 has no record at HEAD, while main holds it in $ISS_DIR/resolved/.*[Rr]ebase onto main" -- commits main HEAD
+
+# A trailer naming an id no ref holds: a typo, or an uncommitted capture. No
+# rebase helps; the message must say the record exists nowhere.
+d="$(newrepo rs001-record-absent-everywhere)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-404"
+expect_refusal_naming "$d" "RS001 on an id with no record anywhere says so" \
+	"iss-404 has no record at HEAD or at main" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 on an id with no record anywhere does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+# The stale-branch diagnosis on a record whose slug carries a non-ASCII byte.
+# `git ls-tree --name-only` C-quotes such a path ("…/iss-998-\303\251.md",
+# quotes included), so a locator reading it unquoted takes the opening quote as
+# the status folder and the diagnosis silently falls back to the generic text
+# (iss-2609012047552618). Same topology as the stale-branch case above; the
+# only difference is the slug.
+d="$(newrepo rs001-stale-branch-nonascii)"
+cat >"$d/$ISS_DIR/open/iss-998-é.md" <<'EOF'
+---
+schema_version: 1
+id: "iss-998"
+---
+A fixture issue with an accented slug.
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: capture with an accented slug"
+git -C "$d" checkout -q main
+git -C "$d" merge -q --ff-only work
+git -C "$d" checkout -q work
+git -C "$d" mv "$ISS_DIR/open/iss-998-é.md" "$ISS_DIR/resolved/iss-998-é.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-998"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-998-é.md" "$ISS_DIR/resolved/iss-998-é.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something (squash of work)"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 on a stale branch diagnoses a record with a non-ASCII slug" \
+	"iss-998 already sits in $ISS_DIR/resolved/ at main .*squash of work.*[Rr]ebase onto main" -- commits main HEAD
 
 # --- RS002: a stamp added here must name a reachable commit ------------------
 
@@ -317,6 +488,90 @@ echo x >"$d/README.md"
 git -C "$d" add -A
 git -C "$d" commit -qm "baseline"
 expect pass "$d" "an actually-empty ledger still passes loudly" -- ledger HEAD
+
+# --- the sibling record families are outside the gate's scope ----------------
+#
+# The ledger root now holds readings/<run-id>/ and dispositions/<item-id>/, whose
+# files are NOT issue records. RS002 and RS003 read the frontmatter of every .md
+# under the pathspec and treat an indented `commit:` key as a resolution stamp, so
+# an unscoped gate would reachability-check a value in one of these and refuse a
+# clean tree. The gate scopes to the status directories; these two fixtures are
+# what prove it, in the only direction that can regress — a record the gate must
+# ignore.
+#
+# The frontmatter below deliberately carries that indented `commit:` shape. The
+# record schemas do not mint one today, and that is exactly why the fixture spells
+# it out: the gate reads BYTES under a pathspec, not schemas, so what protects
+# these families is the scope and nothing else. A fixture that relied on today's
+# field list would pass unscoped and prove nothing.
+
+d="$(newrepo reading-record-ignored)"
+mkdir -p "$d/$ISS_DIR/readings/rdg-1"
+cat >"$d/$ISS_DIR/readings/rdg-1/rdi-2.md" <<'EOF'
+---
+schema_version: 1
+id: "rdi-2"
+run: "rdg-1"
+manifest: "sha256:beef"
+position: "detection"
+regime: "registrative"
+pattern: "a stated constraint"
+tension: "the two sides disagree"
+constraint_in_play: "the stated invariant"
+why_a_tension: "one of them must give"
+cited_by:
+  commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+---
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: ingest a reading run"
+expect pass "$d" "a reading record is outside the gate's scope" -- ledger HEAD
+expect pass "$d" "a reading record is outside the commits scan too" -- commits main HEAD
+
+d="$(newrepo disposition-ignored)"
+mkdir -p "$d/$ISS_DIR/dispositions/rdi-2"
+cat >"$d/$ISS_DIR/dispositions/rdi-2/dsp-3.md" <<'EOF'
+---
+schema_version: 1
+id: "dsp-3"
+item: "rdi-2"
+state: "accepted"
+disposition_grounds: "worth acting on"
+cited_by:
+  commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+---
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: answer a reading item"
+expect pass "$d" "a disposition is outside the gate's scope" -- ledger HEAD
+expect pass "$d" "a disposition is outside the commits scan too" -- commits main HEAD
+
+d="$(newrepo admission-ignored)"
+mkdir -p "$d/$ISS_DIR/admissions/rdg-1" "$d/$ISS_DIR/surprises"
+cat >"$d/$ISS_DIR/admissions/rdg-1/adm-4.md" <<'EOF'
+---
+schema_version: 1
+id: "adm-4"
+run: "rdg-1"
+proposal: "rdi-2"
+grounds: "the configuration it admits is one the frame does not hold"
+cited_by:
+  commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+---
+EOF
+cat >"$d/$ISS_DIR/surprises/srp-5.md" <<'EOF'
+---
+schema_version: 1
+id: "srp-5"
+occasioned_by: "rdi-2"
+cited_by:
+  commit: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+---
+EOF
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: admit a proposal and record a surprise"
+expect pass "$d" "the step-2 records are outside the gate's scope" -- ledger HEAD
+expect pass "$d" "the step-2 records are outside the commits scan too" -- commits main HEAD
 
 if [ "$failures" -gt 0 ]; then
 	printf 'cases: FAILED — %d case(s) did not behave\n' "$failures" >&2

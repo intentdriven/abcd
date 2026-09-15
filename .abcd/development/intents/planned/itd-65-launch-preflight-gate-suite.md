@@ -64,6 +64,10 @@ abcd's whole thesis is routing the risks a non-expert cannot see to a fail-close
 - Forking or reimplementing any scanner — configure and wrap the trusted ones.
 - Publishing anything: this intent decides go/no-go; it never pushes.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

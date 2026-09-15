@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "rules": {
+    "record_schema": {
+      "enabled": true,
+      "severity": "blocker",
+      "record_stores": {
+        "adr": ".abcd/development/decisions/adrs",
+        "itd": ".abcd/development/intents",
+        "spc": ".abcd/development/specs",
+        "iss": ".abcd/work/issues",
+        "rdi": ".abcd/work/issues/readings",
+        "dsp": ".abcd/work/issues/dispositions",
+        "adm": ".abcd/work/issues/admissions",
+        "rdg": ".abcd/development/readings"
+      }
+    }
+  }
+}

@@ -33,5 +33,5 @@ For each entry:
 
 - **Status:** open (not resolved)
 - **What's at stake:** capture's triage routes (defect fix / promote / brief fix / wontfix) force frame-level unease into artefact-level fixes. A hold route — non-articulation recorded as data, carrying axes and exiting by articulation — needs a home: a new ledger state, a brief section, or a record family of its own; each choice shapes what automated reviewers may read.
-- **Current best guess:** none recorded yet — candidate RFC or intent, decomposed before filing.
-- **Source:** ledger seed `iss-2608220750029991` (hold route missing from capture triage).
+- **Current best guess:** none recorded yet for the home — candidate RFC or intent, decomposed before filing. **Narrowed meanwhile:** the disposition record (cold-reading workstream) reserves the two-axis hold field — frame-location crossed with MoSCoW priority — present in its schema and unpopulated, so whatever home is chosen inherits one taxonomy rather than reconciling two; a hold is directional, carrying an `exit_condition`, and exits by articulation, never by silent expiry.
+- **Source:** ledger seed `iss-2608220750029991` (hold route missing from capture triage); the reserved field lands with the detection-and-disposition-records intent.

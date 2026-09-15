@@ -40,8 +40,7 @@ func intentDraftCount(t *testing.T, root string) int {
 // typo for `link` followed by an itd id) must be refused with a did-you-mean and
 // must not file a draft. Before the fix it was swallowed as create text.
 func TestIntentTypoSubcommandNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "lnk", "itd-5")
 	if err == nil {
@@ -58,8 +57,7 @@ func TestIntentTypoSubcommandNeverWrites(t *testing.T) {
 // TestIntentTypoLoneTokenNeverWrites covers the lone-token shape: `intent paln`
 // (a typo for `plan`, no trailing arg) must be refused, not filed.
 func TestIntentTypoLoneTokenNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "paln")
 	if err == nil {
@@ -81,8 +79,7 @@ func TestIntentTypoLoneTokenNeverWrites(t *testing.T) {
 func TestIntentIdShapeDistinguishesTypoFromProse(t *testing.T) {
 	// itd/spc second token -> shaped like a subcommand call -> refused.
 	for _, id := range []string{"itd-5", "spc-2"} {
-		repo := t.TempDir()
-		t.Chdir(repo)
+		repo := intentTestRepo(t)
 		out, err := runCLIErr(t, "intent", "lnk", id)
 		if err == nil {
 			t.Fatalf("intent lnk %s must be refused as a typoed subcommand, got:\n%s", id, out)
@@ -92,8 +89,7 @@ func TestIntentIdShapeDistinguishesTypoFromProse(t *testing.T) {
 		}
 	}
 	// Same first token, prose second token -> a genuine title -> still files.
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 	runCLI(t, "intent", "lnk", "widen", "the", "public", "api")
 	if n := intentDraftCount(t, repo); n != 1 {
 		t.Fatalf("a prose title after a verb-ish first word wrote %d draft(s), want 1", n)
@@ -104,8 +100,7 @@ func TestIntentIdShapeDistinguishesTypoFromProse(t *testing.T) {
 // genuine multi-word draft title whose first word resembles a subverb but is
 // followed by prose (not a record id) still files.
 func TestIntentFreeTextTitleStillWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out := runCLI(t, "intent", "plans", "the", "release", "cadence", "for", "next", "quarter", "--json")
 	var r struct {
@@ -114,8 +109,8 @@ func TestIntentFreeTextTitleStillWrites(t *testing.T) {
 	if err := json.Unmarshal(out, &r); err != nil {
 		t.Fatalf("intent output not JSON: %v\n%s", err, out)
 	}
-	if r.ID != "itd-1" {
-		t.Fatalf("free-text draft id = %q, want itd-1", r.ID)
+	if !cliNativeIntentIDRe.MatchString(r.ID) {
+		t.Fatalf("free-text draft id = %q, want a native itd id", r.ID)
 	}
 	if n := intentDraftCount(t, repo); n != 1 {
 		t.Fatalf("free-text draft wrote %d draft(s), want 1", n)
@@ -125,8 +120,7 @@ func TestIntentFreeTextTitleStillWrites(t *testing.T) {
 // TestIntentAuditRenameCleanBreak (spc-28): the audit spelling is live and the
 // old review spelling is an unknown sub-command — a clean break, no alias.
 func TestIntentAuditRenameCleanBreak(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	intentTestRepo(t)
 	if _, err := runCLIErr(t, "intent", "review", "itd-1"); err == nil ||
 		!strings.Contains(err.Error(), "unknown") {
 		t.Fatalf("intent review must be an unknown sub-command after the rename, got: %v", err)
@@ -163,8 +157,7 @@ func TestIntentAuditRenameCleanBreak(t *testing.T) {
 // TestIntentLoneWordNeverWrites is the headline: a single bare word that is not
 // a sub-verb and is not near one must be refused, and must file no draft.
 func TestIntentLoneWordNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "nosuchthing")
 	if err == nil {
@@ -179,8 +172,7 @@ func TestIntentLoneWordNeverWrites(t *testing.T) {
 // actually types: `abcd intent itd-5` (a forgotten sub-verb) must not become a
 // draft whose title is a record id.
 func TestIntentLoneRecordIDNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "itd-5")
 	if err == nil {
@@ -196,8 +188,7 @@ func TestIntentLoneRecordIDNeverWrites(t *testing.T) {
 // quotes), and it must still file. A fix that refused every single-argument
 // invocation would break the documented create path, and this catches it.
 func TestIntentQuotedProseStillWritesAsOneArg(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	runCLI(t, "intent", "widen the public api")
 	if n := intentDraftCount(t, repo); n != 1 {
@@ -207,8 +198,7 @@ func TestIntentQuotedProseStillWritesAsOneArg(t *testing.T) {
 
 // TestIntentEmptyTextNeverWrites is the intent half of the empty-positional case.
 func TestIntentEmptyTextNeverWrites(t *testing.T) {
-	repo := t.TempDir()
-	t.Chdir(repo)
+	repo := intentTestRepo(t)
 
 	out, err := runCLIErr(t, "intent", "")
 	if err == nil {
@@ -219,5 +209,97 @@ func TestIntentEmptyTextNeverWrites(t *testing.T) {
 	}
 	if n := intentDraftCount(t, repo); n != 0 {
 		t.Fatalf("an empty draft title filed %d draft(s); it must write nothing", n)
+	}
+}
+
+// iss-2609091647589392: the FAR-miss half of the same hole. The typo guard
+// decided first whether the arguments were shaped like a subcommand call — a
+// token followed by a record id satisfies that shape — and then refused only
+// when some registered sub-verb lay within an edit distance of two. A word
+// nothing like `plan`, `ready`, `link` or `audit` therefore passed a guard that
+// had already concluded the input was a subcommand call, and was filed as the
+// title of a draft in the durable record tier.
+
+// TestIntentFarMissSubcommandNeverWrites is the headline: `intent nosuchverb itd-5`
+// is shaped like a subcommand call and `nosuchverb` is no sub-verb of any distance,
+// so it must be refused at exit 2 with the registered sub-verbs named, and must
+// file no draft.
+func TestIntentFarMissSubcommandNeverWrites(t *testing.T) {
+	repo := intentTestRepo(t)
+
+	out, err := runCLIErr(t, "intent", "nosuchverb", "itd-5")
+	if err == nil {
+		t.Fatalf("expected an error for the far-missed subcommand, got success:\n%s", out)
+	}
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("far-missed subcommand exited %d, want 2 (usage): %v", code, err)
+	}
+	if !strings.Contains(err.Error(), "nosuchverb") {
+		t.Fatalf("expected the refusal to quote the unknown token, got: %v", err)
+	}
+	for _, sub := range []string{"plan", "ready", "link", "audit"} {
+		if !strings.Contains(err.Error(), sub) {
+			t.Fatalf("expected the refusal to list the sub-verb %q, got: %v", sub, err)
+		}
+	}
+	if n := intentDraftCount(t, repo); n != 0 {
+		t.Fatalf("a far-missed subcommand filed %d draft(s); it must write nothing", n)
+	}
+}
+
+// TestIntentNearMissKeepsDidYouMean pins the half that must NOT change: a
+// near-miss still names the one sub-verb it is near, rather than degrading into
+// the far-miss listing.
+func TestIntentNearMissKeepsDidYouMean(t *testing.T) {
+	intentTestRepo(t)
+
+	_, err := runCLIErr(t, "intent", "lnk", "itd-5")
+	if err == nil {
+		t.Fatalf("expected an error for the near-missed subcommand")
+	}
+	if !strings.Contains(err.Error(), "did you mean") || !strings.Contains(err.Error(), `"link"`) {
+		t.Fatalf("expected a did-you-mean naming link, got: %v", err)
+	}
+}
+
+// TestIntentFarMissProseStillWrites is the precision half: the same unknown
+// first token followed by PROSE rather than a record id is a genuine title and
+// still files. The far-miss refusal keys on the subcommand shape, not on the
+// first word alone.
+func TestIntentFarMissProseStillWrites(t *testing.T) {
+	repo := intentTestRepo(t)
+
+	runCLI(t, "intent", "nosuchverb", "the", "release", "gate", "before", "cutting")
+	if n := intentDraftCount(t, repo); n != 1 {
+		t.Fatalf("prose after an unknown first word wrote %d draft(s), want 1", n)
+	}
+}
+
+// TestIntentRetiredSubverbSurvivesFarMissBranch: the retired spelling is
+// refused naming its SUCCESSOR, not by the far-miss listing — the far-miss
+// branch runs after the retired lookup and must not swallow it.
+func TestIntentRetiredSubverbSurvivesFarMissBranch(t *testing.T) {
+	intentTestRepo(t)
+
+	_, err := runCLIErr(t, "intent", "review", "itd-1")
+	if err == nil {
+		t.Fatalf("expected an error for the retired sub-verb")
+	}
+	if !strings.Contains(err.Error(), `"audit"`) {
+		t.Fatalf("expected the retired spelling to name its successor audit, got: %v", err)
+	}
+}
+
+// TestIntentQuotedProseBeforeRecordIDStillWrites pins the precision boundary of
+// the far-miss branch: a sub-verb spelling is ONE whitespace-free token, so a
+// quoted multi-word first argument is prose even when a record id follows it,
+// and it still files. Without that half the far-miss refusal would reach a
+// legitimate title a user happened to end with an id.
+func TestIntentQuotedProseBeforeRecordIDStillWrites(t *testing.T) {
+	repo := intentTestRepo(t)
+
+	runCLI(t, "intent", "widen the public api", "itd-5")
+	if n := intentDraftCount(t, repo); n != 1 {
+		t.Fatalf("quoted prose before a record id wrote %d draft(s), want 1", n)
 	}
 }

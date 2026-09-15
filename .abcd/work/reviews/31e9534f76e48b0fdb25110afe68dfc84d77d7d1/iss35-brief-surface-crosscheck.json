@@ -1,0 +1,254 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "31e9534f76e48b0fdb25110afe68dfc84d77d7d1"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-09-02T08:34:49Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:790aaec8dbde790dcc20766e29afbf85ce044fd4a31bbd851318fc4e564a6f11",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:d6c104306721c7f537f03b3e630fba2a88b977d78e204436939dfdcfc1aa8c6d",
+    "briefVersion": "0.7.1"
+  },
+  "categories": {
+    "stale-count": 3,
+    "false-claim": 23,
+    "undocumented-surface": 0,
+    "fictional-layout": 2,
+    "criterion-violation": 0
+  },
+  "failing": [
+    {
+      "id": "b-1",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/07-memory.md:3: claim: \"Every bare spc-38/spc-39 on this page is a predecessor-store id cited as provenance - neither id names a spec in this repo's store (.abcd/development/specs/), whose own ids stop well short of spc-38.\" / reality: Both ids now name specs in this repo's store: .abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and-reads-the-whole-developm.md and .abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects-one-relationship-chart.md. The store's highest id is spc-70 (.abcd/development/specs/open/spc-70-abcd-s-presence-should-be-visible-in-the-host-harness-s-stat.md), so the ids do not 'stop well short of spc-38' - they run past it. The disambiguation note is inverted: the collision it denies is exactly what exists, and a reader following spc-38/spc-39 lands on the record-explorer and relationship-chart specs, not the memory write core / memory-coverage lints.",
+      "disposition": "deferred",
+      "note": "Design-record prose, not a user-facing page; corrected as iss-2609020734198139 after the tag."
+    },
+    {
+      "id": "b-2",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row 20 (/abcd:banlist), final sentence: claim: \"`ahoy` scaffolding of the guard artefacts and the honest-reach line on the status/report surfaces are the remaining slices\" \u2014 i.e. both are unshipped. / reality: Both ship. internal/core/ahoy/banlist_scaffold.go writes the five artefacts (.githooks/pre-commit, .githooks/pre-merge-commit, .gitattributes EOL pin, the empty banned_tokens family, the private stub), and banlist.PrivateReachNote (internal/core/banlist/banlist.go:90) is carried unconditionally on ahoy's status/report surfaces (banlist_scaffold.go:428,449). 20-banlist.md documents both as shipped behaviour.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-3",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "Metaphor exemptions, `/abcd` (bare, top-level) row: claim: \"the namespace root renders status + help (`status` / `help` are byte-identical aliases)\" / reality: The binary registers no `status` verb: `abcd status` is refused with `abcd: unknown command \"status\" for \"abcd\"`, and `abcd help` prints cobra command usage, not the status board. 04-surfaces/README.md row 8 states the opposite (\"there is no `status` alias\").",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-4",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "maritime table, `/abcd:ahoy dry-run` row: claim: \"Drives the Claude Code skill's two-pass approval protocol\" \u2014 an ahoy skill surface. / reality: abcd ships zero skills; there is no skills/ directory in the tree. ahoy's only markdown surface is commands/ahoy.md.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-5",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "Metaphor exemptions `/abcd:intent grill` row, and the \"Earned sub-verbs\" list: claim: \"Lives as a sub-verb of `/abcd:intent`\" and `/abcd:intent grill <itd-N>` listed among earned sub-verbs with no design-target marker (neighbouring entries `/abcd:audit chain` and `/abcd:oracle ask` are marked design targets). / reality: `abcd intent` registers audit, link, new, plan, ready only \u2014 no `grill`. 05-internals/08-skills.md records grill as a design target.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-6",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "Reserved vocabulary table, `force_refresh_every_n` row: claim: \"Integer; default 5.\" / reality: internal/core/rules/inject.go:50 `const DefaultRefreshBackstop = 15`; LoadBackstop falls back to it on a missing/non-positive key. 05-internals/03-configuration.md documents 15.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-7",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "Agent prompt frontmatter table, `reads_untrusted_input` row: claim: \"a fixture-presence prompt-lint in `internal/core/lint` is a design target \u2014 no shipped check enforces it (the M6 agents ship conforming files, not the linter)\" / reality: internal/core/lint/agentcontract.go ships the `agent_contract` rule whose second sub-check is exactly \"the injection-canary fixture every untrusted-input agent must ship\"; the rule is enabled as a blocker in .abcd/record-lint.json (\"agent_contract\" entry). The same rule also enforces prompt_version and capability_scope.task_classes/designed_for presence.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-8",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": "\u00a7 3 Plugin shape \u2014 directory layout (repository tree block): claim: `internal/adapter/` carries five seam subdirectories \u2014 `oracle/`, `history/`, `spec/`, `run/`, `scanner/` \u2014 \"each: interface + native default + optional plug-in\", and `internal/registry/` holds the wired-adapter registry (also referenced by the config.json `adapters` block comment). / reality: internal/adapter/ contains only `gitleaks/` and `scanner/`. There is no internal/adapter/{oracle,history,spec,run} and no internal/registry directory in the tree. internal/surface/ contains only `cli` (mcp is correctly marked \"later\").",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-9",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 2 `abcd dev-sync` triggers, and the dev_sync config block / source\u2192target table throughout: claim: \"Manual: `abcd dev-sync` CLI for ad-hoc refresh\", plus `dev-sync memory`, `dev-sync reviews`, `dev-sync work`, `dev-sync rp` as live invocations. / reality: The binary registers no `dev-sync` verb (`abcd --help` lists none; no dev-sync string in internal/surface). None of the sub-forms exist. No design-target marker on the CLI claim.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-10",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 The voyage store, layout block: claim: \"`from/<timestamp>/` opt-in via `embark --archive`: verbatim copy of the input lifeboat\" / reality: `abcd embark from <lifeboat-dir> [target-dir]` registers no flags at all beyond --help/--json; there is no `--archive`.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-11",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 `.abcd/config.json`, `embark` block: claim: \"`scan`: true // default: include `embark scan` discovery in onboarding suggestions\" / reality: `abcd embark` registers exactly two sub-verbs, `from` and `probe`. There is no `embark scan`.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-12",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 The voyage store and \u00a7 3 layout notes: claim: The disembark invocation is written as `abcd disembark <source-repo> to <dest>`. / reality: The shipped form is `abcd disembark pack <repo> <dest>`; there is no `to` operand and no bare-positional disembark form. 04-surfaces/README.md row 2 uses the shipped spelling.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-13",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "\u00a7 3, `.abcd/` namespace block, `config/` line: claim: \"config/ # per-surface machine records: identity.json, launch-payload.json, version-location.json\" / reality: .abcd/config/ also holds reading-presets.json (the committed cold-reading preset store the reading assembler reads).",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-14",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\"C \u2014 Prompt linter\" paragraph: claim: \"The linter is a **design target** \u2026 no `PromptLinter` exists in `internal/core/lint` yet (the agent files carry conforming frontmatter, but the linter that will enforce it is not built). **The mechanical itd-5 floor (`PQ001`\u2013`PQ006`), not yet shipped:** `prompt_version` present \u2026; `capability_scope` present and well-formed; \u2026 canary-fixture *presence* when `reads_untrusted_input: true` is declared.\" / reality: That floor ships under a different rule name: internal/core/lint/agentcontract.go implements the `agent_contract` rule over agents/*.md \u2014 trust-contract frontmatter (prompt_version, reads_untrusted_input, capability_scope.task_classes, capability_scope.designed_for), injection-canary fixture presence, and a per-agent CHANGELOG entry \u2014 and it is enabled as a blocker in .abcd/record-lint.json. Only the task_classes set-membership check is genuinely absent.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-15",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "\"What's a command?\" section, final sentence of the eighteen-commands paragraph (and the bullet at line 15): claim: \"Three further binary verbs \u2014 `changelog`, `rules`, and `spec` \u2014 expose a Go verb but no `commands/` file, so they are CLI-only.\" / reality: Five do: the binary also registers `hook` (with prompt-router, prompt-router-reset, session-start, session-end) and `completion`, neither of which has a commands/ file. 04-surfaces/README.md \u00a7 Operator-internal verbs enumerates all five.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-16",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": "\u00a7 0. Go scaffold + core/adapter skeleton: claim: The scaffold stands up \"`internal/adapter/` (the five seams \u2014 oracle | history | spec | run | scanner \u2014 each an interface plus a stub native default); `internal/registry`\". / reality: internal/adapter/ holds only gitleaks/ and scanner/; there is no internal/registry directory. Stated as a completed milestone-0 layout with no design-target marker.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-17",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 1. Install (ahoy) + launch, Install bullet: claim: \"`/abcd:ahoy` end-to-end: `abcd init`, `abcd config get|set` \u2026\" / reality: Neither verb is registered: `abcd init` and `abcd config get` both return `abcd: unknown command`. Configuration is written by `abcd ahoy install`; there is no config verb.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-18",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 6. Lifeboat round-trip, disembark bullet; and \u00a7 Validation cadence: claim: The invocation `abcd disembark <source-repo> to <dest>` / `/abcd:disembark <corpus-repo> to <dest>`. / reality: The shipped form is `abcd disembark pack <repo> <dest>`; no `to` operand exists.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-19",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "\u00a7 Validation cadence: claim: \"or the relevant preview sub-verb \u2014 `probe` for the read-only coverage report, `dry-run` for the full plan without writes\". / reality: `abcd disembark` registers coverage, graveyard, pack, plan, press-release, principles, probe, review \u2014 there is no `dry-run` sub-verb; the write-free full plan is `disembark plan`.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-20",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Capture promote (spc-30, itd-46 \u2014 LIVE)\": claim: \"Skill-orchestrated (lock-acquire \u2192 promote-inspect \u2192 seed+interview \u2192 promote-link \u2192 release); never a `capture promote` CLI sub-verb.\" / reality: `abcd capture promote <iss-N> --grounds \"<token>: <text>\"` is a registered CLI sub-verb (also accepting `promote <rdi-N>`, `--intent`, `--production-mode`). 04-surfaces/README.md row 6 documents it as the native verb per spc-24/itd-119. abcd also ships zero skills, so no skill orchestrates it.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-21",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Embark source lookup\": claim: Scenarios (2)\u2013(4) exercise `embark scan`, `embark scan` with no candidates, and `embark scan --deep`. / reality: `abcd embark` registers only `from` and `probe`. There is no `scan` sub-verb and no `--deep` flag.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-22",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Embark emptiness\": claim: \"Non-empty\u2192refuse; `--force`\u2192conflict-report.md; only .git/+LICENSE\u2192succeed\". / reality: `abcd embark from` registers no flags beyond --help/--json; there is no `--force` and no conflict-report.md path. The shipped behaviour (04-surfaces/03-embark.md) refuses the whole write on any conflict with one bulk report.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-23",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Launch preflight\": claim: \"`/abcd:launch dry-run` prints the would-refuse finding and exits 0\" \u2014 as a sub-verb. / reality: `abcd launch` registers only `scaffold` and `ship`; the preview is the `--dry-run` flag on bare `abcd launch`. 04-surfaces/04-launch.md states plainly that \"the binary has no `dry-run` subcommand\".",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-24",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Launch branch mode\": claim: \"`--mode=branch` \u2192 `launch/<version>` branch; main untouched\". / reality: `abcd launch ship` accepts only `--changelog-json` and `--payload-dir` (plus global `--json`); bare `abcd launch` accepts only `--dry-run`. No `--mode` flag exists, and the verb neither commits nor branches.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-25",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Intent ship\": claim: \"`/abcd:intent ship <itd-N>` \u2192 native spec work handoff \u2026\" / reality: `abcd intent` registers audit, link, new, plan, ready \u2014 no `ship`. 04-surfaces/README.md row 5 lists ship among the design targets; the matrix row carries no marker. Shipping happens via `abcd spec close`.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-26",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Intent help\": claim: \"bare `/abcd:intent` shows intents grouped by state with suggested next actions; same pattern across all abcd commands\". / reality: 04-surfaces/README.md \u00a7 Bare-command-as-status records that the suggested-next-actions half is a design target \u2014 \"no shipped bare invocation emits next actions\" \u2014 and that the bare-board convention is not universal (docs, history, disembark, embark, guard, ideate print usage; launch refuses).",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-27",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "row \"Capability scope (idea-4, itd-5 extension)\": claim: \"`internal/core/lint` validates set-membership at plan-review\". / reality: No set-membership check ships. internal/core/lint/agentcontract.go only requires capability_scope.task_classes to be present and non-empty; 05-internals/01-agents.md and 02-constraints/04-naming.md both record the closed-enum cross-check as unbacked (iss-265, open).",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    },
+    {
+      "id": "b-28",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "rows \"Capture migration (spc-22)\" and \"RP workspace pull\": claim: \"First `dev-sync work` after upgrade \u2026\" and \"`dev-sync rp` (opt-in RP adapter) \u2192 .abcd/rp/workspace.json exists\". / reality: The binary registers no `dev-sync` verb in any form.",
+      "disposition": "deferred",
+      "note": "Design-record prose in an un-gated chapter, not a user-facing page; corrected as iss-2609020735520603 after the tag (the SessionEnd shim gap is iss-2609020735528927)."
+    }
+  ]
+}

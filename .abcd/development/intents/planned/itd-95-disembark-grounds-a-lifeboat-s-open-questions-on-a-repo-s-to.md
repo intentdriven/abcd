@@ -43,6 +43,10 @@ Promoted from the open ledger issue iss-99.
 - **New marker-scanning dependencies.** The adapter reuses abcd's own read surface; adopting an external scanner would be a dependency decision (see SOTA).
 - **The other missing conventions adapters** (`constraints/naming`, `internals`) — those are iss-100 / itd-96, a sibling intent.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md). Some bars below reference decisions still open in § Open Questions; they are written to hold whichever way those resolve._

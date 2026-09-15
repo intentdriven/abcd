@@ -7,6 +7,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"sort"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/identity"
 )
@@ -16,11 +17,17 @@ var (
 	visibilityChoices    = []string{"private", "public"}
 	docsTargetChoices    = []string{"claude_md", "agents_md", "both", "skip"}
 	oracleBackendChoices = []string{"host-delegated", "native", "cli", "api", "mcp"}
+	// scan.deep is a boolean, but it is collected and overridden as a string
+	// through the same choice-set seam as the enums above, so its vocabulary is
+	// declared once here rather than restated at each of the three sites that
+	// judge it (collect-missing, override, would-change).
+	scanDeepChoices = []string{"true", "false"}
 )
 
 const (
 	docsTargetDefault    = "both"
 	oracleBackendDefault = "host-delegated"
+	scanDeepDefault      = "false"
 )
 
 // Detect runs the full detection pass over cwd and returns the canonical
@@ -50,6 +57,12 @@ func Detect(cwd string) (DetectionResult, error) {
 	// kind, surfaced so status reports "dev (tip build)" honestly (never invisible).
 	signals["install_mode"] = detectInstallMode(pluginRoot, pluginOK)
 
+	// The host harness's status line is a machine-scope fact too (spc-70): one
+	// read of the harness's settings, classified, so the board can say whether
+	// abcd's row is wired, absent, foreign, or pointing at an abcd that is gone.
+	harness := readHarnessSettings()
+	signals["statusline"] = string(harness.state)
+
 	// The citation baseline's coverage and age, when this repo has armed the
 	// citation gate (spc-17). Omitted entirely otherwise, so a repo that has not
 	// adopted the gate carries no line about it.
@@ -71,12 +84,15 @@ func Detect(cwd string) (DetectionResult, error) {
 	if kind != UnmanagedFolder {
 		gaps = append(gaps, detectDependencies()...)
 		gaps = append(gaps, detectSkeleton(abs)...)
+		gaps = append(gaps, detectLocalTier(abs)...)
 		gaps = append(gaps, detectIdentity(identity, idx)...)
 		gaps = append(gaps, detectGitIdentity(abs)...)
 		gaps = append(gaps, detectHistoryStore(identity.RootSHA)...)
+		gaps = append(gaps, detectConfigIntegrity(abs)...)
 		gaps = append(gaps, detectConfigValues(abs)...)
 		gaps = append(gaps, detectMarkerDrift(abs)...)
-		gaps = append(gaps, detectPathSymlink(pluginRoot, pluginOK)...)
+		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
+		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
 		// Guard health is computed for every managed or adoptable repo, so a
@@ -300,15 +316,12 @@ func detectHistoryStore(rootSHA string) []Gap {
 	if rootSHA == "" {
 		return gaps
 	}
+	// There is no gap for a missing transcript corpus. The store creates itself
+	// on first use — internal/core/history owns that path and bootstraps it —
+	// so "absent" is the ordinary state of a repo that has not been captured
+	// yet, not a gap install must close. Raising one would have this board
+	// assert that transcripts will not be captured, which is false (iss-95).
 	repoDir := filepath.Join(root, rootSHA)
-	if !fsutil.IsRealDir(filepath.Join(repoDir, "transcripts")) {
-		gaps = append(gaps, Gap{
-			ID: "history.transcripts_missing", Category: SafeAutocreate, Scope: "repo",
-			Title:   "history transcripts/ dir missing",
-			Detail:  "~/.abcd/history/" + shortSHA(rootSHA) + "/transcripts/ is absent or not a real directory.",
-			FixHint: "ahoy install creates the transcript directory.", Required: true, Resolvable: true,
-		})
-	}
 	if !fileExists(filepath.Join(repoDir, "meta.json")) {
 		gaps = append(gaps, Gap{
 			ID: "history.meta_missing", Category: UserState, Scope: "repo",
@@ -317,14 +330,60 @@ func detectHistoryStore(rootSHA string) []Gap {
 			FixHint: "ahoy install writes the per-repo meta.json.", Required: true, Resolvable: true,
 		})
 	}
-	return gaps
+	return append(gaps, detectStoredCredential(rootSHA, repoDir)...)
+}
+
+// detectStoredCredential raises the one gap for a git credential left at rest in
+// the user-level history store — the state a store written before
+// scrubRemoteUserinfo existed is in (GHSA-qc3w-8pv5-crc3).
+//
+// It exists so the heal is REACHABLE. Without a gap, a repo that is otherwise
+// fully installed short-circuits on the idempotency early return and never runs
+// the history step, so a token sits in ~/.abcd/history for the life of the
+// machine no matter how often the operator re-installs. Required and resolvable,
+// because `ahoy install` closes it.
+//
+// The detail names the FILES only, never the value: a gap detail is rendered by
+// every status board, and quoting the credentialed URL would copy the token onto
+// the operator's terminal to tell them it should not be at rest.
+func detectStoredCredential(rootSHA, repoDir string) []Gap {
+	var where []string
+	// The at-rest file, not loadHistoryIndex's scrubbed view of it.
+	if idx, err := readHistoryIndexFile(); err == nil && idx != nil {
+		for _, r := range idx.Repos {
+			if r.Github != "" && scrubRemoteUserinfo(r.Github) != r.Github {
+				where = append(where, "~/.abcd/history/index.json")
+				break
+			}
+		}
+	}
+	if rootSHA != "" {
+		metaPath := filepath.Join(repoDir, "meta.json")
+		if g := metaGithub(metaPath); g != "" && scrubRemoteUserinfo(g) != g {
+			where = append(where, "~/.abcd/history/"+shortSHA(rootSHA)+"/meta.json")
+		}
+	}
+	if len(where) == 0 {
+		return nil
+	}
+	return []Gap{{
+		ID: credentialAtRestGapID, Category: UserState, Scope: "machine",
+		Title:    "git credential at rest in the history store",
+		Detail:   "A registry value carries userinfo (a token or password in a remote URL): " + strings.Join(where, ", ") + ".",
+		FixHint:  "ahoy install rewrites the affected entries without the credential; revoke the token as well — it has been on disk.",
+		Required: true, Resolvable: true,
+	}}
 }
 
 func detectConfigValues(cwd string) []Gap {
 	var gaps []Gap
 	cfg, err := readConfig(cwd)
 	if err != nil {
-		cfg = nil // malformed config is treated as absent for value checks
+		// A config that cannot be parsed has values that are unknown, not
+		// missing: reporting them missing would arm the value collection, which
+		// then rebuilds the file (GHSA-mchq-gm34-3j34). detectConfigIntegrity
+		// raises the one diagnostic for this state.
+		return nil
 	}
 	repo := subMap(cfg, "repo")
 	docs := subMap(cfg, "docs")
@@ -373,7 +432,12 @@ func cfgGap(id, title, detail string) Gap {
 }
 
 func detectMarkerDrift(cwd string) []Gap {
-	cfg, _ := readConfig(cwd)
+	cfg, err := readConfig(cwd)
+	if err != nil {
+		// docs.target is unknowable, so no marker gap may arm a plant into the
+		// default targets (both files) the user never chose.
+		return nil
+	}
 	docs := subMap(cfg, "docs")
 	target, _ := stringVal(docs, "target")
 	files := markerTargets(target)
@@ -403,7 +467,7 @@ func detectMarkerDrift(cwd string) []Gap {
 // detector can no longer report "not installed" while running as that very
 // binary. Every path it renders goes through displayPath, so a gap pasted into
 // an issue carries no username.
-func detectPathSymlink(pluginRoot string, pluginOK bool) []Gap {
+func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 	if !pluginOK {
 		return nil
 	}
@@ -442,6 +506,7 @@ func detectPathSymlink(pluginRoot string, pluginOK bool) []Gap {
 			// Our own track-latest dev shim (abcd ahoy install --dev) — a valid
 			// install, not a foreign occupant. Surfaced via the install_mode signal.
 			installed = true
+			gaps = append(gaps, unrecordedEntryGap(target)...)
 		} else if isOwnedCopyFile(target) {
 			// The spc-35 owned copy: a regular file the data dir's path-entry
 			// vouches for, byte-for-byte. The healthy default install.
@@ -460,12 +525,13 @@ func detectPathSymlink(pluginRoot string, pluginOK bool) []Gap {
 			// Unreadable link: say nothing rather than guess.
 		case resolveSymlinkDest(target, dest) == resolvePath(pluginBinaryPath(pluginRoot)):
 			installed = true
+			gaps = append(gaps, unrecordedEntryGap(target)...)
 			// A working install TODAY, and a casualty of the next plugin
 			// update: the link points into a directory the harness replaces and
 			// garbage-collects (spc-35). Heal-able only while a verified cache
 			// artefact exists to copy from — without one there is nothing
 			// better to offer than the symlink that works.
-			if ownedCopySourceReady() {
+			if ownedCopySourceReady(cwd, pluginRoot) {
 				gaps = append(gaps, Gap{
 					ID: "symlink.legacy", Category: ConfigChange, Scope: "machine",
 					Title:    "PATH entry is a symlink into the plugin root",
@@ -491,6 +557,36 @@ func detectPathSymlink(pluginRoot string, pluginOK bool) []Gap {
 	gaps = append(gaps, detectBinDirOnPath(filepath.Dir(target), installed)...)
 	gaps = append(gaps, detectShadowedEntry(pluginRoot, target)...)
 	return gaps
+}
+
+// unrecordedEntryGap reports an entry abcd owns that ~/.abcd/path-entry does
+// not name. It is the one state where the board and the hooks disagree in
+// silence: the entry is a working install by every filesystem test detection
+// makes, so it reports installed, while every hook shim refuses it at the
+// ownership rung and degrades — the rules loader inactive, the shell guard
+// UNGUARDED, the transcript uncaptured — with nothing on either surface
+// connecting the two.
+//
+// It is a gap and not merely a note because install is gated on gaps: a run
+// with zero actionable gaps returns already_up_to_date without building an
+// apply context, so without this the remedy every surface advertises would
+// write nothing on exactly the machines that need it.
+//
+// The owned copy can never raise it: that shape is CLASSIFIED by the record,
+// so an unrecorded one reads foreign and has its own gap already.
+func unrecordedEntryGap(target string) []Gap {
+	if pathEntryNames(target) {
+		return nil
+	}
+	return []Gap{{
+		ID: "symlink.unrecorded", Category: ConfigChange, Scope: "machine",
+		Title: "PATH entry is not recorded as this machine's abcd",
+		Detail: displayPath(target) + " is abcd's own entry, but ~/.abcd/path-entry does not record it. " +
+			"The plugin's hooks read that record before they will run an abcd off PATH, so they ignore this install: " +
+			"no rules loader, no shell guard, and no transcript capture.",
+		FixHint:  "ahoy install writes the record naming this entry — with --dev if the entry is the track-latest shim, which a plain install replaces with a pinned one.",
+		Required: true, Resolvable: true,
+	}}
 }
 
 // detectShadowedEntry reports an `abcd` that precedes abcd's own entry on PATH.
@@ -587,8 +683,33 @@ func detectHookManifest(pluginRoot string, pluginOK bool) []Gap {
 	}}
 }
 
+// detectConfigIntegrity raises the one diagnostic for a config.json that is
+// present but cannot be parsed (a merge-conflict marker is the usual cause).
+// It is Required so it shows on the status board, and NOT Resolvable, so it is
+// excluded from Remaining and never arms a step: the file is the user's data
+// and repairing it is theirs to do (GHSA-mchq-gm34-3j34). Every other reader of
+// the config returns no gap on the same error, so this is the only line the
+// state produces.
+func detectConfigIntegrity(cwd string) []Gap {
+	if _, err := readConfig(cwd); err != nil {
+		return []Gap{{
+			ID: malformedConfigGapID, Category: ConfigChange, Scope: "repo",
+			Title:    ".abcd/config.json could not be parsed",
+			Detail:   ".abcd/config.json is present but could not be parsed (" + errText(err) + "); its values are unknown and ahoy install will not rewrite it.",
+			FixHint:  "Repair the file by hand — a merge-conflict marker is the usual cause — and re-run ahoy install.",
+			Required: true, Resolvable: false,
+		}}
+	}
+	return nil
+}
+
 func detectVersion(cwd string) []Gap {
-	cfg, _ := readConfig(cwd)
+	cfg, err := readConfig(cwd)
+	if err != nil {
+		// Never install_meta.missing: that gap arms stepVersionStamp, which would
+		// republish the unparseable file as a meta-only one.
+		return nil
+	}
 	meta := subMap(cfg, "meta")
 	setupVersion, hasVersion := stringVal(meta, "setup_version")
 	setupDate, hasDate := stringVal(meta, "setup_date")

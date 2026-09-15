@@ -116,16 +116,25 @@ was willing to consider.
 
 ## Open Questions
 
-- **The escalation rule** (defaults → options when value-laden) awaits
-  explicit sign-off.
-- **One intent vs three at the final round** — whether the closing readiness
-  summary feeds a single intent capture or up to three.
-- **A held working-principle at the final round** — whether the final round
-  may proceed with "mechanism open" recorded as a gap when a working
-  principle is still held.
-- **Where the hold register lives** — ties to the evidence chapter's open
-  question and iss-2608220750029991 (a ledger state, a brief section, or a
-  record family of its own).
+- **The escalation rule — ratified (facilitator, 2026-08-28; decision log):** a
+  defaults question that turns out conjectural escalates to the options
+  regime. The recording obligation is adopted (2026-08-28) on top of the
+  ratified rule: every escalation logged as data (which
+  question, on what grounds), because a question that keeps escalating is
+  a misclassified question and the log is the recalibration evidence.
+- **One intent vs three at the final round — ratified (facilitator, 2026-08-28; decision log):** Round 5 articulates one intent, the exit noting
+  candidates for subsequent articulation — one exercises the machinery
+  without front-loading articulation ahead of crystallisation.
+- **A held working-principle at the final round — ratified (facilitator ruling, 2026-08-28):** Round 5 proceeds with "mechanism open" recorded
+  as a gap and flagged in the readiness summary. Implemented via the
+  claim recording gradient: the mechanism claim recorded as an explicit
+  nullity; an absent section and a recorded nullity are never collapsed.
+- ~~**Where the hold register lives**~~ **Narrowed, not settled:** the
+  disposition record reserves the two-axis hold field (frame-location ×
+  MoSCoW), unpopulated; the interview's hold register adopts the same axes so
+  the two taxonomies cannot fork. The home question — ledger state, brief
+  section, or record family — stays with iss-2608220750029991 and the
+  evidence chapter.
 
 ## Audit Notes
 

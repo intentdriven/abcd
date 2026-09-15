@@ -35,6 +35,10 @@ SemVer remains a real contract — consumers of the plugin rely on a major bump 
 - Per-consumer compatibility ranges or deprecation windows — downstream concerns, not the cut.
 - Changelog *prose* generation — the changelog is auto-recorded from the shipped intents as a separate capability; this intent decides only the version number.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._

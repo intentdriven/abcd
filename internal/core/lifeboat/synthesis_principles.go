@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -364,7 +365,7 @@ func gateSynthLifeboat(lifeboatDir string) (string, Provenance, error) {
 		return "", Provenance{}, err
 	}
 	if prov.SchemaVersion > SchemaVersion {
-		return "", Provenance{}, fmt.Errorf("lifeboat schema v%d; this abcd knows up to v%d — upgrade abcd",
+		return "", Provenance{}, update.TooNew("lifeboat",
 			prov.SchemaVersion, SchemaVersion)
 	}
 	return abs, prov, nil
@@ -463,7 +464,7 @@ func synthSchemaGate(what string, got, want int) error {
 		return fmt.Errorf("%s payload is missing schema_version", what)
 	}
 	if got > want {
-		return fmt.Errorf("%s schema v%d; this abcd knows up to v%d — upgrade abcd", what, got, want)
+		return update.TooNew(what, got, want)
 	}
 	if got != want {
 		return fmt.Errorf("unsupported %s schema_version %d", what, got)

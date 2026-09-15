@@ -9,9 +9,9 @@
         "draft"
       ],
       "rules": [
-        "Decompose before filing (itd-84, adopted 2026-08-15 at the MVP rung): before filing an intent, run the hand-run four-piece table documented in the /abcd:intent surface page — each part routed to its record home (capability -> intent; trust rule -> ADR + brief invariant; stance -> principle; plumbing -> brief), verdict FILE-AS-IS / SPLIT / HOLD, and a human confirms the routing.",
-        "Cross-record links are typed — supersedes / reverses / duplicates / refines — never a vague 'related'. A reversal flag is advisory-only: flagged for the human to confirm, never auto-classified, never auto-filed.",
-        "Not yet automated (loud-staging): the deterministic pre-pass and the capture-time validator are future rungs; until they ship the documented protocol is the gate. Grade every hand-run into the dated decomposition-calibration research note — the corpus that gates the automated rung."
+        "Decompose before filing (itd-84, adopted 2026-08-15 at the MVP rung): before filing an intent, run the hand-run four-piece table documented in the /abcd:intent surface page \u2014 each part routed to its record home (capability -> intent; trust rule -> ADR + brief invariant; stance -> principle; plumbing -> brief), verdict FILE-AS-IS / SPLIT / HOLD, and a human confirms the routing.",
+        "Cross-record links are typed \u2014 supersedes / reverses / duplicates / refines \u2014 never a vague 'related'. A reversal flag is advisory-only: flagged for the human to confirm, never auto-classified, never auto-filed.",
+        "Not yet automated (loud-staging): the deterministic pre-pass and the capture-time validator are future rungs; until they ship the documented protocol is the gate. Grade every hand-run into the dated decomposition-calibration research note \u2014 the corpus that gates the automated rung."
       ]
     },
     "BUGHUNT": {
@@ -23,18 +23,18 @@
         "harden"
       ],
       "rules": [
-        "Read the where-to-look playbook before hunting: .abcd/development/research/notes/2026-07-17-bug-hunting-principles.md — the spine, the value-ordered checklist (smell · failing question · CWE anchor), and the known gaps.",
-        "Spine: most defects are a wrong implicit assumption at a trust boundary that fails SILENTLY (ASCII-only, SHA-1-only, case-sensitive, one control range, first-occurrence-wins, clean env, parseable config). A fix is not done until every sibling site is swept — grep the pattern, not the instance.",
+        "Read the where-to-look playbook before hunting: .abcd/development/research/notes/2026-07-17-bug-hunting-principles.md \u2014 the spine, the value-ordered checklist (smell \u00b7 failing question \u00b7 CWE anchor), and the known gaps.",
+        "Spine: most defects are a wrong implicit assumption at a trust boundary that fails SILENTLY (ASCII-only, SHA-1-only, case-sensitive, one control range, first-occurrence-wins, clean env, parseable config). A fix is not done until every sibling site is swept \u2014 grep the pattern, not the instance.",
         "Highest-leverage move: for each hardened primitive (gitutil.IsolatedEnv, fsutil.ReadGuarded, fsutil.WriteFileAtomic, refIsSafe, the (?i) identity matchers, lifeboat sanitize), grep for the unhardened sibling (raw os.Environ/os.ReadFile/os.WriteFile, a positional git arg, a case-sensitive matcher, a raw terminal print) and prove each is hardened or explicitly out of scope under the trusted-worktree model."
       ]
     },
     "DOCUMENTATION": {
       "rules": [
         "Markdown is the single source of truth; HTML is a generated, disposable artefact.",
-        "Docs are present tense only — what IS, never what was superseded or planned.",
+        "Docs are present tense only \u2014 what IS, never what was superseded or planned.",
         "One Diataxis type per page (tutorial / how-to / reference / explanation).",
         "User-facing prose in British English; code-side identifiers, comments, strings in US English.",
-        "Writing style: Follow the canonical guide at docs/reference/writing-style.md — em dashes allowed in prose but never in list items (use a colon), a capital letter after a colon, lower case after a semicolon. The guide labels each rule machine-enforced or review (the list-item em-dash rule is enforced as a docs-lint banned token; adr-54 rules the colon and semicolon casing checks review by nature); point at the guide rather than copying it.",
+        "Writing style: Follow the canonical guide at docs/reference/writing-style.md \u2014 em dashes allowed in prose but never in list items (use a colon), a capital letter after a colon, lower case after a semicolon. The guide labels each rule machine-enforced or review (the list-item em-dash rule is enforced as a docs-lint banned token; adr-54 rules the colon and semicolon casing checks review by nature); point at the guide rather than copying it.",
         "Before presenting a drafted docs artefact (a page under docs/, README.md, or an edit to either), run `abcd docs lint` and clear its blockers first: the gate that will refuse the commit gives its feedback at draft time, not review time. Conversational replies are not artefacts and are never linted."
       ]
     },
@@ -47,7 +47,62 @@
       "rules": [
         "Intents are press-release-first; acceptance criteria are BDD (Given/When/Then).",
         "Personas come from .abcd/development/personas.json: pick by role, never by name, and refer to every persona as they/them. The persona_registry record-lint rule enforces the registry (itd-79). (The bundled default names Alice/Bob/Carol for a registry-less adopter; this repo ships the registry, so the roster is the full fourteen.)",
-        "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is a maintainer decision."
+        "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is a maintainer decision.",
+        "The change that lands a planned intent's work closes its spec in the same change (go run ./cmd/abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
+      ]
+    },
+    "GRILL": {
+      "recall": [
+        "grill",
+        "interview",
+        "options",
+        "decide",
+        "decision",
+        "plan",
+        "choose",
+        "which",
+        "product thinker",
+        "facilitator",
+        "register"
+      ],
+      "rules": [
+        "A question to the human is asked ONE AT A TIME through the harness's interactive question tool, never as a numbered list inside prose; the next question waits for the answer to the last.",
+        "Each question is plain language a product thinker can answer without reading the record: one sentence of context, one concrete example of what each answer would mean in practice, then the options.",
+        "Options widen and never recommend (widen-options-never-recommend): no starred default, no '(recommended)' label, no ordering by the tool's preference, and the null answer ('none of these' / 'decide later') is always available. Where a recommendation is genuinely asked for, give it in prose apart from the question, and say when none is given.",
+        "Deferral is a real answer and is recorded as one; silence is never consent, and a step whose answer is missing is asked again rather than assumed.",
+        "Address the reader in their register: a product thinker gets outcomes and choices in product terms, no record ids, no code, no internals; a technical facilitator gets the mechanism, the ids and the trade-offs. When it is not known which hat the human wears, the first question asks that, and the itd-200 mode is the record of the answer.",
+        "Before stopping for a verdict, record whose answer is owed with the mode verb (`go run ./cmd/abcd mode facilitator` or `... mode product-thinker` in this checkout; the plugin-root binary's `mode` elsewhere), and set it back with `mode managed` once the answer is in. The set form prints one line naming the addressee where the host has no status surface; relay it verbatim, because that line is the whole of the fallback (itd-200)."
+      ]
+    },
+    "DOGFOODING": {
+      "recall": [
+        "abcd",
+        "ahoy",
+        "banlist",
+        "capture",
+        "changelog",
+        "completion",
+        "disembark",
+        "docs",
+        "embark",
+        "guard",
+        "help",
+        "history",
+        "ideate",
+        "identity",
+        "intent",
+        "launch",
+        "lint",
+        "memory",
+        "reading",
+        "rules",
+        "site",
+        "spec",
+        "update",
+        "version"
+      ],
+      "rules": [
+        "In a source checkout of abcd itself, every abcd invocation is `go run ./cmd/abcd <verb>` from the repo root — never the plugin-root binary and never an `abcd` on PATH. Both are the last PUBLISHED version, stale by construction here and further behind with every commit, and the failure is often silent rather than a refusal: an empty `changelog --json` cut, a record written through a schema the gates no longer accept. The documented resolution ladder reaches the plugin-root binary first and it answers, so the `go run` fallback is never reached by following it; go straight to `go run ./cmd/abcd` (AGENTS.md, Build, test, and checks)."
       ]
     }
   },

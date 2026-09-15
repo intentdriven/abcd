@@ -20,6 +20,10 @@ promoted_from: iss-2608230752354926
 
 Graduated from `iss-2608230752354926`: record-lint cannot see a decision-shaped document filed outside the record stores. Read that issue record for the source observation.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a markdown file filed outside the configured record stores that asserts a record id already held by a real record (for example a heading `# ADR-23` with `Status: Accepted` reusing a taken adr id), **when** record-lint runs, **then** the cross-store detector flags the outside-store id claim.

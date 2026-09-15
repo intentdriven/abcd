@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -37,16 +38,10 @@ const (
 const (
 	// SpecsRelDir is the spec-store root, relative to the repo worktree.
 	SpecsRelDir = ".abcd/development/specs"
-	// IntentsRelDir is where intents live; NextID scans it for reserved spec ids.
-	IntentsRelDir = ".abcd/development/intents"
 )
 
-// maxSpecFileBytes caps any spec/intent markdown file read (trust boundary).
+// maxSpecFileBytes caps any spec markdown file read (trust boundary).
 const maxSpecFileBytes = 256 * 1024
-
-// intentBuckets are the intent lifecycle directories NextID scans for reserved
-// spec_id values.
-var intentBuckets = []string{"drafts", "planned", "shipped", "disciplines", "superseded"}
 
 // A spec id and its load-bearing intent link constrain what path this package
 // will build (path-traversal defence); the predicates that decide it live in
@@ -62,8 +57,6 @@ var (
 	specNumRe = regexp.MustCompile(`^spc-([0-9]+)`)
 	// specFileRe matches a spec-store filename and captures its id.
 	specFileRe = regexp.MustCompile(`^(spc-[0-9]+)-.*\.md$`)
-	// intentFileRe matches an intent filename.
-	intentFileRe = regexp.MustCompile(`^itd-[0-9]+.*\.md$`)
 )
 
 // Spec is one spec record. Status is the bucket it was found in; Path is
@@ -90,7 +83,8 @@ type Store struct {
 // record the lint accepts. An exact string match still wins when the store holds
 // one, so a caller that names a record precisely gets that record; two specs
 // sharing a number is a record defect the lint's spec_id_unique rule flags (the
-// mint never produces one, since NextID allocates max+1 over the same numbers).
+// mint never produces one: it redraws while a candidate names a spec here, and
+// this lookup is the presence check it redraws against).
 func (s Store) Lookup(specID string) (Spec, bool) {
 	for _, sp := range s.Specs {
 		if sp.ID == specID {
@@ -144,10 +138,10 @@ func parseSpecNum(id string) (int, bool) {
 	}
 	n, err := strconv.Atoi(m[1])
 	if err != nil {
-		// An over-int64 (or otherwise unparseable) number is not a real
-		// reservation: Atoi returns the clamped MaxInt64 alongside the error, and
-		// keeping it would make NextID compute max+1 and wrap to a NEGATIVE id
-		// (spc--9223…). Treat it as no number so the id space stays sane.
+		// An over-int64 (or otherwise unparseable) number names nothing: Atoi
+		// returns the clamped MaxInt64 alongside the error, and keeping it would
+		// let every such spelling compare equal to the clamp, so SameNum would
+		// equate two values that name no spec. Treat it as no number.
 		return 0, false
 	}
 	return n, true
@@ -185,12 +179,16 @@ func BodyIsStub(content string) bool {
 
 // renderSpec is the minimal spec-file body: frontmatter carrying the id, slug,
 // and the load-bearing intent link, plus a title and a Summary placeholder.
-func renderSpec(id, slug, intentID string) string {
+func renderSpec(id, slug, intentID string, stamp provenance.Stamp) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "id: %s\n", id)
 	fmt.Fprintf(&b, "slug: %s\n", slug)
 	fmt.Fprintf(&b, "intent: %s\n", intentID)
+	// The disclosure pair (itd-178), bare like every other scalar in this block
+	// and written together — a lone key is a state no write path produces.
+	fmt.Fprintf(&b, "%s: %s\n", provenance.KeyOrigin, stamp.OriginValue())
+	fmt.Fprintf(&b, "%s: %s\n", provenance.KeyProductionMode, stamp.ModeValue())
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "# %s\n\n", slug)
 	b.WriteString("## Summary\n\n")

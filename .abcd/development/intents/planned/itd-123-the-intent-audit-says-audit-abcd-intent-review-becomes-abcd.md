@@ -34,6 +34,10 @@ re-download. About 37 files reference the current name. The
 auditor of the three audit grains), and the `intent_review` task-class token
 becomes `intent_audit`.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

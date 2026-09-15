@@ -59,10 +59,25 @@ func gitEnv() []string {
 	// shortstat the graveyard's wholesale-rewrite signal parses — silently
 	// killing the signal on a French/German host and breaking the cross-host
 	// determinism of the produced manifest.
+	// No detached background work: a git command abcd runs must not leave a
+	// gc/maintenance process writing under .git after it returns. In production
+	// that is a subprocess outliving a CLI verb inside a user's repository; in a
+	// test it is the documented ".git/objects: directory not empty" cleanup race
+	// (iss-252 for fixture repos, iss-2609020319494139 for every other isolated
+	// call). The keys ride in the environment rather than as -c flags so a caller
+	// that builds its own git command from IsolatedEnv — every test helper that
+	// inits its own repository — inherits them too. The parent's own
+	// GIT_CONFIG_COUNT injection was scrubbed above, so this is the only
+	// environment config in effect.
 	return append(env,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_OPTIONAL_LOCKS=0",
+		"GIT_CONFIG_COUNT=4",
+		"GIT_CONFIG_KEY_0=gc.auto", "GIT_CONFIG_VALUE_0=0",
+		"GIT_CONFIG_KEY_1=gc.autodetach", "GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
+		"GIT_CONFIG_KEY_3=core.fsmonitor", "GIT_CONFIG_VALUE_3=false",
 		"LC_ALL=C",
 		"LANG=C",
 	)
@@ -180,6 +195,29 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 	return false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 }
 
+// RootCommit returns the repository's canonical (first) root-commit SHA, or ""
+// when it cannot be derived — git absent, not a repository, no commits. It is
+// total: a caller keying a store or a marker on the repository's identity gets
+// "" rather than an error, and decides for itself what an unidentified
+// repository means. A repository can have several root commits (an octopus of
+// unrelated histories); the first `rev-list` reports is the canonical one, the
+// same choice the history registry and the lifeboat probe make.
+//
+// The output is bounded (one object name, so the cap is generous) rather than
+// buffered whole: a hostile repository must not be able to make an identity
+// probe allocate.
+func RootCommit(root string) string {
+	out, err := RunLimited(root, 4096, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
 // RepoShaped reports whether root sits anywhere inside a tree carrying a .git
 // entry — a directory, or the file a worktree or submodule leaves. It is
 // deliberately cruder than InRepo: its job is to tell "not a repository" apart
@@ -190,18 +228,88 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 //
 // It walks to the filesystem root, because git does: checking root alone
 // answers "not a repository" for every SUBDIRECTORY of one.
-func RepoShaped(root string) bool {
+func RepoShaped(root string) bool { return RepoShapedRoot(root) != "" }
+
+// RepoShapedRoot is RepoShaped's walk with its answer kept: the nearest
+// directory at or above root carrying a .git entry, or "" when there is none.
+// It is the toplevel a caller can still bound work at when git itself will not
+// name one — the ownership refusal under the isolated env, git absent from
+// PATH, a corrupt .git — where the alternative is treating a real working tree
+// as an unbounded directory.
+//
+// It is a MARKER, not git's answer: it does not read .git, so it cannot tell a
+// valid repository from a directory that merely holds the name, and for a
+// submodule or linked worktree it reports the tree the .git file sits in
+// (which is the working-tree root a config walk wants). A caller that needs
+// git's own answer must ask git.
+func RepoShapedRoot(root string) string {
 	dir := root
 	for {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
-			return true
+			return dir
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return false
+			return ""
 		}
 		dir = parent
 	}
+}
+
+// ErrNoCheckoutRoot is CheckoutRoot's refusal: there is no checkout whose
+// record store the caller's working directory belongs to, so there is no store
+// to address. A surface maps it to an exit code and its own wording; this
+// package never prints.
+var ErrNoCheckoutRoot = errors.New("no checkout root")
+
+// CheckoutRoot answers the question every front door onto a repository-scoped
+// record store has to ask before it builds a request: which checkout's store
+// does a caller standing in cwd address?
+//
+// It is the ONE resolution for that question, and it exists because two front
+// doors skipped asking it and reached the same failure independently. The
+// capture verbs handed their working directory to the ledger core as an explicit
+// repo root, so a verb run from a subdirectory addressed a ledger that was not
+// there: a read reported open 0 against a populated checkout, and a write minted
+// a second ledger under the subdirectory and reported success with a
+// repo-relative path that looked ordinary (iss-2609090951291524). `decide` did
+// the same to the decision store, and one directory further out: run outside
+// every repository it exited 0 and laid a full ADR store in whatever plain
+// directory the caller stood in (iss-2609091707224329). The resolution is
+// store-agnostic, so it lives here rather than in either store's package, and
+// `store` — a noun phrase naming what is being addressed, "the issue ledger",
+// "the decision store" — is the ONLY thing that varies between callers.
+//
+// Three outcomes, and only the first is a root:
+//
+//   - git names a toplevel: that is the answer, whoever owns the checkout.
+//   - git will not answer for a repo-SHAPED tree (git absent from PATH, a
+//     corrupt .git, an ownership refusal under the isolated env): REFUSED,
+//     naming that git could not answer. RepoShapedRoot is read here as a
+//     CLASSIFIER and never as a root: it is a marker walk, which accepts any
+//     directory merely carrying the name and has neither the shape check nor
+//     the ownership gate the rules-root resolver grew (iss-2609090947359464),
+//     so returning its answer is the one change that would make that walk live.
+//     A store addressed by a guess is the defect this function closes, one
+//     directory further out.
+//   - nothing repo-shaped anywhere above: REFUSED. Laying a store in whatever
+//     directory the caller stood in is not a lenient fallback — the records
+//     would sit outside any checkout, committed by nothing and read by nothing,
+//     which is the same lost trail this resolution exists to prevent. Every
+//     store this resolves for is per-repository by definition.
+func CheckoutRoot(cwd, store string) (string, error) {
+	if top, err := Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
+		return top, nil
+	}
+	// Neither message carries the working directory: an error envelope never
+	// leaks an absolute local path (iss-76), and the caller already knows where
+	// they are standing.
+	if RepoShapedRoot(cwd) != "" {
+		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, or its ownership refused), and %s is never guessed at",
+			ErrNoCheckoutRoot, store)
+	}
+	return "", fmt.Errorf("%w: the working directory is not inside a git repository, and %s is per-repository: run this from a checkout",
+		ErrNoCheckoutRoot, store)
 }
 
 // TrackedFiles returns the repo-relative paths git tracks under root, NUL-safe

@@ -30,10 +30,16 @@ newer version exists, add `--check`:
 ```
 
 `--check` reaches the network — it fetches the latest release once, compares,
-and reports under `check` (with its `source` named). abcd never fetches
-implicitly (adr-38): the network is only ever touched by a verb whose documented
-job is that fetch — `version --check`, `update`, `docs cite refresh`, and
-`memory ingest <url>`; every other path reads only what is on disk.
+and reports under `check` (with its `source` named). When an update is
+available, `check.next_step` names the command that takes it — `abcd update`
+for a binary the update verb can swap, the host's plugin update for a
+plugin-root binary, or the package manager's own command for a Homebrew
+install — chosen by the same on-disk classification `abcd update` dispatches
+on. Relay it verbatim rather than paraphrasing; it is the one line the user
+types next. abcd never fetches implicitly (adr-38): the network is only ever
+touched by a verb whose documented job is that fetch — `version --check`,
+`update`, `docs cite refresh`, and `memory ingest <url>`; every other path
+reads only what is on disk.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

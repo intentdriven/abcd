@@ -57,20 +57,65 @@ type Block struct {
 // lines it consumed, so a caller can keep reporting source lines against the
 // original file. It is the script's `strip_frontmatter`: a document that does
 // not open with `---`, or whose frontmatter never closes, is returned untouched.
+//
+// Blank lines and complete HTML comments AHEAD of the opening `---` are skipped
+// with it. A record file may carry an attribution comment above its frontmatter
+// — every glossary term file does, from the template it was adapted from — and a
+// stripper that recognised frontmatter only at byte zero published the whole
+// block as prose: the fields arrived on the page as a heading nobody wrote. The
+// three record readers that already tolerate that comment (`lint`, `glossary`
+// and this) now agree about where a file's frontmatter begins.
 func StripFrontmatter(t string) (string, int) {
-	if !strings.HasPrefix(t, "---") {
+	lead := frontmatterLead(t)
+	rest := t[lead:]
+	if !strings.HasPrefix(rest, "---") {
 		return t, 0
 	}
-	end := strings.Index(t[3:], "\n---")
+	end := strings.Index(rest[3:], "\n---")
 	if end < 0 {
 		return t, 0
 	}
 	end += 3
 	cut := end + 4
-	if cut > len(t) {
+	if cut > len(rest) {
 		return t, 0
 	}
-	return t[cut:], strings.Count(t[:cut], "\n")
+	return rest[cut:], strings.Count(t[:lead+cut], "\n")
+}
+
+// frontmatterLead is the byte offset of the first line that is neither blank nor
+// part of an HTML comment. It is 0 for a document that opens with anything else,
+// which is every document that carries no such preamble.
+func frontmatterLead(t string) int {
+	at, inComment := 0, false
+	for at < len(t) {
+		nl := strings.IndexByte(t[at:], '\n')
+		lineEnd := len(t)
+		next := len(t)
+		if nl >= 0 {
+			lineEnd = at + nl
+			next = lineEnd + 1
+		}
+		line := strings.TrimSpace(t[at:lineEnd])
+		switch {
+		case inComment:
+			if strings.Contains(line, "-->") {
+				inComment = false
+			}
+		case line == "":
+			// a blank line: skip.
+		case strings.HasPrefix(line, "<!--") && strings.HasSuffix(line, "-->"):
+			// a complete single-line comment: skip.
+		case strings.HasPrefix(line, "<!--"):
+			inComment = true
+		default:
+			return at
+		}
+		at = next
+	}
+	// Nothing but blanks and comments: there is no frontmatter to find, and the
+	// caller's HasPrefix check returns the document untouched.
+	return at
 }
 
 // Sections splits markdown into its headings and their bodies, honouring fenced

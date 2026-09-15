@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] | ready <itd-N> | plan <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
+argument-hint: "[text] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -19,6 +19,18 @@ invocation **performs zero writes**.
 
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
 and the intent↔spec links. Nothing is created or moved by this invocation.
+
+**Every `intent` verb addresses the checkout's store, from anywhere in the
+tree.** The verb resolves the repository root before it reads or writes, so the
+counts are the checkout's and a reported `path` is relative to that root, not to
+the directory you happen to be standing in. Outside a repository there is no
+intent store to address, and the verb refuses (exit 2) rather than reading an
+empty one or laying a new one where it stands — a draft filed outside every
+checkout is committed by nothing, read by nothing, and its spec can never be
+closed against it. Resolving is a question, not a write, so bare invocation still
+performs zero writes. If an intent store also exists below the repository root,
+the verb names it on stderr and leaves it alone; relay that line, because records
+sitting there reach no gate and no release cut.
 
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
@@ -57,7 +69,7 @@ documented protocol is the gate.
 ## Create a draft
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" intent "<text>" [--impact <additive|breaking|fix>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent "<text>" [--impact <additive|breaking|fix>] [--production-mode <hand-written|dictated-and-formatted|scribe-transcribed>] --json
 ```
 
 Files `drafts/itd-N-<slug>.md` seeded from the text. Report the new `id` and
@@ -67,13 +79,49 @@ planning interview below — before the draft can be planned.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
-real sub-verb is refused the same way, with the correction named.
+real sub-verb is refused the same way, with the correction named. So is a word
+followed by a record id — `abcd intent shipit itd-5` is a sub-verb call by
+shape whatever the word is, so it is refused whether or not any sub-verb is
+close enough to suggest, and a refusal with nothing to suggest lists the
+sub-verbs the verb has. What still files is prose: several words, or one quoted
+argument carrying a space.
 
 `--impact` is optional: a draft is "not judged yet", so an unset impact writes
 no field. When you do set it, the value is validated (one of `additive`,
 `breaking`, `fix` — never `internal`, since an intent is user-facing by
 definition) and stamped onto the draft, where it travels unchanged through
 planning to `shipped/`, which the `intent_impact_valid` gate requires.
+
+## Disclosure: where a record came from and how its text was produced
+
+Intent, spec and issue records carry two frontmatter keys, written by the
+commands that mint them, and no flag carries either as free text. Records of
+other families carry neither.
+
+`origin` is **derived from which command ran** and has no flag at all. A draft
+filed from quoted text is `researcher-authored`; a draft `abcd capture promote
+<iss-N>` mints is `extracted-from-record`; a draft `abcd capture promote <rdi-N>`
+mints from an accepted reading item is `contributed-by-reading <rdg-N>/<rdi-N>`,
+naming the item's run and id, because a reading item is something an instrument
+returned rather than something a person noticed. It is stamped at mint and never
+rewritten — linking an existing draft with `capture promote --intent` writes the
+`promoted_from` back-edge and leaves the `origin` where it was.
+
+`production_mode` is the closed choice `--production-mode` carries:
+`hand-written`, `dictated-and-formatted`, or `scribe-transcribed`. Any other
+value is refused and nothing is written. An absent flag takes the repo's
+declared default from `.abcd/config/identity.json`, falling back to
+`hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
+it mints; the intent's own stamp was written when its draft was created and is
+never rewritten.
+
+Neither key touches authorship: they are disclosure at field granularity, on the
+same footing as the `Assisted-by:` trailer at commit granularity. Population is
+forward-only, so a record written before the keys existed carries neither, and
+nothing backfills it. The `record_provenance` record-lint rule reports a
+record carrying the pair in a shape no write path produces — but a hand edit
+that types a legal value in a legal combination is byte-identical to a command's
+write, so it catches implausible hand edits, not all of them.
 
 ## THE RULE: no implementation without a planned, specced intent
 
@@ -92,14 +140,141 @@ Before implementing ANY `itd-N` — or whenever the user asks you to "build",
   "`<itd-N>` is not specced, so it cannot be implemented yet", present each
   failing check's `detail` and `remedy` from the JSON, and **offer the
   planning interview** below.
-- **Exit 2 (fault):** the id is malformed, the intent is unknown, or a record
-  is unreadable — report the diagnostic; there is nothing to gate.
+- **Exit 2 (fault):** the id is malformed, the intent is unknown, a record is
+  unreadable, or the working directory has no repository above it (or one git
+  will not answer for), so there is no intent store to address — report the
+  diagnostic; there is nothing to gate.
+
+## Grounds: why this is being pursued
+
+The gate also records the CONJECTURE behind the decision, at the granularity of
+the thing being pursued rather than of the architecture:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent ready <itd-N> --grounds "pursued: <conjecture>" --json
+```
+
+The vocabulary is closed — `pursued`, `deferred`, `declined` — and the text is
+free prose. The flag writes one entry to the record's `## Grounds` section and
+then reports the gate exactly as it would without it: the report is unchanged by
+the flag, the exit code is the gate's own, and a failed write exits 2 rather than
+borrowing the gate's exit 1.
+
+**With the flag, `--json` emits an envelope, not the bare readiness result:**
+
+```json
+{ "grounds": { "intent_id": "…", "path": "…", "token": "pursued",
+               "text": "…", "entries": 1, "redacted": 0 },
+  "ready":   { "…the usual ReadyResult…" } }
+```
+
+Read the verdict from `ready`, and report `grounds.path` and `grounds.entries`
+so the user knows a record was written. **Report `grounds.redacted` whenever it
+is non-zero** — the text is scanned before it is committed, and the user needs to
+know their wording was changed. There is no `degraded` member here: a scanner
+that cannot be built, or whose pattern set a per-repo override weakened, refuses
+the write at exit 2 rather than writing under a weakened detector. Without the
+flag the payload is the readiness result unchanged.
+
+The write is also announced before the gate runs — on stdout in the text render,
+on stderr under `--json` — as `recorded grounds on <path> (<n> entries)`. Relay
+it. Recording is append-only, so a caller who retries after missing the receipt
+adds a second entry rather than replacing the first.
+
+**The gate reports a planned record that carries no entry, and does not refuse
+it.** The `grounds` check is the seventh and last row of the report and is
+advisory: its remedy names this exact command, and the verdict ignores the row
+until the rethink of the reading work settles what a human is asked for here
+(iss-2609091009111294). Relay the row; do not treat it as a refusal. Terminal buckets are exempt on the same rule the claim checks follow:
+`shipped/` and `superseded/` records are never backfilled, and a discipline
+record carries no conjecture of its own. The write enforces that rule too: this
+verb REFUSES a `shipped/` or `superseded/` record, so no grounds this tool
+writes can ever land on one.
+
+That is a statement about the TOOL, not about the corpus, and the difference is
+the migration exception. Three shipped intents do carry a `## Grounds` section —
+itd-177, itd-182 and itd-188 — relocated by hand from the pre-tooling
+`## Grounds (pursued)` section on the matching spec. A relocation is not a
+backfill: the text was authored at the moment of pursuit and nothing was
+reconstructed. The refusal covers both, deliberately, because nothing in the
+enforcement can tell relocated text from invented text — which is why the state
+those three records are in is not reachable through this verb.
+
+**Ask for the expectation and its falsifier.** "Planned it because it is next"
+restates the decision and records nothing; "planned it because we expect a
+stamped identity to survive rewording, which nothing else does" is a conjecture
+somebody can later find wrong. abcd refuses only the degenerate texts — empty,
+too short, or the vocabulary word repeated back — and cannot tell a conjecture
+from a restatement. That part is yours: put the question to the human and write
+down their answer, not a paraphrase of the route taken. A hand-typed bullet is
+held to the same floor: `- pursued: yes` is not an entry, and the gate reports
+the record as carrying none.
+
+Recording is append-only: a second decision on one record adds an entry beside
+the first, because the earlier conjecture is what a later reader checks the
+outcome against.
+
+## The claim recording gradient
+
+An intent carries up to three kinds of claim, and the gate holds each to its
+own recording requirement:
+
+| Claim | Section | Requirement |
+| --- | --- | --- |
+| Criterion | `## Acceptance Criteria` | Mandatory — at least one Given-When-Then bullet |
+| Mechanism | `## Mechanism` | Prompted, nullable — an absent section passes; a heading with nothing under it is named on an advisory row |
+| Context | `## Scope Conditions` | Reported — top-level bullets, or the explicit nullity; an absent or malformed section is named on an advisory row and never withholds readiness (iss-2609091009111294) |
+
+The nullity is one exact token, `None stated.`, alone on its line under the
+heading — the same grammar for both sections. Three byte states carry three
+meanings and are never collapsed: an absent section is a claim not carried, an
+empty section is a gate fault, and the token is a claim considered and
+declined. Discipline-kind records are exempt: their template carries no claim
+sections, and both checks report the exemption.
+
+Each scope condition carries a stamped identity marker
+(`<!-- cond: cond-<16 digits> -->`) so a later disposition attaches to the
+condition rather than to a sentence that may since have been reworded. The
+marker is read anywhere in the bullet, so rewrapping the text cannot orphan it.
+Two markers in one bullet, a near-miss of one, a fenced block or an HTML comment
+in the section, or a second `## Scope Conditions` heading are each reported by
+name. A fenced or commented section and a duplicated heading are refused by the
+stamp outright; a bullet carrying two markers, a near-miss, or an identity
+another bullet already uses is skipped by the stamp and named by the gate. Either
+way the gate never names a remedy that cannot run. **The
+markers are stamped by `abcd intent plan`, never hand-typed**, and the gate
+refuses a missing or duplicated one by name rather than repairing it — a
+reporter that writes is a reporter whose output depends on who ran it. That
+remedy runs on a planned record too: `abcd intent plan <itd-N>` on an intent
+already in `planned/` does the identity step alone — it mints for every
+unmarked bullet, moves no bucket and touches no spec — so a condition written
+after planning still reaches the mint. With nothing unmarked it refuses and
+says so, rather than exiting quietly having done nothing. The
+identities are rendered by `abcd intent ready <itd-N> --json` under
+`conditions`, which is where a consumer reads them; bare `abcd intent` is a
+corpus-wide count-and-link status and carries no per-record body.
+
+Population is forward-only: `shipped/` and `superseded/` records are never
+backfilled, because an absent stamp is information — so both checks report as
+not applicable there rather than naming work nobody may do. An unanswered
+scaffold prompt is reported as unanswered, never as a recorded claim.
 
 ## Planning interview (host-run, with the human present)
 
 The interview turns a draft into an intent the maintainer has signed off. Run
 it only in a live session with the human; deferral of any question is a valid
 answer, but silence is not consent.
+
+**How every question is asked (the GRILL rule domain).** One question at a
+time, through the harness's interactive question tool, never as a numbered
+list inside prose. Each question carries one sentence of context, one concrete
+example of what each answer means in practice, and options that widen rather
+than recommend: no starred default, no recommended label, the null answer
+always offered. A recommendation the human asks for is given in prose apart
+from the question. The next question waits for the last answer. The register follows
+the addressee: a product thinker gets outcomes in product terms with no
+record ids or internals; a technical facilitator gets the mechanism and the
+ids. Where the hat is unknown, that is the first question.
 
 **Prerequisite — two adversarial reviews.** Before the interview, the draft
 has been through two independent adversarial reviewers with different lenses
@@ -119,23 +294,83 @@ gate that will refuse the move mechanically is a recorded seed until built.
 3. **Press release:** confirm or refine the user moment with the human.
 4. **Open questions:** resolve each with the human, or record an explicit
    deferral in the draft. An open question that gates scope blocks planning.
-5. **Acceptance criteria:** walk EVERY Given-When-Then bullet; the human
+5. **Mechanism claim (prompted, nullable):** ask why the authors expect this
+   to work, and record the answer in `## Mechanism` as a falsifiable "we
+   expect X because Y" — not the outcome restated. Declining is a real
+   answer: record it as the exact token `None stated.` alone on its line.
+   Silence is not a decline, and the draft's scaffold line is not a claim.
+6. **Scope conditions (required):** elicit the population, platform, scale, or
+   assumptions the claim holds under, one per top-level bullet under
+   `## Scope Conditions`, so a later reuse outside them is a visible
+   re-decision. If the human states none, record the same exact token. Leave
+   the identity markers to `plan` — never type one; a condition added after
+   planning is stamped by re-running `abcd intent plan <itd-N>`.
+7. **Grounds (required at the gate):** ask why this is being pursued NOW —
+   the expectation, and what would show it wrong. Record the human's answer
+   with `abcd intent ready <itd-N> --grounds "pursued: <their words>"`. A
+   conjecture that is being left for later is `deferred:`; one being turned
+   down is `declined:`. Never write the restated decision; if the honest
+   answer is "it is next in the queue", say so to the human and ask what they
+   expect the work to prove.
+8. **Acceptance criteria:** walk EVERY Given-When-Then bullet; the human
    accepts, edits, or strikes each, and adds what is missing. Seeded criteria
    are proposals, never approvals.
-6. Edit the draft file to the confirmed content.
-7. Only after the human explicitly confirms the criteria are theirs, run:
+9. Edit the draft file to the confirmed content.
+10. Only after the human explicitly confirms the criteria are theirs, run:
 
    ```bash
-   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> --json
+   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--production-mode <mode>] --json
    ```
 
    This invocation IS the maintainer's sign-off act — never run it unattended
-   or infer consent. It mints the spec stub, links both sides, and moves the
-   intent `drafts/ → planned/`.
-8. **Spec build:** replace the minted spec body's `_Draft:` placeholder with
-   the real design record — scope, approach, and how it satisfies each
-   acceptance criterion.
-9. Re-run `abcd intent ready <itd-N>` and report READY to the user.
+   or infer consent. It mints the spec stub, links both sides, stamps an
+   identity onto every unmarked scope condition, and moves the intent
+   `drafts/ → planned/`.
+
+   **"Plan" means this act and nothing else here.** The build plan the phase
+   docs hold, a dated design plan, and a session's planning brief are three
+   other senses — see the glossary entry
+   [`plan`](../.abcd/development/brief/glossary/core/plan.md).
+11. **Spec build:** replace the minted spec body's `_Draft:` placeholder with
+    the real design record — scope, approach, and how it satisfies each
+    acceptance criterion.
+12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
+
+## Ship: close the spec in the change that lands the work
+
+The loop has a last step, and nothing runs it for you. `abcd intent plan` moves
+a draft to `planned/`; the only verb that moves a planned intent to `shipped/`
+is the spec store's close, which ships the linked intent as its close-hook:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --json    # open/ -> closed/, and planned/ -> shipped/
+"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --impact fix --json   # …stamping the judgement the record lacks
+```
+
+Run it in the **same change** that lands the intent's work — the commit or
+pull request that makes the acceptance criteria true — the way a captured
+issue is resolved in the change that fixes it. The reason is the release cut:
+`abcd launch ship` composes the changelog from the records in terminal
+folders, and a planned intent is not a refusal, it is simply not seen. An
+intent whose code is on `main` but whose spec is still open ships with no
+changelog line and exits 0 doing so; two intents delivering a breaking CLI
+change were caught that way only by a reviewer. The close needs the intent's
+`impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
+there is no default, because the judgement decides the derived version. A
+record that already declares it needs nothing; a record that does not takes
+`--impact additive|breaking|fix` on the close, which stamps it before the move
+(`internal` is a category error on a press-release-first intent, and is
+refused). The close refuses rather than shipping a record with neither, and it
+refuses a `--impact` that disagrees with one already written down: a close does
+not revise a recorded judgement. `spec close` is CLI-only — there is no
+`/abcd:spec` page.
+Both spec verbs — the close and the bare `abcd spec` status render — resolve the
+repository root first, so they address the checkout's spec store from anywhere in
+the tree and refuse with exit **2** outside a repository, where there is no spec
+store to address; a spec store found below the repository root is named on
+stderr and left alone.
+Report the returned pair (the spec's new path, the intent's new path), then
+queue the audit below.
 
 ## Autonomous runs
 
@@ -174,6 +409,14 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
 or `noop`) and, for `dead_letter`, the reason.
+
+The verdict also disposes the intent's scope conditions, keyed to the `cond-…`
+identity each one carries: every condition receives exactly one of `survived`,
+`narrowed`, `falsified` or `untested`, and a `narrowed` condition states what it
+now holds under. Coverage is exact in both directions — a conditionless intent
+takes an empty block, a conditioned one a full one — so a partial or invented
+disposition quarantines the whole payload rather than applying half of it.
+Report the returned split alongside the acceptance rollup.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

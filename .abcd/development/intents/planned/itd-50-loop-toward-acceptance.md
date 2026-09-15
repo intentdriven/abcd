@@ -61,6 +61,10 @@ This intent is **project-agnostic**: every abcd project ships intents whose deli
 - **Automatic rollback / demotion of a shipped intent.** `UNACHIEVABLE` invites a replan; it never silently un-ships or rewrites delivered work.
 - **Headless oracle reachability.** `loop-to-acceptance` needs a reachable oracle backend to iterate; the headless-reachability fix is itd-47's job, a dependency rather than scope here.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - *Given* an intent carries `audit_mode: loop-to-acceptance` in its frontmatter (set at plan time; portable with the intent), *when* a fidelity review returns `NOT_MET` for a criterion, *then* the linked work is re-opened and re-reviewed against the same criteria, and the cycle repeats until all criteria read `MET` or the iteration budget is exhausted.

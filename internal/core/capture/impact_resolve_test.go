@@ -42,6 +42,7 @@ func TestResolveProducesImpactValidRecord(t *testing.T) {
 	}
 
 	if _, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: repo, IssuesRoot: ir, ID: res.ID, Resolution: "fixed the thing", Impact: "fix",
 	}); err != nil {
 		t.Fatalf("Resolve: %v", err)
@@ -67,6 +68,7 @@ func TestResolveRefusesInvalidImpact(t *testing.T) {
 
 	for _, bad := range []string{"", "additiv", "Additive", `"fix"`} {
 		if _, err := Resolve(ResolveRequest{
+			Grounds:  testGrounds,
 			RepoRoot: repo, IssuesRoot: ir, ID: res.ID, Resolution: "note", Impact: bad,
 		}); err == nil {
 			t.Fatalf("Resolve with impact %q must be refused", bad)
@@ -91,6 +93,7 @@ func TestResolveImpactUnquoted(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: repo, IssuesRoot: ir, ID: res.ID, Resolution: "done", Impact: "internal",
 	})
 	if err != nil {

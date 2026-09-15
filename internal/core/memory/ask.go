@@ -98,17 +98,27 @@ func Ask(req AskRequest) (AskResult, error) {
 	if err != nil {
 		return AskResult{}, err
 	}
+	// The question is argv — untrusted terminal input — and it is echoed by
+	// every render and carried in AskResult.Question, the --json field. It is
+	// sanitised ONCE here and that one value feeds both return paths, so the
+	// empty-store branch cannot drift from the matched branch again: the
+	// no-matches render used to take the raw question while RenderCitedMatches
+	// sanitised its own copy, and a raw ESC/C1/bidi rune reached stdout from
+	// exactly the branch a first-time user hits (GHSA-4fmm-95pf-32c6).
+	// Retrieval above still tokenises the raw question — masking runes to '?'
+	// before the overlap ranking would change what a question matches.
+	question := termsafe.Sanitize(req.Question)
 	if len(matches) == 0 {
 		if req.FileBackPage != nil {
 			return AskResult{}, newAskError("no matching memory pages — a file-back without cited matches would write an unattributable page; nothing was written")
 		}
-		return AskResult{Question: req.Question, Matches: nil, Answer: RenderNoMatches(req.Question)}, nil
+		return AskResult{Question: question, Matches: nil, Answer: RenderNoMatches(question)}, nil
 	}
 	synth := req.Synthesizer
 	if synth == nil {
 		synth = RenderCitedMatches
 	}
-	answer := synth(req.Question, matches)
+	answer := synth(question, matches)
 	if strings.TrimSpace(answer) == "" {
 		return AskResult{}, newAskError("synthesizer returned no answer text")
 	}
@@ -120,7 +130,7 @@ func Ask(req AskRequest) (AskResult, error) {
 		}
 		fb = &result
 	}
-	return AskResult{Question: req.Question, Matches: matches, Answer: answer, FileBack: fb}, nil
+	return AskResult{Question: question, Matches: matches, Answer: answer, FileBack: fb}, nil
 }
 
 func parseQuestion(question string) ([]string, string, string) {
@@ -144,14 +154,6 @@ func parseQuestion(question string) ([]string, string, string) {
 	}
 	sort.Strings(tokens)
 	return tokens, classFilter, domainFilter
-}
-
-func pageBody(text string) string {
-	_, body, err := splitFileFrontmatter(text)
-	if err != nil {
-		return text
-	}
-	return body
 }
 
 func citationsFromSource(source map[string]any) []AskCitation {
@@ -228,7 +230,8 @@ func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 			continue
 		}
 		text := string(raw)
-		info := pageInfoFrom(e.Name(), text)
+		page := parsePage(text)
+		info := pageInfoOf(e.Name(), page)
 		if classFilter != "" {
 			ok := false
 			for _, c := range info.Classes {
@@ -265,8 +268,8 @@ func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 			Classes:   info.Classes,
 			Domain:    info.Domain,
 			Summary:   info.Summary,
-			Body:      pageBody(text),
-			Citations: citationsFromSource(pageSourceBlock(text)),
+			Body:      page.body,
+			Citations: citationsFromSource(page.source()),
 		})
 	}
 	sort.SliceStable(matches, func(i, j int) bool {
@@ -337,9 +340,12 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// RenderNoMatches is the explicit empty-result render.
+// RenderNoMatches is the explicit empty-result render. It sanitises the
+// question itself, as RenderCitedMatches does, so a direct caller is covered
+// and the two renders cannot disagree on what reaches the terminal; Sanitize
+// is idempotent, so the copy Ask already masked costs nothing here.
 func RenderNoMatches(question string) string {
-	return "# " + AskReportHeading + " — " + question + "\n\n" +
+	return "# " + AskReportHeading + " — " + termsafe.Sanitize(question) + "\n\n" +
 		"No matching memory pages (token overlap found nothing; an empty or absent store matches nothing).\n" +
 		"Try different terms, an explicit class:<source-class> / domain:<domain> filter, or ingest a source first.\n"
 }

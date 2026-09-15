@@ -15,14 +15,18 @@ package release
 //
 // The boundary between the agent and the deterministic core is exact:
 //
-//	the agent owns  — the WORDING of each line, and which Keep-a-Changelog
-//	                  section it belongs in (outcome 3: a four-value impact
-//	                  cannot express Security/Deprecated granularity, so the
+//	the agent owns  — the WORDING of each line, and which of the WRITABLE
+//	                  Keep-a-Changelog sections it belongs in (outcome 3: a
+//	                  four-value impact does not decide a section, so the
 //	                  section is editorial judgement over record content).
 //	the core owns   — the VERSION, the INCLUSION SET, the date, the heading
-//	                  shape, the section order, and the citation suffix.
+//	                  shape, the section order, the citation suffix, and the
+//	                  WRITABLE SET (writableSections): the composer cannot see
+//	                  the previous release, so the sections that make claims
+//	                  about it are refused rather than trusted.
 //
-// The bijection guards ID-COMPLETENESS ONLY. It never second-guesses a section.
+// The bijection guards ID-COMPLETENESS ONLY. It never second-guesses a section
+// within the writable set.
 
 import (
 	"bytes"
@@ -37,6 +41,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -96,6 +101,37 @@ const (
 var sectionOrder = []Section{
 	SectionAdded, SectionChanged, SectionDeprecated, SectionRemoved, SectionFixed, SectionSecurity,
 }
+
+// writableSections is the CANONICAL set a composed payload may carry, and the
+// one place it is declared: the ingest refusal reads it, the rendered notice is
+// tested against it, and the composer prompt's section table is pinned to it.
+//
+// It is narrower than sectionOrder by ruling (iss-2609011207114761, 2026-09-01):
+// the composer's inputs are the records that shipped and their bodies, never the
+// base tag's surface, yet Changed, Deprecated and Removed are claims about that
+// surface — that something a user could reach in the previous release is now
+// different, on notice, or gone. In the v0.7.0 cut the composer wrote three such
+// lines about a verb that did not exist in v0.6.9. Security makes the same kind
+// of claim about a vulnerability the previous release carried. So until the
+// composer can see the previous release the changelog carries only what was
+// added and what was fixed: a breaking record, a supersession or a withdrawal is
+// an Added line that states the break; a closed vulnerability is a Fixed line.
+var writableSections = []Section{SectionAdded, SectionFixed}
+
+// sectionNotice is the sentence every derived section carries directly under
+// its heading, once per cut, so the absence of the other sections reads as a
+// rule rather than an oversight. It is written per section rather than once in
+// the preamble because a reader lands on a release, not on the file.
+const sectionNotice = "These notes list what was added and what was fixed; changes to earlier behaviour are not claimed until the composer can see the previous release."
+
+// writableSection is writableSections as a membership test.
+var writableSection = func() map[Section]bool {
+	m := make(map[Section]bool, len(writableSections))
+	for _, s := range writableSections {
+		m[s] = true
+	}
+	return m
+}()
 
 // registeredSection is sectionOrder as a membership test.
 var registeredSection = func() map[Section]bool {
@@ -309,7 +345,7 @@ func decodeChangelogPayload(raw []byte) (ChangelogPayload, error) {
 	case p.SchemaVersion == 0:
 		return ChangelogPayload{}, errors.New("changelog payload is missing schema_version")
 	case p.SchemaVersion > ChangelogSchemaVersion:
-		return ChangelogPayload{}, fmt.Errorf("changelog schema v%d; this abcd knows up to v%d — upgrade abcd",
+		return ChangelogPayload{}, update.TooNew("changelog",
 			p.SchemaVersion, ChangelogSchemaVersion)
 	case p.SchemaVersion != ChangelogSchemaVersion:
 		return ChangelogPayload{}, fmt.Errorf("unsupported changelog schema_version %d", p.SchemaVersion)
@@ -342,6 +378,15 @@ func validateEntries(entries []ChangelogEntry) ([]ChangelogEntry, map[string]boo
 		if !registeredSection[in.Section] {
 			return nil, nil, fmt.Errorf("entry %d names section %q; a changelog section must be one of %s",
 				at, termsafe.Sanitize(string(in.Section)), sectionList())
+		}
+		if !writableSection[in.Section] {
+			// Registered, so the shape is right; refused because the claim is one
+			// the composer cannot check. Named apart from the structural refusal so
+			// the operator is told the rule, not just the list.
+			return nil, nil, fmt.Errorf("entry %d names section %s; the composer cannot see the previous release, "+
+				"so a composed changelog carries only %s until it can (iss-2609011207114761) — "+
+				"restate the line under one of those and say in the line what changed",
+				at, in.Section, strings.Join(sectionNames(writableSections), "|"))
 		}
 		if len(in.Records) == 0 {
 			return nil, nil, fmt.Errorf("entry %d cites no record; every changelog line cites the record it reports", at)
@@ -441,8 +486,12 @@ func datedHeading(nextTag string, at time.Time) string {
 // renderSection renders the whole dated section as lines. The section ORDER is
 // the core's (Keep a Changelog's own), and entries keep the composer's order
 // within their section — so the document is deterministic given the payload.
+//
+// The notice sits directly under the heading, before any section, once: the
+// function renders exactly one cut, and each cut is its own dated section, so
+// idempotence across cuts holds by construction rather than by a scan.
 func renderSection(heading string, entries []ChangelogEntry) []string {
-	lines := []string{heading, ""}
+	lines := []string{heading, "", sectionNotice, ""}
 	for _, section := range sectionOrder {
 		var body []string
 		for _, e := range entries {
@@ -563,9 +612,14 @@ func cleanChangelogProse(s string) string {
 // sectionList renders the registered sections for an error message, written from
 // sectionOrder so the message can never fall out of step with the enum.
 func sectionList() string {
-	names := make([]string, 0, len(sectionOrder))
-	for _, s := range sectionOrder {
+	return strings.Join(sectionNames(sectionOrder), "|")
+}
+
+// sectionNames renders a section list as strings, for messages and tests.
+func sectionNames(sections []Section) []string {
+	names := make([]string, 0, len(sections))
+	for _, s := range sections {
 		names = append(names, string(s))
 	}
-	return strings.Join(names, "|")
+	return names
 }

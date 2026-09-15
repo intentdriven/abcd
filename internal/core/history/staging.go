@@ -8,11 +8,11 @@ package history
 // this repo's own ended sessions were absent from its store before this existed.
 //
 // Staging splits the work across the two hooks that can each afford their half.
-// SessionEnd copies the raw bytes into ~/.abcd/history/<rootSHA>/staging/ at
-// write speed and returns; the next SessionStart drains that directory through
-// the same fail-closed Capture path, where there is a real time budget.
+// SessionEnd copies the raw bytes into the store's staging/ lane at write speed
+// and returns; the next SessionStart drains that directory through the same
+// fail-closed Capture path, where there is a real time budget.
 //
-// The store's invariant is untouched: every transcript in transcripts/ is still
+// The store's invariant is untouched: every transcript in records/ is still
 // redacted on write, because staging is NOT the store. Staged bytes are raw, so
 // this directory is the one place in abcd that holds unredacted transcript text
 // on purpose. It is created 0o700 and its files 0o600, it holds each transcript
@@ -25,6 +25,8 @@ package history
 // exactly one thing: this session ended and its capture has not completed yet.
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -40,6 +42,24 @@ import (
 // .md: a staged file is unredacted and must never be mistaken for a record.
 const stagedSuffix = ".raw"
 
+// stagingLockFilename is the per-repo staging lock, a sibling of the staged
+// files (listStaged filters on stagedSuffix, so the lock is invisible to it).
+// Every writer of the staging dir — Stage's list-compare-write and Drain's
+// remove-if-unchanged — takes it through fsutil.WithFileLock, the one
+// inter-process load-modify-write primitive, so the per-session idempotency
+// guarantee holds across concurrent hooks and not just single-threaded
+// (GHSA-xq36-hcgf-9wrj). It nests inside nothing: Drain releases it before
+// Capture takes the store's repoLock, so the two can never wait on each other.
+const stagingLockFilename = ".lock"
+
+// stagingLockTimeout bounds how long a staging writer waits for the lock. It is
+// short because the SessionEnd hook must never wedge the session it is ending:
+// the critical section is one listing, at most one read and one write, so a
+// wait past this is a stuck peer. Contention surfaces as
+// fsutil.ErrLockContention, which the hook reports and exits 0 on, exactly as
+// it does on any other staging failure.
+const stagingLockTimeout = 5 * time.Second
+
 // Staged is one raw transcript awaiting redaction.
 type Staged struct {
 	SessionID string    `json:"session_id"`
@@ -51,7 +71,12 @@ type Staged struct {
 // StageResult reports the outcome of one stage.
 type StageResult struct {
 	Staged Staged `json:"staged"`
-	Wrote  bool   `json:"wrote"` // false when this session is already staged
+	Wrote  bool   `json:"wrote"` // false when this session is already staged with identical bytes
+	// Replaced is true when the session was already staged with DIFFERENT bytes
+	// and that copy was replaced by this one; ReplacedBytes is the size of the
+	// copy that was replaced. Both are zero on a first stage and on a no-op.
+	Replaced      bool  `json:"replaced"`
+	ReplacedBytes int64 `json:"replaced_bytes"`
 }
 
 // DrainFailure is one staged transcript that could not be captured. The staged
@@ -71,39 +96,18 @@ type DrainResult struct {
 	Remaining int            `json:"remaining"` // staged entries not attempted, budget exhausted
 }
 
-// stagingDirPath returns ~/.abcd/history/<rootSHA>/staging.
-func stagingDirPath(rootSHA string) (string, error) {
-	root, err := historyRoot()
+// stagingDirReal resolves the store (creating it when absent, and refusing any
+// level that is not a real directory) and creates the staging leaf under it.
+// 0o700 throughout, because a staged transcript is unredacted.
+func stagingDirReal(repoRoot, rootSHA string) (string, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, rootSHA, "staging"), nil
-}
-
-// stagingDirReal verifies the owned path down to staging/ and creates the leaf
-// if absent. The parents are NOT created: the store proper is bootstrapped by
-// `abcd ahoy install`, and staging into a repo that was never installed would
-// accumulate raw transcripts nothing would ever drain.
-func stagingDirReal(rootSHA string) (string, error) {
-	root, err := historyRoot()
-	if err != nil {
-		return "", err
+	if err := fsutil.EnsureRealDir(store.Staging, storeDirPerm); err != nil {
+		return "", storeDirFault(store.Staging, err)
 	}
-	repoDir := filepath.Join(root, rootSHA)
-	for _, d := range []string{root, repoDir} {
-		if !fsutil.IsRealDir(d) {
-			return "", &StorePathError{Path: d, Msg: "not a real directory (absent or symlink); run `abcd ahoy install` to bootstrap the store"}
-		}
-	}
-	sdir := filepath.Join(repoDir, "staging")
-	// 0o700: staged transcripts are unredacted.
-	if err := os.Mkdir(sdir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-		return "", &StorePathError{Path: sdir, Msg: "cannot create staging dir: " + err.Error()}
-	}
-	if !fsutil.IsRealDir(sdir) {
-		return "", &StorePathError{Path: sdir, Msg: "staging path is not a real directory (symlink?); refusing"}
-	}
-	return sdir, nil
+	return store.Staging, nil
 }
 
 // stagedFilename is <compact-utc>-<session-id>.raw, matching recordFilename's
@@ -126,13 +130,20 @@ func sessionIDFromStaged(name string) string {
 }
 
 // Stage writes raw transcript bytes into the staging area without redacting
-// them. It is the SessionEnd half of capture and must stay cheap: no scanner, no
-// lock, no read of the existing store. Cost is one write, so the hook's runtime
-// is independent of transcript size — which is the entire point.
+// them. It is the SessionEnd half of capture and must stay cheap: no scanner and
+// no read of the store. Cost is one listing of the staging dir, at most one read
+// of this session's own staged copy, and one write, so the hook's runtime is
+// independent of the store's size — which is the entire point.
 //
-// It is idempotent per session: a session already staged is a no-op, so a
-// double-fired SessionEnd cannot stage two copies of the same transcript.
-func Stage(rootSHA, sessionID string, raw []byte) (StageResult, error) {
+// It is idempotent per session on CONTENT, and the whole list-compare-write runs
+// under the staging lock so the guarantee holds across concurrent hooks
+// (GHSA-xq36-hcgf-9wrj): a session already staged with identical bytes is a
+// no-op (Wrote=false); a session staged with different bytes has that copy
+// replaced at its existing path (Wrote=true, Replaced=true) — last-writer-wins,
+// because a re-fired SessionEnd carrying different bytes is the later snapshot
+// of the same session, and the fresher end-of-session bytes are the ones worth
+// keeping. Either way one session has one staged file, whatever fires.
+func Stage(repoRoot, rootSHA, sessionID string, raw []byte) (StageResult, error) {
 	if !rootSHARe.MatchString(rootSHA) {
 		return StageResult{}, errors.New(rootSHAErrMsg)
 	}
@@ -142,18 +153,72 @@ func Stage(rootSHA, sessionID string, raw []byte) (StageResult, error) {
 	if len(raw) == 0 {
 		return StageResult{}, errors.New("history: refusing to stage an empty transcript")
 	}
-	sdir, err := stagingDirReal(rootSHA)
+	sdir, err := stagingDirReal(repoRoot, rootSHA)
 	if err != nil {
 		return StageResult{}, err
 	}
+	var res StageResult
+	err = withStagingLock(sdir, func() error {
+		var err error
+		res, err = stageLocked(sdir, sessionID, raw)
+		return err
+	})
+	if err != nil {
+		return StageResult{}, err
+	}
+	return res, nil
+}
+
+// withStagingLock runs fn under the staging lock, naming the lock in the error
+// when the primitive itself refuses (contention, or an unsafe lock path); fn's
+// own error passes through unchanged.
+func withStagingLock(sdir string, fn func() error) error {
+	err := fsutil.WithFileLock(filepath.Join(sdir, stagingLockFilename), stagingLockTimeout, fn)
+	if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
+		return fmt.Errorf("history: staging lock: %w", err)
+	}
+	return err
+}
+
+// stageLocked is Stage's critical section. listStaged is oldest-first, so when
+// a session has several copies (a staging dir written before the lock existed)
+// the newest is the one compared and replaced; the drain retires the rest.
+func stageLocked(sdir, sessionID string, raw []byte) (StageResult, error) {
 	existing, err := listStaged(sdir)
 	if err != nil {
 		return StageResult{}, err
 	}
-	for _, s := range existing {
-		if s.SessionID == sessionID {
-			return StageResult{Staged: s, Wrote: false}, nil
+	var prior *Staged
+	for i := range existing {
+		if existing[i].SessionID == sessionID {
+			prior = &existing[i]
 		}
+	}
+	if prior != nil {
+		// ReadGuarded is O_NOFOLLOW, so a symlink planted at the staged path
+		// is refused here rather than replaced or read through.
+		current, err := fsutil.ReadGuarded(prior.Path, maxTranscriptBytes)
+		if err != nil {
+			return StageResult{}, fmt.Errorf("history: read staged copy of %s: %w", sessionID, err)
+		}
+		if bytes.Equal(current, raw) {
+			return StageResult{Staged: *prior, Wrote: false}, nil
+		}
+		// 0o600: unredacted. The rename lands at the existing path, so the
+		// listing keeps one entry for the session AND its place in the drain
+		// queue: listStaged orders on the filename, whose stamp is when the
+		// session first ended, so a re-stage never pushes an older session
+		// behind newer ones under a budget. Only StagedAt (the file's mtime)
+		// moves to the newer bytes.
+		if err := fsutil.WriteFileAtomic(prior.Path, raw, 0o600); err != nil {
+			return StageResult{}, fmt.Errorf("history: re-stage transcript: %w", err)
+		}
+		return StageResult{
+			Staged:        Staged{SessionID: sessionID, StagedAt: time.Now().UTC(), Path: prior.Path, Bytes: int64(len(raw))},
+			Wrote:         true,
+			Replaced:      true,
+			ReplacedBytes: prior.Bytes,
+		}, nil
 	}
 	at := time.Now().UTC()
 	path := filepath.Join(sdir, stagedFilename(at, sessionID))
@@ -206,15 +271,12 @@ func listStaged(sdir string) ([]Staged, error) {
 
 // ListStaged returns the transcripts awaiting redaction for this repo, oldest
 // first. An absent staging dir is not an error: it means nothing is pending.
-func ListStaged(rootSHA string) ([]Staged, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return nil, errors.New(rootSHAErrMsg)
-	}
-	sdir, err := stagingDirPath(rootSHA)
+func ListStaged(repoRoot, rootSHA string) ([]Staged, error) {
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return nil, err
 	}
-	return listStaged(sdir)
+	return listStaged(store.Staging)
 }
 
 // Drain captures every staged transcript into the store and removes the ones it
@@ -227,15 +289,20 @@ func ListStaged(rootSHA string) ([]Staged, error) {
 // rather than dropped, so a partial pass is loud and the caller can say so.
 //
 // A staged file is deleted ONLY when its transcript is in the store — either
-// captured now or already present. Any failure leaves the file where it is.
+// captured now or already present — and only while it still holds the bytes
+// that were captured. The staging lock is deliberately NOT held across Capture:
+// redaction is the cost staging exists to keep out of SessionEnd, and holding
+// the lock through it would stall every concurrent hook for its duration. So a
+// Stage that replaces the copy mid-drain wins the race by design: the removal
+// re-checks the bytes under the lock, a replaced copy is left for the next
+// pass, and the fresher transcript is never lost. Any failure leaves the file
+// where it is.
 func Drain(repoRoot, rootSHA string, budget int) (DrainResult, error) {
-	if !rootSHARe.MatchString(rootSHA) {
-		return DrainResult{}, errors.New(rootSHAErrMsg)
-	}
-	sdir, err := stagingDirPath(rootSHA)
+	store, err := Resolve(repoRoot, rootSHA)
 	if err != nil {
 		return DrainResult{}, err
 	}
+	sdir := store.Staging
 	staged, err := listStaged(sdir)
 	if err != nil {
 		return DrainResult{}, err
@@ -258,8 +325,10 @@ func Drain(repoRoot, rootSHA string, budget int) (DrainResult, error) {
 			continue
 		}
 		// Stored (or already stored): the staged copy has done its job, and it is
-		// unredacted, so it goes now rather than lingering.
-		if err := os.Remove(s.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		// unredacted, so it goes now rather than lingering — unless a concurrent
+		// Stage replaced it while Capture ran, in which case the newer bytes stay
+		// staged for the next pass.
+		if err := removeStagedIfUnchanged(sdir, s.Path, raw); err != nil {
 			res.Failed = append(res.Failed, DrainFailure{SessionID: s.SessionID, Path: s.Path,
 				Err: fmt.Sprintf("captured but could not remove staged copy: %v", err)})
 			continue
@@ -269,4 +338,30 @@ func Drain(repoRoot, rootSHA string, budget int) (DrainResult, error) {
 		}
 	}
 	return res, nil
+}
+
+// removeStagedIfUnchanged removes the staged file at path under the staging
+// lock, and only if it still holds exactly the captured bytes. A file that is
+// already gone is fine (a peer drain retired it); a file whose bytes differ was
+// re-staged since the capture read it and is left in place — its transcript is
+// not yet in the store, so deleting it would be the silent loss this mechanism
+// exists to end.
+func removeStagedIfUnchanged(sdir, path string, captured []byte) error {
+	want := sha256.Sum256(captured)
+	return withStagingLock(sdir, func() error {
+		current, err := fsutil.ReadGuarded(path, maxTranscriptBytes)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if sha256.Sum256(current) != want {
+			return nil // replaced mid-drain; the next pass captures the newer bytes
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	})
 }

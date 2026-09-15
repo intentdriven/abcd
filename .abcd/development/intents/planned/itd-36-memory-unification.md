@@ -54,6 +54,10 @@ There's a real gap: **per-project durable knowledge has multiple legitimate upst
 - **Auto-classify the upstream.** This intent requires the user to invoke `/abcd:memory ingest <path>` explicitly. Auto-detection (e.g., scanning `~/Downloads/*.pdf` for ingest candidates) is deferred — a separate intent if friction proves real.
 - **MCP server for runtime memory editing.** Other knowledge frameworks ship MCP servers for `add_page`, `merge_pages`, etc. This intent ships JSON-on-disk + CLI surface only; the curator agent (`principle-distiller`) edits via standard file-edit tools. MCP integration is deferred if friction is real.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per [itd-1 acceptance gates](../disciplines/itd-1-acceptance-gates.md). These gates are checked by `intent-fidelity-reviewer` Role 1 when this intent moves to `shipped/`._

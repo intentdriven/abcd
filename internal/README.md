@@ -25,6 +25,41 @@ plugin surface, and a future MCP server share one engine.
   carries, and a record they disagree about is one that sits in the ledger unread
   by every surface. It is not inside `core/capture` because that package's own
   tests import `core/lint`, so a lint importing capture back is an import cycle.
+- **`core/grounds/`** — the recorded-grounds vocabulary and its record form: the
+  three values (`pursued`, `deferred`, `declined`), the `<token>: <text>` grammar,
+  the substance floor that refuses a degenerate text, and the append-only
+  `## Grounds` section both record families accumulate entries in. A leaf on the
+  `core/issueschema` precedent, because three sites record grounds — the intent
+  record writer (`core/intent`), the ledger writer (`core/capture`), and the
+  committed-record gate that reads them back (`core/lint`) — and a vocabulary
+  spelled three times is one the three can disagree about. It holds a FLOOR, not
+  a judgement: whether a text names a conjecture rather than restating the
+  decision is a review property, carried by the interview prompts on the plugin
+  surface, and this package claims nothing about it.
+- **`core/mdrecord/`** — the Markdown machinery a record BODY is read and written
+  through: which lines are live markdown and which lie inside a fence or an HTML
+  comment, where a section starts and stops, what a top-level bullet is, and
+  where a trailing run of link-reference definitions ends. A leaf on the
+  `core/grounds` precedent, because two record families carry the same
+  constructs — the intent record's scope conditions and audit notes
+  (`core/intent`), the issue record's grounds (`core/capture`) — and a body
+  reader spelled twice is one the two can disagree about, which is how a bullet
+  one writer appends becomes a bullet the other cannot find. It owns no heading's
+  meaning: a caller supplies the pattern it is looking for.
+- **`core/provenance/`** — the record's disclosure vocabulary: where an item came
+  from (`origin`) and how its text was produced (`production_mode`), plus the one
+  parser that reads and renders them. It is a leaf for the same reason
+  `core/issueschema` and `core/changelog` are: the WRITERS that stamp the pair
+  (`core/intent`, `core/spec`, `core/capture`) and the GATE that judges it
+  (`core/lint`) must agree about what a legal value is, and two hand-kept copies
+  of a closed set drift the moment one side gains a member. Both keys are
+  single-line scalars — the reading pointer rides inside the `origin` value —
+  because a nested mapping is invisible to `core/frontmatter`'s same-line scanner
+  and would need a second record parser. It reads `core/issueschema` for the
+  reading families' own spelling of their id prefixes and imports nothing else
+  beyond the standard library; the arrow points one way, so the issue schema's
+  allow-list carries the two key names as literals, pinned to this package's
+  constants by a test here.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier
@@ -54,6 +89,29 @@ plugin surface, and a future MCP server share one engine.
   the two agree. The table is a *hypothesis*: `abcd disembark probe` measures the
   same sections against real repositories in the same `grounded`/`partial`/`blank`
   vocabulary, and the evidence is expected to revise it (adr-35, itd-88).
+- **`core/reading/`** — the cold-reading input assembler (itd-183, spc-61). The name is
+  about what a READING may see, not about file I/O: it holds the positive include
+  table that decides, at field granularity, what travels into a reading's context,
+  the projection that takes named fields out of a record rather than copying the
+  file, and the hashed manifest that lets a reader check the result instead of
+  trusting a disclosure. The bundle it emits carries no repository path — the key is
+  an ordinal and the kind is a material class — and only the manifest maps a key back
+  to a path, which is what makes the blindness structural rather than instructed
+  (brief invariant 15). Its deny is `core/launch`'s shape, measured from each include
+  row's own source downward, so a record family added later is excluded by
+  construction. Record enumeration is `core/lint`'s `LoadRecordGraph`, never a second
+  parser. The package assembles input and never runs a reading.
+- **`core/decide/`** — the decision record's WRITE side: `abcd decide "<title>"`
+  mints an `adr-<stamp>` through `core/recordid` and lays the ADR skeleton under
+  `.abcd/development/decisions/adrs/`. It is the last record family to reach that
+  seam (the 2026-09-01 ruling, the turn adr-45 ruling 3 deferred), and it adopts it
+  the way every family before it did — by holding a `recordid.Minter` and naming its
+  family tag, never by carrying an allocator of its own. The presence check that
+  redraws a taken draw calls `recordid.ADRFileID`, the SAME derivation the read-side
+  resolver reads a filename with, so the mint cannot re-issue an id a citation
+  already resolves. It owns the id, the date, the filename and the four sections,
+  and states nothing: the decision is a human's to write, so the record lands
+  `proposed` and the skeleton carries questions rather than answers.
 - **`core/glossary/`** — the brief glossary's index, derived. The term files under
   `.abcd/development/brief/glossary/` are the source of truth for what terms exist
   and in which bounded context; this package renders the directory tree and the

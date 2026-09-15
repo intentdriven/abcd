@@ -80,6 +80,14 @@ type explorer struct {
 	// principles and disciplines are the foundations page's two card decks.
 	principles  []ExportNode
 	disciplines []ExportNode
+	// glossary is every term the repository declares, in the directory's own
+	// order; glossaryByPath answers the other question a term file asks — which
+	// entry a repo-relative path is — so a link between two term files reaches
+	// the sibling's page rather than the forge.
+	glossary       []glossaryEntry
+	glossaryByPath map[string]glossaryEntry
+	// terms links the first use of each term on a page to its entry.
+	terms *termLinker
 	// eyebrow is the record root's own heading, with its provenance.
 	eyebrow, eyebrowSrc string
 	// bib is the bibliography, or nil where the repository keeps none.
@@ -87,16 +95,31 @@ type explorer struct {
 }
 
 // newExplorer indexes the export for the pages.
-func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot string) *explorer {
+//
+// It reads one thing beyond the export: the glossary, whose entries become their
+// own pages and whose terms become links on every record page. A repository that
+// keeps none simply has none — the error is reserved for a glossary that is
+// there and cannot be read.
+func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot string) (*explorer, error) {
 	e := &explorer{
 		c: c, export: export, bib: bib,
-		byID:     make(map[string]ExportNode, len(export.Nodes)),
-		byPath:   make(map[string]ExportNode, len(export.Nodes)),
-		out:      map[string][]ExportEdge{},
-		in:       map[string][]ExportEdge{},
-		mentions: map[string][]string{},
-		stubs:    map[string][]ExportEdge{},
+		byID:           make(map[string]ExportNode, len(export.Nodes)),
+		byPath:         make(map[string]ExportNode, len(export.Nodes)),
+		out:            map[string][]ExportEdge{},
+		in:             map[string][]ExportEdge{},
+		mentions:       map[string][]string{},
+		stubs:          map[string][]ExportEdge{},
+		glossaryByPath: map[string]glossaryEntry{},
 	}
+	entries, err := loadGlossaryEntries(c.root)
+	if err != nil {
+		return nil, err
+	}
+	e.glossary = entries
+	for _, en := range entries {
+		e.glossaryByPath[en.Path] = en
+	}
+	e.terms = newTermLinker(entries)
 	for _, n := range export.Nodes {
 		e.byID[n.ID] = n
 		e.byPath[n.Path] = n
@@ -133,7 +156,7 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 			}
 		}
 	}
-	return e
+	return e, nil
 }
 
 // hasFoundations reports whether the repository declares anything to found the
@@ -185,6 +208,18 @@ func (e *explorer) Pages() (map[string]string, error) {
 			return nil, err
 		}
 	}
+	if e.hasGlossary() {
+		if err := add(routeGlossary, e.glossaryIndexPage); err != nil {
+			return nil, err
+		}
+		for _, en := range e.glossary {
+			html, err := e.glossaryTermPage(en)
+			if err != nil {
+				return nil, err
+			}
+			pages[en.Route+"index.html"] = html
+		}
+	}
 	for _, n := range e.export.Nodes {
 		html, err := e.recordPage(n)
 		if err != nil {
@@ -229,13 +264,19 @@ func (e *explorer) shell(route, title, script, body string) string {
 func (e *explorer) subnav(active string) string {
 	// The reading order runs from what the record HOLDS to what is wrong with
 	// it: the dashboard, the two stores read as decks, how they connect, then
-	// the findings. Contributors and References are about the record's
-	// provenance rather than its content, so they sit apart at the end — named,
-	// not marked. A glyph was tried in their place and read as decoration.
+	// the findings. The glossary follows Foundations because it is the other
+	// thing that holds — what the record's words MEAN, rather than what it has
+	// decided — and because every page after it links into it. Contributors and
+	// References are about the record's provenance rather than its content, so
+	// they sit apart at the end — named, not marked. A glyph was tried in their
+	// place and read as decoration.
 	type tab struct{ route, label string }
 	tabs := []tab{{routeDashboard, e.c.ui.RecordNav.Dashboard}}
 	if e.hasFoundations() {
 		tabs = append(tabs, tab{routeFoundations, e.c.ui.RecordNav.Foundations})
+	}
+	if e.hasGlossary() {
+		tabs = append(tabs, tab{routeGlossary, e.c.ui.RecordNav.Glossary})
 	}
 	if e.hasDevelopment() {
 		tabs = append(tabs, tab{routeDevelopment, e.c.ui.RecordNav.Development})
@@ -839,6 +880,17 @@ func (e *explorer) href(fromPath, target string) string {
 	if strings.HasSuffix(file, ".md") {
 		if n, ok := e.byPath[rel]; ok {
 			out := "/" + RecordRoute(n)
+			if frag != "" {
+				out += "#" + frag
+			}
+			return out
+		}
+		// A term file naming a sibling term reaches that term's page. Without
+		// this the glossary's own cross-references leave the site for the forge,
+		// which is the one place a reader who followed a term link did not mean
+		// to end up.
+		if en, ok := e.glossaryByPath[rel]; ok {
+			out := "/" + en.Route
 			if frag != "" {
 				out += "#" + frag
 			}

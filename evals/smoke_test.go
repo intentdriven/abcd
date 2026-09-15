@@ -1,66 +1,23 @@
 //go:build smoke
 
-// Package evals holds abcd's self-discovering smoke harness. It builds the real
-// `abcd` binary, walks the Cobra command tree in-process to discover every
-// command and flag (so a command added tomorrow is covered with no edit here),
-// and exercises each one against the built binary. Gated behind the `smoke` build
-// tag so it does not slow the unit-test lane; run it with:
-//
-//	go test -tags smoke ./evals/...
-//	make smoke
+package evals
+
+// The self-discovering smoke harness: it walks the Cobra command tree
+// in-process (so a command added tomorrow is covered with no edit here) and
+// exercises each one against the binary harness_test.go builds. Gated behind
+// the `smoke` build tag so it does not slow the unit-test lane.
 //
 // v1 smokes structure only (help renders, no panic, flags parse, read-only verbs
 // run). Fixture-driven per-command scenarios (evals/data/) are future work — see
 // intent itd-75.
-package evals
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/surface/cli"
 	"github.com/spf13/cobra"
 )
-
-// abcdBin is the freshly-built binary under test, set once by TestMain.
-var abcdBin string
-
-func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "abcd-smoke")
-	if err != nil {
-		panic("smoke: mktemp: " + err.Error())
-	}
-	defer os.RemoveAll(dir)
-
-	abcdBin = filepath.Join(dir, "abcd")
-	// Build from the module root (this package lives at <root>/evals).
-	build := exec.Command("go", "build", "-o", abcdBin, "./cmd/abcd")
-	build.Dir = ".."
-	build.Stdout, build.Stderr = os.Stderr, os.Stderr
-	if err := build.Run(); err != nil {
-		panic("smoke: build abcd: " + err.Error())
-	}
-	os.Exit(m.Run())
-}
-
-// run executes the built binary and returns combined output + exit code. A
-// non-zero exit is returned, not fataled — callers decide whether it is expected.
-// Any failure to launch the process at all is fatal.
-func run(t *testing.T, args ...string) (string, int) {
-	t.Helper()
-	out, err := exec.Command(abcdBin, args...).CombinedOutput()
-	if err == nil {
-		return string(out), 0
-	}
-	if ee, ok := err.(*exec.ExitError); ok {
-		return string(out), ee.ExitCode()
-	}
-	t.Fatalf("could not launch `abcd %s`: %v", strings.Join(args, " "), err)
-	return "", -1
-}
 
 // commandArgs walks the Cobra tree from the real root command and returns each
 // command as the arg slice needed to invoke it (root program name excluded).

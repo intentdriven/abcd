@@ -33,7 +33,7 @@ func newBanlistCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist", err)
 			}
@@ -68,7 +68,7 @@ func newBanlistListCommand(asJSON *bool) *cobra.Command {
 		Short: "Render the banlist layers; private entries render by key only",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist list", err)
 			}
@@ -122,7 +122,7 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 		Short: "Add one banned-name entry to the named layer (pattern `-` reads one line from stdin)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist add", err)
 			}
@@ -178,7 +178,7 @@ func newBanlistRemoveCommand(asJSON *bool) *cobra.Command {
 		Short: "Remove one banned-name entry from the named layer",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, err := banlistRoot()
+			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
 				return usageError("abcd banlist remove", err)
 			}
@@ -497,12 +497,13 @@ const maxPatternBytes = 8 << 10
 // banlistRoot resolves the repo whose banlist is being read or written. It resolves
 // the GIT WORKING-TREE TOPLEVEL, because that is the exact root the committed
 // pre-commit guard enforces at (`git rev-parse --show-toplevel`), and the store must
-// live where the guard reads it. rulesRoot's "nearest ancestor holding a .abcd dir"
-// disagrees when a repo is nested under a parent that itself has a .abcd/: it would
-// write the store into the PARENT — outside this repo, where the guard never reads it
-// and the root-anchored gitignore does not match it — leaving the layer inactive
-// while `add` reports a repo-relative path. Falls back to rulesRoot (then cwd) only
-// when git cannot answer, so a non-git use still resolves.
+// live where the guard reads it. rulesRoot's "nearest .abcd inside the working
+// tree" would disagree when a subdirectory carries its own .abcd/: it would write
+// the store there — where the guard never reads it and the root-anchored gitignore
+// does not match it — leaving the layer inactive while `add` reports a repo-relative
+// path. Falls back to rulesRoot, which is cwd outside a git working tree (it never
+// walks past one, GHSA-vvqc-3mv2-5p49), only when git cannot answer, so a non-git
+// use still resolves.
 //
 // In a LINKED git worktree it stays the WORKTREE's own root, deliberately. This is
 // the write root, and itd-150 is read-side resolution only: an `add` run in a
@@ -512,7 +513,7 @@ const maxPatternBytes = 8 << 10
 // banlist.InheritedPrivate — the same primary-checkout resolution the committed
 // pre-commit guard makes, kept in lockstep so the board and the guard cannot
 // disagree about which entries are in force.
-func banlistRoot() (string, error) {
+func banlistRoot(w io.Writer) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
@@ -520,7 +521,7 @@ func banlistRoot() (string, error) {
 	if top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
 		return top, nil
 	}
-	return rulesRoot(cwd), nil
+	return rulesRoot(cwd, w), nil
 }
 
 // readPatternFromStdin reads the pattern as EXACTLY one line. It is the recommended

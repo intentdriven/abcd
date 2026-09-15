@@ -31,6 +31,9 @@
             "context": "check (ubuntu-latest)"
           },
           {
+            "context": "cold-reading-evals"
+          },
+          {
             "context": "external-review"
           },
           {

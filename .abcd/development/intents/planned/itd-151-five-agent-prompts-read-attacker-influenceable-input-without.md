@@ -20,6 +20,10 @@ promoted_from: iss-278
 
 Graduated from `iss-278`: Five agent prompts read attacker-influenceable input without the itd-5 contract (ruthless-reviewer, security-reviewer, docs-currency-reviewer, intent-auditor, sota-researcher) and agents/ sits outside both lint roots, so no detector exists for the class; the PQ linter (agents/README.md) is the missing detector. Read that issue record for the source observation.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** the record-lint configuration, **when** it runs, **then** it walks the `agents/` tree, which previously sat outside every lint root.

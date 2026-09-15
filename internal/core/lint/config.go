@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -90,6 +91,9 @@ type RuleConfig struct {
 	// issue_id_unique and issue_impact_valid; it holds the open/, resolved/, and
 	// wontfix/ status directories. Default .abcd/work/issues. It lies outside Roots
 	// — the rules read the ledger and run once, sharing one scan of it.
+	// reading_outstanding reads the same root's SIBLING families (readings/,
+	// dispositions/), which is why they are named relative to it rather than
+	// configured twice.
 	IssuesDir string `json:"issues_dir"`
 	// Allowlist is the stray_root_docs permitted basename-stem list (upper-cased,
 	// extension-stripped) for top-level markdown files.
@@ -426,7 +430,226 @@ func parseConfig(data []byte) (Config, error) {
 	if err := cfg.validateSeverities(); err != nil {
 		return Config{}, err
 	}
+	if err := cfg.validateRecordStores(); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.validateConfiguredPaths(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// configuredPath is one repo-relative location the config names, paired with the
+// field that named it so a refusal can say which key to fix.
+type configuredPath struct {
+	field string
+	value string
+}
+
+// validateConfiguredPaths refuses every configured location that is not a plain
+// repo-relative path, at LOAD time — before any rule joins it onto the repository
+// root and reads what it finds.
+//
+// The config is a trust boundary the way LoadConfig's own read is: it is a
+// committed, cross-repo-clonable file, and a pull request that edits
+// `.abcd/record-lint.json` edits the gate that judges it. record_schema's store
+// walk joined `record_stores` onto the repo root with no rejection at all, so
+// `"adr": "../outside/decisions"` made the gate read `.md` frontmatter from
+// outside the checkout and echo it into the CI log
+// (iss-2608301308367566). Every OTHER repo-relative field the config carries is
+// joined the same way by its own rule, so gating one field would gate the
+// instance rather than the pattern.
+//
+// Containment is checked here rather than only at each use site because the
+// per-site guards (containedRepoPath + resolvedInsideRoot, which six of these
+// fields already carry) are opt-in: a field added later inherits nothing, and the
+// omission is silent — the rule reads the outside tree and reports on it at exit
+// 0. One gate at the door cannot be forgotten by a new field, and the six
+// per-site guards stay where they are: they also resolve symlinks, which a
+// lexical gate cannot see.
+//
+// fsutil.ValidRelPath is the canonical lexical guard for a path that arrives as
+// data (the site manifest and the positioning config both route through it), so
+// it is called rather than copied — a second containment predicate is the shape
+// the one-canonical-primitive principle refuses, and this one is strictly
+// stronger than the package's read-time check: it also refuses an unclean path
+// and a backslash, which `..\..\x` needs on the Windows binaries abcd
+// cross-compiles.
+//
+// An EMPTY value is not a path — it means the field is unset, and for a roots
+// entry it means the root the entry is relative to — so it passes, while "."
+// does not: ValidRelPath refuses a "." segment. The two spell the same location,
+// so the refusal has to say which one the config should carry, or the author
+// reads a message listing four causes and recognises none of them. The
+// *_paths/*_prefixes lists are deliberately not here: they are string prefixes
+// matched against repo-relative paths, never joined onto a root and never
+// opened, and the shipped config spells them with a trailing slash, which is a
+// prefix rather than a path.
+func (c Config) validateConfiguredPaths() error {
+	for _, root := range c.Roots {
+		if err := checkConfiguredPath(configuredPath{"roots entry", root}); err != nil {
+			return err
+		}
+	}
+	// Rules is a map, so a config with several faults must not report a different
+	// one per run: walk the rule ids, and each rule's stores, in sorted order.
+	ids := make([]string, 0, len(c.Rules))
+	for id := range c.Rules {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		rc := c.Rules[id]
+		fields := []configuredPath{
+			{"intents_dir", rc.IntentsDir},
+			{"specs_dir", rc.SpecsDir},
+			{"issues_dir", rc.IssuesDir},
+			{"registry", rc.Registry},
+			{"commands_dir", rc.CommandsDir},
+			{"skills_dir", rc.SkillsDir},
+			{"snapshot", rc.Snapshot},
+			{"target", rc.Target},
+			{"receipts_dir", rc.ReceiptsDir},
+			{"runbook", rc.Runbook},
+			{"workflow", rc.Workflow},
+			{"glossary_dir", rc.GlossaryDir},
+			{"baseline", rc.Baseline},
+			{"changelog", rc.Changelog},
+			{"intents_root", rc.IntentsRoot},
+			{"agents_dir", rc.AgentsDir},
+		}
+		// Every record_stores KEY the config wrote, sorted, rather than the engine's
+		// own store list: sorting keeps a config with several faulty stores reporting
+		// the same one, and walking what was written rather than what is known means
+		// this check does not depend on validateRecordStores having already refused an
+		// unknown prefix — a reordering of parseConfig would otherwise leave an
+		// unknown store's path unjudged.
+		prefixes := make([]string, 0, len(rc.RecordStores))
+		for prefix := range rc.RecordStores {
+			prefixes = append(prefixes, prefix)
+		}
+		sort.Strings(prefixes)
+		for _, prefix := range prefixes {
+			fields = append(fields, configuredPath{"record_stores " + quote(prefix), rc.RecordStores[prefix]})
+		}
+		for _, spec := range rc.Indexes {
+			fields = append(fields,
+				configuredPath{"index " + quote(spec.ID) + " doc", spec.Doc},
+				configuredPath{"index " + quote(spec.ID) + " dir", spec.Dir})
+		}
+		for _, f := range fields {
+			f.field = "rule " + id + ": " + f.field
+			if err := checkConfiguredPath(f); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkConfiguredPath is validateConfiguredPaths' single verdict, so every field
+// is judged by one predicate and the refusal always names the offending value —
+// a message that says only "a path escapes the repository" sends the reader
+// hunting through a config with two dozen path keys.
+func checkConfiguredPath(p configuredPath) error {
+	if p.value == "" || fsutil.ValidRelPath(p.value) {
+		return nil
+	}
+	return &configError{p.field + " " + quote(p.value) +
+		" is not a plain repo-relative path; it must be relative, already clean, and carry no \".\", \"..\" " +
+		"or backslash segment — an empty value, never \".\", is how a field names the root it is relative to; " +
+		"the rule joins it onto the repository root and reads what it finds, so a value that escapes " +
+		"reads files the repository does not own and echoes them into the lint output"}
+}
+
+// validateRecordStores refuses a record_stores key that names no store this
+// engine knows. Only the LOCATION of a store is configurable; which stores exist
+// is code, because a config that could add one could also hide a directory
+// behind it — the nested-store-root exemption is granted to a store's own root,
+// and an unknown key would be claiming an exemption for a directory nothing
+// scans. A silently-ignored key also fails the way misspellings always fail
+// here: the file still looks armed.
+func (c Config) validateRecordStores() error {
+	known := recordStorePrefixes()
+	for id, rc := range c.Rules {
+		var unknown []string
+		for prefix := range rc.RecordStores {
+			if !known[prefix] {
+				unknown = append(unknown, prefix)
+			}
+		}
+		if len(unknown) == 0 {
+			continue
+		}
+		sort.Strings(unknown)
+		return &configError{"rule " + id + ": record_stores names no such store: " +
+			strings.Join(unknown, ", ") + "; which record stores exist is code, not configuration — only their locations are configurable"}
+	}
+	for id, rc := range c.Rules {
+		if err := validateStoreLayout(id, rc.RecordStores); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateStoreLayout refuses a configured store root that would remove another
+// store's coverage.
+//
+// Refusing an UNKNOWN prefix was only half of it: a known one does the same
+// damage and looks like ordinary configuration. Aim rdi at the issue store's
+// open/ and that bucket becomes a nested store root — the issue store skips it,
+// while rdi ignores every file that is not rdi-N.md — so a malformed issue
+// record sitting in it is judged by nobody. Two prefixes on one path is the same
+// trick without the nesting: whichever store's grammar the files do not match
+// stops seeing them.
+//
+// Two shapes are refused, and both are about coverage rather than tidiness: a
+// root that IS or sits INSIDE a bucket another store declares (by list, or by the
+// grammar a minted-bucket store declares), and two prefixes resolving to one
+// path. A root that merely sits inside another store's root, beside its buckets,
+// is the shipped layout and stays legal.
+func validateStoreLayout(ruleID string, stores map[string]string) error {
+	type entry struct{ prefix, path string }
+	// Built in recordStores order so a config with several faults always reports
+	// the same one.
+	var entries []entry
+	for _, s := range recordStores {
+		if p := stores[s.prefix]; p != "" {
+			entries = append(entries, entry{s.prefix, strings.Trim(filepath.ToSlash(p), "/")})
+		}
+	}
+	for i, a := range entries {
+		for j, b := range entries {
+			if i == j {
+				continue
+			}
+			if a.path == b.path {
+				if a.prefix > b.prefix {
+					continue // report the pair once
+				}
+				return &configError{"rule " + ruleID + ": record_stores points both " + a.prefix +
+					" and " + b.prefix + " at " + quote(a.path) +
+					"; two stores on one path means whichever store's filename grammar a file does not match is scanned by nobody"}
+			}
+			if !strings.HasPrefix(b.path, a.path+"/") {
+				continue
+			}
+			segment := b.path[len(a.path)+1:]
+			if k := strings.Index(segment, "/"); k >= 0 {
+				segment = segment[:k]
+			}
+			store, ok := storeByPrefix(a.prefix)
+			if !ok || !store.declaresBucket(segment) {
+				continue
+			}
+			return &configError{"rule " + ruleID + ": record_stores puts the " + b.prefix +
+				" store at or inside " + quote(a.path+"/"+segment) + ", which is a declared " + store.noun +
+				" bucket; the " + a.prefix + " store would then skip that bucket as a nested store root while the " +
+				b.prefix + " store ignores every file its own filename grammar does not match, so the records in it are scanned by nobody"}
+		}
+	}
+	return nil
 }
 
 // strictRuleAndTokenKeys re-decodes each rule and banned-token OBJECT with
@@ -463,6 +686,16 @@ func strictRuleAndTokenKeys(data []byte) error {
 	return nil
 }
 
+// severityPinnedRules are the rules that set their own finding severity in CODE
+// and never read it from the configuration. There is one, and it is a REPORT:
+// reading_outstanding says which reading items nobody has answered, and a
+// reading must never fail a push that has nothing to do with it. Pinning the
+// severity in code is what makes that structural — a config that could raise it
+// to blocker is a gate waiting to happen — and this set is why declaring "info"
+// for such a rule is a correct declaration rather than the off-enum value the
+// check below exists to refuse.
+var severityPinnedRules = map[string]string{ruleReadingOutstanding: severityInfo}
+
 // validateSeverities refuses a severity outside the engine's enum on any
 // enabled rule or banned token. The exit paths count Severity == "blocker"
 // verbatim, so an off-enum value would emit findings that serialize yet count
@@ -470,9 +703,20 @@ func strictRuleAndTokenKeys(data []byte) error {
 // the sibling engines (repolint.Evaluate, guard.Validate, banlist.AddPublic)
 // name a rule bug and fail closed on. A disabled rule is inert and its
 // severity is not consulted, so it is not checked.
+//
+// A severity-pinned rule is checked against its OWN pinned value instead: it
+// counts toward no exit code deliberately, and a config that declared it
+// blocker or warn would be describing a gate the engine will not run.
 func (c Config) validateSeverities() error {
 	for id, rc := range c.Rules {
 		if !rc.Enabled {
+			continue
+		}
+		if pinned, isPinned := severityPinnedRules[id]; isPinned {
+			if rc.Severity != pinned {
+				return &configError{"rule " + id + " has severity " + strconv.Quote(rc.Severity) +
+					"; it is a report, not a gate, and its severity is pinned in code to " + strconv.Quote(pinned)}
+			}
 			continue
 		}
 		if rc.Severity != severityBlocker && rc.Severity != severityWarn {

@@ -98,9 +98,10 @@ const (
 // humanOwnedSections are the sections the M2 cross-repo gate ruled not derivable
 // from a repository — answered by a person, not extracted. Every other section
 // is extractable (the zero value of the Kind lookup). Keeping the set here, off
-// the positional Table literal, avoids editing 23 rows for one classification.
+// the positional Table literal, avoids editing 24 rows for one classification.
 var humanOwnedSections = map[Section]bool{
 	"product/personas":             true,
+	"product/framing":              true,
 	"product/mental-model":         true,
 	"delivery/verification-matrix": true,
 	"delivery/out-of-scope":        true,
@@ -167,6 +168,9 @@ var Table = []Mapping{
 	{"product/personas", "brief/01-product/05-personas.md",
 		StatusBlank, StatusBlank, StatusPartial,
 		"personas registry, press-release quote attributions"},
+	{"product/framing", "brief/01-product/06-framing.md",
+		StatusBlank, StatusPartial, StatusGrounded,
+		"the brief's framing section, the brief-creation interview's committed framing products"},
 	{"constraints/platform", "brief/02-constraints/01-platform.md",
 		StatusPartial, StatusGrounded, StatusGrounded,
 		"build manifests, CI workflows, README requirements"},

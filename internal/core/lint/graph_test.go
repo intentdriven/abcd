@@ -3,6 +3,8 @@ package lint
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 )
 
@@ -245,5 +247,20 @@ func TestLoadRecordGraphOverThisRepo(t *testing.T) {
 		if ids[e.To] {
 			t.Errorf("dangling edge names a present record: %+v", e)
 		}
+	}
+}
+
+// TestHandleLessOrdersOrdinalsBeforeStamps pins the index sort the ADR store's
+// two id vintages need (the 2026-09-01 ruling): ascending, the hand-numbered
+// ordinals come first and the minted timestamps follow, because the comparison
+// is on the number and a 16-digit stamp is larger than every ordinal ever
+// issued. Every derived index — the record export's edges, the site's decision
+// lists — orders through this one comparator.
+func TestHandleLessOrdersOrdinalsBeforeStamps(t *testing.T) {
+	got := []string{"adr-2609012206053814", "adr-58", "adr-1", "adr-2609012206050042", "adr-12"}
+	sort.SliceStable(got, func(i, j int) bool { return HandleLess(got[i], got[j]) })
+	want := []string{"adr-1", "adr-12", "adr-58", "adr-2609012206050042", "adr-2609012206053814"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("HandleLess order:\n got %v\nwant %v", got, want)
 	}
 }

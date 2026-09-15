@@ -85,7 +85,7 @@ require_released_platform() {
 download() {
 	command -v curl >/dev/null 2>&1 || die "curl is needed to download the release. Install curl, or download the binary by hand from https://github.com/intentdriven/abcd/releases"
 	curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$1" ||
-		die "could not download $1 from the latest release. Check the network, or download it by hand from https://github.com/intentdriven/abcd/releases"
+		die "could not download $1 from the latest release. Check the network. This installer deliberately ignores HTTPS_PROXY, HTTP_PROXY, ALL_PROXY (and their lowercase forms), CURL_HOME, CURL_CA_BUNDLE, SSL_CERT_FILE and SSL_CERT_DIR, so a host that reaches GitHub only through a proxy or a custom CA bundle cannot install this way; download the binary and checksums.txt by hand from https://github.com/intentdriven/abcd/releases and verify the SHA-256 yourself."
 	curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt" ||
 		die "could not download checksums.txt from the latest release. Nothing is installed without it."
 }

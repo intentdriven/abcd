@@ -80,6 +80,10 @@ This intent is the **`press-release`-shaped commitment** behind spec `spc-3-stre
 - **`/abcd:grill` top-level alias** — dropped per round-2 command-structure review. Users who type `/abcd:grill` get a "did you mean `/abcd:intent grill`?" hint from the dispatcher.
 - **`/abcd:grill-me` Pocock alias** — dropped. Pocock attribution lives in README acknowledgements only.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a voyage with no glossary directory, **when** the persona runs `/abcd:intent grill itd-N`, **then** the sub-verb auto-detects lite mode, asks one question at a time via `AskUserQuestion`, and refuses to exceed 12 questions/session without `--extend`.

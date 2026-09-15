@@ -121,6 +121,10 @@ The intent is project-agnostic: every abcd project that uses the intent corpus b
   external research) are out of scope; only `brief/` + `intents/` are the
   inputs.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - *Given* the agent file with Roles 2 and 3 sections added, *when* `lint_prompts.py` runs, *then* `prompt_version` is bumped, the CHANGELOG carries the bump entry, and at least one injection canary per role exists in `agents/intent-fidelity-reviewer/fixtures/`.

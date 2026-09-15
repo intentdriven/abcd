@@ -36,6 +36,10 @@ in favour of the rename — the reversal is recorded as a dated amendment
 inside adr-40 §5 and a `DECISIONS.md` line. The oracle seam itself is
 untouched: adr-25 stands, and `oracle` remains the seam's name.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

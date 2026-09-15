@@ -64,8 +64,6 @@ var (
 	fmKeyRe = regexp.MustCompile(`^([A-Za-z0-9_]+):(.*)$`)
 	// acHeadingRe matches the `## Acceptance Criteria` heading (any heading depth).
 	acHeadingRe = regexp.MustCompile(`^#{1,6}\s+Acceptance Criteria\s*$`)
-	// headingRe matches any markdown ATX heading line.
-	headingRe = regexp.MustCompile(`^#{1,6}\s`)
 )
 
 // Intent is one intent record. Bucket is the directory it was found in; Path is
@@ -187,13 +185,18 @@ func sortStrings(s []string) {
 }
 
 // PlanResult reports a completed Plan: the updated planned intent and the spec
-// minted to realise it. MintWarning is the loud-degrade note from the spec-id
-// refs-union scan (empty when the scan completed) — the surface MUST render it so
-// a degrade to working-tree-only minting is never silent.
+// minted to realise it.
 type PlanResult struct {
-	Intent      Intent    `json:"intent"`
-	Spec        spec.Spec `json:"spec"`
-	MintWarning string    `json:"mint_warning,omitempty"`
+	Intent Intent    `json:"intent"`
+	Spec   spec.Spec `json:"spec"`
+	// ConditionsStamped is how many scope-condition bullets this run gave an
+	// identity to.
+	ConditionsStamped int `json:"conditions_stamped"`
+	// StampOnly reports that this run did the identity step alone, over a record
+	// already in planned/: no spec was minted and no bucket moved. It is how a
+	// condition written after planning reaches the mint, which is what makes the
+	// readiness gate's remedy a command that works.
+	StampOnly bool `json:"stamp_only"`
 }
 
 // LinkResult reports a completed Link: the updated intent and the spec it now

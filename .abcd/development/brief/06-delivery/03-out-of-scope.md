@@ -1,6 +1,6 @@
 # Out of Phase Scope
 
-This brief describes the work bundled into the seven planned phases (see [`roadmap/phases/README.md`](../../roadmap/phases/README.md)). **Later-phase items live as press-release intents**: the uncommitted bench in `.abcd/development/intents/drafts/` (enumerated below), and the committed-but-unscheduled intents in `planned/` — valid per [adr-34](../../decisions/adrs/0034-lifecycle-and-scheduling-orthogonal.md), listed in [intents/README.md](../../intents/README.md) § Planned, and scheduled when a phase doc's `## Scope` names them.
+This brief describes the work bundled into the eight planned phases (see [`roadmap/phases/README.md`](../../roadmap/phases/README.md)). **Later-phase items live as press-release intents**: the uncommitted bench in `.abcd/development/intents/drafts/` (enumerated below), and the committed-but-unscheduled intents in `planned/` — valid per [adr-34](../../decisions/adrs/0034-lifecycle-and-scheduling-orthogonal.md), listed in [intents/README.md](../../intents/README.md) § Planned, and scheduled when a phase doc's `## Scope` names them.
 
 **In a later phase.** The set below is the live `drafts/` corpus — the
 uncommitted bench. Per
@@ -54,7 +54,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-55` — abcd can tell whether its own reasoning rests on bedrock or an unexamined assumption
 - `itd-57` — Manual-hold sentinel blocking a spec from autonomous pickup until a human lifts it
 - `itd-59` — Autonomous-run passes leave the same durable, queryable transcript an interactive session does
-- `itd-60` — Doc-fidelity anti-drift: a spec cannot close until the brief and public docs reflect what was built
 - `itd-61` — Brief-change derivation: a human brief edit reconciles its implied intents and principles before commit
 - `itd-62` — Pluggable fail-closed safety gate wrapping a trusted scanner
 - `itd-64` — Benchmark-driven configuration optimisation from abcd's own runs
@@ -92,7 +91,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-143` — The framing chapter under 01-product/: the macro-why home, with its brief↔lifeboat mapping row; receives itd-142's committed framing products
 - `itd-144` — Every livery mark has a surface: the lifeboat on disembark and mirrored on embark, the duckling as the harness mascot, the flag icon for the website (settles itd-112's deferred forge/web logo question)
 - `itd-146` — abcd's help renders in labelled command groups, gated by a group field in the surface snapshot and an ungrouped-verb test (the reframed survivor of the verb-taxonomy ideate verdict; no verb renamed, moved or hidden)
-- `itd-147` — The brief's surface chapters carry a generated shape block derived from the command tree, so flags, sub-verbs, exit codes and counts cannot drift while the prose keeps saying why (filed from the 0.6.2 release gate's 147-finding crosscheck; the CLI reference, generated and drift-tested, returned zero the same day)
 - `itd-149` — abcd handles inbound security advisories and issues, and cuts the release, for every managed repo (the 2026-08-27 pilot's loop automated; findings F-A…F-W are the acceptance-criteria source, F-U and F-Q load-bearing; filed after the itd-84 SPLIT, awaiting the planning interview)
 - `itd-163` — Reference-closure and acknowledgements-mirror gate: every citation resolves to the CSL references, the references and acknowledgements mirror both ways, and a committed influence registry backs the Inspirations list (supersedes itd-145; filed from the 2026-08-28 attribution review with the backfill issue iss-2608280824478819)
 - `itd-164` — Licence vetting at source admission: `docs cite refresh` records each source's licence verdict into the committed baseline, and the zero-network gate refuses a new entry without one (builds on itd-163)
@@ -109,6 +107,11 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-174` — Each repository configures how far its facilitator is consulted and when it escalates (sequenced after itd-169)
 - `itd-175` — The product thinker writes down how this could be wrong, and what would show it (Phase 8; the defeater list an acceptance rests on)
 - `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
+- `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
+- `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091248200336; `builds_on` itd-118, whose worktree clause it supplies the store and the reclaim verb for)
+- `itd-2609091416295622` — A session sees the records its sibling worktrees hold before it mints or fixes one: a read-only ledger diff over `git worktree list --porcelain` (open there and absent here; open here and terminal there), a line on the `/abcd` board and on the record dispatch, no claim and no write (split from itd-2609091034175565 on the maintainer's ruling of 2026-09-09; the shippable piece)
+- `itd-2609091416304128` — `capture resolve` and `capture wontfix` refuse a record already terminal at the local `origin/main` ref as last fetched, stating the ref's age and performing no fetch; the same judgement rendered read-only on `abcd <record-id>` (split from itd-2609091034175565 on the same ruling; the third clause of iss-2609020716570699's remedy, RS001's answer moved earlier)
+- `itd-2609091034175565` — A record says who is working on it before anyone else starts: the claim verb, the session lease and the write-verb refusals, with the `claimed_by` stamp bounded by a two-release migration (promoted from iss-2609020716570699; the read-only listing and the upstream refusal were split out on 2026-09-09; not ready — carries the refusal-surface, liveness and pushed-price questions as open questions)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
@@ -127,6 +130,6 @@ for a capture pass:
 
 **Superseded addition (2026-08-28):** itd-145 (the acknowledgement convention arming itself, captured 2026-08-22) has been superseded by itd-163 in the list above, which delivers its mechanically checkable core, and moved to `intents/superseded/`. (See `superseded/itd-145-an-adopted-idea-cannot-ship-uncredited-abcd-enforces-its-own.md`.)
 
-Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>` and to `shipped/` via `/abcd:intent ship <itd-N>` (or automatically when the linked spec closes).
+Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>`. It reaches `shipped/` one way only: closing its linked spec, which moves the intent as its close-hook. There is no `intent ship` verb, so nothing promotes a record on its own — the close is a manual step run in the change that lands the work.
 
 The brief does not get re-versioned. What has shipped is defined by which phases are complete and which intents are in `shipped/`; this brief stays the canonical current-state design record.

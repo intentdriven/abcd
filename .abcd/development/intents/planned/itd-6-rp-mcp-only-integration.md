@@ -50,6 +50,10 @@ This intent re-frames the brief's RP integration: drop "select RP backend with p
 - Direct OpenAI / Google / Anthropic API integrations — out of scope; route everything through RP
 - **Capability-aware cascade routing** (added 2026-05-08 per idea-4 jagged-frontier review). The cascade defined by this intent (RP MCP → Codex CLI → in-session subagent) is and stays availability-driven (per `04-universal-patterns.md § 7` "fixed cascade"). Capability-aware routing — when Frontier Awareness ships — is a *pre-cascade selector* layer above the cascade, NOT a modification. The selector picks which backend the cascade *starts from* based on `(task_class, agent, model_id) → preferred_backend_ranking`; the fixed cascade per this intent and itd-2 begins from that backend without contract change.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._

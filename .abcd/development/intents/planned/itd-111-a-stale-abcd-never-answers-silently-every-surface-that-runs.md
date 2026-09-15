@@ -124,6 +124,10 @@ no adoptable path-1 candidate exists (every checker in the class is
 network-based) and that the pattern's ecosystems offer opt-out, not a
 disk-only mode.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - Given a dogfood checkout whose plugin-root binary predates the source tip,

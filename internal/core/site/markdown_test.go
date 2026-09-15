@@ -352,6 +352,35 @@ func TestStripFrontmatter(t *testing.T) {
 	}
 }
 
+// TestStripFrontmatterSkipsAnAttributionComment pins the tolerance the record's
+// own readers already have: a term file carries an attribution comment above its
+// `---`, and a stripper that recognised frontmatter only at byte zero published
+// the whole block as prose. The line count still counts the comment, so a later
+// error message names the line a reader finds in the file.
+func TestStripFrontmatterSkipsAnAttributionComment(t *testing.T) {
+	src := "<!-- Adapted from somewhere. -->\n---\nterm: phase\n---\n\n# phase\n"
+	body, n := StripFrontmatter(src)
+	if body != "\n\n# phase\n" {
+		t.Errorf("body = %q", body)
+	}
+	if n != 3 {
+		t.Errorf("consumed %d lines, want 3", n)
+	}
+	secs, err := Sections(".abcd/development/brief/glossary/core/phase.md", body, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secs) != 1 || secs[0].Line != 6 {
+		t.Errorf("the H1 is not reported at its source line 6: %+v", secs)
+	}
+	// A document that opens with a comment and carries NO frontmatter is
+	// untouched: the comment is the document's own first block.
+	body, n = StripFrontmatter("<!-- a note -->\n\n# Title\n")
+	if body != "<!-- a note -->\n\n# Title\n" || n != 0 {
+		t.Errorf("a commented document without frontmatter was changed: %q, %d", body, n)
+	}
+}
+
 func TestSectionsHonourFencesAndReportLines(t *testing.T) {
 	md := "# Title\n\nIntro.\n\n## Second\n\n```sh\n# not a heading\n```\n\nAfter.\n"
 	secs, err := Sections("docs/page.md", md, 0)

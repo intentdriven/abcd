@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -169,9 +170,12 @@ func renderSiteStatus(w io.Writer, st site.Status) {
 	if st.Commit != "" {
 		fmt.Fprintf(w, "  commit:       %s\n", termsafe.Sanitize(st.Commit))
 	}
-	if st.OutExists {
+	switch {
+	case st.OutRefused != "":
+		fmt.Fprintf(w, "  output:       %s (refused: %s)\n", termsafe.Sanitize(st.OutDir), termsafe.Sanitize(scrubPaths(errors.New(st.OutRefused))))
+	case st.OutExists:
 		fmt.Fprintf(w, "  output:       %s (%d entries)\n", termsafe.Sanitize(st.OutDir), st.OutFiles)
-	} else {
+	default:
 		fmt.Fprintf(w, "  output:       %s (not built)\n", termsafe.Sanitize(st.OutDir))
 	}
 	fmt.Fprintf(w, "run `abcd site build` to render\n")

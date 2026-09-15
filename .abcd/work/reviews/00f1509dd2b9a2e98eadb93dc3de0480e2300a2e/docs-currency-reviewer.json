@@ -1,0 +1,66 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "00f1509dd2b9a2e98eadb93dc3de0480e2300a2e"
+    }
+  },
+  "verifier": {
+    "id": "maintainer@release"
+  },
+  "timeVerified": "2026-08-29T14:07:38Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5",
+  "tier": "full",
+  "manifestHash": "sha256:20b7f07e8a676e6515d01e98aa2ca8da21465166550ee250bc616f6527ed9ef7",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.6.8"
+  },
+  "categories": {
+    "false-claim": 0,
+    "undocumented-surface": 2,
+    "fictional-layout": 0,
+    "criterion-violation": 2,
+    "stale-count": 1
+  },
+  "failing": [
+    {
+      "where": "docs/reference/writing-style.md:40",
+      "class": "criterion-violation",
+      "claim": "the present_tense/* family is labelled machine-enforced",
+      "reality": "6 of its 9 tokens are blocker severity in .abcd/docs-lint.json; no-longer, deprecated and migrated-from are warn and gate nothing",
+      "disposition": "accepted: non-blocking, knowingly shipped unfixed; a docs-currency correction is a follow-up docs pass, not release content. Judged on three consecutive passes; the failure mode is over-compliance, not a wrong action taken with confidence."
+    },
+    {
+      "where": "docs/reference/writing-style.md:69-78",
+      "class": "undocumented-surface",
+      "claim": "the Structure table states the whole machine-enforced surface",
+      "reality": "harness_leak (.abcd/docs-lint.json:253, internal/core/lint/harnessleak.go) is a blocker absent from the table",
+      "disposition": "accepted: non-blocking, knowingly shipped unfixed; a docs-currency correction is a follow-up docs pass, not release content. Judged on three consecutive passes; the failure mode is over-compliance, not a wrong action taken with confidence."
+    },
+    {
+      "where": "AGENTS.md:84",
+      "class": "stale-count",
+      "claim": "the decisions-append gate is DA001-DA003",
+      "reality": "scripts/check-decisions-append.sh and ci.yml run DA001-DA004; CHANGELOG.md's 0.6.8 line is correct",
+      "disposition": "accepted: non-blocking, developer-facing record text; corrected in a follow-up, not release content."
+    },
+    {
+      "where": "docs/reference/README.md:8-10",
+      "class": "undocumented-surface",
+      "claim": "writing-style.md covers language split, tense, page types and punctuation",
+      "reality": "the page also carries Audience, Structure and Escapes sections",
+      "disposition": "accepted: non-blocking index description lag; corrected in a follow-up docs pass."
+    },
+    {
+      "where": "docs/README.md:9",
+      "class": "criterion-violation",
+      "claim": "'not yet populated; the first page is tracked as iss-216' narrates a planned state",
+      "reality": "factually true (docs/tutorials/ holds only its README and iss-216 is open); the phrasing is forward-looking",
+      "disposition": "accepted: non-blocking phrasing; factually accurate today."
+    }
+  ],
+  "_reviewProvenance": "Host-run agent-harness semantic review of the 0.6.8 CHANGELOG section (32 lines, 38 record citations, each verified against implementing code), the release commit's README.md and record corrections, and docs/** against the code at this commit. Three passes over this release: the first two HELD on false claims in README.md and in the iss-253 record; the third HELD on three CHANGELOG lines (a composer paraphrase inverting the Horn URL caveat for iss-2608280824478819, the docs-lint protocol line claimed for the bundled DOCUMENTATION domain when only this repository's .abcd/rules.json override carries it, and 'check' for a unit test under iss-87). Each was fixed at the source (record resolution fields) and the section recomposed through the changelog composer and re-ingested, never hand-edited; the fourth pass, at this commit, PROMOTED. The five findings recorded here are non-blocking and knowingly shipped unfixed. Evidence retained in the local work tier."
+}

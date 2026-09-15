@@ -37,9 +37,13 @@ func (execRunner) Run(ctx context.Context, binPath, text string) ([]byte, error)
 	ctx, cancel := context.WithTimeout(ctx, runTimeout)
 	defer cancel()
 
-	// #nosec G204 -- binPath is resolved by the adapter (a configured regular
-	// file or an exec.LookPath result), not attacker-controlled; the scan input
-	// is a file path we just created, never the transcript content.
+	// #nosec G204 -- binPath originates in a COMMITTED config (or a PATH
+	// lookup) and is therefore untrusted input; it reaches this call only after
+	// admitBinary has held it to the allow-shape (absolute, resolved outside
+	// the repository, regular, executable), which is what makes the variable
+	// argument safe to exec. The remaining arguments are fixed flags and paths
+	// under a temp dir this process just created; the transcript content is
+	// never on the command line.
 	cmd := exec.CommandContext(ctx, binPath,
 		"dir", dir,
 		"--report-format", "json",
@@ -47,6 +51,11 @@ func (execRunner) Run(ctx context.Context, binPath, text string) ([]byte, error)
 		"--no-banner",
 		"--exit-code", "0",
 	)
+	// Run from the private temp dir, never from the caller's working directory:
+	// the capture usually runs inside the checkout being scanned, and a binary
+	// that consults its cwd (a config it looks for at ./, a tool shim) would be
+	// reading repository content again by the back door the path rule closed.
+	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("gitleaks run: %w (%s)", err, string(out))
 	}

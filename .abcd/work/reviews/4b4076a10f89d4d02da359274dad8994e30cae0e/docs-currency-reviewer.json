@@ -1,0 +1,124 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "4b4076a10f89d4d02da359274dad8994e30cae0e"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-01T13:05:35Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:0afee23256cb67ad69dd1bb603c534eaf89e2e4181edec0a863f1b161652164d",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.7.0"
+  },
+  "categories": {
+    "false-claim": 5,
+    "stale-record": 1,
+    "stale-count": 1,
+    "incomplete": 5,
+    "criterion-violation": 0
+  },
+  "failing": [
+    {
+      "id": "dc-0a",
+      "category": "false-claim",
+      "severity": "high",
+      "summary": "The first 0.7.0 roll asserted a migration burden from v0.6.9 for the abcd reading verb, which does not exist at v0.6.9 (three lines under Changed/Removed).",
+      "disposition": "fixed",
+      "note": "Root cause fixed in the composer prompt (base_tag baseline rule) and the cut recomposed. Binary-side half open as iss-2609011207114761."
+    },
+    {
+      "id": "dc-0b",
+      "category": "false-claim",
+      "severity": "medium",
+      "summary": "commands/reading.md:19 described a two-operand interface, contradicting the binary's own refusal.",
+      "disposition": "fixed"
+    },
+    {
+      "id": "dc-0c",
+      "category": "false-claim",
+      "severity": "medium",
+      "summary": "commands/reading.md:79 named scope_overridden where the verb's --json nests scope.overridden.",
+      "disposition": "fixed"
+    },
+    {
+      "id": "dc-0d",
+      "category": "incomplete",
+      "severity": "low",
+      "summary": "docs/reference/cli/commands.md operand grammar omitted --scope.",
+      "disposition": "fixed",
+      "note": "Corrected at the cobra Long it is generated from; page regenerated."
+    },
+    {
+      "id": "dc-0e",
+      "category": "incomplete",
+      "severity": "low",
+      "summary": "CONTRIBUTING.md CI enumeration omitted the cold-reading-evals job.",
+      "disposition": "fixed"
+    },
+    {
+      "id": "dc-1",
+      "category": "false-claim",
+      "severity": "high",
+      "summary": "CHANGELOG.md:22 described --scope as taking a record family; the grammar takes a record id (itd-N or spc-N), a material kind, or a committed preset. adr, issue, intent and decision all exit 2.",
+      "disposition": "fixed",
+      "note": "Recomposed, not hand-edited. Line now states the shipped grammar."
+    },
+    {
+      "id": "dc-2",
+      "category": "stale-record",
+      "severity": "high",
+      "summary": "agents/release-changelog-composer.md changed without a prompt_version bump; record-lint -agent-diff returned a BLOCKER and CI's check job would have failed on the PR.",
+      "disposition": "fixed",
+      "note": "Bumped 0.1.0 -> 0.2.0 MINOR with a matching agents/CHANGELOG.md entry. Two stale self-references inside the prompt fixed with it."
+    },
+    {
+      "id": "dc-3",
+      "category": "false-claim",
+      "severity": "medium",
+      "summary": "CHANGELOG.md:28 announced a five-state disposition vocabulary over an enumeration of four; four ship.",
+      "disposition": "fixed",
+      "note": "Recomposed to say four. The five-versus-four discrepancy itself stays where internal/core/issueschema/reading.go:148 carries it as knowingly unresolved."
+    },
+    {
+      "id": "dc-4",
+      "category": "false-claim",
+      "severity": "medium",
+      "summary": "commands/reading.md:33 describes the bare verb's definitions field as definitions 'present under agents/'; it reports what the locator RESOLVES, and a malformed definition fails the whole verb rather than being omitted.",
+      "disposition": "deferred",
+      "note": "Already captured and open as iss-2608311039586922, which states the correction verbatim. Not introduced by this release."
+    },
+    {
+      "id": "dc-5",
+      "category": "incomplete",
+      "severity": "low",
+      "summary": "CONTRIBUTING.md:24-27 CI job enumeration omits the decisions-append gate (DA001-DA004).",
+      "disposition": "deferred",
+      "note": "Pre-existing. Routed to the consolidated docs-drift capture."
+    },
+    {
+      "id": "dc-6",
+      "category": "stale-count",
+      "severity": "low",
+      "summary": "AGENTS.md:84 names the decisions-append gate as DA001-DA003; four rules ship (scripts/check-decisions-append.sh defines DA004).",
+      "disposition": "deferred",
+      "note": "Pre-existing. Routed to the consolidated docs-drift capture."
+    },
+    {
+      "id": "dc-7",
+      "category": "incomplete",
+      "severity": "low",
+      "summary": "commands/reading.md:81 says the manifest spells it scope_overridden; the manifest carries BOTH scope_overridden and a nested scope.overridden.",
+      "disposition": "deferred",
+      "note": "Imprecise rather than wrong; the key it was corrected for is right. Routed to the consolidated docs-drift capture."
+    }
+  ],
+  "_reviewProvenance": "Host-run Opus agent, full re-run against the release-content commit, plus independent verification of the five findings the first round raised against the previous roll. All five confirmed fixed; two new HIGH findings were raised, both reachable only by running the binary and the repository's own gates rather than by reading the diff. dc-2 in particular would have failed CI's check job on the pull request. The bijection was independently re-derived: 181 records entered a terminal folder since v0.6.9, 104 cited, 0 missing, 0 invented, 0 internal cited. Note on tier and manifestHash: this detector has no pinned manifest of its own, but checkReceiptGate applies the manifest-era checks per gate once the release-gate manifest exists in the content tree, so this receipt echoes the same hash and declares the same tier as the crosscheck. The manifest caveat recorded in the iss35 receipt applies to that hash here too. REVIEWED TREE VERSUS SHIPPED TREE. Both passes ran against b5df66c287497064a620bb4e58a546b846733009. This receipt names 4b4076a10f89d4d02da359274dad8994e30cae0e. The delta is four files and every one is a fix responding to these passes: the composer prompt_version bump 0.1.0 -> 0.2.0 with its agents/CHANGELOG.md entry (dc-2, a CI blocker), two recomposed CHANGELOG lines (dc-1 record family, dc-3 five-state), and a fenced-code fix to iss-2609011217083577 that site-render refused. No unreviewed change rides along; `git diff b5df66c2 4b4076a1` is the check. No confirming pass was run against the final commit: that is the maintainer's recorded decision under verifier-selects-gates-decide, disclosed here rather than implied. JUDGE MODEL. claude-opus-5 is the model that ran, recorded as the id available to the harness. It is not a dated snapshot, and the gate does not enforce one: checkReceiptGate requires judgeModel to be non-empty only, so the pinned-snapshot rule the runbook states has no code behind it. Recorded so the receipt does not imply an auditability the gate does not provide."
+}

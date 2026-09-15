@@ -86,7 +86,12 @@ failing categories. Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.jso
 has a PROMOTE receipt whose subject digest is the target commit, whose
 `policy.detector` names that gate, and which pins a judge model; a missing,
 mismatched, malformed, HOLD, model-less, or wrong-detector receipt **blocks** the
-release (fail-closed — an un-run semantic pass is never a silent pass).
+release (fail-closed — an un-run semantic pass is never a silent pass). Pinned
+is checked by shape: `judgeModel` must carry a version or date component
+(`claude-opus-4-8`, a dated snapshot id) and must not be a rolling alias — a
+bare family name (`opus`) or anything naming `latest` is refused, because a
+receipt that cannot say which judge produced it cannot be re-run against that
+judge.
 
 A receipt is bound to its gate by its `policy.detector` value, not by its
 filename: the `<gate>.json` at `.abcd/work/reviews/<sha>/` must carry
@@ -98,13 +103,27 @@ own receipt from its own detector.
 
 The cross-check runs against a **committed input manifest**,
 [`manifest.json`](manifest.json), which pins the reproducibility inputs: the
-23-document brief-doc list, the two directions (A: brief→surface, B:
-surface→brief), the checker count (28 = 23 brief docs + 5 surfaces), and the
-prompt (context plus both direction templates, with the prompt's own
-`sha256`). Two honest runs of the same tier therefore mean the same thing —
-the maintainer no longer chooses the scope per run. The
+brief-doc list (every `04-surfaces/` chapter plus the constraints, internals
+and delivery chapters that count or enumerate the shipped surface), the two
+directions (A: brief→surface, B: surface→brief), the checker count (one per
+brief doc plus one per surface), and the prompt (context plus both direction
+templates, with the prompt's own `sha256` over the three parts joined by blank
+lines). The context names every `commands/` page and every `agents/` prompt,
+and says that a surface claim found outside the pinned chapters is in scope.
+Two honest runs of the same tier therefore mean the same thing — the
+maintainer no longer chooses the scope per run. The
 [`brief-surface-crosscheck.js`](brief-surface-crosscheck.js) detector consumes
 this manifest as its input rather than composing an ad-hoc list.
+
+Pinning makes runs comparable to each other, not to the tree: a surface that
+ships without joining the pin is invisible to a run that obeys it, and the
+receipt attests coverage it never had. `TestReleaseGateManifestIsCurrent`
+(`internal/core/lint`) holds the manifest to the tree — every `04-surfaces/`
+chapter pinned, the pinned command and agent rosters equal to `commands/` and
+`agents/` on disk, `checkerCount` equal to the sum of the lists, `promptHash`
+equal to the prompt text — so a new verb, agent or chapter fails the unit
+suite until the manifest names it, and the `manifestHash` a receipt echoes
+changes with it.
 
 Depth is **tiered by the release's impact class**:
 

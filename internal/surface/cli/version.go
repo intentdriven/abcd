@@ -9,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -19,6 +20,10 @@ import (
 // bare, ahoy, session-start, install) ever constructs it — the zero-network
 // invariant of adr-38 tier 1.
 var newReleaseFetcher = vintage.NewGitHubReleaseFetcher
+
+// resolveUpdateTarget is the disk-only install classification the next-step
+// line consults; a package var so a test can pin a shape without a PATH fixture.
+var resolveUpdateTarget = ahoy.ResolveUpdateTarget
 
 // checkSource names the network source `version --check` consulted, so the
 // report says where "latest" came from (AC5).
@@ -49,6 +54,11 @@ type checkResult struct {
 	Latest  string `json:"latest,omitempty"`
 	Source  string `json:"source"`
 	Verdict string `json:"verdict"`
+	// NextStep names the command that takes the update, rendered through the
+	// update verb's own dispatch for this install's shape (`abcd update` for a
+	// swappable copy, the host's plugin update for a plugin root, brew for a
+	// Cellar install). Set only when an update is available.
+	NextStep string `json:"next_step,omitempty"`
 }
 
 func newVersionCommand(asJSON *bool) *cobra.Command {
@@ -88,6 +98,9 @@ func newVersionCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprintf(w, "  latest:    %s (source: %s)\n", out.Check.Latest, out.Check.Source)
 					}
 					fmt.Fprintf(w, "  check:     %s\n", out.Check.Verdict)
+					if out.Check.NextStep != "" {
+						fmt.Fprintf(w, "  next:      %s\n", termsafe.Sanitize(out.Check.NextStep))
+					}
 				}
 			})
 		},
@@ -120,6 +133,9 @@ func runReleaseCheck(currentVersion string) *checkResult {
 		res.Verdict = "up to date"
 	} else {
 		res.Verdict = "update available: " + currentVersion + " -> " + res.Latest
+		// The next line is the verb (itd-130): classify the install on disk —
+		// no second fetch — and name the command its shape takes.
+		res.NextStep = update.NextStep(resolveUpdateTarget())
 	}
 	return res
 }

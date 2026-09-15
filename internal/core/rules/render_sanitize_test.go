@@ -37,7 +37,7 @@ func TestRenderRuleBodyCannotForgeHeadingsOrControlChars(t *testing.T) {
 	}
 	// The lone-CR pin must discriminate: assert the exact normalised form, so
 	// deleting the CR-normalisation arm (mask would flatten to "?") fails.
-	if got := sanitizeRuleBody("x\r## PWNED\ry"); got != "x\n ## PWNED\ny" {
+	if got := sanitizeRuleBody("x\r## PWNED\ry"); got != "x\n  ## PWNED\n  y" {
 		t.Fatalf("lone-CR normalisation regressed: %q", got)
 	}
 	if got := sanitizeRuleBody("y \t"); got != "y" {
@@ -91,5 +91,42 @@ func TestSanitizeStableIdempotentAndEditorNeutral(t *testing.T) {
 		if two := sanitizeRuleBody(one); two != one {
 			t.Fatalf("body ending in a separator is not a fixed point (%q): first %q second %q", tail, one, two)
 		}
+	}
+}
+
+// A rule body is one list item. Every continuation line must stay INSIDE that
+// bullet — indented under it, the markdown list-item continuation — so a body
+// cannot forge a sibling bullet ("- " at a line start reads as a second rule),
+// cannot forge a heading, and does not read as loose paragraphs after the
+// first line (lab C6). The contract defended is the line-start one the
+// host-side parser splits on: after the heading, no line starts with any byte
+// other than "-" or a space.
+func TestContinuationLinesStayInsideTheirBullet(t *testing.T) {
+	got := renderDomain(ResolvedDomain{Name: "X", Domain: Domain{Rules: []string{"a\nb\n- c\n## d"}}})
+	want := "## X\n- a\n  b\n  - c\n  ## d\n"
+	if got != want {
+		t.Fatalf("continuation lines escaped their bullet:\n got %q\nwant %q", got, want)
+	}
+	for i, line := range strings.Split(strings.TrimSuffix(got, "\n"), "\n") {
+		if i == 0 || line == "" {
+			continue
+		}
+		if line[0] != '-' && line[0] != ' ' {
+			t.Fatalf("line %d starts with %q, outside the bullet:\n%s", i, line[:1], got)
+		}
+	}
+	// A continuation that is already indented keeps its own deeper indent (a
+	// nested list inside a rule stays nested) and gains nothing on a re-pass.
+	body := "a\nb\n- c\n## d\n  already\n    deeper\n\ttabbed"
+	one := sanitizeRuleBody(body)
+	if two := sanitizeRuleBody(one); two != one {
+		t.Fatalf("continuation indent is not a fixed point:\nfirst: %q\nsecond: %q", one, two)
+	}
+	if !strings.Contains(one, "\n    deeper") {
+		t.Fatalf("a deeper indent was flattened: %q", one)
+	}
+	// A blank continuation line stays blank rather than becoming stray padding.
+	if got := sanitizeRuleBody("a\n\nb"); got != "a\n\n  b" {
+		t.Fatalf("blank continuation line mishandled: %q", got)
 	}
 }

@@ -63,6 +63,7 @@ It is a **hypothesis, not a measurement.** Each row states the best status a lif
 | `product/mental-model` | `brief/01-product/03-mental-model.md` | blank | partial | grounded | docs/ explanation pages, ADR context sections, the brief |
 | `product/scope` | `brief/01-product/04-scope.md` | partial | partial | grounded | README features, intents' in-scope/out-of-scope sections, the code's own surface |
 | `product/personas` | `brief/01-product/05-personas.md` | blank | blank | partial | personas registry, press-release quote attributions |
+| `product/framing` | `brief/01-product/06-framing.md` | blank | partial | grounded | the brief's framing section, the brief-creation interview's committed framing products |
 | `constraints/platform` | `brief/02-constraints/01-platform.md` | partial | grounded | grounded | build manifests, CI workflows, README requirements |
 | `constraints/dependencies` | `brief/02-constraints/02-dependencies.md` | partial | grounded | grounded | add/remove churn from git history; the authoritative list needs the manifest and lockfile |
 | `constraints/invariants` | `brief/02-constraints/03-invariants.md` | blank | partial | grounded | CONTRIBUTING, agent-conventions router, lint configs, ADR consequences |

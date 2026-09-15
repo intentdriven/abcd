@@ -75,6 +75,10 @@ solid to build on.
 - Identity-block schema extension for per-repo visual assets (deferred to
   itd-112 planning).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 Adopted by the maintainer 2026-08-21 at the planning interview; criteria 3

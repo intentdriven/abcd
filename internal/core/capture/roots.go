@@ -3,13 +3,18 @@ package capture
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -59,7 +64,48 @@ func resolveRoots(repoRoot, issuesRoot string) (string, string, error) {
 	} else {
 		ir = filepath.Join(rr, LedgerRelPath)
 	}
+	// Every verb passes through here first, the readers included, so this is
+	// where the ledger's directories are judged for a List or Status: a committed
+	// symlink at .abcd, .abcd/work, issues/ or a status directory would otherwise
+	// make a read serialize a ledger from outside the checkout, under
+	// repo-relative paths (GHSA-865x-5m7q-qm79). The write paths judge the same
+	// list again, creating, from under ensureLedgerDirs.
+	if err := ledgerDirs(rr, ir, false); err != nil {
+		return "", "", err
+	}
 	return rr, ir, nil
+}
+
+// LedgerName is the noun the ledger's root refusals are phrased with. It is the
+// ledger's half of gitutil.CheckoutRoot's contract — the resolution and the
+// refusal policy are shared, and only the noun is this store's.
+const LedgerName = "the issue ledger"
+
+// LedgerRoot answers the question every front door has to ask before it touches
+// the ledger: which checkout's ledger does a caller standing in cwd address?
+//
+// It is the ledger's door onto gitutil.CheckoutRoot and holds no resolution of
+// its own. The question is not ledger-specific — the decision store asked it
+// next, and reached the same failure one directory further out
+// (iss-2609091707224329) — so the three-state answer, git's toplevel or one of
+// two refusals, is resolved once there and named here. What is ledger-specific
+// is the noun the refusals carry, which is all this function supplies.
+//
+// It exists because the CLI used to skip asking at all: every capture verb
+// handed its working directory to resolveRoots as an explicit repo root, so the
+// discovery below was never reached and a verb run from a subdirectory addressed
+// a ledger that was not there — a read reported open 0 against a populated
+// checkout, and a write minted a second ledger under the subdirectory and
+// reported success with a repo-relative path that looked ordinary
+// (iss-2609090951291524).
+//
+// The resolution deliberately does not fall through to discoverRepoRoot's marker
+// walk, which accepts any directory merely carrying the name and grew neither
+// the shape check nor the ownership gate its rules-root sibling has
+// (iss-2609090947359464). That walk is unreachable in shipped code, and routing
+// the front doors through it would be the one change that makes it live.
+func LedgerRoot(cwd string) (string, error) {
+	return gitutil.CheckoutRoot(cwd, LedgerName)
 }
 
 // discoverRepoRoot returns the git worktree root containing start, or "".
@@ -132,11 +178,52 @@ func sha256Hex(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// readWithChecksum reads a file's bytes once and hashes that same buffer.
+// readWithChecksum reads a record once, through the guarded reader, and hashes
+// that same buffer. It is the read behind Promote, transition and the capture
+// commit, so the guard below is what those verbs stand on: a symlinked or
+// non-regular leaf is refused before a stamp could be written through it.
 func readWithChecksum(path string) (string, string, error) {
-	data, err := os.ReadFile(path)
+	content, err := readRecordGuarded(path)
 	if err != nil {
 		return "", "", err
 	}
-	return string(data), sha256Hex(data), nil
+	return content, sha256Hex([]byte(content)), nil
+}
+
+// readRecordGuarded reads one record file through the shared trust-boundary
+// primitive: fsutil.ReadGuarded opens once with O_NOFOLLOW and O_NONBLOCK and
+// validates on the SAME descriptor, so no symlink swap fits between a check and
+// the read, and a FIFO or device at a record name cannot block the open. The cap
+// is issueschema.RecordReadLimit, the ONE cap the ledger's families share —
+// core/lint applies the same value, because a cap the board applies loosely and
+// the verb applies tightly makes the ledger say two things about one file.
+//
+// It is the reader for EVERY record family in this package. The reading and
+// disposition families used it from the start; the issue family read through a
+// bare os.ReadFile until GHSA-fh9j-8xmg-m33f, so a committed FIFO hung `list`,
+// an oversize record was serialized unbounded, and a committed symlink read an
+// out-of-tree file into `list --json` (iss-2609012036271396). A record store a
+// clone carries is a trust boundary whichever family the record belongs to.
+//
+// The sentinels are mapped to this package's own: a non-regular leaf, or a
+// symlink refused by O_NOFOLLOW, is ErrPathUnsafe, which is what every caller
+// here already tests for.
+func readRecordGuarded(path string) (string, error) {
+	data, err := fsutil.ReadGuarded(path, issueschema.RecordReadLimit)
+	if err == nil {
+		return string(data), nil
+	}
+	if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) {
+		return "", fmt.Errorf("%w: record path is not a regular file: %s", ErrPathUnsafe, path)
+	}
+	if errors.Is(err, fsutil.ErrTooBig) {
+		return "", fmt.Errorf("%w: record is larger than the %d-byte size cap and was left unread: %s", ErrPathUnsafe, issueschema.RecordReadLimit, path)
+	}
+	// A record the process may not open is a refusal with a name, not a raw open
+	// error surfacing through a verb: the caller is told the ledger could not be
+	// read and which file, rather than a syscall's own wording.
+	if errors.Is(err, fs.ErrPermission) {
+		return "", fmt.Errorf("%w: record is unreadable (permission denied): %s", ErrPathUnsafe, path)
+	}
+	return "", err
 }

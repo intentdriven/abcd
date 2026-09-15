@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -22,13 +24,13 @@ import (
 // fills its reserved placeholder via commitCapture, which now also holds the
 // ledger lock, so the sweep's classify-then-unlink can no longer interleave with
 // a commit's fill and delete a just-committed issue file.
-func mutationPreamble(issuesRoot string) error {
-	if err := withLedgerLock(issuesRoot, func() error {
+func mutationPreamble(repoRoot, issuesRoot string) error {
+	if err := withLedgerLock(repoRoot, issuesRoot, func() error {
 		return cleanOrphanPlaceholders(issuesRoot)
 	}); err != nil {
 		return err
 	}
-	return ensureLedgerDirs(issuesRoot)
+	return ensureLedgerDirs(repoRoot, issuesRoot)
 }
 
 // Capture appends a new issue to open/ with an auto-assigned (or forced) iss-N.
@@ -39,7 +41,7 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err != nil {
 		return CaptureResult{}, err
 	}
-	if err := mutationPreamble(issuesRoot); err != nil {
+	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return CaptureResult{}, err
 	}
 	if err := captureBlockers(issuesRoot, req.BlockedBy); err != nil {
@@ -86,12 +88,12 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	// no maximum, so the refs-union scan the max+1 allocator needed (iss-115,
 	// iss-120) is gone — time orders the ids and entropy separates same-second
 	// minters on branches this working tree cannot see.
-	issID, placeholder, err := reservePath(issuesRoot, slugNorm, req.ForceID)
+	issID, placeholder, err := reservePath(repoRoot, issuesRoot, slugNorm, req.ForceID)
 	if err != nil {
 		return CaptureResult{}, err
 	}
 
-	result, err := commitCapture(issuesRoot, req, issID, slugNorm, placeholder)
+	result, err := commitCapture(repoRoot, issuesRoot, req, issID, slugNorm, placeholder)
 	if err != nil {
 		_ = cancelReservation(placeholder)
 		return CaptureResult{}, err
@@ -127,7 +129,15 @@ func captureBlockers(issuesRoot string, blockedBy []string) error {
 	return nil
 }
 
-func commitCapture(issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
+func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
+	// The disclosure pair (itd-178). origin is DERIVED — a capture is a person
+	// filing an observation, so it is researcher-authored and no request member
+	// carries it — while the production mode is the closed choice the caller
+	// declared, defaulted here so a captured record always carries both keys.
+	stamp, err := provenance.NewStamp(provenance.KindResearcherAuthored, req.ProductionMode)
+	if err != nil {
+		return CaptureResult{}, fmt.Errorf("capture: %w", err)
+	}
 	fields := []kv{
 		{"schema_version", 1},
 		{"id", issID},
@@ -146,9 +156,29 @@ func commitCapture(issuesRoot string, req CaptureRequest, issID, slug, placehold
 		"source":         string(req.Source),
 		"found_during":   req.FoundDuring,
 	}
+	// Written bare, like every other machine-read scalar: a quoted value reads as
+	// a different string to the line scanner the gate compares against.
+	fields = append(fields,
+		kv{provenance.KeyOrigin, rawScalar(stamp.OriginValue())},
+		kv{provenance.KeyProductionMode, rawScalar(stamp.ModeValue())})
+	fm[provenance.KeyOrigin] = stamp.OriginValue()
+	fm[provenance.KeyProductionMode] = stamp.ModeValue()
 	if req.FoundAt != "" {
 		fields = append(fields, kv{"found_at", req.FoundAt})
 		fm["found_at"] = req.FoundAt
+	}
+	// lapsed_at is never defaulted: the value is the instant the discipline gave
+	// way, and inventing one at write-up would be the reconstruction the lapse log
+	// exists to measure (spc-60). It IS trimmed, and the trim is what keeps the two
+	// gates agreeing: the reader trims before judging, so an all-whitespace value
+	// reads as absent and passes, while the committed-ledger gate reads the same
+	// bytes as a present value that is no RFC 3339 instant and blocks. Writing the
+	// padding would therefore commit a record capture goes on reading while its own
+	// record_schema blocker says it refuses and skips it. Nothing else is
+	// normalised — a value that survives the trim is written exactly as given.
+	if lapsedAt := strings.TrimSpace(req.LapsedAt); lapsedAt != "" {
+		fields = append(fields, kv{"lapsed_at", lapsedAt})
+		fm["lapsed_at"] = lapsedAt
 	}
 	if req.RelatedIntents != nil {
 		fields = append(fields, kv{"related_intents", req.RelatedIntents})
@@ -181,7 +211,7 @@ func commitCapture(issuesRoot string, req CaptureRequest, issID, slug, placehold
 	// just-committed file deleted. If the sweep reclaimed the placeholder first, the
 	// re-read fails and the capture reports an error rather than a false success.
 	var result CaptureResult
-	err = withLedgerLock(issuesRoot, func() error {
+	err = withLedgerLock(repoRoot, issuesRoot, func() error {
 		// Guard the overwrite: the placeholder must still be the zero-byte file we
 		// reserved (expected_checksum = sha256("")).
 		_, checksum, rerr := readWithChecksum(placeholder)
@@ -224,6 +254,18 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 	if err != nil {
 		return TransitionResult{}, err
 	}
+	// Validated BEFORE the move, like the impact: a resolution is a conjecture
+	// being closed, and recording the route without the reasoning is the thing
+	// itd-179 exists to stop. resolveRoots is called for the redactor's repo root
+	// alone — the transition below resolves them again for the move itself.
+	rr, _, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
+	if err != nil {
+		return TransitionResult{}, err
+	}
+	g, gRedacted, gDegraded, err := optionalGrounds(rr, "resolve", req.Grounds)
+	if err != nil {
+		return TransitionResult{}, err
+	}
 	// Validated BEFORE the move, like every other member: the field's job is to
 	// take a record OUT of a release, so a value the derivation cannot read is
 	// worse than no value at all — it would sit in the ledger looking like an
@@ -231,6 +273,9 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 	if req.ShippedIn != "" && !reShippedIn.MatchString(req.ShippedIn) {
 		return TransitionResult{}, fmt.Errorf(
 			"resolve: --shipped-in %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.ShippedIn)
+	}
+	if err := validateRestampMode(req.ProductionMode); err != nil {
+		return TransitionResult{}, fmt.Errorf("resolve: %w", err)
 	}
 	extras := []kv{{"impact", rawScalar(string(impact))}}
 	if req.ShippedIn != "" {
@@ -254,12 +299,16 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 		}
 		extras = append(extras, kv{"resolved_by", members})
 	}
-	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolution", req.Resolution,
-		extras, StateResolved)
+	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolve", "resolution", req.Resolution,
+		extras, g, req.ProductionMode, StateResolved)
 	if err != nil {
 		return TransitionResult{}, err
 	}
 	res.ResolvedBy = rb
+	res.Redacted += gRedacted
+	if res.Degraded == "" {
+		res.Degraded = gDegraded
+	}
 	return res, nil
 }
 
@@ -308,21 +357,101 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 // lines of documentation from the function to the regexp.
 var reShippedIn = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 
-// Wontfix moves an open issue to wontfix/, writing the wontfix_reason note.
-// wontfix/ carries no impact (issue_impact_valid gates resolved/ only), so no
-// judgement is stamped.
+// Wontfix moves an open issue to wontfix/, writing the wontfix_reason note and
+// the `declined:` grounds derived from it. wontfix/ carries no impact
+// (issue_impact_valid gates resolved/ only), so no judgement is stamped.
+//
+// It needs no new required flag: transition already refuses an empty reason, so
+// a wontfix could never be recorded without grounds — what it lacked was the
+// TYPE. Grounds overrides the text when the conjecture is worth stating
+// separately from the user-facing reason.
 func Wontfix(req WontfixRequest) (TransitionResult, error) {
-	return transition(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix_reason", req.Reason, nil, StateWontfix)
+	rr, _, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
+	if err != nil {
+		return TransitionResult{}, err
+	}
+	g, gRedacted, gDegraded, err := wontfixGrounds(rr, req.Grounds, req.Reason)
+	if err != nil {
+		return TransitionResult{}, err
+	}
+	if err := validateRestampMode(req.ProductionMode); err != nil {
+		return TransitionResult{}, fmt.Errorf("wontfix: %w", err)
+	}
+	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix", "wontfix_reason", req.Reason,
+		nil, &g, req.ProductionMode, StateWontfix)
+	if err != nil {
+		return TransitionResult{}, err
+	}
+	res.Redacted += gRedacted
+	if res.Degraded == "" {
+		res.Degraded = gDegraded
+	}
+	return res, nil
+}
+
+// validateRestampMode checks a declared restamp against the closed vocabulary
+// before the ledger is touched at all, so a typo costs no lock and no read. An
+// undeclared mode is not a value to validate: it means "leave the record's
+// existing stamp alone".
+//
+// Whether the record can BE restamped is a separate question, answered inside
+// the transition against the record's own bytes (see restampField).
+func validateRestampMode(mode string) error {
+	if mode == "" {
+		return nil
+	}
+	_, err := provenance.ParseMode(mode)
+	return err
+}
+
+// restampField returns the production_mode entry a transition writes, or nothing
+// when none was declared. It is the ONE place the restamp rule lives, so the two
+// transitions cannot come to differ about it.
+//
+// It REFUSES a restamp of a record carrying no origin. Every record committed
+// before the disclosure keys existed is in that state, and forward-only
+// population means none of them is backfilled — so appending a lone
+// production_mode there produces exactly the shape record_provenance reports as
+// "a state no command produced", against a record the command had just written.
+// The pair is written together or not at all.
+//
+// An undeclared mode writes nothing whatever the record carries: an unstamped
+// record must stay resolvable, because the refusal is about the restamp and never
+// about the transition.
+func restampField(fm map[string]any, issID, mode string) ([]kv, error) {
+	if mode == "" {
+		return nil, nil
+	}
+	if asString(fm[provenance.KeyOrigin]) == "" {
+		return nil, fmt.Errorf(
+			"%s carries no %s, so it predates disclosure and there is nothing to restamp: the pair is written together or not at all, and a lone %s is a state no command produces (nothing written — re-run without --production-mode)",
+			issID, provenance.KeyOrigin, provenance.KeyProductionMode)
+	}
+	m, err := provenance.ParseMode(mode)
+	if err != nil {
+		return nil, err
+	}
+	return []kv{{provenance.KeyProductionMode, rawScalar(string(m))}}, nil
 }
 
 // transition moves an open issue to target, setting the defining note field and
 // any extra frontmatter fields (e.g. resolved/'s impact) in one atomic write.
-func transition(repoRoot, issuesRoot, issID, field, note string, extra []kv, target State) (TransitionResult, error) {
+//
+// verb is the command the caller is running, and it exists because the grounds
+// append needs it. Passing the target STATE instead made one command emit two
+// prefixes — `resolve: grounds refused` from the flag check and
+// `resolved: grounds refused` from the append — which reads as two different
+// commands failing (iss-2608301803425790).
+//
+// productionMode, when non-empty, restamps the record's production_mode in the
+// same write — and is refused against a record that carries no origin, before
+// anything is written (restampField).
+func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []kv, g *grounds.Grounds, productionMode string, target State) (TransitionResult, error) {
 	rr, ir, err := resolveRoots(repoRoot, issuesRoot)
 	if err != nil {
 		return TransitionResult{}, err
 	}
-	if err := mutationPreamble(ir); err != nil {
+	if err := mutationPreamble(rr, ir); err != nil {
 		return TransitionResult{}, err
 	}
 	if !reIssID.MatchString(issID) {
@@ -338,7 +467,7 @@ func transition(repoRoot, issuesRoot, issID, field, note string, extra []kv, tar
 	// already moved out of open/ and conflicts, instead of both passing the
 	// checksum re-read and landing the issue in two status dirs (split-brain).
 	var result TransitionResult
-	err = withLedgerLock(ir, func() error {
+	err = withLedgerLock(rr, ir, func() error {
 		src, status, err := findIssue(ir, issID)
 		if err != nil {
 			return err
@@ -351,6 +480,16 @@ func transition(repoRoot, issuesRoot, issID, field, note string, extra []kv, tar
 		if err != nil {
 			return err
 		}
+		// The restamp is judged against the record's OWN bytes, read here, and
+		// refused before any of the writes below are composed.
+		currentFM, _, err := parseFrontmatterAndBody(content)
+		if err != nil {
+			return err
+		}
+		restamp, err := restampField(currentFM, issID, productionMode)
+		if err != nil {
+			return err
+		}
 		// The note is the only free text a transition adds, so it is what gets
 		// redacted — before it is written into the record, never after, so no
 		// rewritten span can reach a field the validator has already passed.
@@ -359,12 +498,22 @@ func transition(repoRoot, issuesRoot, issID, field, note string, extra []kv, tar
 		if err != nil {
 			return err
 		}
-		for _, f := range extra {
+		for _, f := range append(append([]kv{}, extra...), restamp...) {
 			if members, isNested := f.val.(nested); isNested {
 				newContent, err = setMapField(newContent, f.key, members)
 			} else {
 				newContent, err = setScalarField(newContent, f.key, f.val)
 			}
+			if err != nil {
+				return err
+			}
+		}
+		// The grounds entry is APPENDED to the body, not set in frontmatter, and
+		// it rides the same atomic write as the fields above. A record promoted
+		// before it was resolved carries both conjectures afterwards
+		// (iss-2608301657354776).
+		if g != nil {
+			newContent, err = appendGrounds(verb, newContent, *g)
 			if err != nil {
 				return err
 			}
@@ -475,7 +624,7 @@ func List(req ListRequest) (ListResult, error) {
 // relativiseLedgerPaths rewrites every ledger Path in place to a repo-relative
 // locator, so no --json envelope echoes an absolute developer-identity path
 // (iss-81). It covers both the structured Path field and a SkipRecord.Error
-// string that wraps an os.ReadFile/parse failure carrying the same absolute path:
+// string that wraps a guarded-read/parse failure carrying the same absolute path:
 // the skipped list rides an exit-0 success envelope, which the CLI's error-path
 // scrubber never sees, so the abs path is stripped here for the --json surface.
 func relativiseLedgerPaths(repoRoot string, issues []Issue, skipped []SkipRecord) {
@@ -505,7 +654,9 @@ func Status(req StatusRequest) (StatusResult, error) {
 	res.WontfixCount = len(wontfix)
 	res.Skipped = append(append(append([]SkipRecord{}, skOpen...), skRes...), skWf...)
 
-	openIDs := idSet(open)
+	// The same predicate List uses, over the scan already in hand: skOpen carries
+	// the records open/ holds and the reader refused, and they block too.
+	openIDs := openBlockingIDs(open, skOpen)
 	// Newest first: higher N is newer (ids are monotonic with creation).
 	sort.SliceStable(open, func(i, j int) bool { return issNumber(open[i].ID) > issNumber(open[j].ID) })
 	if len(open) > 10 {
@@ -555,8 +706,39 @@ func prioritise(issues []Issue, openIDs map[string]bool) {
 // openIDSet returns the set of ids currently in open/ — the predicate a
 // blocked_by target must satisfy to still count as blocking. Read-only.
 func openIDSet(issuesRoot string) map[string]bool {
-	open, _ := scanLedger(issuesRoot, StateOpen)
-	return idSet(open)
+	return openBlockingIDs(scanLedger(issuesRoot, StateOpen))
+}
+
+// openBlockingIDs is that predicate over ONE scan of open/: the ids that listed,
+// PLUS the ids of the records the scan had to skip. A record the guarded reader
+// refused — a FIFO, a body over the read cap, a symlinked leaf — is still in
+// open/, and being unreadable says nothing about whether it was resolved.
+// Counting only what parsed rendered every dependent unblocked and sorted it to
+// the top of the board while its own blocked_by went on naming the record. The
+// unreadable case resolves toward still-blocking: a board that understates
+// progress is recoverable, one that invites work whose blocker nobody can read
+// is not — and the skip is reported alongside, so the cause is never silent.
+func openBlockingIDs(open []Issue, skipped []SkipRecord) map[string]bool {
+	set := idSet(open)
+	for _, sk := range skipped {
+		if id := skippedRecordID(sk.Path); id != "" {
+			set[id] = true
+		}
+	}
+	return set
+}
+
+// skippedRecordID recovers the id a skipped file's NAME claims, through
+// issFileNumRe — the one detection grammar the scan, the resolver and
+// record-lint share, so a file the scan counted as a record contributes the id
+// that same grammar reads. A name too malformed to carry an ordinal claims no
+// id and contributes none: there is nothing to be blocked by.
+func skippedRecordID(path string) string {
+	m := issFileNumRe.FindStringSubmatch(filepath.Base(path))
+	if m == nil {
+		return ""
+	}
+	return issFamily + "-" + m[1]
 }
 
 // idSet collects the ids of a slice of issues into a set.
@@ -573,7 +755,7 @@ func idSet(issues []Issue) map[string]bool {
 func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 	var targets []State
 	if state == StateAll {
-		targets = statusDirs[:]
+		targets = statusDirs
 	} else {
 		targets = []State{state}
 	}
@@ -616,12 +798,18 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 			}
 			// A well-formed name always ends .md — the grammar's pattern requires
 			// it — so no separate extension check is needed on this path.
-			data, err := os.ReadFile(path)
+			//
+			// The read is guarded, not bare: a well-formed NAME says nothing about
+			// the leaf behind it, and in a hostile clone that leaf is a FIFO that
+			// would hang this scan, a symlink to a file outside the ledger, or a
+			// body sized to make the read unbounded. Each is a skipped record the
+			// surfaces already render, never a hang and never serialized.
+			content, err := readRecordGuarded(path)
 			if err != nil {
 				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
 				continue
 			}
-			fm, body, err := parseFrontmatterAndBody(string(data))
+			fm, body, err := parseFrontmatterAndBody(content)
 			if err != nil {
 				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
 				continue

@@ -37,6 +37,10 @@ The press release of the *promoted* intent is stated at its planning interview,
 not at promotion time — promotion mints a draft with the standard placeholder,
 so the promote moment stays one cheap command.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

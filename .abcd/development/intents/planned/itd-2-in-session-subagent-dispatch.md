@@ -37,6 +37,10 @@ The challenge: abcd's core process cannot directly call the host's `Task` tool â
 - **Cost optimisation** (in-session calls bill against the user's Claude subscription; abcd doesn't budget) â€” covered by itd-17 model effectiveness tracking if relevant.
 - **Capability-aware backend selection.** Choosing among the host default and any configured oracle adapters by `(task_class, agent, model_id)` capability is itd-17's concern (capability-aware dispatch), layered ABOVE this intent's default host-delegation. This intent ships only the default path; it never selects backends.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._

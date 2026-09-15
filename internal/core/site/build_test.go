@@ -571,8 +571,9 @@ func TestBuildMarksItsOutput(t *testing.T) {
 	if !containsString(res.Files, siteMarkerName) {
 		t.Errorf("the build did not report writing %s: %v", siteMarkerName, res.Files)
 	}
-	if body := outFile(t, out, siteMarkerName); body != siteMarkerBody {
-		t.Errorf("the marker reads %q, want %q", body, siteMarkerBody)
+	want := string(siteMarker(f.gitOut("rev-list", "--max-parents=0", "HEAD")))
+	if body := outFile(t, out, siteMarkerName); body != want {
+		t.Errorf("the marker reads %q, want %q", body, want)
 	}
 }
 
@@ -588,7 +589,8 @@ func TestBuildClearsTheWreckageOfAFailedBuild(t *testing.T) {
 	out := t.TempDir()
 
 	// The wreckage a killed build leaves: the marker, and some of the tree.
-	if err := os.WriteFile(filepath.Join(out, siteMarkerName), []byte(siteMarkerBody), 0o644); err != nil {
+	marker := siteMarker(f.gitOut("rev-list", "--max-parents=0", "HEAD"))
+	if err := os.WriteFile(filepath.Join(out, siteMarkerName), marker, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(out, "index.html"), []byte("<!-- half a page"), 0o644); err != nil {
@@ -618,7 +620,11 @@ func TestBuildClearsTheWreckageOfAFailedBuild(t *testing.T) {
 // bytes. It is present at every instant.
 func TestPurgeKeepsTheMarker(t *testing.T) {
 	out := t.TempDir()
-	for _, name := range []string{siteMarkerName, "index.html", "site.css"} {
+	const identity = "0123456789abcdef0123456789abcdef01234567"
+	if err := os.WriteFile(filepath.Join(out, siteMarkerName), siteMarker(identity), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"index.html", "site.css"} {
 		if err := os.WriteFile(filepath.Join(out, name), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -627,7 +633,12 @@ func TestPurgeKeepsTheMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := purgeOutDir(out); err != nil {
+	root, err := openOutDir(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := purgeOutDir(root); err != nil {
 		t.Fatal(err)
 	}
 
@@ -644,7 +655,7 @@ func TestPurgeKeepsTheMarker(t *testing.T) {
 	}
 
 	// And the directory still reads as ours, at every point in between.
-	state, err := inspectOutDir(out)
+	state, err := inspectOutDir(out, identity)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -939,6 +950,81 @@ func TestAuthorshipSeparatesToolsFromPeople(t *testing.T) {
 		if names[h.Name] {
 			t.Errorf("%q is in both rows", h.Name)
 		}
+	}
+}
+
+// TestAuthorshipVendorTokenDoesNotDemoteAHuman pins the other half of the rule
+// above: the derivation is a MACHINE-IDENTITY test, not a name match.
+//
+// A trailer reads `Vendor:model`, and a vendor token is an ordinary word — a
+// person whose git name is that word is not a tool, and the shortlog cannot tell
+// the difference from the name alone. So the vendor half never decides by
+// itself: it demotes only alongside an address that is structurally a machine's,
+// which is what the pre-policy tool commit the test above pins actually carries.
+// Without the conjunct a conformant trailer moved a HUMAN author's whole
+// shortlog count into the bots-and-tools row (iss-2609081940550352).
+//
+// Both authors here are named for the same vendor and only the addresses differ,
+// so nothing but the address rule can separate them.
+func TestAuthorshipVendorTokenDoesNotDemoteAHuman(t *testing.T) {
+	f := newFixture(t)
+	// The person, at the forge privacy address a real contributor's commits
+	// carry: a noreply HOST, but a mailbox named for the user rather than for a
+	// machine.
+	f.write("person.txt", "a change by a person\n")
+	f.git("2026-03-07T09:00:00+00:00", "add", "-A")
+	f.git("2026-03-07T09:00:00+00:00",
+		"-c", "user.name=Nordic", "-c", "user.email=4242+nordic@users.noreply.github.com",
+		"commit", "-m", "docs: a change by a person")
+	// The tool of the same name, at an address no person reads.
+	f.write("machine.txt", "a pre-policy commit\n")
+	f.git("2026-03-08T09:00:00+00:00", "add", "-A")
+	f.git("2026-03-08T09:00:00+00:00",
+		"-c", "user.name=Nordic", "-c", "user.email=noreply@nordic.example.invalid",
+		"commit", "-m", "chore: written before the trailer convention")
+	// A conformant trailer naming that same word as the assisting vendor, which
+	// is what registers it as one at all.
+	f.write("assisted.txt", "assisted work\n")
+	f.commitAt("2026-03-09T09:00:00+00:00", "feat: assisted work", "Nordic:nordic-model-1")
+
+	a, err := LoadAuthorship(f.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	charted := false
+	for _, m := range a.ByModel {
+		if m.Model == "Nordic:nordic-model-1" {
+			charted = true
+		}
+	}
+	if !charted {
+		t.Fatalf("the trailer did not register the vendor at all: %+v", a.ByModel)
+	}
+
+	var human, machine int
+	for _, h := range a.Humans {
+		if h.Name == "Nordic" {
+			human++
+			if h.email != "4242+nordic@users.noreply.github.com" {
+				t.Errorf("the wrong Nordic is in the humans row: %q", h.email)
+			}
+		}
+	}
+	for _, b := range a.Bots {
+		if b.Name == "Nordic" {
+			machine++
+			if b.email != "noreply@nordic.example.invalid" {
+				t.Errorf("the wrong Nordic is in the bots row: %q", b.email)
+			}
+		}
+	}
+	if human != 1 {
+		t.Errorf("the humans row holds %d authors named Nordic, want the person alone: humans %+v, bots %+v",
+			human, a.Humans, a.Bots)
+	}
+	if machine != 1 {
+		t.Errorf("the bots row holds %d authors named Nordic, want the tool alone: humans %+v, bots %+v",
+			machine, a.Humans, a.Bots)
 	}
 }
 

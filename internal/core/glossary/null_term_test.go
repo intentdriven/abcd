@@ -25,11 +25,15 @@ func TestReadTermRejectsNullFields(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			abs := filepath.Join(dir, "widget.md")
-			if err := os.WriteFile(abs, []byte(tc.content), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "widget.md"), []byte(tc.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			term, err := readTerm(abs, "core/widget.md")
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			term, err := readTerm(root, "widget.md")
 			if err == nil {
 				t.Fatalf("a term file with a null field minted a term %+v; a YAML null must be a missing field, not data", term)
 			}

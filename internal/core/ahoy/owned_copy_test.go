@@ -43,6 +43,15 @@ func writeUserPathEntry(t *testing.T, body string) {
 func seedDataCache(t *testing.T, body []byte) string {
 	t.Helper()
 	data := t.TempDir()
+	seedDataCacheAt(t, data, body)
+	t.Setenv("CLAUDE_PLUGIN_DATA", data)
+	return data
+}
+
+// seedDataCacheAt writes the self-consistent cache (artefact plus binary-meta)
+// under data, wherever the caller chose to put it; it sets no environment.
+func seedDataCacheAt(t *testing.T, data string, body []byte) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Join(data, "cache"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -55,8 +64,6 @@ func seedDataCache(t *testing.T, body []byte) string {
 	if err := os.WriteFile(cacheMetaPath(data), []byte(meta), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("CLAUDE_PLUGIN_DATA", data)
-	return data
 }
 
 // TestInstallWritesOwnedCopyFromCache is AC 4's install half: with a verified
@@ -171,7 +178,7 @@ func TestInstallRefusesCorruptCacheArtefact(t *testing.T) {
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
 	seedDataCache(t, cacheArtefact)
-	if err := os.WriteFile(cacheAssetPath(pluginDataDir()), []byte("tampered"), 0o755); err != nil {
+	if err := os.WriteFile(cacheAssetPath(pluginDataDir("").dir), []byte("tampered"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	repo := t.TempDir()
@@ -220,8 +227,17 @@ func TestInstallWithoutCacheDegradesLoudlyToSymlink(t *testing.T) {
 	if resolveSymlinkDest(target, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
 		t.Errorf("symlink dest = %q, want %q", dest, pluginBinaryPath(pluginRoot))
 	}
-	if !strings.Contains(notesJoined(res.Notes), "symlink") {
+	joined := notesJoined(res.Notes)
+	if !strings.Contains(joined, "symlink") {
 		t.Errorf("the degradation must be named on the result, never silent; notes = %v", res.Notes)
+	}
+	// The note says which sources were tried — the environment and the root's
+	// stamp — so a reader following the documented terminal instruction learns
+	// why it did not land the owned copy (iss-2609012111168716).
+	for _, want := range []string{"CLAUDE_PLUGIN_DATA", ".data-dir"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("the degradation note must name every source tried (%s); notes = %v", want, res.Notes)
+		}
 	}
 }
 
@@ -299,7 +315,7 @@ func TestUninstallRemovesOwnedCopyAndPathEntry(t *testing.T) {
 	if _, err := os.Stat(userPathEntryPath()); !os.IsNotExist(err) {
 		t.Errorf("the provenance record survived uninstall: %v", err)
 	}
-	if _, err := os.Stat(cacheAssetPath(pluginDataDir())); err != nil {
+	if _, err := os.Stat(cacheAssetPath(pluginDataDir("").dir)); err != nil {
 		t.Errorf("the cache is the harness's to delete, not uninstall's: %v", err)
 	}
 }
@@ -463,5 +479,100 @@ func TestTerminalOwnedCopySurvivesClearedHarnessEnv(t *testing.T) {
 	}
 	if _, err := os.Lstat(target); !os.IsNotExist(err) {
 		t.Errorf("the owned copy survived a terminal uninstall: %v", err)
+	}
+}
+
+// TestInstallFromTerminalReachesCacheThroughRootStamp is iss-2609012111168716.
+// The bootstrap's success notice and docs/how-to/install.md tell the reader to
+// run '<plugin-root>/abcd' ahoy install from a terminal, where the harness
+// exports no CLAUDE_PLUGIN_DATA. The bootstrap records the data dir it
+// provisioned the root from in the root's .data-dir stamp, and install reaches
+// the verified cache through it — so the documented instruction lands the
+// owned copy rather than the legacy symlink that dies at the next plugin
+// update. Every harness variable is cleared and abcd is invoked by the
+// absolute plugin-root path the notice prints.
+func TestInstallFromTerminalReachesCacheThroughRootStamp(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	data := seedDataCache(t, cacheArtefact)
+	if err := os.WriteFile(filepath.Join(pluginRoot, ".data-dir"), []byte("data_dir="+data+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	t.Setenv("ABCD_PLUGIN_ROOT", "")
+	saved := osExecutable
+	t.Cleanup(func() { osExecutable = saved })
+	osExecutable = func() (string, error) { return pluginBinaryPath(pluginRoot), nil }
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(binDir, "abcd")
+	fi, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("install did not create %s: %v (notes %v)", target, err, res.Notes)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("a terminal install must reach the cache through the root's .data-dir stamp and write the owned copy, not degrade to the legacy symlink; notes %v", res.Notes)
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != string(cacheArtefact) {
+		t.Errorf("the owned copy must hold the verified cache artefact; got %q (%v)", got, err)
+	}
+	if _, err := os.Stat(userPathEntryPath()); err != nil {
+		t.Errorf("a terminal install must record the provenance: %v", err)
+	}
+	if joined := notesJoined(res.Notes); strings.Contains(joined, "symlink") {
+		t.Errorf("no degradation may be reported when the cache was reached; notes = %v", res.Notes)
+	}
+}
+
+// TestInstallDegradesLoudlyWhenRootStampIsInvalid: the stamp is a route to
+// the cache, never a trust claim, so a recorded path that is not an existing
+// absolute directory — or one that holds no verified artefact — is not
+// followed. The install still degrades to the symlink, loudly, and the note
+// names both sources it tried, so the reader learns why a documented
+// instruction did not land the owned copy.
+func TestInstallDegradesLoudlyWhenRootStampIsInvalid(t *testing.T) {
+	cases := map[string]func(t *testing.T) string{
+		"relative": func(t *testing.T) string { return "relative/data" },
+		"absent":   func(t *testing.T) string { return filepath.Join(t.TempDir(), "gone") },
+		"empty":    func(t *testing.T) string { return t.TempDir() },
+	}
+	for name, recorded := range cases {
+		t.Run(name, func(t *testing.T) {
+			home, pluginRoot := setupUserScope(t)
+			binDir := filepath.Join(home, ".local", "bin")
+			t.Setenv("PATH", binDir)
+			if err := os.WriteFile(filepath.Join(pluginRoot, ".data-dir"), []byte("data_dir="+recorded(t)+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			repo := t.TempDir()
+			if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			res, err := Install(repo, installOpts(), RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(binDir, "abcd")
+			fi, err := os.Lstat(target)
+			if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+				t.Fatalf("an unusable stamp must degrade to the spc-21 symlink: %v (%v)", fi, err)
+			}
+			joined := notesJoined(res.Notes)
+			for _, want := range []string{"CLAUDE_PLUGIN_DATA", ".data-dir"} {
+				if !strings.Contains(joined, want) {
+					t.Errorf("the degradation note must name every source tried (%s); notes = %v", want, res.Notes)
+				}
+			}
+		})
 	}
 }

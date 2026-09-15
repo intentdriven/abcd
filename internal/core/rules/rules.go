@@ -62,11 +62,44 @@ type RuleSet struct {
 	SchemaVersion int               `json:"schema_version"`
 	Disabled      bool              `json:"disabled"`
 	Domains       map[string]Domain `json:"domains"`
+	// origins records, per domain name, the layer whose override last named
+	// it (SourceRepo today; a user layer would add its own label). It is
+	// derived by Merge, never declared in rules.json, and absent means the
+	// bundled default is untouched. Unexported so the on-disk schema does not
+	// grow a field a file could forge.
+	origins map[string]string
+	// notes carries the load-time diagnostics a front door must surface: one
+	// line per domain Load dropped rather than failing the whole file over.
+	// Unexported and non-serialized for the same reason as origins — it is
+	// derived from this load, not declared by anyone — and read through
+	// Notes().
+	notes []string
 }
 
-// ResolvedDomain pairs a domain with its name for ordered rendering and dedup.
+// Notes returns the diagnostics this load produced, in a stable order: a
+// front door prints them out-of-band (stderr, never the injected context) so a
+// dropped domain is loud rather than silently missing. An empty result is the
+// normal case.
+func (rs RuleSet) Notes() []string { return append([]string(nil), rs.notes...) }
+
+// Source labels for ResolvedDomain.Source: where a domain's effective content
+// came from. A repo override that names a domain — replacing its rules,
+// changing its state, or declaring it outright — makes the domain SourceRepo,
+// conservatively: the effective behaviour is repo-chosen even when only the
+// state moved. The label set is open so a user layer (spc-23) can add its own
+// without renaming these.
+const (
+	SourceBundled = "bundled"
+	SourceRepo    = "repo"
+)
+
+// ResolvedDomain pairs a domain with its name for ordered rendering and dedup,
+// and with its Source so every consumer can say whose words these are
+// (GHSA-22f8-qf5r-gjgq): the renderer marks a repo-sourced heading, the hook
+// diagnostic labels the name, and `rules --json` carries the field.
 type ResolvedDomain struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Source string `json:"source"`
 	Domain
 }
 
@@ -183,11 +216,49 @@ func Load(repoRoot string) (RuleSet, error) {
 	if err := json.Unmarshal(data, &over); err != nil {
 		return RuleSet{}, fmt.Errorf("rules: %s is not valid JSON: %w", RepoRelPath, err)
 	}
-	merged := Merge(Defaults(), over)
+	merged := dropRulelessDomains(Merge(Defaults(), over))
 	if err := Validate(merged); err != nil {
 		return RuleSet{}, fmt.Errorf("rules: %s: %w", RepoRelPath, err)
 	}
 	return merged, nil
+}
+
+// dropRulelessDomains removes every domain whose merged rules are empty and
+// records one note per removal.
+//
+// A domain with no rules renders as a heading-only "## NAME" block —
+// suppression wearing the domain's name, which an agent reads as a domain that
+// says nothing (GHSA-22f8-qf5r-gjgq sibling). Validate refuses the shape, and
+// keeps refusing it: it is what guards the BUNDLED defaults, where a ruleless
+// domain is a build error with a build to fix it.
+//
+// A repo's rules.json is not that. `{"rules": []}` is a plausible way to have
+// tried to silence a domain, the file already exists on somebody's disk, and
+// failing the load stops EVERY domain injecting — the safety-shaped ones
+// included — over one malformed entry, on an upgrade that changed the rules
+// under a config that worked yesterday. That is not proportionate to a
+// heading-only block. Dropping the domain removes the misleading render, keeps
+// everything else working, and the note names the domain and the deliberate
+// route ("state": "dormant"), which is the thing the author actually wanted.
+func dropRulelessDomains(rs RuleSet) RuleSet {
+	var dropped []string
+	for name, d := range rs.Domains {
+		if len(d.Rules) == 0 {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) == 0 {
+		return rs
+	}
+	sort.Strings(dropped) // deterministic diagnostics
+	for _, name := range dropped {
+		delete(rs.Domains, name)
+		delete(rs.origins, name)
+		rs.notes = append(rs.notes, fmt.Sprintf(
+			"rules: %s: domain %q has no rules and was SKIPPED (it would inject a heading-only block, which reads as a domain that says nothing); "+
+				"give it at least one rule, or set \"state\": \"dormant\" to silence a domain deliberately", RepoRelPath, name))
+	}
+	return rs
 }
 
 // checkNoDuplicateKeys walks the JSON token stream and refuses any object that
@@ -261,8 +332,16 @@ func checkDupValue(dec *json.Decoder, tok json.Token) error {
 // Merge overlays over onto base. Domain fields are per-field: a field set on the
 // override wins; an absent field inherits the base (so {"state":"dormant"} on a
 // default domain silences it while keeping its recall and rules). New domain
-// keys are added. The kill switch is sticky (either side can enable it).
+// keys are added. The kill switch is sticky (either side can enable it). Every
+// domain the override names is recorded as SourceRepo — the one moment the
+// origin is still known, so the renderer and the diagnostics can say so later.
 func Merge(base, over RuleSet) RuleSet {
+	return mergeFrom(base, over, SourceRepo)
+}
+
+// mergeFrom is Merge with the label the override's layer carries; a later user
+// layer merges with its own label without touching the per-field rules.
+func mergeFrom(base, over RuleSet, source string) RuleSet {
 	out := cloneRuleSet(base)
 	if over.SchemaVersion != 0 {
 		out.SchemaVersion = over.SchemaVersion
@@ -271,10 +350,24 @@ func Merge(base, over RuleSet) RuleSet {
 	if out.Domains == nil && len(over.Domains) > 0 {
 		out.Domains = make(map[string]Domain, len(over.Domains))
 	}
+	if out.origins == nil && len(over.Domains) > 0 {
+		out.origins = make(map[string]string, len(over.Domains))
+	}
 	for name, od := range over.Domains {
 		out.Domains[name] = mergeDomain(out.Domains[name], od)
+		out.origins[name] = source
 	}
 	return out
+}
+
+// resolved builds the ResolvedDomain for name, carrying its recorded origin; a
+// domain no override ever named is the bundled default.
+func (rs RuleSet) resolved(name string) ResolvedDomain {
+	src := rs.origins[name]
+	if src == "" {
+		src = SourceBundled
+	}
+	return ResolvedDomain{Name: name, Source: src, Domain: rs.Domains[name]}
 }
 
 func mergeDomain(base, over Domain) Domain {
@@ -295,10 +388,22 @@ func mergeDomain(base, over Domain) Domain {
 }
 
 // Validate checks structural invariants: schema_version == 1, every domain name
-// matches [A-Z][A-Z0-9_]*, every state is active/dormant (or empty), and no rule
-// body is empty or whitespace-only. An empty rule body otherwise passes here and
-// renders as a bare contentless "- " bullet in the injected block
-// (iss-2608261550497978) — a loud refusal at load beats a silent empty bullet.
+// matches [A-Z][A-Z0-9_]*, every state is active/dormant (or empty), every
+// domain carries at least one rule, and no rule body is empty or
+// whitespace-only. An empty rule body otherwise passes here and renders as a
+// bare contentless "- " bullet in the injected block (iss-2608261550497978),
+// and a domain with no rules at all — an override of {"rules": []}, or a custom
+// domain declared without any — renders as a heading-only "## NAME" block,
+// suppression wearing the domain's name (GHSA-22f8-qf5r-gjgq sibling). Neither
+// silent shape is acceptable; {"state": "dormant"} is the way to silence a
+// domain.
+//
+// The ruleless-domain rule is a REFUSAL here and a per-domain skip in Load. It
+// refuses here because Validate is what guards the bundled defaults, where a
+// heading-only domain is a build error. Load reaches Validate with the ruleless
+// domains already dropped and a note naming each (see dropRulelessDomains),
+// because failing a repo's whole file — every domain, on an upgrade — is not
+// proportionate to one malformed entry.
 func Validate(rs RuleSet) error {
 	if rs.SchemaVersion != 1 {
 		return fmt.Errorf("schema_version must be 1, got %d", rs.SchemaVersion)
@@ -311,6 +416,9 @@ func Validate(rs RuleSet) error {
 		case "", StateActive, StateDormant:
 		default:
 			return fmt.Errorf("domain %q: unknown state %q", name, d.State)
+		}
+		if len(d.Rules) == 0 {
+			return fmt.Errorf("domain %q: has no rules (it would inject a heading-only block; set \"state\": \"dormant\" to silence a domain)", name)
 		}
 		for i, r := range d.Rules {
 			if strings.TrimSpace(r) == "" {
@@ -342,14 +450,14 @@ func (rs RuleSet) Match(prompt string) []ResolvedDomain {
 	for _, name := range names {
 		d := rs.Domains[name]
 		if stars[name] {
-			out = append(out, ResolvedDomain{Name: name, Domain: d})
+			out = append(out, rs.resolved(name))
 			continue
 		}
 		if d.State == StateDormant {
 			continue
 		}
 		if idx.hit(d) {
-			out = append(out, ResolvedDomain{Name: name, Domain: d})
+			out = append(out, rs.resolved(name))
 		}
 	}
 	return out
@@ -369,8 +477,8 @@ func (rs RuleSet) Active() []ResolvedDomain {
 	sort.Strings(names)
 	var out []ResolvedDomain
 	for _, name := range names {
-		if d := rs.Domains[name]; d.State != StateDormant {
-			out = append(out, ResolvedDomain{Name: name, Domain: d})
+		if rs.Domains[name].State != StateDormant {
+			out = append(out, rs.resolved(name))
 		}
 	}
 	return out
@@ -379,11 +487,10 @@ func (rs RuleSet) Active() []ResolvedDomain {
 // Lookup returns one domain by name regardless of its state (a dormant domain is
 // still inspectable); ok is false when the name is absent.
 func (rs RuleSet) Lookup(name string) (ResolvedDomain, bool) {
-	d, ok := rs.Domains[name]
-	if !ok {
+	if _, ok := rs.Domains[name]; !ok {
 		return ResolvedDomain{}, false
 	}
-	return ResolvedDomain{Name: name, Domain: d}, true
+	return rs.resolved(name), true
 }
 
 // parseStarCommands extracts the set of *<DOMAIN> names, enforcing that the star
@@ -590,10 +697,19 @@ func Render(domains []ResolvedDomain) string {
 }
 
 // renderDomain renders one domain's block deterministically. Signature hashes
-// exactly this, so the format is the dedup unit.
+// exactly this, so the format is the dedup unit — the provenance marker
+// included, by design: a repo-sourced domain reads "## NAME (repo override)"
+// in the agent's context and in `abcd rules`, so whose words these are is
+// never invisible (GHSA-22f8-qf5r-gjgq), and the one-time signature move on
+// upgrade re-injects overridden domains once. The heading keeps its "## "
+// line start, the split key host-side parsers rely on.
 func renderDomain(d ResolvedDomain) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "## %s\n", d.Name)
+	if d.Source == SourceRepo {
+		fmt.Fprintf(&b, "## %s (repo override)\n", d.Name)
+	} else {
+		fmt.Fprintf(&b, "## %s\n", d.Name)
+	}
 	for _, r := range d.Rules {
 		body := sanitizeRuleBody(r)
 		// Defence behind Validate's loud refusal: a body that sanitises to
@@ -610,9 +726,9 @@ func renderDomain(d ResolvedDomain) string {
 // sanitizeRuleBody makes a repo-controlled rule body safe to embed under its
 // domain heading. The rendered "## NAME" lines are the injection contract
 // host-side parsers rely on, and a rule body is untrusted input: control
-// characters are stripped (newline and tab kept) and any line the body tries
-// to start with "#" is indented one space, so a hostile rules.json cannot
-// forge domain headings or smuggle escapes into the rendered block.
+// characters are stripped (newline and tab kept) and every continuation line
+// is indented under the bullet, so a hostile rules.json cannot forge domain
+// headings, forge sibling rules, or smuggle escapes into the rendered block.
 func sanitizeRuleBody(r string) string {
 	// CRLF collapses to LF (editor-neutral signatures); a lone CR, LINE
 	// SEPARATOR and PARAGRAPH SEPARATOR become LF — they are line starts to
@@ -639,11 +755,22 @@ func sanitizeRuleBody(r string) string {
 	r = strings.TrimRight(r, " \t\n")
 	lines := strings.Split(r, "\n")
 	for i, line := range lines {
-		// The first line is already defused by the "- " bullet prefix; only a
-		// continuation line would sit flush-left and could forge a heading.
-		if i > 0 && strings.HasPrefix(line, "#") {
-			lines[i] = " " + line
+		// The first line is defused by the "- " bullet prefix the renderer adds.
+		// EVERY continuation line sits flush-left otherwise — Validate accepts a
+		// bare newline and the normalisation above turns CR, LS and PS into one
+		// — so each is indented two spaces, the markdown list-item continuation:
+		// the line stays inside its bullet instead of reading as a loose
+		// paragraph, a leading "- " cannot forge a sibling rule, and a leading
+		// "#" cannot forge a heading. The contract defended is the line-start
+		// one the host-side parser splits on ("## " flush-left); CommonMark
+		// would still read a two-space "## x" as a heading, which is not the
+		// boundary this block is parsed by. A line already indented keeps its
+		// own deeper indent, and a blank line stays blank, so the pass is a
+		// fixed point — rendered text fed back as a body re-renders unchanged.
+		if i > 0 && line != "" && !strings.HasPrefix(line, "  ") {
+			line = "  " + line
 		}
+		lines[i] = line
 		// Terminal-display safety is the canonical termsafe mask: C0/C1
 		// controls, bidi overrides and zero-width runes become '?', so a
 		// hostile rule body cannot recolour, reorder, or hide rendered text.
@@ -663,6 +790,13 @@ func Signature(d ResolvedDomain) string {
 
 func cloneRuleSet(rs RuleSet) RuleSet {
 	out := RuleSet{SchemaVersion: rs.SchemaVersion, Disabled: rs.Disabled}
+	out.notes = append([]string(nil), rs.notes...)
+	if rs.origins != nil {
+		out.origins = make(map[string]string, len(rs.origins))
+		for name, src := range rs.origins {
+			out.origins[name] = src
+		}
+	}
 	if rs.Domains != nil {
 		out.Domains = make(map[string]Domain, len(rs.Domains))
 		for name, d := range rs.Domains {

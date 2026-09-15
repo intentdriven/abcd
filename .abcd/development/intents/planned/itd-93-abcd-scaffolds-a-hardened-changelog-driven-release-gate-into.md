@@ -124,6 +124,10 @@ at its first public release.
 - **Choosing the version number** — that remains adr-31/itd-73 (derived from
   intent impact); this intent scaffolds the *cutting and gating* machinery.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md).

@@ -51,6 +51,7 @@ func TestRippleGateConsumersHoldOnMintedIDs(t *testing.T) {
 	legacyOpen := mustCapture(t, root, ledger, "legacy-open", "iss-3")
 	legacyFixed := mustCapture(t, root, ledger, "legacy-fixed", "iss-374")
 	if _, err := capture.Resolve(capture.ResolveRequest{
+		Grounds:  "pursued: we expect the ledger to keep the reasoning the session would otherwise lose",
 		RepoRoot: root, IssuesRoot: ledger, ID: legacyFixed.ID,
 		Resolution: "fixed in the legacy era", Impact: "fix",
 	}); err != nil {
@@ -70,6 +71,7 @@ func TestRippleGateConsumersHoldOnMintedIDs(t *testing.T) {
 		}
 	}
 	if _, err := capture.Resolve(capture.ResolveRequest{
+		Grounds:  "pursued: we expect the ledger to keep the reasoning the session would otherwise lose",
 		RepoRoot: root, IssuesRoot: ledger, ID: nativeFixed.ID,
 		Resolution: "fixed in the native era", Impact: "fix",
 	}); err != nil {

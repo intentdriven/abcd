@@ -96,7 +96,7 @@ func Fields(lines []string) map[string]Field {
 		}
 		key := m[1]
 		if _, exists := fields[key]; !exists {
-			fields[key] = Field{Value: strings.TrimSpace(m[2]), Line: i + 1}
+			fields[key] = Field{Value: strings.TrimSpace(StripComment(m[2])), Line: i + 1}
 		}
 	}
 	// Contract: the block is delimited by the first TWO `---` lines. Without a
@@ -107,6 +107,69 @@ func Fields(lines []string) map[string]Field {
 		return map[string]Field{}
 	}
 	return fields
+}
+
+// StripComment removes a trailing YAML comment from the text that follows a
+// key's colon, returning the value alone.
+//
+// This is the ONE place a comment is separated from a value, and it belongs in
+// the scanner rather than in any predicate downstream. Every gate reads its
+// value through Fields, and each of record-lint's emptiness tests anchors on the
+// value's LAST byte, so an unstripped `grounds: {}  # todo` defeated all of them
+// at once — the closing brace was no longer last — while `severity: minor # todo`
+// reached the enum leg as the value `minor # todo`. Stripping in one predicate
+// would have left the same escape open for every gate that reads a value some
+// other way (iss-2608301744268001).
+//
+// It is exported because the strict ledger parser (internal/core/capture) is a
+// SECOND reader of the same bytes and calls it too. A gate exists to refuse
+// exactly what the reader refuses, and a strip on one side alone would put the
+// permissive verdict on the gate: `severity: minor # todo` lint-green and
+// capture-refused, which is the split this repository closes wherever it finds
+// one. Two callers, one rule.
+//
+// The rule is YAML's, not a split on the first hash. A comment starts at a `#`
+// that is preceded by whitespace and is outside a quoted scalar; a `#` inside
+// quotes, or with no whitespace in front of it, is part of the value — which is
+// why `slug: a#b` and a URL fragment survive intact. Inside a double-quoted
+// scalar a backslash escapes the next byte, and inside a single-quoted one a
+// doubled apostrophe is a literal apostrophe rather than the close, so neither
+// hides a live quote from the scan.
+//
+// The byte before the text handed here is the key's colon, never whitespace, so
+// a leading `#` is content: `slug:#x` is not a comment. (It is not a mapping
+// entry to a YAML parser either — a block key needs a space after its colon —
+// but that leniency is the key pattern's, and widening it here would only turn
+// one divergence into a second.)
+func StripComment(v string) string {
+	inSingle, inDouble := false, false
+	for i := 0; i < len(v); i++ {
+		switch c := v[i]; {
+		case inDouble:
+			if c == '\\' {
+				i++ // the escaped byte cannot close the scalar
+			} else if c == '"' {
+				inDouble = false
+			}
+		case inSingle:
+			if c == '\'' {
+				if i+1 < len(v) && v[i+1] == '\'' {
+					i++ // a doubled apostrophe is a literal one
+				} else {
+					inSingle = false
+				}
+			}
+		case c == '"':
+			inDouble = true
+		case c == '\'':
+			inSingle = true
+		case c == '#':
+			if i > 0 && (v[i-1] == ' ' || v[i-1] == '\t') {
+				return v[:i]
+			}
+		}
+	}
+	return v
 }
 
 // Dup is a duplicated top-level key and the 1-based line of its SECOND (the
@@ -158,6 +221,42 @@ func Duplicates(lines []string) []Dup {
 	return dups
 }
 
+// Split separates a record file's leading frontmatter block from its BODY. The
+// two returned strings concatenate back to the input byte for byte: head runs
+// from the opening delimiter through the closing one and its line ending, and
+// body is everything after it. Nothing is trimmed, so a caller that splices an
+// edited body back onto head gets the file it read.
+//
+// It exists so a record's writer and its readers can judge the SAME bytes. A
+// writer handed the whole file looks for its section in the frontmatter too, and
+// a `# Grounds` line there is a legal YAML comment \u2014 skipped by the block parser
+// and matched by an ATX heading pattern \u2014 so the writer wrote into a
+// pseudo-section the body reader never consults, agreed with itself on the
+// read-back, and reported success about a value nothing could read
+// (iss-2608301805069999).
+//
+// A text with no opening delimiter, and a block nothing closes, are BOTH all
+// body: there is no frontmatter to hold back, and holding back prose that no
+// reader treats as frontmatter would hide it from the caller that asked for the
+// body. The block's interior is not parsed here \u2014 which lines close it is
+// IsDelimiter's rule, and an indented line is never a close, exactly as the
+// strict ledger parser reads it.
+func Split(text string) (head, body string) {
+	lines := strings.SplitAfter(text, "\n")
+	if len(lines) == 0 || !IsDelimiter(TrimBOM(lines[0])) {
+		return "", text
+	}
+	n := len(lines[0])
+	for i := 1; i < len(lines); i++ {
+		ln := lines[i]
+		if !strings.HasPrefix(ln, " ") && !strings.HasPrefix(ln, "\t") && IsDelimiter(ln) {
+			return text[:n+len(ln)], text[n+len(ln):]
+		}
+		n += len(ln)
+	}
+	return "", text
+}
+
 // utf8BOM is U+FEFF, the byte-order mark some editors prepend to a file. It is
 // not Unicode White_Space, so strings.TrimSpace leaves it in place.
 const utf8BOM = "\ufeff"
@@ -195,4 +294,73 @@ func IsNull(v string) bool {
 		return true
 	}
 	return false
+}
+
+// StringList parses an inline YAML flow sequence of strings — `["sprint",
+// "milestone"]` — into its members, tolerating quotes and surrounding
+// whitespace. An empty or null sequence yields nothing.
+//
+// It is deliberately small: the frontmatter this package reads only ever writes
+// the inline `[…]` form for a list, and a block sequence is a different shape
+// the line scanner does not claim to read. It lives here for the reason IsNull
+// and Unquote do — record-lint's forbidden-synonym rule and the glossary's own
+// index both read the same `aliases`/`forbidden_synonyms` fields, and two
+// readers of one field that drift make a term the one rule gates and the other
+// does not.
+//
+// A YAML null is NOT special-cased here, for the reason Unquote leaves quoting
+// to its caller: `IsNull` is the one predicate that answers it, and a caller
+// that means "absent" asks that question before asking this one.
+func StringList(v string) []string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "[")
+	v = strings.TrimSuffix(v, "]")
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(v, ",") {
+		part = strings.TrimSpace(part)
+		part = strings.Trim(part, `"'`)
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// Unquote reverses the backslash escaping a double-quoted frontmatter scalar
+// carries — the mirror of the escaping capture's yamlScalar emits, where a
+// backslash and a double quote are each written `\`-prefixed.
+//
+// This is the ONE decoder, for the reason IsNull above is the one null
+// predicate. capture's reader and record-lint's schema gate each held a
+// byte-identical private copy of this loop (iss-2608301212424896), which is the
+// split-verdict shape in waiting: the gate exists to refuse exactly what the
+// reader refuses, and two decoders that drift make a record the reader SKIPS go
+// lint-green. Callers come here rather than re-deriving it.
+//
+// The argument is the scalar's INNER text, with the surrounding quotes already
+// removed: whether a value is double-quoted at all is the caller's question,
+// and each caller answers it differently for its own reasons.
+func Unquote(s string) string {
+	var b strings.Builder
+	esc := false
+	for _, r := range s {
+		if esc {
+			b.WriteRune(r)
+			esc = false
+			continue
+		}
+		if r == '\\' {
+			esc = true
+			continue
+		}
+		b.WriteRune(r)
+	}
+	if esc {
+		b.WriteRune('\\')
+	}
+	return b.String()
 }

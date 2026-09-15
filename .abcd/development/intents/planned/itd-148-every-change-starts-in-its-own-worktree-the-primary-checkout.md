@@ -137,6 +137,10 @@ object store, and Go's build cache is user-global.
   iss-2608221126066632 (its sibling iss-2608220150157512 was closed wontfix
   in favour of the migration).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Seeded by the drafting session and revised under two adversarial reviews;

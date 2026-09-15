@@ -1,0 +1,5 @@
+Working notes at the repository root.
+
+ABCD-EVAL-SENTINEL-UNMATCHED-KIND in a file whose extension no root row's match
+list names. The root rows reach every undenied path in the tree, so the match
+list is the only thing standing between this file and the assembly.

@@ -1,0 +1,944 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "00f1509dd2b9a2e98eadb93dc3de0480e2300a2e"
+    }
+  },
+  "verifier": {
+    "id": "maintainer@release"
+  },
+  "timeVerified": "2026-08-29T14:11:41Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5",
+  "tier": "full",
+  "manifestHash": "sha256:20b7f07e8a676e6515d01e98aa2ca8da21465166550ee250bc616f6527ed9ef7",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:6b4a388e596e159a04f73417af8c2d08699968dd01031b9c08aeac65596d8064",
+    "briefVersion": "0.6.8"
+  },
+  "categories": {
+    "false-claim": 31,
+    "undocumented-surface": 21,
+    "fictional-layout": 1,
+    "criterion-violation": 1,
+    "stale-count": 6
+  },
+  "failing": [
+    {
+      "where": ".abcd/development/brief/04-surfaces/14-ingest.md:67-70 (Composition)",
+      "item": ".abcd/development/brief/04-surfaces/14-ingest.md",
+      "class": "false-claim",
+      "claim": "The `abcd-ingest <url-or-file>` quick path is not a demonstrable surface: \"no binary sub-verb, repo-shipped script, or corpus-store wrapper provides it; where it exists it is an operator-local convenience outside the corpus contract.\"",
+      "reality": "The first two parts hold (`abcd ingest` exits 2 with `unknown command \"ingest\"`; no repo-shipped script). But the corpus store itself does carry a wrapper: `~/.abcd/sources/bin/abcd-ingest` exists alongside `add-source`, `cite-guard`, `sync-banlist` (\"one-argument front door to add-source: derive the metadata, confirm, register\"). The corpus store is user-level, not part of the shipped repo, so this is the hedge's \"operator-local\" case — but the flat \"no corpus-store wrapper provides it\" clause is contradicted by the corpus on this machine.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/14-ingest.md:66-70",
+        "`go run ./cmd/abcd ingest` -> 'unknown command \"ingest\"' exit 2",
+        "find . -name 'abcd-ingest*' (repo): no hits",
+        "~/.abcd/sources/bin/abcd-ingest (user-level corpus store, header: 'one-argument front door to add-source')",
+        "git diff v0.6.7..HEAD -- 14-ingest.md commands/ingest.md: empty"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The sentence's own hedge ('where it exists it is an operator-local convenience') covers the wrapper found in this machine's user-level corpus, so 'not a demonstrable surface' holds; only the flat 'no .. corpus-store wrapper provides it' clause is contradicted by an operator-local file that ships with nothing. Both files are byte-identical to v0.6.7."
+    },
+    {
+      "where": "commands/ingest.md:59 (shipped command referenced by the brief)",
+      "item": ".abcd/development/brief/04-surfaces/14-ingest.md",
+      "class": "false-claim",
+      "claim": "The shipped command text asserts unconditionally: \"`abcd-ingest <url-or-file>` is the human quick path to the same registrar\".",
+      "reality": "Nothing abcd ships provides it: `bin/abcd-darwin-arm64 ingest` is refused (`abcd: unknown command \"ingest\"`, exit 2) and no script of that name exists in the repo. The brief chapter correctly records this as \"not a demonstrable surface\", so record and reality agree with each other, but the shipped command file the agent actually executes still carries the unconditional claim (the same finding the 2026-08-23 crosscheck run-3 raised).",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        "commands/ingest.md:59-60 (unconditional 'abcd-ingest <url-or-file> is the human quick path to the same registrar')",
+        ".abcd/development/brief/04-surfaces/14-ingest.md:66-70 (brief records it as not a demonstrable surface)",
+        "`go run ./cmd/abcd ingest` -> unknown command, exit 2; no abcd-ingest script in the tree",
+        "git diff v0.6.7..HEAD -- commands/ingest.md: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; a file the release bundle ships; the failure mode is a loud refusal, not a silent wrong action; tracked under iss-2608231346137587 and shipped unfixed. The shipped command file states the quick path without qualification while nothing in the repo or binary provides it; the brief already contradicts the command file. Pre-existing: commands/ingest.md is unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/09-reflect.md:22-26 (\"This surface doc records the design contract; the runtime behaviour ... is owned by ... the command file `commands/reflect.md`\") and :131-133 (\"Related documentation — Command file: `commands/reflect.md`; Agent: `agents/reflection-composer.md`\")",
+      "item": ".abcd/development/brief/04-surfaces/09-reflect.md",
+      "class": "false-claim",
+      "claim": "The runtime behaviour (contract verification, README write, receipt-path links) is presently owned by the command file commands/reflect.md, and commands/reflect.md and agents/reflection-composer.md are listed as related documentation without a staged/design-target marker on those lines.",
+      "reality": "Neither file exists in the tree: commands/ holds 21 command files with no reflect.md, and agents/ holds 10 prompt files with no reflection-composer.md; the binary has no reflect verb (`abcd reflect --help` prints the top-level help). The page's own header banner already states both files are absent, so these lines contradict the banner rather than reality per se — a page-internal inconsistency, mitigated by the banner and by the surfaces index marking row 9 `staged`.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/09-reflect.md:3-14 (banner: no reflect verb, no commands/reflect.md, no reflection-composer agent)",
+        ".abcd/development/brief/04-surfaces/09-reflect.md:22-26 ('owned by ... the command file commands/reflect.md')",
+        ".abcd/development/brief/04-surfaces/09-reflect.md:131-133 (Related: commands/reflect.md, agents/reflection-composer.md, unmarked)",
+        "ls commands/ (21 files, no reflect.md); ls agents/ (10 prompt files, no reflection-composer.md)",
+        "`go run ./cmd/abcd reflect --help` prints the top-level help",
+        ".abcd/development/brief/04-surfaces/README.md:15 (row 9 staged)",
+        "git diff v0.6.7..HEAD -- 09-reflect.md: empty; commands/reflect.md and agents/reflection-composer.md absent in both trees"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Lines 22-26 and 131-133 present the two files as existing owners/references while the page's own banner says neither exists; a page-internal inconsistency, mitigated by the banner and the index's 'staged' mark. Nothing on either side changed since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/08-abcd.md — '## Predecessor spc-17 stub replacement' paragraph enumerating the `/abcd:<verb>` surface (20 verb files)",
+      "item": ".abcd/development/brief/04-surfaces/08-abcd.md",
+      "class": "undocumented-surface",
+      "claim": "The chapter's only enumeration of the shipped verb surface is the list of 20 `commands/*.md` files (ahoy … version) plus `commands/abcd.md`, presented as the surface behind the root command; no mention that the binary's root carries CLI-only verbs.",
+      "reality": "The count and list are correct (21 files under commands/, 20 verbs + abcd.md). But `abcd --help` at 00f1509d also registers `changelog`, `rules` and `spec` (plus Cobra's `completion`) as top-level verbs, none of which has a `commands/<verb>.md` — so the chapter's picture of the root's verb surface omits three shipped CLI verbs that exist on one side (CLI) only. The sentence as written is not false; the CLI-only verbs are simply undocumented here and break the 'every verb reachable from both surfaces' boundary the chapter's parent record asserts.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/08-abcd.md:79-83 (20-verb enumeration)",
+        "grep -nE '\\b(changelog|rules)\\b' 08-abcd.md: no hits; 'spec' appears only as the spec store, never as a verb",
+        "`go run ./cmd/abcd --help` Available Commands include changelog, rules, spec (plus completion)",
+        "ls commands/ = 21 files, none named changelog/rules/spec.md",
+        "git diff v0.6.7..HEAD -- 08-abcd.md: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The 20-file list is accurate but the chapter never mentions the three CLI-only root verbs (changelog, rules, spec) that lack a plugin command file. Same finding as run-1 n=4; all pre-existing at v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md:33 (resolve row) and the argument-hint/flag inventory it implies",
+      "item": ".abcd/development/brief/04-surfaces/06-capture.md",
+      "class": "undocumented-surface",
+      "claim": "`resolve` takes `--impact` plus exactly three optional `resolved_by` provenance flags (`--intent`, `--spec`, `--commit`); no other flag is listed anywhere in the chapter",
+      "reality": "`abcd capture resolve --help` also ships `--shipped-in <vX.Y.Z>` (MIGRATION flag that keeps a record out of the current release cut); `commands/capture.md` documents it and `internal/core/capture/workflow.go:242` writes a `shipped_in` frontmatter field. Neither the flag nor the field appears in the brief.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/06-capture.md:33 (resolve row: --impact plus --intent/--spec/--commit only)",
+        "grep -i shipped 06-capture.md: only 'shipped' status words, no --shipped-in",
+        "`go run ./cmd/abcd capture resolve --help` lists --shipped-in (MIGRATION USE)",
+        "internal/core/capture/workflow.go:236-242 (writes shipped_in)",
+        "git show v0.6.7:internal/core/capture/workflow.go:231-236 (ShippedIn already handled); brief unchanged since v0.6.7"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same as run-1 n=1: the brief omits --shipped-in and the shipped_in field while the binary ships both. The flag and writer existed at v0.6.7 and the brief file has no diff since."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md:47-72 (frontmatter schema block, §2)",
+      "item": ".abcd/development/brief/04-surfaces/06-capture.md",
+      "class": "undocumented-surface",
+      "claim": "The frontmatter block is presented as the full field list, 'mirroring the issue ledger schema in internal/core exactly'",
+      "reality": "The shipped writer emits a `shipped_in: vX.Y.Z` field on resolve (`internal/core/capture/workflow.go:242`, `shippedin_roundtrip_test.go`) which the block omits.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/06-capture.md:47-72 (frontmatter block, no shipped_in)",
+        "internal/core/capture/workflow.go:242 (kv shipped_in)",
+        "internal/core/capture/shippedin_roundtrip_test.go",
+        "git show v0.6.7:internal/core/capture/workflow.go:236 (same shipped_in emission at the tag)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The block presented as the schema mirror lacks the shipped_in field the resolve writer emits. Pre-existing; brief unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md:52",
+      "item": ".abcd/development/brief/04-surfaces/06-capture.md",
+      "class": "false-claim",
+      "claim": "`id: iss-N  # unpadded, mirrors itd-N`",
+      "reality": "Issue ids are timestamp-minted (e.g. `iss-2608291404438578`, produced by `abcd capture \"...\"` in a fresh repo) while intent ids stay sequential max+1 (`promote` minted `itd-1`); the two families no longer share a shape. AGENTS.md itself records that captures use the timestamp mint.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/06-capture.md:52 ('id: iss-N  # unpadded, mirrors itd-N')",
+        "internal/core/capture/alloc.go:101-108 (timestamp-numeric mint, consults no maximum, adr-45)",
+        "`go run ./cmd/abcd capture` recent rows: iss-2608290810036869 etc.",
+        "AGENTS.md 'Concurrent sessions' (intents/specs mint max+1; captures use the timestamp mint)",
+        "brief unchanged since v0.6.7; v0.6.7 alloc.go already carried the adr-45 mint (run-1 n=2)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Issue ids are timestamp-minted while intent ids remain sequential, so 'mirrors itd-N' is false. Same as run-1 n=2, pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md:26",
+      "item": ".abcd/development/brief/04-surfaces/06-capture.md",
+      "class": "false-claim",
+      "claim": "Bare `/abcd:capture` (no args) is 'Help + status' and 'owns the default status/help render'",
+      "reality": "Bare `abcd capture` prints only the status render — `open N · resolved N · wontfix N`, up to 10 recent open rows, and the routing hint; no usage/help text is printed (help comes from `--help`). The chapter's own §4 acceptance (line 112) describes it as a pure status render.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/06-capture.md:26 ('Help + status ... default status/help render')",
+        ".abcd/development/brief/04-surfaces/06-capture.md:112 (acceptance: read-only status render, counts, 10 recent open, routing hint)",
+        "`go run ./cmd/abcd capture` output: counts line, 10 recent open rows, two-line routing hint; no usage/flag text",
+        "git diff v0.6.7..HEAD -- 06-capture.md: empty"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. No usage text is printed, so the 'Help' label is loose, but the row's own description (recent open issues + routing hint) matches the render exactly and the routing hint is the only 'help' the row promises; a wording inconsistency between the row label and line 112 rather than a behavioural false claim. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:13-16 (and :55-56 \"the one write the binary makes here\")",
+      "item": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md",
+      "class": "false-claim",
+      "claim": "In the adopt phase the binary makes exactly one write — `abcd identity init` — with `abcd identity render` and `abcd ahoy install` merely \"named as the follow-on surfaces\".",
+      "reality": "commands/prepare-this-repo.md Phase 3 step 5 runs `\"${CLAUDE_PLUGIN_ROOT}/abcd\" ahoy install` inside the adopt flow (writing `.githooks/pre-commit`, `.githooks/pre-merge-commit`, the gitignored banlist stub and a `.gitattributes` line), and step 6 optionally runs `ahoy install --attribution` (writing `.githooks/prepare-commit-msg`). `ahoy install` is an in-flow write step, not a follow-on, and `identity init` is not the only binary write.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:13-16 ('abcd identity render and abcd ahoy install named as the follow-on surfaces')",
+        ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:55-56 ('the one write the binary makes here')",
+        "commands/prepare-this-repo.md:171-185 (Phase 3 step 5 runs ahoy install, writing .githooks/pre-commit, pre-merge-commit, banlist stub, .gitattributes)",
+        "commands/prepare-this-repo.md:186-198 (step 6 runs ahoy install --attribution, writing prepare-commit-msg)",
+        "git diff v0.6.7..HEAD -- commands/prepare-this-repo.md: step 5/6 rewritten from a pre-commit-config template to ahoy install; brief file has no diff"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. At v0.6.7 step 5 offered a pre-commit-config template and step 6 copied a hook from a home path, so 'identity init is the one binary write' was true then; this release rewired both steps onto abcd ahoy install without updating the brief, so the discrepancy is the release's own."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:30-32 (\"Adopts the conventions\" bullet)",
+      "item": ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md",
+      "class": "false-claim",
+      "claim": "The adopt phase installs, where absent, \"a secrets + absolute-path pre-commit gate\".",
+      "reality": "commands/prepare-this-repo.md Phase 3 step 5 scaffolds the committed private-name guard via `abcd ahoy install` (`internal/core/ahoy/defaults/pre-commit` + `pre-merge-commit`), which refuses names listed in the untracked banlist. The shipped hook performs no secret scan and no absolute-path check; absolute-path detection lives only in the read-only `abcd lint` `privacy-hygiene` rule used in Phase 2.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/15-prepare-this-repo.md:30-32 ('a secrets + absolute-path pre-commit gate')",
+        "commands/prepare-this-repo.md:171-185 (step 5 installs the private name guard via ahoy install)",
+        "internal/core/ahoy/defaults/pre-commit:3,12-17,159-164 (banlist guard; grep for gitleaks/trufflehog/<home> finds no scanning code, only comments and rev-parse --path-format=absolute)",
+        "commands/prepare-this-repo.md:76 (absolute-path detection is the read-only abcd lint privacy-hygiene rule in Phase 2)",
+        "git show v0.6.7:commands/prepare-this-repo.md:171-174 (step 5 then offered 'the secrets + absolute-path gate config')"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. The brief's gate description matched the v0.6.7 command text; the release replaced that step with the ahoy-scaffolded private-name guard, which scans neither secrets nor absolute paths, and the brief line was not updated."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/19-identity.md:44",
+      "item": ".abcd/development/brief/04-surfaces/19-identity.md",
+      "class": "false-claim",
+      "claim": "The example identity block (presented with abcd's own title, and the paragraph beneath says \"abcd's own block is the 'Identity (canonical)' section of 01-product/README.md\") gives the tagline as \"A host-agnostic configuration layer for intent-driven development.\"",
+      "reality": "The canonical block at .abcd/development/brief/01-product/README.md:5 (and what `abcd identity --json` reports, and what every registered surface — README.md:7, .claude-plugin/plugin.json:4, AGENTS.md:49, internal/surface/cli/identity_gen.go:10 — carries) is \"For people who know what they want to build and need help shipping it.\" The chapter's quoted block is the very tagline drift (iss-143) the verb exists to catch; title and pitch lines match.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/19-identity.md:35 (example tagline) and :41-42 (\"abcd's own block is ...\")",
+        ".abcd/development/brief/01-product/README.md:10 (canonical tagline)",
+        "`git diff v0.6.7..HEAD -- .abcd/development/brief/01-product/README.md` = one line, the tagline; 19-identity.md has no diff since v0.6.7",
+        "`go run ./cmd/abcd identity --json`: block.tagline = \"For people who know what they want to build and need help shipping it.\", all four surfaces status ok"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. The chapter's example block, which it says is abcd's own, still carries the pre-release tagline while the canonical block and every registered surface carry the new one. Same finding as run1 n13; the release changed the canonical line and left the chapter untouched, so the drift is the release's own."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/02-disembark.md § Sub-verbs (pack / probe / plan bullets)",
+      "item": ".abcd/development/brief/04-surfaces/02-disembark.md",
+      "class": "undocumented-surface",
+      "claim": "The sub-verb list describes `pack <source-repo> <dest>`, `probe [source-repo]` and `plan [source-repo]` with positionals only; the brief never mentions an `--include-ignored` flag (the word does not occur in the file).",
+      "reality": "`bin/abcd-<goos>-<arch> disembark {pack,probe,plan} --help` each expose `--include-ignored` (\"also read files git ignores (widens the scan; the report says so)\"); the coverage report carries `included_ignored` (internal/core/lifeboat/coverage.go:30) and commands/disembark.md documents the flag at length under \"Scope: what the scan reads\". The brief is missing a shipped flag.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/02-disembark.md:30-32 (pack/probe/plan bullets; `grep -c include-ignored` = 0 for the file)",
+        "internal/surface/cli/cli.go:520,:553 (ignoredScope / --include-ignored, identical at v0.6.7)",
+        "internal/core/lifeboat/coverage.go:30 (IncludedIgnored json:\"included_ignored\")",
+        "commands/disembark.md:39-66 (\"Scope: what the scan reads\")",
+        "`go run ./cmd/abcd disembark {pack,probe,plan} --help` each list --include-ignored"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Both sides hold: the brief names no flag on the three sub-verbs and the binary exposes --include-ignored on all three. Same as run1 n21; flag and brief text are both unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/02-disembark.md § Sub-verbs (\"Synthesis sub-verbs over a packed lifeboat\" bullet)",
+      "item": ".abcd/development/brief/04-surfaces/02-disembark.md",
+      "class": "undocumented-surface",
+      "claim": "`graveyard`, `review`, `press-release`, `principles` are named as sub-verbs with one-line descriptions only; their argument shapes and flags are not given anywhere in the brief.",
+      "reality": "Shipped shapes: `graveyard <lifeboat-dir> --lessons-json <file|->` (flag required), `review <lifeboat-dir> <source-repo> [--review-json <file|->]`, `press-release <lifeboat-dir> [--press-release-json <file|->]`, `principles <lifeboat-dir> [--principles-json <file|->]`; review writes `review/review-<manifest12>.{json,md}`, graveyard writes `graveyard/lessons.json` and `graveyard/low-confidence/<id>.json`. All of this is in commands/disembark.md and the binary help but absent from the brief's surface chapter.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/02-disembark.md:34 (one-line descriptions only; grep for lessons-json|review-json|press-release-json|principles-json|lifeboat-dir|manifest12|low-confidence in the file returns nothing)",
+        "internal/surface/cli/cli.go:718,:756,:781,:810 (Use lines with the shipped shapes; identical at v0.6.7)",
+        "commands/disembark.md:122,:128-130,:153,:181,:208,:227",
+        "`go run ./cmd/abcd disembark {graveyard,review,press-release,principles} --help` Usage lines match the finding's shapes"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The brief's synthesis bullet gives no argument or flag shape for any of the four sub-verbs, while the binary and commands/disembark.md carry them in full. Pre-existing: cli.go's disembark section has no diff since v0.6.7 and the brief file is unchanged."
+    },
+    {
+      "where": "commands/disembark.md:4 (argument-hint)",
+      "item": ".abcd/development/brief/04-surfaces/02-disembark.md",
+      "class": "false-claim",
+      "claim": "`argument-hint: \"<source-repo> <dest> | plan <source-repo> | probe <source-repo>\"` — implies a bare `<source-repo> <dest>` positional pair packs (no `pack` keyword) and lists only three forms.",
+      "reality": "The binary refuses that shape: `abcd disembark <repo> <dest>` returns `abcd: unknown command \".\" for \"abcd disembark\"`; `pack` is a required sub-verb, as the brief itself states (\"`pack <source-repo> <dest>` — Both paths are positional and required\"). The hint also omits the five other shipped sub-verbs (coverage, graveyard, review, press-release, principles) that the same file's body documents.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        "commands/disembark.md:4 (argument-hint: \"<source-repo> <dest> | plan <source-repo> | probe <source-repo>\"; byte-identical at v0.6.7)",
+        ".abcd/development/brief/04-surfaces/02-disembark.md:30 (\"pack <source-repo> <dest> — Both paths are positional and required\")",
+        "`go run ./cmd/abcd disembark . <dest>` -> `abcd: unknown command \".\" for \"abcd disembark\"`, exit 2",
+        "commands/disembark.md:71,:108,:143,:172,:198 (coverage/graveyard/principles/press-release/review sections the hint omits)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; a file the release bundle ships; the failure mode is a loud refusal, not a silent wrong action; tracked under iss-2608231346137587 and shipped unfixed. The hint's bare positional pair is a shape the binary refuses, and it lists three of eight sub-verbs the same file documents. Pre-existing: the frontmatter line and the disembark command tree are unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:22",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "false-claim",
+      "claim": "The plugin command `commands/launch.md` maps the `dry-run` of its `[dry-run | ship | scaffold]` argument hint onto `abcd launch --dry-run`.",
+      "reality": "commands/launch.md frontmatter reads `argument-hint: \"[--dry-run] | ship [--changelog-json <path>] | scaffold\"` — the hint carries the flag form `--dry-run`, not a bare `dry-run` word, and also names `--changelog-json`.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:22 (\"maps the `dry-run` of its `[dry-run | ship | scaffold]` argument hint\")",
+        "commands/launch.md:4 (argument-hint: \"[--dry-run] | ship [--changelog-json <path>] | scaffold\")",
+        "neither file appears in `git diff --stat v0.6.7..HEAD`"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The brief misquotes the hint: the real one carries the flag form --dry-run and the --changelog-json option. Same as run1 n9; both files unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:22",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "stale-count",
+      "claim": "The plain-text `--dry-run` render prints only version, files bundled, scan hardfails, citations, and would-publish, plus a would-refuse-on line when there is a finding.",
+      "reality": "`bin/abcd-darwin-arm64 launch --dry-run` prints seven lines: version, `files bundled:`, `scan hardfails:`, `citations:`, `receipts:` (the semantic-receipts row), `would publish:`, `would refuse on:`. The `receipts:` line is absent from the brief's enumeration.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:22 (\"prints only version, files bundled, scan hardfails, citations, and would-publish, plus a would-refuse-on line\")",
+        "internal/surface/cli/cli.go:298 (`receipts:` row; same line at v0.6.7)",
+        "`go run ./cmd/abcd launch --dry-run` prints version, files bundled, scan hardfails, citations, receipts, would publish, would refuse on"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The plain render has a receipts: line the brief's enumeration omits (the same sentence describes the semantic-receipts row only for the --json form). Same as run1 n10; brief and the cli.go row are unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:22",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "undocumented-surface",
+      "claim": "The dry-run bullet enumerates what dry-run runs today: secret+PII scan, installability smoke (light), manifest lockstep (dev polarity), citation baseline, semantic-receipts row, and the two not_implemented gates.",
+      "reality": "`abcd launch --dry-run --json` also emits a `retention` object (newest-per-line prune preview: `published`, `line`, `kept`, `pruned`, `refused`) computed by `internal/core/launch/dryrun.go` (`computeRetentionForReport`) and folded into `would_refuse_on`; commands/launch.md documents `lockstep` and `retention` as top-level keys. The brief only mentions the retention preview at line 167 inside the full-`ship` design section (§3 Release cut + retention), so the shipped dry-run retention preview is undocumented in the dry-run row.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:3 (retention filed under itd-70, separately scheduled), :22 (dry-run enumeration names scan, smoke, lockstep, citation-baseline, semantic-receipts, two not_implemented gates; no retention), :165-168 (prune preview \"part of the dry-run artefact preview\" inside § 3)",
+        "internal/core/launch/dryrun.go:49,:82,:125,:180-181 (Retention json field, computeRetentionForReport, folded into wouldRefuseOn; :49 identical at v0.6.7)",
+        "commands/launch.md:155-157",
+        "`go run ./cmd/abcd launch --dry-run --json` top-level keys include `retention` {published, line, kept, pruned, refused}"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The dry-run row omits the shipped retention preview, which the brief only reaches inside the ship design section and line 3 files under an unshipped intent. Same as run1 n11; dryrun.go and the brief are unchanged in this respect since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:82",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "false-claim",
+      "claim": "Every intent carries `impact: additive | breaking | fix`.",
+      "reality": "`internal/core/changelog/impact.go` defines a four-member enum — `additive`, `breaking`, `fix`, `internal` (`ImpactInternal`, excluded from the changelog and driving no bump); commands/launch.md's bijection section names `impact: internal` as the INTERNAL group. The brief's legal set omits `internal`.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:82 (\"impact: additive | breaking | fix\"; identical at v0.6.7:82)",
+        "internal/core/changelog/impact.go:29-37 (ImpactAdditive/Breaking/Fix/Internal), :83 (rank: breaking > additive > fix > internal), :125 (internal excluded from changelog, no bump); ImpactInternal and the four-member impactValues present at v0.6.7:34-42",
+        "commands/launch.md:252 (INTERNAL group: `impact: internal`)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The enum has four members and the brief's legal set names three; the omitted `internal` value is what the bijection's INTERNAL group keys on. Pre-existing: both the enum and the brief line are unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:29",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "false-claim",
+      "claim": "TruffleHog — opt-in deep scan when `scan.deep=true` — hard-fail (live credential verification), listed as a pre-flight gate with no status marker.",
+      "reality": "No code under `internal/core/launch/` references trufflehog; the only references are `internal/core/ahoy/detect.go`/`apply.go` (PATH detection and a `ScanDeep` config default). The dry-run gate list (`gates[]`) has exactly six rows (secret+pii-scan, marker-block, installability-smoke, documentation-auditor, citation-baseline, semantic-receipts) and no TruffleHog gate.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:29 (TruffleHog bullet, no marker), :3 (\"The full pre-flight gate suite ... separately scheduled intents (itd-65 gate suite ...)\"), :22 (dry-run runs \"the parts of the pre-flight suite that exist today\")",
+        "`grep -rni trufflehog internal/core/launch internal/surface/cli` = no hits; only internal/core/ahoy/detect.go (PATH detection, scan.deep default)",
+        "`go run ./cmd/abcd launch --dry-run --json` gates = secret+pii-scan, marker-block, installability-smoke, documentation-auditor, citation-baseline, semantic-receipts",
+        "no diff since v0.6.7 in the brief file; launch/ diffs touch bundle.go, installsurface.go, tests and release.yml.tmpl only"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The code side holds (no TruffleHog gate anywhere in launch), but § 1 is the design list that line 3 explicitly defers to itd-65 and line 22 says dry-run runs only the parts that exist, so the unmarked row is unhedged locally rather than a false shipped claim. Consistent with run1 n12; nothing here changed since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:30",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "false-claim",
+      "claim": "Hook compliance check — warn-fail, listed as a pre-flight gate with no status marker.",
+      "reality": "No hook-compliance gate exists in `internal/core/launch/` and none appears in the `--dry-run --json` `gates[]` array (six rows, none named hook compliance); the row carries no staged/later-phase marker while the marker-block and documentation-auditor rows are the only ones the brief itself names as itd-65 deferred.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:30 (Hook compliance bullet, no marker), :3, :22 (\"the remaining gates (marker-block, documentation-auditor) are the gate-suite intent's (itd-65)\")",
+        "`grep -rniE 'hook.?compliance' internal/core/launch internal/surface/cli` = no hits",
+        "`go run ./cmd/abcd launch --dry-run --json` gates[] has six rows, none hook-related",
+        "brief file and launch gate code unchanged since v0.6.7"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. No hook-compliance gate exists and the row carries no marker, but the same file's line 3 defers the full suite to itd-65, so the § 1 list is design under a global hedge rather than an unhedged shipped claim; the real gap is that line 22's \"remaining gates\" parenthetical names only two of the unshipped rows. Consistent with run1 n12; pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:39",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "false-claim",
+      "claim": "Dirty tree — refuse unless `--allow-dirty`, listed as a pre-flight gate with no status marker.",
+      "reality": "`abcd launch --help`, `abcd launch ship --help` and `abcd launch scaffold --help` expose no `--allow-dirty` flag; `internal/core/launch/ship.go:42` carries only a comment that `--allow-dirty` must not bypass lockstep and is 'carried but never' wired. No dirty-tree gate appears in the dry-run `gates[]` list.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:39 (`**Dirty tree** — refuse unless --allow-dirty`, no status marker)",
+        ".abcd/development/brief/04-surfaces/04-launch.md:20 (`Flag-shaped modifiers --allow-dirty and --allow-doc-warnings belong to this sub-verb's design; the shipped ship accepts --changelog-json and --payload-dir`)",
+        ".abcd/development/brief/04-surfaces/04-launch.md:3 (full gate suite deferred to itd-65)",
+        "internal/core/launch/ship.go:16 (AllowDirty carried), :42-43 (`carried but never consulted`)",
+        "`go run ./cmd/abcd launch --help` / `launch ship --help` / `launch scaffold --help`: flags are --dry-run, --changelog-json, --payload-dir, --confirm, --json only",
+        "`go run ./cmd/abcd launch --dry-run --json` gates[] = secret+pii-scan, marker-block, installability-smoke, documentation-auditor, citation-baseline, semantic-receipts (no dirty-tree row)",
+        "git diff v0.6.7..HEAD -- 04-launch.md ship.go dryrun.go: empty"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Code side holds exactly: no --allow-dirty flag on any launch verb and no dirty-tree gate row. Overstated as a bare false claim, though: line 20 of the same page explicitly files --allow-dirty under the sub-verb's design and line 3 defers the full gate suite to itd-65, so the §1 bullet is unmarked but not unhedged; pre-existing (same verdict shape as run-1 n12)."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/04-launch.md:40",
+      "item": ".abcd/development/brief/04-surfaces/04-launch.md",
+      "class": "false-claim",
+      "claim": "OWASP / vulnerability check (folded into the pre-flight suite) — warn-fail, listed as a pre-flight gate with no status marker.",
+      "reality": "No vulnerability gate exists under `internal/core/launch/` (grep for owasp/vulncheck finds nothing) and none appears in the dry-run `gates[]` array; govulncheck runs only as a CI job in `.github/workflows/ci.yml`, not as a launch gate.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/04-launch.md:40 (`**OWASP / vulnerability check** (folded into the pre-flight suite) — warn-fail`, no marker)",
+        ".abcd/development/brief/04-surfaces/04-launch.md:3 (`The full pre-flight gate suite ... are separately scheduled intents (itd-65 gate suite ...)`)",
+        "`grep -rniE 'owasp|vulncheck|vulnerab' internal/core/launch/` returns nothing",
+        ".github/workflows/ci.yml:466-480 (govulncheck is a CI job only)",
+        "`go run ./cmd/abcd launch --dry-run --json` gates[] has no vulnerability row",
+        "git diff v0.6.7..HEAD -- 04-launch.md internal/core/launch/dryrun.go: empty"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. No vulnerability gate exists in the launch core or the dry-run roster, and the bullet carries no status marker; but the page's line-3 phase-ownership note defers the full gate suite to itd-65, so the bullet is design text under a page-level hedge rather than an unhedged shipped claim. Pre-existing at v0.6.7 (run-1 n12 covers the same bullet set)."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/05-intent.md:41 (repeated verbatim at :124)",
+      "item": ".abcd/development/brief/04-surfaces/05-intent.md",
+      "class": "stale-count",
+      "claim": "\"The low IDs (itd-1..itd-7) reflect an early one-time rebase … Intents created since are capture-stable, picking up at itd-27+.\" — implies no intents exist in the itd-8..itd-26 range.",
+      "reality": "Every id itd-8 through itd-26 exists in the committed tree (`ls .abcd/development/intents/*/` shows itd-8-, itd-9-, … itd-26-), e.g. drafts/itd-16-hash-chain-merkle-audit.md, planned/itd-20-top-level-abcd-dispatcher.md, planned/itd-24-reflect-command.md — several of which this very page cites.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/05-intent.md:41 and :124 (identical sentence: `low IDs (itd-1..itd-7) ... picking up at itd-27+`)",
+        "`ls .abcd/development/intents/*/` lists itd-8- through itd-26- without a gap (19 ids)",
+        "`git ls-tree -r v0.6.7 -- .abcd/development/intents` already holds 19 ids in itd-8..itd-26",
+        "git diff v0.6.7..HEAD -- 05-intent.md: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n57, re-confirmed: the store is continuous from itd-1 through itd-26 and beyond, contradicting the 1.7-then-27+ description, and this predates the release."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/05-intent.md:201 (Subcommands table, `/abcd:intent audit <itd-N>` row)",
+      "item": ".abcd/development/brief/04-surfaces/05-intent.md",
+      "class": "false-claim",
+      "claim": "The unmarked (Status: shipped) row says the verb \"Compares the intent's press release + acceptance criteria against delivered reality … Per-criterion verdicts … appended to the intent's `## Audit Notes`\" and that \"spc-12 (predecessor store) ships this manual verb\".",
+      "reality": "`abcd intent audit --help`: \"re-emit a shipped intent's request, or ingest a verdict\". The binary verb with `<itd-N>` only stages a host-delegated review request under .abcd/.work.local/reviews/ (internal/core/intent/audit.go:30, :49); nothing in the binary compares against delivered reality, and the only path that writes `## Audit Notes` is the separate `audit ingest --verdict-json` sub-verb. The page's own § \"Review and audit trail layout\" (:457) describes the shipped shape correctly; the table row does not.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/05-intent.md:201 (audit row: `Compares the intent's press release + acceptance criteria against delivered reality ... Per-criterion verdicts ... appended to the intent's ## Audit Notes ... spc-12 ... ships this manual verb`)",
+        ".abcd/development/brief/04-surfaces/05-intent.md:202 (the `audit ingest --verdict-json` row) and :457 (§ Review and audit trail layout describes emit-request + ingest correctly)",
+        "`go run ./cmd/abcd intent audit --help`: `re-emit a shipped intent's request, or ingest a verdict`",
+        "internal/core/intent/audit.go:28-36 (EMIT parks OWED stub + writes .abcd/.work.local/reviews/ request; INGEST validates host verdict), :182-186 (emitAuditForIntent), :244-270 (ReEmitAudit for the manual `<itd-N>` verb), internal/surface/cli/cli.go:1697",
+        "v0.6.7:internal/core/intent/audit.go:180,:246 already had both functions; the release diff of audit.go (56 lines) only adds link-ref peeling; 05-intent.md unchanged"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Holds: the binary's `audit <itd-N>` only parks an OWED stub and stages a host-delegated request — no comparison happens in the binary, and the verdict text reaches `## Audit Notes` only via `audit ingest`. Not fully as stated: the emit path does write to Audit Notes (the OWED stub), and the row's description matches the end-to-end host-delegated flow the next row and §457 complete, so it is an overstatement of the verb's own effect rather than a fiction; pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/18-ideate.md:118 (refusal table row \"A symlinked component anywhere in `.abcd/development/research/notes/`\")",
+      "item": ".abcd/development/brief/04-surfaces/18-ideate.md",
+      "class": "false-claim",
+      "claim": "A symlinked component anywhere in `.abcd/development/research/notes/` is refused: the write goes through one `os.Root` opened at the repository root, which refuses symlink traversal at every level, not just the leaf.",
+      "reality": "Empirically (bin/abcd-darwin-arm64 at 00f1509d, scratch repo): only symlinks that ESCAPE the repository root are refused. With `.abcd/development/research -> ../../real` (a symlink whose target stays inside the root) `abcd ideate record sym` exits 0 and the record lands at `real/notes/2026-08-29-ideate-sym.md`; likewise `.abcd/development/research/notes -> ../../../real2` exits 0 and writes `real2/2026-08-29-ideate-leaf.md`. Only a symlink pointing outside the root refuses (`mkdirat ...: path escapes from parent`, exit 2). `os.Root` follows in-root symlinks by design; the unit test `TestRecordRefusesASymlinkedAncestor` (internal/core/ideate/record_test.go:569) only covers the escaping case, and the source comment at internal/core/ideate/record.go:115 repeats the same overclaim.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/18-ideate.md:92 (the refusal row; the file has 110 lines, so the finding's :118 pointer is off)",
+        "internal/core/ideate/record.go:114-119 (comment claims os.Root refuses symlink traversal at EVERY component)",
+        "internal/core/ideate/record_test.go:565-575 (TestRecordRefusesASymlinkedAncestor only targets an outside-the-root dir)",
+        "run-1 n5 empirical reproduction: in-root symlinked research dir -> exit 0, record written through; out-of-root -> exit 2 `path escapes from parent`",
+        "git diff v0.6.7..HEAD -- 18-ideate.md internal/core/ideate/: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n5, re-confirmed against the same unchanged lines: os.Root confines to the root but follows in-root symlinks, so `a symlinked component anywhere .. refused` is false as stated. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/18-ideate.md:127-128 (\"the decision log's read-modify-write runs under the same advisory lock the ledger allocators use\")",
+      "item": ".abcd/development/brief/04-surfaces/18-ideate.md",
+      "class": "false-claim",
+      "claim": "The DECISIONS.md read-modify-write runs under the same advisory lock the ledger allocators use.",
+      "reality": "It uses the same lock PRIMITIVE (`fsutil.WithFileLock`) but a distinct lock file: ideate takes `.abcd/work/.decisions.lock` (internal/core/ideate/ideate.go:64; the file is visibly created in the scratch repo after a run), whereas the issue allocator takes `.iss-alloc.lock` under the issues directory (internal/core/capture/alloc.go:15). An ideate run and a capture allocation do not exclude each other; the claim reads as if they share one lock.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/18-ideate.md:98-99 (`the decision log's read-modify-write runs under the same advisory lock the ledger allocators use`; the finding's :127-128 pointer is off, file has 110 lines)",
+        "internal/core/ideate/ideate.go:60-64 (decisionsLockRel = `.abcd/work/.decisions.lock`, comment: `named like capture's allocator lock`), internal/core/ideate/record.go:148 (WithFileLock on that path)",
+        "internal/core/capture/alloc.go:15 (lockFilename = `.iss-alloc.lock`), :85-86 (WithFileLock under the issues root)",
+        "internal/core/intent/create.go:339-343 (intent mint flocks the intents/ directory fd, no lock file at all)",
+        "git diff v0.6.7..HEAD -- 18-ideate.md internal/core/ideate/: empty"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The code facts hold exactly: ideate, the issue allocator and the intent mint each take a distinct lock (three different paths), so an ideate run and a capture allocation never exclude each other. The sentence is ambiguous rather than flatly false — read as `the same advisory-lock mechanism` (the source comment says `named like capture's allocator lock`) it is true; read as one shared lock it is wrong. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/07-memory.md:3",
+      "item": ".abcd/development/brief/04-surfaces/07-memory.md",
+      "class": "false-claim",
+      "claim": "\"neither id [spc-38/spc-39] names a spec in this repo's store (.abcd/development/specs/), whose own ids stop well short of spc-38\"",
+      "reality": ".abcd/development/specs/closed/ contains spc-38-alice-opens-the-record-explorer-… (intent itd-136) and spc-39-maya-sees-how-every-decision-connects-… (intent itd-137), and the store runs to spc-54. Both ids DO name specs in this store — unrelated ones — so the provenance caveat is stated on a false premise; a reader following the bare ids lands on the record-explorer and relationship-chart specs.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/07-memory.md:3 (`neither id names a spec in this repo's store ... whose own ids stop well short of spc-38`)",
+        ".abcd/development/specs/closed/spc-38-alice-opens-the-record-explorer-and-reads-the-whole-developm.md",
+        ".abcd/development/specs/closed/spc-39-maya-sees-how-every-decision-connects-one-relationship-chart.md",
+        "highest id under .abcd/development/specs/*/ = spc-54",
+        "run-1 n14: both specs present in `git ls-tree v0.6.7`; git diff v0.6.7..HEAD -- 07-memory.md: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n14, re-confirmed: spc-38 and spc-39 both name closed specs in this store and ids run to spc-54, so the provenance caveat rests on a false premise. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/07-memory.md:69 (§4 /abcd:launch bullet)",
+      "item": ".abcd/development/brief/04-surfaces/07-memory.md",
+      "class": "stale-count",
+      "claim": "`/abcd:launch dry-run` gate roster \"runs the secret/PII scan, installability smoke, and citation-baseline gates for real, while marker-block and documentation-auditor report not_implemented\"",
+      "reality": "`abcd launch --dry-run --json` at 00f1509d reports five real rows plus the two not_implemented ones: secret+pii-scan, installability-smoke, the manifest-lockstep check, citation-baseline, and semantic-receipts (status \"host-run\"); 04-launch.md:22 documents all of them. The 07-memory paraphrase undercounts the live roster by two rows.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/07-memory.md:116 (`its gate roster runs the secret/PII scan, installability smoke, and citation-baseline gates for real, while marker-block and documentation-auditor report not_implemented`; the finding's :69 pointer is off — line 69 is a store-skeleton bullet)",
+        "`go run ./cmd/abcd launch --dry-run --json`: gates[] = secret+pii-scan(ran), marker-block(not_implemented), installability-smoke(ran), documentation-auditor(not_implemented), citation-baseline(ran), semantic-receipts(host-run); lockstep is a separate top-level key {tree, ok, exit_code}, not a gates[] row",
+        ".abcd/development/brief/04-surfaces/04-launch.md:22 (documents scan, smoke, lockstep, citations and the receipts row)",
+        "internal/core/launch/dryrun.go:92-96 (gate rows incl. citationGate) unchanged since v0.6.7; v0.6.7:04-launch.md already names semantic-receipts; 07-memory.md unchanged"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The 07-memory paraphrase does omit the semantic-receipts row and the manifest-lockstep check that 04-launch.md:22 and the JSON both carry, so it is stale-short. The checker's `five real rows` misdescribes the shape though: gates[] has three `ran` rows plus one `host-run` row, and lockstep is a separate report field rather than a gate row. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/08-skills.md:23 (\"The three newest parents carry small trees: ...\")",
+      "item": ".abcd/development/brief/05-internals/08-skills.md",
+      "class": "stale-count",
+      "claim": "\"The three newest parents carry small trees\" — then enumerates four parents: `guard` (check, hook), `ideate` (record), `identity` (init, render), and `site` (build, check).",
+      "reality": "The binary ships all four parents with exactly those sub-verbs (`abcd guard --help`: check, hook; `abcd ideate --help`: record; `abcd identity --help`: init, render; `abcd site --help`: build, check), and all four have `commands/<name>.md` and surface chapters (17-guard, 18-ideate, 19-identity, 22-site). The sub-verb trees are correct; only the count word \"three\" is stale against the four-item list that follows it.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/08-skills.md:19 (`The three newest parents carry small trees:` followed by guard, ideate, identity, site; the finding's :23 pointer is off — line 23 is the `Skill vs command` heading)",
+        "`abcd guard --help` = check, hook; `abcd ideate --help` = record; `abcd identity --help` = init, render; `abcd site --help` = build, check (run-1 n19)",
+        "git diff v0.6.7..HEAD -- 08-skills.md: empty; all four cli parents present at v0.6.7 (run-1 n19)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n19, re-confirmed: four parents are enumerated under the word `three`; every sub-verb tree named matches the binary. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/17-guard.md:44",
+      "item": ".abcd/development/brief/04-surfaces/17-guard.md",
+      "class": "false-claim",
+      "claim": "Verdict table: a `warn` verdict makes `guard hook` exit 0 with the warning on stderr.",
+      "reality": "`abcd guard hook` on a warn-tier command (e.g. an unrecognised-launcher warn, or `git reset --hard`) prints `Warning by the abcd guard (...)` on stderr and exits 1, not 0. Only an allow exits 0; a block exits 2. (Verified with the built bin/abcd-darwin-amd64 at 00f1509d; `guard check` warn does exit 0 as claimed.)",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/17-guard.md:44 (`| warn | exit 0, warning rendered | exit 0, warning on stderr |`); identical line at `git show v0.6.7:...17-guard.md:44`",
+        "probe: `printf '{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git reset --hard\"}}' | go run ./cmd/abcd guard hook` -> exit 1, stderr `Warning by the abcd guard (git-reset-hard): ...`; `guard check` on the same command -> verdict warn, exit 0",
+        "internal/surface/cli/guard.go:134-138 (doc: `a warn exits 1 (loud, non-blocking)`), :244-252 (case guard.VerdictWarn -> exitError{Code: 1})",
+        "v0.6.7:internal/surface/cli/guard.go:229-235 already had the warn -> exit 1 branch (iss-231); the release diff of guard.go touches only the dropped-config exit path"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Reproduced: a warn-tier command makes `guard hook` exit 1 with the warning on stderr, while the brief's verdict table says exit 0; `guard check` warn does exit 0 as the table says. The exit-1 behaviour and the brief line are both unchanged since v0.6.7, so pre-existing. (The finding's `unrecognised-launcher warn` example is an allow in the shipped registry; `git reset --hard` is the warn case.)"
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/17-guard.md:168",
+      "item": ".abcd/development/brief/04-surfaces/17-guard.md",
+      "class": "stale-count",
+      "claim": "The wrapper set is exactly `sudo doas command env nohup time xargs timeout exec nice setsid stdbuf ionice eatmydata proxychains chrt taskset unshare nsenter flock chroot runuser busybox` (23 names).",
+      "reality": "internal/core/guard/match.go's `wrappers` map also contains the zsh precommand modifiers `noglob` and `nocorrect` (added for iss-2608270655497992), so the shipped set has 25 names; the brief's enumeration omits two.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": ".abcd/development/brief/04-surfaces/17-guard.md:166-168 (23-name list ends at busybox); internal/core/guard/match.go:24-62 (map adds noglob, nocorrect after busybox); git diff v0.6.7..HEAD -- internal/core/guard/match.go (+\"noglob\": true, +\"nocorrect\": true)",
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. Same as run-1 wrapper-set finding; the two zsh modifiers landed after v0.6.7 and the brief's enumeration was not extended."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/17-guard.md:85",
+      "item": ".abcd/development/brief/04-surfaces/17-guard.md",
+      "class": "false-claim",
+      "claim": "A repo `.abcd/guard.json` of `{\"disabled\": true}` switches the guard off.",
+      "reality": "A `.abcd/guard.json` containing only `{\"disabled\": true}` does not load: `guard check` exits 2 with `unsupported schema_version: .abcd/guard.json must declare schema_version 1, got 0`, and `guard hook` drops the repo overrides (bundled hazards stay armed) rather than disabling the guard. The file must be `{\"schema_version\": 1, \"disabled\": true}` for the switch-off (and the UNGUARDED warning / ahoy `OFF` state) to take effect; the brief never mentions the mandatory `schema_version` key.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/04-surfaces/17-guard.md:85; internal/core/guard/config.go:62-63 (schema_version != 1 -> ErrSchemaVersion); probe: `.abcd/guard.json` = {\"disabled\": true} -> `guard check` exit 2 'must declare schema_version 1, got 0'; with schema_version 1 -> 'registry is switched off'; internal/surface/cli/guard.go:335 (repo overrides dropped)",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The schema_version gate predates v0.6.7 (the diff only changes Load's fallback from empty Registry to Defaults()); what is new this release is that a non-loading file now leaves the bundled hazards armed instead of erroring, which makes the brief's one-key example even further from a switch-off."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:384-393 (also 200-211, 261, 434-436)",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "false-claim",
+      "claim": "The PATH entry is a symlink: step 9 prompts \"Install `abcd` symlink to `~/.local/bin/abcd`?\", the category table lists \"PATH symlink\", uninstall removes the entry \"if it points at this plugin\".",
+      "reality": "`abcd ahoy install --help` / `uninstall --help` describe \"abcd's owned PATH copy\"; internal/core/ahoy/owned_copy.go and apply.go installOwnedEntry write an abcd-owned regular-file COPY of the verified cache artefact with a provenance record in the plugin data dir (spc-35); the pinned symlink is only a loudly-noted degraded fallback when no cache artefact exists, and an existing owned symlink is a `symlink.legacy` gap that install replaces (\"the heal\").",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:200-211,261,384-393,433-436; internal/core/ahoy/apply.go:801-859 (stepSymlink/installOwnedEntry: owned regular-file copy default, pinned symlink only as loud degraded fallback, symlink.legacy heal); internal/core/ahoy/owned_copy.go:93-160; `abcd ahoy install --help` / `uninstall --help` say 'owned PATH copy'; owned_copy.go exists at v0.6.7",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same as run-1's PATH-symlink finding; the owned-copy design (spc-35) shipped before v0.6.7 and the chapter still describes a symlink throughout."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:433-440",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "undocumented-surface",
+      "claim": "Uninstall removes the marker block and abcd's own PATH entry; nothing about a provenance record.",
+      "reality": "`abcd ahoy uninstall --help`: \"Remove the marker block, abcd's owned PATH copy, and its provenance record (leaves .abcd/ intact)\"; apply.go Uninstall removes the data-dir path-entry provenance record alongside the copy.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:36-39,433-440 (no provenance mention); internal/core/ahoy/apply.go:1106,1159-1163 (Uninstall removes owned copy then removePathEntry()); internal/core/ahoy/owned_copy.go:155-156; `abcd ahoy uninstall --help` short text; same removePathEntry call at v0.6.7 apply.go:1131",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same as run-1's uninstall finding; the provenance-record removal predates v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:286-300",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "undocumented-surface",
+      "claim": "Install's non-interactive flags are --yes, --adopt, --refuse-adopt, --docs-target, --oracle-backend, --scan-deep, --visibility, --dev, --allow-stale-binary (plus --bin-dir at line 387).",
+      "reality": "`abcd ahoy install --help` also ships `--attribution` (\"opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded\"), which the chapter never mentions.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:286-300 (flag list) and :387 (--bin-dir); `abcd ahoy install --help` lists --attribution; `git show v0.6.7:internal/surface/cli/cli.go | grep -c attribution` = 0; internal/core/ahoy/ahoy.go:125-129",
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. Matches run-1 (introduced=true); --attribution is new since v0.6.7 and the flag paragraph was not updated."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:268-275 (and category table 258-264)",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "undocumented-surface",
+      "claim": "internal/core/ahoy/defaults/ holds claude-md-marker-block.md, pre-commit and pre-merge-commit; the gap-category examples list no attribution artefact.",
+      "reality": "internal/core/ahoy/defaults/ also contains `prepare-commit-msg` (`# abcd-attribution: v1`), and detection emits `attribution.hook_missing` (safe-autocreate), `attribution.hook_foreign` / `attribution.hook_unreadable` (plugin-owned) via internal/core/ahoy/attribution_hook.go — a whole install-managed artefact absent from the chapter.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:258-264,268-275; internal/core/ahoy/defaults/prepare-commit-msg (header '# abcd-attribution: v1'); internal/core/ahoy/attribution_hook.go:73,85,94 (attribution.hook_missing SafeAutocreate, hook_foreign/hook_unreadable PluginOwned); both files absent at v0.6.7 (git cat-file -e)",
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. Matches run-1's templates-as-files finding; the attribution hook artefact and its three gaps landed after v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:222-227",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "false-claim",
+      "claim": "\"the non-SessionStart shims attempt `hooks/bootstrap.sh` when the plugin-root binary is missing (throttled by a `.bootstrap.attempt` marker within a 10-minute window)\".",
+      "reality": "hooks/hooks.json: the UserPromptSubmit, PreCompact and PreToolUse shims attempt bootstrap.sh with the -mmin -10 throttle, but the SessionEnd shim does not — it tries the plugin-root binary, then PATH `abcd`, then fails with \"transcript was not captured\". Four of five events self-provision, not all non-SessionStart ones.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:222-227; hooks/hooks.json: UserPromptSubmit, PreToolUse, PreCompact commands contain the `find .bootstrap.attempt -mmin -10` + bootstrap.sh block, SessionEnd command goes plugin-root binary -> PATH abcd -> 'transcript was not captured' exit 1 with no bootstrap.sh; `git diff --stat v0.6.7..HEAD -- hooks/hooks.json` is empty",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same as run-1; three of the four non-SessionStart shims self-provision, SessionEnd does not, and neither hooks.json nor the brief lines changed since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:400-401",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "false-claim",
+      "claim": "Install step 12: \"Print summary: installed files, config table, symlink status, hook status, notes (re-run hint, uninstall hint).\"",
+      "reality": "internal/surface/cli/cli.go install text render prints `abcd ahoy install — <status>`, then `changed:`, `wrote:`, `note:`, `declined:`, `remaining gaps:` and `optional, not covered by --yes:` lines — no config table, no symlink-status line, no hook-status line, no re-run/uninstall hint.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:400-401; internal/surface/cli/cli.go:1915-1941 (text render: status line, changed:, wrote:, note:, declined:, remaining gaps:, optional-not-covered lines only); identical render shape at v0.6.7 cli.go:1912-1934; brief step 12 untouched by git diff v0.6.7..HEAD",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. No config table, symlink-status, hook-status, or re-run/uninstall hint is printed; the only hint-like text is the --yes identity-pin rerun line. Pre-existing drift."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:27-31",
+      "item": ".abcd/development/brief/04-surfaces/01-ahoy.md",
+      "class": "false-claim",
+      "claim": "The slash command dispatches `status | install | uninstall | doctor | dry-run | remote` \"and each also ships on the CLI as `abcd ahoy <sub-verb>`\".",
+      "reality": "`status` is a plugin-only alias for bare invocation (commands/ahoy.md: \"No argument, or `status`\"); the CLI has no `status` sub-command — `abcd ahoy --help` lists doctor, dry-run, identity-check, install, remote, uninstall, and `abcd ahoy status` prints the ahoy help rather than the status board.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/04-surfaces/01-ahoy.md:27-31; commands/ahoy.md:15 ('No argument, or `status`, is the bare read-only detection pass'); `abcd ahoy --help` lists doctor, dry-run, identity-check, install, remote, uninstall only; `abcd ahoy status` -> 'unknown command \"status\" for \"abcd ahoy\"', exit 2; v0.6.7 cli.go Use: lines carry no status; v0.6.7 brief already listed `status`",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Substance holds: `status` is plugin-only. One correction to the checker's detail: the CLI answers with an unknown-command error (exit 2), not the ahoy help board."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:373-375",
+      "item": "hook entrypoints",
+      "class": "false-claim",
+      "claim": "\"The four non-SessionStart event shims also self-provision: when $CLAUDE_PLUGIN_ROOT/abcd is missing they attempt hooks/bootstrap.sh (throttled by a .bootstrap.attempt marker within a 10-minute window), then fall back to a PATH-resolved abcd before failing loudly\"",
+      "reality": "hooks/hooks.json: only three shims (UserPromptSubmit, PreToolUse, PreCompact) attempt hooks/bootstrap.sh with the .bootstrap.attempt throttle. The SessionEnd shim never references bootstrap.sh or the marker — it checks $CLAUDE_PLUGIN_ROOT/abcd, falls back to PATH abcd, then fails with the 'binary is missing' message. So the self-provisioning count is three, not four.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": ".abcd/development/brief/05-internals/03-configuration.md:373-375; hooks/hooks.json (bootstrap.sh + .bootstrap.attempt in UserPromptSubmit, PreToolUse, PreCompact; absent from SessionEnd); hooks.json unchanged since v0.6.7; git diff v0.6.7..HEAD on 03-configuration.md touches only lines 385-445",
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same as run-1's configuration-brief finding; the 'four' count is off by one because SessionEnd never calls bootstrap.sh."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:222-226 (detection step 9, Hook manifest verification)",
+      "item": "hook entrypoints",
+      "class": "false-claim",
+      "claim": "\"Every event command is a self-provisioning shim, not a plain binary call: the non-SessionStart shims attempt hooks/bootstrap.sh when the plugin-root binary is missing (throttled by a .bootstrap.attempt marker within a 10-minute window)\"",
+      "reality": "hooks/hooks.json: the SessionEnd shim is a non-SessionStart shim that does NOT attempt hooks/bootstrap.sh and does not touch .bootstrap.attempt; it only falls back to a PATH-resolved abcd. 'Every event command is a self-provisioning shim' does not hold for SessionEnd.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/01-ahoy.md:222-227",
+        "hooks/hooks.json SessionEnd command (exec $r/abcd, then PATH abcd, then fail; no bootstrap.sh, no .bootstrap.attempt) vs UserPromptSubmit/PreToolUse/PreCompact/SessionStart which all carry both",
+        "git diff v0.6.7..HEAD -- hooks/hooks.json is empty; the 01-ahoy.md diff touches only the remote prose"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. SessionEnd is a non-SessionStart shim that never attempts bootstrap.sh, so both 'every event command is a self-provisioning shim' and 'the non-SessionStart shims attempt hooks/bootstrap.sh' are wrong for one of the five. Same as run1 n=30/34; hooks.json and the paragraph are unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/03-embark.md:12-19 (the \"Partly superseded by adr-35\" banner table, column \"This chapter says\")",
+      "item": ".abcd/development/brief/04-surfaces/03-embark.md",
+      "class": "false-claim",
+      "claim": "The banner states that this chapter says: `voyage/` lives in-tree at `.abcd/development/voyage/`; `from home` reads the current repo's `.abcd/lifeboat/`; writes land via ordinary file writes; a refusal path *writes* a conflict report.",
+      "reality": "The chapter body no longer says any of those things — §1 says there is no `home` and no in-tree lifeboat home, §2/§4 say core writes nothing on refusal, §3 says writes go through `os.Root` + lexical validation, §7 puts voyage at `~/.abcd/voyage/<source-root-sha>/`. The binary matches the reconciled body (verified: `embark from` has no `home`, conflict refusal writes nothing and exits 1, voyage ledger lands at `~/.abcd/voyage/<sha>/disembark/history.jsonl`). The banner's self-description of the chapter is stale, so a reader is told the chapter contradicts adr-35 when it does not.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/03-embark.md:15-20 (banner column 'This chapter says': in-tree voyage, `from home`, ordinary writes, refusal writes a report)",
+        ".abcd/development/brief/04-surfaces/03-embark.md:43,55,59 (no `home`), :68,:75,:84 (core writes nothing on conflict), :76 (os.Root + lexical validation), :125,:128 (~/.abcd/voyage/<source-root-sha>/)",
+        "`go run ./cmd/abcd embark from --help`: only `<lifeboat-dir> [target-dir]`, no home; 03-embark.md is not in `git diff v0.6.7..HEAD --stat`"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The banner's 'This chapter says' column describes prose the body no longer contains; the body and the binary already follow adr-35, so the banner misreports the chapter as contradicting the ADR. The file is byte-identical to v0.6.7, so pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/03-embark.md:107-115 (§6 Acceptance — the `--force`, `scan`, `scan --deep`, `--refresh-audit` and `--archive` bullets)",
+      "item": ".abcd/development/brief/04-surfaces/03-embark.md",
+      "class": "criterion-violation",
+      "claim": "Five acceptance criteria are written as unqualified present-tense Given/When/Then over `embark from <path> --force`, `embark scan`, `embark scan --deep`, `embark from <path> --refresh-audit` and `embark from <path> --archive`, while the neighbouring RP-workspace and provenance.json bullets carry an explicit per-bullet \"(Design target, not yet shipped.)\" tag.",
+      "reality": "None of that surface exists: `abcd embark scan` → `unknown command \"scan\"` (exit 2); `abcd embark from <lb> <tgt> --force` → `unknown flag: --force` (exit 2); `embark from --help` lists no flags beyond the global `--json`. The §6 scope note (lines 103-106) does gate these criteria collectively, so this is a marking inconsistency rather than an unmarked claim — but read bullet-by-bullet (the way a machine-checked criterion is consumed) these five present as shipped-surface criteria that the binary fails.",
+      "verification": "partial",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/03-embark.md:103-107 (section scope note gating scan/--deep/--force/--archive/--refresh-audit)",
+        ".abcd/development/brief/04-surfaces/03-embark.md:113,114,115,119,121 (unmarked rows) vs :120 (row-level 'Design target' tag)",
+        "`abcd embark scan` -> unknown command (exit 2); `abcd embark from --help` shows no local flags; file unchanged since v0.6.7"
+      ],
+      "disposition": "accepted in part on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The five rows are unmarked and the surface does not exist, but the scope note four lines above names every one of those flags and sub-verbs as design target, so what holds is a per-row marking inconsistency rather than an unqualified false claim. Same as run1 n=6; pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/20-banlist.md:87-115 (\"The guard's output contract\") and :108 (\"An absent store prints a loud INACTIVE warning\")",
+      "item": ".abcd/development/brief/04-surfaces/20-banlist.md",
+      "class": "undocumented-surface",
+      "claim": "The guard reads one private store at `.abcd/.work.local/private-names.txt`; an absent store prints INACTIVE and lets the commit through. The chapter never mentions a linked-worktree case or a second store.",
+      "reality": "The shipped `.githooks/pre-commit` (and the scaffold template `internal/core/ahoy/defaults/pre-commit`) carries an itd-150 linked-worktree fallback: in a `git worktree add` checkout it resolves the primary checkout via `--git-common-dir` and loads the primary's private store as a UNION with the worktree's own (`load_store` with an \"(inherited from the primary checkout)\" tag), so an absent local store in a linked worktree is not INACTIVE when the primary has one. The read surface mirrors it: `abcd banlist --json` carries an `inherited` report (`internal/core/banlist/worktree.go`, `public.go:74`) and the human render names the inherited store. None of this is recorded in the chapter.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/20-banlist.md:87-111 (single store; 'An absent store prints a loud INACTIVE warning' at :107); grep -i worktree/inherit/common-dir in the chapter hits only the hooksPath row at :139",
+        ".githooks/pre-commit:198 (--git-common-dir), :464-470 (load_store with '(inherited from the primary checkout)' tag), :659-662 (primary store loaded first, union with local); internal/core/ahoy/defaults/pre-commit:184 (same fallback)",
+        "internal/core/banlist/worktree.go:32,135 (InheritedReport, InheritedPrivate); public.go:74,87; `git show v0.6.7:.githooks/pre-commit | grep -c git-common-dir` = 0; worktree.go absent at v0.6.7"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. The guard and the banlist read surface now inherit the primary checkout's private store in a linked worktree and the chapter describes one per-machine store only. The hook fallback and worktree.go both landed after v0.6.7 (the chapter's only diff is an iss-176 link path), so the release created the gap."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/20-banlist.md:23-25 (Sub-verbs table) / `abcd banlist add`",
+      "item": ".abcd/development/brief/04-surfaces/20-banlist.md",
+      "class": "undocumented-surface",
+      "claim": "The sub-verb table lists `add`, `list`, `remove` with no flag surface; the chapter's only flag mentions are `--private` and `--public`.",
+      "reality": "`abcd banlist add --help` ships `--severity blocker|warn` and `--successor <text>` for the public layer, plus the `<pattern|->` stdin form (pattern `-` reads one line from stdin, the only form that keeps a private pattern out of argv). `commands/banlist.md` documents all three; the brief chapter documents none.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/20-banlist.md:20-25 (sub-verb table), :101,:120-128 (only --private/--public and 'pattern on stdin' for the guard's grep, no `-` argv form, no --severity/--successor)",
+        "`go run ./cmd/abcd banlist add --help`: `<key> <pattern|->`, --severity, --successor; commands/banlist.md:4,62-69,93-94",
+        "`git show v0.6.7:internal/surface/cli/banlist.go` lines 158-159 already register --severity/--successor; chapter diff since v0.6.7 is one link path"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The chapter documents add only as key+pattern with a layer flag while the binary ships --severity, --successor and the stdin `-` pattern form that the plugin command recommends. All three existed at v0.6.7, so pre-existing (run1 n=17)."
+    },
+    {
+      "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:29",
+      "item": "skills surface",
+      "class": "false-claim",
+      "claim": "Milestone 0 states the plugin's markdown surfaces are `commands/`, `agents/`, `skills/` — listing `skills/` as a shipped surface directory that shells to the binary, with no staged/later-phase marker.",
+      "reality": "At 00f1509d there is no `skills/` directory in the tree (ls skills -> No such file or directory); the whole /abcd: surface is 21 files under commands/, and `.abcd/config/launch-payload.json` includes only `commands` (no `skills`). The brief's own surface chapters say the opposite (04-surfaces/README.md:36, 04-surfaces/04-launch.md:47 'skills/ ... does not exist in the tree at all', 05-internals/08-skills.md 'abcd ships zero skills').",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/06-delivery/01-build-sequence.md:29 ('commands/, agents/, skills/')",
+        "`ls skills` -> No such file or directory; `ls commands | wc -l` = 21; .abcd/config/launch-payload.json:2-11 (includes commands, agents, hooks... no skills)",
+        ".abcd/development/brief/04-surfaces/README.md:36 and 05-internals/08-skills.md:3,9 ('abcd ships zero skills'); `git ls-tree v0.6.7 --name-only | grep -c ^skills` = 0"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Milestone 0 lists skills/ as a loaded markdown surface with no staged marker while the tree has none and the brief's own surface chapters say zero skills ship. No skills/ existed at v0.6.7 either, so pre-existing (run1 n=38)."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:91 (frontmatter table, `reads_untrusted_input` row)",
+      "item": "plugin agent surface",
+      "class": "false-claim",
+      "claim": "\"a fixture-presence prompt-lint in `internal/core/lint` is a design target — no shipped check enforces it (the M6 agents ship conforming files, not the linter — see `agents/README.md`)\"",
+      "reality": "The check ships: `internal/core/lint/agentcontract.go` (rule `agent_contract`, sub-check 2) requires `agents/<name>/fixtures/injection-canary.json` for every `reads_untrusted_input: true` prompt, wired via `.abcd/record-lint.json` (`agent_contract.agents_dir: agents`) and tested in `agentcontract_test.go` (TestAgentContractMissingCanary). `agents/README.md` itself says the opposite of what the brief attributes to it: \"record-lint's `agent_contract` rule enforces it (itd-151)\". All ten shipped prompts carry the canary.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:91 ('a fixture-presence prompt-lint ... is a design target — no shipped check enforces it')",
+        "internal/core/lint/agentcontract.go:45-48 (injection-canary.json), :207-222 (regular non-empty fixture check); .abcd/record-lint.json:259-263 (agent_contract enabled, blocker, agents_dir agents); agentcontract_test.go:161 (TestAgentContractMissingCanary)",
+        "agents/README.md:34-35 ('record-lint's agent_contract rule enforces it (itd-151)'); all 10 agents/*/fixtures/injection-canary.json present; agentcontract.go added in a825ec86 (v0.6.7..HEAD), the brief row unchanged"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. The canary-presence linter is shipped, enabled and cited by the very README the row points to, yet the row still calls it a design target. The linter landed in this release with the row left unchanged (run1 n=44)."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:90 (frontmatter table, `capability_scope` row)",
+      "item": "plugin agent surface",
+      "class": "false-claim",
+      "claim": "\"Set-membership lint in `internal/core/lint` against the `task_classes` closed enum (owned by `internal/core/schema` ...) is a design target — no shipped check reads the field.\"",
+      "reality": "A shipped check does read the field: `agent_contract` (internal/core/lint/agentcontract.go:193-196) requires `capability_scope.task_classes` and `capability_scope.designed_for` to be present and non-empty on every prompt and fails record-lint otherwise. Only the closed-enum membership half is unbuilt, and the claimed enum owner `internal/core/schema` does not exist (see next row). The sentence needs to say presence is enforced, membership is not.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:90 ('no shipped check reads the field')",
+        "internal/core/lint/agentcontract.go:186-202 (requires capability_scope.task_classes and .designed_for non-empty; gated on reads_untrusted_input: true, which all ten shipped prompts set), :413 (inline-list parser); .abcd/record-lint.json:259-263",
+        "no `internal/core/schema` in `ls internal/core/`; task_classes appears in Go only in agentcontract.go; agentcontract.go added in a825ec86 (v0.6.7..HEAD)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. A shipped, enabled check reads capability_scope (presence of both members); only the closed-enum membership half is unbuilt. One nuance: the presence check is gated on reads_untrusted_input: true rather than applying to 'every prompt' unconditionally, though all ten shipped prompts set it so the effect is the same today."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:3 and :90",
+      "item": "plugin agent surface",
+      "class": "fictional-layout",
+      "claim": "Agent JSON input/output schemas and the `task_classes` enum are \"owned by the core, `internal/core/schema`\"",
+      "reality": "No `internal/core/schema` package exists in the tree (`ls internal/core/` shows ahoy, banlist, capture, ..., issueschema, ..., spec, surface, ...). Nothing in the shipped binary owns a `task_classes` enum; the tokens live only in the agent frontmatter and in `agents/README.md`'s prose list.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:3 and :90 (both cite `internal/core/schema` as owner)",
+        "`ls internal/core/`: ahoy banlist capture changelog cite frontmatter glossary guard history ideate identity intent issueschema launch lifeboat lint memory positioning record recordid release repolint rules site spec surface update vintage — no schema/; `git ls-tree v0.6.7 internal/core/ | grep -i schema` -> issueschema only",
+        "`grep -rn task_classes internal --include=*.go` hits only lint/agentcontract.go (string presence check, no enum)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. No internal/core/schema package exists at HEAD or at v0.6.7 and nothing in the binary owns a task_classes enum; the tokens live only in agent frontmatter and agents/README.md prose. Pre-existing fictional layout."
+    },
+    {
+      "where": ".abcd/development/brief/05-internals/01-agents.md:84-91 (\"Agent prompt frontmatter — Current fields\" table)",
+      "item": "plugin agent surface",
+      "class": "undocumented-surface",
+      "claim": "The table lists the frontmatter fields shipped prompts carry: name, description, color, prompt_version, capability_scope, reads_untrusted_input.",
+      "reality": "Four shipped prompts also carry `tools:` (docs-currency-reviewer, ruthless-reviewer, security-reviewer, sota-researcher) and two carry `model: opus` (ruthless-reviewer, security-reviewer). Neither field appears in the table that claims to enumerate current fields; `05-prompt-quality.md:17` acknowledges both as \"existing\" fields, so the two chapters disagree.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/05-internals/01-agents.md:84-91 (table: name, description, color, prompt_version, capability_scope, reads_untrusted_input only)",
+        "`grep -l ^tools: agents/*.md`: docs-currency-reviewer, sota-researcher, security-reviewer, ruthless-reviewer; `grep -l ^model: agents/*.md`: security-reviewer, ruthless-reviewer",
+        ".abcd/development/brief/05-internals/05-prompt-quality.md:17 ('alongside existing name, description, tools, model'); `git show v0.6.7:agents/ruthless-reviewer.md` lines 4-5 already carry tools/model; the table rows are unchanged in v0.6.7..HEAD"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Four shipped prompts carry tools and two carry model, and the 'Current fields' table omits both while the neighbouring prompt-quality chapter calls them existing fields. Both fields were present at v0.6.7, so pre-existing (run1 n=46)."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/README.md:17 (row 11, `/abcd:history`)",
+      "item": "CLI verb tree",
+      "class": "stale-count",
+      "claim": "Session-transcript store sub-verbs are listed as `capture` / `list` / `show`.",
+      "reality": "`abcd history --help` registers five sub-verbs: capture, drain, list, show, staged. The chapter 11-history.md and surface.json both carry `drain` and `staged`; only the README summary row is stale.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/README.md:17 (\"(`capture` / `list` / `show`)\")",
+        "`go run ./cmd/abcd history --help` lists capture, drain, list, show, staged",
+        ".abcd/development/brief/04-surfaces/11-history.md:8-10 names staged and drain",
+        "git diff v0.6.7..HEAD -- .abcd/development/brief/04-surfaces/README.md: empty; v0.6.7:internal/surface/cli/cli.go already registers staged/drain (run-1 n=49)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n=49; re-confirmed against the row and the binary. Row unchanged since v0.6.7 and both sub-verbs existed there, so pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md (resolve row, ~line 33)",
+      "item": "CLI verb tree",
+      "class": "undocumented-surface",
+      "claim": "`capture resolve` takes `--impact` (required) plus three optional provenance flags `--intent`, `--spec`, `--commit`.",
+      "reality": "`abcd capture resolve --help` also exposes `--shipped-in <vX.Y.Z>` (migration use: leaves the record out of the current cut). The flag appears in surface.json but is mentioned nowhere in the brief (grep 'shipped-in' over .abcd/development/brief/ returns nothing).",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/06-capture.md:33 (resolve row names only --intent/--spec/--commit)",
+        "grep 'shipped-in|shipped_in' .abcd/development/brief/: no hits",
+        "`go run ./cmd/abcd capture resolve --help` line 4 usage and line 11 print --shipped-in",
+        "git diff v0.6.7..HEAD -- 06-capture.md: empty; flag present at v0.6.7 (run-1 n=1)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n=1; the brief row and frontmatter omit --shipped-in while the binary exposes it. Brief unchanged since the tag and the flag predates it."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md (install flags)",
+      "item": "CLI verb tree",
+      "class": "undocumented-surface",
+      "claim": "`ahoy install` flag set documented as --adopt, --refuse-adopt, --allow-stale-binary, --bin-dir, --dev, --docs-target, --oracle-backend, --scan-deep, --visibility, --yes.",
+      "reality": "`abcd ahoy install --help` also exposes `--attribution` (opts the repo into the committed prepare-commit-msg Assisted-by prompt; recorded so later installs keep the hook). The word 'attribution' does not occur in 01-ahoy.md.",
+      "verification": "confirmed",
+      "introducedInRelease": true,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/01-ahoy.md:286-296 (flag list without --attribution); grep attribution 01-ahoy.md: no hits",
+        "`go run ./cmd/abcd ahoy install --help` line 9 prints --attribution",
+        "git diff v0.6.7..HEAD -- internal/surface/cli/cli.go adds installCmd.Flags().BoolVar(&attribution, \"attribution\", ...)",
+        "git ls-tree v0.6.7 internal/core/ahoy/attribution_hook.go: absent"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; design-brief chapter (.abcd/development/brief, ships in no release) not updated alongside code that landed since v0.6.7; tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n=27. The flag and attribution_hook.go both arrive between v0.6.7 and HEAD, so the release created the gap."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/02-disembark.md (pack / plan / probe rows)",
+      "item": "CLI verb tree",
+      "class": "undocumented-surface",
+      "claim": "`disembark pack`, `plan`, and `probe` are described with positional args only.",
+      "reality": "All three carry an `--include-ignored` flag in the binary (and in surface.json); grep 'include-ignored' over .abcd/development/brief/ returns nothing.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/02-disembark.md:30-32 (pack/probe/plan bullets, positional args only)",
+        "grep include-ignored .abcd/development/brief/: no hits",
+        "`go run ./cmd/abcd disembark {pack,plan,probe} --help` line 8 prints --include-ignored",
+        "git diff v0.6.7..HEAD -- 02-disembark.md: empty; flag registered at v0.6.7 (run-1 n=21)"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Same finding as run-1 n=21; all three sub-verbs print --include-ignored and the chapter never names it. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/20-banlist.md (add row)",
+      "item": "CLI verb tree",
+      "class": "undocumented-surface",
+      "claim": "`banlist add` is documented as `--private|--public <key> <pattern|->` with no further flags.",
+      "reality": "`abcd banlist add --help` also exposes `--severity blocker|warn` and `--successor <text>` for public entries; neither word occurs in 20-banlist.md.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/20-banlist.md:4,23,120,128 (add is named only as a write path / `add --private`; no flag list at all)",
+        "grep -i 'severity|successor' 20-banlist.md: no hits",
+        "internal/surface/cli/banlist.go:168-169 register --severity and --successor; `go run ./cmd/abcd banlist add --help` prints both",
+        "git show v0.6.7:internal/surface/cli/banlist.go:158-159 has the same two flags; git diff v0.6.7..HEAD -- 20-banlist.md touches only an iss-176 link"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The quoted usage line comes from --help, not the chapter: the brief documents even less (no add usage at all), so the omission of --severity/--successor holds. Both flags predate v0.6.7 and the chapter's only release change is a link path."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/19-identity.md (init row / block field table ~line 54)",
+      "item": "CLI verb tree",
+      "class": "undocumented-surface",
+      "claim": "`identity init` records the block with `--title`, `--tagline`, `--pitch`; the block location `{file, heading}` is described only as a stored field.",
+      "reality": "`abcd identity init --help` exposes `--file` (default .abcd/development/IDENTITY.md) and `--heading` (default \"Identity (canonical)\") as caller-settable flags; the chapter never names them as flags.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/19-identity.md:54 (`block` `{file, heading}` as a stored field) and :70 (`abcd identity init …` with no flags named); grep -- '--file|--heading' 19-identity.md: no hits",
+        "internal/surface/cli/identity.go:97-98 register --file and --heading; `go run ./cmd/abcd identity init --help` prints both with defaults",
+        "git show v0.6.7:internal/surface/cli/identity.go:97-98 identical; git diff v0.6.7..HEAD -- 19-identity.md: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The chapter describes block location only as a stored field and elides the init flag set, while the binary exposes --file/--heading. Flags and chapter are unchanged since v0.6.7."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/22-site.md (build row, ~lines 53-59)",
+      "item": "CLI verb tree",
+      "class": "undocumented-surface",
+      "claim": "`site build` is documented with `--out`, `--preview`, and `--version` (the last only in passing).",
+      "reality": "`abcd site build --help` also exposes `--commit` (footer/build-stamp commit, default git HEAD) and `--date` (build-stamp date, default newest release date); neither is mentioned as a flag anywhere in 22-site.md.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/22-site.md:50-54 (Behaviour block: --out, --preview) and :56-59 (--version in passing); grep -- '--commit|--date' 22-site.md: no hits",
+        "internal/surface/cli/site.go:72-73 register --commit and --date; `go run ./cmd/abcd site build --help` prints both",
+        "git show v0.6.7:internal/surface/cli/site.go:72-73 identical; git diff v0.6.7..HEAD -- 22-site.md: empty"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Both pin flags exist in the binary and commands/site.md but nowhere in the chapter; the Behaviour block sits at lines 50-54, slightly off the cited 53-59. Pre-existing on both sides."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/22-site.md:57 (Behaviour block, `abcd site check --out DIR`) and :5-7 (\"`build` is the render, and it writes only inside the directory it is given\")",
+      "item": ".abcd/development/brief/04-surfaces/22-site.md",
+      "class": "undocumented-surface",
+      "claim": "`check` gates an already-rendered tree; `build` is presented as the only sub-verb that renders/writes.",
+      "reality": "`abcd site check --out DIR` renders the site first when DIR holds no index.html (verified: `abcd site check --out <empty-dir>` prints \"(rendered first: the output directory held no index.html)\" and populates the directory; `internal/surface/cli/site.go:114`; `check --help`: \"rendered first if absent\"). commands/site.md documents this; the brief does not.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/22-site.md:5-7 (`build` is the render, writes only inside its directory) and :54 (`check --out DIR # gate an already-rendered tree`); grep -i 'rendered first|renders first' 22-site.md: no hits",
+        "internal/surface/cli/site.go:103 (--out help: \"rendered first if absent\") and :114 (\"rendered first: the output directory held no index.html\"); internal/core/site/check.go:217-218,290 (Built=true)",
+        "commands/site.md:96-98 documents the render-on-absent behaviour",
+        "git show v0.6.7:internal/surface/cli/site.go has the same :103/:114 strings; 22-site.md unchanged since v0.6.7"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. check does render when the output directory has no index.html, so build is not the only writing sub-verb and the chapter's 'already-rendered tree' wording understates it. The check line is at :54, not :57; behaviour and prose both predate the release."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/22-site.md:52-58 (Behaviour block) and :60-62 (`--preview`/`--version` prose)",
+      "item": ".abcd/development/brief/04-surfaces/22-site.md",
+      "class": "undocumented-surface",
+      "claim": "The documented `build` flags are `--out`, `--preview` and (in passing) `--version`.",
+      "reality": "`abcd site build --help` also ships `--commit string` (commit for the footer and build stamp, default git HEAD) and `--date string` (date for the build stamp, default the newest release's date). Neither appears anywhere in the chapter; commands/site.md lists all four pin flags.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/22-site.md:50-59; grep -- '--commit|--date' 22-site.md: no hits",
+        "internal/surface/cli/site.go:72-73; `go run ./cmd/abcd site build --help`",
+        "commands/site.md lists --out/--preview/--version/--commit/--date",
+        "git show v0.6.7:internal/surface/cli/site.go:72-73 identical; 22-site.md unchanged since v0.6.7"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. Duplicate of n=57 with the same evidence: --commit and --date are live and documented in commands/site.md but absent from the chapter. Pre-existing."
+    },
+    {
+      "where": ".abcd/development/brief/04-surfaces/22-site.md:57 (`# gate an already-rendered tree; exit 1 on findings`)",
+      "item": ".abcd/development/brief/04-surfaces/22-site.md",
+      "class": "undocumented-surface",
+      "claim": "`check` exits 1 on findings (the only non-zero exit named).",
+      "reality": "`internal/surface/cli/site.go:90,98`: exit 1 on gate findings, exit 2 when the check cannot run at all (no manifest, unreadable input). commands/site.md documents the 0/1/2 contract; the brief names only 0 and 1.",
+      "verification": "confirmed",
+      "introducedInRelease": false,
+      "evidence": [
+        ".abcd/development/brief/04-surfaces/22-site.md:54 (`check --out DIR # gate an already-rendered tree; exit 1 on findings`; the only non-zero exit named in the chapter)",
+        "internal/surface/cli/site.go:90 (exitError Code 2 when site.Check errors) and :98 (Code 1 when !res.OK())",
+        "commands/site.md:133-135 documents the 0/1/2 contract",
+        "git show v0.6.7:internal/surface/cli/site.go:90,98 identical; 22-site.md unchanged since v0.6.7"
+      ],
+      "disposition": "accepted: confirmed on independent re-verification; pre-existing design-brief drift already present at v0.6.7 (.abcd/development/brief, ships in no release); tracked under iss-2608231346137587 and shipped unfixed. The exit-2 path for a check that cannot run is real and documented in commands/site.md but the chapter names only exit 1. The cited line is :54 rather than :57; both sides predate the release."
+    }
+  ],
+  "_reviewProvenance": "Host-run full-tier run of the pinned detector (28 checkers: 23 brief docs direction A, 5 surfaces direction B; 28 returned, 0 errors) against this content commit, returning 60 unique discrepancies. Every finding was then independently re-verified against the tree by a second, separate pass (evaluator outside the loop): 50 confirmed, 10 partial, 0 refuted; 10 were created by changes that landed since v0.6.7, the rest pre-date the tag. All but the bundle-file entries point at .abcd/development/brief/, which ships in no release (adr-28). PROMOTE is the maintainer's decision under verifier-selects-gates-decide: the findings are the design record lagging the shipped surface, the pattern already captured as iss-2608231346137587, whose corpus rule forbids hand-fixing ahead of the intent that mines it. An earlier full-tier run of the same detector at the pre-recomposition content commit 0c729264 returned 57 discrepancies (0 refuted on re-verification) and is retained beside this one; both corpora live in the local work tier (.abcd/.work.local/scratch/v0.6.8-gate/)."
+}

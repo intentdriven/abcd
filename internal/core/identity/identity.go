@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -29,6 +30,17 @@ const PinRelPath = ".abcd/config/identity.json"
 type Pin struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	// ProductionMode is the repo's DEFAULT production mode: how the text of a
+	// record this repository mints was produced, unless the minting verb says
+	// otherwise (itd-178). It rides the pin rather than a second config file
+	// because this is already the repo's attribution seam and already has a
+	// reader; a second file would be a second reader of the same question.
+	//
+	// Optional and omitted when empty, so a pin written before the member existed
+	// round-trips byte-identically. An absent member means provenance.DefaultMode.
+	// The self-contained pre-commit identity guard seds `name` and `email` out of
+	// this file by name, so an added member is invisible to it.
+	ProductionMode string `json:"production_mode,omitempty"`
 }
 
 // Effective is the identity git would actually stamp on a commit in the repo,
@@ -107,7 +119,31 @@ func LoadPin(root string) (Pin, bool, error) {
 	if p.Name == "" || p.Email == "" {
 		return Pin{}, false, fmt.Errorf("%s must set both name and email", PinRelPath)
 	}
+	// The optional member is validated at the boundary exactly as a malformed pin
+	// is: a value outside the closed set would otherwise be stamped, unread, onto
+	// every record the repo mints.
+	p.ProductionMode = strings.TrimSpace(p.ProductionMode)
+	if p.ProductionMode != "" {
+		if _, err := provenance.ParseMode(p.ProductionMode); err != nil {
+			return Pin{}, false, fmt.Errorf("malformed %s: %w", PinRelPath, err)
+		}
+	}
 	return p, true, nil
+}
+
+// DeclaredProductionMode is the repo's default production mode: the pin's
+// optional member, or provenance.DefaultMode when the repo has no pin or the pin
+// declares none. It is the ONE resolution of that question, so no surface
+// re-derives "absent means hand-written" for itself.
+func DeclaredProductionMode(root string) (provenance.Mode, error) {
+	pin, pinned, err := LoadPin(root)
+	if err != nil {
+		return "", err
+	}
+	if !pinned {
+		return provenance.DefaultMode, nil
+	}
+	return provenance.ModeOrDefault(pin.ProductionMode)
 }
 
 // WritePin writes the pin to .abcd/config/identity.json (creating the config
@@ -118,6 +154,14 @@ func WritePin(root string, p Pin) error {
 	p.Email = strings.TrimSpace(p.Email)
 	if p.Name == "" || p.Email == "" {
 		return fmt.Errorf("identity pin requires both name and email")
+	}
+	// The optional member is refused here on the same terms LoadPin refuses it,
+	// so the writer can never store a pin its own reader rejects.
+	p.ProductionMode = strings.TrimSpace(p.ProductionMode)
+	if p.ProductionMode != "" {
+		if _, err := provenance.ParseMode(p.ProductionMode); err != nil {
+			return fmt.Errorf("identity pin: %w", err)
+		}
 	}
 	// The self-contained pre-commit identity guard reads the pin with a naive
 	// sed that captures the raw bytes between the JSON quotes and compares them

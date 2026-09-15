@@ -180,9 +180,10 @@ find out: the tag is already created by then, and the workflow never moves a tag
 ```
 
 The binary derives everything the release is allowed to be: the base tag, the
-`next_tag`, the deciding `impact`, the record set (`added` and `removed`), and the
-surface guardrail's verdict. Read-only preview of the same thing:
-`abcd changelog --json`.
+`next_tag`, the deciding `impact`, the record set (`added` and `removed`), the
+surface guardrail's verdict (`guard`), and the unfixed-findings guardrail's
+verdict (`findings`). Read-only preview of the same thing: `abcd changelog
+--json`.
 
 Exit codes gate the flow:
 
@@ -190,9 +191,64 @@ Exit codes gate the flow:
 - **1** — the cut **REFUSES**. Render the whole report to the user and **stop**.
   Every refusal names the specific record, version, or surface that blocks it — a
   release in flight, a merged feature whose intent still sits in `planned/`, a
-  missing surface baseline, a surface break with no `breaking` record. A refusal is
-  a result to relay, not a crash, and not something to work around.
+  missing surface baseline, a surface break with no `breaking` record, or a
+  consequential finding this cycle captured and never answered (see *The
+  findings gate* below). A refusal is a result to relay, not a crash, and not
+  something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
+
+### The findings gate
+
+Both renders — `abcd changelog` and `abcd launch ship` — carry two lines about
+the issue ledger, and they are the two most easily skipped lines in the report:
+
+```
+  findings:   failed (2 unfixed finding(s) captured since v0.7.0)
+    deferred: iss-2609012313465609 [major] — the CI split lands next cycle
+```
+
+**What refuses.** An issue record that entered the ledger *since the anchor tag*,
+is graded `major` or `critical`, and is still in `open/`, refuses the cut under
+the refusal kind `unfixed-finding`. A refused cut carries **no derived version**,
+so nothing downstream has a release to make. A record whose `severity` is
+missing, misspelled, or outside the ledger's enum refuses too: it has not been
+judged, and "not judged" must not read as "not serious".
+
+The anchor is what bounds it. Records that already existed at the last tag are
+the standing backlog and are never this cut's to answer; only what this cycle
+itself captured is in scope. "It was already there when I started" is therefore
+not available as a defence for anything the gate names.
+
+**What the render shows.** The `findings:` line gives the verdict, the count of
+unfixed findings and the anchor they were counted from, and the count deferred.
+One `deferred:` line follows per waiver, naming the record, its severity and the
+reason recorded on it. Report both to the user verbatim — a deferral nobody sees
+in the report they actually read is indistinguishable from a finding that was
+ignored. The whole verdict is on the cut's `findings` JSON key.
+
+**The four routes out.** Relay them; do not pick one for the user.
+
+1. **Fix it and resolve the record in this cut** — the intended answer. The
+   change and its `Resolves:` trailer land in the release branch, the record
+   reaches `.abcd/work/issues/resolved/`, and the gate stops seeing it.
+2. **`abcd capture wontfix`** — the recorded decision not to fix. It clears the
+   gate with no special case, because the gate looks only at `open/`, and a
+   wontfix carries a stated reason. That is the conscious, cited non-action the
+   rule asks for, not a loophole in it.
+3. **The waiver pair.** Add `deferred_after: <anchor tag>` and a
+   `deferral_reason:` to the record's frontmatter. Both are schema-accepted keys.
+   `deferred_after` names the **anchor** — the tag the cut is measured from, not
+   the version being derived — which is what makes the waiver single-use: at the
+   next release the anchor moves and every waiver written against the old one
+   lapses, so the finding is re-asked rather than forgotten. Half a waiver does
+   not stand. One field without the other, or an anchor that is not this cut's,
+   leaves the record blocking and the report says which of those it was.
+4. **Re-grade the record honestly**, if and only if the severity was wrong when
+   it was written. Downgrading a finding to get past the gate is the failure the
+   gate exists to catch, and the record's history shows the edit.
+
+Never delete the record to clear the gate, and never hand-edit `CHANGELOG.md` to
+route around a refusal.
 
 ### 2. Compose the prose (host-delegated)
 
@@ -200,8 +256,13 @@ Run the **`release-changelog-composer`** agent
 (`agents/release-changelog-composer.md`) over the emitted cut and the records it
 names. It returns the changelog payload: `schema_version`, `prompt_version`,
 `next_tag` echoed verbatim, and `entries[{section, records, text}]`. The agent owns
-the **wording** and the **Keep a Changelog section**; the version, the date, the
-heading, the section order, and the inclusion set stay the binary's.
+the **wording** and the choice between the two writable **Keep a Changelog
+sections**, `Added` and `Fixed`; the version, the date, the heading, the section
+order, the inclusion set and the writable set stay the binary's. `Changed`,
+`Deprecated`, `Removed` and `Security` are claims about the previous release's
+surface, which the composer cannot see, so the ingest refuses a payload carrying
+one and the dated section says so under its heading (iss-2609011207114761). A
+`breaking` record is an `Added` line that states the break.
 
 **LOUD STAGE — if the composer cannot run in this context, the flow STOPS here.**
 No fallback exists and none may be improvised:

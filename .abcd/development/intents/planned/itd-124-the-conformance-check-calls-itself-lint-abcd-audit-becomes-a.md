@@ -35,6 +35,10 @@ About 57 references carry the current name; the scoped sweep is smaller (the
 word "audit" in its family-2 sense — the intent audit — and third-party
 senses never move).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

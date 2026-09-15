@@ -267,6 +267,20 @@
           "hidden": false
         },
         {
+          "name": "lapsed-at",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "severity",
           "shorthand": "",
           "type": "string",
@@ -282,6 +296,61 @@
         },
         {
           "name": "source",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture disposition",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "exit-condition",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "hold-frame-location",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "hold-moscow",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "recurs",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "state",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "supersedes",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -328,7 +397,21 @@
       "hidden": false,
       "flags": [
         {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "intent",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "production-mode",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -348,6 +431,13 @@
           "hidden": false
         },
         {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "impact",
           "shorthand": "",
           "type": "string",
@@ -356,6 +446,13 @@
         },
         {
           "name": "intent",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "production-mode",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -380,10 +477,30 @@
     {
       "path": "abcd capture wontfix",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd changelog",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd decide",
       "hidden": false,
       "flags": []
     },
@@ -759,6 +876,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -793,12 +917,28 @@
     {
       "path": "abcd intent plan",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd intent ready",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd launch",
@@ -917,6 +1057,63 @@
       "flags": []
     },
     {
+      "path": "abcd mode",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd reading",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd reading assemble",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "position",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "target",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd reading ingest",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "reading-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd rules",
       "hidden": false,
       "flags": []
@@ -995,6 +1192,19 @@
     },
     {
       "path": "abcd spec close",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "impact",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd statusline",
       "hidden": false,
       "flags": []
     },

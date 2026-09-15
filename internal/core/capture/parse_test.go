@@ -143,3 +143,98 @@ func TestValidateStrictImpact(t *testing.T) {
 		t.Fatalf("absent impact rejected: %v", err)
 	}
 }
+
+// TestValidateStrictLapseCategory pins the lapse category: the ledger's lapse
+// log is a value in the validated category list, not a separate enum or store
+// (cold-reading workstream ruling (6), 2026-08-28), so a lapse record must read
+// through the same strict path every other issue does.
+func TestValidateStrictLapseCategory(t *testing.T) {
+	// The fixture carries lapsed_at because a lapse record is not well formed
+	// without one (spc-60): the category and the instant are one record shape, and
+	// a fixture missing the instant would pin a record the ledger reader refuses.
+	fm := lapseFrontmatter()
+	if err := validateStrict(fm); err != nil {
+		t.Fatalf("lapse category rejected: %v", err)
+	}
+}
+
+// lapseFrontmatter is a well-formed lapse record's frontmatter, with the caller
+// free to mutate exactly one key. Each test below is one such mutation, so a
+// single refusal is the whole delta.
+func lapseFrontmatter() map[string]any {
+	return map[string]any{
+		"schema_version": 1,
+		"id":             "iss-1",
+		"slug":           "lapse-x",
+		"severity":       "minor",
+		"category":       "lapse",
+		"source":         "user-observation",
+		"found_during":   "preparation, before the first schema commit",
+		"lapsed_at":      "2026-08-28T00:00:00Z",
+	}
+}
+
+// TestValidateStrictLapseAcceptsAbsentLapsedAt: spc-60 refused a lapse entry
+// with no lapse time; that refusal is parked (iss-2609091009111294) until the
+// rethink of the reading work settles what a lapse record must carry. Absent,
+// blank and whitespace all read as "no instant recorded", and the record is
+// accepted with none — never with a defaulted one.
+func TestValidateStrictLapseAcceptsAbsentLapsedAt(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		mutit func(map[string]any)
+	}{
+		{"absent", func(fm map[string]any) { delete(fm, "lapsed_at") }},
+		{"blank", func(fm map[string]any) { fm["lapsed_at"] = "" }},
+		{"whitespace", func(fm map[string]any) { fm["lapsed_at"] = "   " }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fm := lapseFrontmatter()
+			tc.mutit(fm)
+			if err := validateStrict(fm); err != nil {
+				t.Fatalf("a lapse record with no lapse time was refused: %v", err)
+			}
+		})
+	}
+}
+
+// TestValidateStrictLapsedAtMustBeRFC3339 pins the format. A date alone names a
+// day, not the instant the criterion asks for, and free text names nothing a
+// reader can order — either would let the property be filled while saying
+// nothing checkable.
+func TestValidateStrictLapsedAtMustBeRFC3339(t *testing.T) {
+	for _, bad := range []string{"2026-08-28", "yesterday", "28/08/2026", "2026-08-28 09:15:00"} {
+		t.Run(bad, func(t *testing.T) {
+			fm := lapseFrontmatter()
+			fm["lapsed_at"] = bad
+			if err := validateStrict(fm); err == nil {
+				t.Fatalf("lapsed_at %q was accepted; want an RFC 3339 refusal", bad)
+			}
+		})
+	}
+}
+
+// TestValidateStrictNonLapseAcceptsAbsentLapsedAt is the control: the new rule is
+// conditional on the category and must not become a requirement on every record
+// in the ledger.
+func TestValidateStrictNonLapseAcceptsAbsentLapsedAt(t *testing.T) {
+	fm := lapseFrontmatter()
+	fm["category"] = "observation"
+	delete(fm, "lapsed_at")
+	if err := validateStrict(fm); err != nil {
+		t.Fatalf("a non-lapse record without lapsed_at was refused: %v", err)
+	}
+}
+
+// TestValidateStrictLapseCarriesFoundDuring records the mapping spc-60 states
+// rather than builds: the criterion's "point in the process at which the
+// discipline was suspended" is found_during, which the schema already requires
+// and already refuses when blank. It is pinned here so a later relaxation of
+// found_during cannot silently drop half of itd-182's criterion.
+func TestValidateStrictLapseCarriesFoundDuring(t *testing.T) {
+	fm := lapseFrontmatter()
+	fm["found_during"] = "   "
+	if err := validateStrict(fm); err == nil {
+		t.Fatal("a lapse record with a blank point in the process was accepted")
+	}
+}

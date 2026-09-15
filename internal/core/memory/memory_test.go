@@ -706,24 +706,28 @@ func TestWritePagesRegistryMergeNoLostUpdate(t *testing.T) {
 // must refuse to fetch link-local, loopback, private, and internal/metadata
 // targets (cloud metadata at 169.254.169.254 must be unreachable). Every case
 // resolves offline (IP literals, localhost, and the *.internal name-based guard).
+// Every fixture is https so the SSRF guard stays the thing under test: since
+// GHSA-35fj-9w6f-7h62 a plaintext http:// source is refused on its scheme
+// alone, and an http fixture would pass this test without the host guard ever
+// running.
 func TestIngestRefusesSSRFTargets(t *testing.T) {
 	repo := t.TempDir()
 	distiller := func(_ string, _ map[string]any) ([]map[string]any, error) {
 		return nil, nil // never reached — the fetch must be refused first
 	}
 	cases := []string{
-		"http://169.254.169.254/latest/meta-data/", // cloud metadata (link-local)
-		"http://127.0.0.1/x",                       // loopback
-		"http://localhost/x",                       // loopback by name
-		"http://[::1]/x",                           // IPv6 loopback
-		"http://10.0.0.1/x",                        // private  abcd-audit:allow
-		"http://192.168.1.1/x",                     // private  abcd-audit:allow
-		"http://172.16.5.5/x",                      // private  abcd-audit:allow
-		"http://metadata.google.internal/x",        // metadata name
-		"http://svc.internal/x",                    // .internal name
-		"http://[64:ff9b::a9fe:a9fe]/x",            // NAT64 embedding 169.254.169.254 (metadata)
-		"http://[64:ff9b::7f00:1]/x",               // NAT64 embedding 127.0.0.1 (loopback)
-		"http://[2002:a9fe:a9fe::]/x",              // 6to4 embedding the metadata endpoint  abcd-audit:allow
+		"https://169.254.169.254/latest/meta-data/", // cloud metadata (link-local)
+		"https://127.0.0.1/x",                       // loopback
+		"https://localhost/x",                       // loopback by name
+		"https://[::1]/x",                           // IPv6 loopback
+		"https://10.0.0.1/x",                        // private  abcd-audit:allow
+		"https://192.168.1.1/x",                     // private  abcd-audit:allow
+		"https://172.16.5.5/x",                      // private  abcd-audit:allow
+		"https://metadata.google.internal/x",        // metadata name
+		"https://svc.internal/x",                    // .internal name
+		"https://[64:ff9b::a9fe:a9fe]/x",            // NAT64 embedding 169.254.169.254 (metadata)
+		"https://[64:ff9b::7f00:1]/x",               // NAT64 embedding 127.0.0.1 (loopback)
+		"https://[2002:a9fe:a9fe::]/x",              // 6to4 embedding the metadata endpoint  abcd-audit:allow
 	}
 	for _, target := range cases {
 		t.Run(target, func(t *testing.T) {

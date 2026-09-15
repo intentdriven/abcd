@@ -67,6 +67,10 @@ designated or occupied** — the stance shipped intent itd-40 locked, left
 intact. The rule loader's existing `Merge` already composes layers, so the
 mechanism is `Merge(Merge(defaults, user), repo)`.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a machine with no `~/.abcd/rules.json`, **when** the rule loader

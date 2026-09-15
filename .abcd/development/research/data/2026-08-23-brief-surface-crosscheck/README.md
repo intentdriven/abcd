@@ -3,7 +3,7 @@
 Three full-tier runs of the `iss35-brief-surface-crosscheck` detector against
 the brief's surface chapters, kept as data rather than as prose. This is the
 empirical base
-[`itd-147`](../../../intents/drafts/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md)
+[`itd-147`](../../../intents/planned/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md)
 rests on, and the measurement behind
 [`iss-2608231346137587`](../../../../work/issues/open/iss-2608231346137587-brief-surface-chapters-drift-steadily-and-the-gate-passes-anyway.md).
 

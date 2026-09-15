@@ -55,6 +55,10 @@ Every other launch concern is downstream of this one. The pre-flight gate suite 
 - Auto-publishing to any registry beyond the git repo + tag — distribution is git-native marketplace, not a package index.
 - Touching the wrapped dependencies' own versions — this versions abcd's OWN release, never the tools it wraps (wrap-only rule; distinct from the `dep_watcher` upstream-tracking machinery).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

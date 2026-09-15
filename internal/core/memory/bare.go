@@ -43,11 +43,6 @@ func Bare(repoRoot string) (BareStatus, error) {
 	if err != nil {
 		return BareStatus{}, err
 	}
-	if !present {
-		// Keep mem an absolute (nonexistent) path so the downstream joins do not
-		// fall back to cwd-relative reads; every read then fails cleanly as absent.
-		mem = Dir(repoRoot)
-	}
 
 	infos := barePageInfos(mem)
 	// Seed the collections non-nil so an empty or contradiction-free store

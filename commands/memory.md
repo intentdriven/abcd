@@ -1,13 +1,25 @@
 ---
 name: memory
 description: Query and curate the per-project memory substrate at .abcd/memory/ by invoking the abcd binary. Bare invocation is a read-only status render; ingest/ask/lint curate, synthesise, and health-check the store.
-argument-hint: "[<empty>] | ingest <path-or-url> [--keep-original] | ask <question> | lint"
+argument-hint: "[<empty>] | ingest <path-or-https-url> [--keep-original] | ask <question> | lint"
 ---
 
 # `/abcd:memory` — curated knowledge substrate
 
 The per-project compounding-curated knowledge substrate at `.abcd/memory/`.
 Bare invocation **performs zero writes**.
+
+**The substrate addressed is the checkout's, from anywhere in the tree.** Every
+verb here resolves the repository root before it reads or writes, so a bare
+render run from a package directory reports the checkout's pages rather than
+"store not present", and an ingest lands in the checkout's store rather than
+laying a second one under the directory you happen to be standing in. Outside a
+repository there is no substrate to address: the verb exits **2**, reads
+nothing and writes nothing, because pages filed outside every checkout are
+committed by nothing and read by nothing. If a memory store also exists below
+the repository root, the verb names it on stderr and leaves it alone; relay that
+line, because pages sitting there are read by no `ask`, no `lint`, and no reader
+of the checkout's store.
 
 ## Status (bare)
 
@@ -22,8 +34,21 @@ render never rebuilds or mutates the coverage index.
 ## Ingest a source
 
 Distil an external source (transcript / article / URL) into typed, cited
-memory pages. PDF is a later-phase seam: the binary rejects a PDF source with a
-clear error, because no text-extraction dependency is wired.
+memory pages. A remote source must be **https**: a plaintext `http://` source
+is refused by name, and a redirect that leaves https is refused per hop, because
+the store copies a fetched source's text — and the licence header lifted out of
+it — verbatim into durable provenance. PDF is a later-phase seam: the binary
+rejects a PDF source with a clear error, because no text-extraction dependency
+is wired.
+
+A credential carried by the URL never reaches the store: basic-auth userinfo
+(`https://user:pass@host/doc`) and credential-shaped query keys (`token`,
+`api_key`, `apikey`, `access_token`, `password`, `secret`, case-insensitive —
+names that carry a secret in essentially every usage, so an addressing
+parameter such as `?key=` is never truncated) are stripped before the fetched address becomes the stored
+origin and title, and masked in every fetch-failure message — including the
+transport's own error, which is unwrapped to its cause so it cannot re-print
+the address behind the mask. The rest of the address is reproduced unchanged.
 
 **You** are the distiller: read the source, produce the
 `DistilledPage` JSON array, and pass it to the binary via `--pages-json`
@@ -31,7 +56,7 @@ clear error, because no text-extraction dependency is wired.
 content hash, validates every page, and writes atomically.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" memory ingest <path-or-url> --pages-json distilled.json --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" memory ingest <path-or-https-url> --pages-json distilled.json --json
 ```
 
 Add `--keep-original` to retain the source at
@@ -57,7 +82,10 @@ Report the `answer` and, if present, the `file_back` result.
 ## Lint
 
 Full-store curator health-check — per-page quotation budgets, cumulative source
-coverage, source-class and licence advisories:
+coverage, source-class and licence advisories, and secret or identity residue
+in stored text (`MR001`, a blocker: the store's write-time redactor run over
+every page, the sources registry and each text kept-original; the finding names
+the kind and the line, never the span, and lint never rewrites the store):
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" memory lint --json

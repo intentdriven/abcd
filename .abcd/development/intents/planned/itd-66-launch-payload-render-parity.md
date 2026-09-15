@@ -53,6 +53,10 @@ The pre-flight gate suite ([[itd-65-launch-preflight-gate-suite]]) decides wheth
 - Re-including any `.abcd/**` path into the payload — adr-28 forbids it; the render must enforce, not relax, that.
 - A full end-to-end publish dry-run to a real remote — the smoke test loads the rendered tree locally, it does not clone/push.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

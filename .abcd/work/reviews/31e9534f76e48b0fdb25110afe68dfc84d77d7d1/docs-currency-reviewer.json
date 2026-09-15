@@ -1,0 +1,38 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "31e9534f76e48b0fdb25110afe68dfc84d77d7d1"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-02T08:34:49Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:790aaec8dbde790dcc20766e29afbf85ce044fd4a31bbd851318fc4e564a6f11",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.7.1"
+  },
+  "categories": {
+    "false-claim": 0,
+    "stale-record": 0,
+    "stale-count": 0,
+    "incomplete": 1,
+    "criterion-violation": 0
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "incomplete",
+      "severity": "medium",
+      "summary": "docs/reference/writing-style.md:88: The Escapes section enumerates the machine-enforced rules that have no line escape as links_resolve, stray_root_docs and the citation_* rules, and lists the five banned-token families that take '<!-- docs-lint: allow -->'. harness_leak \u2014 added to the Structure table at v0.7.1 and the eighth rule in .abcd/docs-lint.json \u2014 is in neither list, yet it does have a line escape and it is a different token: checkHarnessLeak (internal/core/lint/harnessleak.go:42) skips a line carrying 'abcd-lint:allow' or 'abcd-audit:allow' and does not honour '<!-- docs-lint: allow -->'. A reader following the page as written either applies the wrong token or concludes no escape exists. The page states its own criterion as listing 'the whole machine-enforced surface'.",
+      "disposition": "deferred",
+      "note": "A reference-page omission, not a false claim: captured as iss-2609020833531987 and corrected after the tag."
+    }
+  ]
+}

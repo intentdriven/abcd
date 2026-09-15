@@ -51,11 +51,29 @@ const DefaultRefreshBackstop = 15
 
 // InjectResult is the outcome of one prompt-router evaluation. Text is empty
 // when nothing new is injected (a healthy no-match renders zero model-facing
-// tokens, per D3).
+// tokens, per D3). Sources says, per injected name, which layer the domain
+// came from (SourceBundled or SourceRepo): the names alone cannot, and the
+// out-of-band diagnostic must say whose words went into the context.
 type InjectResult struct {
 	Text     string
 	Injected []string
+	Sources  map[string]string
 	State    SessionState
+}
+
+// Labels returns the injected names in order, each labelled the way the
+// rendered heading is — "PII (repo override)" for a repo-sourced domain, the
+// bare name otherwise — so the diagnostic and the block agree byte for byte.
+func (r InjectResult) Labels() []string {
+	out := make([]string, 0, len(r.Injected))
+	for _, name := range r.Injected {
+		if r.Sources[name] == SourceRepo {
+			out = append(out, name+" (repo override)")
+			continue
+		}
+		out = append(out, name)
+	}
+	return out
 }
 
 // SessionState is the per-session dedup ledger plus the prompt counter that
@@ -105,15 +123,18 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 	// rather than silently dropped for the session.
 	text, kept := renderWithinBudget(fresh)
 	var injected []string
+	sources := make(map[string]string, len(kept))
 	for _, d := range kept {
 		ledger[d.Name] = Signature(d)
 		injected = append(injected, d.Name)
+		sources[d.Name] = d.Source
 	}
 	sort.Strings(injected)
 
 	return InjectResult{
 		Text:     text,
 		Injected: injected,
+		Sources:  sources,
 		State:    SessionState{Count: count, Ledger: ledger},
 	}
 }

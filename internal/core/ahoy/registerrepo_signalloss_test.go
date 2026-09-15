@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -128,5 +129,51 @@ func TestRegisterRepoRefreshAppliesPendingLineage(t *testing.T) {
 	cand := indexEntry(idx, "sha-old")
 	if cand == nil || cand.SupersededBy != "sha-new" || cand.Status != "superseded" {
 		t.Fatalf("the candidate must be marked superseded by sha-new: %+v", cand)
+	}
+}
+
+// TestRegisterRepoLockNoteCarriesNoAbsolutePath pins the lock-failure note to
+// the receipt scrub. A contention timeout names no path, but a lock path the
+// primitive refuses — here the hostile-clone shape, .index.lock planted as a
+// symlink — is reported with the store's absolute path under the home
+// directory, and the note that carries it must render through the same seam
+// every written path does, so the receipt and --json output name neither the
+// home directory nor the repo.
+func TestRegisterRepoLockNoteCarriesNoAbsolutePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := bootstrapHistory(); err != nil {
+		t.Fatal(err)
+	}
+	root, err := historyRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), filepath.Join(root, historyLockFilename)); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+
+	repo := filepath.Join(home, "repo-x")
+	a := &applyCtx{
+		cwd:      repo,
+		det:      DetectionResult{RepoIdentity: RepoIdentity{Name: "repo-x", RootSHA: "sha-xxxxxxxx"}},
+		prompter: RefusingPrompter{},
+	}
+	a.registerRepo("sha-xxxxxxxx")
+
+	var note string
+	for _, c := range a.changes {
+		if strings.Contains(c, "history registration") {
+			note = c
+		}
+	}
+	if note == "" {
+		t.Fatalf("the skipped registration was not reported; a.changes=%v", a.changes)
+	}
+	if strings.Contains(note, home) {
+		t.Errorf("the note names the home directory: %q", note)
+	}
+	if strings.Contains(note, repo) {
+		t.Errorf("the note names the repo's absolute path: %q", note)
 	}
 }

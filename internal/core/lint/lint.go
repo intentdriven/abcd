@@ -20,6 +20,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -119,7 +120,7 @@ var (
 	specBucketNames   = []string{"open", "closed"}
 	// issueStatusDirs are the issue ledger's status directories (issue_id_unique
 	// scans all three for a duplicated iss-N id).
-	issueStatusDirs = []string{"open", "resolved", "wontfix"}
+	issueStatusDirs = issueschema.StatusDirs
 	intentBuckets   = bucketSet(intentBucketNames)
 	// intentImpactValues and issueImpactValues render the legal impact set an
 	// error message offers. They are composed from the shared enum's constants
@@ -524,6 +525,29 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			return nil, err
 		}
 		findings = append(findings, checkIssueIDUnique(repoRoot, ledger, iiCfg)...)
+	}
+
+	// reading_outstanding reads the same ledger root's SIBLING families
+	// (readings/, dispositions/), also outside cfg.Roots, so it runs once here.
+	// It is a report, never a gate: its severity is pinned in code and its
+	// findings are info, so it can never fail a push that has nothing to do with
+	// a reading.
+	if roCfg, ok := cfg.Rules[ruleReadingOutstanding]; ok && roCfg.Enabled {
+		ro, err := checkReadingOutstanding(repoRoot, roCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, ro...)
+	}
+
+	// record_provenance reads the same cross-store scan record_schema walks, so
+	// it runs once here rather than per root.
+	if rpCfg, ok := cfg.Rules[ruleRecordProvenance]; ok && rpCfg.Enabled {
+		rp, err := checkRecordProvenance(repoRoot, cfg, rpCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, rp...)
 	}
 
 	if impactCfg, ok := cfg.Rules["issue_impact_valid"]; ok && impactCfg.Enabled {
@@ -1065,6 +1089,10 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			add(rel, "'"+gate+"' receipt pins no judge model; a floating judge is not auditable")
 			continue
 		}
+		if why := floatingJudgeModel(r.JudgeModel); why != "" {
+			add(rel, "'"+gate+"' receipt judgeModel '"+r.JudgeModel+"' is "+why+", not a pinned snapshot; a floating judge is not auditable")
+			continue
+		}
 		if !manifestEra {
 			// Pre-manifest era: the receipt is judged by the rules above only, so a
 			// historical receipt that carries no tier/manifestHash/disposition stays
@@ -1090,6 +1118,28 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		}
 	}
 	return out, nil
+}
+
+// floatingJudgeModel reports why a receipt's judgeModel is a floating alias
+// rather than a pinned snapshot, or "" when it is pinned. The runbook's rule is
+// that a receipt names the judge that produced it so the pass can be re-run
+// against the same judge; an id that resolves to whatever the vendor serves
+// today cannot be. Pinned means the id carries a version or date component —
+// claude-opus-4-8, Claude Fable 5, a dated suffix — which is what the documented
+// example and every committed receipt satisfy. Refused: a bare family name with
+// no digit anywhere (opus, claude-sonnet), and a rolling alias, which names
+// "latest" whether or not a version fragment precedes it (claude-opus-4-latest
+// floats within the 4 line exactly as claude-opus-latest floats across lines).
+// The check is deliberately shape-only — it knows no vendor's catalogue.
+func floatingJudgeModel(model string) string {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if strings.Contains(m, "latest") {
+		return "a rolling alias"
+	}
+	if !strings.ContainsAny(m, "0123456789") {
+		return "a bare family alias with no version or date"
+	}
+	return ""
 }
 
 // hashManifest renders the release-gate manifest's canonical hash — sha256 over
@@ -2063,12 +2113,12 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 }
 
 // checkSpecIDUnique flags any spc-N id claimed by two or more spec-store files
-// across specs/{open,closed}/. The spec mint allocator now folds every git ref
-// into its max (recordid.MaxAcrossRefs), which closes the common
-// commit-then-branch collision, but two branches that both mint before either
-// commits still race (iss-115, iss-120) — and a hand-added spec file bypasses the
-// allocator entirely. This is the record-lint backstop that CI runs on the merged
-// PR's union, mirroring issue_id_unique/intent_lifecycle and sharing the one
+// across specs/{open,closed}/. The spec mint is timestamp-numeric and consults
+// no maximum (adr-45), so two branches minting in the same window differ by
+// entropy; what remains is the accepted same-second, same-suffix residue and a
+// hand-added spec file, which bypasses the mint entirely. This is the armed
+// scheme assertion (adr-45 ruling 5) that CI runs on the merged PR's union,
+// mirroring issue_id_unique/intent_lifecycle and sharing the one
 // validateIDUnique primitive. A malformed or absent id is spec_lifecycle's
 // concern, not this rule's, so only well-formed spc-N ids are compared; a
 // content-exempt spec is skipped exactly as spec_lifecycle skips it.
@@ -2398,27 +2448,13 @@ func loadForbiddenSynonyms(repoRoot, glossaryDir string) (map[string]bool, map[s
 }
 
 // parseYAMLStringList parses an inline YAML flow sequence of strings, e.g.
-// `["sprint", "milestone", "epic"]`, into its members. It is deliberately small —
-// the glossary frontmatter only ever uses the inline `[...]` form — and tolerates
-// quotes and surrounding whitespace.
-func parseYAMLStringList(v string) []string {
-	v = strings.TrimSpace(v)
-	v = strings.TrimPrefix(v, "[")
-	v = strings.TrimSuffix(v, "]")
-	if strings.TrimSpace(v) == "" {
-		return nil
-	}
-	var out []string
-	for _, part := range strings.Split(v, ",") {
-		part = strings.TrimSpace(part)
-		part = strings.Trim(part, `"'`)
-		part = strings.TrimSpace(part)
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
+// `["sprint", "milestone", "epic"]`, into its members.
+//
+// It is `frontmatter.StringList` under this package's own name: the glossary's
+// index reads the same `aliases`/`forbidden_synonyms` fields this rule reads,
+// and one reader of a field is how the two cannot come to disagree about what a
+// term declares.
+func parseYAMLStringList(v string) []string { return frontmatter.StringList(v) }
 
 // frontmatterOpen returns the index of the opening `---` frontmatter delimiter,
 // skipping leading blank lines and HTML comments (single- and multi-line); -1

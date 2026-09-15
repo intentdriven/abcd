@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -19,6 +19,22 @@ import (
 // mintLockTimeout bounds how long Create waits for the spec-store mint lock. A
 // var (not const) so a test can shorten it to exercise contention.
 var mintLockTimeout = 5 * time.Second
+
+// specFamily is the spec store's id prefix, the family tag the mint splices
+// into every native spc id.
+const specFamily = "spc"
+
+// minter is the spec family's record-id mint seam (adr-45; per-family adoption
+// as configuration, ruling 3). The zero value is the production configuration —
+// real clock, crypto entropy; tests inject both so a same-instant case is
+// deterministic.
+var minter recordid.Minter
+
+// mintRetryBudget bounds how many fresh ids one spec mint draws when a candidate
+// already names a spec in this checkout — the same-second, same-suffix
+// coincidence, which is redrawn rather than bumped (spc-33 ruling 2). It mirrors
+// the capture ledger's placeholder retry budget.
+const mintRetryBudget = 8
 
 // Load discovers spec files under both buckets, parses their frontmatter, and
 // returns the in-memory Store. A missing specs/ directory yields an empty store
@@ -108,146 +124,48 @@ func nullToUnset(v string) string {
 	return v
 }
 
-// NextID mints the next spec id. The rule is:
-//
-//	max(N over existing spec-store files ∪ N over every intent's spec_id
-//	frontmatter across .abcd/development/intents/** ∪ N over spec-store filenames
-//	on every other git ref) + 1
-//
-// Scanning the intents is what keeps a freshly minted spec from colliding with
-// a reservation: itd-3 shipped with spec_id: spc-1 but has no spec-store file,
-// so a spec-only scan would hand out spc-1 again. Folding intent reservations in
-// means the first minted id is spc-2 while that reservation stands.
-//
-// Scanning every git ref (recordid.MaxAcrossRefs) is what keeps two parallel
-// branches from re-minting the same spc-N: once branch A commits spc-10, branch
-// B's ref scan sees it even though the file is absent from B's working tree
-// (iss-115, iss-120). The returned mintWarning is non-empty (and MUST be
-// surfaced) when that ref scan degraded to working-tree-only — git absent, not a
-// repo, or a failed ref query — so the fallback is never silent. The cross-ref
-// scan reads spec-store FILENAMES only; a spec_id reservation committed in an
-// intent's frontmatter on another branch is not folded in (that narrower window
-// is left to the record-lint uniqueness rules on the merged PR).
-func NextID(repoRoot string) (id, mintWarning string, err error) {
-	max := 0
-	store, err := Load(repoRoot)
-	if err != nil {
-		return "", "", err
-	}
-	for _, sp := range store.Specs {
-		if n := specNum(sp.ID); n > max {
-			max = n
-		}
-	}
-	reserved, err := maxIntentSpecNum(repoRoot)
-	if err != nil {
-		return "", "", err
-	}
-	if reserved > max {
-		max = reserved
-	}
-	scan := recordid.MaxAcrossRefs(repoRoot, "spc", []string{SpecsRelDir})
-	if scan.Max > max {
-		max = scan.Max
-	}
-	// Guard the max+1 below against int overflow: a hand-crafted MaxInt spc-N
-	// (a local file or a fetched remote-tracking ref carrying spc-<MaxInt>-x.md)
-	// parses to math.MaxInt with no error, so max+1 would wrap to math.MinInt and
-	// mint spc--9223372036854775808 — a malformed record WriteFileAtomic persists
-	// before Validate runs, plus a mint DoS for the family. Refuse clearly instead,
-	// mirroring the capture allocator's ceiling guard.
-	if max >= math.MaxInt {
-		return "", "", fmt.Errorf("spec: spc-N counter near the integer ceiling (highest observed %d); refusing to allocate", max)
-	}
-	return fmt.Sprintf("spc-%d", max+1), scan.Warning(), nil
-}
-
-// maxIntentSpecNum returns the highest N across every intent's spec_id
-// frontmatter value in the intent lifecycle buckets, or 0 if none.
-func maxIntentSpecNum(repoRoot string) (int, error) {
-	max := 0
-	for _, bucket := range intentBuckets {
-		dir := filepath.Join(repoRoot, IntentsRelDir, bucket)
-		di, err := os.Lstat(dir)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return 0, fmt.Errorf("spec: stat %s: %w", filepath.Join(IntentsRelDir, bucket), err)
-		}
-		if di.Mode()&os.ModeSymlink != 0 {
-			return 0, fmt.Errorf("spec: %s is a symlink (refusing to follow)", filepath.Join(IntentsRelDir, bucket))
-		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return 0, fmt.Errorf("spec: reading %s: %w", filepath.Join(IntentsRelDir, bucket), err)
-		}
-		for _, e := range entries {
-			if e.IsDir() || !intentFileRe.MatchString(e.Name()) {
-				continue
-			}
-			rel := filepath.Join(IntentsRelDir, bucket, e.Name())
-			data, err := readRepoFile(filepath.Join(dir, e.Name()), rel)
-			if err != nil {
-				return 0, err
-			}
-			fields := frontmatter.Fields(strings.Split(string(data), "\n"))
-			v := fields["spec_id"].Value
-			if frontmatter.IsNull(v) {
-				continue
-			}
-			// A non-null spec_id from which no reservation number can be parsed
-			// (e.g. "spc-", "spc-abc") is fail-closed, not silently dropped:
-			// dropping it would leave its reservation out of the max and let NextID
-			// mint a colliding id. A "spc-N" or "spc-N-<slug>" form is fine and
-			// reserves N — record-lint's planned rule (prefix ^spc-) and the
-			// spec_lifecycle specNum parse both tolerate the trailing slug, so this
-			// check must NOT reject that form or the two gates would disagree and a
-			// lint-green record would brick the mint path.
-			if !specNumRe.MatchString(v) {
-				return 0, fmt.Errorf("spec: intent %s has a spec_id %q with no reservable number (must be spc-N)", rel, v)
-			}
-			if n := specNum(v); n > max {
-				max = n
-			}
-		}
-	}
-	return max, nil
-}
-
-// Create mints an id via NextID and writes specs/open/spc-N-<slug>.md with the
-// intent link in frontmatter. Both the intent id and the slug are validated
-// before any path is built (the slug becomes a filename). The write is atomic.
-// The returned mintWarning is non-empty when the refs-union scan degraded to
-// working-tree-only minting; the caller MUST surface it (never swallow it).
-func Create(repoRoot, intentID, slug string) (Spec, string, error) {
+// Create mints a native timestamp-numeric spc id through the shared recordid
+// seam and writes specs/open/spc-N-<slug>.md with the intent link and the
+// origin/production_mode disclosure pair in frontmatter. Both the intent id and
+// the slug are validated before any path is built (the slug becomes a
+// filename), as is the production mode — a spec is minted by a verb a person
+// invoked, so its arrival path is researcher-authored and is derived here rather
+// than asked for. An empty mode takes the vocabulary's default. The write is
+// atomic.
+func Create(repoRoot, intentID, slug, productionMode string) (Spec, error) {
 	if !recordid.ValidIntentID(intentID) {
-		return Spec{}, "", fmt.Errorf("spec: intent id %q must match ^itd-[0-9]+$", intentID)
+		return Spec{}, fmt.Errorf("spec: intent id %q must match ^itd-[0-9]+$", intentID)
 	}
 	if !slugRe.MatchString(slug) {
-		return Spec{}, "", fmt.Errorf("spec: slug %q must be kebab-case", slug)
+		return Spec{}, fmt.Errorf("spec: slug %q must be kebab-case", slug)
 	}
-	// Mint and write under the exclusive mint lock: NextID scans the store for
-	// max N and this writes spc-N-<slug>.md, so without serialization two
-	// concurrent plans both observe the same max and mint a duplicate id — and
-	// because the filenames differ by slug, neither the atomic write nor the
-	// clobber guard detects it. Holding the lock across the scan+write makes the
-	// second run see the first's file and mint N+1.
+	stamp, err := provenance.NewStamp(provenance.KindResearcherAuthored, productionMode)
+	if err != nil {
+		return Spec{}, fmt.Errorf("spec: %w", err)
+	}
+	// Mint and write under the exclusive mint lock: the presence check inside
+	// mintSpecID and the write of spc-N-<slug>.md are one critical section, so
+	// two concurrent plans in this checkout that draw the same id — the
+	// same-second, same-suffix coincidence — cannot both write it. The filenames
+	// differ by slug, so neither the atomic write nor a clobber guard would
+	// notice on its own.
 	var sp Spec
-	var mintWarning string
-	err := withMintLock(repoRoot, func() error {
-		id, warn, err := NextID(repoRoot)
+	err = withMintLock(repoRoot, func() error {
+		store, err := Load(repoRoot)
 		if err != nil {
 			return err
 		}
-		mintWarning = warn
+		id, err := mintSpecID(store)
+		if err != nil {
+			return err
+		}
 		openDir := filepath.Join(repoRoot, SpecsRelDir, StatusOpen)
 		if err := ensureDir(openDir, filepath.Join(SpecsRelDir, StatusOpen)); err != nil {
 			return err
 		}
 		name := fmt.Sprintf("%s-%s.md", id, slug)
 		// 0o644 matches the intent-side markdown writer — both write committed design-record files.
-		if err := fsutil.WriteFileAtomic(filepath.Join(openDir, name), []byte(renderSpec(id, slug, intentID)), 0o644); err != nil {
+		if err := fsutil.WriteFileAtomic(filepath.Join(openDir, name), []byte(renderSpec(id, slug, intentID, stamp)), 0o644); err != nil {
 			return fmt.Errorf("spec: writing %s: %w", filepath.Join(SpecsRelDir, StatusOpen, name), err)
 		}
 		sp = Spec{
@@ -260,16 +178,43 @@ func Create(repoRoot, intentID, slug string) (Spec, string, error) {
 		return nil
 	})
 	if err != nil {
-		return Spec{}, "", err
+		return Spec{}, err
 	}
-	return sp, mintWarning, Validate(sp)
+	return sp, Validate(sp)
+}
+
+// mintSpecID draws a native spc id that names no spec in the loaded store. It
+// reads no maximum (adr-45 ruling 2) — not the store's, not the intents'
+// spec_id reservations, not the refs' — so a sibling checkout, which no lock
+// here can see, needs no coordination to stay distinct: the clock orders the
+// ids and the entropy separates two minters in the same second. A candidate
+// already present is redrawn, never bumped: a bump would re-derive the next id
+// from the store's occupancy, a miniature maximum-plus-one (spc-33 ruling 2).
+// Called under the mint lock so the check and the caller's write are atomic
+// within the checkout.
+func mintSpecID(store Store) (string, error) {
+	for attempt := 0; attempt < mintRetryBudget; attempt++ {
+		id, err := minter.Mint(specFamily)
+		if err != nil {
+			return "", err
+		}
+		if _, present := store.Lookup(id); !present {
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("spec: could not mint a free spc id after %d draws", mintRetryBudget)
 }
 
 // withMintLock runs fn while holding an exclusive advisory lock over the spec
-// store, serializing id minting across concurrent abcd processes in the same
-// worktree (two agent sessions, or a hook firing beside a manual command). It
-// flocks the specs/ directory file descriptor itself, so no lock artifact is
-// left in the committed record tree. O_NOFOLLOW refuses a symlinked specs/.
+// store. It serializes the presence check and the write of one mint against
+// concurrent abcd processes in the SAME checkout (two agent sessions, or a hook
+// firing beside a manual command), which is the one clash — same second, same
+// suffix, one directory — that time and entropy leave to the store to arbitrate
+// (spc-33 ruling 2). It cannot see a sibling checkout and does not need to: the
+// mint reads no maximum, so two checkouts never share the state a lock would
+// have to protect. It flocks the specs/ directory file descriptor itself, so no
+// lock artifact is left in the committed record tree. O_NOFOLLOW refuses a
+// symlinked specs/.
 func withMintLock(repoRoot string, fn func() error) error {
 	specsDir := filepath.Join(repoRoot, SpecsRelDir)
 	if err := ensureDir(specsDir, SpecsRelDir); err != nil {

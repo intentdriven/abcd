@@ -26,9 +26,9 @@ func TestLockFileIsScanned(t *testing.T) {
 	if res.HardFails == 0 {
 		t.Fatalf("a secret in a .lock file must be caught: %+v", res)
 	}
-	for _, s := range res.Skipped {
+	for _, s := range res.ScannedBinary {
 		if s == "deps.lock" {
-			t.Fatalf(".lock must no longer be an extension skip: %+v", res.Skipped)
+			t.Fatalf(".lock must no longer be an extension skip: %+v", res.ScannedBinary)
 		}
 	}
 }

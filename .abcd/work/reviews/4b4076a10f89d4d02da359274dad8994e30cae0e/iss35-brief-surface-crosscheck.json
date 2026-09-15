@@ -1,0 +1,283 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "4b4076a10f89d4d02da359274dad8994e30cae0e"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-09-01T13:06:10Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5",
+  "tier": "full",
+  "manifestHash": "sha256:0afee23256cb67ad69dd1bb603c534eaf89e2e4181edec0a863f1b161652164d",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:6b4a388e596e159a04f73417af8c2d08699968dd01031b9c08aeac65596d8064",
+    "briefVersion": "0.7.0"
+  },
+  "categories": {
+    "stale-count": 15,
+    "false-claim": 8,
+    "undocumented-surface": 10,
+    "fictional-layout": 3,
+    "criterion-violation": 0
+  },
+  "failing": [
+    {
+      "id": "b-1",
+      "category": "stale-count",
+      "severity": "major",
+      "summary": "05-internals/08-skills.md:19,21 says seventeen binary-backed top-level commands and omits reading; eighteen ship.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-2",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "05-internals/08-skills.md:17 and 04-surfaces/README.md:35 omit reading from the bare-status-board convention list.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-3",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "05-internals/03-configuration.md:361 names a fictional 'ahoy destroy' sub-verb; real sub-verbs are doctor, dry-run, identity-check, install, remote, remote apply, uninstall.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "b-4",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "04-surfaces/README.md:12 omits 'capture disposition' from the index row; correct downstream in 06-capture.md.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "b-5",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "04-surfaces/README.md:17 omits 'history drain' and 'history staged'; correct in 11-history.md.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "b-6",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "04-surfaces/README.md:16 omits the 'docs cite' sub-tree; correct in 10-docs.md.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "b-7",
+      "category": "undocumented-surface",
+      "severity": "major",
+      "summary": "Four shipped agents (cold-reading-widening/entailment/comparative/detection) are documented nowhere in the brief, each with full frontmatter and a canary fixture, and named by the binary's own bare 'abcd reading' output.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-8",
+      "category": "stale-count",
+      "severity": "major",
+      "summary": "Agent prompt counts stale in three places: 01-agents.md:3 ('Eleven'), :28 ('Seven further'), 05-prompt-quality.md:3 ('eleven'). Fifteen prompt files ship.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-9",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "05-internals/03-configuration.md:362-366 gives a fourth, differently-wrong agent count ('10 agents') that contradicts 01-agents.md:3.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-10",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "01-agents.md:104 says 'color' is carried by five reviewer/researcher prompts; nine carry it.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-11",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "01-agents.md:106 says capability_scope is carried by all eleven shipped prompts; fifteen carry it.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-12",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "The agent frontmatter table (01-agents.md:100-107) has no row for 'position' or 'regime', both shipped in all four cold-reading prompts, and neither is in the deliberately-omitted list.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "b-13",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "summary": "06-delivery/01-build-sequence.md:29 names skills/ as a shipped markdown surface directory; it does not exist, as three other locations correctly state.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-A1",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "01-ahoy.md:288-296 enumerates the install override flags and omits --attribution and the prepare-commit-msg hook it installs.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-A2",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "01-ahoy.md:266-275 omits the shipped prepare-commit-msg default template.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-A3",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "01-ahoy.md:36-39,433-440 omits the provenance record uninstall removes and its --bin-dir flag.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-B1",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "02-disembark.md:28-34 presents sub-verb arguments as the shipped surface and names no flags; --include-ignored ships on pack, probe and plan.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-D1",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "04-launch.md:22 says the plain-text --dry-run render prints only five things; it also prints a receipts: line.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-E1",
+      "category": "undocumented-surface",
+      "severity": "major",
+      "summary": "05-intent.md:3,200 calls 'intent ready' read-only and lists no flags; --grounds ships and RECORDS the conjecture, contradicting the read-only characterisation.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-E2",
+      "category": "stale-count",
+      "severity": "major",
+      "summary": "05-intent.md:3,200 names six readiness-gate criteria; seven ship, and the missing one (grounds) is the one that fails in practice.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-E3",
+      "category": "fictional-layout",
+      "severity": "major",
+      "summary": "05-intent.md:216-269 canonical intent template omits the ## Grounds section the shipped ready gate requires; an intent authored to the template cannot pass the gate.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-F1",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "06-capture.md:33,35,115,116 documents promote and resolve without --grounds, which is REQUIRED; both acceptance criteria as written are refused by the binary.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-F2",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "06-capture.md:28 enumerates the create flags and omits --production-mode, which ships on create, promote, resolve and wontfix.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-F3",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "summary": "06-capture.md:35 names three optional resolved_by flags; --shipped-in also ships.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-F4",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "06-capture.md:51-81 asserts its frontmatter block mirrors the schema exactly; origin and production_mode are missing from it.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a1-H1",
+      "category": "stale-count",
+      "severity": "major",
+      "summary": "08-abcd.md:79-83,87 says the /abcd:<verb> surface is 20 verb files and omits reading; 21 ship.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "a1-J1",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "10-docs.md:40-43 bare-status convention list omits site and reading, both of which render boards.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "a1-K1",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "12-version.md:26-28 carries the same stale bare-status list, maintained separately from 10-docs.md.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "a2-1",
+      "category": "false-claim",
+      "severity": "nitpick",
+      "summary": "14-ingest.md:10-11 says no Go verb backs ingest; true at top level, but 'reading ingest' and 'memory ingest' now exist as binary sub-verbs, so the phrase is falsifiable as written.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a2-2",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "17-guard.md:141-143 cites iss-315 as tracking an unimplemented design target; iss-315 is resolved and explicitly scopes that work out, so no open issue tracks it.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a2-3",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "19-identity.md:35 quotes a Tagline that does not match abcd's own canonical identity block; Title and Pitch match byte-for-byte, Tagline does not.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a2-4",
+      "category": "undocumented-surface",
+      "severity": "major",
+      "summary": "22-site.md:6-7,54,97 states the bare form is strictly read-only and build is the render; 'site check' RENDERS when the output directory holds no index.html, a write path the chapter never records.",
+      "disposition": "deferred-pre-existing"
+    },
+    {
+      "id": "a2-5",
+      "category": "fictional-layout",
+      "severity": "nitpick",
+      "summary": "23-reading.md:31 has a dangling [adr-58] reference-style link with no definition; it renders as literal text.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "a2-6",
+      "category": "stale-count",
+      "severity": "major",
+      "summary": "05-internals/08-skills.md:19 says seventeen binary-backed commands and omits reading (independent confirmation of b-1).",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "a2-7",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "05-internals/08-skills.md:19 says 'three newest parents' then lists four, and omits reading, the actually-newest.",
+      "disposition": "deferred-release-introduced"
+    },
+    {
+      "id": "a2-8",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "05-internals/08-skills.md:17 bare-status-board list omits reading and site (independent confirmation of b-2).",
+      "disposition": "deferred-release-introduced"
+    }
+  ],
+  "_reviewProvenance": "Full tier, both directions, run as four host-run Opus agents over the pinned manifest inputs: Direction A across all 24 briefDocs split in two halves, Direction B across all 5 surfaces exhaustively. The pinned context and both direction instructions were passed verbatim so promptHash and manifestHash mean what they claim. 258 elements enumerated; 36 discrepancies. MANIFEST CAVEAT, AND IT IS MATERIAL. manifestHash attests sha256:0afee232... but all three iss35 agents independently found that manifest's pinned context is stale: it names 10 of the 22 files under commands/, omitting reading among others. More seriously, it scopes the search to 04-surfaces/*.md plus 05-internals/08-skills.md, while 6 of Direction B's 13 findings live outside those chapters (01-agents.md, 03-configuration.md, 05-prompt-quality.md, 01-build-sequence.md) -- including all four undocumented cold-reading agents. A run obeying the pinned scope literally would have missed them. The agents were instructed to treat the built binary as ground truth, which the pinned context's own first line directs, and to report manifest staleness separately. So this receipt attests a genuinely full-depth run against an anchor now known to under-cover the record. Re-anchoring the manifest is unfinished work, not a property of this run. DISPOSITIONS. 15 findings are release-introduced (v0.7.0 ships the reading verb and four cold-reading agents that the brief does not document) and 21 are pre-existing prose drift. Both are deferred rather than fixed, and the split is recorded because they are different decisions: the first is this release outrunning its own record, the second is accumulated debt that predates it. The machine-checked layer is clean in both cases -- surface.json against the live binary is byte-exact across 82 command nodes and 109 flags, and every ## Sub-verbs table verified correct. Every finding here is in prose the surface_coverage rule does not scan, which is the gap 04-surfaces/README.md:33 says review must cover. REVIEWED TREE VERSUS SHIPPED TREE. Both passes ran against b5df66c287497064a620bb4e58a546b846733009. This receipt names 4b4076a10f89d4d02da359274dad8994e30cae0e. The delta is four files and every one is a fix responding to these passes: the composer prompt_version bump 0.1.0 -> 0.2.0 with its agents/CHANGELOG.md entry (dc-2, a CI blocker), two recomposed CHANGELOG lines (dc-1 record family, dc-3 five-state), and a fenced-code fix to iss-2609011217083577 that site-render refused. No unreviewed change rides along; `git diff b5df66c2 4b4076a1` is the check. No confirming pass was run against the final commit: that is the maintainer's recorded decision under verifier-selects-gates-decide, disclosed here rather than implied. JUDGE MODEL. claude-opus-5 is the model that ran, recorded as the id available to the harness. It is not a dated snapshot, and the gate does not enforce one: checkReceiptGate requires judgeModel to be non-empty only, so the pinned-snapshot rule the runbook states has no code behind it. Recorded so the receipt does not imply an auditability the gate does not provide."
+}

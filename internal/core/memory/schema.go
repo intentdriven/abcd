@@ -172,6 +172,18 @@ func requireDate(value any, where string) error {
 	return nil
 }
 
+// requireLicence is the one licence gate both source shapes judge through. It
+// trims, as hasLicence in lint.go does: the YAML reader keeps interior
+// whitespace in a quoted scalar, so `licence: " "` arrives as a string of one
+// space and is no more a licence than the empty string is.
+func requireLicence(value any, where string) error {
+	s, ok := value.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return newSchemaError("%s: licence must be a non-empty string (explicit 'unknown' is acceptable)", where)
+	}
+	return nil
+}
+
 var sourceEntryKeys = []string{"class", "citation", "licence", "source_hash", "ingested_at"}
 
 func validateSourceEntry(entry any, where string) (string, error) {
@@ -194,9 +206,8 @@ func validateSourceEntry(entry any, where string) (string, error) {
 	if err := requireDate(em["ingested_at"], where); err != nil {
 		return "", err
 	}
-	lic, ok := em["licence"].(string)
-	if !ok || lic == "" {
-		return "", newSchemaError("%s: licence must be a non-empty string (explicit 'unknown' is acceptable)", where)
+	if err := requireLicence(em["licence"], where); err != nil {
+		return "", err
 	}
 	sh, ok := em["source_hash"].(string)
 	if !ok || !hex64Re.MatchString(sh) {
@@ -242,9 +253,8 @@ func validateSourceBlock(source any) error {
 			if _, ok := sm["citation"]; !ok {
 				return newSchemaError("source: citation is required for class %s", cls)
 			}
-			lic, ok := sm["licence"].(string)
-			if !ok || strings.TrimSpace(lic) == "" {
-				return newSchemaError("source: licence must be a non-empty string for class %s (explicit 'unknown' is acceptable)", cls)
+			if err := requireLicence(sm["licence"], "source"); err != nil {
+				return err
 			}
 		}
 		if isExternalClass(cls) || cls == dredgeSynthesisClass {
@@ -645,13 +655,51 @@ type PageInfo struct {
 }
 
 func pageInfoFrom(filename, text string) PageInfo {
-	var fm map[string]any
-	body := text
-	if region, b, err := splitFileFrontmatter(text); err == nil {
-		if parsed, err := parseFrontmatter("---\n" + region + "---\n"); err == nil {
-			fm = parsed
-			body = b
-		}
+	return pageInfoOf(filename, parsePage(text))
+}
+
+// parsedPage is one page's frontmatter and body, split and parsed ONCE. The
+// per-page consumers (PageInfo, the ask body, the source block) each used to
+// split the file — a full normaliseNewlines plus strings.Split of up to
+// maxMemoryPageBytes — and two of them re-parsed the same region, so a query
+// over the store paid that three times per page.
+type parsedPage struct {
+	text string
+	// fm is the parsed frontmatter, or nil when the page has none that parses.
+	fm map[string]any
+	// body is the text after the frontmatter when the file split, else text.
+	body string
+}
+
+// parsePage splits text once and parses its frontmatter once.
+func parsePage(text string) parsedPage {
+	p := parsedPage{text: text, body: text}
+	region, body, err := splitFileFrontmatter(text)
+	if err != nil {
+		return p
+	}
+	p.body = body
+	if fm, err := parseFrontmatter("---\n" + region + "---\n"); err == nil {
+		p.fm = fm
+	}
+	return p
+}
+
+// source is the page's source: block, or an empty mapping when it has none.
+func (p parsedPage) source() map[string]any {
+	if src, ok := p.fm["source"].(map[string]any); ok {
+		return src
+	}
+	return map[string]any{}
+}
+
+// pageInfoOf derives the PageInfo from a page parsed once. A page whose
+// frontmatter does not parse is summarised from its whole text, as before.
+func pageInfoOf(filename string, p parsedPage) PageInfo {
+	fm := p.fm
+	body := p.text
+	if fm != nil {
+		body = p.body
 	}
 	var classes []string
 	if fm != nil {

@@ -417,3 +417,25 @@ func TestAgentContractFollowsAnInRepoSymlinkedChangelog(t *testing.T) {
 		t.Errorf("expected the entry to be found through the symlink; got %d: %+v", n, fs)
 	}
 }
+
+// TestAgentContractUndeclaredPromptStillNeedsAVersion pins the fall-through: a
+// prompt whose frontmatter carries only `name:` is missing BOTH the trust
+// declaration and prompt_version, and the gate must name both in one run.
+// Returning on the missing declaration alone skipped the prompt_version check
+// its own comment calls required of EVERY prompt, and checkAgentChangelog then
+// treated the empty version as "already reported" — which it was not.
+func TestAgentContractUndeclaredPromptStillNeedsAVersion(t *testing.T) {
+	root := t.TempDir()
+	writeAgent(t, root, "newagent", "")
+
+	fs, err := Lint(agentCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !messageContains(fs, "reads_untrusted_input") {
+		t.Errorf("expected the missing declaration to be named; got %+v", fs)
+	}
+	if !messageContains(fs, "prompt_version") {
+		t.Errorf("expected the missing prompt_version to be named in the same run; got %+v", fs)
+	}
+}

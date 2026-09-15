@@ -45,6 +45,10 @@ abcd's safety gate (itd-62/spc-76) ALWAYS blocks on a missing scanner rather tha
 - Bypassing or weakening a gate's fail-closed guarantee — declining an install still blocks; the wizard informs, it does not downgrade.
 - Re-implementing package managers — it guides the human (or runs a confirmed, explained step), it is not a new installer.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

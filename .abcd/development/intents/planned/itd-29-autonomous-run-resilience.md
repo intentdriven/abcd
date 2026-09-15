@@ -71,6 +71,10 @@ This intent **captures the concern now** so the project memory holds it. **Imple
 - **Budget-aware task reordering** — if budget is tight, the loop runs tasks in declared order, not in some optimised order.
 - **Multi-tenant budget pooling** — single user's quota only.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a user runs `abcd spec start spc-X`, **when** the pre-flight check estimates token cost > remaining quota, **then** the command refuses to start with a clear cost-vs-budget breakdown and a recommendation (downgrade model, defer some tasks, or top up).

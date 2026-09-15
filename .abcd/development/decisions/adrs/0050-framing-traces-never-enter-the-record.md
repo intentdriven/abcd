@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-142, itd-143]
 related_rfcs: []
-related_adrs: [adr-36, adr-41]
+related_adrs: [adr-36, adr-41, adr-55]
 ---
 
 # ADR-50: Framing traces never enter the record, and automated reviewers never read them

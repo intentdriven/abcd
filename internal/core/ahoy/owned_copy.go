@@ -62,17 +62,8 @@ func userPathEntryPath() string {
 // is absent, unreadable, or not a full lowercase hex digest — a promotion can
 // only re-verify against a hash that actually parses.
 func cacheRecordedSHA(dataDir string) string {
-	data, err := fsutil.ReadGuarded(cacheMetaPath(dataDir), maxPathEntryBytes)
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if k, v, ok := strings.Cut(strings.TrimSpace(line), "="); ok && k == "binary_sha256" {
-			if hexDigestOK(v) {
-				return v
-			}
-			return ""
-		}
+	if v := metaField(cacheMetaPath(dataDir), "binary_sha256"); hexDigestOK(v) {
+		return v
 	}
 	return ""
 }
@@ -159,6 +150,29 @@ func removePathEntry() {
 	}
 }
 
+// pathEntryNames reports whether the provenance record names target. It is the
+// `path=` string comparison the hook shims make against `command -v abcd` and
+// nothing more — adr-46 keeps hashing off the hook fast path — so it answers
+// the one question every entry shape can be asked, including the two whose
+// bytes ownership cannot rest on: a symlink (no bytes to hash) and the dev
+// shim (bytes that are ours but are not a release artefact).
+func pathEntryNames(target string) bool {
+	rec, ok := readPathEntry()
+	return ok && sameEntry(rec.path, target)
+}
+
+// removePathEntryFor drops the provenance record only when it names target.
+// Uninstall removes ONE entry, and the record is home-scoped: a blanket delete
+// would revoke the ownership of an install in another directory that this run
+// never touched. The guarded form is also the only safe one now that every
+// entry shape is recorded — a record left behind after its entry is gone would
+// hand the ownership claim to whatever occupies that path next.
+func removePathEntryFor(target string) {
+	if pathEntryNames(target) {
+		removePathEntry()
+	}
+}
+
 // fileSHA256Hex hashes a regular file through the guarded read (no symlink
 // leaf, no device, bounded size), or ok=false when it cannot.
 func fileSHA256Hex(path string) (string, bool) {
@@ -175,21 +189,56 @@ func fileSHA256Hex(path string) (string, bool) {
 // hash to the recorded value. A file that stopped matching was changed by
 // something else, so it classifies foreign — refreshing or removing it would
 // destroy work abcd cannot account for.
+//
+// The dev shim is excluded explicitly rather than by call order. Every entry
+// abcd installs is now recorded, the shim included, so "the record names it and
+// the bytes still match" no longer separates the copy from the shim — and this
+// predicate is exported as the ownership proof `abcd update` accepts as
+// permission to overwrite the file. Overwriting a shim the operator chose with
+// a release binary is a silent mode switch, so the copy predicate says what it
+// means: an owned copy is the verified release artefact, never the shim.
 func isOwnedCopyFile(target string) bool {
 	rec, ok := readPathEntry()
 	if !ok || !sameEntry(rec.path, target) {
+		return false
+	}
+	if isDevShimFile(target) {
 		return false
 	}
 	got, ok := fileSHA256Hex(target)
 	return ok && got == rec.sha
 }
 
+// IsOwnedPathCopy reports whether target is the regular file abcd installed as
+// this machine's PATH entry: ~/.abcd/path-entry names that very entry and the
+// bytes still hash to the recorded value. It is the exported face of the same
+// predicate `ahoy` classifies with, published for `abcd update`, which needs a
+// proof of ownership that no release deletion can revoke (iss-2609012000222546,
+// and the itd-130 fidelity audit's ac-1 concern (b): the record was re-stamped
+// after a swap but never consulted as a proof before one). It reads two local
+// files and touches no network.
+func IsOwnedPathCopy(target string) bool {
+	return isOwnedCopyFile(target)
+}
+
 // ownedCopySourceReady reports whether a verified cache artefact exists to copy
 // from — the precondition for installing (or healing to) an owned copy. When it
-// does not hold, install degrades loudly to the spc-21 pinned symlink.
-func ownedCopySourceReady() bool {
-	dataDir := pluginDataDir()
-	if dataDir == "" {
+// does not hold, install degrades loudly to the spc-21 pinned symlink. The data
+// dir is resolved for pluginRoot (a hook's environment, or the root's stamp
+// from a terminal); cwd is the repository the verb runs against, which is what
+// dataDirHazard needs to judge the resolved directory's shape.
+func ownedCopySourceReady(cwd, pluginRoot string) bool {
+	return cacheSourceReady(pluginDataDir(pluginRoot).dir, cwd)
+}
+
+// cacheSourceReady reports whether dataDir holds an artefact for this platform
+// together with a parseable recorded hash to re-verify it against. An empty
+// dataDir is no source at all, and neither is one of a shape the harness never
+// produces (see dataDirHazard) — the check applies wherever the path came
+// from, the plugin root's stamp included, because neither source examines the
+// value it hands back.
+func cacheSourceReady(dataDir, cwd string) bool {
+	if dataDir == "" || dataDirHazard(dataDir, cwd) != "" {
 		return false
 	}
 	if cacheRecordedSHA(dataDir) == "" {

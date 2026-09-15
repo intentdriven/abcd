@@ -129,6 +129,10 @@ This mirrors the lint-code namespace pattern in [`05-internals/06-lint.md`](../.
 - **A fourth kind** for some hypothetical case the three kinds don't cover. If a fourth kind is needed, it lands as a future intent, not this one. **Lineage update (itd-44, spc-56):** the standing-infrastructure-choice case the three kinds don't fit landed as [itd-44](../drafts/itd-44-fourth-intent-kind-decision.md) — but *not* as a fourth persisted `kind`. itd-44 adds a fourth capture-time *verdict*, `decision`, that routes a confirmed standing choice into the existing ADR store (`adr-N`); the persisted `kind` enum here stays **three-valued**, and there is deliberately no `intents/decisions/` lifecycle.
 - **Migrating disciplines into the brief itself.** Disciplines live in `intents/disciplines/` so they have the same lifecycle, lint, and frontmatter discipline as other intents. Folding them into the brief would lose the lifecycle handling. The brief *describes* the discipline kind in its mental-model and intent-surface sections; the discipline files themselves stay under `intents/`.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md). These gates are checked by `intent-fidelity-reviewer`'s single-document role when this intent moves to `shipped/`._

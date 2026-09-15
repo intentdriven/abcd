@@ -179,6 +179,20 @@ func precededByCD(before []segment, chain int) bool {
 // environment-assignment prefixes stepped over) and the arguments that follow
 // it. An empty name means the segment holds no command (assignments only).
 func commandOf(s segment) (string, []string) {
+	i, _ := commandIndex(s)
+	if i < 0 {
+		return "", nil
+	}
+	return path.Base(s.tokens[i]), s.tokens[i+1:]
+}
+
+// commandIndex locates command position: the index of the token commandOf
+// names, or -1 when the segment holds no command. noglob reports that the
+// wrapper chain stepped on the way carried zsh's `noglob`, which turns
+// filename expansion off for the command it precedes — so the segment's glob
+// record describes words bash would NOT rewrite, and the matcher compares them
+// literally.
+func commandIndex(s segment) (idx int, noglob bool) {
 	i := 0
 	for i < len(s.tokens) {
 		tok := s.tokens[i]
@@ -196,15 +210,18 @@ func commandOf(s segment) (string, []string) {
 		// stepped over exactly as its lowercase spelling is, or the command it
 		// launches never reaches command position (gh-315).
 		if w := strings.ToLower(path.Base(tok)); wrappers[w] {
+			if w == "noglob" {
+				noglob = true
+			}
 			i = skipWrapperArgs(s.tokens, i+1, w)
 			continue
 		}
 		break
 	}
 	if i >= len(s.tokens) {
-		return "", nil
+		return -1, noglob
 	}
-	return path.Base(s.tokens[i]), s.tokens[i+1:]
+	return i, noglob
 }
 
 // skipWrapperArgs advances past one wrapper's own arguments, from pos (the token
@@ -293,31 +310,65 @@ func isAssignment(tok string) bool {
 
 // matchSegment applies the pattern's command, subcommand, and flag constraints
 // to one command-position segment.
+//
+// Every compare at a CONSTRAINED position — the command name, operands 0/1 when
+// the entry names a subcommand, each flag and flag-value alternative — reads a
+// globbed token as the pattern it is: bash expands an unquoted `*`, `?` or
+// `[…]` against the working directory before exec, so `pus?` is `push` whenever
+// a file called push exists, and a file named for a hazard is the cheapest
+// condition an author can arrange in a directory the guard cannot see. A
+// literal the pattern CAN produce is treated as produced (path.Match, decidable
+// from the string alone). Unconstrained positions are never compared, so `ls *`
+// and `git add *.md` are untouched (GHSA-3w99-pgv4-8g55). Behind zsh's `noglob`
+// nothing expands, and the compares fall back to literal.
+//
+// A FLAG constraint is not positional: every argument is offered to it, so the
+// globbed compare there is narrowed twice. The token must be FLAG-SHAPED — its
+// own literal prefix begins with `-` — because otherwise a bare `*` operand
+// satisfied every long alternative at once (`path.Match("*", "--force")` is
+// true), and `rm *`, `git push origin *`, `git commit -m msg *` all became
+// blocks. And the scan stops at a `--` operand terminator, since after it a
+// word is an operand however it is spelled. What that EXCLUDES, deliberately,
+// is a pattern whose dash is itself globbed (`[-]-force`, `?-force`): it is
+// left to the literal compare, the same floor `flagMatches` names below.
+// `--forc?` and `--force*` spell the dash and still fire.
 func matchSegment(p Pattern, s segment) bool {
-	cmd, args := commandOf(s)
+	ci, noglob := commandIndex(s)
+	if ci < 0 {
+		return false
+	}
 	// The command NAME is folded: a case-insensitive filesystem resolves `GIT`,
 	// `RM`, `GH` to the real binaries and executes the hazard, so a byte-exact
 	// compare here was a silent allow on macOS (gh-315). Only the name is folded —
 	// subcommands, flags and values stay case-sensitive below, because git/gh/rm
 	// parse THOSE case-sensitively, so a case-varied subcommand does not run the
 	// hazard and must not be blocked.
-	if cmd == "" || !strings.EqualFold(cmd, p.Command) {
+	cmd := path.Base(s.tokens[ci])
+	if !strings.EqualFold(cmd, p.Command) &&
+		!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(cmd), strings.ToLower(p.Command))) {
 		return false
 	}
-	ops := operands(args, p.ValueFlags)
-	if p.Subcommand != "" && operandAt(ops, 0) != p.Subcommand {
+	args := s.tokens[ci+1:]
+	// glob reports, per ARGUMENT index, whether bash would expand that token.
+	glob := func(i int) bool { return !noglob && s.globAt(ci+1+i) }
+	opIdx := operandIndexes(args, p.ValueFlags)
+	ops := make([]string, len(opIdx))
+	for n, i := range opIdx {
+		ops[n] = args[i]
+	}
+	if p.Subcommand != "" && !operandMatches(args, opIdx, 0, p.Subcommand, glob) {
 		return false
 	}
-	if p.Subcommand2 != "" && operandAt(ops, 1) != p.Subcommand2 {
+	if p.Subcommand2 != "" && !operandMatches(args, opIdx, 1, p.Subcommand2, glob) {
 		return false
 	}
 	for _, group := range p.Flags {
-		if !flagGroupMatches(group, args) {
+		if !flagGroupMatches(group, args, glob) {
 			return false
 		}
 	}
 	for _, fv := range p.FlagValues {
-		if !flagValueMatches(fv, args) {
+		if !flagValueMatches(fv, args, glob) {
 			return false
 		}
 	}
@@ -334,16 +385,19 @@ func matchSegment(p Pattern, s segment) bool {
 	return true
 }
 
-// operands returns the segment's non-flag arguments in order, stepping over the
-// value of any flag listed in valueFlags (`git -C /repo push` is a push). An
-// unknown value-taking flag is not stepped over — the miss is a non-match, never
-// a false block. The subcommand is operand 0.
-func operands(args []string, valueFlags []string) []string {
-	var ops []string
+// operandIndexes returns the INDEXES into args of the segment's non-flag
+// arguments, in order, stepping over the value of any flag listed in valueFlags
+// (`git -C /repo push` is a push). An unknown value-taking flag is not stepped
+// over — the miss is a non-match, never a false block. The subcommand is operand
+// 0. Indexes rather than the words themselves is what lets every caller pair an
+// operand with its token's glob record, which decides whether the compare is
+// literal or a pattern match.
+func operandIndexes(args []string, valueFlags []string) []int {
+	var idx []int
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if !strings.HasPrefix(a, "-") {
-			ops = append(ops, a)
+			idx = append(idx, i)
 			continue
 		}
 		if a == "--" {
@@ -353,16 +407,71 @@ func operands(args []string, valueFlags []string) []string {
 			i++ // its value is an option argument, not an operand
 		}
 	}
-	return ops
+	return idx
 }
 
-// operandAt returns the n-th operand, or "" when the command line has no such
-// argument.
-func operandAt(ops []string, n int) string {
-	if n < 0 || n >= len(ops) {
-		return ""
+// operandMatches reports whether the n-th operand is want — literally, or as a
+// word its glob pattern can produce.
+func operandMatches(args []string, opIdx []int, n int, want string, glob func(int) bool) bool {
+	if n < 0 || n >= len(opIdx) {
+		return false
 	}
-	return ops[n]
+	i := opIdx[n]
+	return args[i] == want || (glob(i) && globMatches(args[i], want))
+}
+
+// globMatches reports whether the shell pattern can produce the literal. A
+// pattern path.Match cannot parse (an unmatched `[`) is one bash leaves
+// unexpanded too, so it produces nothing but itself and the literal compare
+// has already had its say.
+func globMatches(pattern, literal string) bool {
+	ok, err := path.Match(bashGlobPattern(pattern), literal)
+	return err == nil && ok
+}
+
+// bashGlobPattern rewrites a bash pattern into the dialect path.Match reads.
+// One difference changes an answer: bash spells a negated character class
+// `[!…]`, path.Match spells it `[^…]`, and path.Match reads bash's `!` as an
+// ordinary member of the set. So `git clea[!x] -fd` — which bash expands to
+// `git clean -fd` whenever a file called `clean` is there — compared as "clea
+// followed by `!` or `x`", matched nothing, and allowed.
+//
+// A `]` first in the set is a literal member in both dialects (`[!]a]`), and a
+// `[` inside an open set is literal in both, so the scan walks each class to
+// its close rather than translating every `[!` it sees. An unterminated class
+// is left as it stands: bash leaves such a word unexpanded too, and the literal
+// compare beside this one has already had its say.
+func bashGlobPattern(pattern string) string {
+	if !strings.Contains(pattern, "[!") {
+		return pattern
+	}
+	b := []byte(pattern)
+	for i := 0; i < len(b); i++ {
+		switch b[i] {
+		case '\\':
+			i++ // an escaped byte never opens a class
+		case '[':
+			j := i + 1
+			if j < len(b) && (b[j] == '!' || b[j] == '^') {
+				b[j] = '^'
+				j++
+			}
+			if j < len(b) && b[j] == ']' {
+				j++ // a `]` first in the set is a member, not the close
+			}
+			for j < len(b) && b[j] != ']' {
+				if b[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			if j >= len(b) {
+				return string(b)
+			}
+			i = j
+		}
+	}
+	return string(b)
 }
 
 // argPrefixMatches reports whether some operand carries the prefix. Only
@@ -379,14 +488,20 @@ func argPrefixMatches(prefix string, ops []string) bool {
 }
 
 // flagGroupMatches reports whether any alternative in one "a|b" group is present
-// among the argument tokens.
-func flagGroupMatches(group string, args []string) bool {
+// among the argument tokens. glob reports, per argument index, whether bash
+// would expand that token. The scan stops at `--`: after the terminator every
+// word is an operand, so `git push -- --force origin main` pushes a refspec
+// called `--force` and is not a force push.
+func flagGroupMatches(group string, args []string, glob func(int) bool) bool {
 	for _, alt := range strings.Split(group, "|") {
 		if alt == "" {
 			continue
 		}
-		for _, arg := range args {
-			if flagMatches(alt, arg) {
+		for i, arg := range args {
+			if arg == "--" {
+				break
+			}
+			if flagMatches(alt, arg, glob(i)) {
 				return true
 			}
 		}
@@ -394,18 +509,58 @@ func flagGroupMatches(group string, args []string) bool {
 	return false
 }
 
+// flagShaped reports whether a token can be a flag at all — whether its own
+// literal prefix begins with `-`. It gates the globbed compare at every flag
+// position: a glob denotes a set of words, but a flag constraint is offered
+// every argument, so without this an operand pattern (`*`, `*e`, `?`) matched
+// each long alternative and blocked the ordinary lines it appears in. A dash
+// spelled behind a glob (`[-]-force`) is not flag-shaped and is left to the
+// literal compare — the floor flagMatches names.
+func flagShaped(tok string) bool { return strings.HasPrefix(tok, "-") }
+
 // flagMatches compares one flag alternative with one argument token. A long
 // flag also matches its --flag=value form; a single-letter short flag also
 // matches inside a bundled cluster, so -rf satisfies both -r and -f.
-func flagMatches(alt, arg string) bool {
+//
+// A globbed token is compared as the pattern it is, but ONLY when it is
+// flag-shaped: bash expands `*` against the working directory, and a word that
+// does not start with a dash is an operand, not an option. For a long
+// alternative the compare is then path.Match on the token (and on its part
+// before an `=`, for the --flag=value form). For a short alternative it is the
+// cluster rule read fail-closed: a pattern beginning `-` followed by anything
+// but a second dash expands to some short cluster, and that cluster contains
+// the letter if the pattern spells it literally OR carries a wildcard that can
+// stand for it — `-r?` can be `-rf`. What is NOT modelled, and stays literal,
+// is a glob inside an attached short value, extended globs (extglob, `**`),
+// and a pattern whose leading dash is itself globbed (`[-]-force`): a floor,
+// named in the guard's scope statement.
+func flagMatches(alt, arg string, glob bool) bool {
 	if alt == arg {
 		return true
 	}
 	if strings.HasPrefix(alt, "--") {
-		return strings.HasPrefix(arg, alt+"=")
+		if strings.HasPrefix(arg, alt+"=") {
+			return true
+		}
+		if !glob || !flagShaped(arg) {
+			return false
+		}
+		if globMatches(arg, alt) {
+			return true
+		}
+		if eq := strings.IndexByte(arg, '='); eq > 0 {
+			return globMatches(arg[:eq], alt)
+		}
+		return false
 	}
 	if len(alt) == 2 && alt[0] == '-' {
-		return isShortCluster(arg) && strings.ContainsRune(arg[1:], rune(alt[1]))
+		if isShortCluster(arg) && strings.ContainsRune(arg[1:], rune(alt[1])) {
+			return true
+		}
+		if !glob || len(arg) < 2 || arg[0] != '-' || arg[1] == '-' {
+			return false
+		}
+		return strings.ContainsRune(arg[1:], rune(alt[1])) || strings.ContainsAny(arg[1:], "*?[")
 	}
 	return false
 }
@@ -413,26 +568,36 @@ func flagMatches(alt, arg string) bool {
 // flagValueMatches reports whether some argument SETS one of the flag
 // alternatives to one of the accepted values. All three spellings a shell user
 // reaches for are read — `-X DELETE`, `-XDELETE`, `--method=DELETE` — because a
-// constraint another spelling of the same call steps past is not one.
-func flagValueMatches(fv FlagValue, args []string) bool {
+// constraint another spelling of the same call steps past is not one. A
+// globbed flag or value token is compared as a pattern in the separate-token
+// form; the attached forms stay literal (the floor flagMatches names). The
+// FLAG half carries the same two narrowings flagGroupMatches does — the token
+// must be flag-shaped, and the scan stops at `--` — because this is a flag
+// position too, and the rule cannot hold at two of its three sites. The VALUE
+// half is a different position: a globbed value is an ordinary word, and
+// `-X DELET?` is compared as the pattern it is.
+func flagValueMatches(fv FlagValue, args []string, glob func(int) bool) bool {
 	for _, alt := range strings.Split(fv.Flag, "|") {
 		if alt == "" {
 			continue
 		}
 		for i, arg := range args {
+			if arg == "--" {
+				break
+			}
 			switch {
-			case arg == alt:
+			case arg == alt || (glob(i) && flagShaped(arg) && globMatches(arg, alt)):
 				// The separate-token form: the value is the next argument.
-				if i+1 < len(args) && acceptsValue(fv.Values, args[i+1]) {
+				if i+1 < len(args) && acceptsValue(fv.Values, args[i+1], glob(i+1)) {
 					return true
 				}
 			case strings.HasPrefix(arg, alt+"="):
-				if acceptsValue(fv.Values, arg[len(alt)+1:]) {
+				if acceptsValue(fv.Values, arg[len(alt)+1:], false) {
 					return true
 				}
 			case isShortFlag(alt) && len(arg) > len(alt) && strings.HasPrefix(arg, alt):
 				// A short flag's value may be attached with no separator at all.
-				if acceptsValue(fv.Values, arg[len(alt):]) {
+				if acceptsValue(fv.Values, arg[len(alt):], false) {
 					return true
 				}
 			}
@@ -443,10 +608,17 @@ func flagValueMatches(fv FlagValue, args []string) bool {
 
 // acceptsValue reports whether a setting is one the constraint accepts, ignoring
 // case: what makes `-X DELETE` destructive is the request it sends, and that
-// does not turn on how the word was typed.
-func acceptsValue(values []string, got string) bool {
+// does not turn on how the word was typed. A globbed setting accepts any value
+// its pattern can produce.
+func acceptsValue(values []string, got string, glob bool) bool {
 	for _, want := range values {
-		if want != "" && strings.EqualFold(want, got) {
+		if want == "" {
+			continue
+		}
+		if strings.EqualFold(want, got) {
+			return true
+		}
+		if glob && globMatches(strings.ToLower(got), strings.ToLower(want)) {
 			return true
 		}
 	}

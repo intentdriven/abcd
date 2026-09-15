@@ -134,6 +134,7 @@ func TestResolveRedactsTheNote(t *testing.T) {
 		t.Fatalf("Capture: %v", err)
 	}
 	tr, err := Resolve(ResolveRequest{
+		Grounds:    testGrounds,
 		RepoRoot:   repo,
 		ID:         res.ID,
 		Resolution: "fixed by the script at " + filepath.Join(home, "bin", "fix.sh"),

@@ -1,4 +1,3 @@
-<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 ---
 term: session
 bounded_context: interview
@@ -12,6 +11,7 @@ ends_when: The PRD synthesis phase completes and the PRD file is written to disk
 not_to_be_confused_with: null
 versions: null
 ---
+<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # session (interview)
 

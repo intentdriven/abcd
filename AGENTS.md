@@ -22,8 +22,28 @@ A prompt that matches no domain injects nothing (zero added tokens).
   `{"schema_version": 1, "disabled": false, "domains": {}}` — add a domain key to
   override a default per-field (e.g. `{"ROADMAP": {"state": "dormant"}}` silences
   it while keeping its rules) or to declare a custom domain
-  (`{"recall": [...], "rules": [...]}`).
+  (`{"recall": [...], "rules": [...]}`). A domain left with no rules at all
+  (`{"rules": []}`, or a custom domain declared without any) is SKIPPED with a
+  diagnostic on stderr naming it — it would otherwise inject a heading-only
+  block, which reads as a domain that says nothing. The rest of the file still
+  loads; `{"state": "dormant"}` is the way to silence a domain deliberately.
+- Provenance: a domain the override names (rules replaced, state changed, or a
+  custom domain) renders as `## NAME (repo override)` wherever it appears: the
+  injected block, `abcd rules`, and the hook's diagnostic; `abcd rules --json`
+  carries `"source": "repo"` for it and `"source": "bundled"` for an untouched
+  default.
 - Kill switch: set `"disabled": true` at the top of `.abcd/rules.json`.
+- Foreign-uid roots: the loader and the shell guard read `.abcd/` from the
+  repository root resolved for the session, never from a directory above the
+  working tree. Where git cannot answer for that tree — a checkout owned by
+  another uid, a container bind mount — the root is recovered from the `.git`
+  marker instead, and a root the caller does not own is REFUSED: the session
+  falls back to its own working directory on the bundled defaults, and one line
+  on stderr names what was refused. Re-admit such a checkout deliberately, from
+  an account you control:
+  `mkdir -p ~/.abcd && printf '%s\n' '<checkout>' >> ~/.abcd/trusted-roots`
+  (one absolute path per line; `#` starts a comment). Only your home declares
+  it — a file inside the checkout can never vouch for the checkout.
 - Explicit activation: start a prompt with `*<DOMAIN>` (e.g. `*COMMITTING`,
   `*PII`) to inject that domain unconditionally — overrides a `dormant` state,
   but never the kill switch.
@@ -65,21 +85,41 @@ Run from the repo root.
 
 ```bash
 make preflight      # the pre-push gate: lint-reviews + lint-issues +
-                    # lint-decisions + record-lint + docs-lint + site-render,
+                    # lint-decisions + record-lint + docs-lint + site-render +
+                    # smoke + evals-cold-reading,
                     # then build + vet +
                     # test + race (internal)
 make build          # cross-compiles bin/abcd-<goos>-<arch> (there is no plain bin/abcd)
-gofmt -l .          # format gate: any output names a file needing `gofmt -w`
+make fmt-check      # format gate, run through the go.mod toolchain's gofmt
+make fmt            # rewrite what fmt-check names, with that same gofmt
 go vet ./...        # static checks
 go test ./...       # unit tests
 go test ./internal/core/                 # a single package
 go test -run TestStatus ./internal/core/ # a single test
 ```
 
+**In a source checkout of abcd, every abcd invocation is `go run ./cmd/abcd
+<verb>` from the repo root** — never the plugin-root binary and never an `abcd`
+on PATH. Both are whatever version was last published, and in this repository
+that is the thing being developed, so they are stale by construction and fall
+further behind with every commit: a verb, flag, schema field or refusal added
+since the last release is unknown to them. The failure is not always a
+refusal. `launch ship` refuses on its surface guard, loudly and correctly, but
+`changelog --json` returned an empty cut against a tree holding 181 shipped
+records, and `capture` would have written records through a schema the record
+gates no longer accept — a plausible wrong answer, not an error. The plugin
+command pages document a resolution ladder that reaches the plugin-root binary
+first and falls through to `go run` only when nothing earlier resolves; in this
+checkout the first rung exists and answers, so the fallback written for exactly
+this case is never reached by following the ladder literally
+(iss-2608230943088357 holds the surface half). The loader's `DOGFOODING` domain
+in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
+its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
+
 CI (`.github/workflows/ci.yml`) runs its `check` job on macOS + Linux — build,
-vet, test and the race-enabled internal tests on both, with the `gofmt -l .`
-format gate, the record-lint and docs-lint steps and the site-render gate on
-the Linux leg alone. Separate jobs run the reviews-charter check
+vet, test and the race-enabled internal tests on both, with the `make
+fmt-check` format gate, the record-lint and docs-lint steps and the site-render
+gate on the Linux leg alone. Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS003) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
@@ -104,7 +144,11 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
   external-contribution runbook.
 - `.abcd/.work.local/` — **local ephemeral** (gitignored): `NEXT.md` handover,
   `scratch/`, `logs/`, `reviews/` (intent-audit receipts), `private-names.txt`
-  (per-machine banlist layer). Per-worktree, so it never merge-conflicts.
+  (per-machine banlist layer), and `transcripts/` when this checkout is declared
+  in `~/.abcd/local-transcript-roots` (session transcripts default to the
+  user-level `~/.abcd/transcripts/<root-sha>/records/` store, which creates
+  itself; the per-repo location is an opt-in pull). Per-worktree, so it never
+  merge-conflicts.
 
 **Default to the local tier when in doubt.** Any artefact whose home is unclear —
 tool exports, oracle/review output, traces, intermediate analysis — goes to
@@ -139,12 +183,32 @@ irreversible; guessing downward costs nothing.**
   one working tree, one HEAD, and one index, and a branch switch swaps all
   three under whoever else is using them. The lint gates read the whole tree,
   so foreign work-in-progress fails them in both directions.
+- **That worktree goes in the machine-scoped store, and nowhere else.** A
+  session's own checkout lives at `~/.abcd/worktrees/<root-sha>/<name>/`, keyed
+  on the repository's root commit the way the history, transcript and voyage
+  stores already are — a checkout moves, is renamed and is cloned twice on one
+  machine, while its root commit does none of that. Not beside the checkout,
+  not in the directory the user keeps their projects in, and not inside the
+  working tree, which every tree scan walks. A tool never creates a directory
+  in space the user did not hand it, and beside a checkout there is no declared
+  tier at all:
+  [adr-2609091248200336](.abcd/development/decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
+  is the rule and
+  [`the-users-directory-is-theirs`](.abcd/development/principles/the-users-directory-is-theirs.md)
+  is the stance. **The store has no verbs yet.** Aim a plain `git worktree add`
+  at the path and create the lane by hand; the store's own `add`, its listing
+  and its reclaim are
+  [itd-2609091014076309](.abcd/development/intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
+  in `drafts/`, so until it ships nothing enumerates the lane or prunes a spent
+  worktree for you, and a worktree in the store is retired with
+  `git worktree remove` like any other.
 - **Scan before mutating git state.** Before a commit, branch switch, stash,
   rebase, or `git worktree add`/`remove` in a checkout that might be shared,
   check for peer sessions via the harness's session listing, and announce the
   mutation to any peer found. A worktree counts even though it leaves HEAD
-  alone: creating one inside the checkout churns the tree a peer's scan walks,
-  so a concurrent `make preflight` can fail
+  alone. The sharpest case is a worktree created *inside* the checkout — the
+  shape the store above exists to keep out — which churns the tree a peer's
+  scan walks, so a concurrent `make preflight` can fail
   `TestPayloadTreeImplementationsResolveIdentically` with `the payload carries
   N rejected file(s)` while the directory populates. That signature, during
   another session's worktree churn, is a retry rather than a bisect — the
@@ -155,23 +219,41 @@ irreversible; guessing downward costs nothing.**
   uncommitted peer work is untouchable. (Mechanical presence detection is
   seeded as iss-2608220750029993; until it ships, this convention is the
   gate.)
-- **Isolation protects the tree, not the sequential record ids.** Intents and
-  specs still mint `max+1` under a lock that is advisory and scoped to one
-  checkout, so it cannot see a sibling worktree: Two current checkouts
-  minting in the same window allocate the same id by construction, and being
-  up to date does not help. Say which family you are about to mint into, or
-  mint from one checkout. The durable fix is the timestamp mint that captures
-  already use (iss-2608210737260468, with the collision paths recorded as
-  iss-2608220150157512 and iss-2608221126066632); this note is a caveat, not
-  a remedy.
+- **A verifier works on a copy.** An agent that mutates code to see whether a
+  test catches the mutation, or patches or instruments a tree to probe it, does
+  that on a scratch copy (`git -C <wt> archive HEAD | tar -x -C <scratch>`),
+  never on a live worktree, and proves `git status --porcelain` empty before
+  reporting. The hazard is the window, not the intent: while a mutation is
+  applied, a gate reports on code nobody wrote and a merge can take it into a
+  branch, and the restore step is itself fallible. It also breaks the rule
+  above from the other end — a peer seeing the modification cannot tell a
+  mutation from real work. Correspondingly, a merge, commit, push or gate run
+  proves the tree clean **immediately before the act**, never inheriting an
+  emptiness check from earlier in the sequence (itd-193).
+- **Record ids need no coordination between checkouts.** Captures, intents
+  and specs mint timestamp-numeric ids through one allocator that reads no
+  maximum (adr-45), so two current checkouts minting in the same window
+  allocate distinct ids unless they share the same second and the same
+  four-digit draw, a coincidence the armed uniqueness detectors assert against;
+  the per-checkout mint lock only serialises minters inside one checkout. ADRs keep their hand-numbered
+  filename ordinal, so an ADR is the one record family where minting from two
+  checkouts still needs a word first.
 
 ## Definition of done
 
 - `make preflight` is clean — the six gates (`lint-reviews`, `lint-issues`,
-  `lint-decisions`, `record-lint`, `docs-lint`, `site-render`) plus `go build ./...`,
-  `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`.
-- `gofmt -l .` reports nothing. The format gate is CI's own step, outside
-  `make preflight`, so run it before pushing.
+  `lint-decisions`, `record-lint`, `docs-lint`, `site-render`), both tagged eval
+  lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
+  `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The eval
+  lanes are named separately because their files carry a build tag, so
+  `go test ./...` compiles none of them; each costs about five seconds.
+- `make fmt-check` reports nothing. The format gate is CI's own step, outside
+  `make preflight`, so run it before pushing. It resolves gofmt from the
+  toolchain `go.mod` declares rather than from PATH, because gofmt's rules move
+  between releases and a bare `gofmt` on a newer machine names files CI
+  considers correctly formatted (iss-2609081953452204); `make fmt` rewrites what
+  it names, with that same binary. If the pinned toolchain cannot be fetched the
+  target refuses and names the skew — it never falls back to the local gofmt.
 - Every new behaviour has a test watched fail before the change and pass after.
 - **A user-facing change is accompanied by a RECORD, not by a hand-written
   CHANGELOG entry.** The changelog is derived: `launch ship` composes the dated
@@ -189,11 +271,34 @@ irreversible; guessing downward costs nothing.**
   after the merge is the one that gets forgotten, and a fixed-but-open issue
   leaves no marker to find it by. Resolving without a trailer stays legal — a
   stale issue closed on its own merits has no fixing commit to name.
+- **A change that delivers a planned intent closes its spec in the same
+  change**: `go run ./cmd/abcd spec close <spc-N>` moves the spec to `closed/`
+  and, as its close-hook, the intent from `planned/` to `shipped/`. Nothing
+  runs it for you, and the omission is silent: `launch ship` composes the
+  changelog from terminal folders only, so an intent whose code is on `main`
+  with its spec still open ships with no changelog line and the cut exits 0.
+  The intent's `impact` decides the derived version, so `shipped/` requires one
+  and there is no default: a record that does not already declare it takes
+  `--impact additive|breaking|fix` on the close, and a close with neither is
+  refused before anything moves. Same shape as the issue rule above: the step
+  that happens after the merge is the one that gets forgotten.
 - **A `resolved_by.commit` stamp names a commit that is actually reachable.**
   `abcd capture resolve --commit` is shape-checked only, so a wrong sha reads
   exactly like a right one; RS002/RS003 check reachability instead. Note the
   repository allows merge, squash and rebase merges, and the last two rewrite a
   cited branch sha out of existence — RS003 is what notices.
+- **Pre-existing is not a defence.** A defect confirmed while doing other work
+  is fixed, or deferred out loud as a recorded decision naming the finding and
+  the reason. Capturing it and shipping past it is not the second option: filing
+  is a decision to make no decision. The release cut enforces the consequential
+  half — `changelog.GuardFindings` refuses a cut carrying a `major` or
+  `critical` record that entered the ledger since the anchor tag and is still in
+  `open/`, naming every one of them. Findings already in the ledger at the
+  anchor are the standing backlog and do not trip it. The way past is to fix and
+  resolve it, `wontfix` it with its reason, or add `deferred_after: <anchor
+  tag>` and a `deferral_reason:` to the record, which is granted for that one
+  cycle and lapses when the next release re-anchors. Full statement:
+  [`.abcd/development/principles/pre-existing-is-not-a-defence.md`](.abcd/development/principles/pre-existing-is-not-a-defence.md).
 
 ## Attribution and acknowledgements
 
@@ -203,6 +308,32 @@ irreversible; guessing downward costs nothing.**
   inflates the contributor graph). There is no DCO: contributions are inbound =
   outbound MIT, so no `Signed-off-by:` is required (adr-43). The human is the
   author of record, responsible for all AI-assisted output. See `CONTRIBUTING.md`.
+- **Every commit is authored by a human, and the gate refuses a machine.** The
+  contributor graph is built from the author and committer fields, so a machine
+  there asserts an authorship it does not hold — and a squash merge re-appends a
+  mis-identified branch author as a co-author, inflating the graph again on every
+  squash. `scripts/check-attribution.sh commits` reads the identity of every
+  commit in a range, merge commits included, and refuses one on any of five
+  signals. Four are checked in both roles: an assistant vendor's name standing
+  alone as the identity name (`Claude`, `Copilot`, `Gemini` and their kin,
+  matched whole so a human named Claudette passes); an assistant vendor's mail
+  domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
+  and a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
+  `@dependabot.com`). The last two are structural rather than nominal, which is
+  why a second automation lands in the right place with no edit to the list. The
+  fifth signal is checked in the AUTHOR role only: **any** address whose mailbox
+  begins `noreply@` or `donotreply@` (with or without hyphens), whatever the host — it
+  is not scoped to a vendor, because an address named for not being read names
+  no person in the role that claims authorship. It is refuse-machines, not an
+  allowlist of names: this repository takes outside contributions
+  (`.abcd/work/intake.md`), and a person's forge privacy address
+  (`1234+name@users.noreply.github.com`) is a human's and passes — the `[bot]`
+  marker in the mailbox is the discriminator, never the
+  `users.noreply.github.com` host. The role asymmetry is what keeps the history
+  green: the forge as COMMITTER (`GitHub <noreply@github.com>`) is how every
+  web-UI merge and squash is stamped on a human's click, and passes in that role
+  alone. **The consequence is deliberate: a dependabot pull request is not
+  mergeable as authored, so a dependency bump is landed by a human.**
 - **A human-only change declares itself: `Assisted-by: None`.** The convention is
   disclosure, and work no AI touched has nothing to disclose — but silence cannot
   say so, because an absent trailer and a forgotten one are the same bytes. The

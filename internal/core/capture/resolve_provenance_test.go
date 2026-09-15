@@ -34,6 +34,7 @@ func TestResolveWritesResolvedBy(t *testing.T) {
 	repo, ir, issID := provenanceFixture(t)
 
 	res, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: repo, IssuesRoot: ir, ID: issID,
 		Resolution: "closed with the full trail", Impact: "fix",
 		ByIntent: "itd-7", BySpec: "spc-3", ByCommit: "0123abc",
@@ -77,6 +78,7 @@ func TestResolveWritesResolvedBy(t *testing.T) {
 func TestResolvePartialProvenance(t *testing.T) {
 	repo, ir, issID := provenanceFixture(t)
 	_, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: repo, IssuesRoot: ir, ID: issID,
 		Resolution: "sha only", Impact: "fix", ByCommit: "deadbeefcafe",
 	})
@@ -118,6 +120,7 @@ func TestResolveProvenanceRefusals(t *testing.T) {
 	} {
 		req.RepoRoot, req.IssuesRoot, req.ID = repo, ir, issID
 		req.Resolution, req.Impact = "should refuse", "fix"
+		req.Grounds = testGrounds
 		if _, err := Resolve(req); err == nil {
 			t.Fatalf("%s: Resolve must refuse", name)
 		}
@@ -140,6 +143,7 @@ func TestResolveProvenanceRefusals(t *testing.T) {
 func TestResolveFlaglessWritesNoResolvedBy(t *testing.T) {
 	repo, ir, issID := provenanceFixture(t)
 	res, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: repo, IssuesRoot: ir, ID: issID, Resolution: "plain", Impact: "fix",
 	})
 	if err != nil {
@@ -196,6 +200,7 @@ func TestResolveAcceptsASHA256Commit(t *testing.T) {
 	repo, ir, issID := provenanceFixture(t)
 	sha := strings.Repeat("0123abcd", 8) // 64 hex chars
 	_, err := Resolve(ResolveRequest{
+		Grounds:  testGrounds,
 		RepoRoot: repo, IssuesRoot: ir, ID: issID,
 		Resolution: "sha256 repo", Impact: "fix", ByCommit: sha,
 	})

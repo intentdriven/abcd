@@ -1,4 +1,3 @@
-<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 ---
 term: lifeboat
 bounded_context: core
@@ -12,6 +11,7 @@ ends_when: The lifeboat is unpacked by `/abcd:embark` into a target project, or 
 not_to_be_confused_with: null
 versions: null
 ---
+<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # lifeboat
 

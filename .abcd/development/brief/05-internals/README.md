@@ -4,7 +4,7 @@ This directory holds the *plumbing* design for abcd: the agents, adapters, confi
 
 | # | File | Purpose |
 |---|---|---|
-| 1 | [`01-agents.md`](01-agents.md) | 16-agent catalog with declared JSON inputs/outputs; the host-delegated oracle seam (adr-25) |
+| 1 | [`01-agents.md`](01-agents.md) | The fifteen shipped agent prompts and the design roster still to be built, each with declared JSON inputs/outputs; the host-delegated oracle seam (adr-25) |
 | 2 | [`02-adapters.md`](02-adapters.md) | The central adapter model (adr-22): the five capability seams (oracle \| history \| spec \| run \| scanner) — interface + native default + optional external plug-in — plus the lifeboat source readers |
 | 3 | [`03-configuration.md`](03-configuration.md) | `config.json` schema, including its `meta` setup block (seam-backend + adapter-registry config); visibility-driven gitignore policy; `dev-sync` namespace |
 | 4 | [`04-universal-patterns.md`](04-universal-patterns.md) | Cross-cutting patterns shared by all commands (host-delegated oracle, native-with-peer-interop, the adapter seam model, artefact-lifecycle taxonomy, …) |

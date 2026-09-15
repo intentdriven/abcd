@@ -55,6 +55,10 @@ This split closes a separate loop on `/abcd:capture` as a command name. The mari
 - **Renaming `/abcd:intent` to `/abcd:capture`.** Explicitly considered and rejected.
 - **Real-time `iss-N` tracking integration** (Linear / GitHub Issues sync). The existing `issue-scout` agent already covers GitHub upstream annotation; sync in the other direction is a separate intent.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._

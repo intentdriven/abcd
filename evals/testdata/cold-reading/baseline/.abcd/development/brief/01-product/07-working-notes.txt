@@ -1,0 +1,6 @@
+Working notes beside a brief chapter.
+
+ABCD-EVAL-SENTINEL-UNMATCHED-KIND in a file whose extension no include row's
+match list names, sitting inside a source an include row admits. Inclusion is
+positive at file grain as well as at directory grain, so a file the match list
+does not name is absent for the same reason a family the table does not name is.

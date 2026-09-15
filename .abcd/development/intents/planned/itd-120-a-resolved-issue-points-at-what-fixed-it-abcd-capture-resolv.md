@@ -32,6 +32,10 @@ evidence standards. This intent closes the `resolved_by` half of iss-245 (the
 `promoted_to` half is itd-119); when both ship, iss-245 itself resolves *with*
 provenance — the first entry in the ledger to carry the trail.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

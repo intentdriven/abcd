@@ -16,12 +16,15 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
+
+// maxTermBytes bounds one term-file read.
+const maxTermBytes = 1 << 20
 
 const (
 	// DirRelPath is the canonical glossary's repo-relative home (adr-30).
@@ -50,6 +53,9 @@ type Term struct {
 	Status string
 	// Definition is the `definition` field, verbatim.
 	Definition string
+	// Aliases are the `aliases` field's members — the other spellings that mean
+	// this term. Absent, null or empty, there are none.
+	Aliases []string
 }
 
 // Context is one bounded context: a directory of term files.
@@ -79,9 +85,25 @@ func isTermFile(name string) bool {
 	return strings.HasSuffix(name, ".md") && name != "README.md" && !strings.HasPrefix(name, "_")
 }
 
+// readDirInRoot lists one directory through the root, so an ancestor symlink a
+// clone commits cannot walk the scan out of the repository.
+func readDirInRoot(root *os.Root, rel string) ([]os.DirEntry, error) {
+	f, err := root.Open(rel)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	entries, err := f.ReadDir(-1)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+	return entries, nil
+}
+
 // markdownNames returns the sorted Markdown file names directly inside dir.
-func markdownNames(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+func markdownNames(root *os.Root, dir string) ([]string, error) {
+	entries, err := readDirInRoot(root, dir)
 	if err != nil {
 		return nil, err
 	}
@@ -100,12 +122,24 @@ func markdownNames(dir string) ([]string, error) {
 // missing the `term`, `status`, or `definition` field is an error, not a silent
 // omission: an unreadable term must not vanish from the index it belongs in.
 func Scan(repoRoot string) (Glossary, error) {
-	dirAbs := filepath.Join(repoRoot, filepath.FromSlash(DirRelPath))
-	rootFiles, err := markdownNames(dirAbs)
+	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return Glossary{}, err
 	}
-	entries, err := os.ReadDir(dirAbs)
+	defer root.Close()
+	return ScanInRoot(root)
+}
+
+// ScanInRoot is Scan over a repository root a caller already holds open. It is
+// the implementation both forms share: a caller that opens its own root — the
+// site build does, so a committed ancestor symlink cannot walk a read out of the
+// repository — must not pay for a second one, and must not get a second scanner.
+func ScanInRoot(root *os.Root) (Glossary, error) {
+	rootFiles, err := markdownNames(root, DirRelPath)
+	if err != nil {
+		return Glossary{}, err
+	}
+	entries, err := readDirInRoot(root, DirRelPath)
 	if err != nil {
 		return Glossary{}, err
 	}
@@ -114,7 +148,7 @@ func Scan(repoRoot string) (Glossary, error) {
 		if !e.IsDir() {
 			continue
 		}
-		ctx, err := scanContext(dirAbs, e.Name())
+		ctx, err := scanContext(root, e.Name())
 		if err != nil {
 			return Glossary{}, err
 		}
@@ -125,8 +159,9 @@ func Scan(repoRoot string) (Glossary, error) {
 }
 
 // scanContext reads one bounded-context directory.
-func scanContext(dirAbs, name string) (Context, error) {
-	files, err := markdownNames(filepath.Join(dirAbs, name))
+func scanContext(root *os.Root, name string) (Context, error) {
+	dir := path.Join(DirRelPath, name)
+	files, err := markdownNames(root, dir)
 	if err != nil {
 		return Context{}, err
 	}
@@ -135,7 +170,7 @@ func scanContext(dirAbs, name string) (Context, error) {
 		if !isTermFile(f) {
 			continue
 		}
-		t, err := readTerm(filepath.Join(dirAbs, name, f), path.Join(DirRelPath, name, f))
+		t, err := readTerm(root, path.Join(dir, f))
 		if err != nil {
 			return Context{}, err
 		}
@@ -148,8 +183,8 @@ func scanContext(dirAbs, name string) (Context, error) {
 // readTerm parses one term file's frontmatter. Term files may carry an
 // attribution comment above the opening `---`, so the scan starts at the
 // delimiter rather than at line 0.
-func readTerm(fileAbs, rel string) (Term, error) {
-	raw, err := os.ReadFile(fileAbs)
+func readTerm(root *os.Root, rel string) (Term, error) {
+	raw, err := fsutil.ReadGuardedInRoot(root, rel, maxTermBytes)
 	if err != nil {
 		return Term{}, err
 	}
@@ -176,6 +211,15 @@ func readTerm(fileAbs, rel string) (Term, error) {
 			return Term{}, fmt.Errorf("%s: term file has no %s field", rel, spec.key)
 		}
 		*spec.dst = strings.TrimSpace(f.Value)
+	}
+	// `aliases` is OPTIONAL, and its absence is the same as an empty list: a
+	// term with no other spelling declares none. A YAML null is asked about
+	// through the one predicate, so `aliases: null` is an absence rather than a
+	// term called "null".
+	if f, ok := fields["aliases"]; ok {
+		if v := strings.TrimSpace(f.Value); !frontmatter.IsNull(v) {
+			t.Aliases = frontmatter.StringList(v)
+		}
 	}
 	return t, nil
 }

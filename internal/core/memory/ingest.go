@@ -100,7 +100,8 @@ type sourceMaterial struct {
 	title       string
 }
 
-// Ingest runs the full ingest flow for one source (local path or http(s) URL).
+// Ingest runs the full ingest flow for one source (a local path or an https
+// URL; a plaintext http source is refused — see isURL).
 func Ingest(req IngestRequest) (IngestResult, error) {
 	if req.Distiller == nil {
 		return IngestResult{}, newIngestError("ingest requires a Distiller")
@@ -127,12 +128,25 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	}
 	// Build the write-time sanitiser before any store write. It fails closed on a
 	// degraded scanner, so a broken per-repo pii.json refuses the whole ingest
-	// rather than committing acquired source text with a weakened detector
-	// (GHSA-j5f5-phgm-9m73). Every acquired-text write below — page bodies and the
-	// --keep-original copy — routes through it; index.md/log.md are derived from
-	// the redacted bodies and so are covered transitively.
+	// before anything is acquired rather than committing acquired source text
+	// with a weakened detector (GHSA-j5f5-phgm-9m73). The --keep-original copy
+	// routes through it below; the page bodies are redacted by WritePages
+	// itself, the one primitive every verb writes through.
 	redactor, err := newStoreRedactor(root)
 	if err != nil {
+		return IngestResult{}, err
+	}
+	// The origin and title the core copies into every citation and registry
+	// entry are acquired text too: a redirect-controlled final URL carries its
+	// query string, a local path can sit under the caller's home. They are
+	// judged here, once, before either path reads them, so the fast path's
+	// fill-if-empty origin, the citation, the registry event and the returned
+	// result all agree on the one redacted value (GHSA-x46m-mw9h-5jwj). The
+	// WritePages leaf walk stays the fail-closed backstop behind this.
+	if material.origin, _, err = redactor.redactText(material.origin, "citation.origin"); err != nil {
+		return IngestResult{}, err
+	}
+	if material.title, _, err = redactor.redactText(material.title, "citation.title"); err != nil {
 		return IngestResult{}, err
 	}
 	normalized := NormaliseSourceText(material.text)
@@ -233,7 +247,16 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 
 	// ---- Licence detect (sourceRoot="": SPDX header + HTTP License:) --------
 	detection := DetectLicence(material.text, "", material.headers)
-	licence := detection.Licence
+	// The licence is lifted verbatim from the source's own bytes (an SPDX line)
+	// or from a response header, so it is judged before it is copied into the
+	// source block, the registry event and IngestResult.Licence — the same
+	// discipline as a body: redact, then refuse only a blocking residual, so a
+	// fingerprinted token is stored as the honest "ghp_***" it is rather than
+	// the whole ingest refused on a value the operator never wrote.
+	licence, _, err := redactor.redactText(detection.Licence, "source.licence")
+	if err != nil {
+		return IngestResult{}, err
+	}
 
 	citation := BuildCitation("knowledge", material.origin, "unknown", material.title, now.Year(), ingestedAt, ingestedBy)
 	sourceBlock, err := buildSingleSource(material.sourceClass, citation, licence, contentHash, ingestedAt)
@@ -326,19 +349,13 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 		return newRegistry, nil
 	}
 
-	// Redact every page body before it is written. The distiller is
-	// host-delegated and may echo a secret or an absolute home path from the
-	// source straight into a page body; this is the core's own fail-closed gate,
-	// not a trust in the host. index.md and log.md are rebuilt from these bodies
-	// (reconcile reads the written files; the log event is derived from the
-	// PageWrite body), so redacting here covers those derived surfaces too.
+	// The distiller is host-delegated and may echo a secret or an absolute home
+	// path from the source straight into a page body; WritePages redacts every
+	// body before it lands — the core's own fail-closed gate, not a trust in
+	// the host.
 	var pageWrites []PageWrite
 	for _, w := range plan.Writes {
-		body, _, rerr := redactor.redactText(w.Body, w.Filename)
-		if rerr != nil {
-			return IngestResult{}, rerr
-		}
-		pageWrites = append(pageWrites, PageWrite{Filename: w.Filename, Frontmatter: w.Frontmatter, Body: body})
+		pageWrites = append(pageWrites, PageWrite{Filename: w.Filename, Frontmatter: w.Frontmatter, Body: w.Body})
 	}
 	report, err := WritePages(root, pageWrites, merge, now)
 	if err != nil {
@@ -505,15 +522,181 @@ func existingPageFrontmatter(mem string) map[string]map[string]any {
 // Source acquisition
 // ---------------------------------------------------------------------------
 
+// isURL reports whether source is one abcd will FETCH. Only https qualifies:
+// the store copies a fetched source's text, and the SPDX line or License:
+// header lifted out of it, verbatim into durable provenance, so a plaintext
+// transport would let a man-in-the-middle choose what the store remembers and
+// under what licence (GHSA-35fj-9w6f-7h62). This is the posture of `abcd
+// update` and of the brief's HTTPS-only fetch invariant; unlike update's
+// allowHTTP test seam there is no escape here, and the additive --allow-http
+// alternative is recorded as an open observation.
 func isURL(source string) bool {
 	u, err := url.Parse(source)
 	if err != nil {
 		return false
 	}
-	return u.Scheme == "http" || u.Scheme == "https"
+	return u.Scheme == "https"
+}
+
+// remoteScheme returns the scheme of a source written in absolute-URL form
+// ("<scheme>://…") and "" for anything else, which is how a refused scheme is
+// told apart from a local path. Without it a plaintext http:// source would
+// fall through to the file lookup and be reported as a missing path — a
+// refusal must say what was wrong with the source the caller actually gave.
+func remoteScheme(source string) string {
+	u, err := url.Parse(source)
+	if err != nil || u.Scheme == "" || !strings.HasPrefix(source[len(u.Scheme):], "://") {
+		return ""
+	}
+	return u.Scheme
+}
+
+// credentialQueryKeys are the query parameter names whose value is, by
+// convention, a bearer credential. A URL is the one piece of acquired text the
+// store copies verbatim into a citation, and the write-time scanner cannot help
+// here: an opaque token or password matches no pattern, so it has to be dropped
+// structurally, by the name it travels under. The list is deliberately short and
+// closed, and every entry has to name a secret in ESSENTIALLY EVERY usage, not
+// merely in a credentialled one: dropping a parameter truncates the address the
+// citation exists to reproduce, and a citation that no longer resolves is its
+// own defect. `key` and `signature` fail that bar — `?key=section3` addresses a
+// document section and `?signature=v2` names a content signature at least as
+// often as either carries a secret — so they are not on the list. A key-shaped
+// credential that travels under one of those names is out of reach here by
+// design; it is the operator's to keep out of the URL.
+var credentialQueryKeys = map[string]bool{
+	"token":        true,
+	"api_key":      true,
+	"apikey":       true,
+	"access_token": true,
+	"password":     true,
+	"secret":       true,
+}
+
+// dropCredentialQuery removes every credential-shaped query parameter from u in
+// place and reports whether it removed one. The surviving pairs keep their
+// original encoding — the raw query is filtered textually rather than round-
+// tripped through url.Values, which would re-order and re-escape an address the
+// store means to reproduce faithfully.
+func dropCredentialQuery(u *url.URL) bool {
+	if u.RawQuery == "" {
+		return false
+	}
+	dropped := false
+	pairs := strings.Split(u.RawQuery, "&")
+	kept := make([]string, 0, len(pairs))
+	for _, pair := range pairs {
+		name := pair
+		if i := strings.IndexByte(pair, '='); i >= 0 {
+			name = pair[:i]
+		}
+		decoded, err := url.QueryUnescape(name)
+		if err != nil {
+			decoded = name
+		}
+		if credentialQueryKeys[strings.ToLower(strings.TrimSpace(decoded))] {
+			dropped = true
+			continue
+		}
+		kept = append(kept, pair)
+	}
+	if dropped {
+		u.RawQuery = strings.Join(kept, "&")
+	}
+	return dropped
+}
+
+// sanitisedOrigin strips the credentials a URL can carry before it becomes the
+// durable origin and title of a stored page. Two of them: basic-auth userinfo
+// (dropped whole — a stored origin is a citation, not a way back in) and a
+// credential-shaped query key. Nothing else is touched, and a URL carrying
+// neither is returned byte-identical, so the address a citation reproduces is
+// the fetched one wherever there is no credential to remove.
+func sanitisedOrigin(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return maskUserinfo(raw)
+	}
+	changed := false
+	if u.User != nil {
+		u.User = nil
+		changed = true
+	}
+	if dropCredentialQuery(u) {
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	return u.String()
+}
+
+// redactedSource renders a URL for an error message with any userinfo masked
+// and any credential-shaped query parameter dropped, so a refusal never echoes
+// a credential embedded in the source back to the terminal or the run log. It
+// keeps the username where the origin form drops it: a refusal is read by the
+// operator who typed the URL, and the account name is how they recognise it.
+func redactedSource(source string) string {
+	u, err := url.Parse(source)
+	if err != nil {
+		return maskUserinfo(source)
+	}
+	dropCredentialQuery(u)
+	return u.Redacted()
+}
+
+// maskUserinfo is the fallback for a string url.Parse refused: there is no
+// structured userinfo to mask, so the "scheme://user:pass@" prefix is masked
+// textually, in the shape url.URL.Redacted uses. A string with no such prefix
+// is returned unchanged — masking is all this does; it never claims the string
+// is a URL.
+func maskUserinfo(source string) string {
+	i := strings.Index(source, "://")
+	if i < 0 {
+		return source
+	}
+	rest := source[i+3:]
+	at := strings.IndexByte(rest, '@')
+	if at < 0 {
+		return source
+	}
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 && slash < at {
+		return source
+	}
+	user := rest[:at]
+	if colon := strings.IndexByte(user, ':'); colon >= 0 {
+		user = user[:colon]
+	}
+	return source[:i+3] + user + ":xxxxx@" + rest[at+1:]
+}
+
+// transportCause renders the CAUSE of a failed fetch without the transport's
+// own copy of the request URL. net/http wraps every client error in a
+// *url.Error whose Error() re-prints the whole URL — masking only the
+// basic-auth password (stripPassword), never the query — so interpolating the
+// raw error with %v put a `?token=…` credential straight back into a message
+// whose own URL argument had just been filtered. Unwrapping to the innermost
+// non-*url.Error cause keeps what the operator needs (the reason the fetch
+// failed) and drops the one part the wrapper re-adds.
+func transportCause(err error) string {
+	for {
+		var ue *url.Error
+		if !errors.As(err, &ue) || ue.Err == nil {
+			return err.Error()
+		}
+		err = ue.Err
+	}
 }
 
 func acquireSource(repoRoot, source string, fetcher Fetcher, pdf PDFExtractor) (sourceMaterial, error) {
+	// The scheme gate stands ahead of the fetcher seam, not inside defaultFetch
+	// alone: a caller-supplied Fetcher replaces defaultFetch entirely, and the
+	// admission rule belongs to the core either way.
+	if scheme := remoteScheme(source); scheme != "" && !isURL(source) {
+		return sourceMaterial{}, newIngestError(
+			"refusing to fetch %s: memory ingest requires https, not %s — a plaintext source, and the licence header the store copies into its provenance, can be rewritten in transit",
+			redactedSource(source), scheme)
+	}
 	if isURL(source) {
 		var fetched FetchedSource
 		var err error
@@ -523,11 +706,14 @@ func acquireSource(repoRoot, source string, fetcher Fetcher, pdf PDFExtractor) (
 			fetched, err = defaultFetch(source)
 		}
 		if err != nil {
+			// The IngestError itself, never the *url.Error a client wrapped it
+			// in: the wrapper re-prints the request URL, query credential and
+			// all, in front of the message this package composed.
 			var ie *IngestError
 			if errors.As(err, &ie) {
-				return sourceMaterial{}, err
+				return sourceMaterial{}, ie
 			}
-			return sourceMaterial{}, newIngestError("fetch failed for %s: %v", source, err)
+			return sourceMaterial{}, newIngestError("fetch failed for %s: %s", redactedSource(source), transportCause(err))
 		}
 		return materialFromFetched(source, fetched, pdf)
 	}
@@ -545,10 +731,35 @@ func guardFetchHost(host string) error {
 	return nil
 }
 
+// ingestRedirectPolicy is defaultFetch's CheckRedirect, lifted out so the
+// scheme pin can be tested without a network (a loopback httptest server
+// cannot stand in: urlguard.DialControl refuses loopback by design). Admission
+// checking the scheme is not enough — a redirect chooses the next hop's scheme,
+// so an https source can be walked down to plaintext one Location at a time.
+// The pin per hop mirrors update.go's newUpdater, and it stands AHEAD of the
+// host guard so the refusal names the scheme rather than the host.
+func ingestRedirectPolicy(rawURL string) func(*http.Request, []*http.Request) error {
+	return func(r *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return newIngestError("too many redirects fetching %s", redactedSource(rawURL))
+		}
+		if r.URL.Scheme != "https" {
+			return newIngestError("redirect left https: %s", redactedSource(r.URL.String()))
+		}
+		return guardFetchHost(r.URL.Hostname())
+	}
+}
+
 func defaultFetch(rawURL string) (FetchedSource, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return FetchedSource{}, newIngestError("fetch failed for %s: %v", rawURL, err)
+		return FetchedSource{}, newIngestError("fetch failed for %s: %s", redactedSource(rawURL), transportCause(err))
+	}
+	// acquireSource has already refused a non-https source; this is the same
+	// rule stated where the connection is actually made, so the fetcher cannot
+	// be reached over plaintext by a later caller (mirrors update.go's get).
+	if parsed.Scheme != "https" {
+		return FetchedSource{}, newIngestError("refusing to fetch %s: the source origin must be https", redactedSource(rawURL))
 	}
 	if err := guardFetchHost(parsed.Hostname()); err != nil {
 		return FetchedSource{}, err
@@ -561,23 +772,24 @@ func defaultFetch(rawURL string) (FetchedSource, error) {
 		Control: urlguard.DialControl(urlguard.BlockedIP),
 	}
 	client := &http.Client{
-		Timeout:   fetchTimeoutSeconds * time.Second,
-		Transport: &http.Transport{DialContext: dialer.DialContext},
-		CheckRedirect: func(r *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
-				return newIngestError("too many redirects fetching %s", rawURL)
-			}
-			return guardFetchHost(r.URL.Hostname())
-		},
+		Timeout:       fetchTimeoutSeconds * time.Second,
+		Transport:     &http.Transport{DialContext: dialer.DialContext},
+		CheckRedirect: ingestRedirectPolicy(rawURL),
 	}
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		return FetchedSource{}, newIngestError("fetch failed for %s: %v", rawURL, err)
+		return FetchedSource{}, newIngestError("fetch failed for %s: %s", redactedSource(rawURL), transportCause(err))
 	}
 	req.Header.Set("User-Agent", "abcd-memory-ingest")
 	resp, err := client.Do(req)
 	if err != nil {
-		return FetchedSource{}, newIngestError("fetch failed for %s: %v", rawURL, err)
+		// A CheckRedirect refusal comes back wrapped in a *url.Error; return the
+		// refusal this package composed, not the wrapper's re-print of the URL.
+		var ie *IngestError
+		if errors.As(err, &ie) {
+			return FetchedSource{}, ie
+		}
+		return FetchedSource{}, newIngestError("fetch failed for %s: %s", redactedSource(rawURL), transportCause(err))
 	}
 	defer resp.Body.Close()
 	return readFetchedResponse(rawURL, resp)
@@ -588,11 +800,11 @@ func defaultFetch(rawURL string) (FetchedSource, error) {
 // content — otherwise the error page's HTML would be stored as knowledge.
 func readFetchedResponse(rawURL string, resp *http.Response) (FetchedSource, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return FetchedSource{}, newIngestError("fetch failed for %s: HTTP %d %s", rawURL, resp.StatusCode, http.StatusText(resp.StatusCode))
+		return FetchedSource{}, newIngestError("fetch failed for %s: HTTP %d %s", redactedSource(rawURL), resp.StatusCode, http.StatusText(resp.StatusCode))
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBytes+1))
 	if err != nil {
-		return FetchedSource{}, newIngestError("fetch failed for %s: %v", rawURL, err)
+		return FetchedSource{}, newIngestError("fetch failed for %s: %s", redactedSource(rawURL), transportCause(err))
 	}
 	headers := map[string]string{}
 	for k := range resp.Header {
@@ -684,7 +896,7 @@ func materialFromLocal(repoRoot, source string, pdf PDFExtractor) (sourceMateria
 
 func materialFromFetched(rawURL string, fetched FetchedSource, pdf PDFExtractor) (sourceMaterial, error) {
 	if len(fetched.Body) > maxFetchBytes {
-		return sourceMaterial{}, newIngestError("fetched source exceeds the %d-byte cap: %s", maxFetchBytes, rawURL)
+		return sourceMaterial{}, newIngestError("fetched source exceeds the %d-byte cap: %s", maxFetchBytes, redactedSource(rawURL))
 	}
 	ctype := contentType(fetched.Headers)
 	finalURL := fetched.FinalURL
@@ -698,6 +910,15 @@ func materialFromFetched(rawURL string, fetched FetchedSource, pdf PDFExtractor)
 	// fixed one door over (iss-359). Percent-encode the hidden runes losslessly here,
 	// once, before finalURL becomes the stored origin/title (iss-357).
 	finalURL = termsafe.EncodeHiddenRunes(finalURL)
+	// The same address is also the one place a CREDENTIAL reaches the store
+	// intact: `https://user:pass@host/doc` and `?token=…` are copied verbatim
+	// into the page frontmatter's citation, the sources registry and the
+	// returned result, and the write-time scanner cannot see an opaque password
+	// — it matches no pattern. Strip both here, once, before finalURL becomes
+	// the stored origin AND title. Hidden-rune encoding runs first so a URL
+	// carrying a control byte parses at all: url.Parse refuses one, and an
+	// unparseable URL is exactly where a credential would otherwise survive.
+	finalURL = sanitisedOrigin(finalURL)
 	if ctype == "application/pdf" {
 		text, err := extractPDFText(fetched.Body, pdf)
 		if err != nil {

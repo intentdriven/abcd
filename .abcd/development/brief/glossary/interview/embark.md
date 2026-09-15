@@ -1,4 +1,3 @@
-<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 ---
 term: embark
 bounded_context: interview
@@ -12,6 +11,7 @@ ends_when: null
 not_to_be_confused_with: null
 versions: null
 ---
+<!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # embark
 

@@ -195,8 +195,8 @@ func TestIngestLessonsSchemaVersion(t *testing.T) {
 		t.Error("schema_version 0 must fail")
 	}
 	_, err := IngestLessons(dir, []byte(`{"schema_version":2,"lessons":[]}`))
-	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "upgrade") {
-		t.Errorf("a future schema must ask to upgrade abcd, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "update abcd:") {
+		t.Errorf("a future schema must ask for an updated abcd, got: %v", err)
 	}
 }
 

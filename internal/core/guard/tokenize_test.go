@@ -150,11 +150,19 @@ func TestTokenizeSegments(t *testing.T) {
 			want: []string{"0:cat", "0:ls"},
 		},
 		{
-			// The body starts only once the command line is complete, so the
-			// continuation of a pipeline is still command text, not body text.
-			name: "a heredoc queued on a continued line waits for the command to finish",
+			// The body starts on the next line even when the redirection line
+			// ends in a list operator: bash collects here-document bodies at the
+			// end of the PHYSICAL line, so `grep x` and `rm -rf *` here are
+			// document text and the pipeline's second command is whatever
+			// follows `EOF`. Probed on bash 3.2: this input alone is a syntax
+			// error (the pipeline has no second member) and adding a line after
+			// `EOF` makes THAT the member, with neither body line run. The
+			// earlier reading — body deferred until the list completed — put
+			// document text in command position, where an apostrophe in a
+			// document became ErrUnparsableCommand and the hook failed open.
+			name: "a heredoc body starts despite a trailing list operator",
 			line: "cat <<EOF |\ngrep x\nrm -rf *\nEOF",
-			want: []string{"0:cat", "0:grep|x"},
+			want: []string{"0:cat"},
 		},
 		{
 			name: "a blank line does not break a list continuation",
@@ -309,22 +317,97 @@ func TestTokenizeSegments(t *testing.T) {
 	}
 }
 
+// TestTokenizeRejectsUnterminatedQuote pins the error class that STAYS an error:
+// an unterminated quote is refused by every shell (bash, zsh, dash all exit
+// without running anything), so the hook's loud fail-open on it is harmless. A
+// trailing backslash is deliberately NOT in this list any more — bash runs that
+// line (GHSA-5wx3-2c86-fjpx), so it gets a verdict instead; see
+// TestBashRecoverableTokenizerStatesAreVerdicts.
 func TestTokenizeRejectsUnterminatedQuote(t *testing.T) {
-	for _, line := range []string{`echo "unterminated`, `echo 'unterminated`, `echo trailing\`} {
+	for _, line := range []string{`echo "unterminated`, `echo 'unterminated`, `echo $'unterminated`} {
 		if _, err := tokenize(line); !errors.Is(err, ErrUnparsableCommand) {
 			t.Fatalf("tokenize(%q) error = %v, want ErrUnparsableCommand", line, err)
 		}
 	}
 }
 
-// TestTokenizeRejectsUnterminatedHeredoc: a here-document whose delimiter line
-// never appears is unparsable, not a silent swallow of the remaining input —
-// the guard must fail open LOUDLY on it rather than allow whatever commands
-// happened to follow with no signal at all.
-func TestTokenizeRejectsUnterminatedHeredoc(t *testing.T) {
+// TestTokenizeFlagsUnterminatedHeredoc: a here-document whose delimiter line
+// never appears is NOT an error any more — an error reaches the pre-tool-use
+// hook as fail-OPEN, and bash runs the line (it recovers silently, taking the
+// rest of the input as the body). It is a segment flag instead, which Check
+// folds into a fail-closed block, the brace-group precedent: what the tokenizer
+// cannot read it refuses, on both front doors.
+func TestTokenizeFlagsUnterminatedHeredoc(t *testing.T) {
 	const line = "cat <<EOF\nrm -rf *"
-	if _, err := tokenize(line); !errors.Is(err, ErrUnparsableCommand) {
-		t.Fatalf("tokenize(%q) error = %v, want ErrUnparsableCommand", line, err)
+	segs, err := tokenize(line)
+	if err != nil {
+		t.Fatalf("tokenize(%q): unexpected error: %v — an unterminated body must be a flag, not an error", line, err)
+	}
+	if len(segs) == 0 || !segs[len(segs)-1].heredocUnterminated {
+		t.Fatalf("tokenize(%q) = %q: the command that opened the heredoc must carry heredocUnterminated", line, render(segs))
+	}
+	d, err := Defaults().Check(line)
+	if err != nil {
+		t.Fatalf("Check(%q): unexpected error: %v", line, err)
+	}
+	if d.Verdict != VerdictBlock || d.EntryID != heredocEntryID {
+		t.Fatalf("Check(%q) = %q via %q, want %q via %q", line, d.Verdict, d.EntryID, VerdictBlock, heredocEntryID)
+	}
+}
+
+// TestBashRecoverableTokenizerStatesAreVerdicts — GHSA-5wx3-2c86-fjpx. Two
+// tokenizer error states are inputs every shell here EXECUTES: a backslash before
+// EOF (bash 3.2 and zsh drop it and run the line) and a here-document body with
+// no delimiter line (bash recovers silently). The hook maps a tokenizer error to
+// fail-open, so both were a deterministic bypass of every blocker: one appended
+// byte, or one `<<EOF` and a newline. Each now gets a VERDICT from core — a
+// trailing backslash is parsed as bash 3.2 does (dropped), an unterminated body
+// is a fail-closed block — and the error route is kept for what no shell runs.
+//
+// The third row is the prerequisite: spaced arithmetic `$(( x << y ))` was
+// classified as a heredoc because the paren test looked only at the byte right
+// after the delimiter word, so the hazard on the next line was swallowed as
+// body. Without that fix the fail-closed arm would turn this fail-open into a
+// false block.
+func TestBashRecoverableTokenizerStatesAreVerdicts(t *testing.T) {
+	cases := []struct {
+		name    string
+		line    string
+		verdict Verdict
+		entry   string
+	}{
+		{"trailing backslash on a hazard", "git push --force origin main \\", VerdictBlock, "git-push-force"},
+		{"trailing backslash on a benign line", "echo hello \\", VerdictAllow, ""},
+		{"empty unterminated heredoc body on a hazard", "git push --force origin main <<EOF\n", VerdictBlock, "git-push-force"},
+		{"unterminated heredoc body swallowing a hazard", "cat <<EOF\ngit push --force origin main\n", VerdictBlock, heredocEntryID},
+		{"spaced arithmetic then a hazard", "echo $(( x << y ))\ngit push --force origin main", VerdictBlock, "git-push-force"},
+		{"spaced arithmetic alone", "echo $(( x << y ))", VerdictAllow, ""},
+		{"spaced arithmetic in a group", "(( x << y ))\ngit push --force origin main", VerdictBlock, "git-push-force"},
+		// The sibling: shellInspect's inner tokenize mapped the same errors to a
+		// warn, so the payload forms were loud-warn allows.
+		{"trailing backslash inside a shell payload", "sh -c 'git push --force origin main \\'", VerdictBlock, "git-push-force"},
+		{"unterminated heredoc inside a shell payload", "bash -c 'git push --force origin main <<EOF\n'", VerdictBlock, "git-push-force"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := Defaults().Check(tc.line)
+			if err != nil {
+				t.Fatalf("Check(%q): %v — bash runs this line, so the guard must answer, not error", tc.line, err)
+			}
+			if d.Verdict != tc.verdict {
+				t.Fatalf("Check(%q).Verdict = %q via %q, want %q", tc.line, d.Verdict, d.EntryID, tc.verdict)
+			}
+			if tc.entry != "" && d.EntryID != tc.entry {
+				t.Fatalf("Check(%q).EntryID = %q, want %q", tc.line, d.EntryID, tc.entry)
+			}
+		})
+	}
+	// The unterminated heredoc's own synthetic id is reported alongside the
+	// entry that wins the block pool, so the lesson (terminate the document) is
+	// not lost behind the hazard it happened to carry.
+	d := guardVerdict(t, "git push --force origin main <<EOF\n")
+	if !containsString(d.Matches, heredocEntryID) {
+		t.Errorf("Matches = %v, want %q listed beside the entry", d.Matches, heredocEntryID)
 	}
 }
 

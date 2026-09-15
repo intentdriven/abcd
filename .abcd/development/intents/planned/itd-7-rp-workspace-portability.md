@@ -51,6 +51,10 @@ See [`research/legacy-harvest.md`](../../research/legacy-harvest.md) for the bro
 - **CodeMapCaches / Partitions / windowSessions / Settings** — pure tool state, not project-shaped. Stays in RP's Application Support; not pulled.
 - **Workspace partitioning auto-derivation** — abcd inferring an RP partition strategy from `.gitignore` + repo structure if no workspace exists. Heuristic; out of scope.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. This acceptance block uses Given-When-Then directly._

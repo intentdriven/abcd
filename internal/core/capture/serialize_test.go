@@ -1,8 +1,11 @@
 package capture
 
 import (
+	"os"
 	"reflect"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 func TestBuildIssueTextRoundTrip(t *testing.T) {
@@ -130,9 +133,9 @@ func TestYamlScalarEscaping(t *testing.T) {
 	if got != want {
 		t.Fatalf("got %q want %q", got, want)
 	}
-	// Round-trips through unquote.
-	if back := unquote(got[1 : len(got)-1]); back != `he said "hi" \ end` {
-		t.Fatalf("unquote = %q", back)
+	// Round-trips through the shared decoder this package's reader uses.
+	if back := frontmatter.Unquote(got[1 : len(got)-1]); back != `he said "hi" \ end` {
+		t.Fatalf("Unquote = %q", back)
 	}
 }
 
@@ -191,4 +194,134 @@ func TestSetMapField(t *testing.T) {
 	if _, err := setMapField(base, "resolved_by", []kv{{"intent", []string{"a"}}}); err == nil {
 		t.Fatalf("setMapField must refuse non-scalar members")
 	}
+}
+
+// TestLapsedAtRoundTrips pins the lapse timestamp end to end: the instant the
+// discipline gave way is written, re-read and returned VERBATIM. The whole point
+// of the property (spc-60) is that it is not write-up time, so a value the writer
+// or reader quietly normalised — to the wall clock, to a truncated date, to a
+// re-zoned instant — would defeat the field while every other check stayed green.
+func TestLapsedAtRoundTrips(t *testing.T) {
+	const lapsedAt = "2026-08-28T09:15:00Z"
+	text, err := buildIssueText([]kv{
+		{"schema_version", 1},
+		{"id", "iss-1"},
+		{"slug", "lapse-x"},
+		{"severity", "minor"},
+		{"category", "lapse"},
+		{"source", "user-observation"},
+		{"found_during", "preparation"},
+		{"lapsed_at", lapsedAt},
+	}, "a lapse\n")
+	if err != nil {
+		t.Fatalf("buildIssueText: %v", err)
+	}
+	fm, body, err := parseFrontmatterAndBody(text)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := validateStrict(fm); err != nil {
+		t.Fatalf("a lapse record carrying lapsed_at was refused: %v", err)
+	}
+	iss := issueFromFrontmatter(fm, StateOpen, "open/iss-1-lapse-x.md", body)
+	if iss.LapsedAt != lapsedAt {
+		t.Fatalf("lapsed_at round-tripped as %q, want %q", iss.LapsedAt, lapsedAt)
+	}
+}
+
+// TestCaptureReaderAcceptsProvenanceKeys pins the issue schema against the two
+// disclosure keys, proved THROUGH the reader rather than asserted about the
+// allow-list map. Without them in issueschema.Known the reader refuses every
+// stamped record as carrying an unknown property and skips it — the record sits
+// in the ledger, invisible to every capture surface, which is exactly how an
+// earlier flag shipped unable to execute (spc-56).
+func TestCaptureReaderAcceptsProvenanceKeys(t *testing.T) {
+	text, err := buildIssueText([]kv{
+		{"schema_version", 1},
+		{"id", "iss-1"},
+		{"slug", "x"},
+		{"severity", "minor"},
+		{"category", "observation"},
+		{"source", "user-observation"},
+		{"found_during", "review"},
+		{"origin", rawScalar("researcher-authored")},
+		{"production_mode", rawScalar("hand-written")},
+	}, "a stamped record\n")
+	if err != nil {
+		t.Fatalf("buildIssueText: %v", err)
+	}
+	fm, _, err := parseFrontmatterAndBody(text)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if err := validateStrict(fm); err != nil {
+		t.Fatalf("a stamped record was refused by the ledger reader: %v", err)
+	}
+}
+
+// TestCommitCaptureStampsProvenance proves a captured issue carries both
+// disclosure keys, written by the command rather than typed: the arrival path is
+// derived from which verb ran, and the production mode is a closed choice
+// defaulted when the caller declares none.
+func TestCommitCaptureStampsProvenance(t *testing.T) {
+	repo, ir := ledger(t)
+	res, err := Capture(CaptureRequest{
+		RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
+		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
+		ProductionMode: "dictated-and-formatted",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm := readLedgerFrontmatter(t, ir, res.ID)
+	if fm["origin"] != "researcher-authored" {
+		t.Errorf("origin = %v, want researcher-authored", fm["origin"])
+	}
+	if fm["production_mode"] != "dictated-and-formatted" {
+		t.Errorf("production_mode = %v, want dictated-and-formatted", fm["production_mode"])
+	}
+
+	// An unset mode takes the default; both keys are present either way.
+	res2, err := Capture(CaptureRequest{
+		RepoRoot: repo, IssuesRoot: ir, Text: "another finding", Severity: SeverityMinor,
+		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "other",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fm = readLedgerFrontmatter(t, ir, res2.ID)
+	if fm["origin"] != "researcher-authored" || fm["production_mode"] != "hand-written" {
+		t.Errorf("defaulted stamp = %v/%v, want researcher-authored/hand-written", fm["origin"], fm["production_mode"])
+	}
+
+	// An out-of-vocabulary mode is refused before anything is reserved.
+	if _, err := Capture(CaptureRequest{
+		RepoRoot: repo, IssuesRoot: ir, Text: "a third finding", Severity: SeverityMinor,
+		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "third",
+		ProductionMode: "typed",
+	}); err == nil {
+		t.Error("an out-of-vocabulary production mode must be refused")
+	}
+}
+
+// readLedgerFrontmatter reads a committed ledger record back through the
+// ledger's OWN reader, so a key the reader refuses cannot pass as written.
+func readLedgerFrontmatter(t *testing.T, issuesRoot, id string) map[string]any {
+	t.Helper()
+	src, _, err := findIssue(issuesRoot, id)
+	if err != nil {
+		t.Fatalf("findIssue %s: %v", id, err)
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("reading %s: %v", src, err)
+	}
+	fm, _, err := parseFrontmatterAndBody(string(data))
+	if err != nil {
+		t.Fatalf("parsing %s: %v", src, err)
+	}
+	if err := validateStrict(fm); err != nil {
+		t.Fatalf("the ledger reader refused the record it just wrote: %v", err)
+	}
+	return fm
 }

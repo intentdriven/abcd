@@ -85,6 +85,10 @@ The unscoped-transport sweep is adapter-scoped and runs only when an oracle adap
 - **Unscoped oracle transport storage** — covered by the adapter-scoped sweep into `.abcd/work/reviews/`.
 - **`Reviewed-by:` git trailer auto-injection on implementation commits** — out of scope (nice-to-have bidirectional linkage).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 - **Given** a persona runs a plan-review for `spc-X` end-to-end via any oracle adapter, **when** the review completes, **then** a per-review directory lands at `.abcd/reviews/spc-X/<NNNN>-<slug>-<ref>/` containing `review.json` (all required fields populated, `verdict` ∈ `{SHIP, NEEDS_WORK, MAJOR_RETHINK}`, non-empty `body_markdown` and `reviewed_files`) and `review.md` (mechanically rendered from `review.json`).

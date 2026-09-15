@@ -48,6 +48,10 @@ The reviews subsystem, the schemas, and the spec store are all abcd-owned — th
 - **The `epic_id`→`spec_id` intent-field rename** — already completed in a prior, separate change (it had to be atomic; this intent is the non-atomic remainder).
 - **Renaming the `spc-` ID prefix** — `spc-N-slug` is the spec identifier format; this intent renames the *concept word*, not the ID scheme.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline._

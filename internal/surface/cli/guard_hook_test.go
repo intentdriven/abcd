@@ -124,6 +124,32 @@ func TestGuardHookFailsOpenLoud(t *testing.T) {
 	}
 }
 
+// TestGuardHookBlocksWhatBashWouldRun — GHSA-5wx3-2c86-fjpx. Two inputs the
+// tokenizer used to refuse are inputs bash RUNS: a trailing backslash (dropped
+// by bash 3.2 and zsh) and a here-document body with no delimiter line
+// (recovered silently). On the hook a tokenizer error is fail-open, so each was
+// a one-byte bypass of every blocker. Both must now reach the blocking status
+// with the entry named, while the unterminated-quote row in
+// TestGuardHookFailsOpenLoud stays a loud fail-open: no shell runs that one.
+func TestGuardHookBlocksWhatBashWouldRun(t *testing.T) {
+	for name, command := range map[string]string{
+		"trailing backslash":            "git push --force origin main \\",
+		"unterminated heredoc body":     "git push --force origin main <<EOF\n",
+		"spaced arithmetic then hazard": "echo $(( x << y ))\ngit push --force origin main",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := guardRepo(t)
+			_, stderr, code := runGuard(preToolUse(t, "Bash", command, dir), "guard", "hook")
+			if code != 2 {
+				t.Errorf("bash runs this line, so the hook must block it: want exit 2, got %d (stderr %q)", code, stderr)
+			}
+			if !strings.Contains(stderr, "git-push-force") {
+				t.Errorf("the block must name the entry; stderr = %q", stderr)
+			}
+		})
+	}
+}
+
 // TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed pins the fail-SAFE
 // doctrine of iss-2608261551087492. A malformed repo .abcd/guard.json must NOT
 // disable the whole guard: the repo's own overrides are dropped, but the bundled
@@ -201,5 +227,60 @@ func TestGuardHookAnnouncesADisabledRegistry(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "UNGUARDED") {
 		t.Errorf("a disabled guard is an unguarded session and must say so; stderr = %q", stderr)
+	}
+}
+
+// TestGuardHookIgnoresAncestorKillSwitch is GHSA-vvqc-3mv2-5p49 on the guard
+// plane: a guard.json with the kill switch set, planted ABOVE the git working
+// tree, must not disarm the guard for a session inside it. The bundled hazards
+// stay armed and the blocker still blocks with the host's exit status.
+func TestGuardHookIgnoresAncestorKillSwitch(t *testing.T) {
+	outer := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outer, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	planted := `{"schema_version":1,"disabled":true}`
+	if err := os.WriteFile(filepath.Join(outer, ".abcd", "guard.json"), []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inner := filepath.Join(outer, "inner-repo")
+	gitInitAt(t, inner)
+
+	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", inner), "guard", "hook")
+	if code != 2 {
+		t.Errorf("a guard.json planted above the working tree disarmed the guard: exit %d, stderr %q", code, stderr)
+	}
+	if !strings.Contains(stderr, "rm-rf-after-cd-chain") {
+		t.Errorf("the bundled blocker must still fire; stderr = %q", stderr)
+	}
+}
+
+// TestGuardCheckAndHookAgreeOnAHereDocumentLeftOpen pins the two front doors to
+// the same verdict for the same command. `guard check` trims the trailing
+// newline off a candidate read from stdin, and the tokenizer used to resolve a
+// pending here-document only when it crossed a newline — so `cat <<EOF` with its
+// newline intact took the fail-closed heredoc-unterminated block on the hook,
+// while the identical command reached `check` one byte shorter and was cleared.
+// A verdict belongs to the command, not to whether its last byte is a newline.
+func TestGuardCheckAndHookAgreeOnAHereDocumentLeftOpen(t *testing.T) {
+	for name, command := range map[string]string{
+		"with a trailing newline": "cat <<EOF\n",
+		"ending at the `<<` line": "cat <<EOF",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := guardRepo(t)
+			_, stderr, code := runGuard(preToolUse(t, "Bash", command, dir), "guard", "hook")
+			if code != 2 {
+				t.Errorf("hook: an unterminated here-document must block: want exit 2, got %d (stderr %q)", code, stderr)
+			}
+			stdout, stderr, code := runGuard(command, "guard", "check")
+			if code != 1 {
+				t.Errorf("check on stdin: want the blocking exit 1, got %d (stdout %q stderr %q)", code, stdout, stderr)
+			}
+			stdout, stderr, code = runGuard("", "guard", "check", "--command", command)
+			if code != 1 {
+				t.Errorf("check --command: want the blocking exit 1, got %d (stdout %q stderr %q)", code, stdout, stderr)
+			}
+		})
 	}
 }

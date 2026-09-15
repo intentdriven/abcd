@@ -33,6 +33,14 @@ Report the receipt's `action`, `tag`, `digest`, `target_path`, and
 relay it — it names proxy/CA environment overrides the fetch deliberately
 refused to honour.
 
+`ownership` names the proof that let abcd replace the file: `release-manifest`
+(its digest is published), `running-executable` (the file is the binary that
+ran the command), or `path-entry-record` (`~/.abcd/path-entry` records it as
+this machine's install). The last two carry no `old_version` — no published
+release names those bytes any more — and the receipt reports `old_digest`
+instead; relay it as an unpublished build with its digest, not as a missing
+value.
+
 **Expect a refusal in a plugin session, and relay it as the answer, not an
 error.** Every refusal is a named shape with a remedy in `refusal`:
 
@@ -46,7 +54,9 @@ error.** Every refusal is a named shape with a remedy in `refusal`:
 - `package-manager` — the binary resolves into a Homebrew Cellar; relay the
   printed `brew upgrade abcd`.
 - `foreign` / `unprovenanced-file` — abcd never clobbers a binary it cannot
-  prove is its own; relay the described occupant and remedy.
+  prove is its own; relay the described occupant and remedy. The remedy
+  reinstalls OVER the file: never suggest deleting it first, because the verb
+  cannot run once it is gone.
 - `absent` — nothing on PATH to update; point at the install remedy.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

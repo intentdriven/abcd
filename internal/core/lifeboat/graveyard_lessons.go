@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -81,7 +82,7 @@ func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
 		return LessonsResult{}, errors.New("lessons payload is missing schema_version")
 	}
 	if lf.SchemaVersion > LessonsSchemaVersion {
-		return LessonsResult{}, fmt.Errorf("lessons schema v%d; this abcd knows up to v%d — upgrade abcd",
+		return LessonsResult{}, update.TooNew("lessons",
 			lf.SchemaVersion, LessonsSchemaVersion)
 	}
 	if lf.SchemaVersion != LessonsSchemaVersion {

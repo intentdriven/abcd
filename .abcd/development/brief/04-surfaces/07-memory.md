@@ -1,15 +1,37 @@
-# `/abcd:memory` — Multi-Upstream Curated Knowledge Substrate
+# `/abcd:memory` — Curated Knowledge Substrate
 
-User-facing command for the per-project compounding-curated knowledge substrate at `.abcd/memory/`. Design target per itd-36 (idea-1 final shape after 5-round adversarial oracle review); the write core (ingest/ask/bare) traces to the predecessor store's spc-38 (the memory write core) and the lint family to the predecessor store's spc-39 (the memory-coverage lints + the `MQ`/`MS`/`ML` codes). Every bare `spc-38`/`spc-39` on this page is a predecessor-store id cited as provenance — neither id names a spec in this repo's store (`.abcd/development/specs/`), whose own ids stop well short of spc-38. itd-36 sits in `intents/planned/` — delivery state is the intent lifecycle's, not this page's (see the [brief README's provenance note](../README.md)).
+Keep what a project learns from the things it reads, in a form that is still
+usable a year later: distilled pages rather than stored documents, each carrying
+the citation, licence and content hash it came from, so an answer drawn out of
+the store can always be traced back to a source and re-checked. The store lives
+in the repo at `.abcd/memory/`, so it travels with the project and is reviewable
+in a diff.
 
-For the **substrate spec** (page-class enum, source-class taxonomy, curator behaviour, lifecycle class, integration with itd-26 loot), see [`05-internals/07-memory.md`](../05-internals/07-memory.md). This file is the surface contract: what the user types and what happens.
+The cost is the discipline: sources are distilled and discarded by default
+rather than hoarded, the quotation budget is a curation rule rather than a
+storage limit, and licence and provenance are recorded at ingest instead of
+reconstructed later.
+
+The **substrate spec** (page-class enum, source-class taxonomy, curator
+behaviour, lifecycle class) is
+[`05-internals/07-memory.md`](../05-internals/07-memory.md). This file is the
+surface contract: what the user types and what happens.
+
+> **Provenance, and a warning about ids.** The surface traces to itd-36, which
+> sits in `intents/planned/`. The write core and the lint family were specified
+> in a predecessor store whose `spc-38` and `spc-39` collide with live ids in
+> this repo's own store. So on this page the store an id belongs to is read from
+> the sentence around it, never from the number.
 
 ## Sub-verbs
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
 > adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
-> non-assessment verb) and its existence (`shipped` / `staged`), verified
-> against the committed command-tree snapshot in both directions._
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
 
 | Verb | Bucket | Status |
 |---|---|---|
@@ -18,120 +40,113 @@ For the **substrate spec** (page-class enum, source-class taxonomy, curator beha
 | `lint` | lint | shipped |
 
 
-Bare `/abcd:memory` shows status + help + render of current memory state — never mutates state. Per the [bare-command-as-render discipline](../02-constraints/04-naming.md). Current sub-verbs (each does something bare cannot):
+**The store every verb here addresses is the checkout's, resolved from the working directory and never taken to be it.** The front door asks [`gitutil.CheckoutRoot`](../../../../internal/gitutil/repo.go) before it builds a request — the same resolution `capture`, `decide` and `spec` address their stores through: git's toplevel where git will name one, and a refusal in the two remaining states rather than a guess (a repo-shaped tree git will not answer for, and no repository above at all). So a render from a package directory reports the checkout's pages instead of `store not present`, an ingest lands in the checkout's substrate instead of laying a second one beneath the caller, and outside a checkout every verb exits **2** having read nothing and written nothing. It deliberately does not fall through to a marker walk, which would accept any directory carrying the name (iss-2609090947359464). A memory store found **below** the checkout root, on the chain between the caller and it, is named on stderr and left untouched — the deposit an unresolved front door leaves behind, reported to the person standing over it rather than stepped over in silence.
 
-- **Bare `/abcd:memory`** — render: page count by class (e.g., "23 session_memory + 8 external_pdf + 4 oracle_review + 2 spec_modification_grammar"), last-ingest timestamp, recent contradictions surface, suggested next actions. No mutation. Quotation-budget headroom per source renders READ-ONLY from the spc-39 `.coverage_index.json`: when the index is present AND fingerprint-fresh (a read-only crawl recomputes the current fingerprint and matches the stored one) it shows per-source warn/block headroom; fingerprint drift shows a "stale — run /abcd:memory lint" hint; an absent index an info line; a malformed index or crawl failure a non-fatal "headroom unavailable" line. The bare render never rebuilds or mutates the index.
-- **`/abcd:memory ingest <path-or-url>`** — register an external source (transcript / article / URL; PDF is a later-phase seam — the binary rejects PDF sources with a clear error until a text-extraction dependency is wired) as typed entity/topic pages with citation frontmatter, appending to the ingest log. The host agent is the distiller: it reads the source, produces the `DistilledPage` JSON array, and passes it via the load-bearing `--pages-json <file|->` flag (required for a new source; an already-known source re-ingests from the registry without it); the binary computes provenance, licence, and content hash, validates every page, and writes atomically. **Default: do NOT store original.** Flag-shaped modifier: `--keep-original` (opt-in storage at `.abcd/memory/sources/<sha256>.<ext>`; the later-phase lifeboat licence gate — `/abcd:disembark`, NOT launch, per adr-28 — is designed to refuse publish without an explicit allowlist entry; launch excludes `.abcd/**` wholesale per [`04-launch.md § 2`](04-launch.md#2-curated-release-artefact-default-deny)).
-- **`/abcd:memory ask <question>`** — query memory by domain + class; synthesise an answer with citations (every citation references `source.class` + `citation` + `source_hash`); optionally file the result back as a new memory page (flag-driven: `--file-back` with `--page-json <file|->`, the host-produced answer page; `--top-n <int>` sets retrieval depth, 0 uses the pinned default).
-- **`/abcd:memory lint` (spc-39)** — full-store curator health-check: per-page quotation budgets (`MQ001`), cumulative source coverage (`MQ002`), coverage-unavailable diagnostic (`MQ003`, info), source-class single-class advisory (`MS001`), cross-class without weighting note (`MS002`), missing licence on `external_*` (`ML001`). ALWAYS crawls the full repo store, rebuilds the regenerable `.coverage_index.json`, emits findings to `.abcd/.work.local/logs/memory/lint-<ts>/report.{json,md}`. Exit: blockers → nonzero; warn-only → 0 (curator advisory — see [`06-lint.md §2`](../05-internals/06-lint.md#2-severity-model)). Mutates no memory-store state (coverage index + logbook report are its only writes). Per ADR-13's write/lint split, the spc-38 write core ships ingest/ask/bare; spc-39 ships this lint family ONLY — contradictions are rendered by spc-38's reconciliation (surfaced by the bare render), orphan/stale-claim audits are deferred.
+**Bare `/abcd:memory`** renders the store's state and nothing else: how many
+pages there are by class, when the last ingest happened, the recent
+contradictions, and per-source quotation-budget headroom. It never mutates and
+never rebuilds an index. The JSON render carries one element the text render
+drops, a `drift` list saying that the catalogue or the contradictions register
+no longer hash-matches what the store's pages would render, so a reader knows
+the numbers are stale rather than wrong. Headroom is read-only in the same
+spirit: a fresh index shows per-source warn and block headroom, a drifted one
+says to run the lint, and an absent or unreadable one says the headroom is
+unavailable rather than guessing at it.
 
-## 1. Default flow — distil, cite, discard
+**`/abcd:memory ingest <path-or-https-url>`** registers an external source as
+typed pages with citation frontmatter, and appends to the ingest log. The host
+agent is the distiller: it reads the source, produces the distilled pages, and
+passes them through `--pages-json`, which is load-bearing and required for a
+source the store has not seen (an already-known source re-ingests from the
+registry without it). The binary computes provenance, licence and content hash,
+validates every page, and writes atomically.
 
-```
-/abcd:memory ingest <path>
-    │
-    ▼
-PROBE
-  - Compute sha256 of source content
-  - Look up in .abcd/memory/.sources_index.json (the provenance substrate per
-    itd-36/spc-38, the provenance capability; distinct from the
-    ahoy history store that keys session transcripts on the root-commit SHA)
-  - If found: bump ingest_count, update last_ingest, return cached citation
-  - If new: continue
-    │
-    ▼
-LICENCE DETECT (per 05-internals/09-provenance-substrate.md § 1)
-  - Parse source for SPDX-ID (in-file SPDX header + HTTP `License:` header — memory
-    ingest passes no source root, so the LICENSE-file and package-manifest steps
-    are inert on this surface)
-  - On ambiguous / missing: record `licence: unknown` explicitly, no prompt
-    (spc-39's `ML001` is what lints it — see § 2)
-  - Later phase (not in the shipped ingest, which classifies restrictive licences
-    but never rejects): reject if licence is restrictive AND project is public
-    (--accept-licence-risk override)
-    │
-    ▼
-DISTIL (host-delegated: the host agent is the distiller, supplying the
-        DistilledPage array via --pages-json; the binary validates every page.
-        The principle-distiller curator role is a Phase 6 design target per
-        05-internals/01-agents.md)
-  - Read source content
-  - Produce N entity/topic pages: <type>_<domain>_<slug>.md
-  - Each page carries source: { class, citation, licence, source_hash, ingested_at, weighting_note? }
-  - Cross-reference to existing memory pages (topic-hash dedup)
-  - Apply per-page quotation budget as curation discipline (the MQ001 lint
-    that enforces it computes at LINT time — spc-39's `/abcd:memory lint` —
-    never at ingest)
-    │
-    ▼
-WRITE
-  - .abcd/memory/<type>_<domain>_<slug>.md (new pages or updates)
-  - .abcd/memory/README.md (store skeleton, scaffolded on first write)
-  - .abcd/memory/index.md (regenerated catalog)
-  - .abcd/memory/log.md (append: ## [YYYY-MM-DD HH:MM] external_pdf | <slug> — <summary>)
-  - .abcd/memory/contradictions.md (if curator surfaces conflict with existing pages)
-  - .abcd/memory/.sources_index.json (registry update)
-    │
-    ▼
-DISCARD ORIGINAL (default behaviour)
-  - Source path + hash recorded for re-ingest only
-  - Original NOT stored at .abcd/memory/sources/
-  - The log carries no discard notice — log.md entries are the fixed page-write
-    line only (`## [YYYY-MM-DD HH:MM] <class> | <slug> — <summary>`)
-```
+Three refusals matter, because the store copies fetched text and its licence
+verbatim into a durable artefact. A plaintext `http://` source is refused by
+name, and a redirect that leaves https is refused per hop. A credential the URL
+carries (basic-auth userinfo, or a query key such as `token` or `api_key`) is
+stripped before the fetched address becomes the stored origin, and masked in
+every fetch-failure message. And PDF is a later-phase seam: the binary rejects
+PDF sources with a clear error until a text-extraction dependency is wired.
 
-`--keep-original` opts the user into storing the original at `.abcd/memory/sources/<sha256>.<ext>`. Later phase: the spc-38 restrictive-licence gate refuses to publish anything under `.abcd/memory/sources/` unless `.abcd/launch-allowlist.json` explicitly names the file — the shipped ingest classifies restrictive licences but never gates. Per adr-28 this gate is the **lifeboat's** (`/abcd:disembark`), NOT launch's — launch excludes `.abcd/**` wholesale and never publishes `.abcd/memory/sources/`; the gate is future/inert at launch.
+**The original is not stored by default.** `--keep-original` opts into keeping
+it under `.abcd/memory/sources/`. The licence gate that would police publishing
+such a file belongs to the lifeboat, not to launch (adr-28): launch excludes
+`.abcd/**` wholesale, so it never publishes the files the gate checks. That gate
+is a later phase, and the shipped ingest classifies restrictive licences without
+ever refusing on them.
 
-## 2. Acceptance Criteria (Given-When-Then, per itd-1)
+**`/abcd:memory ask <question>`** synthesises an answer with per-citation
+provenance, every citation naming its source class, citation and content hash.
+`--file-back` with `--page-json` files the host-produced answer back as a new
+memory page; `--top-n` sets retrieval depth.
 
-See [the full acceptance criteria](../../intents/planned/itd-36-memory-unification.md#acceptance-criteria) in itd-36's intent spec. Surface-level summary:
+**`/abcd:memory lint`** is the curator health-check over the whole store. It
+always crawls the full store, rebuilds the regenerable coverage index, and
+writes its findings to a run log under `.abcd/.work.local/logs/memory/`. It
+mutates no memory-store state, and its exit code is the decision: blockers exit
+non-zero, warnings alone exit 0, because most of what it reports is curator
+advice rather than a fault.
 
-- **Bare**: bare `/abcd:memory` renders current state; never mutates.
-- **Ingest default-no-original**: original NOT stored unless `--keep-original`; citation + source_hash recorded; quotation budget applied per page (enforced at lint time by spc-39's `MQ001`, never at ingest).
-- **Ingest with `--keep-original`**: original stored at `.abcd/memory/sources/<sha256>.<ext>`; the later-phase lifeboat licence gate (`/abcd:disembark`, not launch — adr-28) is designed to refuse publish without allowlist.
-- **Ask**: synthesises answer with per-citation provenance (class + citation + source_hash); optionally files result back.
-- **Lint (spc-39, not spc-38 behaviour)**: emits `MQ001` / `MQ002` / `MQ003` / `MS001` / `MS002` / `ML001` codes; cumulative coverage uses span-level dedup. spc-38 writes `licence: unknown` explicitly; spc-39's `ML001` is what lints it.
-- **Schema extension on existing**: existing flat-named pages preserved; `index.md` generated over them; `source.class: session_memory` backfilled as default.
-- **Cross-consumer registry**: the provenance substrate's `.abcd/memory/.sources_index.json` (per itd-36/spc-38, the provenance capability; not to be confused with the ahoy history store) is shared with itd-26 loot (a later phase, not yet built); same hash → same registry entry.
+Seven codes ship, in four families: per-page and cumulative quotation budgets
+with a diagnostic for the case where coverage cannot be computed (`MQ001`,
+`MQ002`, `MQ003`); source-class findings raised page by page, one where a page
+rests on a single class of source and one where a page mixes classes without
+saying how it weighs them against each other (`MS001`, `MS002`); a missing
+licence on an external source (`ML001`); and secret or identity residue in
+stored text (`MR001`). `MR001` is the read side of the write-time redactor, run
+over every page, the source registry and each stored original: it names the kind
+and the line, never the span, and the lint never rewrites the store.
 
-## 3. Runtime-log layout
+Four of the seven can stop the run. `MR001` is the sharpest: residue in the
+store is a fault, never advice. `ML001` and `MS002` join it, because a source
+with no licence and a page that silently blends trust levels are both defects in
+what the store claims rather than suggestions about how to curate it. `MQ002`
+blocks only in its strict form, when one source's quoted coverage passes the
+block threshold on unambiguous single-source attribution alone; the same
+coverage reached through passages attributable to several sources is capped at a
+warning, because that arithmetic cannot prove any one source was over-quoted.
+Everything else, `MS001` included, is advisory and leaves the exit code at zero.
 
-```
-.abcd/.work.local/logs/memory/
-├── ingest-<utc-ts>/                # later phase — comes with the principle-distiller curator (Phase 6)
-│   ├── ingest-report.{json,md}     # source path, sha256, distilled page count, citation, licence
-│   └── distil-trace.json           # principle-distiller per-page output trace (debug)
-├── ask-<utc-ts>/                   # later phase — comes with the principle-distiller curator (Phase 6)
-│   └── ask-report.{json,md}        # question, retrieved page slugs, synthesised answer with citations
-└── lint-<utc-ts>/
-    └── report.{json,md}            # lint findings: MQ001/MQ002/MQ003/MS001/MS002/ML001 with locations
-```
+The quotation budget is applied as curation discipline at distil time and
+computed at lint time. Nothing enforces it at ingest.
 
-Only `lint-<utc-ts>/report.{json,md}` is written by the shipped store (spc-39's lint); ingest and ask write no reports — the `ingest-` and `ask-` trees come in a later phase with the principle-distiller curator. Runtime artefacts (reports only) live in the gitignored `.abcd/.work.local/logs/` tier.
+## What ships, and what does not
 
-## 4. Composition with adjacent surfaces
+The write core (bare, `ingest`, `ask`) and the lint family are on the binary.
+Contradictions are rendered by the write core's own reconciliation and surfaced
+by the bare render; orphan and stale-claim audits are deferred.
 
-- **`/abcd:disembark`** exports curated project memory/provenance into the lifeboat (designed behaviour; itd-36 doesn't change disembark's source-mapping). What the lifeboat is specified to carry is the curated provenance surface named in [`02-disembark.md §5`](02-disembark.md) — root `_provenance.json` (the lifeboat marker and manifest) and `coverage.{json,md}` (per-section grounded/partial/blank status) — **not** a verbatim `.abcd/memory/` payload; declaring an exact `.abcd/memory/`-verbatim payload is deferred to the disembark spec that wires the lifeboat packer (adr-28). The recovery-humility framing on disembark/embark applies: the lifeboat is the floor of recoverable theory, not theory itself.
-- **`/abcd:embark`** unpacks a lifeboat's record families into the receiving repo; carrying `.abcd/memory/` forward is designed behaviour. Source-class enum carries forward; receiver runs `/abcd:memory lint` (spc-39) post-unpack to verify quotation budgets and licences haven't drifted.
-- **`/abcd:launch`** does **not** consume the provenance substrate's licence gate (adr-28): the public launch payload excludes `.abcd/**` — including `.abcd/memory/**` — wholesale as policy, so launch never publishes the files the gate checks. The restrictive-licence gate's real consumer is the **lifeboat** (`/abcd:disembark`, above), the surface that publishes curated project memory/provenance; the later-phase gate is designed to refuse publish on restrictive-licence files and warn on `licence: unknown`. At launch the gate is future/inert — launch excludes `.abcd/**` wholesale, so `/abcd:launch dry-run` surfaces no licence-gate verdict (its gate roster runs the secret/PII scan, installability smoke, and citation-baseline gates for real, while marker-block and documentation-auditor report `not_implemented` — Phase-5 deferred; see [`04-launch.md § 2`](04-launch.md#2-curated-release-artefact-default-deny) and adr-28).
-- **`/abcd:dredge`** (a later phase, itd-25) writes synthesis output to `.abcd/memory/<type>_<domain>_<slug>.md` with `source.class: dredge_synthesis`. Distinct verb (storage vs operation per dredge-pushback in idea-1 R4); shared destination namespace.
-- **Native** specs inherit from itd-37 modification grammar — at spec completion, `principle-distiller` (design target — Phase 6, per [`05-internals/01-agents.md`](../05-internals/01-agents.md); nothing ships this yet) extracts the spec's `## Modification Grammar` section into `spec_modification_grammar_<spec_id>.md` (append-only) and updates curator-merged `modification_grammar_<domain>.md` (compounding-curated). User does not invoke `/abcd:memory` for this — the extraction is designed to be automatic on spec completion.
+Not built: a curator role on the `principle-distiller` agent (the agent and its
+`disembark principles` verb ship; this role does not), ingest and ask run
+reports, user-scope memory outside the repo, and the automatic extraction of a
+spec's modification grammar into the store at spec completion.
 
-## 5. Cost shape
+## Composition with adjacent surfaces
 
-| Item | Cost |
-|---|---|
-| Schema extension | 4 new sibling files (`README.md`, `index.md`, `log.md`, `contradictions.md`) + typed `source:` frontmatter; no migration of existing flat-named files |
-| Curator role on `principle-distiller` | Role extension (Phase 6 design-target agent per [`05-internals/01-agents.md`](../05-internals/01-agents.md), not yet shipped; itd-31 precedent — the design-target agent roster stays at 16) |
-| Provenance/licence substrate | Separable spec at [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md); shared with the later-phase itd-26 loot |
-| Lifeboat licence-gate extension (adr-28) | `.abcd/memory/sources/` allowlist + restrictive-licence detection over the lifeboat's gated payload (`/abcd:disembark`); NOT a launch payload gate — launch excludes `.abcd/**` wholesale, so the gate is future/inert at launch |
-| Lint codes | New family: `MQ001` (per-page quotation), `MQ002` (cumulative coverage), `MQ003` (coverage-unavailable diagnostic, info), `MS001` (source-class single-class), `MS002` (mixed-class without weighting note), `ML001` (licence missing) |
+- **`/abcd:disembark`** is designed to export curated project memory and
+  provenance into the lifeboat. What the lifeboat is specified to carry is the
+  curated provenance surface named in
+  [`02-disembark.md`](02-disembark.md), not a verbatim copy of the store;
+  declaring an exact payload is deferred to the disembark spec that wires the
+  packer (adr-28). The recovery-humility framing applies: the lifeboat is the
+  floor of recoverable theory, not the theory.
+- **`/abcd:embark`** carrying the store forward is designed behaviour. The
+  source-class enum carries forward, and the receiver runs `memory lint` after
+  unpacking to check that quotation budgets and licences have not drifted.
+- **`/abcd:launch`** does not consume the licence gate at all: the public
+  payload excludes `.abcd/**` wholesale as policy, so `launch --dry-run`
+  surfaces no licence verdict (see
+  [`04-launch.md § 2`](04-launch.md#2-curated-release-artefact-default-deny)).
 
-**Tight coupling** (logged as a principal risk): itd-36 is structurally non-decomposable — sub-verbs need the schema; schema needs the curator role; curator role needs the lint codes. Partial ship not meaningful.
+**Tight coupling**, logged as a principal risk: itd-36 is structurally
+non-decomposable, because the sub-verbs need the schema, the schema needs the
+curator role, and the curator role needs the lint codes. A partial ship is not
+meaningful.
 
 ## References
 
-- [`05-internals/07-memory.md`](../05-internals/07-memory.md) — substrate spec (page-class enum, source classes, curator behaviour)
-- [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md) — provenance/licence subsystem (shared with the later-phase loot verb)
-- [`../../intents/planned/itd-36-memory-unification.md`](../../intents/planned/itd-36-memory-unification.md) — full intent spec with acceptance criteria + adversarial worked-example ship gate
-- [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory) — pattern source
+- [`05-internals/07-memory.md`](../05-internals/07-memory.md): substrate spec
+- [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md): provenance and licence subsystem
+- [`../../intents/planned/itd-36-memory-unification.md`](../../intents/planned/itd-36-memory-unification.md): the full intent spec with acceptance criteria
+- [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory): pattern source

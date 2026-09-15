@@ -139,7 +139,7 @@ func specParityCfg() Config {
 //     not, the record is lint-green and the store aborts.
 //
 // A lint-green spec of either shape aborted the WHOLE store: `abcd <spc-N>`
-// dispatch, NextID minting, and every intent verb that loads specs. Being
+// dispatch, the spec mint, and every intent verb that loads specs. Being
 // historical excuses a record from how it is WRITTEN, never from being
 // well-formed (iss-39).
 func TestSpecLintRefusesEveryRecordTheLoaderRefuses(t *testing.T) {

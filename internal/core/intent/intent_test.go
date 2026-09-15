@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,14 +90,14 @@ func TestPlanHappyPath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 
-	res, err := Plan(root, "itd-10")
+	res, err := Plan(root, "itd-10", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Spec.ID != "spc-1" || res.Spec.Intent != "itd-10" {
+	if !nativeSpecIDRe.MatchString(res.Spec.ID) || res.Spec.Intent != "itd-10" {
 		t.Fatalf("Plan spec = %+v", res.Spec)
 	}
-	if res.Intent.Bucket != "planned" || res.Intent.SpecID != "spc-1" || res.Intent.Kind != "standalone" {
+	if res.Intent.Bucket != "planned" || res.Intent.SpecID != res.Spec.ID || res.Intent.Kind != "standalone" {
 		t.Fatalf("Plan intent = %+v", res.Intent)
 	}
 
@@ -109,14 +110,14 @@ func TestPlanHappyPath(t *testing.T) {
 		t.Fatalf("planned file should exist: %v", err)
 	}
 	f := frontmatter.Fields(strings.Split(string(body), "\n"))
-	if f["spec_id"].Value != "spc-1" {
-		t.Fatalf("planned intent spec_id = %q, want spc-1\n%s", f["spec_id"].Value, body)
+	if f["spec_id"].Value != res.Spec.ID {
+		t.Fatalf("planned intent spec_id = %q, want %s\n%s", f["spec_id"].Value, res.Spec.ID, body)
 	}
 	if f["kind"].Value != "standalone" {
 		t.Fatalf("planned intent kind = %q, want standalone\n%s", f["kind"].Value, body)
 	}
 	// The spec file carries the reciprocal intent link.
-	sbody, err := os.ReadFile(filepath.Join(root, specsOpen, "spc-1-alpha.md"))
+	sbody, err := os.ReadFile(filepath.Join(root, specsOpen, res.Spec.ID+"-alpha.md"))
 	if err != nil {
 		t.Fatalf("spec file should exist: %v", err)
 	}
@@ -132,7 +133,7 @@ func TestPlanHappyPath(t *testing.T) {
 func TestPlanResidualPassesRecordLint(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
-	if _, err := Plan(root, "itd-10"); err != nil {
+	if _, err := Plan(root, "itd-10", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +159,7 @@ func TestPlanRefusesNoAcceptanceCriteria(t *testing.T) {
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: null\n---\n# alpha\n\nNo AC section here.\n")
 
-	if _, err := Plan(root, "itd-10"); err == nil {
+	if _, err := Plan(root, "itd-10", ""); err == nil {
 		t.Fatal("Plan must refuse an intent with no Acceptance Criteria")
 	}
 	// Nothing moved, no spec minted.
@@ -174,7 +175,7 @@ func TestPlanRefusesEmptyAcceptanceCriteria(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: null\n---\n# alpha\n\n## Acceptance Criteria\n\n## Next Section\n\nbody\n")
-	if _, err := Plan(root, "itd-10"); err == nil {
+	if _, err := Plan(root, "itd-10", ""); err == nil {
 		t.Fatal("Plan must refuse an intent whose Acceptance Criteria section is empty")
 	}
 }
@@ -188,7 +189,7 @@ func TestPlanRefusesBulletlessAcceptanceCriteria(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: null\n---\n# alpha\n\n## Acceptance Criteria\n\nThe system should just work well.\n")
-	if _, err := Plan(root, "itd-10"); err == nil {
+	if _, err := Plan(root, "itd-10", ""); err == nil {
 		t.Fatal("Plan must refuse an Acceptance Criteria section with no top-level bullet")
 	}
 	if _, err := os.Stat(filepath.Join(root, draftsDir, "itd-10-alpha.md")); err != nil {
@@ -196,12 +197,19 @@ func TestPlanRefusesBulletlessAcceptanceCriteria(t *testing.T) {
 	}
 }
 
+// TestPlanRefusesNonDraft: only a draft can be PLANNED. (A planned record has
+// its own path — the stamp-only step — covered in claims_test.go; every other
+// bucket is refused outright.)
 func TestPlanRefusesNonDraft(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
-		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
-	if _, err := Plan(root, "itd-10"); err == nil {
-		t.Fatal("Plan must refuse an intent that is not in drafts/")
+	for _, dir := range []string{shippedDir, disciplinesDir, supersededDir} {
+		t.Run(dir, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, dir+"/itd-10-alpha.md",
+				"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+			if _, err := Plan(root, "itd-10", ""); err == nil {
+				t.Fatal("Plan must refuse an intent that is not in drafts/")
+			}
+		})
 	}
 }
 
@@ -213,12 +221,12 @@ func TestPlanReusesExistingSpecForIntent(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 	// Pre-create the spec for this intent; the draft is still an unlinked draft.
-	sp, _, err := spec.Create(root, "itd-10", "alpha")
+	sp, err := spec.Create(root, "itd-10", "alpha", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := Plan(root, "itd-10")
+	res, err := Plan(root, "itd-10", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +260,7 @@ func TestPlanRefusesDraftWithSpecID(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
-	if _, err := Plan(root, "itd-10"); err == nil {
+	if _, err := Plan(root, "itd-10", ""); err == nil {
 		t.Fatal("Plan must refuse a draft that already has a non-null spec_id")
 	}
 }
@@ -264,7 +272,7 @@ func TestPlanRefusesWhenPlannedTargetExists(t *testing.T) {
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# pre-existing\n")
-	if _, err := Plan(root, "itd-10"); err == nil {
+	if _, err := Plan(root, "itd-10", ""); err == nil {
 		t.Fatal("Plan must refuse to overwrite an existing planned target")
 	}
 	// The pre-existing planned file is untouched.
@@ -279,7 +287,7 @@ func TestPlanRefusesWhenPlannedTargetExists(t *testing.T) {
 
 func TestPlanRejectsBadID(t *testing.T) {
 	root := t.TempDir()
-	if _, err := Plan(root, "itd-../../etc"); err == nil {
+	if _, err := Plan(root, "itd-../../etc", ""); err == nil {
 		t.Fatal("Plan must reject a traversal id")
 	}
 }
@@ -355,10 +363,15 @@ func TestStatusCounts(t *testing.T) {
 }
 
 // plannedLinked is a planned intent already carrying both link sides (the shape
-// Plan leaves): kind + spec_id set, ready to ship.
+// Plan leaves): kind + spec_id set, ready to ship. It also declares an impact,
+// because shipped/ requires one and `spec close` refuses to move a record that
+// has neither its own judgement nor one on the flag (iss-126) — a fixture
+// without one is a fixture that cannot ship, which impact_test.go tests on
+// purpose and no other test here means to.
 func plannedLinked(id, slug, specID string) string {
-	return "---\nid: " + id + "\nslug: " + slug + "\nspec_id: " + specID + "\nkind: standalone\n---\n" +
-		"# " + slug + "\n\n## Acceptance Criteria\n\n- ok\n\n## Audit Notes\n"
+	return "---\nid: " + id + "\nslug: " + slug + "\nspec_id: " + specID + "\nkind: standalone\nimpact: fix\n---\n" +
+		"# " + slug + "\n\n## Scope Conditions\n\n" + NullityToken +
+		"\n\n## Acceptance Criteria\n\n- ok\n" + groundsSection + "\n## Audit Notes\n"
 }
 
 // specNaming is an open spec file whose intent: link names the given intent.
@@ -371,7 +384,7 @@ func TestReconcileHappyPath(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,10 +433,10 @@ func TestReconcileIdempotent(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	if _, err := Reconcile(root, "spc-1"); err != nil {
+	if _, err := Reconcile(root, "spc-1", ""); err != nil {
 		t.Fatalf("first reconcile: %v", err)
 	}
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatalf("second reconcile must be a clean no-op: %v", err)
 	}
@@ -444,7 +457,7 @@ func TestReconcileClosesSpecWhenIntentAlreadyShipped(t *testing.T) {
 	writeFile(t, root, shippedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	res, err := Reconcile(root, "spc-1")
+	res, err := Reconcile(root, "spc-1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +474,7 @@ func TestReconcileFailsNoIntentLink(t *testing.T) {
 	// A spec whose intent link is malformed cannot be minted by Create, so write a
 	// spec whose intent names a non-existent intent to exercise the missing-intent path.
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-99"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must fail closed when the named intent does not exist")
 	}
 	// No partial move: the spec is untouched (still open).
@@ -476,7 +489,7 @@ func TestReconcileFailsWrongBucket(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must refuse an intent still in drafts")
 	}
 	if _, err := os.Stat(filepath.Join(root, draftsDir, "itd-10-alpha.md")); err != nil {
@@ -493,7 +506,7 @@ func TestReconcileFailsBidirectionalDrift(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-2"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must refuse when the intent's spec_id disagrees with the spec")
 	}
 	if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); err != nil {
@@ -507,19 +520,19 @@ func TestReconcileFailsAmbiguousLink(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 	writeFile(t, root, specsOpen+"/spc-2-alpha.md", specNaming("spc-2", "alpha", "itd-10"))
-	if _, err := Reconcile(root, "spc-1"); err == nil {
+	if _, err := Reconcile(root, "spc-1", ""); err == nil {
 		t.Fatal("Reconcile must refuse when more than one spec realises the intent")
 	}
 }
 
 func TestReconcileRejectsBadSpecID(t *testing.T) {
-	if _, err := Reconcile(t.TempDir(), "spc-../../etc"); err == nil {
+	if _, err := Reconcile(t.TempDir(), "spc-../../etc", ""); err == nil {
 		t.Fatal("Reconcile must reject a traversal spec id")
 	}
 }
 
 func TestReconcileFailsMissingSpec(t *testing.T) {
-	if _, err := Reconcile(t.TempDir(), "spc-9"); err == nil {
+	if _, err := Reconcile(t.TempDir(), "spc-9", ""); err == nil {
 		t.Fatal("Reconcile must fail when the spec does not exist")
 	}
 }
@@ -531,11 +544,14 @@ func TestFullCycle(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
 
-	pr, err := Plan(root, "itd-10")
+	pr, err := Plan(root, "itd-10", "")
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
-	rr, err := Reconcile(root, pr.Spec.ID)
+	// draftWithAC seeds no impact, so the close carries the judgement — and the
+	// second close below re-runs with an empty one, over a record that now
+	// records it, which is the idempotent shape.
+	rr, err := Reconcile(root, pr.Spec.ID, "fix")
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
@@ -545,7 +561,7 @@ func TestFullCycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, shippedDir, "itd-10-alpha.md")); err != nil {
 		t.Fatalf("intent must be shipped: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(root, specsClosed, "spc-1-alpha.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(root, specsClosed, pr.Spec.ID+"-alpha.md")); err != nil {
 		t.Fatalf("spec must be closed: %v", err)
 	}
 
@@ -567,7 +583,7 @@ func TestFullCycle(t *testing.T) {
 	}
 
 	// Second reconcile is a clean no-op.
-	if _, err := Reconcile(root, pr.Spec.ID); err != nil {
+	if _, err := Reconcile(root, pr.Spec.ID, ""); err != nil {
 		t.Fatalf("second reconcile must be idempotent: %v", err)
 	}
 }
@@ -625,7 +641,7 @@ func TestReconcileToleratesSpecIDSpelling(t *testing.T) {
 			writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", specID))
 			writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-			res, err := Reconcile(root, "spc-1")
+			res, err := Reconcile(root, "spc-1", "")
 			if err != nil {
 				t.Fatalf("Reconcile must accept the lint-green spec_id %q: %v", specID, err)
 			}
@@ -659,4 +675,122 @@ func TestLinkResolvesSpecByNumber(t *testing.T) {
 	if _, err := Link(root, "itd-10", "spc-1-alpha"); err == nil {
 		t.Fatal("Link must keep the strict ^spc-[0-9]+$ grammar for its argument")
 	}
+}
+
+// TestSetPromotedFromWritesOnlyTheBackEdge — framework 7.1: `origin` is stamped
+// at mint and never rewritten, so linking an existing draft to a reading item
+// writes the back-edge and touches nothing else. A hand-filed draft linked to a
+// reading item stays researcher-authored and says so.
+func TestSetPromotedFromWritesOnlyTheBackEdge(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n"+
+			"origin: researcher-authored\nproduction_mode: hand-written\n---\n# alpha\n")
+	before, err := os.ReadFile(filepath.Join(root, plannedDir, "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := SetPromotedFrom(root, "itd-10", "rdi-17"); err != nil {
+		t.Fatalf("SetPromotedFrom: %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(root, plannedDir, "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := frontmatter.Fields(strings.Split(string(after), "\n"))
+	if got := fields["promoted_from"].Value; got != "rdi-17" {
+		t.Fatalf("promoted_from = %q, want rdi-17\n%s", got, after)
+	}
+	// Every other frontmatter line is byte-identical: the disclosure pair above
+	// all, which is what "the origin is unchanged" rests on.
+	wantLines := frontmatterLines(t, string(before))
+	gotLines := frontmatterLines(t, string(after))
+	for _, line := range wantLines {
+		if !containsLine(gotLines, line) {
+			t.Errorf("SetPromotedFrom rewrote the frontmatter line %q", line)
+		}
+	}
+	for _, line := range gotLines {
+		if containsLine(wantLines, line) || line == "promoted_from: rdi-17" {
+			continue
+		}
+		t.Errorf("SetPromotedFrom wrote an unexpected frontmatter line %q", line)
+	}
+
+	// An unknown intent and a source outside the two graduating families are
+	// refused, and nothing is written.
+	if _, err := SetPromotedFrom(root, "itd-99", "rdi-17"); err == nil {
+		t.Error("SetPromotedFrom on an intent in no bucket must be refused")
+	}
+	if _, err := SetPromotedFrom(root, "itd-10", "adr-4"); err == nil {
+		t.Error("SetPromotedFrom with a source outside ^(iss|rdi)-[0-9]+$ must be refused")
+	}
+}
+
+// TestSetPromotedFromReportsATakenBackEdgeAndIsIdempotentOnTheSame — the first
+// scope condition of itd-2609020625400169: an intent occasioned by several items
+// is promoted from ONE, so a draft already naming another source keeps it and
+// the caller is told, rather than the back-edge being silently overwritten.
+func TestSetPromotedFromReportsATakenBackEdgeAndIsIdempotentOnTheSame(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-11-beta.md",
+		"---\nid: itd-11\nslug: beta\nspec_id: null\nkind: null\npromoted_from: rdi-17\n"+
+			"origin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# beta\n")
+	before, err := os.ReadFile(filepath.Join(root, draftsDir, "itd-11-beta.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A different source: refused as a typed error naming the record already
+	// there, and nothing is written.
+	_, err = SetPromotedFrom(root, "itd-11", "rdi-18")
+	if !errors.Is(err, ErrBackEdgeTaken) {
+		t.Fatalf("SetPromotedFrom over a taken back-edge err = %v, want ErrBackEdgeTaken", err)
+	}
+	if !strings.Contains(err.Error(), "rdi-17") {
+		t.Errorf("the refusal must name the record already there; got %v", err)
+	}
+	after, err := os.ReadFile(filepath.Join(root, draftsDir, "itd-11-beta.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Errorf("a refused SetPromotedFrom rewrote the record:\n%s", after)
+	}
+
+	// The SAME source is a no-op that reports the record unchanged.
+	if _, err := SetPromotedFrom(root, "itd-11", "rdi-17"); err != nil {
+		t.Fatalf("SetPromotedFrom with the source already there must be a no-op: %v", err)
+	}
+	again, err := os.ReadFile(filepath.Join(root, draftsDir, "itd-11-beta.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(again) != string(before) {
+		t.Errorf("an idempotent SetPromotedFrom rewrote the record:\n%s", again)
+	}
+}
+
+// frontmatterLines returns the record's frontmatter block, line by line.
+func frontmatterLines(t *testing.T, doc string) []string {
+	t.Helper()
+	_, rest, ok := strings.Cut(doc, "---\n")
+	if !ok {
+		t.Fatalf("the record carries no frontmatter block:\n%s", doc)
+	}
+	block, _, ok := strings.Cut(rest, "\n---")
+	if !ok {
+		t.Fatalf("the record's frontmatter block is unterminated:\n%s", doc)
+	}
+	return strings.Split(block, "\n")
+}
+
+func containsLine(lines []string, want string) bool {
+	for _, line := range lines {
+		if line == want {
+			return true
+		}
+	}
+	return false
 }

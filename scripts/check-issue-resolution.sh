@@ -24,6 +24,10 @@
 #          moved out of open/ or was captured and resolved in the same change. A
 #          commit that says it resolves an issue and lands the record in no
 #          terminal folder is the exact drift this gate exists to stop.
+#          The refusal names the shape it can prove (iss-2609012023256534): a
+#          record already terminal at the base — the stale-branch shape, where a
+#          rebase is the remedy and "resolve it" is not — is told apart from a
+#          record left open, one the head tree lacks, and an id with no record.
 #
 #   RS002  A resolved_by.commit sha ADDED in the range must name a commit that
 #          exists and is reachable from the head being pushed. The --commit flag
@@ -64,7 +68,33 @@ if [ "$rc" -ne 0 ]; then
 fi
 cd "$toplevel"
 
+# Every git call below lists or addresses paths, and git C-quotes a path holding
+# a non-ASCII byte by default ("…/iss-998-\303\251.md", quotes included). A
+# locator reading that unquoted takes the opening quote as the status folder,
+# a `git show ref:path` on it finds nothing, and the gate degrades silently for
+# exactly the records whose slug carries an accent (iss-2609012047552618). One
+# wrapper turns quoting off for the whole script rather than per call, so a
+# call added later cannot reintroduce it.
+git() {
+	command git -c core.quotePath=false "$@"
+}
+
 ISSUES_DIR=".abcd/work/issues"
+# STATUS_DIRS is the ledger's status-directory list. The shell cannot import Go,
+# so this is the second and LAST spelling of internal/core/issueschema's
+# StatusDirs, pinned to it by TestIssueResolutionGateScopesToStatusDirs.
+#
+# The scan is scoped to these three rather than to the ledger root because the
+# root holds sibling record families — readings/<run-id>/,
+# dispositions/<item-id>/, admissions/<run-id>/ and surprises/ — whose files are
+# not issue records, and the list of them grows. RS001 already
+# matched only the terminal folders; RS002 and RS003 did not, and would read a
+# `commit:`-shaped line out of one of those records as a resolution stamp.
+STATUS_DIRS=(open resolved wontfix)
+STATUS_PATHSPECS=()
+for status_dir in "${STATUS_DIRS[@]}"; do
+	STATUS_PATHSPECS+=("$ISSUES_DIR/$status_dir")
+done
 TRAILER_RE='^Resolves:[[:space:]]+(iss-[0-9]+)[[:space:]]*$'
 
 violations=0
@@ -88,7 +118,7 @@ usage() {
 # is deliberately absent, so RS001 refuses a trailer that merely deletes.
 ids_entering_closed() {
 	local base="$1" head="$2"
-	git diff --name-status --find-renames "$base".."$head" -- "$ISSUES_DIR" |
+	git diff --name-status --find-renames "$base".."$head" -- "${STATUS_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
 			case "$status" in
 			R*)
@@ -103,6 +133,21 @@ ids_entering_closed() {
 				;;
 			esac
 		done
+}
+
+# record_path prints the ledger path of iss-N's record at ref — its status
+# folder is the diagnosis RS001 needs — or nothing when the ref holds none. The
+# id is matched as a whole basename prefix, so iss-99 never answers for iss-999.
+record_path() {
+	local ref="$1" id="$2"
+	git ls-tree -r --name-only "$ref" -- "${STATUS_PATHSPECS[@]}" 2>/dev/null |
+		grep -E "/${id}(-[^/]*)?\.md\$" | head -1 || true
+}
+
+# status_of prints the status folder (open, resolved, wontfix) a ledger path sits in.
+status_of() {
+	local path="${1#"$ISSUES_DIR"/}"
+	printf '%s\n' "${path%%/*}"
 }
 
 # frontmatter_commit prints a record's resolved_by.commit sha at ref, reading the
@@ -148,17 +193,62 @@ check_commits() {
 	local closed
 	closed="$(ids_entering_closed "$base" "$head" | sort -u)"
 
-	# RS001 — a declared resolution must move the record.
+	# RS001 — a declared resolution must move the record. Every shape below is a
+	# refusal; they differ in the diagnosis, and the diagnosis is what a reader
+	# acts on. On a branch 235 commits behind main this rule emitted 84
+	# violations that each said "resolve it in this change" about a record the
+	# base already held in resolved/ — the branch's own work, squash-merged, so
+	# both trees held the moved record and the two-dot diff showed it entering
+	# nothing. The one remedy was a rebase, which no line named
+	# (iss-2609012023256534). The refusal stands in that shape: a rebase makes
+	# the range honest, and the merged commits vanish from it. What changes is
+	# that the message now says what the script can prove.
 	local declared=""
+	local behind
+	behind="$(git rev-list --count "$head".."$base")"
 	while IFS= read -r sha; do
 		[ -n "$sha" ] || continue
 		while IFS= read -r line; do
 			[[ "$line" =~ $TRAILER_RE ]] || continue
 			local id="${BASH_REMATCH[1]}"
 			declared="$declared $id"
-			if ! printf '%s\n' "$closed" | grep -qx "$id"; then
-				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id does not enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in $base..$head. Resolve it in this change (abcd capture resolve $id ...) or drop the trailer."
+			printf '%s\n' "$closed" | grep -qx "$id" && continue
+			local head_path base_path base_status
+			head_path="$(record_path "$head" "$id")"
+			base_path="$(record_path "$base" "$id")"
+			base_status=""
+			[ -n "$base_path" ] && base_status="$(status_of "$base_path")"
+			# Absence from the head tree is the most specific fact and is
+			# checked first: whatever the base holds, "resolve it in this
+			# change" cannot be done for a record the tree lacks.
+			if [ -z "$head_path" ] && [ -n "$base_path" ]; then
+				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id has no record at $head, while $base holds it in $ISSUES_DIR/$base_status/ — this branch predates the record. Rebase onto $base, then resolve it in this change (abcd capture resolve $id ...) if it is still open there, or drop the trailer if it is already terminal."
+				continue
+			elif [ -z "$head_path" ]; then
+				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id has no record at $head or at $base. Check the id, or capture the issue and resolve it in this change (abcd capture resolve $id ...)."
+				continue
 			fi
+			case "$base_status" in
+			resolved | wontfix)
+				# Terminal at the base. Whether a rebase is the remedy turns on
+				# WHEN it got there: a base-side commit the head lacks placed it
+				# after the branch diverged (the stale-branch shape), or it was
+				# terminal already at the merge base, in which case the trailer
+				# names an issue resolved before this commit and nothing but
+				# dropping it helps. The behind-count alone cannot tell them apart;
+				# the record's base-side history can.
+				local placer
+				placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+				if [ -n "$placer" ]; then
+					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+				else
+					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sat in $ISSUES_DIR/$base_status/ before this branch diverged from $base: the trailer names an issue that was resolved before this commit. Drop the trailer."
+				fi
+				;;
+			*)
+				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id does not enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in $base..$head. Resolve it in this change (abcd capture resolve $id ...) or drop the trailer."
+				;;
+			esac
 		done <<<"$(git show -s --format='%B' "$sha")"
 	done <<<"$range"
 
@@ -171,7 +261,7 @@ check_commits() {
 	# exit alone, never to a git failure.
 	local diffout changed
 	local rc=0
-	diffout="$(git diff --name-only "$base".."$head" -- "$ISSUES_DIR" 2>&1)" || rc=$?
+	diffout="$(git diff --name-only "$base".."$head" -- "${STATUS_PATHSPECS[@]}" 2>&1)" || rc=$?
 	if [ "$rc" -ne 0 ]; then
 		echo "check-issue-resolution: git diff failed for $base..$head (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
 		echo "$diffout" >&2
@@ -206,7 +296,7 @@ check_ledger() {
 	# pass, and it stays loud so it cannot be mistaken for a verdict.
 	local listing files
 	local rc=0
-	listing="$(git ls-tree -r --name-only "$ref" -- "$ISSUES_DIR" 2>&1)" || rc=$?
+	listing="$(git ls-tree -r --name-only "$ref" -- "${STATUS_PATHSPECS[@]}" 2>&1)" || rc=$?
 	if [ "$rc" -ne 0 ]; then
 		echo "check-issue-resolution: git ls-tree failed at $ref (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
 		echo "$listing" >&2

@@ -10,8 +10,13 @@ VERSION ?=
 # for public distribution.
 LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.Version=$(VERSION),)
 
+# The Go toolchain version go.mod declares, read from the declaration rather
+# than spelled here: a second spelling is a second thing to bump, and the one
+# that falls behind is the one nothing runs. Drives the format gate below.
+GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
+
 .PHONY: build test vet clean preflight lint-reviews lint-issues lint-decisions record-lint docs-lint site-render smoke \
-	check-attribution scaffold-sync scaffold-sync-check
+	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -27,12 +32,110 @@ build:
 test:
 	go test ./...
 
-# Self-discovering smoke harness (evals/): build the binary, walk the Cobra tree,
-# run every command's --help + the read-only verbs. Behind the `smoke` build tag so
-# it stays out of the unit-test lane; run explicitly here, in CI's smoke job, and in
-# the release verify gate.
+# Every eval in evals/: the self-discovering smoke harness (build the binary, walk
+# the Cobra tree, run every command's --help + the read-only verbs) and the
+# cold-reading evals below. Behind the `smoke` build tag so they stay out of the
+# unit-test lane; run explicitly here, under `make preflight`, in CI's smoke job,
+# and in the release verify gate.
 smoke:
 	go test -tags smoke ./evals/...
+
+# The cold-reading evals alone (evals/coldreading_*_test.go): the read-block eval
+# that falsifies the assembler's blindfold by planting sentinel warm content in a
+# fixture repository state and asserting its absence from what the assembler
+# passes.
+#
+# Both this target and `smoke` are `preflight` prerequisites, so the push gate
+# sees what CI sees for the eval lanes rather than trusting a job that cannot
+# block a merge (iss-2608311632382737).
+#
+# It has its own target, and CI its own always-run job, because the diff
+# classifier stands the `smoke` job down on a change confined to docs/,
+# .abcd/development/, .abcd/work/ and the root prose files — and those are
+# precisely the paths these evals read. A record-only change is the diff MOST
+# able to introduce warm content into material the assembler includes, so
+# standing the eval down there is anti-correlated with the risk, and a stood-down
+# job still reports its check context green. Same reasoning `.github/workflows/ci.yml`
+# already documents for the ubuntu unit lane, which never stands down because its
+# tests read the live tree under the allowlist.
+#
+# The selection is a BUILD TAG, not a list of test names: every file carrying
+# `//go:build smoke || coldreading` runs here and under `make smoke` both, so a
+# second cold-reading eval joins the lane by carrying that constraint, with no
+# edit to this target or to the workflow.
+evals-cold-reading:
+	go test -tags coldreading ./evals/...
+
+# Format gate, resolved through the toolchain go.mod declares
+# (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
+# releases — go 1.27 re-indents a multi-value return whose operands are
+# composite literals, which this tree contains at internal/core/ahoy/remote.go —
+# so on a machine newer than the declaration a bare `gofmt -l .` names a file
+# that CI's pinned gofmt calls correctly formatted. The developer reformats what
+# the gate names and pushes a file CI then rejects in the other direction, and
+# neither direction is visible in the output, which names a file and never says
+# which toolchain judged it.
+#
+# `GOTOOLCHAIN=go<version> go env GOROOT` fetches and caches the declared
+# toolchain if the machine lacks it, then reports where it landed; the gofmt
+# under that GOROOT is the one CI runs. `fmt` applies the same binary, so the
+# remedy and the diagnosis can never disagree.
+#
+# It REFUSES rather than falling back when the toolchain cannot be resolved
+# (offline, or the fetch declined). A fallback would print a filename judged by
+# the wrong gofmt, which is precisely the false green this target removes — the
+# skew is named in the refusal instead
+# (.abcd/development/principles/loud-staging.md).
+define pinned_gofmt
+	@set -eu; \
+	version='$(GO_TOOLCHAIN_VERSION)'; \
+	if [ -z "$$version" ]; then \
+		echo "gofmt: REFUSING — go.mod declares no \`go <version>\` line, so the format gate has no toolchain to resolve." >&2; \
+		exit 2; \
+	fi; \
+	local_version="$$(go env GOVERSION 2>/dev/null || echo unknown)"; \
+	if ! goroot="$$(GOTOOLCHAIN=go$$version go env GOROOT 2>&1)" || [ ! -x "$$goroot/bin/gofmt" ]; then \
+		echo "gofmt: REFUSING to judge this tree." >&2; \
+		echo "gofmt:   go.mod declares go$$version; the go on PATH is $$local_version." >&2; \
+		echo "gofmt:   the go$$version toolchain could not be resolved (the fetch needs network):" >&2; \
+		echo "$$goroot" | sed 's/^/gofmt:     /' >&2; \
+		echo "gofmt:   NOT falling back to the gofmt on PATH — a different gofmt version judges this" >&2; \
+		echo "gofmt:   tree differently, so the fallback would name files CI considers correct." >&2; \
+		exit 2; \
+	fi; \
+	resolved="$$("$$goroot/bin/go" version 2>/dev/null | awk '{print $$3}')"; \
+	if [ "$$resolved" != "go$$version" ]; then \
+		echo "gofmt: REFUSING — go.mod declares go$$version, but the resolved toolchain reports $$resolved." >&2; \
+		echo "gofmt:   GOTOOLCHAIN did not switch, so the gate would run the wrong gofmt." >&2; \
+		exit 2; \
+	fi; \
+	case '$(1)' in \
+	check) \
+		unformatted="$$("$$goroot/bin/gofmt" -l .)"; \
+		if [ -n "$$unformatted" ]; then \
+			echo "gofmt: these files are not formatted (run \`make fmt\`):" >&2; \
+			echo "$$unformatted" >&2; \
+			exit 1; \
+		fi; \
+		echo "fmt-check: the tree is formatted under go$$version's gofmt"; \
+		;; \
+	write) \
+		"$$goroot/bin/gofmt" -l -w .; \
+		;; \
+	esac
+endef
+
+# The gate: name every file the declared toolchain's gofmt would rewrite, and
+# exit non-zero if there is one. This is CI's `Format (gofmt)` step — the
+# workflow invokes this target rather than restating the command, so the
+# developer's gate and CI's gate are one thing
+# (.abcd/development/principles/one-canonical-primitive.md).
+fmt-check:
+	$(call pinned_gofmt,check)
+
+# The remedy: rewrite them, with the same binary the gate judged them by.
+fmt:
+	$(call pinned_gofmt,write)
 
 vet:
 	go vet ./...
@@ -166,13 +269,29 @@ scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
 
 # Pre-push gate (invoked by .githooks/pre-push): the five lint gates
-# (lint-reviews, lint-issues, lint-decisions, record-lint, docs-lint) plus the
-# site-render gate as prerequisites, then build, vet, test,
+# (lint-reviews, lint-issues, lint-decisions, record-lint, docs-lint), the
+# site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
+# prerequisites, then build, vet, test,
 # and race-enabled internal tests natively. CI's check job runs those same four
-# Go steps plus a `gofmt -l .` format gate this target does not, so run gofmt
-# separately before pushing. Host-native `go build` (not the cross-compiling
-# build target) because it mirrors CI.
-preflight: lint-reviews lint-issues lint-decisions record-lint docs-lint site-render
+# Go steps plus the `fmt-check` format gate this target does not, so run
+# `make fmt-check` separately before pushing. Host-native `go build` (not the
+# cross-compiling build target) because it mirrors CI.
+#
+# The eval lanes are prerequisites because the untagged `go test ./...` step
+# below cannot reach them: every eval file carries a build tag, so a defect in
+# the read-block eval — the only component capable of falsifying the assembler's
+# firewall — used to pass every local gate and surface only in CI, if at all
+# (iss-2608311632382737). That was not hypothetical: a path-elision defect in
+# the amnesia eval's own guard was unsatisfiable wherever the process temp
+# directory is the Linux one, so it landed green here and was found by an
+# adversarial review rather than by a gate.
+#
+# Both lanes are named even though `smoke` compiles a superset of
+# `evals-cold-reading`'s files: they are separate tag sets, so a cold-reading
+# file reaching for a smoke-only helper compiles under one and not the other,
+# which is the split CI's two jobs cover. About five seconds each on a warm
+# cache, against roughly a minute for the gates already here.
+preflight: lint-reviews lint-issues lint-decisions record-lint docs-lint site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test ./...

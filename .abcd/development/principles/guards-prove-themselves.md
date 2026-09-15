@@ -15,6 +15,8 @@ regression costs most. A sibling project enumerates each non-negotiable
 invariant alongside a paired test and a mandatory review trigger, which is the
 mature form of this rule.
 
+**Instance of a general rule.** This is a special case of [itd-195](../intents/disciplines/itd-195-a-claim-about-how-the-code-behaves-is-executable-or-it-is-no.md), adopted 2026-08-31: a claim about how the code behaves is executable, or it is not made. Stub pointer only — the relationship is recorded, not yet worked through.
+
 **Bounds.**
 
 - The test exercises the *refusal*, not just the happy path around it: it

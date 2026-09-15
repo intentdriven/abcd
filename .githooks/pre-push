@@ -10,13 +10,17 @@
 #      non-fast-forward (force) push to any branch.
 #   2. `make preflight` must pass natively before a push leaves this machine —
 #      the five lint gates (lint-reviews, lint-issues, lint-decisions,
-#      record-lint, docs-lint)
-#      plus the site-render gate, then build, vet, test and the race-enabled
-#      internal tests. CI's check job adds a `gofmt -l .` format gate on top of
-#      those Go steps; the secret-scan, workflow-audit, dependency-review,
-#      govulncheck and smoke lanes run in Actions only, and the record-lint job
-#      there repeats the reviews-charter, issue-resolution and decisions-append
-#      gates preflight already ran here.
+#      record-lint, docs-lint),
+#      the site-render gate and both tagged eval lanes (smoke,
+#      evals-cold-reading), then build, vet, test and the race-enabled
+#      internal tests. The eval lanes are named because the untagged `go test`
+#      step cannot compile them, so a defect there would otherwise reach a push
+#      unopposed (iss-2608311632382737). CI's check job adds the `make fmt-check`
+#      format gate on top of those Go steps — run it before pushing, since this
+#      hook does not; the secret-scan, workflow-audit,
+#      dependency-review and govulncheck lanes run in Actions only, and the
+#      record-lint job there repeats the reviews-charter, issue-resolution and
+#      decisions-append gates preflight already ran here.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 

@@ -1,39 +1,165 @@
 # Prompt Quality Infrastructure
 
-The 16-agent design roster ([`01-agents.md`](01-agents.md)) plans one prompt `.md` file per agent; ten prompt `.md` files ship in `agents/` today (six of them outside that roster — see [`01-agents.md § Shipped agents outside the design roster`](01-agents.md#shipped-agents-outside-the-design-roster)). Static prompts rot as models evolve and prompting best practices shift. abcd ships three layers (B+C+D) plus the itd-5 additions:
+An agent prompt is code nobody compiles. It rots as models evolve and prompting
+practice shifts, and it rots silently: a prompt that has quietly stopped working
+returns plausible output, which is the failure mode hardest to notice. The
+machinery here exists so that rot leaves a trace.
 
-**B — Per-agent golden-test fixtures.** Each agent spec ships 2–3 fixture inputs with expected output structure (JSON schema validation + oracle-judged "is this output good enough"). Fixtures live in `agents/<name>/fixtures/`. The `intent-auditor` fixtures are spc-12's; the generic `internal/core/prompttest` harness that runs fixtures in CI lands with the first Pass-A agent spec ([Phase 6](../../roadmap/phases/phase-6-lifeboat.md), the lifeboat pipeline), the point at which a second agent exists to generalize the runner over. Catches regressions when models change.
+What ships today makes three things impossible to do by accident: shipping a
+prompt with no version, declaring that a prompt reads untrusted input without
+carrying a canary for it, and leaving the untrusted-input question unanswered. A
+fourth — changing a prompt without a changelog entry — holds only in part: the
+tree alone catches a version with no entry, while catching a body edit that never
+bumped its version needs the check pointed at a diff range, which the
+continuous-integration caller supplies and cannot always resolve. What
+ships does **not** run any prompt or
+judge any output — checking that a prompt still works needs a test harness, and
+that harness is a design target.
 
-**C — Prompt linter.** the planned prompt-lint checks in `internal/core/lint` — static analysis of agent prompt files (`agents/<name>.md`, excluding `CHANGELOG.md`, `README.md`, and `*_template.md` / `*.template` files, which are not prompts).
+The design is three layers plus the itd-5 additions. **Layer C ships and is armed
+as a blocker; layers B and D are staged**, and each claim below says which it is.
+[`01-agents.md`](01-agents.md) is the field-by-field register of what a prompt
+declares.
 
-The linter is a **design target**, planned in two stages; no `PromptLinter` exists in `internal/core/lint` yet (the agent files carry conforming frontmatter, but the linter that will enforce it is not built). **The mechanical itd-5 floor (`PQ001`–`PQ006`), not yet shipped:** `prompt_version` present and valid semver; a matching `### <agent> <version>` heading exists in `agents/CHANGELOG.md`; `capability_scope` present and well-formed; `capability_scope.task_classes` strict set-membership against `task_classes.json`; canary-fixture *presence* when `reads_untrusted_input: true` is declared.
+## C — the prompt linter (ships)
 
-**Deferred to the prompt-test spec — the broader structural checks:** missing role definitions, missing output schemas, vague instructions, missing example I/O, prompt-length outliers, missing `## Research basis: <path>` / `## Last SOTA Audit: <date>` footers. These role/schema/example-IO structural checks are not in spc-8's scope; they ship alongside the B-layer `internal/core/prompttest` golden-test harness. The linter is planned to run pre-commit. It catches structural issues; it does not catch semantic quality.
+`agent_contract`, in `internal/core/lint`, is record-lint's dedicated rule for the
+agent-prompt tree. `agents/` sits outside both the record-lint and docs-lint roots,
+so the per-file rules do not reach it; this rule walks the tree directly from the
+`agents_dir` key in the record-lint configuration, skipping directories,
+non-markdown files, and the README and changelog stems. It is configured as a
+blocker, so it runs on every `make record-lint`, every `make preflight` and the CI
+record gate. The operator-facing statement of the same contract is
+[`agents/README.md`](../../../../agents/README.md).
 
-**D — Periodic SOTA audit (research-gated).** `oracle-prompt-audit.md` template — once per minor release, run an oracle audit (via the oracle adapter per [`04-universal-patterns.md § 2`](04-universal-patterns.md#2-host-delegated-by-default-oracle-adapters-opt-in)) over all agent prompts. **Reference is the agent's research file** (see "Research-driven prompts" below), not "general knowledge": "Does this prompt align with the recommendations in `.abcd/development/research/prompting/agents/<name>.md`? Where does it diverge? Is the divergence justified?" Findings go to `.abcd/logbook/sota-audits/<date>.md`. Treated as RFC input, not auto-applied.
+What it enforces on every invocation:
 
-**itd-5 prompt-quality additions on top of B+C+D:**
+- A `reads_untrusted_input` declaration on every prompt, whatever its value. The
+  declaration is required of all of them, not only of the ones that admit `true`: a
+  rule that fires only on `true` is one a prompt opts out of by deleting a line,
+  and silence is not `false`, it is undeclared.
+- `prompt_version` present and a valid semver, on every prompt. It is what the
+  changelog entry is keyed on, whatever the prompt reads.
+- On a prompt declaring `reads_untrusted_input: true`: both `capability_scope`
+  fields, present and non-empty.
+- On the same prompt: `agents/<name>/fixtures/injection-canary.json`, present, a
+  regular file and non-empty. An empty file or a symlink is refused, because a
+  canary that asserts nothing reports the contract met without testing it.
+- A `### <agent> <version>` entry in `agents/CHANGELOG.md` for every prompt's
+  current version. This half needs no git, so a new prompt with no entry and a
+  bumped version with no entry both fail.
 
-- **`prompt_version` frontmatter** — every `agents/*.md` carries `prompt_version: <semver>` alongside existing `name`, `description`, `tools`, `model`. Initial value `0.1.0` (agents ship in the 0.x band). A consolidated `agents/CHANGELOG.md` records each version bump with: agent name, old → new version, one-line rationale, eval delta (golden-test pass/fail count change). Bump rules (semver-adapted): MAJOR for behaviour-breaking output schema change; MINOR for behaviour change preserving schema; PATCH for typo / non-behavioural edit.
-- **One-shot oracle self-improvement pre-flight** — before each agent's prompt is locked at `0.1.0`, the author runs the pre-flight: submit candidate prompt to `lifeboat-reviewer` with rewrite-for-clarity directive; run all golden-test fixtures against both candidate and reviewer-rewritten variants; if the reviewer variant ≥ candidate on goldens AND shorter by >10%, accept the reviewer variant; otherwise keep candidate. Log decision + diff in `agents/CHANGELOG.md` as the agent's first entry. One-time gate per agent at v0.1.0 lock-time, not recurring.
-- **Injection-canary fixtures** — every agent that reads untrusted input (transcripts, lifeboat content, GitHub issues, commit messages, model-emitted reviews) MUST have at least one fixture with a prompt-injection payload. Agents in scope: `chat-distiller`, `embark-scaffolder`, `issue-scout`, `code-rescuer`, `decision-archaeologist`, `review-collator`. Failing the canary fixture blocks the agent's spec from closing.
+One further check runs only over an armed diff range: a prompt whose body changed
+in the range without its version changing. That is the one thing the tree cannot
+say on its own, and it is an edit that can never acquire a changelog entry, because
+the entry is keyed on the version. The range comes from the CI caller, never from
+the in-tree config, on the same reasoning as the receipt gate: a gate a committer
+can point at an empty range is a gate a committer can disarm.
 
-**Research-driven prompts.** Every agent has a research file at `.abcd/development/research/prompting/agents/<name>.md` — current SOTA best practices for that agent's role (e.g., "best practices for prompting a content-fidelity auditor", "best practices for prompting a product-thinker critic"). One general baseline at `.abcd/development/research/prompting/01-general-best-practices.md` covers cross-cutting prompting SOTA (structure, role definition, output formats, extended thinking, examples, etc.).
+**Staged on top of what ships:** set-membership of `capability_scope.task_classes`
+against a closed enum. The shipped check requires the field to be non-empty and
+reads no enumeration. The enum's source of truth today is the reserved-vocabulary
+table in [`../02-constraints/04-naming.md`](../02-constraints/04-naming.md), prose
+the binary does not read, so the membership check has no artefact to measure
+against until the enum acquires a machine-readable home (iss-265).
 
-- **General baseline** is its own early spec, sequenced before any agent spec in Phase 3 onwards
-- **Per-agent research** is task #1 of each agent's spec (research before prompt drafting; blocks subsequent prompt+fixture tasks)
-- **Coupling philosophy:** research is **gate** (validation criterion), not **source** (template generator) — author writes the prompt informed by research, oracle audit checks alignment after the fact. Author retains freedom; auditor has ammunition
-- Research files committed to `.abcd/development/research/` per the abcd CLAUDE.md doc structure; survive the prompt and outlive specific model versions
+## B — golden-test fixtures (staged)
 
-**Per-agent spec acceptance includes:**
-- Research file exists at `.abcd/development/research/prompting/agents/<name>.md`, oracle reviews it as "non-trivial" (specific findings, not empty bullets)
-- Prompt passes the linter (including `prompt_version` frontmatter present per itd-5)
-- Prompt cites research file in `## Research basis: .abcd/development/research/prompting/agents/<name>.md` footer
-- ≥2 golden-test fixtures pass
-- Injection-canary fixture (per itd-5 Add 3) passes for agents reading untrusted input
-- One-shot self-improvement pre-flight outcome recorded in `agents/CHANGELOG.md`
-- Prompt has a `## Last SOTA Audit: <date>` footer line (initial value: spec completion date)
+The design target: each agent ships two or three fixture inputs with an expected
+output structure, validated by schema and judged by an oracle for whether the
+output is good enough, run in CI by a generic harness.
 
-**In a later phase (recorded as intents):**
-- **itd-14 — Prompt registry + versioning** — full diff-on-update workflow, treated like code (heavier rigour layer than itd-5's `prompt_version` field)
-- **itd-15 — Self-dogfooded SOTA audit** — abcd's own disembark of the frozen reference implementation runs the prompt audit as part of Pass C (eat-your-own-dogfood)
+Neither half exists. There is no `internal/core/prompttest` package, and every
+shipped agent's `fixtures/` directory holds exactly one file, the injection canary,
+which is layer C's presence check rather than a golden test. The harness lands with
+the first Pass-A agent spec ([Phase 6](../../roadmap/phases/phase-6-lifeboat.md)),
+the point at which a second agent exists to generalise the runner over.
+
+This is the layer that would catch a regression when a model changes, and it is
+also what would **run** an injection canary rather than merely require one.
+
+**Deferred to the prompt-test spec with it:** the broader structural checks —
+missing role definitions, missing output schemas, vague instructions, missing
+example input and output, prompt-length outliers, and the research and audit
+footers. The linter catches structural issues; it does not catch semantic quality.
+
+## D — periodic SOTA audit (staged, research-gated)
+
+The design target: an audit prompt run once per minor release through the oracle
+adapter over all agent prompts, checking each against its own research file rather
+than against general knowledge — where does this prompt diverge from what the
+research recommends, and is the divergence justified? Findings would land in the
+local ephemeral tier and be treated as RFC input, never auto-applied.
+
+Nothing of this ships: no template, no adapter entry point, no invocation. It is
+gated on the research files besides, which do not exist for any shipped agent.
+
+## The itd-5 additions
+
+- **`prompt_version` frontmatter (ships).** Every prompt carries a semver, and
+  `agents/CHANGELOG.md` records each bump with a one-line rationale. A new prompt
+  normally starts at `0.1.0`; the four review and research prompts enter the
+  changelog at `0.2.0` instead, the bump that first gave them the untrusted-input
+  contract. Bump rules, semver-adapted: MAJOR for a behaviour-breaking output
+  schema change, MINOR for a behaviour change preserving the schema, PATCH for a
+  typo or non-behavioural edit.
+- **The `0.x` calibration band (ships).** itd-81 amends itd-5 and governs over this
+  brief's earlier expectation of a measured delta per bump. `0.x` means shipped and
+  wired, honestly unmeasured; `1.0.0` means measured against a corpus and locked,
+  and the lock must be earned. So the self-improvement outcome and the
+  calibration delta are recorded at lock, not at each bump. Every shipped prompt
+  sits in the `0.x` band. Most changelog entries say so outright, recording the
+  delta as unmeasured either in the entry itself or in its dated section's
+  preamble; the entries for the five prompts hardened on 2026-08-19, and one
+  cold-reading bump, say it nowhere, which is a gap in the record rather than a
+  measurement somebody took.
+- **One-shot oracle self-improvement pre-flight (staged).** Before a prompt locks
+  at `1.0.0`, the author submits it to a reviewer with a rewrite-for-clarity
+  directive, runs the goldens against both variants, and accepts the reviewer's
+  variant only if it scores at least as well and is more than 10% shorter. No agent
+  has reached `1.0.0`, and the goldens the comparison needs are layer B, so the
+  gate has not fired for any shipped prompt. Most say exactly that in the
+  changelog, in their own entry or in its dated section's preamble; the four
+  review and research prompts say it nowhere.
+- **Injection-canary fixtures (ships, as a presence check).** Every agent reading
+  untrusted input carries at least one fixture with a prompt-injection payload, and
+  `agent_contract` refuses a prompt that declares `true` without a regular,
+  non-empty one. Every shipped prompt declares `true` and carries one. *Running*
+  the canary and judging that the hostile text is quoted as data rather than obeyed
+  needs the layer-B harness, so "failing the canary blocks the agent's spec from
+  closing" is staged with it.
+
+## Research-driven prompts (staged)
+
+The design target: every agent has a research file under
+`.abcd/development/research/prompting/agents/<name>.md`, holding current practice
+for that agent's role. Research is a **gate** rather than a **source**: the author
+writes the prompt informed by it, and the audit checks alignment after the fact, so
+the author keeps their freedom and the auditor gets ammunition.
+
+Three research files exist today, alongside a template and the directory's own
+README. Two of them are written for agents that were never built. The third is
+written for the shipped intent auditor under the name it carried before it was
+renamed, so it is stranded under a stem the by-name lookup no longer reaches: in
+practice no shipped prompt has a research file it can find. The one general
+baseline that does ship is
+[`01-general-best-practices.md`](../../research/prompting/01-general-best-practices.md),
+covering cross-cutting prompting practice.
+
+## Per-agent spec acceptance
+
+Two of the six acceptance lines hold today, both enforced by `agent_contract`. The
+rest are staged, and no shipped prompt satisfies any of them.
+
+| Acceptance line | State |
+|---|---|
+| Prompt carries `prompt_version` frontmatter | ships (`agent_contract`) |
+| Injection-canary fixture present for an agent reading untrusted input | ships (`agent_contract`, presence only) |
+| Research file exists and reads as non-trivial under review | staged |
+| Prompt cites its research file in a footer | staged: no shipped prompt carries one |
+| At least two golden-test fixtures pass | staged with the layer-B harness |
+| Prompt carries a last-audited footer line | staged: no shipped prompt carries one |
+
+**In a later phase, recorded as intents:** itd-14, a prompt registry with a
+full diff-on-update workflow treated like code; and itd-15, running the prompt
+audit as part of abcd's own disembark of a reference implementation.

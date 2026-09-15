@@ -2,7 +2,6 @@ package history
 
 import (
 	"bytes"
-	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -15,8 +14,9 @@ import (
 const testRootSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 // setupStore points HOME at a temp dir (so both the store root and the probed
-// identity home path resolve there), creates the transcripts dir the way abcd
-// install would, and returns (repoRoot, home).
+// identity home path resolve there) and opens the store there, returning
+// (repoRoot, home). Opening is what creates it: there is no install step to
+// stand in for (iss-95).
 // TestCaptureAcceptsSHA256RootKey proves history verbs work for a repo in git's
 // SHA-256 object format, whose root-commit SHA is 64 hex chars. The old
 // `^[0-9a-f]{40}$` key rejected it, so Capture/List/Read all failed for such a
@@ -25,7 +25,7 @@ func TestCaptureAcceptsSHA256RootKey(t *testing.T) {
 	sha256Root := strings.Repeat("b", 64)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	tdir := filepath.Join(home, ".abcd", "history", sha256Root, "transcripts")
+	tdir := filepath.Join(home, ".abcd", "transcripts", sha256Root, "records")
 	if err := os.MkdirAll(tdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestCaptureAcceptsSHA256RootKey(t *testing.T) {
 	if !res.Wrote {
 		t.Fatal("expected Wrote=true for a SHA-256-keyed capture")
 	}
-	if _, err := List(sha256Root); err != nil {
+	if _, err := List(repoRoot, sha256Root); err != nil {
 		t.Fatalf("List with a SHA-256 root key failed: %v", err)
 	}
 }
@@ -47,11 +47,11 @@ func setupStore(t *testing.T) (string, string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	tdir := filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")
-	if err := os.MkdirAll(tdir, 0o755); err != nil {
+	repoRoot := t.TempDir()
+	if _, err := Resolve(repoRoot, testRootSHA); err != nil {
 		t.Fatal(err)
 	}
-	return t.TempDir(), home
+	return repoRoot, home
 }
 
 // TestCaptureRedactsSecretsAndHomePaths is the load-bearing guarantee: a stored
@@ -172,7 +172,7 @@ func TestCaptureRedactsHomePathFollowedByPunctuation(t *testing.T) {
 	user := "zzhomeuser42"
 	home := filepath.Join(base, user)
 	t.Setenv("HOME", home)
-	tdir := filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")
+	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
 	if err := os.MkdirAll(tdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -186,6 +186,9 @@ func TestCaptureRedactsHomePathFollowedByPunctuation(t *testing.T) {
 		{"amp-after-self-home", "run --root=" + home + "&flag=1"},
 		{"at-after-self-home", "scp " + home + "@backup"},
 		{"eq-after-users-user", "see /Users/" + user + "=cfg"},
+		{"dot-after-self-home", "saved under " + home + "."},
+		{"file-url-self-home", "open file://" + home + "/x"},
+		{"underscore-after-self-home", "notes in " + home + "_2/x"},
 	}
 	var lines []string
 	for _, c := range cases {
@@ -225,30 +228,40 @@ func TestCaptureRedactsHomePathFollowedByPunctuation(t *testing.T) {
 }
 
 // TestSurvivingCallerHomeBackstop proves the deterministic, scanner-independent
-// backstop (Finding A part 2): it recognises a "/Users/<user>" or "/home/<user>"
+// backstop (Finding A part 2): it rewrites a "/Users/<user>" or "/home/<user>"
 // segment for the caller's own username regardless of the trailing character,
-// while rejecting a longer, different username. This is the fail-closed guard
+// leaves a longer, different username alone, and reports only the literal
+// home standing as a path — the one shape it cannot rewrite. This is the guard
 // that stands even if the scanner heuristic ever regresses.
 func TestSurvivingCallerHomeBackstop(t *testing.T) {
 	home := "/base/zzhomeuser42"
 	cases := []struct {
-		name string
-		text string
-		want bool
+		name      string
+		text      string
+		rewritten bool // the username segment is gone from the output
+		refused   bool // a finding is reported
 	}{
-		{"clean-redacted", "wrote ~/notes and /Users/[redacted-user]/x", false},
-		{"literal-home-survives", "path " + home + "/x", true},
-		{"users-user-hash", "root=/Users/zzhomeuser42#frag", true},      // abcd-audit:allow
-		{"home-user-amp", "root=/home/zzhomeuser42&x", true},            // abcd-audit:allow
-		{"users-user-eq", "cfg=/Users/zzhomeuser42=v", true},            // abcd-audit:allow
-		{"different-longer-user", "path /Users/zzhomeuser42x/y", false}, // abcd-audit:allow
-		{"different-user", "path /Users/someoneelse/y", false},          // abcd-audit:allow
+		{"clean-redacted", "wrote ~/notes and /Users/[redacted-user]/x", false, false},
+		{"literal-home-survives", "path " + home + "/x", false, true},
+		{"users-user-hash", "root=/Users/zzhomeuser42#frag", true, false},                   // abcd-audit:allow
+		{"home-user-amp", "root=/home/zzhomeuser42&x", true, false},                         // abcd-audit:allow
+		{"users-user-eq", "cfg=/Users/zzhomeuser42=v", true, false},                         // abcd-audit:allow
+		{"behind-url-host", "see https://ci.example.com/Users/zzhomeuser42/x", true, false}, // abcd-audit:allow
+		{"different-longer-user", "path /Users/zzhomeuser42x/y", false, false},              // abcd-audit:allow
+		{"different-user", "path /Users/someoneelse/y", false, false},                       // abcd-audit:allow
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := len(survivingCallerHome(c.text, home)) > 0
-			if got != c.want {
-				t.Errorf("survivingCallerHome(%q) = %v, want %v", c.text, got, c.want)
+			out, resid := scanner.SurvivingCallerHome(c.text, home)
+			if got := len(resid) > 0; got != c.refused {
+				t.Errorf("SurvivingCallerHome(%q) refused = %v, want %v", c.text, got, c.refused)
+			}
+			if c.rewritten {
+				if strings.Contains(out, "zzhomeuser42") {
+					t.Errorf("SurvivingCallerHome(%q) left the username in place: %q", c.text, out)
+				}
+			} else if out != c.text {
+				t.Errorf("SurvivingCallerHome(%q) rewrote text it should leave alone: %q", c.text, out)
 			}
 		})
 	}
@@ -312,7 +325,7 @@ func TestCaptureIdempotentOnSourceSHA(t *testing.T) {
 		t.Errorf("mtime changed on idempotent no-op: %v -> %v", fi1.ModTime(), fi2.ModTime())
 	}
 
-	recs, err := List(testRootSHA)
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,14 +364,14 @@ func TestCaptureIdenticalSourceDistinctSessionsWritesBoth(t *testing.T) {
 		t.Fatalf("distinct sessions must not share a record path")
 	}
 
-	recs, err := List(testRootSHA)
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(recs) != 2 {
 		t.Fatalf("expected 2 records for two distinct sessions, got %d", len(recs))
 	}
-	if _, _, err := Read(testRootSHA, "sess-b"); err != nil {
+	if _, _, err := Read(repoRoot, testRootSHA, "sess-b"); err != nil {
 		t.Fatalf("second session must be retrievable after capture: %v", err)
 	}
 }
@@ -375,7 +388,7 @@ func TestListAndRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recs, err := List(testRootSHA)
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +400,7 @@ func TestListAndRead(t *testing.T) {
 		t.Errorf("expected newest (sess-two) first, got %q", recs[0].SessionID)
 	}
 
-	rec, body, err := Read(testRootSHA, "sess-one")
+	rec, body, err := Read(repoRoot, testRootSHA, "sess-one")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -404,15 +417,15 @@ func TestListAndRead(t *testing.T) {
 
 // TestListSkipsSymlinkedRecord is iss-383: the store's read path must not
 // follow a planted symlink — the write path already refuses symlinks at every
-// parent (ownedDirsReal) and the leaf (WriteFileAtomic), so a *.md symlink in
-// the transcripts dir is never store-authored and reads out-of-store bytes.
+// parent (ensureRealDir, on every resolve) and the leaf (WriteFileAtomic), so a
+// *.md symlink in records/ is never store-authored and reads out-of-store bytes.
 func TestListSkipsSymlinkedRecord(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	tdir := filepath.Join(home, ".abcd", "history", testRootSHA, "transcripts")
+	tdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records")
 	if _, err := Capture(repoRoot, testRootSHA, "sess-real", []byte("real one\n"), "native"); err != nil {
 		t.Fatal(err)
 	}
-	recs, err := List(testRootSHA)
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil || len(recs) != 1 {
 		t.Fatalf("want 1 real record, got %d (err %v)", len(recs), err)
 	}
@@ -424,7 +437,7 @@ func TestListSkipsSymlinkedRecord(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(tdir, filepath.Base(recs[0].Path))); err != nil {
 		t.Fatal(err)
 	}
-	recs, err = List(testRootSHA)
+	recs, err = List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatalf("List over a store holding a symlink errored: %v", err)
 	}
@@ -438,50 +451,14 @@ func TestListSkipsSymlinkedRecord(t *testing.T) {
 func TestListAbsentCorpusIsCleanEmpty(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	// No transcripts dir created.
-	recs, err := List(testRootSHA)
+	repoRoot := t.TempDir()
+	// Nothing captured yet: the store resolves (and creates itself) empty.
+	recs, err := List(repoRoot, testRootSHA)
 	if err != nil {
 		t.Fatalf("absent corpus should be clean-empty, got error: %v", err)
 	}
 	if len(recs) != 0 {
 		t.Errorf("expected 0 records for absent corpus, got %d", len(recs))
-	}
-}
-
-// TestCapturePreconditionMissingDir refuses to capture when install never
-// created the transcripts dir (never bootstraps it itself).
-func TestCapturePreconditionMissingDir(t *testing.T) {
-	repoRoot := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	_, err := Capture(repoRoot, testRootSHA, "sess-x", []byte("hi\n"), "native")
-	if err == nil {
-		t.Fatalf("expected a precondition error when transcripts dir is absent")
-	}
-	var spe *StorePathError
-	if !errors.As(err, &spe) {
-		t.Errorf("expected *StorePathError, got %T: %v", err, err)
-	}
-}
-
-// TestBootstrapErrorNamesRealVerb pins the store-preflight remediation to the
-// verb that actually exists. `abcd install` is not a verb; the store is
-// bootstrapped by `abcd ahoy install`. A bare "abcd install " in the message
-// sends the user to a command that does not exist (iss-58).
-func TestBootstrapErrorNamesRealVerb(t *testing.T) {
-	repoRoot := t.TempDir()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	_, err := Capture(repoRoot, testRootSHA, "sess-x", []byte("hi\n"), "native")
-	if err == nil {
-		t.Fatalf("expected a precondition error when transcripts dir is absent")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "ahoy install") {
-		t.Errorf("bootstrap error must name `abcd ahoy install`, got: %q", msg)
-	}
-	if strings.Contains(msg, "abcd install ") {
-		t.Errorf("bootstrap error names non-existent verb `abcd install`, got: %q", msg)
 	}
 }
 
@@ -566,11 +543,11 @@ func TestStageTwoGateBlocksSurvivingWarnIdentifier(t *testing.T) {
 	if hostname.Severity != scanner.SeverityWarn {
 		t.Fatalf("fixture must be warn-severity to exercise the gate, got %q", hostname.Severity)
 	}
-	if len(blockingResidual(findings)) == 0 {
+	if len(scanner.BlockingResidual(findings)) == 0 {
 		t.Errorf("a surviving warn-severity hostname must refuse the write: %+v", findings)
 	}
 	// A clean rescan still writes.
-	if got := blockingResidual(nil); len(got) != 0 {
+	if got := scanner.BlockingResidual(nil); len(got) != 0 {
 		t.Errorf("a clean rescan must not block: %+v", got)
 	}
 }
@@ -786,7 +763,7 @@ func TestCaptureRejectsBadRootSHAMessageNamesBothWidths(t *testing.T) {
 	if !strings.Contains(err.Error(), "64") || !strings.Contains(err.Error(), "40") {
 		t.Errorf("rootSHA error must name both 40- and 64-char widths, got %q", err.Error())
 	}
-	if _, err := List("also-not-a-sha"); err == nil ||
+	if _, err := List(t.TempDir(), "also-not-a-sha"); err == nil ||
 		!strings.Contains(err.Error(), "64") || !strings.Contains(err.Error(), "40") {
 		t.Errorf("List rootSHA error must name both widths, got %v", err)
 	}

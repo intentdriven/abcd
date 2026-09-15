@@ -52,6 +52,10 @@ The pattern was already prototyped in `~/.claude/commands/abcd.md` (the user-lev
 - Cross-project status (only current cwd's project)
 - Interactive status dashboard (this is one-shot output, not a TUI)
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._

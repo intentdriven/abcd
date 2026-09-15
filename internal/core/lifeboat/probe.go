@@ -189,7 +189,7 @@ func newSourceContext(repoRoot string) (*SourceContext, error) {
 	}
 	if gitutil.InRepo(abs) {
 		c.isGit = true
-		c.rootSHA = firstRootSHA(abs)
+		c.rootSHA = gitutil.RootCommit(abs)
 	}
 	return c, nil
 }
@@ -570,19 +570,6 @@ func isSkipDir(name string) bool {
 		}
 	}
 	return false
-}
-
-// firstRootSHA returns the canonical (first) root-commit SHA, or "".
-func firstRootSHA(repoRoot string) string {
-	out, err := gitutil.RunLimited(repoRoot, maxGitOutputBytes, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
-	if err != nil {
-		return ""
-	}
-	fields := strings.Fields(out)
-	if len(fields) == 0 {
-		return ""
-	}
-	return fields[0]
 }
 
 // ProbeOption adjusts one probe run. Options are variadic so the default stays

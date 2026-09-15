@@ -13,9 +13,10 @@ import (
 )
 
 // lint.go — the `abcd memory lint` verb (fn-39): a full-store curator
-// health-check. Page-local checks (MS001/MS002/ML001/MQ001/MQ003) per typed
-// page, plus a corpus pass (MQ002 + per-source MQ003) that rebuilds the
-// regenerable .coverage_index.json. Writes ONE run-log report; mutates no
+// health-check. Page-local checks (MR001/MS001/MS002/ML001/MQ001/MQ003) per
+// typed page, a residue pass (MR001) over the sources registry and the text
+// kept-originals, plus a corpus pass (MQ002 + per-source MQ003) that rebuilds
+// the regenerable .coverage_index.json. Writes ONE run-log report; mutates no
 // memory-store state. Exit contract: blocker -> 1; warn/info/clean -> 0.
 
 // Finding is a single memory-lint finding.
@@ -59,6 +60,7 @@ var defaultSeverities = map[string]string{
 	"MS001": "info",
 	"MS002": "blocker",
 	"ML001": "blocker",
+	"MR001": "blocker",
 }
 
 func severityFor(code string) string {
@@ -115,9 +117,13 @@ type memoryLinter struct {
 	frontmatter map[string]any
 	sourceLine  int
 	findings    []Finding
+	// redactor is the store redactor's read side for MR001; nil when the
+	// scanner is degraded, in which case Lint has already emitted the blocker
+	// that says so and the page-local residue check stands down.
+	redactor *storeRedactor
 }
 
-func newMemoryLinter(pagePath, repoRoot, content string) *memoryLinter {
+func newMemoryLinter(pagePath, repoRoot, content string, redactor *storeRedactor) *memoryLinter {
 	fm, err := parseFrontmatter(content)
 	if err != nil {
 		fm = map[string]any{}
@@ -128,6 +134,7 @@ func newMemoryLinter(pagePath, repoRoot, content string) *memoryLinter {
 		content:     content,
 		frontmatter: fm,
 		sourceLine:  frontmatterKeyLine(content, "source"),
+		redactor:    redactor,
 	}
 }
 
@@ -182,10 +189,81 @@ func (l *memoryLinter) derivedClasses() []string {
 }
 
 func (l *memoryLinter) run() []Finding {
+	l.checkResidue()
 	l.checkSourceClasses()
 	l.checkLicence()
 	l.checkQuotation()
 	return l.findings
+}
+
+// ---------------------------------------------------------------------------
+// Stored-residue lint (MR001) — the read side of the store redactor
+// ---------------------------------------------------------------------------
+
+// The write side redacts every body and every leaf a write introduces
+// (GHSA-j5f5, GHSA-x46m); it cannot reach text that was stored before it
+// existed or planted by hand, and a store that carries a secret propagates it
+// through every ask --file-back clone. MR001 is the same detector run over
+// what is ALREADY on disk: it reports, and it never rewrites the store
+// (adr-13 — lint judges, the operator repairs).
+
+const residueSuggestion = "If the credential is real, rotate it. Then remove the value by hand or re-ingest the source (every leaf a write introduces is redacted on the way in); lint reports and never rewrites the store."
+
+// residueFindings turns the store redactor's read-side verdict on one stored
+// text into MR001 findings. The message carries the kind and the line, never
+// the matched span: unlike scanner.Finding, whose MarshalJSON masks, a memory
+// Finding is free text that lands verbatim in report.json and report.md.
+func residueFindings(r *storeRedactor, text, file string) []Finding {
+	var out []Finding
+	for _, f := range r.residue(text, file) {
+		out = append(out, Finding{
+			Code: "MR001", Severity: severityFor("MR001"), File: file, Line: f.Line,
+			Message:    fmt.Sprintf("stored text carries a %s span the store redactor would refuse or rewrite — a secret or identity leak committed with the memory store.", f.Kind),
+			Suggestion: residueSuggestion,
+		})
+	}
+	return out
+}
+
+func (l *memoryLinter) checkResidue() {
+	if l.redactor == nil {
+		return
+	}
+	l.findings = append(l.findings, residueFindings(l.redactor, l.content, l.pagePath)...)
+}
+
+// residueOfStoreFiles scans the store's untouched leaves — the sources
+// registry and each text kept-original — which no page-local check reads.
+// The derived siblings (index.md, contradictions.md, log.md) are regenerated
+// from the pages by reconcile, so a page finding covers them. A binary
+// kept-original (a PDF) cannot be scanned span-wise and is skipped, as the
+// write side declines to rewrite it; its distilled pages are scanned instead.
+func residueOfStoreFiles(r *storeRedactor, repoRoot, mem string) []Finding {
+	var out []Finding
+	index := SourcesIndexPath(repoRoot)
+	if raw, err := fsutil.ReadGuarded(index, maxRegistryBytes); err == nil {
+		out = append(out, residueFindings(r, string(raw), index)...)
+	}
+	sources := filepath.Join(mem, "sources")
+	if fi, err := os.Lstat(sources); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+		return out
+	}
+	entries, err := os.ReadDir(sources)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() {
+			continue
+		}
+		path := filepath.Join(sources, e.Name())
+		raw, err := fsutil.ReadGuarded(path, maxFetchBytes)
+		if err != nil || !isRedactableText(raw) {
+			continue
+		}
+		out = append(out, residueFindings(r, string(raw), path)...)
+	}
+	return out
 }
 
 func (l *memoryLinter) checkSourceClasses() {
@@ -444,13 +522,21 @@ func Lint(req LintRequest) (LintResult, error) {
 	if err != nil {
 		return LintResult{}, err
 	}
-	if !present {
-		// Keep the reported store_path canonical when the store is simply absent.
-		mem = Dir(root)
-	}
 
 	var findings []Finding
 	if present {
+		// The store redactor's read side (GHSA-xj89-cc2c-wgwr). A degraded
+		// scanner is a blocker finding against the store rather than an error:
+		// lint's contract is to always crawl and write its report, and the exit
+		// is nonzero either way.
+		redactor, rerr := openStoreRedactor(root)
+		if rerr != nil {
+			findings = append(findings, Finding{
+				Code: "MR001", Severity: severityFor("MR001"), File: mem,
+				Message:    "secret scan unavailable (" + rerr.Error() + "): stored pages, the sources registry and kept originals were not checked for residue.",
+				Suggestion: "Repair or remove the per-repo scanner override at .abcd/config/pii.json and re-run lint.",
+			})
+		}
 		var pagePaths []string
 		err := filepath.WalkDir(mem, func(path string, d fs.DirEntry, err error) error {
 			if err != nil || !d.Type().IsRegular() || !strings.HasSuffix(path, ".md") {
@@ -470,7 +556,10 @@ func Lint(req LintRequest) (LintResult, error) {
 			if err != nil {
 				continue
 			}
-			findings = append(findings, newMemoryLinter(path, root, string(raw)).run()...)
+			findings = append(findings, newMemoryLinter(path, root, string(raw), redactor).run()...)
+		}
+		if redactor != nil {
+			findings = append(findings, residueOfStoreFiles(redactor, root, mem)...)
 		}
 	}
 

@@ -39,6 +39,12 @@ Then report the JSON to the user:
 Exit codes: `0` for allow and warn, `1` for a block, `2` when the guard could
 not be evaluated at all (an unparsable command line, or a `.abcd/guard.json`
 that does not load). Treat `2` as a fault to report, never as a clearance.
+Unparsable means an unterminated quote in **command text**, which no shell runs
+either; a quote inside a here-document **body** is document text and is not one.
+Grammar a shell does run gets a verdict instead: a trailing backslash is read as
+bash reads it, and a here-document whose delimiter line never comes is a
+**block** (`heredoc-unterminated`), because the rest of the input may be commands
+the guard did not check.
 
 On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
@@ -56,9 +62,12 @@ not by hand; a blocker returns the host's blocking status with the successor and
 the why as the message, and a warn or an allow lets the command run.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
-call that is not a shell command, a registry that does not load — allows the
-command and warns loudly. A guard that cannot answer never stops a session, and
-is never silently absent.
+call that is not a shell command, an unparsable command line, a registry that
+does not load — allows the command and warns loudly. A guard that cannot answer
+never stops a session, and is never silently absent. A command line a shell
+would run is never in that set: a trailing backslash and an unterminated
+here-document are decided, not failed open on, and a here-document body is read
+as data however it is quoted, even when the line that opened it ends in `&&`.
 
 ## Registry and overrides
 
@@ -101,6 +110,23 @@ A hazard behind a launcher the guard does not recognise is no longer silent: it
 is a **warn** naming the entry it matched, because the guard cannot tell whether
 that program runs the rest of the line. Report it like any other warn — the
 command may run, and the user decides.
+
+An unquoted glob (`*`, `?`, `[…]`) at a position an entry constrains is read as
+the pattern it is: bash expands it against the working directory before the
+command runs, so a spelling the pattern *can* produce (`git pus? --force`,
+`git push --forc?`) is treated as produced and blocks. A glob anywhere else
+(`ls *`, `git add *.md`) changes nothing, and a quoted one is literal.
+
+A git alias declared in the command line is expanded before the match, because
+git resolves it before it runs: `git -c alias.p='push --force' p origin main` is
+a force push, and so are its `--config-env`, `GIT_CONFIG_KEY_n`/`VALUE_n` and
+`GIT_CONFIG_PARAMETERS` spellings. A `!` body is read as a shell command. Two
+consequences to report accurately: an alias that shadows a git builtin
+(`-c alias.push='push --force' push`) is refused even though git would ignore
+it — an accepted over-block — and configuration delivered from a FILE
+(`GIT_CONFIG_GLOBAL`, `-c include.path=`, an `--config-env` variable the line
+does not set) is a **warn** under `git-config-rewrite-unread`, because the
+directive is visible and its body is not.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: one launched through a known wrapper carrying a value-taking flag the

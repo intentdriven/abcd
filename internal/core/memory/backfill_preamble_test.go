@@ -174,8 +174,8 @@ func TestPageReadersToleratePreamble(t *testing.T) {
 	if src["class"] != "external_transcript" {
 		t.Errorf("pageSourceBlock = %#v, want the declared external_transcript block", src)
 	}
-	if body := pageBody(page); strings.Contains(body, "source:") {
-		t.Errorf("pageBody returned raw frontmatter: %q", body)
+	if body := parsePage(page).body; strings.Contains(body, "source:") {
+		t.Errorf("parsePage body carries raw frontmatter: %q", body)
 	}
 	info := pageInfoFrom("note_finance_q3-revenue.md", page)
 	if len(info.Classes) != 1 || info.Classes[0] != "external_transcript" {

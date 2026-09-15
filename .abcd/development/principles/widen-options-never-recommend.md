@@ -31,7 +31,16 @@ can do without owning the judgement; recommending is owning it.
   "(recommended)" labels, no ordering by the tool's own scoring at
   conjectural questions.
 
-**Promotion.** Unenforced today (principle rung). Promotes toward a
-discipline if a surface-lint can detect recommendation markers in
-options-regime output — a neighbour to the itd-84 promotion ladder, and like
-it, calibrated before it gates.
+**Promotion.** Underway (staged rung). The cold-reading output contract
+carries a supply-regime field, and ingest checks each reading's output
+against what its regime licensed it to produce: an evaluative output
+containing an ordering, a score, or a single named recommendation is
+refused; an explicative output in which a surfaced claim arrives already
+dispositioned is refused; a registrative output attaching a proposed
+resolution to a detection is refused. The check ships enforced per the ruling, with a
+reserved degradation path: where a signature proves noisy in practice it
+records the regime and flags for researcher review instead, and the
+claimed property weakens from enforced to observed, said out loud per
+`loud-staging`. (Enforced-at-birth is in tension with this principle's own
+promotion rule — calibrated before it gates; the tension is recorded as
+standing, and the ruled design governs the instrument meanwhile.)

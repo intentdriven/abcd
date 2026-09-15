@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // render writes the whole verdict record.
@@ -150,16 +152,33 @@ func cell(s string) string { return cellEscaper.Replace(s) }
 // first character cannot begin a block; the idea is the one field rendered as a
 // bare paragraph, where a leading marker WOULD open a heading, a list, a quote, or
 // a code fence. A backslash is markdown's own escape for exactly these.
+//
+// The value arrives already cleaned by termsafe, and the cleaner's code-span
+// exemption rests on the field being parsed as the exact string it was cleaned as
+// (see the invariant note in internal/termsafe/prose.go). Escaping a leading
+// backtick unconditionally broke that: it kills the span the cleaner relied on
+// and republishes its sheltered content as live markup — a quoted `<details>`
+// became a real disclosure widget, concealing every later section of the record.
+// A leading run that opens a BALANCED span opens no block (a backtick fence's
+// info string may not contain backticks, so a run with a matching closer on the
+// same line is an inline span by construction), so only an unbalanced run is
+// escaped — and the cleaner no longer emits one.
 func blockText(s string) string {
 	if s == "" {
 		return s
+	}
+	if s[0] == '`' {
+		if termsafe.OpensBalancedCodeSpan(s) {
+			return s
+		}
+		return `\` + s
 	}
 	switch s[0] {
 	// '[' is here for a subtler reason than the rest: a paragraph shaped like a
 	// link reference definition (`[x]: https://…`) is CONSUMED by CommonMark and
 	// renders as nothing at all — so an idea in that shape would erase the record's
 	// own subject while the verdict and the three legs still read normally.
-	case '#', '-', '*', '+', '>', '|', '`', '~', '=', '_', '[':
+	case '#', '-', '*', '+', '>', '|', '~', '=', '_', '[':
 		return `\` + s
 	}
 	// An ordered-list opener ("1. ", "12) ") is the one multi-character marker.

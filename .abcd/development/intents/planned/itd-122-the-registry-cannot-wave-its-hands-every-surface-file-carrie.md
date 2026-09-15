@@ -36,6 +36,10 @@ complete by a gate rather than asserted complete by an agent. Per the
 2026-08-16 planning rulings, the `Status` enum stays two-valued at both grains;
 sub-verb rows are what carry the granularity.
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _BDD format, per the itd-1 discipline. Walked and confirmed by the

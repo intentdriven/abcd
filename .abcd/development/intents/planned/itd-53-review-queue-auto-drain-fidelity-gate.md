@@ -39,6 +39,10 @@ The fix is not to make the close hook run the review — that would break loop p
 - **The headless backend-reachability fix.** The drainer needs a reachable backend to make progress; the in-process-oracle gap is itd-47's concern, upstream of this intent.
 - **The facilitator-elected loop-toward-acceptance policy** (re-open work on not-met, terminal unachievable→replan). That rides on this drainer as substrate but is its own intent (itd-50).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

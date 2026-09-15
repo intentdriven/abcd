@@ -139,3 +139,54 @@ func TestRenderIndexEscapesTableCells(t *testing.T) {
 		t.Errorf("RenderIndex did not escape the pipe in a definition:\n%s", row)
 	}
 }
+
+// TestScanReadsTermAliases pins the other spellings a term answers to. They are
+// what lets a site link "roadmap phase" to the phase entry, and an alias field
+// the scan dropped would be a spelling nothing reaches. An absent field and a
+// YAML null are both "no aliases": a term called `null` is the shape
+// iss-2608270908339164 already ruled out for the required fields.
+func TestScanReadsTermAliases(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, filepath.FromSlash(DirRelPath), "core")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, aliases string) {
+		body := "<!-- attribution -->\n---\nterm: " + name +
+			"\nbounded_context: core\ndefinition: a definition of some length\n" +
+			aliases + "status: stable\n---\n\n# " + name + "\n"
+		if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("phase", "aliases: [\"roadmap phase\", 'sequencing phase']\n")
+	write("spec", "aliases: null\n")
+	write("brief", "")
+
+	g, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string][]string{}
+	for _, ctx := range g.Contexts {
+		for _, term := range ctx.Terms {
+			got[term.Name] = term.Aliases
+		}
+	}
+	want := map[string][]string{
+		"phase": {"roadmap phase", "sequencing phase"},
+		"spec":  nil,
+		"brief": nil,
+	}
+	for name, aliases := range want {
+		if len(got[name]) != len(aliases) {
+			t.Errorf("%s: aliases = %v, want %v", name, got[name], aliases)
+			continue
+		}
+		for i, a := range aliases {
+			if got[name][i] != a {
+				t.Errorf("%s: alias %d = %q, want %q", name, i, got[name][i], a)
+			}
+		}
+	}
+}

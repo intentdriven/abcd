@@ -140,6 +140,10 @@ reviews reshaped the draft; they are commitments, not options.
   repair is not needed; when it is, repo policy forbids force-push, so the
   reauthor-and-new-branch path applies (not this intent's concern).
 
+## Scope Conditions
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Confirmed by the maintainer at the 2026-08-21 planning interview: all five
