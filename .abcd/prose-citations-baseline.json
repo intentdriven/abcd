@@ -97,26 +97,6 @@
       "note": "names a capture minted inside the throwaway verification repository itd-179's ac-1 audit reports running against ('Against a binary built from the branch tip in a throwaway repo: abcd capture promote iss-2608310903083914 ...'). It never named a record in this tree and correctly does not resolve here."
     },
     {
-      "id": "itd-167",
-      "class": "forward-looking",
-      "note": "minted on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606, not an ancestor of HEAD). itd-201 names it in its own out-of-scope list and says so: '(itd-167, itd-168, itd-169 on the design branch)'."
-    },
-    {
-      "id": "itd-168",
-      "class": "forward-looking",
-      "note": "minted on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606); cited by itd-201's out-of-scope list, which names the branch."
-    },
-    {
-      "id": "itd-169",
-      "class": "forward-looking",
-      "note": "minted on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606); cited by itd-201's out-of-scope list, which names the branch."
-    },
-    {
-      "id": "iss-2608291009106041",
-      "class": "forward-looking",
-      "note": "an issue record that exists only on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606, .abcd/work/issues/open/iss-2608291009106041-abcd-cannot-colour-a-selection-the-host-renders-which-bounds.md); iss-168 cites it for the host-rendered-selection colour finding."
-    },
-    {
       "id": "iss-2608231243286557",
       "class": "suspect",
       "note": "PROBABLE DEFECT, carried so the gate can land. No file of this id was ever added in any commit on any branch, and no near-neighbour id exists in the 2608231 window. It is cited five times as a settled fact — 'the renderer half is fixed (iss-2608231243286557)' — in itd-157 (lines 13, 21), spc-50 (line 34), iss-2608231322321751 (line 17) and iss-2608231350127745 (line 18), all copied from one another. Whoever knows which record the by-links renderer fix actually landed under should correct all five sites and delete this entry."

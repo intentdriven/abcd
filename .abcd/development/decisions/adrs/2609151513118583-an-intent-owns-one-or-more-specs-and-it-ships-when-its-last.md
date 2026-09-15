@@ -29,7 +29,7 @@ managed repository a spec was complete and ready to close while the intent it
 realised had roughly half its acceptance criteria met. The session stopped and
 asked rather than close, which was the right instinct and is why the record
 exists:
-[iss-2609100508566552](../../../work/issues/open/iss-2609100508566552-spec-close-ships-the-intent-with-no-way-to-split-the-two.md).
+[iss-2609100508566552](../../../work/issues/resolved/iss-2609100508566552-spec-close-ships-the-intent-with-no-way-to-split-the-two.md).
 The verb offered no way to close the spec without shipping the intent, and no
 way to let the delivered part land while the rest stayed planned. Whatever the
 session did next would have been a false record: ship an intent whose criteria
