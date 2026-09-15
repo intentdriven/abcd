@@ -88,6 +88,7 @@ tmp=''
 root_tmp=''
 path_tmp=''
 auth_tmp=''
+attest_tmp=''
 
 # staged records that provisioning BEGAN, and terminal that the run has already
 # had its last word (a notice or a refusal). Together they are the contract this
@@ -106,6 +107,7 @@ cleanup() {
 	[ -n "$root_tmp" ] && rm -rf "$root_tmp"
 	[ -n "$path_tmp" ] && rm -f "$path_tmp"
 	[ -n "$auth_tmp" ] && rm -rf "$auth_tmp"
+	[ -n "$attest_tmp" ] && rm -f "$attest_tmp"
 	[ -n "$lock" ] && rm -rf "$lock"
 	return 0
 }
@@ -492,8 +494,17 @@ fi
 #   - Resolve answers a different tag -> download path.
 # The accepted gap: a release cut with no plugin update never triggers a fetch
 # here — the version-skew notice surfaces it, `abcd update` is the explicit path.
+#
+# attest records whether this run established MANIFEST trust for the bytes the
+# cache holds — the equal-tag authentication below, or the download path's
+# verification of a fresh artefact against the same-origin checksums.txt. Only
+# such a run may write the home-scoped cache attestation (§9b): an offline run
+# proves corruption evidence only and attests nothing, and leaves any existing
+# attestation exactly as it found it — the record moves on evidence, never on
+# a run that could not check.
 use_cache=''
 cache_trust=''
+attest=''
 stale_note=''
 if [ -n "$cached_sha" ]; then
 	if [ -z "$resolved_tag" ]; then
@@ -510,6 +521,7 @@ if [ -n "$cached_sha" ]; then
 			if [ -n "$published" ] && [ "$published" = "$cached_sha" ]; then
 				use_cache=yes
 				cache_trust=manifest
+				attest=yes
 			else
 				# Mismatch or an unlisted asset leaves use_cache empty: the cache
 				# is tampered or stale, so it is discarded and the download path
@@ -534,6 +546,7 @@ cache_note=''
 path_note=''
 from_note=''
 stamp_note=''
+attest_note=''
 
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
@@ -631,6 +644,12 @@ else
 			cache_note=' (the cache provenance record could not be written because its path is occupied by something that is not a regular file, so the next update may re-download)'
 		elif ! mv -f "$tmp/binary-meta" "$cache_meta" 2>/dev/null; then
 			cache_note=' (the cache provenance record could not be written, so the next update may re-download)'
+		else
+			# The artefact AND the record that names its manifest-verified hash
+			# are both in the cache now: this is the state the attestation
+			# describes, and only this state. A record that failed to land
+			# leaves nothing `ahoy install` could bind, so nothing is attested.
+			attest=yes
 		fi
 
 		# Refresh the abcd-owned PATH copy in the same run: a NEW release just
@@ -753,6 +772,54 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 	fi
 	rm -rf "$root_tmp"
 	root_tmp=''
+
+	# 9b. Attest the cache, in the HOME. The data dir above came from the
+	#     environment, and the cache's binary-meta sits beside the artefact it
+	#     vouches for, so an `ahoy install` that trusted those two alone could
+	#     be pointed at a directory of anyone's choosing holding a pair that
+	#     agree with each other (GHSA-4q78-ccfv-f374). This run is the one
+	#     process that holds the harness's REAL data dir and has just proved
+	#     the cached bytes against the published release manifest — and, in §9,
+	#     re-hashed the very copy it installed against that hash — so it writes
+	#     what the environment cannot: a home-scoped record naming the data
+	#     dir, the manifest-authenticated hash and the trust established. The
+	#     PATH promotion accepts a cache only when this record names its
+	#     directory and its recorded hash (adr-46 decision 4's ownership root,
+	#     the home write, now also the cache's trust floor).
+	#
+	#     Written only on manifest trust (attest, above): an offline run wrote
+	#     nothing into the cache and authenticated nothing about it, so it
+	#     neither creates nor rewrites this record. Written whole into a
+	#     sibling temp file and renamed in, mode 0600 — it is the reader's own
+	#     record — and a directory squatting the path is reported, not renamed
+	#     into. The path is rendered nowhere: the note carries no home path.
+	if [ -n "$attest" ] && [ -n "$home_dir" ]; then
+		attest_dir="$home_dir/.abcd"
+		attest_path="$attest_dir/cache-attestation"
+		if [ -e "$attest_path" ] && [ ! -f "$attest_path" ]; then
+			attest_note=' (the cache attestation could not be written because its path is occupied by something that is not a regular file, so `ahoy install` will not promote this cache to an owned PATH copy)'
+		else
+			attest_tmp="$attest_dir/.cache-attestation.$$"
+			if mkdir -p "$attest_dir" 2>/dev/null &&
+				(
+					umask 077
+					{
+						printf 'data_dir=%s\n' "$data_dir"
+						printf 'binary_sha256=%s\n' "$expected_sha"
+						printf 'cache_trust=manifest\n'
+						printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+					} > "$attest_tmp"
+				) 2>/dev/null &&
+				chmod 0600 "$attest_tmp" 2>/dev/null &&
+				mv -f "$attest_tmp" "$attest_path" 2>/dev/null; then
+				attest_tmp=''
+			else
+				rm -f "$attest_tmp" 2>/dev/null
+				attest_tmp=''
+				attest_note=' (the cache attestation could not be written, so `ahoy install` will not promote this cache to an owned PATH copy)'
+			fi
+		fi
+	fi
 else
 	# Degraded install (no usable data dir, or a hash that failed to parse):
 	# the spc-21 per-root path, verbatim — the artefact was verified in a temp
@@ -840,5 +907,5 @@ fi
 #
 # The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
 # the reason given there: this string is printed to be pasted into a shell.
-notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$degrade_note" "$binary_quoted")"
+notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$degrade_note" "$binary_quoted")"

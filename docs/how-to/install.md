@@ -46,7 +46,11 @@ authenticating the cached hash against the release's published `checksums.txt`
 when online, or noting in its success line that it provisioned from an
 unauthenticated cache when offline. Only an empty, stale, or unavailable cache
 falls back to downloading the release binary and `checksums.txt` and verifying
-the binary's SHA-256 against the manifest. A mismatch, a manifest that doesn't
+the binary's SHA-256 against the manifest. Whenever a run has established that
+manifest trust — an authenticated cache hit, or a fresh verified download — it
+also writes `~/.abcd/cache-attestation`, a small home-scoped record naming the
+data directory, the manifest-verified SHA-256, and the trust it rests on; an
+offline run writes nothing there and leaves an existing record as it was. A mismatch, a manifest that doesn't
 list the platform, or a platform outside the released matrix (darwin and linux
 on amd64 and arm64) installs nothing and says why in plain language. A plugin
 root that already holds the binary costs one file test and no network.
@@ -75,7 +79,12 @@ outside the one the session is working in, that is not world-writable, **and**
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
 own install verb — whichever entry it leaves on `PATH`: the copy of the
 verified release binary it prefers, the symlink it degrades to when there is no
-verified copy to make, and the track-latest shim `--dev` writes. Uninstalling
+verified copy to make, and the track-latest shim `--dev` writes. The copy is
+made only from a cache that `~/.abcd/cache-attestation` vouches for — the
+directory it names, holding the hash it names — so a data directory pointed at
+by an environment variable alone is never promoted onto `PATH`; the install
+says which record is missing or disagrees and degrades to the symlink until a
+session with network access re-authenticates the cache. Uninstalling
 takes the record away with the entry, so nothing that lands in that directory
 later inherits the claim. A binary nothing recorded is ignored with one line
 naming it and the reason, and the hook takes its degraded path instead; an

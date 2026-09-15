@@ -231,13 +231,22 @@ func ownedCopySourceReady(cwd, pluginRoot string) bool {
 	return cacheSourceReady(pluginDataDir(pluginRoot).dir, cwd)
 }
 
-// cacheSourceReady reports whether dataDir holds an artefact for this platform
+// cacheSourceReady reports whether dataDir holds a cache that may be promoted:
+// present (cachePresent) AND bound by the home-scoped attestation
+// (cacheBindingProblem). Detection offers the owned-copy heal on exactly this
+// predicate and install performs it on exactly this predicate, so the two can
+// never disagree about the same directory.
+func cacheSourceReady(dataDir, cwd string) bool {
+	return cachePresent(dataDir, cwd) && cacheBindingProblem(dataDir) == ""
+}
+
+// cachePresent reports whether dataDir holds an artefact for this platform
 // together with a parseable recorded hash to re-verify it against. An empty
 // dataDir is no source at all, and neither is one of a shape the harness never
 // produces (see dataDirHazard) — the check applies wherever the path came
 // from, the plugin root's stamp included, because neither source examines the
-// value it hands back.
-func cacheSourceReady(dataDir, cwd string) bool {
+// value it hands back. Presence is not trust: see cacheBindingProblem.
+func cachePresent(dataDir, cwd string) bool {
 	if dataDir == "" || dataDirHazard(dataDir, cwd) != "" {
 		return false
 	}
@@ -245,6 +254,29 @@ func cacheSourceReady(dataDir, cwd string) bool {
 		return false
 	}
 	return fileExists(cacheAssetPath(dataDir))
+}
+
+// cacheBindingProblem reports why the home-scoped attestation does not bind
+// dataDir's cache, or "" when it does: the attestation exists and is
+// well-formed, it names this very directory, and the cache's co-located
+// binary-meta carries the attested hash. Any of the three failing means the
+// directory and its record were chosen by something other than the bootstrap
+// run that authenticated them — an environment variable, a rewritten cache —
+// and nothing in it is a verified release artefact (GHSA-4q78-ccfv-f374). Every
+// path in the reason is rendered in tilde form.
+func cacheBindingProblem(dataDir string) string {
+	record := "~/.abcd/" + cacheAttestationFile
+	att, ok := readCacheAttestation()
+	if !ok {
+		return "no " + record + " record binds it — a session that authenticates the cache against the published release manifest writes one"
+	}
+	if resolvePath(att.dataDir) != resolvePath(dataDir) {
+		return record + " names a different directory (" + displayPath(att.dataDir) + "), so this one was chosen by something other than the session that authenticated the cache"
+	}
+	if cacheRecordedSHA(dataDir) != att.sha {
+		return "its recorded binary_sha256 is not the one " + record + " attests, so the cache changed after it was authenticated"
+	}
+	return ""
 }
 
 // RefreshPathEntryDigest re-records the provenance hash for the owned PATH
