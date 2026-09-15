@@ -22,7 +22,7 @@ Bare invocation is read-only. Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode --json
 ```
 
-Then tell the user the `state`. An absent store reads as `managed`.
+Then tell the user the `state`. An absent store reads as `managed`; outside any git checkout the print form refuses (exit 2), because there is no repository whose state could be read.
 
 ## Set the state — two writers, one verb
 
