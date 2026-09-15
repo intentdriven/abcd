@@ -10,6 +10,11 @@ found_at: "commands/abcd"
 related_intents: [itd-20]
 related_issues: [iss-164, iss-165]
 promoted_to: itd-200
+resolution: "Delivered by itd-200 (spc-70): the presence badge leads the host's status line in a managed repository, in three states read from the per-repo mode store; ahoy install offers and wires the line, the bare board carries the same state, and the palette ruling on this record is what ships."
+impact: additive
+resolved_by:
+  intent: "itd-200"
+  spec: "spc-70"
 ---
 
 abcd's presence should be visible in the host harness's status line / command line: a managed repo shows an 'abcd-managed' indicator (and possibly guard health) so the user can tell at a glance whether the current session is under abcd management without running a command. Needs a per-host adapter (e.g. a statusline hook) with the usual basics-built-in stance.
@@ -47,3 +52,35 @@ The one collision in the set is that gold is the nearest hue to the amber the pr
 ## Grounds
 
 - pursued: the status bar is the visible face of abcd, so a managed repository should look managed; we expect facilitators to keep the line on after living with it, and if they switch it off in their own settings that shows this was the wrong call
+
+---
+
+- pursued: a managed repository now looks managed and a parked stop is visible before any output is read; facilitators switching the line off in their own settings would show this was the wrong call
+
+## Colour ruling, 2026-09-15
+
+The presence pair shipped is livery's house yellow `#f0c052` on `#444444`,
+measuring **5.74:1**, not the 6.94:1 recorded above.
+
+This record states ratios and no hex. Building the render, the hexes were solved
+back from the three recorded figures — gold 6.94, white 9.74, pure yellow 9.07
+against one grey — which gives `#444444` for the grey and `#ffd700` for the gold,
+all three reproducing to two decimals. But `#ffd700` is not in abcd's palette;
+the house yellow is `#f0c052`. Put to the maintainer as record-versus-palette,
+the ruling was the palette.
+
+**What survives.** The reasoning above is about HUE: a gold between white's quiet
+presence and yellow's caution, because the idle state should say that nothing
+needs anyone. `#f0c052` is that same gold, so the argument holds and only the
+measurement moved. The pair still clears the 4.5:1 bar, with less margin.
+
+**What changes, and it is worth naming.** This record says gold "is the nearest
+hue to the amber the product thinker badge uses", held apart by polarity. The
+product thinker badge uses `#f0c052`. So the two are no longer the nearest hue,
+they are the SAME hue, and polarity is now the only colour-borne discriminator:
+presence is light-on-dark, product thinker is dark-on-light. The words differ
+regardless (`abcd` against `waiting: product thinker`), and the word is what
+carries the meaning with colour only reinforcing, so the badge stays legible with
+every escape stripped — which is a test, not an assurance. But the collision this
+paragraph called near is now exact, and a future change to either pair should
+know that polarity is carrying it alone.
