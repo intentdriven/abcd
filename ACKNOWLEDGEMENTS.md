@@ -47,6 +47,15 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   admission rule (no single-author coinages, no aggregators) was formulated in
   reaction to it. The post's URL was not recoverable when this entry was
   completed; the credit stands on title, author, platform and year.
+- **"AI puts people in a moral crumple zone" (Sylvain Bangma, LinkedIn, 2026,
+  <https://www.linkedin.com/posts/sylvain-bangma_ai-puts-people-in-a-moral-crumple-zone-share-7498728574032494592-CnjG>)**
+  — the three conditions that hollow out a human in the loop: no transparency
+  into what the automation did, no authority to change anything, and a drive
+  for efficiency. abcd adopts them as a standing test rather than a metaphor
+  (rfc-3), which is what turns Elish's diagnosis into something a design can be
+  measured against. The post arrives independently at tiered routing, where
+  higher-stakes work goes to people and lower-stakes work to automation, which
+  is the shape of abcd's verification ladder (itd-173).
 - **Agentic Context Engineering (ACE)** — the append-only-delta model of a
   self-improving instruction record, and the two failure modes it names —
   *brevity bias* and *context collapse* — which itd-81 cites to strike itd-5's

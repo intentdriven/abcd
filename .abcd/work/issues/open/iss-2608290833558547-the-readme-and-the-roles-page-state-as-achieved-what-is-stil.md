@@ -1,0 +1,14 @@
+---
+schema_version: 1
+id: "iss-2608290833558547"
+slug: "the-readme-and-the-roles-page-state-as-achieved-what-is-stil"
+severity: "major"
+category: "documentation"
+source: "user-observation"
+found_during: "intent-implementation-run"
+found_at: "README.md"
+---
+
+The README and the roles page state as achieved what is still the design intention, which is the front-door version of the loud-staging violation the project exists to refuse. Three claims outrun the code. The README says the records are checked by gates that refuse rather than warn, but the lint engine carries a warn severity and uses it: this run's own preflight emitted a warn-level finding and a docs-lint line reading one finding and zero blockers, so an advisory tier exists by design and the sentence denies it. The README then says what these records claim about the product being built stays true as the product moves, but the only mechanism that could make that true is the intent-fidelity audit, and that audit is report-only by construction, refuses to run against anything but an already-shipped intent, cannot be re-run once an inconclusive verdict is ingested, and is read by no gate. Empirically the claim is false today: twelve intents describe capabilities that are on the trunk, not one has been audited, and twelve specifications sit open while the code realising them has shipped, with nothing detecting the drift. The roles page goes further than the README and promises the product thinker a moment of reading the verdict on whether the why was delivered, and promises the facilitator will say what to do about a mismatch, when no verdict has ever been produced and no remedy path for a failed criterion exists. The README also flattens the three roles into agents and humans, which contradicts the roles page it links to and is the same conflation that makes it easy to argue a facilitator duty must stay manual because it is a human decision. The honest rewrite keeps the ambition and stages it: most gates refuse, the fidelity judgement is recorded rather than enforced today, and the sentence about product truth is stated as what the audit is for rather than what is already guaranteed.
+
+Widened 2026-08-29 by the role frame. Beyond the two claims already corrected in the README, the roles page carries four further over-promises and two under-promises: it promises the product thinker a verdict whose form is engineer-readable; it promises the facilitator will say what to do about a mismatch, where no remedy path exists; it asserts the product thinker's trade-off judgement is decisive while nothing routes a trade-off to them; and it frames a two-human team as the design with automation as an aim, where the facilitator is a machine by default and a person on activation. It omits the third product-thinker moment, validating the product in use, and it names no role for the agent team at all. The README now names three roles and the roles page names two.
