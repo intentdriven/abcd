@@ -121,7 +121,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	// mint-first-stamp-second, so a refusal raised any later than here would leave
 	// an orphan draft behind for a missing argument — the exact residue the rest
 	// of this path works to avoid.
-	g, gRedacted, gDegraded, err := requireGrounds(repoRoot, "promote", req.Grounds)
+	g, gRedacted, gDegraded, err := optionalGrounds(repoRoot, "promote", req.Grounds)
 	if err != nil {
 		return PromoteResult{}, err
 	}
@@ -170,8 +170,10 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	// between the two, and the write is judged again there — but the failure it
 	// removes is the deterministic one, where the record could never have taken
 	// the entry in the first place.
-	if _, err := appendGrounds("promote", content, g); err != nil {
-		return PromoteResult{}, err
+	if g != nil {
+		if _, err := appendGrounds("promote", content, *g); err != nil {
+			return PromoteResult{}, err
+		}
 	}
 
 	var itdID, intentPath string
@@ -242,9 +244,11 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		if err != nil {
 			return err
 		}
-		newContent, err = appendGrounds("promote", newContent, g)
-		if err != nil {
-			return err
+		if g != nil {
+			newContent, err = appendGrounds("promote", newContent, *g)
+			if err != nil {
+				return err
+			}
 		}
 		newFM, _, err := parseFrontmatterAndBody(newContent)
 		if err != nil {

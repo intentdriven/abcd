@@ -222,12 +222,12 @@ List open issues named by default-branch history with no resolution behind them 
 
 Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)
 
-**Usage:** `abcd capture promote <iss-N> --grounds "<token>: <text>" | promote <rdi-N> [flags]`
+**Usage:** `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
 
 **Flags:**
 
 ```
-      --grounds string           REQUIRED — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+      --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
       --intent string            stamp-only mode: link this existing itd-N instead of minting a draft
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
@@ -236,13 +236,13 @@ Graduate an issue or a dispositioned reading item into an intent draft (mints + 
 
 Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it
 
-**Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds "<token>: <text>" [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
+**Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds "<token>: <text>"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
 
 **Flags:**
 
 ```
       --commit string            resolved_by provenance: the fixing commit sha (7-64 hex chars, shape-checked only)
-      --grounds string           REQUIRED — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
+      --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
       --impact string            product impact: additive|breaking|fix|internal (required)
       --intent string            resolved_by provenance: the itd-N that fixed it (must exist)
       --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
@@ -773,7 +773,7 @@ Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on
 
 #### `abcd intent ready`
 
-Report whether an intent is ready to implement (planned + AC + claims + written spec + recorded grounds); exit 1 when not
+Report whether an intent is ready to implement (planned + AC + written spec; claims and grounds reported, never refused); exit 1 when not
 
 **Usage:** `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
 
@@ -891,6 +891,37 @@ Distil an external source into cited memory pages (https URLs only)
 Curator health-check over the whole memory store
 
 **Usage:** `abcd memory lint`
+
+### `abcd mode`
+
+Print or set whose answer the agent loop is waiting on (managed, facilitator, product-thinker)
+
+**Usage:** `abcd mode [<state>]`
+
+Print or set the waiting-on state behind the status line's badge.
+
+Bare `abcd mode` prints the stored state: `managed` (abcd is here and nobody
+is waiting), `facilitator` (the loop is parked on the facilitator, the person
+at the terminal running the agents), or `product-thinker` (the loop is parked
+on the product thinker, who answers on a surface of their own). An absent
+store reads as `managed`.
+
+`abcd mode <state>` sets it. Two writers share the verb: the agent runs it
+when it stops for a verdict, naming whom it is addressing, and the human runs
+it by hand to say which hat they wear. The state lives per checkout at
+`.abcd/.work.local/mode`, so only a repository abcd manages — one that has
+the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
+nothing. The next status-line refresh and the bare `abcd` board read the
+same file.
+
+Where this machine has no status surface — no `~/.abcd/statusline.json`, or
+one with `disabled` set — the set form prints one line naming whose answer
+is owed, once, because the verb call is the stop. Setting `managed` owes
+nobody and prints nothing; with a surface installed nothing is printed at
+all. With --json the notice is a field. Both forms make no network request.
+
+Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
+and nothing is written on any of them.
 
 ### `abcd reading`
 
@@ -1071,6 +1102,35 @@ Close a spec (open/ -> closed/); ship its linked intent when no open spec is lef
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)
 ```
+
+### `abcd statusline`
+
+Render abcd's status-line row from the harness payload on stdin (harness-invoked)
+
+**Usage:** `abcd statusline`
+
+Render abcd's row for the host harness's status line.
+
+The harness runs this on every status refresh, with its JSON status
+payload on stdin, and shows what it prints. In a checkout abcd manages the
+row is abcd's own: the presence badge first — `abcd`, `waiting: facilitator`
+or `waiting: product thinker`, from the state `abcd mode` stores — then the
+repository name, the branch, the model, the context percentage, the
+five-hour and seven-day usage percentages, and the record's counts of
+intents not yet shipped and open issues. Each element after the badge is
+switchable in `~/.abcd/statusline.json`; a payload field the harness did not
+supply drops its element with no placeholder.
+
+Outside a managed checkout, or with `disabled` set in the user-level
+setting, it runs the status command recorded there at install time with the
+same stdin and passes its output and exit code through unchanged, so the
+user's own line is untouched everywhere abcd does not manage. With none
+recorded it prints nothing and exits 0.
+
+The checkout is resolved from the payload's `cwd` (falling back to the
+working directory). Empty stdin is an empty payload. Nothing here prompts,
+reads a terminal, or touches the network. With --json the row is emitted as
+its ordered elements, each with a key, a rendered and a plain form.
 
 ### `abcd update`
 

@@ -1389,6 +1389,74 @@ Per hand-run, append:
   routing, which is a gap in the pre-pass worth noting: the table asks where
   each part lives, not what the part cannot represent.
 
+### 2026-09-11 — lifecycle symmetry across record families
+
+- **Proposal:** all artefacts must be consistent where possible: issues, specs
+  and intents should close the same way, and since issues are minted to avoid
+  conflicts, specs, intents, ADRs and everything else should be minted the same
+  way.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | Every write-side family mints through one allocator | already shipped | verify only (adr-45, `recordid.Minter`) |
+  | `CLAUDE.md` states ADRs keep a hand-numbered ordinal | defect | issue `iss-2609111002410678` |
+  | Terminal moves are asymmetric across families | capability | intent `itd-2609111003026787` |
+  | Supersede has no verb for intents or ADRs | capability | same intent (maintainer's routing) |
+
+- **Links:** `related_adrs: adr-45`, cited by analogy. The first routing said
+  `refines`, which is wrong twice: `refines` is not a field the schema knows
+  (`internal/core/lint/schema.go:113-115`), and adr-45's five rulings are about id
+  allocation, which this narrows none of. `related_intents: itd-34` was MISSED at
+  routing and is the run's blocking defect — see the correction below.
+- **Corrected after the two adversarial reviews (2026-09-11).** The run's
+  routing was WRONG in one part and the table's own method produced two false
+  numbers. Recorded here because the calibration corpus is worth less if it only
+  records the runs that went well.
+
+  **The blocking miss:** the table asserted "Supersede has no verb for intents or
+  ADRs". Half wrong. `itd-34` sits in `planned/` and already specifies
+  `/abcd:intent reclassify --kind superseded --by`, with a richer contract
+  (`kind_at_supersession`) than the draft proposed. The run's own stated lesson —
+  check whether each part is already shipped before routing it — was applied
+  against SHIPPED CODE only, never against PLANNED RECORDS, and that is exactly
+  the blind spot that produced the duplicate. The lesson generalises further than
+  it was written: check the record store, not just the tree.
+
+  **Why nothing caught it:** the draft omitted `## Prior Art`, which
+  `intents/README.md:206-209` makes required, and which exists precisely to
+  surface this. Four of the five minted-era drafts carry it; this was the only one
+  without.
+
+  **Two false numbers**, both from counting directory entries rather than
+  records: "7 superseded intents" (6 records plus a `README.md`) and "60 ADRs
+  carry a superseded edge" (5 carry an edge; 60 was the file count, and every ADR
+  carries `superseded_by:` as a null-initialised schema field written at mint by
+  `decide.go:222`). A count of files is not a count of acts.
+
+- **Verdict:** SPLIT, confirmed by the maintainer, who chose one intent plus one
+  issue over three offered alternatives (a single intent carrying the minting
+  audit as a criterion; two intents split by act; hold and file nothing).
+- **Notes:** the first run where a whole half of the proposal was found ALREADY
+  SHIPPED. The minting half needed no record: every write-side family already
+  holds a `recordid.Minter` and names its family tag, `core/decide` last on the
+  2026-09-01 ruling. The corpus reads as mixed (295 sequential ids against 34
+  minted) only because minting is forward-only, which is a property of ids as
+  citations rather than evidence of a split surface — a distinction a table that
+  counted filenames would have got backwards.
+
+  That finding was only reachable by measuring the tree and reading the package
+  map before routing. A decomposition run from the proposal's own words would
+  have filed an intent to build what exists. Worth generalising into the
+  protocol: check whether each part is already shipped BEFORE routing it, not
+  after.
+
+  The run also turned up a defect the proposal did not mention and could not
+  have: `CLAUDE.md` asserts the exact opposite of the shipped minting behaviour,
+  in the file the rules loader puts before every session. The table caught it
+  because verifying "already shipped" meant reading both the code and the rule
+  that describes it, and they disagreed.
+
 ## 2026-09-15 — four release-cycle deferrals elevated to intents
 
 - **Proposal:** four findings deferred at the v0.9.0 cut as capabilities rather

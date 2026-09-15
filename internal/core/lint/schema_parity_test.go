@@ -189,7 +189,8 @@ func TestRecordSchemaFlagsIssueEnumAndSlug(t *testing.T) {
 
 // TestIssueRecordShapeFlagsLapseWithoutLapsedAt (spc-60) pins that the
 // committed-ledger gate refuses exactly what the reader refuses: a record whose
-// category is lapse and which carries no well-formed lapsed_at. capture's
+// category is lapse and which carries a malformed lapsed_at (absence is parked,
+// iss-2609091009111294, and reads clean on both sides). capture's
 // validateStrict refuses such a record and SKIPS it, so it sits in the ledger
 // invisible to every capture surface — the failure mode this rule exists to turn
 // into a red gate. The well-formed record beside it is the control: the gate must
@@ -223,7 +224,9 @@ func TestIssueRecordShapeFlagsLapseWithoutLapsedAt(t *testing.T) {
 		rec    string
 		substr string // "" means the record must stay clean
 	}{
-		{"absent", "iss-5-lapse-a.md", lapse("iss-5", "lapse-a", ""), "lapse record carries no 'lapsed_at'"},
+		// Absent is clean: the absence finding spc-60 raised is parked
+		// (iss-2609091009111294), mirroring capture's reader, which accepts the record.
+		{"absent", "iss-5-lapse-a.md", lapse("iss-5", "lapse-a", ""), ""},
 		{"date only", "iss-6-lapse-b.md", lapse("iss-6", "lapse-b", "2026-08-28"), "is not an RFC 3339 instant"},
 		{"free text", "iss-7-lapse-c.md", lapse("iss-7", "lapse-c", "yesterday"), "is not an RFC 3339 instant"},
 		{"well-formed", "iss-8-lapse-d.md", lapse("iss-8", "lapse-d", `"2026-08-28T00:00:00Z"`), ""},
@@ -233,7 +236,7 @@ func TestIssueRecordShapeFlagsLapseWithoutLapsedAt(t *testing.T) {
 		// with an optional property left unset. This gate must reach the same two
 		// verdicts, or it reports a reader refusal that does not happen
 		// (iss-2608300212513349).
-		{"padded on a lapse", "iss-9-lapse-e.md", lapse("iss-9", "lapse-e", `"   "`), "lapse record carries no 'lapsed_at'"},
+		{"padded on a lapse", "iss-9-lapse-e.md", lapse("iss-9", "lapse-e", `"   "`), ""},
 		{"padded on a non-lapse", "iss-10-obs-a.md", record("iss-10", "obs-a", "observation", `"   "`), ""},
 		// A list-shaped value. capture's reader parses it as []string and refuses the
 		// record outright ("lapsed_at" must be a string), skipping it — so it is

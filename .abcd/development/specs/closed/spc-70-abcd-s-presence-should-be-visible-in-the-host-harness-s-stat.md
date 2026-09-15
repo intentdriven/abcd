@@ -50,8 +50,15 @@ it, takes the element configuration, and writes the wiring only on consent.
   elements (model, context, five-hour, seven-day) render only when the field
   is present; an absent field drops the element with no placeholder. The
   branch is read from the repository. The counts are open issues and intents
-  not yet shipped (drafts plus planned), read from the record with the same
-  readers the board uses.
+  not yet shipped (drafts plus planned), taken as FOLDER COUNTS: the files
+  named `iss-*.md` in the ledger's `open/`, and the files named `itd-*.md` in
+  the intent store's `drafts/` plus `planned/`, one directory listing each,
+  nothing parsed. Folder membership is the record's own status signal, so
+  this is the number the board's readers give except for a record those
+  readers would skip as unreadable — and the harness runs the composition on
+  every refresh, where the board's readers, which load and parse every
+  record, measured 0.96 s over 20,001 open records. (Written as "the same
+  readers the board uses"; changed 2026-09-15 on that measurement.)
 - **The user-level setting.** `~/.abcd/statusline.json`: the off switch, the
   per-element switches, the presence badge's foreground and background, and
   the recorded previous status command. The defaults ship with the binary and
@@ -110,7 +117,10 @@ fallback, and it fires once per set, never per prompt.
 - **ac-10 (truncation).** Badge first; the test renders a row and asserts
   that every prefix of it still begins with the badge.
 - **ac-11 (full row).** A payload fixture carrying every field renders the
-  twelve elements in the named order with one separator.
+  nine elements in the named order with one separator. (The count was written
+  as twelve and the list it refers to names nine: badge, repository, branch,
+  model, context, five-hour, seven-day, intent count, issue count. Corrected
+  2026-09-15 when the render was built against it.)
 - **ac-12 (absent field).** The same fixture minus one field renders one
   element fewer and no placeholder.
 

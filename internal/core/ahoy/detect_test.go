@@ -36,6 +36,10 @@ func setupHermetic(t *testing.T) (home, pluginRoot string) {
 	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	// The harness's settings resolve under HOME once this is empty, so a
+	// machine that names its own configuration directory never leaks its real
+	// status line into a hermetic detection.
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("ABCD_BIN_TARGET", binTargetPath)
 	// The detector walks PATH looking for abcd entries, so a machine that has a
 	// real install — exactly the machines that dogfood the install — leaks

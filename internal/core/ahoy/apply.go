@@ -79,11 +79,12 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		return InstallResult{}, err
 	}
 
-	// Idempotency: zero required+resolvable gaps => exact no-op. Two exceptions
-	// fall through: the advisory git-identity pin, which install adopts against a
-	// confirmed answer (never under --yes), as the gap's fix hint
-	// advertises; and an explicit value override that differs from the persisted
-	// config, which forces an apply-as-update on an otherwise-clean repo (iss-107).
+	// Idempotency: zero required+resolvable gaps => exact no-op. Three exceptions
+	// fall through: the advisory git-identity pin and the status-line offer, the
+	// optional gaps install closes against a confirmed answer (never under
+	// --yes), as their fix hints advertise; and an explicit value override that
+	// differs from the persisted config, which forces an apply-as-update on an
+	// otherwise-clean repo (iss-107).
 	// An explicit --dev (or a plain install over an existing dev shim) forces an
 	// apply-as-update on an otherwise-clean repo, the same way an explicit value
 	// override does (iss-107): the requested install mode differs from what is on
@@ -91,7 +92,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	modeForced := modeWouldChange(opts, det, binTargetPath)
 
 	if len(actionable(det.Gaps)) == 0 &&
-		!(!opts.Yes && pinAdoptable(det.Gaps)) &&
+		!(!opts.Yes && len(optionalPending(det.Gaps)) > 0) &&
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
 		!modeForced {
@@ -150,8 +151,10 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepSkeleton()
 	cfg := ac.stepConfigValues()
 	ac.stepVisibility(cfg)
-	// After stepVisibility, never before: the private stub is only written once the
-	// .gitignore fence that keeps it untracked is on disk.
+	// After stepVisibility, never before: the local tier and the private stub
+	// inside it are only written once the .gitignore fence that keeps them
+	// untracked is on disk.
+	ac.stepLocalTier()
 	ac.stepBanlist()
 	// Beside the guard hooks, and after them: both land in the same committed hooks
 	// directory, and the EOL pin stepBanlist appends covers `.githooks/*`.
@@ -162,6 +165,9 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
 	ac.stepPathEntry()
+	// After stepPathEntry: the harness command names the entry the two steps
+	// above actually left on PATH.
+	ac.stepStatusLine()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	ac.stepIdentityPin()
@@ -1353,6 +1359,11 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 		}
 	}
 
+	// Status line: hand the harness back the command recorded before abcd took
+	// the row (spc-70). Decided by the SHAPE of the harness's command, so it is
+	// independent of whether the entry below is still there to be removed.
+	receipt.StatusLine = uninstallStatusLine()
+
 	// Symlink: remove only if it points at this plugin's binary. The entry is
 	// found the same way detection finds it — an owned entry anywhere on PATH,
 	// else the default location — so uninstall reaches the install that exists
@@ -1519,29 +1530,36 @@ const malformedConfigGapID = "config.malformed"
 // the history step that heals it must agree on the string.
 const credentialAtRestGapID = "history.credential_at_rest"
 
+// optionalGapIDs are the advisory gaps install closes only against an answered
+// prompt, never under --yes: the identity pin (see stepIdentityPin) and the
+// status-line offer (see stepStatusLine). In the order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID}
+
 // optionalSkipped lists the optional gaps a --yes run left un-applied. --yes
-// approves every resolvable category but never adopts the identity pin (see
-// stepIdentityPin), so the skip is deliberate — and therefore has to be
-// reported rather than left ambient (iss-166). Outside --yes the pin is offered
+// approves every resolvable category but never adopts the identity pin or
+// wires the status line, so the skip is deliberate — and therefore has to be
+// reported rather than left ambient (iss-166). Outside --yes each is offered
 // as a confirmation, so nothing is skipped silently and the list stays empty.
 func optionalSkipped(opts InstallOptions, gaps []Gap) []string {
-	if !opts.Yes || !pinAdoptable(gaps) {
+	if !opts.Yes {
 		return nil
 	}
-	return []string{OptionalPinGapID}
+	return optionalPending(gaps)
 }
 
-// pinAdoptable reports whether the advisory git-identity pin is the remaining
-// work. It is the one gap install closes through an interactive confirmation
-// (never under --yes), so it must not be short-circuited by the
+// optionalPending reports which of the optional gaps are the remaining work.
+// They are the gaps install closes through an interactive confirmation (never
+// under --yes), so their presence must not be short-circuited by the
 // "already_up_to_date" early return.
-func pinAdoptable(gaps []Gap) bool {
-	for _, g := range gaps {
-		if g.ID == OptionalPinGapID {
-			return true
+func optionalPending(gaps []Gap) []string {
+	present := gapIDSet(gaps)
+	var out []string
+	for _, id := range optionalGapIDs {
+		if present[id] {
+			out = append(out, id)
 		}
 	}
-	return false
+	return out
 }
 
 // actionable returns the required+resolvable gaps (the ones install must close).
@@ -1588,6 +1606,7 @@ var categoryPromptOrder = []GapCategory{
 	Dependency,
 	SafeAutocreate,
 	ConfigChange,
+	StatusLine,
 	UserState,
 	PluginOwned,
 }

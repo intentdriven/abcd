@@ -1191,6 +1191,11 @@
       "flags": []
     },
     {
+      "path": "abcd mode",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd reading",
       "hidden": false,
       "flags": []
@@ -1345,6 +1350,11 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd statusline",
+      "hidden": false,
+      "flags": []
     },
     {
       "path": "abcd update",

@@ -95,6 +95,18 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-163` — Reference-closure and acknowledgements-mirror gate: every citation resolves to the CSL references, the references and acknowledgements mirror both ways, and a committed influence registry backs the Inspirations list (supersedes itd-145; filed from the 2026-08-28 attribution review with the backfill issue iss-2608280824478819)
 - `itd-164` — Licence vetting at source admission: `docs cite refresh` records each source's licence verdict into the committed baseline, and the zero-network gate refuses a new entry without one (builds on itd-163)
 - `itd-159` — the repo visibility model has a committed-record mode between private and public, with the matching fence-suppression (graduated from iss-223)
+- `itd-165` — A failed fidelity verdict becomes work somebody can see (Phase 8 adjacent; the ratchet half is split out as a seed)
+- `itd-166` — A run records what it was actually run with (facilitator-tier diagnostics)
+- `itd-167` — The product thinker answers a stop in a medium they already use (Phase 8; adr-2609151528057131 gives abcd that surface)
+- `itd-168` — The product thinker sets how the system talks to them (Phase 7, the legible surface)
+- `itd-169` — An agent loop that stops says who it is asking and what it needs (Phase 8)
+- `itd-170` — What the product thinker reports after using the product finds its way back to the promise that predicted it (Phase 8)
+- `itd-171` — A decision points back to the conversation where it was reached (Phase 8)
+- `itd-172` — Every record has a short title and a one-line summary a non-engineer can read
+- `itd-173` — Verification escalates from the built-in check to an outside audit (security is the first rung built out)
+- `itd-174` — Each repository configures how far its facilitator is consulted and when it escalates (sequenced after itd-169)
+- `itd-175` — The product thinker writes down how this could be wrong, and what would show it (Phase 8; the defeater list an acceptance rests on)
+- `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
 - `itd-2609061543533170` — one verb sets up a managed repository's release-rendered site end to end: the site composition, the wrangler configuration, the render-then-deploy workflow, the environments it needs, and the worker itself where a credential is held
 - `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091248200336; `builds_on` itd-118, whose worktree clause it supplies the store and the reclaim verb for)

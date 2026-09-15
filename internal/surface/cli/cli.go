@@ -241,11 +241,15 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), asJSON, st, func(w io.Writer) {
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr())}
+			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
 				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
+				if board.Statusline != nil {
+					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
+				}
 			})
 		},
 	}
@@ -261,6 +265,8 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newVersionCommand(&asJSON))
 	root.AddCommand(newUpdateCommand(&asJSON))
+	root.AddCommand(newModeCommand(&asJSON))
+	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
 	root.AddCommand(newLintCommand(&asJSON))
@@ -1960,7 +1966,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	var readyGrounds string
 	readyCmd := &cobra.Command{
 		Use:   "ready <itd-N> [--grounds \"" + grounds.UsageSpelling() + ": <conjecture>\"]",
-		Short: "Report whether an intent is ready to implement (planned + AC + claims + written spec + recorded grounds); exit 1 when not",
+		Short: "Report whether an intent is ready to implement (planned + AC + written spec; claims and grounds reported, never refused); exit 1 when not",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -2009,6 +2015,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					mark := "[ ok ]"
 					if !c.OK {
 						mark = "[fail]"
+						if c.Advisory {
+							// Reported, not gating: the verdict above does not
+							// rest on this row.
+							mark = "[warn]"
+						}
 					}
 					// Detail/remedy interpolate frontmatter values, not charset-validated.
 					fmt.Fprintf(w, "  %s %s: %s\n", mark, c.Name, termsafe.Sanitize(c.Detail))
@@ -2420,6 +2431,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if mode, _ := res.Signals["install_mode"].(string); mode != "" {
 					fmt.Fprintf(w, "  install:     %s\n", mode)
 				}
+				// The host's status line as abcd sees it (spc-70): wired, absent,
+				// foreign, dangling, or no harness detected at all.
+				if sl, _ := res.Signals["statusline"].(string); sl != "" {
+					fmt.Fprintf(w, "  statusline:  %s\n", sl)
+				}
 				fmt.Fprintf(w, "  vintage:     %s\n", out.Vintage)
 				fmt.Fprintf(w, "  staleness:   %s\n", out.Staleness)
 				// The citation baseline's coverage and age, present only in a repo
@@ -2495,7 +2511,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// what abcd did not do and why (a dangling PATH entry it declined
 				// to create, a directory it could not write).
 				for _, n := range res.Notes {
-					fmt.Fprintf(w, "  note: %s\n", n)
+					fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
 				}
 				if len(res.DeclinedCategories) > 0 {
 					fmt.Fprintf(w, "  declined: %s\n", strings.Join(res.DeclinedCategories, ", "))
@@ -2504,10 +2520,15 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin, so say which optional work it left and how to apply it.
+				// pin or the status-line wiring, so say which optional work it
+				// left, why each needs an answer, and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
 					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
-					fmt.Fprint(w, "    the pin records the current git identity, so it is only written against an answered prompt:\n")
+					for _, id := range res.OptionalSkipped {
+						if why := optionalSkipReason(id); why != "" {
+							fmt.Fprintf(w, "    %s\n", why)
+						}
+					}
 					fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
 				}
 			})
@@ -2548,6 +2569,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "abcd ahoy uninstall\n")
 				fmt.Fprintf(w, "  marker removed: %v\n", receipt.Marker.Removed)
 				fmt.Fprintf(w, "  symlink: %s\n", symlinkNote(receipt))
+				fmt.Fprintf(w, "  status line: %s\n", receipt.StatusLine.Note)
 			})
 		},
 	}
@@ -2815,6 +2837,19 @@ func symlinkNote(r ahoy.UninstallReceipt) string {
 		return "removed " + r.Symlink.Target
 	}
 	return r.Symlink.Note
+}
+
+// optionalSkipReason says, for one optional gap --yes left alone, why only an
+// answered prompt writes it. The ids are the core's own (ahoy.optionalGapIDs),
+// so an id this switch does not know renders no reason rather than a wrong one.
+func optionalSkipReason(id string) string {
+	switch id {
+	case ahoy.OptionalPinGapID:
+		return "the pin records the current git identity, so it is only written against an answered prompt"
+	case ahoy.StatusLineOfferGapID:
+		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
+	}
+	return ""
 }
 
 // newPrompter returns the stdin-reading prompter. On a terminal it is the
@@ -3143,16 +3178,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
 			}
-			// --lapsed-at has NO default, and this is where the caller learns it: a
-			// lapse capture that omits the instant is refused in flag terms before
-			// anything is reserved or written. Core refuses the same record on its
-			// own (validateStrict, in property terms, for every other caller); which
-			// category obliges the value is read from the one shared definition, not
-			// restated here.
-			if issueschema.LapsedAtRequired(string(req.Category)) && strings.TrimSpace(req.LapsedAt) == "" {
-				return &exitError{Code: 2, Msg: "abcd capture --category " + issueschema.CategoryLapse +
-					" requires --lapsed-at <RFC 3339 instant> (nothing captured — the moment the discipline gave way is never defaulted to the write-up time)"}
-			}
+			// --lapsed-at has NO default and is never filled in for the caller: a
+			// lapse capture that omits the instant records none. The refusal that
+			// stood here is parked, not lifted (iss-2609091009111294): the instant stays
+			// optional until the rethink of the reading work settles what a lapse
+			// record must carry.
 			res, err := capture.Capture(req)
 			if err != nil {
 				return err
@@ -3278,15 +3308,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	var resolveImpact, resolveByIntent, resolveBySpec, resolveByCommit, resolveShippedIn string
 	var resolveGrounds, resolveModeRestamp string
 	resolveCmd := &cobra.Command{
-		Use:   "resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z]",
+		Use:   "resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds \"<token>: <text>\"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z]",
 		Short: "Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
-				return err
-			}
-			if err := requireGroundsFlag("resolve", resolveGrounds); err != nil {
 				return err
 			}
 			res, err := capture.Resolve(capture.ResolveRequest{
@@ -3337,7 +3364,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// and an undispositioned rdi-N is refused before anything is minted.
 	var promoteIntent, promoteGrounds, promoteProductionMode string
 	promoteCmd := &cobra.Command{
-		Use:   "promote <iss-N> --grounds \"<token>: <text>\" | promote <rdi-N>",
+		Use:   "promote <iss-N> [--grounds \"<token>: <text>\"] | promote <rdi-N>",
 		Short: "Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -3351,9 +3378,6 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// already refuses to act without, so demanding a second conjecture
 			// here would collect a value nothing writes.
 			if !strings.HasPrefix(args[0], issueschema.ReadingItemFamily+"-") {
-				if err := requireGroundsFlag("promote", promoteGrounds); err != nil {
-					return err
-				}
 			}
 			// The mode belongs to the DRAFT this mints; stamp-only mode mints
 			// nothing, so it carries none.
@@ -3529,7 +3553,7 @@ func emitGroundsReceipt(cmd *cobra.Command, asJSON bool, rec intent.GroundsResul
 
 // groundsFlagUsage is the one spelling of the argument's help text, so promote
 // and resolve cannot describe the same closed vocabulary differently.
-var groundsFlagUsage = "REQUIRED — the conjecture being acted on, not the route taken: " +
+var groundsFlagUsage = "optional; recorded when given — the conjecture being acted on, not the route taken: " +
 	"\"" + grounds.UsageSpelling() + ": <what is expected, and what would show it wrong>\""
 
 // groundsUsageError maps a core grounds refusal to exit 2, leaving every other
@@ -3546,22 +3570,6 @@ func groundsUsageError(verb string, err error) error {
 		return &exitError{Code: 2, Msg: "abcd capture " + verb + ": " + scrubPaths(err)}
 	}
 	return err
-}
-
-// requireGroundsFlag refuses a triage that names no grounds, at the CLI, as a
-// USAGE error (exit 2) with nothing written — the same shape `--category lapse`
-// without `--lapsed-at` already has. The core refuses the same call on its own
-// for every other caller; this is where a person typing the command learns it, in
-// flag terms rather than in property terms. Neither flag is marked
-// cobra-required, which would break the tree's no-required-flags invariant
-// (TestLiveTreeMarksNoFlagRequired): the requirement is semantic, not a usage
-// annotation.
-func requireGroundsFlag(verb, value string) error {
-	if strings.TrimSpace(value) != "" {
-		return nil
-	}
-	return &exitError{Code: 2, Msg: "abcd capture " + verb + " requires --grounds \"" + grounds.UsageSpelling() + ": <text>\" " +
-		"(nothing written — a triage records the conjecture being acted on, never only the route taken)"}
 }
 
 // emitRedactionNote says, on the human surface, that the written text differs

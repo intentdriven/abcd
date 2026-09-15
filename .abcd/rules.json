@@ -70,7 +70,8 @@
         "Each question is plain language a product thinker can answer without reading the record: one sentence of context, one concrete example of what each answer would mean in practice, then the options.",
         "Options widen and never recommend (widen-options-never-recommend): no starred default, no '(recommended)' label, no ordering by the tool's preference, and the null answer ('none of these' / 'decide later') is always available. Where a recommendation is genuinely asked for, give it in prose apart from the question, and say when none is given.",
         "Deferral is a real answer and is recorded as one; silence is never consent, and a step whose answer is missing is asked again rather than assumed.",
-        "Address the reader in their register: a product thinker gets outcomes and choices in product terms, no record ids, no code, no internals; a technical facilitator gets the mechanism, the ids and the trade-offs. When it is not known which hat the human wears, the first question asks that, and the itd-200 mode is the record of the answer."
+        "Address the reader in their register: a product thinker gets outcomes and choices in product terms, no record ids, no code, no internals; a technical facilitator gets the mechanism, the ids and the trade-offs. When it is not known which hat the human wears, the first question asks that, and the itd-200 mode is the record of the answer.",
+        "Before stopping for a verdict, record whose answer is owed with the mode verb (`go run ./cmd/abcd mode facilitator` or `... mode product-thinker` in this checkout; the plugin-root binary's `mode` elsewhere), and set it back with `mode managed` once the answer is in. The set form prints one line naming the addressee where the host has no status surface; relay it verbatim, because that line is the whole of the fallback (itd-200)."
       ]
     },
     "DOGFOODING": {

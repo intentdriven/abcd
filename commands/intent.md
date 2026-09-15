@@ -181,9 +181,11 @@ on stderr under `--json` — as `recorded grounds on <path> (<n> entries)`. Rela
 it. Recording is append-only, so a caller who retries after missing the receipt
 adds a second entry rather than replacing the first.
 
-**The gate refuses a planned record that carries no entry.** The `grounds` check
-is the seventh and last row of the report, and its remedy names this exact
-command. Terminal buckets are exempt on the same rule the claim checks follow:
+**The gate reports a planned record that carries no entry, and does not refuse
+it.** The `grounds` check is the seventh and last row of the report and is
+advisory: its remedy names this exact command, and the verdict ignores the row
+until the rethink of the reading work settles what a human is asked for here
+(iss-2609091009111294). Relay the row; do not treat it as a refusal. Terminal buckets are exempt on the same rule the claim checks follow:
 `shipped/` and `superseded/` records are never backfilled, and a discipline
 record carries no conjecture of its own. The write enforces that rule too: this
 verb REFUSES a `shipped/` or `superseded/` record, so no grounds this tool
@@ -220,8 +222,8 @@ own recording requirement:
 | Claim | Section | Requirement |
 | --- | --- | --- |
 | Criterion | `## Acceptance Criteria` | Mandatory — at least one Given-When-Then bullet |
-| Mechanism | `## Mechanism` | Prompted, nullable — an absent section passes; a heading with nothing under it is a fault |
-| Context | `## Scope Conditions` | Mandatory — top-level bullets, or the explicit nullity |
+| Mechanism | `## Mechanism` | Prompted, nullable — an absent section passes; a heading with nothing under it is named on an advisory row |
+| Context | `## Scope Conditions` | Reported — top-level bullets, or the explicit nullity; an absent or malformed section is named on an advisory row and never withholds readiness (iss-2609091009111294) |
 
 The nullity is one exact token, `None stated.`, alone on its line under the
 heading — the same grammar for both sections. Three byte states carry three
