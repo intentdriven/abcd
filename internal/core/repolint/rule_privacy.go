@@ -263,6 +263,18 @@ func lintSeverity(s scanner.Severity) Severity {
 // so product code that legitimately writes to /Users/Shared needs no waiver. The
 // exemption is scoped to the /Users root: a /home/<name> segment is always a
 // user, and the allowlist is a macOS convention.
+//
+// Two further shapes are exempt because the conventions MANDATE them, and a
+// detector that is red at baseline on its own conventions is one nobody reads
+// (iss-2609100505145554):
+//
+//   - a username segment that is a persona from the registry, which is what
+//     examples and fixtures are required to use;
+//   - anything beneath a system root, because a system root is not a home root,
+//     so no segment under it sits in the username position at all.
+//
+// Both narrowings are stated in full at their own call sites below, together
+// with what they deliberately stop catching.
 func hasAbsHomePath(line string) bool {
 	for _, loc := range absPathRe.FindAllStringIndex(line, -1) {
 		if !leadingBoundaryOK(line, loc[0]) {
@@ -279,13 +291,34 @@ func hasAbsHomePath(line string) bool {
 			seg = m[i+1:]
 		}
 		if isUsersRoot(m) && scanner.IsNonUserHomeSegment(seg) {
-			// The exemption covers the system directory ITSELF, not everything
-			// beneath it: /Users/Shared/<name>/... still names a user, and
-			// stopping the match on the exempt segment turned the system
-			// directory into a shield for the very thing the rule looks for.
-			if hasFurtherSegment(line, loc[1], isWindowsPath(m)) {
+			// A system root (/Users/Shared, /Users/Guest, C:\Users\Public) is not
+			// a home root: the username position is the segment immediately after
+			// /Users or /home, and that position is held here by a directory that
+			// names no user. Nothing DEEPER is in the username position either, so
+			// the whole subtree is exempt — which is what iss-153 asked for
+			// ("/Users/Shared/...") and what the product needs, because it creates
+			// such a directory and has to name it in comments, tests and docs.
+			//
+			// The exemption stops at a TRAVERSAL segment. "/Users/Shared/../bob"
+			// and "/Users/Shared//bob" leave the shared root again, so the name
+			// after them is back in the username position — this is the half of
+			// the old narrowing that was actually load-bearing, and it stays.
+			//
+			// Deliberately no longer caught: a personal name used as an ordinary
+			// directory name inside a shared folder (/Users/Shared/<name>/x). That
+			// is not a home path, and this rule detects home paths; the committing
+			// user's OWN name there is still caught by the scanner's
+			// local_username detector at hard_fail.
+			if reachedNameViaTraversal(line, loc[1], isWindowsPath(m)) {
 				return true
 			}
+			continue
+		}
+		if isPersonaHomeSegment(seg) {
+			// The conventions require examples and fixtures to use persona homes,
+			// and the rule's own Fix hint already blesses a persona-derived device
+			// name; treating the same roster as a leak in a path made the gate
+			// permanently red on a conforming repo.
 			continue
 		}
 		return true
@@ -293,27 +326,61 @@ func hasAbsHomePath(line string) bool {
 	return false
 }
 
-// hasFurtherSegment reports whether a NAME-BEARING path segment follows the
-// match at pos. "/Users/Shared" and "/Users/Shared/" have none, and neither has
-// a segment of pure dots: "/Users/Shared/..." is prose with an ellipsis, so
-// treating it as a username would flag the very sentence that documents the
-// exemption.
+// isPersonaHomeSegment reports whether a username segment is a registry persona
+// that is NOT this machine's own home user.
 //
-// An unnamed segment does not END the search, though: a dots-only or an empty
-// one ("/Users/Shared/../<user>", "/Users/Shared//<user>") sits between the
-// system directory and a real name, and stopping there handed the shield back to
-// exactly the paths the exemption must not cover. The walk skips them and keeps
-// looking.
+// The second half is what keeps the exemption honest. A real account for someone
+// called Alice is spelled `/Users/alice`, exactly like the fixture, so the roster
+// alone cannot separate them. The one machine where the distinction is decidable
+// — and the one where it matters most, because your own home path is the leak you
+// actually commit — is the machine whose home user IS that name, and there the
+// exemption yields. scanner.CallerHome is the same notion of "the caller's own
+// home" the scanner's home_path_self detector uses, so there is one answer to it
+// rather than two.
+//
+// Residual, stated plainly: a home path belonging to a DIFFERENT person whose
+// account name happens to be one of the roster's given names is no longer flagged
+// by this rule. That is the cost the record accepts in exchange for a gate that
+// is green on a conforming repo; the alternative it names — a waiver marker on
+// every example the conventions asked for — was judged worse.
+func isPersonaHomeSegment(seg string) bool {
+	if !scanner.IsPersonaName(seg) {
+		return false
+	}
+	home := scanner.CallerHome()
+	i := strings.LastIndexAny(home, `/\`)
+	if i < 0 {
+		return true
+	}
+	return !strings.EqualFold(home[i+1:], seg)
+}
+
+// reachedNameViaTraversal reports whether a NAME-BEARING path segment follows the
+// system-directory match at pos WITH A TRAVERSAL SEGMENT IN BETWEEN — a dots-only
+// or an empty segment ("/Users/Shared/../<user>", "/Users/Shared//<user>").
+//
+// That is the one shape where a name beneath a system root is back in the
+// username position: the traversal walks out of the shared root, so the segment
+// after it is a home directory again, and letting the system directory swallow it
+// would hand back the shield the exemption must not give.
+//
+// Everything else under a system root is exempt. A name reached DIRECTLY
+// ("/Users/Shared/<seg>/x") is an ordinary entry inside a shared folder, not a
+// home path, and flagging it taxed the product code that has to name its own
+// shared directory (iss-2609100505145554). "/Users/Shared" and "/Users/Shared/"
+// have no following segment at all, and "/Users/Shared/..." is prose with an
+// ellipsis.
 //
 // The separators the walk accepts come from the MATCH, not from the host it runs
 // on. A Windows path takes BOTH: Windows itself accepts either separator and
-// mixes them freely within one path, so `C:\Users\Shared/<user>/x` names a user
-// exactly as the all-backslash spelling does, and walking on one separator
-// exempted the mixed spelling wholesale. A POSIX path stays slash-only, because a
+// mixes them freely within one path, so `C:\Users\Shared/..\<user>` traverses
+// exactly as the all-backslash spelling does, and walking on one separator would
+// exempt the mixed spelling wholesale. A POSIX path stays slash-only, because a
 // backslash after one is an escape (the two bytes of "/Users/Shared\n" in a
 // source string), never a path segment.
-func hasFurtherSegment(line string, pos int, windows bool) bool {
+func reachedNameViaTraversal(line string, pos int, windows bool) bool {
 	isSep := func(b byte) bool { return b == '/' || (windows && b == '\\') }
+	traversed := false
 	for pos < len(line) && isSep(line[pos]) {
 		i, named := pos+1, false
 		for i < len(line) && isPathSegmentChar(line[i]) {
@@ -323,9 +390,15 @@ func hasFurtherSegment(line string, pos int, windows bool) bool {
 			i++
 		}
 		if named {
-			return true
+			// A name is a leak only if a traversal segment preceded it. An empty
+			// segment counts: "/Users/Shared//<user>" is the doubled-separator
+			// spelling of the same escape.
+			return traversed
 		}
-		pos = i // an empty or dots-only segment: skip it and keep looking
+		// The segment names nothing: either pure dots ("." / "..") or empty (two
+		// separators in a row). Both are the escape out of the shared root.
+		traversed = true
+		pos = i // skip the traversal segment and keep looking
 	}
 	return false
 }

@@ -1,10 +1,10 @@
 ---
 id: adr-46
 slug: persistence-never-weakens-the-verification-posture
-status: accepted
+status: superseded
 date: 2026-08-21
 supersedes: null
-superseded_by: null
+superseded_by: adr-2609151706587280
 related_intents: [itd-105, itd-132]
 related_rfcs: []
 related_adrs: [adr-38]

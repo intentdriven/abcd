@@ -27,7 +27,7 @@ func virginHome(t *testing.T) (repoRoot, home string) {
 func TestCaptureOnAMachineThatNeverInstalled(t *testing.T) {
 	repoRoot, home := virginHome(t)
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-neverinstalled", []byte("assistant: hi\n"), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-neverinstalled", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture on an uninstalled machine must bootstrap the store, got: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestCaptureOnAMachineThatNeverInstalled(t *testing.T) {
 func TestStageOnAMachineThatNeverInstalled(t *testing.T) {
 	repoRoot, home := virginHome(t)
 
-	res, err := Stage(repoRoot, testRootSHA, "sess-staged", []byte("assistant: hi\n"))
+	res, err := Stage(repoRoot, testRootSHA, mainStage("sess-staged"), []byte("assistant: hi\n"))
 	if err != nil {
 		t.Fatalf("Stage on an uninstalled machine must bootstrap the store, got: %v", err)
 	}
@@ -72,10 +72,10 @@ func TestTwoReposStayDistinguishableInOneStore(t *testing.T) {
 	shaA := testRootSHA
 	shaB := strings.Repeat("c", 40)
 
-	if _, err := Capture(repoA, shaA, "sess-a", []byte("assistant: alpha\n"), "native"); err != nil {
+	if _, err := Capture(repoA, shaA, []byte("assistant: alpha\n"), CaptureMeta{SessionID: "sess-a", Kind: "native"}); err != nil {
 		t.Fatalf("capture into repo A: %v", err)
 	}
-	if _, err := Capture(repoB, shaB, "sess-b", []byte("assistant: beta\n"), "native"); err != nil {
+	if _, err := Capture(repoB, shaB, []byte("assistant: beta\n"), CaptureMeta{SessionID: "sess-b", Kind: "native"}); err != nil {
 		t.Fatalf("capture into repo B: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestTwoReposStayDistinguishableInOneStore(t *testing.T) {
 func TestReadVerbsWorkAgainstTheRelocatedStore(t *testing.T) {
 	repoRoot, _ := virginHome(t)
 
-	if _, err := Stage(repoRoot, testRootSHA, "sess-pending", []byte("assistant: pending\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-pending"), []byte("assistant: pending\n")); err != nil {
 		t.Fatalf("Stage: %v", err)
 	}
 	staged, err := ListStaged(repoRoot, testRootSHA)
@@ -115,7 +115,7 @@ func TestReadVerbsWorkAgainstTheRelocatedStore(t *testing.T) {
 		t.Fatalf("ListStaged returned %d entries, want 1", len(staged))
 	}
 
-	dr, err := Drain(repoRoot, testRootSHA, 0)
+	dr, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestReadVerbsWorkAgainstTheRelocatedStore(t *testing.T) {
 func TestPerRepoPullInIsOptInOnly(t *testing.T) {
 	repoRoot, home := virginHome(t)
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-default", []byte("assistant: hi\n"), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-default", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestPerRepoPullInIsHonouredWhenDeclared(t *testing.T) {
 	repoRoot, home := virginHome(t)
 	declareLocal(t, home, repoRoot, 0o600)
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-local", []byte("assistant: hi\n"), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-local", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestStoreRefusesASymlinkedLevel(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	_, err := Capture(repoRoot, testRootSHA, "sess-planted", []byte("assistant: hi\n"), "native")
+	_, err := Capture(repoRoot, testRootSHA, []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-planted", Kind: "native"})
 	if err == nil {
 		t.Fatal("Capture through a symlinked store level must be refused")
 	}

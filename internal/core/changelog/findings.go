@@ -96,6 +96,11 @@ type FindingGuard struct {
 	// waiver. It is populated on a PASS, deliberately: a conscious deferral is
 	// only conscious if the release report says what was deferred and why.
 	Waived []Finding `json:"waived,omitempty"`
+	// Deleted is every blocking record that sat in open/ at the anchor and is in
+	// no status directory at HEAD — a record the cut removed from the ledger
+	// instead of answering. Its Path and Severity are read at the ANCHOR, the
+	// last ref that still holds the file.
+	Deleted []Finding `json:"deleted,omitempty"`
 	// Reason names what to fix; empty on a clean pass.
 	Reason string `json:"reason,omitempty"`
 }
@@ -138,6 +143,32 @@ type FindingGuard struct {
 // wontfix carries a recorded reason and is exactly the conscious, cited
 // non-action the rule asks for — the opposite of ignoring a finding, not a
 // loophole in the gate.
+//
+// A DELETION is not one of those routes, and the second half of this gate is
+// what says so (iss-2609091143455568). Looking only at open/ at HEAD made the
+// cheapest way past the gate the one that destroys the finding: every legitimate
+// route leaves a trace the next reader can follow — a resolution, a wontfix, a
+// deferral with its reason — and `git rm` leaves nothing at all. So the gate also
+// asks the question its sibling asks (RS001, scripts/check-issue-resolution.sh,
+// which refuses a trailer satisfied by a bare delete): a blocking record present
+// in open/ at the anchor and absent from the WHOLE ledger at HEAD is a deletion
+// rather than a disposition, and it refuses, naming the record and the deletion.
+//
+// Absence from the whole ledger, not from open/, is what makes the two halves
+// agree: a record that merely moved — resolved, wontfixed, or re-slugged — is
+// still somewhere under the status directories, and only a record that left the
+// ledger entirely is unauditable afterwards.
+//
+// The residual, stated because it bounds what this gate proves: a record
+// captured AFTER the anchor and deleted before HEAD appears in neither tree, so
+// no set-difference between two trees can see it. The alternative is a git-log
+// walk of the range, which this package already refuses for deciding what a
+// cycle produced (see WHAT COUNTS AS THIS CYCLE'S above) and for the same reason
+// — squash and rebase merges rewrite when a file appeared and vanished, so a
+// capture-and-delete inside one squashed branch leaves no add and no delete to
+// find. The sibling gate covers part of that window and not all of it: RS001
+// refuses a delete that a commit CLAIMS is a resolution, and a delete claiming
+// nothing is outside its question too.
 func GuardFindings(root string, baseTag string) (FindingGuard, error) {
 	g := FindingGuard{BaseTag: baseTag, Status: FindingGuardPassed}
 
@@ -149,6 +180,11 @@ func GuardFindings(root string, baseTag string) (FindingGuard, error) {
 	if err != nil {
 		return FindingGuard{}, err
 	}
+	deleted, err := deletedRecords(root, baseTag)
+	if err != nil {
+		return FindingGuard{}, err
+	}
+	g.Deleted = deleted
 
 	paths := make([]string, 0, len(stillOpen))
 	for p := range stillOpen {
@@ -177,22 +213,147 @@ func GuardFindings(root string, baseTag string) (FindingGuard, error) {
 		}
 	}
 
-	if len(g.Unfixed) > 0 {
+	var reasons []string
+	if s := g.UnfixedReason(); s != "" {
+		reasons = append(reasons, s)
+	}
+	if s := g.DeletedReason(); s != "" {
+		reasons = append(reasons, s)
+	}
+	if len(reasons) > 0 {
 		g.Status = FindingGuardFailed
-		g.Reason = unfixedReason(baseTag, g.Unfixed)
+		// Both failures in one report, each stating its own remedy. A cut that
+		// steps over a finding AND removes another is one report to read, and
+		// naming only the first would send the operator round the loop twice.
+		g.Reason = strings.Join(reasons, "\n")
 	}
 	return g, nil
+}
+
+// UnfixedReason and DeletedReason are the two halves of the verdict's prose, each
+// recomposed from the findings it reports. Reason carries both, which is what an
+// operator reads; a caller that raises ONE of them as its own refusal needs that
+// half alone, and a refusal carrying the other half's remedy sends its reader to
+// perform a step that does not apply. Both return "" when their half is clean.
+func (g FindingGuard) UnfixedReason() string {
+	if len(g.Unfixed) == 0 {
+		return ""
+	}
+	return unfixedReason(g.BaseTag, g.Unfixed)
+}
+
+// DeletedReason is UnfixedReason's twin for the removed records.
+func (g FindingGuard) DeletedReason() string {
+	if len(g.Deleted) == 0 {
+		return ""
+	}
+	return deletedReason(g.BaseTag, g.Deleted)
+}
+
+// deletedRecords returns every blocking record that was in open/ at the anchor
+// and is in NO status directory at HEAD.
+//
+// The grade is read at the ANCHOR, which is the only ref that still holds the
+// file — and it is the honest place to read it: the question is what the ledger
+// said about this finding when the cycle began. An unreadable grade blocks, for
+// gradeBlocks' reason; so does a grade nobody wrote. A record graded below the
+// blocking line is not reported, matching the rest of the gate: the rule has
+// never been "fix every finding", and a nitpick removed from the ledger is a
+// tidy-up rather than a defect stepped over.
+//
+// A waiver is deliberately NOT consulted. A deferral is a promise carried on the
+// record, and a deleted record carries nothing: there is no file left to re-ask
+// at the next anchor, which is exactly what makes deletion the one route that
+// cannot be audited.
+//
+// Membership is keyed on the id exactly as the other half keys it — the raw
+// handle the filename carries, through recordID. A zero-padded twin would key
+// beside its canonical spelling rather than on top of it, and here that direction
+// is a false DELETION rather than a miss, so it is worth saying why it cannot
+// arise: the allocator has never written a padded ledger filename (none exists in
+// this repository's history), and a tree carrying both spellings at once is a
+// duplicate id that record-lint's canonicalising issue_id_unique blocker refuses
+// before any cut reads it.
+func deletedRecords(root string, baseTag string) ([]Finding, error) {
+	openAtBase, err := openRecordsAt(root, baseTag)
+	if err != nil {
+		return nil, err
+	}
+	atHead, err := ledgerIDsAt(root, "HEAD")
+	if err != nil {
+		return nil, err
+	}
+
+	paths := make([]string, 0, len(openAtBase))
+	for p := range openAtBase {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	var out []Finding
+	for _, p := range paths {
+		id := openAtBase[p]
+		if _, survives := atHead[id]; survives {
+			continue
+		}
+		severity, err := recordSeverityAt(root, baseTag, p)
+		if err != nil {
+			return nil, err
+		}
+		if !gradeBlocks(severity) {
+			continue
+		}
+		out = append(out, Finding{ID: id, Path: p, Severity: severity})
+	}
+	return out, nil
+}
+
+// recordSeverityAt reads one record's grade at ref.
+func recordSeverityAt(root, ref, relPath string) (string, error) {
+	fields, err := recordFieldsAt(root, ref, relPath)
+	if err != nil {
+		return "", err
+	}
+	return scalar(fields["severity"].Value), nil
+}
+
+// recordFieldsAt reads one record's frontmatter at ref. It is the single blob
+// read behind both halves of this gate, so the grade a deletion is judged on at
+// the anchor and the grade an open record is judged on at HEAD can never be read
+// two different ways.
+func recordFieldsAt(root, ref, relPath string) (map[string]frontmatter.Field, error) {
+	blob, err := gitutil.RunLimited(root, maxRecordBytes, "cat-file", "blob", ref+":"+relPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s at %s: %w", relPath, ref, err)
+	}
+	return frontmatter.Fields(strings.Split(blob, "\n")), nil
+}
+
+// deletedReason names every removed record and the three routes that would have
+// answered it instead. It says what the ledger can no longer say — the record's
+// status — because folder membership IS the status signal, and a record in no
+// folder has none.
+func deletedReason(baseTag string, deleted []Finding) string {
+	lines := make([]string, 0, len(deleted))
+	for _, f := range deleted {
+		lines = append(lines, fmt.Sprintf("  - %s [%s] %s", f.ID, gradeLabel(f.Severity), f.Path))
+	}
+	return fmt.Sprintf("this cut removes findings from the ledger instead of answering them — each sat in "+
+		"open/ at %s and is now in no status directory at all:\n%s\nrestore the record and then resolve it, "+
+		"record the decision not to fix it (`abcd capture wontfix`), or defer it OUT LOUD by adding "+
+		"`%s: %s` and a `%s:` to it. Deleting a record is not a disposition: every other route leaves a "+
+		"trace the next reader can follow, and this one leaves nothing to audit",
+		baseTag, strings.Join(lines, "\n"), deferredAfterField, baseTag, deferralReasonField)
 }
 
 // judgeFinding reads one open record and decides whether it blocks the cut. It
 // returns the finding as it will be reported either way, because a waived
 // finding is reported too.
 func judgeFinding(root, id, relPath, baseTag string) (Finding, bool, error) {
-	blob, err := gitutil.RunLimited(root, maxRecordBytes, "cat-file", "blob", "HEAD:"+relPath)
+	fields, err := recordFieldsAt(root, "HEAD", relPath)
 	if err != nil {
-		return Finding{}, false, fmt.Errorf("reading %s at HEAD: %w", relPath, err)
+		return Finding{}, false, err
 	}
-	fields := frontmatter.Fields(strings.Split(blob, "\n"))
 	f := Finding{ID: id, Path: relPath, Severity: scalar(fields["severity"].Value)}
 	if !gradeBlocks(f.Severity) {
 		return f, false, nil

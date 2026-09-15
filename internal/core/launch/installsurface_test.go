@@ -281,3 +281,44 @@ func TestPayloadTreeImplementationsResolveIdentically(t *testing.T) {
 		t.Errorf("marketplace resolution disagrees:\n bundle=%+v\n dir=%+v", fromBundle.Marketplace, fromDir.Marketplace)
 	}
 }
+
+// TestResolveInstallSurfaceOnAPayloadThatIsNotAPlugin is iss-2609100506255436.
+//
+// Where the plugin manifest LIVES is fixed by the harness's discovery rule, and
+// pluginManifestFile's own comment says so. Whether the artefact HAS one is a
+// different fact, and adr-19's version-location contract is the precedent eight
+// lines up: abcd already chose to let a repo declare a release-shaped fact
+// rather than assume it. Resolution read the manifest unconditionally and
+// readManifest failed on a file that could not be READ, so a repo whose artefact
+// is a binary, an application bundle or a library failed resolution before
+// anything else ran — an absent plugin reported as a broken payload.
+//
+// A payload that declares no plugin now resolves to a surface carrying no plugin
+// name and no marketplace listing, while everything the conventions do declare
+// still resolves. A manifest that is PRESENT and unparseable is untouched by
+// this: that payload really is broken, and it still refuses.
+func TestResolveInstallSurfaceOnAPayloadThatIsNotAPlugin(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "commands/thing.md", "# thing\n")
+
+	surface, err := ResolveInstallSurface(NewDirTree(root))
+	if err != nil {
+		t.Fatalf("a payload that is not a plugin must resolve, not refuse: %v", err)
+	}
+	if surface.PluginName != "" {
+		t.Errorf("PluginName = %q, want empty — nothing declared one", surface.PluginName)
+	}
+	if len(surface.Marketplace) != 0 {
+		t.Errorf("Marketplace = %+v, want none", surface.Marketplace)
+	}
+	if _, ok := findEntry(surface, SurfaceCommand, "commands/thing.md"); !ok {
+		t.Errorf("the convention surface was lost with the manifest: %+v", surface.Entries)
+	}
+
+	// The negative control: present and unparseable is still a broken payload.
+	broken := t.TempDir()
+	writeFile(t, broken, pluginManifestFile, "{")
+	if _, err := ResolveInstallSurface(NewDirTree(broken)); err == nil {
+		t.Errorf("a plugin manifest that does not parse must still refuse")
+	}
+}

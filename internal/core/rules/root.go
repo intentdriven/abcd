@@ -297,21 +297,23 @@ func trustedRootDeclared(marker string) (bool, string) {
 		return false, ""
 	}
 	path := filepath.Join(home, filepath.FromSlash(TrustedRootsRelPath))
-	fi, err := os.Lstat(path)
-	if err != nil {
+	// The three-part guard is fsutil.ReadDeclaration's, not this function's: the
+	// three home-scoped declaration records differ in what they declare, never in
+	// what makes a declaration trustworthy, and the copy that skipped two of the
+	// checks was the one whose consequence is code execution
+	// (iss-2609091927085132). Only the WORDING stays here.
+	raw, refusal, err := fsutil.ReadDeclaration(path, maxTrustedRootsBytes)
+	switch refusal {
+	case fsutil.DeclarationOK:
+	case fsutil.DeclarationAbsent:
 		return false, "" // no declaration is the ordinary case, not a diagnostic.
-	}
-	switch {
-	case !fi.Mode().IsRegular():
+	case fsutil.DeclarationNotRegular:
 		return false, ignoredDeclaration("it is not a regular file")
-	case fi.Mode().Perm()&0o022 != 0:
+	case fsutil.DeclarationWritableByOthers:
 		return false, ignoredDeclaration("it is writable by others, so its contents are not necessarily yours")
-	}
-	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
+	case fsutil.DeclarationForeignOwner:
 		return false, ignoredDeclaration("it is not owned by this session's uid")
-	}
-	raw, err := fsutil.ReadGuarded(path, maxTrustedRootsBytes)
-	if err != nil {
+	default:
 		return false, ignoredDeclaration("it could not be read (" + termsafe.Sanitize(err.Error()) + ")")
 	}
 	fold := fsutil.CaseFoldingFS()

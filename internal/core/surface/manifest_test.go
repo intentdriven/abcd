@@ -145,8 +145,16 @@ func TestManifestEntriesTreatsVersionAsOrdinary(t *testing.T) {
 }
 
 // TestManifestEntriesRefusesUnreadableManifests keeps the snapshot fail-closed. A
-// missing or malformed manifest must be an error: reporting it as "no entries"
-// would make every manifest removal look like a surface that was never declared.
+// manifest that is THERE and malformed must be an error: reporting it as "no
+// entries" would make every declared key look like a surface that was never
+// declared.
+//
+// Absence is deliberately not in this table any more — it is a declaration that
+// was never made, not a payload that failed to load, and
+// TestManifestEntriesTreatsAnAbsentManifestAsNoDeclaration pins the other side
+// (iss-2609100506255436). The removal an absent manifest could hide is still
+// caught, one layer up, as a manifest_entry_removed break against the release
+// baseline.
 func TestManifestEntriesRefusesUnreadableManifests(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -154,10 +162,9 @@ func TestManifestEntriesRefusesUnreadableManifests(t *testing.T) {
 		marketplace string
 		want        string
 	}{
-		{"plugin missing", "", `{"name":"m"}`, "plugin.json"},
-		{"marketplace missing", `{"name":"p"}`, "", "marketplace.json"},
 		{"plugin malformed", `{`, `{"name":"m"}`, "plugin.json"},
 		{"plugin not an object", `["a"]`, `{"name":"m"}`, "plugin.json"},
+		{"marketplace malformed", `{"name":"p"}`, `{`, "marketplace.json"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -168,6 +175,23 @@ func TestManifestEntriesRefusesUnreadableManifests(t *testing.T) {
 				t.Fatalf("error = %q, want it to name %s", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestManifestEntriesRefusesAPresentManifestItCannotRead separates "not there"
+// from "there and unreadable", which is the whole of the change absence made: a
+// path occupied by something that is not a readable regular file is still a
+// refusal, so the guarded read's fail-closed behaviour is not what the
+// absent-manifest case relaxed.
+func TestManifestEntriesRefusesAPresentManifestItCannotRead(t *testing.T) {
+	root := writeManifests(t, "", `{"name":"m"}`)
+	if err := os.Mkdir(filepath.Join(root, ".claude-plugin", "plugin.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ManifestEntries(root); err == nil {
+		t.Fatal("a directory occupying plugin.json was read as an absent manifest")
+	} else if !strings.Contains(err.Error(), "plugin.json") {
+		t.Fatalf("error = %q, want it to name plugin.json", err)
 	}
 }
 
@@ -185,5 +209,71 @@ func TestManifestEntriesUsesRepoRelativePaths(t *testing.T) {
 		if !strings.HasPrefix(e.File, ".claude-plugin/") {
 			t.Fatalf("entry file %q is not repo-relative", e.File)
 		}
+	}
+}
+
+// TestManifestEntriesTreatsAnAbsentManifestAsNoDeclaration is
+// iss-2609100506255436 at this surface. An ABSENT plugin manifest and an
+// UNREADABLE one are different facts: where the manifest lives is fixed by the
+// harness's discovery rule, but whether the artefact has one at all is a
+// per-repo fact — adr-19's version-location contract is abcd's own precedent for
+// declaring such a fact rather than assuming it. A repo whose artefact is a
+// binary, an application bundle or a library has no plugin manifest, and reading
+// its absence as a broken payload is what stops `abcd changelog` before anything
+// else runs.
+//
+// Nothing about the guardrail is weakened: the removal case
+// (TestManifestEntriesAbsenceStillReportsTheRemoval) is caught as a BREAK
+// against the release baseline, which is the channel that exists for it, rather
+// than as an error that produces no verdict at all.
+func TestManifestEntriesTreatsAnAbsentManifestAsNoDeclaration(t *testing.T) {
+	neither := writeManifests(t, "", "")
+	entries, err := ManifestEntries(neither)
+	if err != nil {
+		t.Fatalf("a repo that declares no plugin must resolve, not refuse: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("entries = %v, want none", entries)
+	}
+
+	onlyMarketplace := writeManifests(t, "", `{"name":"m"}`)
+	entries, err = ManifestEntries(onlyMarketplace)
+	if err != nil {
+		t.Fatalf("ManifestEntries with no plugin.json: %v", err)
+	}
+	if got := keysFor(t, entries, "plugin.json"); len(got) != 0 {
+		t.Fatalf("plugin.json keys = %v, want none", got)
+	}
+	if got := keysFor(t, entries, "marketplace.json"); !equalStrings(got, []string{"name"}) {
+		t.Fatalf("marketplace.json keys = %v, want [name]", got)
+	}
+}
+
+// TestManifestEntriesAbsenceStillReportsTheRemoval is the other half, and the
+// reason absence may be empty rather than an error: a manifest that WAS declared
+// at the last release and is gone now must still stop the cut. It does — as a
+// manifest_entry_removed break, which the guardrail weighs against the cut's own
+// records, instead of as an error that yields no verdict.
+func TestManifestEntriesAbsenceStillReportsTheRemoval(t *testing.T) {
+	before := writeManifests(t, `{"name":"abcd"}`, `{"name":"m"}`)
+	baseEntries, err := ManifestEntries(before)
+	if err != nil {
+		t.Fatalf("ManifestEntries(before): %v", err)
+	}
+	after := writeManifests(t, "", `{"name":"m"}`)
+	curEntries, err := ManifestEntries(after)
+	if err != nil {
+		t.Fatalf("ManifestEntries(after): %v", err)
+	}
+
+	breaks := Diff(NewSnapshot(nil, baseEntries), NewSnapshot(nil, curEntries))
+	var found bool
+	for _, b := range breaks {
+		if b.Kind == BreakManifestRemoved && strings.Contains(b.Surface, "plugin.json") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("deleting plugin.json reported no manifest_entry_removed break: %+v", breaks)
 	}
 }

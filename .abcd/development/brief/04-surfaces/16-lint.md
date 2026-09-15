@@ -25,10 +25,61 @@ The verb applies rules about form, which adr-40's vocabulary names a lint;
 > vocabulary only: the snapshot carries no bucket field, so a bucket that is
 > wrong but legal passes, and that cell stays a review-grain claim._
 
-`abcd lint` registers no sub-verbs. The staged `chain` and `lifeboat`
-verbs belong to the **reserved** `/abcd:audit` surface (itd-16's hash-chain
-fidelity checks, registered in [`02-constraints/04-naming.md`](../02-constraints/04-naming.md)),
-not to the conformance lint.
+| Verb | Bucket | Status |
+|---|---|---|
+| `outbound` | gate | shipped |
+
+The staged `chain` and `lifeboat` verbs belong to the **reserved** `/abcd:audit`
+surface (itd-16's hash-chain fidelity checks, registered in
+[`02-constraints/04-naming.md`](../02-constraints/04-naming.md)), not to the
+conformance lint.
+
+`lint outbound` is the `gate` bucket rather than `lint`, and the distinction is
+the one adr-40 draws: the parent REPORTS on a repository and leaves the decision
+with a human, while this one is wired into CI to make a binary pass/fail decision
+about a single artefact. Its subject differs too — the parent's subject is this
+repository, the sub-verb's is a piece of text the caller hands it — which is why
+it takes `--root` for the scanner configuration explicitly rather than inheriting
+the parent's.
+
+## `lint outbound` — the outbound-policy gate
+
+The outbound policy (`scanner.OutboundPolicy`, AGENTS.md § Attribution and
+acknowledgements) bans two shapes from public text: a live agent-session URL and a
+tool's own "generated with" attribution footer. Four surfaces judge that class and
+all four read one definition — `scanner.HarnessLeakPatterns`. Three of them judge
+text that is already committed or already stored (the store-before-commit
+redactors, `abcd lint`'s `privacy-hygiene` rule, the record/docs `harness_leak`
+rule). This is the fourth, and it is the only one that judges text BEFORE it is
+public.
+
+It refuses; it does not rewrite. `scanner.ScrubOutbound` is the rewrite direction
+and remains without a front door by design (spc-45 scopes a forge client out): a
+scrub is right for a routine sanitising text it is about to post, and wrong for
+text a person already wrote. `scanner.CheckOutbound`, which backs this verb, has
+no text return at all, so the door cannot become a rewriter by a later edit.
+
+It reports only the harness-leak class, where the scrub masks everything the
+scanner finds. Masking more than the policy names is free; REFUSING more than it
+names is not — this runs as a required check over every commit message of every
+pull request, so each extra class is a new way to go red on text that breaks no
+stated rule, and a gate that reds on the innocent is a gate somebody switches off.
+
+**Why it exists in Go rather than as a regex in the CI gate.** The footer half was
+already gated by `scripts/check-attribution.sh`'s `GENERATED_RE`; the session-URL
+half was gated nowhere at all, and one reached three commit messages and two
+pull-request bodies of a managed public repo (iss-2609061438431625). It could not
+follow the footer into the shell gate: the detector is a pattern plus an OPACITY
+CLASSIFIER, and that classifier is a conjunction — a UUID, or a token carrying
+both a digit and an upper-case letter, or a long lower-case hex run — which POSIX
+ERE cannot express. The pattern without the classifier flags every page written
+about session handling, including this repository's own research notes. The shell
+gate therefore calls this verb, and there is still one definition of the class.
+
+Exit codes are `0` clean, `1` the artefact is refused, `2` the check could not
+run. That is deliberately NOT the parent's Conftest tri-state: both patterns are
+hard-fail, so the middle rung has no meaning, and the distinction that matters to
+a gate's caller is instead between a verdict and a check that never happened.
 
 ## What the answer looks like
 

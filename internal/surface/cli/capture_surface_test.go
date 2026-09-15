@@ -104,11 +104,11 @@ func TestJSONErrorShapeIsJSON(t *testing.T) {
 	var env struct {
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("--json error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("--json error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 	if env.Error == "" {
-		t.Fatalf("--json error envelope has an empty message:\n%s", stderr.String())
+		t.Fatalf("--json error envelope has an empty message:\n%s", stdout.String())
 	}
 }
 
@@ -140,8 +140,8 @@ func TestDocsLintMissingConfigCleanError(t *testing.T) {
 	var env struct {
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("--json docs lint error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("--json docs lint error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 }
 

@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -909,5 +911,464 @@ func TestBootstrapRefreshesAOneLinerInstalledPathCopy(t *testing.T) {
 	}
 	if !strings.Contains(entryRaw, "plugin_root="+root+"\n") {
 		t.Errorf("the refresh must stamp the live plugin root onto a record that carried none; got %q", entryRaw)
+	}
+}
+
+// GHSA-4q78-ccfv-f374 (iss-2609012039102770), option B: the bootstrap is the
+// one process that runs with the harness's real CLAUDE_PLUGIN_DATA and, when
+// online, has just authenticated the cache against the published release
+// manifest. It records that fact in a HOME-scoped attestation —
+// ~/.abcd/cache-attestation, beside path-entry — naming the data dir, the
+// manifest-authenticated binary_sha256 and the trust it established. `ahoy
+// install` promotes a cache into the owned PATH copy only when the
+// attestation names that directory and that hash, so an environment variable
+// alone can no longer bless attacker-chosen bytes. The record is written only
+// after authentication: an offline run, which trusts the cache at
+// corruption-evidence only, never writes or upgrades it.
+
+// homeCacheAttestation is $HOME/.abcd/cache-attestation.
+func homeCacheAttestation(home string) string {
+	return filepath.Join(home, ".abcd", "cache-attestation")
+}
+
+// attestationValues parses the attestation, failing when it is absent.
+func attestationValues(t *testing.T, home string) map[string]string {
+	t.Helper()
+	raw, err := os.ReadFile(homeCacheAttestation(home))
+	if err != nil {
+		t.Fatalf("the bootstrap must write the cache attestation after authenticating the cache: %v", err)
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func sha256Hex(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+// TestBootstrapAttestsCacheAfterManifestAuthentication: an online cache hit
+// authenticates the cached hash against the published checksums.txt and then
+// writes the attestation — exactly its declared fields, mode 0600, naming the
+// data dir the harness supplied and the hash the manifest vouched for.
+func TestBootstrapAttestsCacheAfterManifestAuthentication(t *testing.T) {
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	home := t.TempDir()
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	fx := bootstrapServer(t, []byte("served, never installed"), bootstrapManifest(cached))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("the authenticated cache hit must install, got %d (output %q)", code, out)
+	}
+	got := attestationValues(t, home)
+	if got["data_dir"] != data {
+		t.Errorf("the attestation must name the data dir the harness supplied; got %q, want %q", got["data_dir"], data)
+	}
+	if got["binary_sha256"] != sha256Hex(cached) {
+		t.Errorf("the attestation must carry the manifest-authenticated hash; got %q", got["binary_sha256"])
+	}
+	if got["cache_trust"] != "manifest" {
+		t.Errorf("the attestation must record the trust the bootstrap established; got %q", got["cache_trust"])
+	}
+	raw := strings.TrimSpace(mustReadFile(t, homeCacheAttestation(home)))
+	lines := strings.Split(raw, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("the attestation must hold exactly its four declared fields, got %d lines: %q", len(lines), raw)
+	}
+	for i, key := range []string{"data_dir", "binary_sha256", "cache_trust", "attested_at"} {
+		if !strings.HasPrefix(lines[i], key+"=") {
+			t.Errorf("line %d must be %s=…, got %q", i+1, key, lines[i])
+		}
+	}
+	fi, err := os.Stat(homeCacheAttestation(home))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("the attestation must be mode 0600: %v (%v)", fi, err)
+	}
+	if strings.Contains(out, home) {
+		t.Errorf("the notice must not carry the home path raw; output %q", out)
+	}
+}
+
+// TestBootstrapAttestsFreshlyDownloadedCache: the download path verifies the
+// artefact against the same-origin manifest before publishing it into the
+// cache, so that provision is manifest-authenticated too and is attested.
+func TestBootstrapAttestsFreshlyDownloadedCache(t *testing.T) {
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	home := t.TempDir()
+	body := []byte("#!/bin/sh\n# fresh download\nexit 0\n")
+	fx := bootstrapServer(t, body, bootstrapManifest(body))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("the download-into-cache provision must install, got %d (output %q)", code, out)
+	}
+	got := attestationValues(t, home)
+	if got["data_dir"] != data || got["binary_sha256"] != sha256Hex(body) || got["cache_trust"] != "manifest" {
+		t.Errorf("a freshly downloaded cache must be attested with the manifest hash; got %v", got)
+	}
+}
+
+// TestBootstrapOfflineCacheHitNeverAttests: offline, no published manifest is
+// reachable, so the cache is trusted at corruption-evidence only — and an
+// attestation is a claim of manifest trust, so none is written, and one that
+// already exists is left exactly as it was, whatever it names. The record
+// moves only on evidence.
+func TestBootstrapOfflineCacheHitNeverAttests(t *testing.T) {
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+
+	t.Run("none written", func(t *testing.T) {
+		root := bootstrapRoot(t)
+		data := t.TempDir()
+		home := t.TempDir()
+		seedBootstrapCache(t, data, bootstrapTag, cached)
+		fx := bootstrapServer(t, []byte("never served"), bootstrapManifest([]byte("never served")))
+		atomic.StoreInt32(fx.failLatest, 1)
+
+		out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+		if code != 0 {
+			t.Fatalf("an offline cache hit must still install, got %d (output %q)", code, out)
+		}
+		if _, err := os.Stat(homeCacheAttestation(home)); !os.IsNotExist(err) {
+			t.Errorf("an offline run authenticated nothing and must attest nothing: %v", err)
+		}
+	})
+
+	t.Run("existing left untouched", func(t *testing.T) {
+		root := bootstrapRoot(t)
+		data := t.TempDir()
+		home := t.TempDir()
+		seedBootstrapCache(t, data, bootstrapTag, cached)
+		prior := "data_dir=/some/other/data\nbinary_sha256=" + strings.Repeat("a", 64) + "\ncache_trust=manifest\nattested_at=2026-09-01T00:00:00Z\n"
+		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(homeCacheAttestation(home), []byte(prior), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		fx := bootstrapServer(t, []byte("never served"), bootstrapManifest([]byte("never served")))
+		atomic.StoreInt32(fx.failLatest, 1)
+
+		out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+		if code != 0 {
+			t.Fatalf("an offline cache hit must still install, got %d (output %q)", code, out)
+		}
+		if got := mustReadFile(t, homeCacheAttestation(home)); got != prior {
+			t.Errorf("an offline run must not rewrite an existing attestation; got %q, want %q", got, prior)
+		}
+	})
+}
+
+// TestBootstrapDiscardedCacheAttestsThePublishedHash: a poisoned self-consistent
+// cache is rejected by the manifest check and replaced by the real download;
+// the attestation then names the published hash, never the poison's.
+func TestBootstrapDiscardedCacheAttestsThePublishedHash(t *testing.T) {
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	home := t.TempDir()
+	poison := []byte("#!/bin/sh\n# forged payload\nexit 0\n")
+	published := []byte("#!/bin/sh\n# the real release\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, poison)
+	fx := bootstrapServer(t, published, bootstrapManifest(published))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("the replaced cache must install, got %d (output %q)", code, out)
+	}
+	got := attestationValues(t, home)
+	if got["binary_sha256"] == sha256Hex(poison) {
+		t.Fatal("the attestation vouches for the POISONED hash the manifest rejected")
+	}
+	if got["binary_sha256"] != sha256Hex(published) || got["data_dir"] != data {
+		t.Errorf("the attestation must name the published hash under the harness's data dir; got %v", got)
+	}
+}
+
+// TestBootstrapDegradedInstallWritesNoAttestation: with no data dir there is
+// no cache to attest; a stale attestation from an earlier provision is left as
+// it is, because this run authenticated nothing about it.
+func TestBootstrapDegradedInstallWritesNoAttestation(t *testing.T) {
+	root := bootstrapRoot(t)
+	home := t.TempDir()
+	body := []byte("#!/bin/sh\nexit 0\n")
+	fx := bootstrapServer(t, body, bootstrapManifest(body))
+
+	out, code := runScript(t, bootstrapFixtureScript(t, fx.base), root, append(fx.env(), "HOME="+home), "")
+	if code != 0 {
+		t.Fatalf("the degraded install must succeed, got %d (output %q)", code, out)
+	}
+	if _, err := os.Stat(homeCacheAttestation(home)); !os.IsNotExist(err) {
+		t.Errorf("a degraded install has no cache to attest: %v", err)
+	}
+}
+
+// runBootstrapWithDataHomeAtPid runs the bootstrap so that the test learns the
+// script's process id BEFORE the script starts: a wrapper shell records its
+// own $$ to pidFile, waits for goFile to appear, then execs the script, and
+// exec keeps the pid. plant is called with that pid between the two, so a
+// test can pre-place a file at any name the script derives from $$.
+func runBootstrapWithDataHomeAtPid(t *testing.T, root, data, home string, fx *bootstrapFixture, plant func(pid int)) (string, int) {
+	t.Helper()
+	bootstrapRequires(t)
+	script := bootstrapFixtureScript(t, fx.base)
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "pid")
+	goFile := filepath.Join(dir, "go")
+	wrapper := filepath.Join(dir, "wrapper.sh")
+	body := "#!/bin/sh\nprintf '%s' \"$$\" > \"$1\"\nwhile [ ! -e \"$2\" ]; do sleep 0.02; done\nexec \"$3\"\n"
+	if err := os.WriteFile(wrapper, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(wrapper, pidFile, goFile, script)
+	cmd.Env = dedupEnvKeepLast(append([]string{
+		"PATH=" + os.Getenv("PATH"),
+		"CLAUDE_PLUGIN_ROOT=" + root,
+	}, append(fx.env(), "CLAUDE_PLUGIN_DATA="+data, "HOME="+home)...))
+	var out strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	var pid int
+	for {
+		raw, err := os.ReadFile(pidFile)
+		if err == nil && len(raw) > 0 {
+			if n, perr := strconv.Atoi(strings.TrimSpace(string(raw))); perr == nil {
+				pid = n
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the wrapper never reported its pid")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pid != cmd.Process.Pid {
+		t.Fatalf("the wrapper's $$ (%d) is not the child pid (%d), so exec would not preserve it", pid, cmd.Process.Pid)
+	}
+	plant(pid)
+	if err := os.WriteFile(goFile, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := cmd.Wait()
+	code := 0
+	if err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+			code = e.ExitCode()
+		} else {
+			t.Fatalf("running the bootstrap: %v (output %s)", err, out.String())
+		}
+	}
+	return out.String(), code
+}
+
+// TestBootstrapAttestationTempIgnoresAPlantedSymlink: the first cut wrote the
+// attestation to `$HOME/.abcd/.cache-attestation.$$` with `>` and a chmod by
+// name, both of which follow a symlink pre-planted at that predictable name —
+// so a same-UID writer could have the run write the record's bytes and mode
+// onto a file of their choosing, and then rename the symlink itself into place
+// as the attestation. The temp must be created by mktemp (fresh, exclusive,
+// unpredictable), so the planted link is never opened: its target keeps its
+// bytes and mode, and the attestation that lands is a regular file.
+func TestBootstrapAttestationTempIgnoresAPlantedSymlink(t *testing.T) {
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	home := t.TempDir()
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	fx := bootstrapServer(t, cached, bootstrapManifest(cached))
+	victim := filepath.Join(t.TempDir(), "victim")
+	const victimBody = "the victim's own bytes"
+	if err := os.WriteFile(victim, []byte(victimBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := runBootstrapWithDataHomeAtPid(t, root, data, home, fx, func(pid int) {
+		planted := filepath.Join(home, ".abcd", ".cache-attestation."+strconv.Itoa(pid))
+		if err := os.Symlink(victim, planted); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if code != 0 {
+		t.Fatalf("the authenticated cache hit must install, got %d (output %q)", code, out)
+	}
+	if got := mustReadFile(t, victim); got != victimBody {
+		t.Errorf("the planted symlink's target was written through: got %q, want %q", got, victimBody)
+	}
+	if fi, err := os.Stat(victim); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("the planted symlink's target had its mode changed: %v (%v)", fi, err)
+	}
+	fi, err := os.Lstat(homeCacheAttestation(home))
+	if err != nil {
+		t.Fatalf("the attestation must still be written: %v (output %q)", err, out)
+	}
+	if !fi.Mode().IsRegular() {
+		t.Fatalf("the attestation must be a regular file, not the planted symlink renamed into place: %v", fi.Mode())
+	}
+	if got := attestationValues(t, home); got["binary_sha256"] != sha256Hex(cached) || got["data_dir"] != data {
+		t.Errorf("the attestation must carry the authenticated cache; got %v", got)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("the attestation must be mode 0600, got %v", fi.Mode().Perm())
+	}
+}
+
+// TestBootstrapAttestationStripsControlCharactersFromDataDir: the data dir is
+// an environment value, and the record is line-oriented. A value carrying a
+// newline would write extra key=value lines into a record whose Go reader
+// parses last-wins — a forged binary_sha256 line after the real one wins — so
+// the class meta_field strips on read is stripped before the write, and the
+// record holds exactly its four declared fields whatever the variable held.
+func TestBootstrapAttestationStripsControlCharactersFromDataDir(t *testing.T) {
+	root := bootstrapRoot(t)
+	home := t.TempDir()
+	// A directory whose NAME carries a newline and a forged record line after
+	// it: legal on POSIX, and exactly the injection shape.
+	data := filepath.Join(t.TempDir(), "data\nbinary_sha256="+strings.Repeat("f", 64))
+	if err := os.MkdirAll(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	fx := bootstrapServer(t, cached, bootstrapManifest(cached))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("the authenticated cache hit must install, got %d (output %q)", code, out)
+	}
+	raw := strings.TrimSpace(mustReadFile(t, homeCacheAttestation(home)))
+	lines := strings.Split(raw, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("a data dir carrying a newline must not inject lines: got %d lines %q", len(lines), raw)
+	}
+	for i, key := range []string{"data_dir", "binary_sha256", "cache_trust", "attested_at"} {
+		if !strings.HasPrefix(lines[i], key+"=") {
+			t.Errorf("line %d must be %s=…, got %q", i+1, key, lines[i])
+		}
+	}
+	if strings.ContainsAny(lines[0], "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f\t") {
+		t.Errorf("the data_dir value must carry no control character; got %q", lines[0])
+	}
+	if got := attestationValues(t, home); got["binary_sha256"] != sha256Hex(cached) {
+		t.Errorf("the forged line must not reach the parsed hash; got %q", got["binary_sha256"])
+	}
+}
+
+// GHSA-4q78-ccfv-f374, the second cut, shell half. The attestation is trusted
+// because it is "a write into the caller's own home" — but the script takes
+// HOME verbatim (`home_dir="${HOME:-}"`), so a relative HOME makes the record's
+// home whatever directory the hook happens to run in, and the checkout the hook
+// runs in can carry a committed `fakehome/.abcd/cache-attestation`. The writer
+// refuses the same two shapes the readers do, and says which one it refused —
+// because with the write skipped in silence the later `ahoy install` refusal
+// sends the reader to "start a session with network access", which cannot help:
+// the next session would decline to write for the same reason.
+
+// runBootstrapInHome runs a fixture-pointed bootstrap in a pinned working
+// directory with a pinned HOME (which may be relative, or empty for unset).
+func runBootstrapInHome(t *testing.T, dir, root, data, home string, fx *bootstrapFixture) (string, int) {
+	t.Helper()
+	bootstrapRequires(t)
+	return runScriptIn(t, dir, bootstrapFixtureScript(t, fx.base), root,
+		append(fx.env(), "CLAUDE_PLUGIN_DATA="+data, "HOME="+home), "")
+}
+
+// attestableRun seeds a cache the published manifest authenticates, so the run
+// reaches the attestation step with manifest trust established and the only
+// thing standing between it and a written record is HOME.
+func attestableRun(t *testing.T) (root, data string, fx *bootstrapFixture) {
+	t.Helper()
+	root = bootstrapRoot(t)
+	data = t.TempDir()
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	return root, data, bootstrapServer(t, []byte("served, never installed"), bootstrapManifest(cached))
+}
+
+func TestBootstrapRefusesAHomeItCannotTrust(t *testing.T) {
+	// A relative HOME: the record's directory is decided by wherever the hook
+	// runs, which is the checkout the session opened.
+	t.Run("relative", func(t *testing.T) {
+		root, data, fx := attestableRun(t)
+		work := t.TempDir()
+		out, code := runBootstrapInHome(t, work, root, data, "fakehome", fx)
+		if code != 0 {
+			t.Fatalf("a refused HOME is a note on a successful install, not a fault: got %d (output %q)", code, out)
+		}
+		if _, err := os.Stat(filepath.Join(work, "fakehome")); !os.IsNotExist(err) {
+			t.Errorf("the attestation was written into a relative HOME resolved against the working directory: %v", err)
+		}
+		assertHomeRefusalNamed(t, out)
+	})
+
+	// An absolute HOME inside the directory the hook runs in: the same shape
+	// dataDirHazard refuses for the data dir, one record further on.
+	// Both spellings: the committed directory an attacker really plants, and
+	// one that does not exist yet (the write would create it). The second is
+	// the harder compare — there is no directory to resolve — so the guard
+	// resolves the existing parent and rejoins the leaf.
+	for _, tc := range []struct {
+		name   string
+		create bool
+	}{
+		{"inside the working directory", true},
+		{"inside the working directory, not yet created", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, data, fx := attestableRun(t)
+			work := t.TempDir()
+			home := filepath.Join(work, "fakehome")
+			if tc.create {
+				if err := os.MkdirAll(home, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out, code := runBootstrapInHome(t, work, root, data, home, fx)
+			if code != 0 {
+				t.Fatalf("a refused HOME is a note on a successful install, not a fault: got %d (output %q)", code, out)
+			}
+			if _, err := os.Stat(homeCacheAttestation(home)); !os.IsNotExist(err) {
+				t.Errorf("the attestation was written into a HOME inside the working directory: %v", err)
+			}
+			assertHomeRefusalNamed(t, out)
+		})
+	}
+
+	// HOME unset: the record cannot be written at all, and until now the whole
+	// block including its note was skipped, so the install said nothing and the
+	// later `ahoy install` refusal named the wrong remedy.
+	t.Run("unset", func(t *testing.T) {
+		root, data, fx := attestableRun(t)
+		out, code := runBootstrapInHome(t, t.TempDir(), root, data, "", fx)
+		if code != 0 {
+			t.Fatalf("an unset HOME is a note on a successful install, not a fault: got %d (output %q)", code, out)
+		}
+		assertHomeRefusalNamed(t, out)
+	})
+}
+
+// assertHomeRefusalNamed: the success notice says the attestation was not
+// written, names HOME as the reason, and names the consequence the reader will
+// otherwise meet at `ahoy install`.
+func assertHomeRefusalNamed(t *testing.T, out string) {
+	t.Helper()
+	if !strings.Contains(out, "HOME") {
+		t.Errorf("the notice must name HOME as the reason the cache was not attested; output %q", out)
+	}
+	if !strings.Contains(out, "cache attestation") {
+		t.Errorf("the notice must say the cache attestation was not written; output %q", out)
 	}
 }

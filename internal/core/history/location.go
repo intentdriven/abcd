@@ -217,21 +217,20 @@ func localDeclared(repoRoot string) (bool, string) {
 		return false, ""
 	}
 	path := filepath.Join(home, filepath.FromSlash(LocalRootsRelPath))
-	fi, err := os.Lstat(path)
-	if err != nil {
+	// The three-part guard is fsutil.ReadDeclaration's, not this function's — see
+	// the note at rules.trustedRootDeclared. Only the WORDING stays here.
+	raw, refusal, err := fsutil.ReadDeclaration(path, maxLocalRootsBytes)
+	switch refusal {
+	case fsutil.DeclarationOK:
+	case fsutil.DeclarationAbsent:
 		return false, "" // no declaration is the ordinary case, not a diagnostic.
-	}
-	switch {
-	case !fi.Mode().IsRegular():
+	case fsutil.DeclarationNotRegular:
 		return false, ignoredDeclaration("it is not a regular file")
-	case fi.Mode().Perm()&0o022 != 0:
+	case fsutil.DeclarationWritableByOthers:
 		return false, ignoredDeclaration("it is writable by others, so its contents are not necessarily yours")
-	}
-	if owner, err := fsutil.OwnerUID(path); err != nil || owner != uint32(os.Getuid()) {
+	case fsutil.DeclarationForeignOwner:
 		return false, ignoredDeclaration("it is not owned by this session's uid")
-	}
-	raw, err := fsutil.ReadGuarded(path, maxLocalRootsBytes)
-	if err != nil {
+	default:
 		return false, ignoredDeclaration("it could not be read (" + termsafe.Sanitize(err.Error()) + ")")
 	}
 	fold := fsutil.CaseFoldingFS()

@@ -1,0 +1,55 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "dca2d7793a4ef895e7eaeefd3f509fd877799ef3"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-15T21:33:01Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:5ae5e2ed02fca099ce1e33e74120a528229f28b96e62e40f325a866773dfc025",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.9.0"
+  },
+  "categories": {
+    "false-claim": 0,
+    "stale-record": 0,
+    "stale-count": 0,
+    "incomplete": 3,
+    "criterion-violation": 0
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "incomplete",
+      "severity": "medium",
+      "summary": "CHANGELOG.md's 0.9.0 section carried no line for `abcd lint outbound`, a user-facing sub-verb this cycle shipped (commands/lint.md:37-70, wired into scripts/check-attribution.sh), because no terminal record named the verb and the derived changelog composes only from terminal records.",
+      "disposition": "fixed",
+      "note": "A record for the verb was captured and resolved against the commit that shipped it (iss-2609152131205316), the cut was re-derived, and the composer added the line; the section the reviewers read at 78956a8c differs from the content commit by that one line."
+    },
+    {
+      "id": "dc-2",
+      "category": "incomplete",
+      "severity": "low",
+      "summary": "README.md's sample status board after the adoption step lacked the presence line a managed repository's board now prints (commands/abcd.md documents it).",
+      "disposition": "fixed",
+      "note": "The sample carries the line (commit 8f5933fb, before the content commit)."
+    },
+    {
+      "id": "dc-3",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/mode.md said an absent store reads as managed but not that the print form refuses (exit 2) outside any git checkout, which docs/reference/cli/commands.md states.",
+      "disposition": "fixed",
+      "note": "The page now says both (commit 8f5933fb)."
+    }
+  ],
+  "_reviewProvenance": "Host-run agent-harness semantic review, PROMOTE. The reviewer read 78956a8c, the first roll of the 0.9.0 section: all 31 lines verified against the code or a binary built from that commit, with file:line evidence recorded in the review, plus every user-facing page changed since v0.8.0 (README, ten plugin pages, one agent page, three docs pages, hooks.json, bootstrap.sh). The three findings were all of class incomplete and all three were fixed before the content commit was re-rolled, so the commit this receipt names differs from the one read by exactly: one resolved issue record, the README sample line and the mode-page sentence above, and one added changelog line for a verb the reviewer had already verified as current at commands/lint.md:37-70. The deterministic half at the read commit: docs-lint 0 blockers, record-lint exit 0, the command reference pinned byte-for-byte to the command tree by test."
+}

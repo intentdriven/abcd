@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,9 +103,12 @@ func TestReadingSurfaceNeverDoublesItsErrorPrefix(t *testing.T) {
 				var env struct {
 					Error string `json:"error"`
 				}
-				if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-					t.Fatalf("`abcd %s --json` refusal is not a JSON envelope: %v\nstderr: %q",
-						verb, err, stderr.String())
+				// The refusal is the LAST document on stdout: `reading assemble`
+				// renders the data its remedy needs before it refuses, so the
+				// stream can carry two (iss-2609100519128005).
+				if err := lastJSONDoc(t, stdout.Bytes(), &env); err != nil {
+					t.Fatalf("`abcd %s --json` refusal is not a JSON envelope: %v\nstdout: %q",
+						verb, err, stdout.String())
 				}
 				assertNoDoubledReadingTag(t, verb, env.Error)
 			})

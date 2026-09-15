@@ -26,7 +26,7 @@ func TestCaptureRedactsEveryGitIdentity(t *testing.T) {
 
 func captureText(t *testing.T, repoRoot, session, text string) string {
 	t.Helper()
-	res, err := Capture(repoRoot, testRootSHA, session, []byte(text), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(text), CaptureMeta{SessionID: session, Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}

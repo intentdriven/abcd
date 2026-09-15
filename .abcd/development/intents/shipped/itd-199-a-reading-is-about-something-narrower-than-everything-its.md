@@ -105,11 +105,11 @@ Per-criterion verdicts:
   evidence: internal/core/reading/scope.go:55 — "var recordIDRe = regexp.MustCompile(`^(itd|spc)-[0-9]+$`)"
   evidence: internal/surface/cli/reading.go:98 — "\"reading assemble: --scope is required: a record id \" + \"(itd-N, spc-N), a material kind, or a committed preset named in \""
   evidence: internal/core/reading/scope_test.go:54 — "func TestScopeIsRequired(t *testing.T) {"
-- ac-2 — MET_WITH_CONCERNS: The mechanism is present and readable: a record token resolves to a single Record selector, Scope.selects admits only candidates whose basename names that record, pathNamesRecord refuses a bare prefix so itd-19 cannot select itd-198, and the filter runs over the collected set so nothing outside the scope survives. The concern is that the positive half is never demonstrated end to end: every preset in the delivery — the fixture generator and the committed file alike — carries "records": [], and the only assembly under a record-id scope uses itd-9999, which selects nothing and exercises the refusal path instead. The narrowing half is proved generically by TestScopeNarrowsNeverWidens, but no test shows a record scope carrying that record's material.
+- ac-2 — MET_WITH_CONCERNS: The mechanism is present and readable: a record token resolves to a single Record selector, Scope.selects admits only candidates whose basename names that record, pathNamesRecord refuses a bare prefix so itd-19 cannot select itd-198, and the filter runs over the collected set so nothing outside the scope survives. The concern is that the positive half is never demonstrated end to end: every preset in the delivery — the fixture generator and the committed file alike — carries "records": [], and the only assembly under a record-id scope uses itd-9999, which selects nothing and exercises the refusal path instead. The narrowing half is proved generically by TestScopeNarrowsNeverWidens, but no test shows a record scope carrying that record's material. <!-- record-lint: illustrative -->
   evidence: internal/core/reading/scope.go:441 — "case recordIDRe.MatchString(token):"
   evidence: internal/core/reading/scope.go:95 — "case sel.Record != \"\" && pathNamesRecord(c.path, sel.Record):"
   evidence: internal/core/reading/scope.go:108 — "func pathNamesRecord(rel, id string) bool {"
-  evidence: internal/core/reading/scope_test.go:381 — "Scope: \"itd-9999\", DryRun: true,"
+  evidence: internal/core/reading/scope_test.go:381 — "Scope: \"itd-9999\", DryRun: true," <!-- record-lint: illustrative -->
   evidence: .abcd/config/reading-presets.json:8 — "\"records\": [],"
 - ac-3 — MET: The local ledger tier is unreachable structurally rather than by a scope rule: `.abcd` is a denied path segment measured from each include row's Source downward, so no row rooted at `.` descends into `.abcd/.work.local`, and no row's Source is the ledger. An operator-written scope is only a record id or a kind, neither of which can name a location; the one place a path may be written — a committed preset — is refused at load if any component is denied. TestScopeCannotReachTheLedgerTier runs four scopes, including operator-writable kinds, and asserts no manifest item comes from .work.local or .abcd/work/.
   evidence: internal/core/reading/deny.go:24 — "var denySegments = []string{\".git\", \".abcd\", \"agents\", \"evals\"}"
@@ -234,9 +234,9 @@ Gap audit:
     evidence: internal/core/reading/scope_test.go:458 — "Item text legitimately contains path-like strings — a"
     evidence: agents/cold-reading-comparative.md:35 — "- `.abcd/development/brief/01-product` — the construal as it presently stands."
 - missing:
-  - No test exercises a record-id scope that actually selects material. Every preset in the delivery — the generated fixture and the committed file — carries an empty records list, and the sole record-scoped assembly names itd-9999, which selects nothing. ac-2's positive half is asserted by the code and by no test.
+  - No test exercises a record-id scope that actually selects material. Every preset in the delivery — the generated fixture and the committed file — carries an empty records list, and the sole record-scoped assembly names itd-9999, which selects nothing. ac-2's positive half is asserted by the code and by no test. <!-- record-lint: illustrative -->
     evidence: internal/core/reading/fixture_test.go:233 — "`      %q: {\"kinds\": [%s], \"records\": [], \"paths\": []}`,"
-    evidence: internal/core/reading/scope_test.go:381 — "Scope: \"itd-9999\", DryRun: true,"
+    evidence: internal/core/reading/scope_test.go:381 — "Scope: \"itd-9999\", DryRun: true," <!-- record-lint: illustrative -->
     evidence: .abcd/config/reading-presets.json:8 — "\"records\": [],"
   - No gate holds the definition-versus-bundle precedence sentence in the four definition files. ac-12 is satisfied by prose alone; a future edit dropping the paragraph from one definition would leave that reader holding two accounts of its object with no rule, and every gate green.
     evidence: agents/cold-reading-detection.md:41 — "**Where the two disagree, the bundle governs.**"
