@@ -4,10 +4,10 @@ slug: the-facilitators-role-and-responsibility-for-generated-code
 status: open
 discussion_opened: 2026-08-29
 discussion_closes: TBD
-spawned_from: adr-55
+spawned_from: adr-2609151528057260
 spawned_intents: []
 related_intents: []
-related_adrs: [adr-55]
+related_adrs: [adr-2609151528057260]
 authors: [project]
 ---
 
@@ -15,7 +15,7 @@ authors: [project]
 
 ## The question
 
-[ADR-55](../../decisions/adrs/0055-roles-addressee-and-when-the-loop-stops.md)
+[ADR-2609151528057260](../../decisions/adrs/2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md)
 settles who acts. It deliberately leaves open who answers for the result, and
 that question gets harder the better the framework works.
 

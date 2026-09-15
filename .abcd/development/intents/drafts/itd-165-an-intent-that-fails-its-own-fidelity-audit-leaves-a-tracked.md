@@ -23,7 +23,7 @@ The verdict's consumer is the facilitator, which is a machine by default, so tur
 
 An inconclusive verdict deliberately does not create a record. It means the auditor was under-fed, which is an input fault rather than a product defect, and minting records for it at volume would fill the ledger with noise and teach a reader to ignore it. It must still leave the receipt visibly outstanding, or a verdict that decided nothing becomes indistinguishable from one that passed.
 
-What blocks depends on the facilitator's mode ([adr-55](../../decisions/adrs/0055-roles-addressee-and-when-the-loop-stops.md)): a machine facilitator works the queue, and an activated human facilitator is what the queue waits for. The ratchet that would make a new failure fail a gate is deliberately not part of this: it is sequenced behind a corpus of real verdicts, because there are none yet and a ratchet baselines whatever number it finds.
+What blocks depends on the facilitator's mode ([adr-2609151528057260](../../decisions/adrs/2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md)): a machine facilitator works the queue, and an activated human facilitator is what the queue waits for. The ratchet that would make a new failure fail a gate is deliberately not part of this: it is sequenced behind a corpus of real verdicts, because there are none yet and a ratchet baselines whatever number it finds.
 
 ## Acceptance Criteria
 

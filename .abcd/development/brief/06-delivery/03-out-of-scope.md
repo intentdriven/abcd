@@ -97,7 +97,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-159` — the repo visibility model has a committed-record mode between private and public, with the matching fence-suppression (graduated from iss-223)
 - `itd-165` — A failed fidelity verdict becomes work somebody can see (Phase 8 adjacent; the ratchet half is split out as a seed)
 - `itd-166` — A run records what it was actually run with (facilitator-tier diagnostics)
-- `itd-167` — The product thinker answers a stop in a medium they already use (Phase 8; adr-56 gives abcd that surface)
+- `itd-167` — The product thinker answers a stop in a medium they already use (Phase 8; adr-2609151528057131 gives abcd that surface)
 - `itd-168` — The product thinker sets how the system talks to them (Phase 7, the legible surface)
 - `itd-169` — An agent loop that stops says who it is asking and what it needs (Phase 8)
 - `itd-170` — What the product thinker reports after using the product finds its way back to the promise that predicted it (Phase 8)

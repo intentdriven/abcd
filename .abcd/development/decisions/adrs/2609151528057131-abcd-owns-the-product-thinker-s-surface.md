@@ -1,16 +1,16 @@
 ---
-id: adr-56
-slug: abcd-owns-the-product-thinkers-surface
+id: adr-2609151528057131
+slug: abcd-owns-the-product-thinker-s-surface
 status: accepted
 date: 2026-08-29
-supersedes: []
+supersedes: null
 superseded_by: null
 related_intents: [itd-167]
 related_rfcs: [rfc-3]
-related_adrs: [adr-55]
+related_adrs: [adr-2609151528057260]
 ---
 
-# ADR-56: abcd owns the product thinker's surface
+# ADR-2609151528057131: abcd owns the product thinker's surface
 
 ## Context
 
@@ -21,7 +21,7 @@ sound: an opaque host banner is not something a configuration layer can fix by
 drawing its own, and claiming otherwise would have been the strong form of a
 metaphor the project deliberately held at arm's length.
 
-[ADR-55](0055-roles-addressee-and-when-the-loop-stops.md) changes what that
+[ADR-2609151528057260](2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md) changes what that
 position costs. The facilitator is a machine by default, the agents stop only to
 obtain a verdict, and a question the product thinker must answer travels to them
 rather than waiting at a terminal. The command line is the facilitator's

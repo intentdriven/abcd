@@ -21,7 +21,7 @@ Without a rule about when agents may proceed alone, every gate is a candidate fo
 
 A stop is an event with an addressee and a question, never an unexplained halt. It names the role it is asking, states what it needs, and carries the options that would answer it. Work that is a step in the loop rather than a judgement is performed, not queued for somebody.
 
-Escalation reaches the product thinker only for what they can answer: what should exist, whether what was delivered matches it, and trade offs that change the design. Everything else stops at the facilitator, including every question about evidence, technique, and whether a criterion was verifiable at all. A stop addressed to the product thinker that they cannot answer is a defect in the stop, not a failure of the reader ([adr-55](../../decisions/adrs/0055-roles-addressee-and-when-the-loop-stops.md)).
+Escalation reaches the product thinker only for what they can answer: what should exist, whether what was delivered matches it, and trade offs that change the design. Everything else stops at the facilitator, including every question about evidence, technique, and whether a criterion was verifiable at all. A stop addressed to the product thinker that they cannot answer is a defect in the stop, not a failure of the reader ([adr-2609151528057260](../../decisions/adrs/2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md)).
 
 Every stop carries its addressee as data, so a surface can show whose question it is before anyone reads the words. The addressee is not a prefix somebody remembers to type: it travels with the stop, survives serialisation, and is what a renderer keys on.
 

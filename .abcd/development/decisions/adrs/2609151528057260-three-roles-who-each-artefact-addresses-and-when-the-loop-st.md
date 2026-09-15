@@ -1,16 +1,16 @@
 ---
-id: adr-55
-slug: roles-addressee-and-when-the-loop-stops
+id: adr-2609151528057260
+slug: three-roles-who-each-artefact-addresses-and-when-the-loop-st
 status: accepted
 date: 2026-08-29
-supersedes: []
+supersedes: null
 superseded_by: null
 related_intents: []
 related_rfcs: [rfc-3]
 related_adrs: []
 ---
 
-# ADR-55: Three roles, who each artefact addresses, and when the loop stops
+# ADR-2609151528057260: Three roles, who each artefact addresses, and when the loop stops
 
 ## Context
 

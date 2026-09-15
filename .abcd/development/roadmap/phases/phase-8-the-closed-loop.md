@@ -52,7 +52,7 @@ In:
   it (itd-175).
 - The product thinker's own surface (itd-167), which is what makes the milestone
   true for a product thinker who is **not** also the facilitator. Under
-  [adr-56](../../decisions/adrs/0056-abcd-owns-the-product-thinkers-surface.md)
+  [adr-2609151528057131](../../decisions/adrs/2609151528057131-abcd-owns-the-product-thinker-s-surface.md)
   abcd owns that surface. The milestone is demonstrable without it through the
   mediated path, where a facilitator relays; it is not demonstrable for the
   target user without it.

@@ -19,7 +19,7 @@ severity: minor
 
 The product thinker is not at a terminal, and requiring them to be there reimposes the constraint this framework exists to remove. A stop that reaches them is answered later, by someone who was not present when it was raised, through a surface they already use.
 
-That makes a stop a durable artefact rather than a prompt: it serialises whole, carries its options with it, outlives the session that raised it, and is resumable by whatever answers it. The loop parks on it and continues elsewhere rather than blocking. The synchronous command-line prompt is the first implementation of that contract, not the contract itself ([adr-55](../../decisions/adrs/0055-roles-addressee-and-when-the-loop-stops.md)).
+That makes a stop a durable artefact rather than a prompt: it serialises whole, carries its options with it, outlives the session that raised it, and is resumable by whatever answers it. The loop parks on it and continues elsewhere rather than blocking. The synchronous command-line prompt is the first implementation of that contract, not the contract itself ([adr-2609151528057260](../../decisions/adrs/2609151528057260-three-roles-who-each-artefact-addresses-and-when-the-loop-st.md)).
 
 Selection over composition is what makes this possible at all: an option set survives a round trip through a web page or an app, and a request for free prose does not.
 
