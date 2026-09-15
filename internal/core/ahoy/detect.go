@@ -57,6 +57,12 @@ func Detect(cwd string) (DetectionResult, error) {
 	// kind, surfaced so status reports "dev (tip build)" honestly (never invisible).
 	signals["install_mode"] = detectInstallMode(pluginRoot, pluginOK)
 
+	// The host harness's status line is a machine-scope fact too (spc-70): one
+	// read of the harness's settings, classified, so the board can say whether
+	// abcd's row is wired, absent, foreign, or pointing at an abcd that is gone.
+	harness := readHarnessSettings()
+	signals["statusline"] = string(harness.state)
+
 	// The citation baseline's coverage and age, when this repo has armed the
 	// citation gate (spc-17). Omitted entirely otherwise, so a repo that has not
 	// adopted the gate carries no line about it.
@@ -78,6 +84,7 @@ func Detect(cwd string) (DetectionResult, error) {
 	if kind != UnmanagedFolder {
 		gaps = append(gaps, detectDependencies()...)
 		gaps = append(gaps, detectSkeleton(abs)...)
+		gaps = append(gaps, detectLocalTier(abs)...)
 		gaps = append(gaps, detectIdentity(identity, idx)...)
 		gaps = append(gaps, detectGitIdentity(abs)...)
 		gaps = append(gaps, detectHistoryStore(identity.RootSHA)...)
@@ -85,6 +92,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectConfigValues(abs)...)
 		gaps = append(gaps, detectMarkerDrift(abs)...)
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
+		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
 		// Guard health is computed for every managed or adoptable repo, so a

@@ -239,11 +239,15 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), asJSON, st, func(w io.Writer) {
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr())}
+			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
 				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
+				if board.Statusline != nil {
+					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
+				}
 			})
 		},
 	}
@@ -254,6 +258,8 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newVersionCommand(&asJSON))
 	root.AddCommand(newUpdateCommand(&asJSON))
+	root.AddCommand(newModeCommand(&asJSON))
+	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
 	root.AddCommand(newLintCommand(&asJSON))
@@ -2113,6 +2119,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				if mode, _ := res.Signals["install_mode"].(string); mode != "" {
 					fmt.Fprintf(w, "  install:     %s\n", mode)
 				}
+				// The host's status line as abcd sees it (spc-70): wired, absent,
+				// foreign, dangling, or no harness detected at all.
+				if sl, _ := res.Signals["statusline"].(string); sl != "" {
+					fmt.Fprintf(w, "  statusline:  %s\n", sl)
+				}
 				fmt.Fprintf(w, "  vintage:     %s\n", out.Vintage)
 				fmt.Fprintf(w, "  staleness:   %s\n", out.Staleness)
 				// The citation baseline's coverage and age, present only in a repo
@@ -2188,7 +2199,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// what abcd did not do and why (a dangling PATH entry it declined
 				// to create, a directory it could not write).
 				for _, n := range res.Notes {
-					fmt.Fprintf(w, "  note: %s\n", n)
+					fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
 				}
 				if len(res.DeclinedCategories) > 0 {
 					fmt.Fprintf(w, "  declined: %s\n", strings.Join(res.DeclinedCategories, ", "))
@@ -2197,10 +2208,15 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin, so say which optional work it left and how to apply it.
+				// pin or the status-line wiring, so say which optional work it
+				// left, why each needs an answer, and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
 					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
-					fmt.Fprint(w, "    the pin records the current git identity, so it is only written against an answered prompt:\n")
+					for _, id := range res.OptionalSkipped {
+						if why := optionalSkipReason(id); why != "" {
+							fmt.Fprintf(w, "    %s\n", why)
+						}
+					}
 					fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
 				}
 			})
@@ -2241,6 +2257,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "abcd ahoy uninstall\n")
 				fmt.Fprintf(w, "  marker removed: %v\n", receipt.Marker.Removed)
 				fmt.Fprintf(w, "  symlink: %s\n", symlinkNote(receipt))
+				fmt.Fprintf(w, "  status line: %s\n", receipt.StatusLine.Note)
 			})
 		},
 	}
@@ -2508,6 +2525,19 @@ func symlinkNote(r ahoy.UninstallReceipt) string {
 		return "removed " + r.Symlink.Target
 	}
 	return r.Symlink.Note
+}
+
+// optionalSkipReason says, for one optional gap --yes left alone, why only an
+// answered prompt writes it. The ids are the core's own (ahoy.optionalGapIDs),
+// so an id this switch does not know renders no reason rather than a wrong one.
+func optionalSkipReason(id string) string {
+	switch id {
+	case ahoy.OptionalPinGapID:
+		return "the pin records the current git identity, so it is only written against an answered prompt"
+	case ahoy.StatusLineOfferGapID:
+		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
+	}
+	return ""
 }
 
 // newPrompter returns the stdin-reading prompter. On a terminal it is the

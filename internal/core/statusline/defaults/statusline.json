@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "disabled": false,
+  "elements": {
+    "repo": true,
+    "branch": true,
+    "model": true,
+    "context": true,
+    "five_hour": true,
+    "seven_day": true,
+    "intents": true,
+    "issues": true
+  },
+  "presence": {
+    "foreground": "#f0c052",
+    "background": "#444444"
+  },
+  "previous_command": ""
+}

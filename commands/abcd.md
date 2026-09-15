@@ -19,6 +19,22 @@ Then summarise the JSON for the user: the directory, whether it is a git repo,
 whether the abcd development record is present, and which `.abcd/` work tiers
 exist.
 
+In a repository abcd manages the board also carries one line of presence — the
+`statusline` object in the JSON (`state`, `plain`, `elements`), rendered as a
+`presence:` line in the text form. It is the same row the host's status line
+shows, in plain words: the badge first (`abcd`, `waiting: facilitator` or
+`waiting: product thinker`, from the state `/abcd:mode` stores), then the
+repository, the branch and the record's counts. Relay the `plain` text when the
+state is not `managed`: it says whose answer the loop is waiting on. The field
+is omitted in a repository abcd does not manage. The board reads the state and
+never changes it; `/abcd:mode` is the writer.
+
+The row itself is produced by `abcd statusline`, the verb the harness runs on
+every status refresh with its JSON payload on stdin. In a managed repository it
+prints abcd's row; anywhere else it runs the status command that was recorded
+at install time and passes its output through unchanged, so the user's own line
+is untouched. `/abcd:ahoy install` offers and wires it; nothing here invokes it.
+
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is

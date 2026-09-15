@@ -795,6 +795,37 @@ Curator health-check over the whole memory store
 
 **Usage:** `abcd memory lint`
 
+### `abcd mode`
+
+Print or set whose answer the agent loop is waiting on (managed, facilitator, product-thinker)
+
+**Usage:** `abcd mode [<state>]`
+
+Print or set the waiting-on state behind the status line's badge.
+
+Bare `abcd mode` prints the stored state: `managed` (abcd is here and nobody
+is waiting), `facilitator` (the loop is parked on the facilitator, the person
+at the terminal running the agents), or `product-thinker` (the loop is parked
+on the product thinker, who answers on a surface of their own). An absent
+store reads as `managed`.
+
+`abcd mode <state>` sets it. Two writers share the verb: the agent runs it
+when it stops for a verdict, naming whom it is addressing, and the human runs
+it by hand to say which hat they wear. The state lives per checkout at
+`.abcd/.work.local/mode`, so only a repository abcd manages — one that has
+the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
+nothing. The next status-line refresh and the bare `abcd` board read the
+same file.
+
+Where this machine has no status surface — no `~/.abcd/statusline.json`, or
+one with `disabled` set — the set form prints one line naming whose answer
+is owed, once, because the verb call is the stop. Setting `managed` owes
+nobody and prints nothing; with a surface installed nothing is printed at
+all. With --json the notice is a field. Both forms make no network request.
+
+Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
+and nothing is written on any of them.
+
 ### `abcd reading`
 
 Cold-reading input assembler: what a reading sees, and the manifest proving it
@@ -972,6 +1003,35 @@ Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/
 ```
       --impact string   product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)
 ```
+
+### `abcd statusline`
+
+Render abcd's status-line row from the harness payload on stdin (harness-invoked)
+
+**Usage:** `abcd statusline`
+
+Render abcd's row for the host harness's status line.
+
+The harness runs this on every status refresh, with its JSON status
+payload on stdin, and shows what it prints. In a checkout abcd manages the
+row is abcd's own: the presence badge first — `abcd`, `waiting: facilitator`
+or `waiting: product thinker`, from the state `abcd mode` stores — then the
+repository name, the branch, the model, the context percentage, the
+five-hour and seven-day usage percentages, and the record's counts of
+intents not yet shipped and open issues. Each element after the badge is
+switchable in `~/.abcd/statusline.json`; a payload field the harness did not
+supply drops its element with no placeholder.
+
+Outside a managed checkout, or with `disabled` set in the user-level
+setting, it runs the status command recorded there at install time with the
+same stdin and passes its output and exit code through unchanged, so the
+user's own line is untouched everywhere abcd does not manage. With none
+recorded it prints nothing and exits 0.
+
+The checkout is resolved from the payload's `cwd` (falling back to the
+working directory). Empty stdin is an empty payload. Nothing here prompts,
+reads a terminal, or touches the network. With --json the row is emitted as
+its ordered elements, each with a key, a rendered and a plain form.
 
 ### `abcd update`
 

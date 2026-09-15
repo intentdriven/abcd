@@ -141,6 +141,21 @@ path. A plugin root provisioned from the cache carries no root-local
 cached provenance you control if you want a hand-built binary to stop reporting
 a release it did not come from.
 
+## The status line
+
+Where the agent harness renders a status line by running a command, `abcd ahoy
+install` offers to make that line abcd's own in the repositories abcd manages.
+It explains the offer, asks once, and lets you switch each element after the
+badge on or off. On consent the line leads with a badge saying whether abcd is
+here and whose answer the loop is waiting on, followed by the repository, the
+branch, the model, the context and usage figures, and the record's intent and
+issue counts; in every other repository the status command you had before runs
+untouched, because abcd records it and hands the payload straight through.
+Declining writes nothing. `--yes` never takes this choice for you. Switch the
+line off, or change which elements show, at any time in
+`~/.abcd/statusline.json`; `abcd ahoy uninstall` restores the previous
+command.
+
 ## Where your session transcripts are kept
 
 Session transcripts go into one store on your machine, at
