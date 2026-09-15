@@ -1417,3 +1417,34 @@ Per hand-run, append:
   in the file the rules loader puts before every session. The table caught it
   because verifying "already shipped" meant reading both the code and the rule
   that describes it, and they disagreed.
+
+### 2026-09-15 — messaging between sessions on one machine and one local network (hand-run at filing)
+
+- **Proposal:** the best way for a local setup that lets agents communicate
+  across user accounts and machines on the same network; whether Hermes or
+  OpenClaw answer it; whether abcd can carry it, given that abcd comes with
+  basic functionality and an external dependency brings full power.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | A shared-directory mailbox between sessions, across accounts and mounts, delivered by the prompt hook | capability | intent `itd-2609151838312703` |
+  | An opt-in adapter to an embedded broker for push delivery and cross-machine reach | capability | intent `itd-2609151838327688`, sequenced after the mailbox |
+  | "abcd comes with basic functionality; an external dependency brings full power" | stance | principle `basics-built-in-adapters-bring-power` |
+  | The survey with its sources and rankings | reference | research note `2026-09-15-agent-messaging-on-a-local-network` |
+  | A message from another account is untrusted input: signed, size-capped, sanitised, injected only from a mailbox the recipient owns | trust rule | an ADR at the mailbox's planning; not filed yet |
+
+- **Links:** the adapter `builds_on` the mailbox; both refine the
+  host-delegated-by-default boundary in the conventions. No reversal.
+- **Verdict:** four options offered (SPLIT into two intents plus principle
+  and note; one intent covering both halves; HOLD with the note and the
+  principle only; decide later); the maintainer chose SPLIT. The table's
+  routing survived as offered.
+- **Notes:** two constraints arrived mid-run and reshaped the survey before
+  it returned: local machine and local network only, and the
+  basics-plus-adapter stance. The first removed the harness's own
+  cross-machine path (vendor-relayed) from consideration; the second turned
+  a ranking of transports into a pair of rungs. The named tools both turned
+  out to be agent runtimes with their own peer protocols, not message paths
+  for a foreign harness, which is the finding that made "build it into abcd"
+  the answer rather than "adopt one of them".
