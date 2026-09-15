@@ -105,6 +105,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609150819439571` — errata as a fourth terminal disposition on a durable record, appended rather than edited, so a correction is distinguishable from the error it corrects (promoted from iss-2609100505146979)
 - `itd-2609150819445595` — owed fidelity reviews are counted on the bare status surfaces, so a debt nothing lists becomes a debt somebody sees (promoted from iss-2609100509537730)
 - `itd-2609150819440345` — a claim record beside the machine-scoped worktree store says which session holds which worktree, branch or record, replacing the per-session handshake (promoted from iss-2609100519122086)
+- `itd-2609151138388536` — the decisions log becomes a folder of individually minted decision records with an assembled index, `DECISIONS.md` a symlink to it, in abcd and in every managed repository; the shape retires the decisions-append gate (the rule is adr-2609151138420062; promoted from iss-2609100507439414)
+- `itd-2609151516525843` — a committed declaration lifts the public visibility fence so a fresh public repository can create its committed banned-names layer on day one, and a machine-global private banned-names list in the user-level home bans a name in every repository on the machine; CI never reads the home list and no pattern from it reaches a committed file (`builds_on` itd-74, `refines` adr-56; promoted from iss-2609100506269348)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
