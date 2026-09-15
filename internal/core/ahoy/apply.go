@@ -977,10 +977,25 @@ func (a *applyCtx) stepSymlink() {
 // whose provenance a copy could record. The cache is reached through the
 // hook's CLAUDE_PLUGIN_DATA or, from the terminal the bootstrap's notice sends
 // the reader to, through the plugin root's .data-dir stamp
-// (iss-2609012111168716); the re-verification below is the same either way.
+// (iss-2609012111168716). Both are ROUTES, not trust: the cache is promoted
+// only when ~/.abcd/cache-attestation — written by the bootstrap after it
+// authenticated the cache against the published release manifest — names that
+// directory and the hash its record carries (cacheBindingProblem,
+// GHSA-4q78-ccfv-f374); the re-verification below is then the same either way.
 func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 	look := pluginDataDir(a.det.pluginRoot)
-	if reason := dataDirHazard(look.dir, a.cwd); reason != "" {
+	// The three verdicts are taken ONCE, in order, and the promotion below acts
+	// on these locals alone: nothing under the data dir is consulted again
+	// after the binding is checked, except the artefact bytes themselves,
+	// which are hashed against the attested value. Re-reading the co-located
+	// record after the binding is the window the first cut left open.
+	var (
+		hazard  = dataDirHazard(look.dir, a.cwd)
+		present = hazard == "" && cachePresent(look.dir, a.cwd)
+		att     cacheAttestation
+		unbound string
+	)
+	if reason := hazard; reason != "" {
 		// Said before the degradation below, so the operator learns both that
 		// the cache was not used and why this one could never have been the
 		// harness's directory. The story names which source proposed it — the
@@ -988,22 +1003,40 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		// same either way but the thing to repair is not.
 		a.refuse("ignored the plugin data directory (" + look.story + "): " + reason +
 			". The harness's persistent data directory never has that shape, so nothing in it was trusted as a verified release artefact.")
+	} else if present {
+		if att, unbound = cacheBindingProblem(look.dir); unbound != "" {
+			// A cache is there, and it is exactly what an attacker who chose the
+			// directory would plant: an artefact and a record that agree with
+			// each other. The attestation is what the environment cannot write,
+			// so its absence or disagreement is the refusal, said in full.
+			a.refuse("ignored the cache in the plugin data directory (" + look.story + "): " + unbound +
+				". A cache is promoted to the PATH copy only when the attestation the hooks write after authenticating it against the published release manifest names that directory and that hash, so nothing in it was trusted as a verified release artefact. Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`.")
+		}
 	}
-	if !cacheSourceReady(look.dir, a.cwd) {
+	if !present || unbound != "" {
 		if kind != binTargetOwnedSymlink {
 			// Notes is the loud channel (see refuse): the degradation must be
 			// SAID, because a symlink into the plugin root dies at the next
 			// plugin update and a silent fallback would hide why — and it names
 			// every source tried, so the reader knows which one to restore.
-			a.refuse("no verified release artefact is available in the persistent plugin data directory (" + look.explainMissingCache() +
+			why := look.explainMissingCache()
+			if unbound != "" {
+				why = look.story + ", whose cache no attestation binds (above)"
+			}
+			a.refuse("no verified release artefact is available in the persistent plugin data directory (" + why +
 				"), so the PATH entry was written as a symlink to the plugin-root binary — it will stop working when a plugin update replaces that directory. Start a session so the hooks provision the cache and record its location in the plugin root, then re-run `abcd ahoy install` to upgrade it to an owned copy.")
 		}
 		a.installPinnedSymlink(target, kind)
 		return
 	}
 	dataDir := look.dir
+	if afterCacheBound != nil {
+		afterCacheBound(dataDir)
+	}
 	artefact := cacheAssetPath(dataDir)
-	want := cacheRecordedSHA(dataDir)
+	// The ATTESTED hash, never the record beside the artefact: that record was
+	// compared to the attestation above and has no say after it.
+	want := att.sha
 	data, err := fsutil.ReadGuarded(artefact, maxBinaryArtefactBytes)
 	if err != nil {
 		a.refuse("could not read the cached release artefact " + displayPath(artefact) + ": " + errText(err))

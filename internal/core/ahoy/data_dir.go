@@ -50,6 +50,10 @@ func (l dataDirLookup) explainMissingCache() string {
 //     directory; the artefact it leads to is re-verified by every caller that
 //     copies it.
 //
+// Either source is a ROUTE to the cache and neither is trust: a promotion out
+// of the directory returned here happens only when the home-scoped
+// cache-attestation binds it (cacheBindingProblem), whichever source named it.
+//
 // The documented path shape is deliberately never derived from the plugin
 // root, and the harness's own configuration is never read: a wrong guess
 // would plant a trusted artefact in an untracked location. With no source
@@ -104,9 +108,10 @@ func metaField(path, key string) string {
 // in-checkout value is committed bytes, a world-writable cache is any local
 // user's — bless their own bytes as the owned PATH binary (sub-finding of
 // GHSA-4q78-ccfv-f374). The harness never produces these shapes, so refusing
-// them costs a real install nothing; binding the cache to an attestation the
-// env cannot supply is the parent record's open decision and is not attempted
-// here.
+// them costs a real install nothing. This is the shape check only; the trust
+// binding — the cache is promoted only when ~/.abcd/cache-attestation names
+// the directory and its recorded hash — is cacheBindingProblem, and a
+// directory that passes here is still not promoted without it.
 func dataDirHazard(dataDir, cwd string) string {
 	if dataDir == "" {
 		return ""

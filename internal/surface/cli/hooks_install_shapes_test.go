@@ -70,6 +70,33 @@ func seedInstallShapeCache(t *testing.T, body []byte) string {
 	return data
 }
 
+// attestInstallShapeCache writes, under the sandbox home, the attestation the
+// bootstrap leaves after authenticating the cache against the published
+// release manifest: `ahoy install` promotes a cache into the owned copy only
+// when that record names the data dir and the hash its binary-meta carries
+// (GHSA-4q78-ccfv-f374). The hash is read off the seeded record rather than
+// recomputed, so the fixture attests exactly what it seeded.
+func attestInstallShapeCache(t *testing.T, home, data string) {
+	t.Helper()
+	meta, err := os.ReadFile(filepath.Join(data, "cache", "binary-meta"))
+	if err != nil {
+		return // no cache seeded: nothing to attest, and install degrades as documented
+	}
+	sha := ""
+	for _, line := range strings.Split(string(meta), "\n") {
+		if v, ok := strings.CutPrefix(line, "binary_sha256="); ok {
+			sha = v
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "data_dir=" + data + "\nbinary_sha256=" + sha + "\ncache_trust=manifest\nattested_at=2026-09-15T00:00:00Z\n"
+	if err := os.WriteFile(filepath.Join(home, ".abcd", "cache-attestation"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // sandboxHome returns a HOME for a test that hands it to a process abcd does not
 // control, and it is deliberately NOT t.TempDir().
 //
@@ -109,6 +136,9 @@ func runAhoyInstall(t *testing.T, dev bool, dataDir string) (home, binDir string
 	t.Setenv("ABCD_PLUGIN_ROOT", root)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_PLUGIN_DATA", dataDir)
+	if dataDir != "" {
+		attestInstallShapeCache(t, home, dataDir)
+	}
 	t.Setenv("ABCD_BIN_TARGET", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+"/usr/bin:/bin")
 
