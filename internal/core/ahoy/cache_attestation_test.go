@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // GHSA-4q78-ccfv-f374 (iss-2609012039102770), option B as ruled on 2026-09-15:
@@ -370,4 +372,86 @@ func TestInstallRefusesPairFlippedAfterBinding(t *testing.T) {
 	if !strings.Contains(notesJoined(res.Notes), "SHA-256") {
 		t.Errorf("the refusal must name the checksum mismatch; notes = %v", res.Notes)
 	}
+}
+
+// TestCacheAttestationIsIgnoredUnlessThisSessionOwnsIt: the attestation is a
+// home-scoped DECLARATION, exactly as ~/.abcd/path-entry is, and it decides the
+// same thing one step earlier — which bytes become the binary the hook shims
+// execute. So it is read behind the same three-part guard
+// (fsutil.ReadDeclaration): a regular file, not writable by group or other,
+// owned by this session's uid. The first cut read it through the bare
+// fsutil.ReadGuarded while claiming "the same guarded, bounded read path-entry
+// uses", so a mode-0666 attestation — one any local uid could rewrite to name
+// their own directory and their own hash — was honoured, while the same-mode
+// path-entry beside it was refused (iss-2609091927085132's gap, one record
+// over).
+func TestCacheAttestationIsIgnoredUnlessThisSessionOwnsIt(t *testing.T) {
+	good := "data_dir=/harness/data\nbinary_sha256=" + strings.Repeat("a", 64) + "\ncache_trust=manifest\n"
+
+	for _, tc := range []struct {
+		name string
+		mode os.FileMode
+		why  string
+	}{
+		{"group-writable", 0o664, "another member of the group can name the directory the cache is promoted from"},
+		{"other-writable", 0o646, "any local uid can name the directory the cache is promoted from"},
+		{"group-and-other-writable", 0o666, "any local uid can name the directory the cache is promoted from"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupHermetic(t)
+			writeUserCacheAttestation(t, good)
+			if err := os.Chmod(userCacheAttestationPath(), tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			if rec, ok := readCacheAttestation(); ok {
+				t.Errorf("readCacheAttestation honoured a %v record binding %q: %s", tc.mode, rec.dataDir, tc.why)
+			}
+		})
+	}
+
+	// A second uid cannot be created by a test process, so the owner lookup is
+	// substituted — the established answer to a branch the host cannot provoke,
+	// and the same seam TestPathEntryIsIgnoredUnlessThisSessionOwnsIt uses.
+	t.Run("owned by another uid", func(t *testing.T) {
+		setupHermetic(t)
+		writeUserCacheAttestation(t, good)
+		t.Cleanup(fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) {
+			return uint32(os.Getuid()) + 1, nil
+		}))
+		if rec, ok := readCacheAttestation(); ok {
+			t.Errorf("readCacheAttestation honoured a foreign-owned record binding %q", rec.dataDir)
+		}
+	})
+
+	// "I could not learn who owns this" and "I own this" are different answers.
+	t.Run("owner unreadable", func(t *testing.T) {
+		setupHermetic(t)
+		writeUserCacheAttestation(t, good)
+		t.Cleanup(fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) {
+			return 0, os.ErrPermission
+		}))
+		if rec, ok := readCacheAttestation(); ok {
+			t.Errorf("readCacheAttestation honoured a record whose owner could not be read, binding %q", rec.dataDir)
+		}
+	})
+
+	// The guard must refuse those shapes and nothing else.
+	t.Run("correctly owned is unchanged", func(t *testing.T) {
+		for _, mode := range []os.FileMode{0o600, 0o640, 0o644} {
+			t.Run(mode.String(), func(t *testing.T) {
+				setupHermetic(t)
+				writeUserCacheAttestation(t, good)
+				if err := os.Chmod(userCacheAttestationPath(), mode); err != nil {
+					t.Fatal(err)
+				}
+				rec, ok := readCacheAttestation()
+				if !ok {
+					t.Fatalf("readCacheAttestation refused a %v record this session owns", mode)
+				}
+				if rec.dataDir != "/harness/data" {
+					t.Errorf("read data_dir=%q, want /harness/data", rec.dataDir)
+				}
+			})
+		}
+	})
 }

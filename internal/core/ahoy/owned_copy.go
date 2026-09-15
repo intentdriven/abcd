@@ -41,6 +41,47 @@ func cacheMetaPath(dataDir string) string {
 	return filepath.Join(dataDir, "cache", "binary-meta")
 }
 
+// homeScope resolves the directory abcd's home-scoped DECLARATION records live
+// under — ~/.abcd/path-entry and ~/.abcd/cache-attestation — or, when it will
+// not use the one the environment named, the reason.
+//
+// Both records rest on the same argument: the record is a write into the
+// CALLER'S OWN HOME, the one location CLAUDE_PLUGIN_DATA cannot reach
+// (GHSA-4q78-ccfv-f374). HOME is an environment variable too, though, and
+// os.UserHomeDir() hands it back verbatim, so the argument holds only for a
+// value that actually names a home:
+//
+//   - a RELATIVE HOME resolves ~/.abcd against whatever directory the verb
+//     happens to run in, which for a hook is the checkout the session opened.
+//     `HOME=fakehome` would make a committed fakehome/.abcd/cache-attestation
+//     the caller's own home, and the class the attestation closed reopens
+//     through repository content — the very thing it was written to outrank.
+//   - a HOME INSIDE the repository the verb runs against is the same shape
+//     dataDirHazard already refuses for the data dir ("its cache would be
+//     committed bytes"), one record further on and with the same consequence.
+//     It is refused through that guard's own resolution (insideRepo) rather
+//     than a second copy of it.
+//
+// HOME being the working directory itself is NOT that shape: a session started
+// in the home directory is ordinary, and refusing it would break a real install
+// while closing nothing. The refusal is fail-closed — the readers report "no
+// record" — and cacheBindingProblem renders the reason, because an operator
+// told only "start a session with network access" would re-run hooks that
+// decline to write the record for the same reason.
+func homeScope() (string, string) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", "no home directory is resolved (HOME is unset), so there is no ~/.abcd for the record to live in"
+	}
+	if !filepath.IsAbs(home) {
+		return "", "HOME is a relative path, so ~/.abcd resolves against whatever directory the verb happens to run in rather than naming one home"
+	}
+	if cwd, err := os.Getwd(); err == nil && insideRepo(cwd, home) && resolvePath(cwd) != resolvePath(home) {
+		return "", "HOME lies inside the repository the verb is running against, so its ~/.abcd records would be repository content rather than a write into the caller's own home"
+	}
+	return home, ""
+}
+
 // userPathEntryPath is the PATH-copy provenance record, home-scoped and
 // abcd-owned (~/.abcd/path-entry, alongside the history store). It deliberately
 // does NOT live in the harness data dir: CLAUDE_PLUGIN_DATA is exported only to
@@ -49,10 +90,10 @@ func cacheMetaPath(dataDir string) string {
 // could not establish ownership exactly where those verbs run, and would
 // silently reclassify abcd's own binary as foreign (iss-2608210934566230,
 // adr-46 decision 4). The data dir stays the CACHE's home only. Empty when the
-// home directory cannot be resolved (every caller then reads "no record").
+// home directory homeScope refuses (every caller then reads "no record").
 func userPathEntryPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	home, refused := homeScope()
+	if refused != "" {
 		return ""
 	}
 	return filepath.Join(home, ".abcd", "path-entry")
@@ -287,6 +328,13 @@ func cachePresent(dataDir, cwd string) bool {
 // the attested value, so a pair flipped after the binding fails the hash.
 func cacheBindingProblem(dataDir string) (cacheAttestation, string) {
 	record := "~/.abcd/" + cacheAttestationFile
+	// The home the record would live in is judged before the record: a refused
+	// HOME is a different repair from a missing attestation, and reporting it
+	// as the latter sends the operator to re-run the hooks, which decline to
+	// write the record for the very same reason (homeScope).
+	if _, refused := homeScope(); refused != "" {
+		return cacheAttestation{}, "no " + record + " record can be read at all: " + refused
+	}
 	att, ok := readCacheAttestation()
 	if !ok {
 		return cacheAttestation{}, "no " + record + " record binds it — a session that authenticates the cache against the published release manifest writes one"

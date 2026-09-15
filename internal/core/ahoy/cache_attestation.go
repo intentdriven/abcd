@@ -1,7 +1,6 @@
 package ahoy
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -60,28 +59,40 @@ type cacheAttestation struct {
 // userCacheAttestationPath is ~/.abcd/cache-attestation, beside path-entry
 // and for the same reason: `ahoy install` runs from a terminal as well as
 // from a hook, and the record must be readable wherever the promotion runs.
-// Empty when the home directory cannot be resolved (every caller then reads
-// "no attestation").
+// Empty when homeScope refuses the home the environment named (every caller
+// then reads "no attestation").
 func userCacheAttestationPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	home, refused := homeScope()
+	if refused != "" {
 		return ""
 	}
 	return filepath.Join(home, ".abcd", cacheAttestationFile)
 }
 
-// readCacheAttestation loads the record through the same guarded, bounded
-// read path-entry uses, reporting ok only for a well-formed manifest-trust
-// attestation: an absolute data_dir, a full lowercase-hex binary_sha256, and
+// readCacheAttestation loads the record through fsutil.ReadDeclaration — the
+// same home-scoped declaration read path-entry uses, not the bare guarded read
+// — reporting ok only for a well-formed manifest-trust attestation: an
+// absolute data_dir, a full lowercase-hex binary_sha256, and
 // cache_trust=manifest. Anything less — absent, truncated, over the record
 // cap, a symlinked leaf, a relative directory, an offline trust — vouches for
 // nothing, so it reads as no attestation at all.
+//
+// The declaration read is what the first cut's comment claimed and the code did
+// not do: it adds the two facts that make the file THIS SESSION'S WORD — not
+// writable by group or other, owned by this uid — and without them a mode-0666
+// attestation was honoured while the same-mode path-entry beside it was
+// refused. The consequence is one record earlier than path-entry's, not
+// smaller: the attestation names the directory a release binary is promoted
+// out of and the hash it must carry, so a local uid who could rewrite it could
+// choose both, which is exactly the trust floor iss-2609091927085132 raised for
+// the sibling record. It is not the accepted same-uid residual
+// (iss-2609012039107700), which it neither closes nor claims to.
 func readCacheAttestation() (cacheAttestation, bool) {
 	path := userCacheAttestationPath()
 	if path == "" {
 		return cacheAttestation{}, false
 	}
-	raw, err := fsutil.ReadGuarded(path, maxPathEntryBytes)
+	raw, _, err := fsutil.ReadDeclaration(path, maxPathEntryBytes)
 	if err != nil {
 		return cacheAttestation{}, false
 	}

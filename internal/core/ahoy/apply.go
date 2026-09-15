@@ -1014,8 +1014,17 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			// directory would plant: an artefact and a record that agree with
 			// each other. The attestation is what the environment cannot write,
 			// so its absence or disagreement is the refusal, said in full.
+			// The remedy has to match the refusal. "Re-run the hooks" is right
+			// for a record that is missing or stale, and useless when the
+			// refusal is the HOME the record would live in — the hooks decline
+			// to write it into that home for the same reason, so the reader
+			// would be sent round a loop that cannot close.
+			remedy := "Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`."
+			if _, refusedHome := homeScope(); refusedHome != "" {
+				remedy = "Re-run from a session whose HOME names your own home directory: the hooks refuse to write the attestation into this one for the same reason, so no further session will produce it."
+			}
 			a.refuse("ignored the cache in the plugin data directory (" + look.story + "): " + unbound +
-				". A cache is promoted to the PATH copy only when the attestation the hooks write after authenticating it against the published release manifest names that directory and that hash, so nothing in it was trusted as a verified release artefact. Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`.")
+				". A cache is promoted to the PATH copy only when the attestation the hooks write after authenticating it against the published release manifest names that directory and that hash, so nothing in it was trusted as a verified release artefact. " + remedy)
 		}
 	}
 	if !present || unbound != "" {

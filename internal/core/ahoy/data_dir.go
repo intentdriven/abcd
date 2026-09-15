@@ -95,6 +95,22 @@ func metaField(path, key string) string {
 	return ""
 }
 
+// insideRepo reports whether p resolves inside the repository the verb is
+// running against. It is the one resolution the in-checkout shape guards share
+// — dataDirHazard for the cache's directory, homeScope for the home the
+// attestation and the path entry are read from — so the two can never disagree
+// about what "inside the checkout" means, and neither carries a second copy of
+// the absolutise-then-resolve sequence. Equality counts as inside; a caller for
+// which the repository BEING the path is ordinary rather than hazardous says so
+// itself.
+func insideRepo(cwd, p string) bool {
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return false
+	}
+	return under(resolvePath(abs), resolvePath(p))
+}
+
 // dataDirHazard reports why dataDir cannot be trusted as the harness's
 // persistent data directory, or "" when it has the shape that directory always
 // has: an absolute path, outside the repository being installed, not
@@ -119,7 +135,7 @@ func dataDirHazard(dataDir, cwd string) string {
 	if !filepath.IsAbs(dataDir) {
 		return "it is a relative path, which resolves against whatever directory the verb happens to run in"
 	}
-	if abs, err := filepath.Abs(cwd); err == nil && under(resolvePath(abs), resolvePath(dataDir)) {
+	if insideRepo(cwd, dataDir) {
 		return "it lies inside the repository being installed, so its cache would be committed bytes"
 	}
 	for _, dir := range []string{dataDir, filepath.Join(dataDir, "cache")} {

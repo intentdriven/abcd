@@ -32,9 +32,84 @@ binary="$plugin_root/abcd"
 binary_quoted="'$(printf '%s' "$binary" | sed "s/'/'\\\\''/g")'"
 
 # HOME is a filesystem destination here, never a fetch origin: it locates the
-# owned-copy provenance record (below) and renders user-scope paths in their
-# tilde form. Empty when HOME is unset, which every use guards.
+# owned-copy provenance record and the cache attestation (both below) and
+# renders user-scope paths in their tilde form. Empty when HOME is unset, which
+# every use guards.
+#
+# Both records rest on being a write into the CALLER'S OWN HOME — the one place
+# the environment the harness hands this hook does not reach
+# (GHSA-4q78-ccfv-f374). HOME is part of that same environment, so the value is
+# checked before it is used as that place, and the two shapes refused here are
+# the two the Go readers refuse (ahoy.homeScope):
+#
+#   - a RELATIVE HOME resolves ~/.abcd against whatever directory this hook
+#     happens to run in, which is the checkout the session opened — so a
+#     committed fakehome/.abcd/cache-attestation would become the record the
+#     PATH promotion trusts, reopening through repository content the very class
+#     the attestation exists to outrank;
+#   - a HOME INSIDE that directory is the same shape by another spelling.
+#
+# HOME being the working directory itself is ordinary (a session started in the
+# home directory) and is not refused. A refusal empties home_dir, so every
+# home-scoped write below is skipped by the guard it already carries, and
+# home_refusal carries the reason onto the success notice — a write skipped in
+# silence sends the reader to `ahoy install`, whose own refusal names a remedy
+# that cannot help.
 home_dir="${HOME:-}"
+
+# home_inside_cwd reports whether $HOME lies strictly inside the directory this
+# hook is running in.
+#
+# The running directory is taken from `pwd -P` and never from $PWD: $PWD is an
+# inherited environment claim, and a guard whose whole subject is "the
+# environment named a home it should not have" cannot rest on the environment's
+# word about where it is standing. (The allowlist in
+# TestBootstrapFetchOriginsAreConstants holds the same line from the other side:
+# CLAUDE_PLUGIN_ROOT, CLAUDE_PLUGIN_DATA and HOME are the only names this script
+# may read.)
+#
+# Both sides are resolved with `pwd -P` where they exist, because a checkout
+# reached through a symlink is otherwise two spellings of one place that never
+# compare equal (macOS names a temp tree /var/… while getcwd answers
+# /private/var/…); the unresolved spelling is compared as well, so a home
+# nothing can resolve is still caught lexically. The Go reader makes the same
+# comparison through resolvePath.
+home_inside_cwd() {
+	_hic_cwd=$(pwd -P 2>/dev/null) || _hic_cwd=''
+	[ -n "$_hic_cwd" ] || return 1
+	case "$_hic_cwd" in /*) ;; *) return 1 ;; esac
+	_hic_home=$(cd "$home_dir" 2>/dev/null && pwd -P) || _hic_home=''
+	if [ -z "$_hic_home" ] && [ "${home_dir%/*}" != "$home_dir" ]; then
+		# HOME itself does not exist yet — a planted one need not, since the
+		# write below would create it. Resolve its existing PARENT and rejoin
+		# the leaf, which is the same "longest existing prefix" resolution
+		# fsutil.RealExistingPath makes on the Go side. Parameter expansion, not
+		# dirname/basename: a missing external would otherwise leave `cd` with
+		# no argument, which is `cd $HOME` — the one directory this must not
+		# silently become.
+		_hic_parent=$(cd "${home_dir%/*}" 2>/dev/null && pwd -P) || _hic_parent=''
+		[ -n "$_hic_parent" ] && _hic_home="$_hic_parent/${home_dir##*/}"
+	fi
+	[ -n "$_hic_home" ] || _hic_home="$home_dir"
+	if [ "$_hic_home" != "$_hic_cwd" ] && [ "${_hic_home#"$_hic_cwd"/}" != "$_hic_home" ]; then
+		return 0
+	fi
+	if [ "$home_dir" != "$_hic_cwd" ] && [ "${home_dir#"$_hic_cwd"/}" != "$home_dir" ]; then
+		return 0
+	fi
+	return 1
+}
+
+home_refusal=''
+if [ -z "$home_dir" ]; then
+	home_refusal='HOME is unset, so there is no home directory to write it into'
+elif [ "${home_dir#/}" = "$home_dir" ]; then
+	home_refusal='HOME is a relative path, so ~/.abcd would resolve against whatever directory this hook happens to run in rather than naming one home'
+	home_dir=''
+elif home_inside_cwd; then
+	home_refusal='HOME lies inside the directory this hook is running in, so its ~/.abcd records would be repository content rather than a write into your own home'
+	home_dir=''
+fi
 
 # The persistent data dir is taken from the harness or not at all. Its
 # documented path shape could be derived from the plugin root, but a wrong
@@ -827,7 +902,15 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 	#     record, so the control characters meta_field strips on READ are
 	#     stripped before the WRITE: a value carrying a newline would otherwise
 	#     inject key=value lines of its own, and the Go reader parses last-wins.
-	if [ -n "$attest" ] && [ -n "$home_dir" ]; then
+	#
+	#     A home this run will not write into is SAID, not passed over: the
+	#     whole block used to be skipped with its note, so the install reported
+	#     nothing and the reader met the consequence later at `ahoy install`,
+	#     whose refusal names re-running the hooks — which would decline for
+	#     exactly the same reason. The note names HOME as the reason instead.
+	if [ -n "$attest" ] && [ -z "$home_dir" ]; then
+		attest_note=" (the cache attestation could not be written because $home_refusal, so \`ahoy install\` will not promote this cache to an owned PATH copy)"
+	elif [ -n "$attest" ]; then
 		attest_dir="$home_dir/.abcd"
 		attest_path="$attest_dir/cache-attestation"
 		if [ -e "$attest_path" ] && [ ! -f "$attest_path" ]; then

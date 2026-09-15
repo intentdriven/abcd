@@ -304,11 +304,23 @@ func runBootstrap(t *testing.T, root string, fx *bootstrapFixture, extraPath str
 // environment.
 func runScript(t *testing.T, script, root string, extraEnv []string, extraPath string) (string, int) {
 	t.Helper()
+	return runScriptIn(t, "", script, root, extraEnv, extraPath)
+}
+
+// runScriptIn is runScript with the child's WORKING DIRECTORY pinned (empty
+// inherits this process's, which is the package directory inside the checkout).
+// A case that hands the script a relative path in its environment — the
+// relative HOME the attestation's trust floor has to refuse — needs that
+// directory to be a temp dir it controls, because the whole point of the shape
+// is that the child resolves the value against wherever it happens to run.
+func runScriptIn(t *testing.T, dir, script, root string, extraEnv []string, extraPath string) (string, int) {
+	t.Helper()
 	pathValue := os.Getenv("PATH")
 	if extraPath != "" {
 		pathValue = extraPath + string(os.PathListSeparator) + pathValue
 	}
 	cmd := exec.Command(script)
+	cmd.Dir = dir
 	cmd.Env = dedupEnvKeepLast(append([]string{
 		"PATH=" + pathValue,
 		"HOME=" + t.TempDir(),

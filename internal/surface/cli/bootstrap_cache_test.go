@@ -1266,3 +1266,109 @@ func TestBootstrapAttestationStripsControlCharactersFromDataDir(t *testing.T) {
 		t.Errorf("the forged line must not reach the parsed hash; got %q", got["binary_sha256"])
 	}
 }
+
+// GHSA-4q78-ccfv-f374, the second cut, shell half. The attestation is trusted
+// because it is "a write into the caller's own home" — but the script takes
+// HOME verbatim (`home_dir="${HOME:-}"`), so a relative HOME makes the record's
+// home whatever directory the hook happens to run in, and the checkout the hook
+// runs in can carry a committed `fakehome/.abcd/cache-attestation`. The writer
+// refuses the same two shapes the readers do, and says which one it refused —
+// because with the write skipped in silence the later `ahoy install` refusal
+// sends the reader to "start a session with network access", which cannot help:
+// the next session would decline to write for the same reason.
+
+// runBootstrapInHome runs a fixture-pointed bootstrap in a pinned working
+// directory with a pinned HOME (which may be relative, or empty for unset).
+func runBootstrapInHome(t *testing.T, dir, root, data, home string, fx *bootstrapFixture) (string, int) {
+	t.Helper()
+	bootstrapRequires(t)
+	return runScriptIn(t, dir, bootstrapFixtureScript(t, fx.base), root,
+		append(fx.env(), "CLAUDE_PLUGIN_DATA="+data, "HOME="+home), "")
+}
+
+// attestableRun seeds a cache the published manifest authenticates, so the run
+// reaches the attestation step with manifest trust established and the only
+// thing standing between it and a written record is HOME.
+func attestableRun(t *testing.T) (root, data string, fx *bootstrapFixture) {
+	t.Helper()
+	root = bootstrapRoot(t)
+	data = t.TempDir()
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	return root, data, bootstrapServer(t, []byte("served, never installed"), bootstrapManifest(cached))
+}
+
+func TestBootstrapRefusesAHomeItCannotTrust(t *testing.T) {
+	// A relative HOME: the record's directory is decided by wherever the hook
+	// runs, which is the checkout the session opened.
+	t.Run("relative", func(t *testing.T) {
+		root, data, fx := attestableRun(t)
+		work := t.TempDir()
+		out, code := runBootstrapInHome(t, work, root, data, "fakehome", fx)
+		if code != 0 {
+			t.Fatalf("a refused HOME is a note on a successful install, not a fault: got %d (output %q)", code, out)
+		}
+		if _, err := os.Stat(filepath.Join(work, "fakehome")); !os.IsNotExist(err) {
+			t.Errorf("the attestation was written into a relative HOME resolved against the working directory: %v", err)
+		}
+		assertHomeRefusalNamed(t, out)
+	})
+
+	// An absolute HOME inside the directory the hook runs in: the same shape
+	// dataDirHazard refuses for the data dir, one record further on.
+	// Both spellings: the committed directory an attacker really plants, and
+	// one that does not exist yet (the write would create it). The second is
+	// the harder compare — there is no directory to resolve — so the guard
+	// resolves the existing parent and rejoins the leaf.
+	for _, tc := range []struct {
+		name   string
+		create bool
+	}{
+		{"inside the working directory", true},
+		{"inside the working directory, not yet created", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, data, fx := attestableRun(t)
+			work := t.TempDir()
+			home := filepath.Join(work, "fakehome")
+			if tc.create {
+				if err := os.MkdirAll(home, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			out, code := runBootstrapInHome(t, work, root, data, home, fx)
+			if code != 0 {
+				t.Fatalf("a refused HOME is a note on a successful install, not a fault: got %d (output %q)", code, out)
+			}
+			if _, err := os.Stat(homeCacheAttestation(home)); !os.IsNotExist(err) {
+				t.Errorf("the attestation was written into a HOME inside the working directory: %v", err)
+			}
+			assertHomeRefusalNamed(t, out)
+		})
+	}
+
+	// HOME unset: the record cannot be written at all, and until now the whole
+	// block including its note was skipped, so the install said nothing and the
+	// later `ahoy install` refusal named the wrong remedy.
+	t.Run("unset", func(t *testing.T) {
+		root, data, fx := attestableRun(t)
+		out, code := runBootstrapInHome(t, t.TempDir(), root, data, "", fx)
+		if code != 0 {
+			t.Fatalf("an unset HOME is a note on a successful install, not a fault: got %d (output %q)", code, out)
+		}
+		assertHomeRefusalNamed(t, out)
+	})
+}
+
+// assertHomeRefusalNamed: the success notice says the attestation was not
+// written, names HOME as the reason, and names the consequence the reader will
+// otherwise meet at `ahoy install`.
+func assertHomeRefusalNamed(t *testing.T, out string) {
+	t.Helper()
+	if !strings.Contains(out, "HOME") {
+		t.Errorf("the notice must name HOME as the reason the cache was not attested; output %q", out)
+	}
+	if !strings.Contains(out, "cache attestation") {
+		t.Errorf("the notice must say the cache attestation was not written; output %q", out)
+	}
+}

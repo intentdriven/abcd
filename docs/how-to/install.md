@@ -84,7 +84,12 @@ made only from a cache that `~/.abcd/cache-attestation` vouches for — the
 directory it names, holding the hash it names — so a data directory pointed at
 by an environment variable alone is never promoted onto `PATH`; the install
 says which record is missing or disagrees and degrades to the symlink until a
-session with network access re-authenticates the cache. Uninstalling
+session with network access re-authenticates the cache. The record is read
+only from a home directory the session can trust: one that is absolute and
+not inside the repository being installed, since a home the environment can
+point anywhere could name the attestation too. A refused home is named as the
+reason, and the remedy is to start the session with an ordinary home rather
+than with network access. Uninstalling
 takes the record away with the entry, so nothing that lands in that directory
 later inherits the claim. A binary nothing recorded is ignored with one line
 naming it and the reason, and the hook takes its degraded path instead; an
