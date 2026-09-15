@@ -793,28 +793,35 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 	#     sibling temp file and renamed in, mode 0600 — it is the reader's own
 	#     record — and a directory squatting the path is reported, not renamed
 	#     into. The path is rendered nowhere: the note carries no home path.
+	#
+	#     The temp file comes from mktemp, never from a name this script can
+	#     predict: `> "$dir/.name.$$"` and a chmod by that name both FOLLOW a
+	#     symlink pre-planted there, so a same-UID writer could have this run
+	#     write the record's bytes and mode onto a file of their choosing and
+	#     then rename the planted link itself into place as the attestation
+	#     (found in the security review of the first cut). mktemp creates a
+	#     fresh exclusive regular file under a name nobody could plant, and the
+	#     chmod is by the name it returned.
 	if [ -n "$attest" ] && [ -n "$home_dir" ]; then
 		attest_dir="$home_dir/.abcd"
 		attest_path="$attest_dir/cache-attestation"
 		if [ -e "$attest_path" ] && [ ! -f "$attest_path" ]; then
 			attest_note=' (the cache attestation could not be written because its path is occupied by something that is not a regular file, so `ahoy install` will not promote this cache to an owned PATH copy)'
 		else
-			attest_tmp="$attest_dir/.cache-attestation.$$"
 			if mkdir -p "$attest_dir" 2>/dev/null &&
-				(
-					umask 077
-					{
-						printf 'data_dir=%s\n' "$data_dir"
-						printf 'binary_sha256=%s\n' "$expected_sha"
-						printf 'cache_trust=manifest\n'
-						printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-					} > "$attest_tmp"
-				) 2>/dev/null &&
+				attest_tmp=$(mktemp "$attest_dir/.cache-attestation.XXXXXX" 2>/dev/null) &&
+				[ -n "$attest_tmp" ] &&
+				{
+					printf 'data_dir=%s\n' "$data_dir"
+					printf 'binary_sha256=%s\n' "$expected_sha"
+					printf 'cache_trust=manifest\n'
+					printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+				} > "$attest_tmp" 2>/dev/null &&
 				chmod 0600 "$attest_tmp" 2>/dev/null &&
 				mv -f "$attest_tmp" "$attest_path" 2>/dev/null; then
 				attest_tmp=''
 			else
-				rm -f "$attest_tmp" 2>/dev/null
+				[ -n "$attest_tmp" ] && rm -f "$attest_tmp" 2>/dev/null
 				attest_tmp=''
 				attest_note=' (the cache attestation could not be written, so `ahoy install` will not promote this cache to an owned PATH copy)'
 			fi

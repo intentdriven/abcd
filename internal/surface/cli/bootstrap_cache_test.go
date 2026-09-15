@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1107,3 +1109,120 @@ func TestBootstrapDegradedInstallWritesNoAttestation(t *testing.T) {
 		t.Errorf("a degraded install has no cache to attest: %v", err)
 	}
 }
+
+// runBootstrapWithDataHomeAtPid runs the bootstrap so that the test learns the
+// script's process id BEFORE the script starts: a wrapper shell records its
+// own $$ to pidFile, waits for goFile to appear, then execs the script, and
+// exec keeps the pid. plant is called with that pid between the two, so a
+// test can pre-place a file at any name the script derives from $$.
+func runBootstrapWithDataHomeAtPid(t *testing.T, root, data, home string, fx *bootstrapFixture, plant func(pid int)) (string, int) {
+	t.Helper()
+	bootstrapRequires(t)
+	script := bootstrapFixtureScript(t, fx.base)
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "pid")
+	goFile := filepath.Join(dir, "go")
+	wrapper := filepath.Join(dir, "wrapper.sh")
+	body := "#!/bin/sh\nprintf '%s' \"$$\" > \"$1\"\nwhile [ ! -e \"$2\" ]; do sleep 0.02; done\nexec \"$3\"\n"
+	if err := os.WriteFile(wrapper, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(wrapper, pidFile, goFile, script)
+	cmd.Env = dedupEnvKeepLast(append([]string{
+		"PATH=" + os.Getenv("PATH"),
+		"CLAUDE_PLUGIN_ROOT=" + root,
+	}, append(fx.env(), "CLAUDE_PLUGIN_DATA="+data, "HOME="+home)...))
+	var out strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	var pid int
+	for {
+		raw, err := os.ReadFile(pidFile)
+		if err == nil && len(raw) > 0 {
+			if n, perr := strconv.Atoi(strings.TrimSpace(string(raw))); perr == nil {
+				pid = n
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the wrapper never reported its pid")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pid != cmd.Process.Pid {
+		t.Fatalf("the wrapper's $$ (%d) is not the child pid (%d), so exec would not preserve it", pid, cmd.Process.Pid)
+	}
+	plant(pid)
+	if err := os.WriteFile(goFile, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := cmd.Wait()
+	code := 0
+	if err != nil {
+		if e, ok := err.(*exec.ExitError); ok {
+			code = e.ExitCode()
+		} else {
+			t.Fatalf("running the bootstrap: %v (output %s)", err, out.String())
+		}
+	}
+	return out.String(), code
+}
+
+// TestBootstrapAttestationTempIgnoresAPlantedSymlink: the first cut wrote the
+// attestation to `$HOME/.abcd/.cache-attestation.$$` with `>` and a chmod by
+// name, both of which follow a symlink pre-planted at that predictable name —
+// so a same-UID writer could have the run write the record's bytes and mode
+// onto a file of their choosing, and then rename the symlink itself into place
+// as the attestation. The temp must be created by mktemp (fresh, exclusive,
+// unpredictable), so the planted link is never opened: its target keeps its
+// bytes and mode, and the attestation that lands is a regular file.
+func TestBootstrapAttestationTempIgnoresAPlantedSymlink(t *testing.T) {
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	home := t.TempDir()
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	fx := bootstrapServer(t, cached, bootstrapManifest(cached))
+	victim := filepath.Join(t.TempDir(), "victim")
+	const victimBody = "the victim's own bytes"
+	if err := os.WriteFile(victim, []byte(victimBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := runBootstrapWithDataHomeAtPid(t, root, data, home, fx, func(pid int) {
+		planted := filepath.Join(home, ".abcd", ".cache-attestation."+strconv.Itoa(pid))
+		if err := os.Symlink(victim, planted); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if code != 0 {
+		t.Fatalf("the authenticated cache hit must install, got %d (output %q)", code, out)
+	}
+	if got := mustReadFile(t, victim); got != victimBody {
+		t.Errorf("the planted symlink's target was written through: got %q, want %q", got, victimBody)
+	}
+	if fi, err := os.Stat(victim); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("the planted symlink's target had its mode changed: %v (%v)", fi, err)
+	}
+	fi, err := os.Lstat(homeCacheAttestation(home))
+	if err != nil {
+		t.Fatalf("the attestation must still be written: %v (output %q)", err, out)
+	}
+	if !fi.Mode().IsRegular() {
+		t.Fatalf("the attestation must be a regular file, not the planted symlink renamed into place: %v", fi.Mode())
+	}
+	if got := attestationValues(t, home); got["binary_sha256"] != sha256Hex(cached) || got["data_dir"] != data {
+		t.Errorf("the attestation must carry the authenticated cache; got %v", got)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("the attestation must be mode 0600, got %v", fi.Mode().Perm())
+	}
+}
+
