@@ -131,3 +131,25 @@ func mustStamp(t *testing.T) provenance.Stamp {
 	}
 	return s
 }
+
+// F2: an intent's spec set is matched CANONICALLY, the comparison record-lint
+// makes. A back-link written zero-padded (itd-007) names itd-7, so a literal
+// compare here would disagree with the lint about the same two records.
+func TestSpecsForIntentMatchesCanonically(t *testing.T) {
+	store := Store{Specs: []Spec{
+		{ID: "spc-1", Intent: "itd-7", Status: StatusClosed},
+		{ID: "spc-2", Intent: "itd-007", Status: StatusOpen},
+	}}
+	if got := store.SpecsForIntent("itd-7"); len(got) != 2 {
+		t.Fatalf("SpecsForIntent(itd-7) = %+v, want both specs", got)
+	}
+	if got := store.SpecsForIntent("itd-007"); len(got) != 2 {
+		t.Fatalf("SpecsForIntent(itd-007) = %+v, want both specs", got)
+	}
+	if got := store.OpenSpecsForIntent("itd-7"); len(got) != 1 || got[0].ID != "spc-2" {
+		t.Fatalf("OpenSpecsForIntent(itd-7) = %+v, want spc-2", got)
+	}
+	if sp, ok := store.ByIntent("itd-007"); !ok || sp.ID != "spc-1" {
+		t.Fatalf("ByIntent(itd-007) = %+v, %v", sp, ok)
+	}
+}

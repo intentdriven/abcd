@@ -1329,6 +1329,20 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "remainder",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },

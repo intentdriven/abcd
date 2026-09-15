@@ -11,6 +11,8 @@ production_mode: hand-written
 deferred_after: "v0.8.0"
 deferral_reason: "Closing a spec ships its intent unconditionally, with no way to close one without the other and no way to split an intent whose criteria are only half met. Both are lifecycle changes: what it should mean to close a spec against a partially delivered intent is a question about the lifecycle's shape, and a session that met this stopped and asked rather than close, which was the right instinct and is the reason the record exists."
 found_at: "internal (spec close, intent lifecycle)"
+resolution: "An intent owns one or more specs: spec close --remainder mints the follow-on spec, the intent ships only when no open spec names it, and --impact is demanded at that close alone"
+impact: breaking
 ---
 
 Closing a spec ships its intent unconditionally, and there is no way to do one without the other.
@@ -42,3 +44,7 @@ the release cut's `staleIntents`, which refuses a cut for a planned intent whose
 spec has closed and would therefore wall off every release taken during a partial
 delivery. Until that change lands, a session meeting the half-delivered case does
 what the field session did: stops and says so.
+
+## Grounds
+
+- pursued: a thought-through intent stands as written, so a spec that delivers part of it is closed on its own terms and the remainder gets its own spec attached to the same intent, with the ship transition derived from the spec store rather than from a scalar link; what would show it wrong is a partial delivery that still ships the intent (two readers answering the open-spec question differently) or a remainder that nothing can close

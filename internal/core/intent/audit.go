@@ -320,12 +320,16 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 	if !rcpIDRe.MatchString(rcp) {
 		return fmt.Errorf("intent: receipt id %q is malformed; refusing to build a request path", rcp)
 	}
+	realised, err := deliveredSpecs(repoRoot, it)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
 	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return err
 	}
-	body := auditPromptBody(it, rcp, content)
-	doc := body + auditProvenanceBlock(auditPolicyFor(it, rcp, content))
+	body := auditPromptBody(it, rcp, content, realised)
+	doc := body + auditProvenanceBlock(auditPolicyFor(it, rcp, content, realised))
 
 	path := filepath.Join(dir, rcp+".request.md")
 	if err := fsutil.WriteFileAtomic(path, []byte(doc), 0o644); err != nil {
@@ -336,18 +340,31 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 
 // auditPromptBody composes the PROMPT the auditor is handed — everything in the
 // request except the provenance block. It is a pure function of the receipt, the
-// intent's path, its spec id and its Acceptance Criteria, so the ingest can
-// recompute it byte-for-byte and verify the echoed prompt_hash rather than trust
-// it. Anything non-deterministic added here (a timestamp, a host path, a diff
-// range the host resolved) breaks that, so it stays out.
-func auditPromptBody(it Intent, rcp, content string) string {
+// intent's path, the specs that realised it and its Acceptance Criteria, so the
+// ingest can recompute it byte-for-byte and verify the echoed prompt_hash rather
+// than trust it. Anything non-deterministic added here (a timestamp, a host path,
+// a diff range the host resolved) breaks that, so it stays out.
+//
+// `realised` is the intent's whole delivery, not its scalar spec_id. An intent
+// owns one or more specs (adr-2609151513118583), and the ship transition it is
+// audited at arrives only once every one of them has closed — so the diff the
+// auditor has to read spans all of them. Naming one spec asked for a fraction of
+// the delivery while the criteria being judged describe the whole capability,
+// which is a question no honest verdict can answer. It is a caller-supplied
+// argument rather than a store read here so this function stays pure and the
+// ingest recomputes the identical bytes.
+func auditPromptBody(it Intent, rcp, content string, realised []string) string {
 	ac := strings.TrimSpace(sectionBody(content, acHeadingRe))
+	specs := strings.Join(realised, ", ")
+	if specs == "" {
+		specs = "(none recorded)"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Fidelity review request — %s\n\n", rcp)
 	fmt.Fprintf(&b, "- receipt_id: %s\n", rcp)
 	fmt.Fprintf(&b, "- intent: %s\n", it.Path)
-	fmt.Fprintf(&b, "- spec: %s\n", it.SpecID)
-	fmt.Fprintf(&b, "- delivered: the diff/commit range that realised %s (host supplies the range)\n\n", it.SpecID)
+	fmt.Fprintf(&b, "- specs: %s\n", specs)
+	fmt.Fprintf(&b, "- delivered: the diff/commit range that realised ALL of %s (host supplies the range)\n\n", specs)
 	b.WriteString("## Acceptance Criteria (authority; numbered ac-1..ac-K in order)\n\n")
 	if ac == "" {
 		b.WriteString("(none found)\n")
@@ -462,11 +479,43 @@ type auditPolicy struct {
 // auditPolicyFor computes the host-issued provenance for one receipt. content is
 // the intent file's bytes as the request was (or will be) composed from them, so
 // emit and ingest agree as long as the record has not moved underneath the audit.
-func auditPolicyFor(it Intent, rcp, content string) auditPolicy {
+func auditPolicyFor(it Intent, rcp, content string, realised []string) auditPolicy {
 	return auditPolicy{
 		RubricHash: sha256Field(rubricText()),
-		PromptHash: sha256Field(auditPromptBody(it, rcp, content)),
+		PromptHash: sha256Field(auditPromptBody(it, rcp, content, realised)),
 	}
+}
+
+// deliveredSpecs lists every CLOSED spec realising the intent, in spec-number
+// (minting) order — the delivery one fidelity audit has to read now that an
+// intent owns one or more specs (adr-2609151513118583).
+//
+// Closed ones only: the audit runs at the ship transition, which by definition
+// arrives when no OPEN spec names the intent, so an open spec in this list would
+// mean the caller is auditing something that has not shipped. An intent whose
+// store holds no closed spec at all — a record whose specs predate the store, or
+// a re-emit in a tree that carries only the intent — falls back to its own
+// scalar spec_id, so the request still names the delivery it can name rather
+// than handing the auditor nothing.
+//
+// Both the emit and the ingest's prompt_hash recomputation read this, so the two
+// agree; a spec closing between them would move the hash, and cannot, because no
+// verb mints or closes a spec against an already-shipped intent.
+func deliveredSpecs(repoRoot string, it Intent) ([]string, error) {
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, sp := range store.SpecsForIntent(it.ID) {
+		if sp.Status == spec.StatusClosed {
+			out = append(out, sp.ID)
+		}
+	}
+	if len(out) == 0 && spec.HasNum(it.SpecID) {
+		out = []string{it.SpecID}
+	}
+	return out, nil
 }
 
 // auditProvenanceBlock renders the block appended to the request. It is NOT part
@@ -540,7 +589,7 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	// which is the unsolicited-receipt shape: refused outright, OWED marker left
 	// parked, so a re-emit and a re-audit are still open. An absent or malformed
 	// hash is a malformed payload and keeps its existing DEAD_LETTER path below.
-	if err := checkIssuedPolicy(raw, it, rcp, content); err != nil {
+	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
 		return IngestVerdictResult{}, err
 	}
 
@@ -585,7 +634,7 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 // payload class validateVerdict already quarantines with its own message, and
 // duplicating the judgement here would move an established DEAD_LETTER onto the
 // reject path. Only a well-shaped hash that is not ours is refused outright.
-func checkIssuedPolicy(raw []byte, it Intent, rcp, content string) error {
+func checkIssuedPolicy(repoRoot string, raw []byte, it Intent, rcp, content string) error {
 	var lenient struct {
 		Policy verdictPolicy `json:"policy"`
 	}
@@ -596,7 +645,11 @@ func checkIssuedPolicy(raw []byte, it Intent, rcp, content string) error {
 	if !sha256FieldRe.MatchString(got.RubricHash) || !sha256FieldRe.MatchString(got.PromptHash) {
 		return nil
 	}
-	want := auditPolicyFor(it, rcp, content)
+	realised, err := deliveredSpecs(repoRoot, it)
+	if err != nil {
+		return err
+	}
+	want := auditPolicyFor(it, rcp, content, realised)
 	if got.RubricHash == want.RubricHash && got.PromptHash == want.PromptHash {
 		return nil
 	}

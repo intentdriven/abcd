@@ -2281,26 +2281,52 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 
-	// close <spc-N> — closes the spec AND reconciles the linked intent
-	// (planned -> shipped). Fail-closed and idempotent (see intent.Reconcile).
+	// close <spc-N> — closes the spec AND, when no open spec is left naming the
+	// linked intent, ships it (planned -> shipped). Fail-closed and idempotent
+	// (see intent.Reconcile).
 	//
 	// --impact is the judgement the shipped intent carries. It is optional
 	// because a record that already declares one needs nothing here, and it
 	// exists because shipped/ is the one bucket intent_impact_valid requires an
 	// impact in: without it the ship verb could only either move an impactless
 	// record into the bucket that refuses it or refuse forever, with no way for
-	// the tool to supply the missing judgement (iss-126).
-	var closeImpact string
+	// the tool to supply the missing judgement (iss-126). It is demanded at the
+	// close that ships and refused at an earlier one, which ships nothing
+	// (adr-2609151513118583).
+	//
+	// --remainder mints the follow-on spec for what this spec did not deliver and
+	// attaches it to the same intent, so the partial-delivery state — spec closed
+	// X, spec open Y, intent still planned — is reached in one operation rather
+	// than by a hand-mint afterwards that nothing enforces.
+	var (
+		closeImpact    string
+		closeRemainder string
+		closeMode      string
+	)
 	closeCmd := &cobra.Command{
 		Use:   "close <spc-N>",
-		Short: "Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)",
+		Short: "Close a spec (open/ -> closed/); ship its linked intent when no open spec is left naming it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Reconcile(repoRoot, args[0], closeImpact)
+			// A production mode stamps the MINTED remainder and nothing else, so
+			// without --remainder there is no record for it to describe: refuse
+			// rather than accept a disclosure that goes nowhere.
+			if closeMode != "" && closeRemainder == "" {
+				return &exitError{Code: 2, Msg: "abcd spec close: --production-mode stamps the spec --remainder mints, and no remainder was asked for (nothing written)"}
+			}
+			rem := intent.RemainderRequest{Slug: closeRemainder}
+			if closeRemainder != "" {
+				mode, err := resolveProductionMode(repoRoot, closeMode)
+				if err != nil {
+					return err
+				}
+				rem.ProductionMode = mode
+			}
+			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
 			}
@@ -2311,18 +2337,54 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
-				if res.IntentMoved {
+				if res.Remainder.ID != "" {
+					// The mint is idempotent, so a retry after a failure downstream of
+					// it finds the remainder a previous attempt wrote. Saying "minted"
+					// there would credit this invocation with a record it did not write.
+					verb := "minted remainder"
+					if !res.RemainderMinted {
+						verb = "reused existing remainder"
+					}
+					fmt.Fprintf(w, "  %s %s for %s\n  %s\n", verb, res.Remainder.ID, res.Remainder.Intent, termsafe.Sanitize(res.Remainder.Path))
+				}
+				switch {
+				case res.IntentMoved:
 					fmt.Fprintf(w, "  reconciled intent %s: %s -> %s\n", res.Intent.ID, res.From, res.To)
-				} else {
+				case len(res.OpenSpecs) > 0 && res.To == intent.BucketShipped:
+					// A SHIPPED intent with an open spec naming it is not an
+					// outcome, it is a record that disagrees with itself: an intent
+					// ships on the close after which no open spec names it
+					// (invariant 17). Rendering it as "stays shipped — still open"
+					// stated the contradiction in the register of a normal result,
+					// so it is named as the anomaly it is.
+					fmt.Fprintf(w, "  WARNING: intent %s is already shipped, yet %s still names it — a shipped intent has no open spec left (adr-2609151513118583); the record disagrees with itself\n", res.Intent.ID, strings.Join(res.OpenSpecs, ", "))
+				case len(res.OpenSpecs) > 0:
+					// The intent did not move, and the reason is a fact about the
+					// store, not a judgement: name the specs that still hold it.
+					fmt.Fprintf(w, "  intent %s stays %s — still open: %s\n", res.Intent.ID, res.To, strings.Join(res.OpenSpecs, ", "))
+				default:
 					fmt.Fprintf(w, "  intent %s already %s (no move)\n", res.Intent.ID, res.To)
 				}
+				// A close is idempotent, so a re-run against an already-shipped
+				// intent gets the SAME receipt back. Announcing "OWED" each time
+				// reads as a fresh obligation; only the close that actually parked
+				// the stub owes one, and the rest report the state they found.
 				if res.ReceiptID != "" {
-					fmt.Fprintf(w, "  fidelity review OWED: receipt %s\n", res.ReceiptID)
+					switch res.ReceiptStatus {
+					case "owed", "":
+						fmt.Fprintf(w, "  fidelity review OWED: receipt %s\n", res.ReceiptID)
+					case "already_dead_letter":
+						fmt.Fprintf(w, "  fidelity review already dead-lettered: receipt %s\n", res.ReceiptID)
+					default:
+						fmt.Fprintf(w, "  fidelity review already %s: receipt %s\n", strings.TrimPrefix(res.ReceiptStatus, "already_"), res.ReceiptID)
+					}
 				}
 			})
 		},
 	}
-	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)")
+	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent")
+	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)")
+	closeCmd.Flags().StringVar(&closeMode, "production-mode", "", productionModeFlagHelp)
 	specCmd.AddCommand(closeCmd)
 
 	return specCmd

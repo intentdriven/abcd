@@ -107,7 +107,7 @@ func TestCreateFromTextImpactOptional(t *testing.T) {
 func TestReconcileNeverShipsAnIntentThatTripsItsOwnBlocker(t *testing.T) {
 	root := t.TempDir()
 	seedShippableIntent(t, root, "")
-	res, err := Reconcile(root, "spc-1", "")
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{})
 	if err != nil {
 		// Refusing is the other acceptable outcome — but it must be a clean
 		// refusal, with the intent left where it was for a human to judge.
@@ -166,7 +166,7 @@ func TestReconcileStampsTheImpactItIsGiven(t *testing.T) {
 	root := t.TempDir()
 	seedShippableIntent(t, root, "")
 
-	res, err := Reconcile(root, "spc-1", "fix")
+	res, err := Reconcile(root, "spc-1", "fix", RemainderRequest{})
 	if err != nil {
 		t.Fatalf("Reconcile with an impact: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestReconcileRefusesAnImpactItsOwnGateWouldReject(t *testing.T) {
 		t.Run(bad, func(t *testing.T) {
 			root := t.TempDir()
 			seedShippableIntent(t, root, "")
-			if _, err := Reconcile(root, "spc-1", bad); err == nil {
+			if _, err := Reconcile(root, "spc-1", bad, RemainderRequest{}); err == nil {
 				t.Fatalf("Reconcile accepted --impact %q", bad)
 			}
 			if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); err != nil {
@@ -208,14 +208,14 @@ func TestReconcileRefusesAnImpactItsOwnGateWouldReject(t *testing.T) {
 func TestReconcileWillNotReviseARecordedImpact(t *testing.T) {
 	root := t.TempDir()
 	seedShippableIntent(t, root, "additive")
-	if _, err := Reconcile(root, "spc-1", "breaking"); err == nil {
+	if _, err := Reconcile(root, "spc-1", "breaking", RemainderRequest{}); err == nil {
 		t.Fatal("Reconcile overwrote a recorded impact from the flag")
 	}
 	if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); err != nil {
 		t.Fatalf("the refused revision still moved the intent: %v", err)
 	}
 
-	if _, err := Reconcile(root, "spc-1", "additive"); err != nil {
+	if _, err := Reconcile(root, "spc-1", "additive", RemainderRequest{}); err != nil {
 		t.Fatalf("an --impact agreeing with the record must be accepted: %v", err)
 	}
 	if body := shippedIntentBody(t, root); !strings.Contains(body, "\nimpact: additive\n") {
@@ -231,7 +231,7 @@ func TestReconcileRefusesToShipAnIllegalRecordedImpact(t *testing.T) {
 		t.Run(bad, func(t *testing.T) {
 			root := t.TempDir()
 			seedShippableIntent(t, root, bad)
-			if _, err := Reconcile(root, "spc-1", ""); err == nil {
+			if _, err := Reconcile(root, "spc-1", "", RemainderRequest{}); err == nil {
 				t.Fatalf("Reconcile shipped a record recording impact %q", bad)
 			}
 			if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); err != nil {

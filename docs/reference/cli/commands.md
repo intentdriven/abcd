@@ -1060,14 +1060,16 @@ Native spec store; bare invocation is read-only status
 
 #### `abcd spec close`
 
-Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)
+Close a spec (open/ -> closed/); ship its linked intent when no open spec is left naming it
 
 **Usage:** `abcd spec close <spc-N> [flags]`
 
 **Flags:**
 
 ```
-      --impact string   product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)
+      --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
+      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)
 ```
 
 ### `abcd update`

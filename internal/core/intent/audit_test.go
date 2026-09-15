@@ -118,7 +118,11 @@ func issuedPolicy(t *testing.T, root, rcp string) (auditPolicy, bool) {
 			continue
 		}
 		if _, ok := markerState(string(data), rcp); ok {
-			return auditPolicyFor(it, rcp, string(data)), true
+			realised, err := deliveredSpecs(root, it)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return auditPolicyFor(it, rcp, string(data), realised), true
 		}
 	}
 	return auditPolicy{}, false
@@ -130,7 +134,7 @@ func shipOne(t *testing.T, root string) string {
 	t.Helper()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	res, err := Reconcile(root, "spc-1", "")
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +177,7 @@ func TestReconcileEmitDeterministicReceipt(t *testing.T) {
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	// Re-run reconcile (idempotent): same receipt, single OWED marker.
-	res, err := Reconcile(root, "spc-1", "")
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +400,7 @@ func TestIngestPartialCriteriaDeadLetters(t *testing.T) {
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n"+
 			"# alpha\n\n## Acceptance Criteria\n\n- one\n- two\n- three\n\n## Audit Notes\n")
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	res, err := Reconcile(root, "spc-1", "")
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -494,7 +498,7 @@ func TestFullReviewCycle(t *testing.T) {
 	}
 	// The seeded draft declares no impact, so the close supplies the judgement —
 	// the drafts -> shipped path a real intent takes when the seed deferred it.
-	rr, err := Reconcile(root, pr.Spec.ID, "fix")
+	rr, err := Reconcile(root, pr.Spec.ID, "fix", RemainderRequest{})
 	if err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
