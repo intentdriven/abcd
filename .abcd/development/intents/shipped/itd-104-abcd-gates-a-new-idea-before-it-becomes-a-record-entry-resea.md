@@ -61,11 +61,11 @@ Per-criterion verdicts:
   evidence: internal/core/ideate/record.go:405 — "if !p.NoRejectedAlternatives { ... the verdict records no rejected alternatives and does not say so explicitly — nothing was written"
   evidence: internal/core/ideate/record.go:474 — "Graduates: v.verdict == VerdictSurvives,"
   evidence: internal/core/ideate/render.go:119 — "case VerdictSurvives: ... may graduate to a draft intent through\\nthe ordinary quoted-text create (`abcd intent \"<text>\"`). Ideate mints no\\nintent itself"
-- ac-4 — MET: resolveCitations builds one recordid.Resolver over the repository and refuses the whole verdict (CitationError, nothing written) if any grill hit cites an id that does not resolve; each hit is shape-checked against CitedIDRe first, and the resolved set is carried into the record as CitedRecords — the check-the-record-first gate, exercised green by the surface test that feeds an unresolvable itd-9999.
+- ac-4 — MET: resolveCitations builds one recordid.Resolver over the repository and refuses the whole verdict (CitationError, nothing written) if any grill hit cites an id that does not resolve; each hit is shape-checked against CitedIDRe first, and the resolved set is carried into the record as CitedRecords — the check-the-record-first gate, exercised green by the surface test that feeds an unresolvable itd-9999. <!-- record-lint: illustrative -->
   evidence: internal/core/ideate/record.go:454 — "if _, ok := r.Lookup(h.Record); !ok { unresolved = append(unresolved, h.Record); continue }"
   evidence: internal/core/ideate/record.go:348 — "if !recordid.CitedIDRe.MatchString(h.Record) { ... which is not a record id (want adr-N, itd-N, iss-N, or spc-N)"
   evidence: internal/core/recordid/resolve.go:76 — "func NewResolver(repoRoot string) (*Resolver, error)"
-  evidence: internal/surface/cli/ideate_surface_test.go:117 — "\"ideate\", \"record\", \"the-ideate-gate\", \"--verdict-json\", writeVerdict(t, ideateVerdictJSON(\"itd-9999\"))"
+  evidence: internal/surface/cli/ideate_surface_test.go:117 — "\"ideate\", \"record\", \"the-ideate-gate\", \"--verdict-json\", writeVerdict(t, ideateVerdictJSON(\"itd-9999\"))" <!-- record-lint: illustrative -->
 
 Gap audit:
 - honoured:

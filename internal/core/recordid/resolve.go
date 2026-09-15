@@ -36,6 +36,41 @@ import (
 // string BEFORE it is looked up or echoed, and they must all agree on the shape.
 var CitedIDRe = regexp.MustCompile(`^(?:adr|itd|iss|spc)-[0-9]+$`)
 
+// citedIDPartsRe splits a cited id into its family and its number, folding case.
+// It is CitedIDRe's grammar with the two halves captured, and it exists so the
+// canonicaliser below cannot drift from the shape every ingest boundary bounds a
+// citation with.
+var citedIDPartsRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-([0-9]+)$`)
+
+// CanonCitedID folds a cited id into the one spelling Lookup keys on: lower-case
+// family, number with its leading zeros trimmed. "" when the string is not a
+// cited id at all.
+//
+// A record's PROSE writes a handle in whatever spelling reads best in the
+// sentence — `ADR-6's concern`, `spc-009`, `Adr-0035` — while the resolver's keys
+// are built from filenames and are uniformly lower-case and unpadded. Without one
+// canonicaliser between them, a reader of the resolver would report a record that
+// plainly exists as naming nothing, which is the single worst failure a citation
+// gate can have: it trains the author to distrust it.
+//
+// This is the general form of CanonADRID, which stays as the ADR-only door its
+// two callers (the read-side resolver, the mint's presence check) already use.
+// Both trim TEXTUALLY, never through an integer parse, for the reason canonADRNum
+// states: a number wider than any integer type must still canonicalise rather
+// than collapse to "not a record". An all-zero number is refused on the same
+// terms — the allocator issues no zero id, so nothing can ever answer to one.
+func CanonCitedID(s string) string {
+	m := citedIDPartsRe.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	trimmed := strings.TrimLeft(m[2], "0")
+	if trimmed == "" {
+		return ""
+	}
+	return strings.ToLower(m[1]) + "-" + trimmed
+}
+
 // adrFileRe matches an ADR filename NNNN-slug.md and captures the number. ADRs
 // are the one family whose file does not carry its own id spelling, so the id is
 // derived from the numeric prefix.

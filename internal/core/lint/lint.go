@@ -449,6 +449,17 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, rs...)
 	}
 
+	// prose_citation_resolves reads the BODIES of the same stores, which straddle
+	// cfg.Roots for the same reason, so it runs once here beside record_schema —
+	// the frontmatter half and the prose half of one question, armed together.
+	if pcCfg, ok := cfg.Rules[ruleProseCitationResolves]; ok && pcCfg.Enabled {
+		pc, err := checkProseCitations(repoRoot, pcCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, pc...)
+	}
+
 	// cross_store_id_claim is the other half of the same cross-store question: it
 	// walks the markdown OUTSIDE those stores, which is every tree at once, so it
 	// too runs once here.

@@ -69,7 +69,7 @@ newly fail; a ninth, new dangle fails red.
 - *A new `supersedes` naming an absent record fails as a red gate* —
   `measureHealth` counts the supersedes dangle (recordjson.go:429 does not excuse
   it), and `checkBaseline` fails it because it is not in the baseline. Test
-  (`check_test.go`): a record introducing `supersedes: adr-999` (no such file)
+  (`check_test.go`): a record introducing `supersedes: adr-999` (no such file) <!-- record-lint: illustrative -->
   produces a red gate.
 - *A `spec_id` naming a `spc-N` with no file fails as a red gate* — the
   `spec_id` graph-field dangle reaches `Health.Unresolved` and fails the same

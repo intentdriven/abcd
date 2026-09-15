@@ -1,0 +1,135 @@
+{
+  "schema_version": 1,
+  "ids": [
+    {
+      "id": "adr-4",
+      "class": "pruned",
+      "note": "superseded by adr-35 (the lifeboat becomes a coverage experiment); 0004-*.md was removed in 1ac0691c and is still narrated by name in adr-1, adr-5, adr-35 and the intents that cite the supersession. iss-2608271804496010 owes the ruling on whether by-name prose citations keep a pruned decision restorable."
+    },
+    {
+      "id": "adr-6",
+      "class": "pruned",
+      "note": "removed in the record-pruning commit 0b40b5c8 with no successor to name it: adr-29 states in its own body that adr-6's decision stands and that it does not supersede it, so the supersession vocabulary cannot record the relationship. iss-179 owes the ruling (restore as a deprecated stub, or accept the prose as historical narration)."
+    },
+    {
+      "id": "adr-8",
+      "class": "pruned",
+      "note": "superseded by adr-25 (the LLM is host-delegated by default); removed in 0b40b5c8 and still narrated by name in adr-10, adr-25 and the intents that cite the supersession. Covered by iss-2608271804496010."
+    },
+    {
+      "id": "adr-14",
+      "class": "pruned",
+      "note": "superseded by adr-22 (bundled dependencies become pluggable adapters); removed in 0b40b5c8 and still named in adr-22's own body, the decisions index row and the dangling-reference records."
+    },
+    {
+      "id": "adr-15",
+      "class": "pruned",
+      "note": "superseded by adr-22 alongside adr-14 and adr-17; removed in 0b40b5c8 and still named in adr-22's body and the decisions index row."
+    },
+    {
+      "id": "adr-16",
+      "class": "pruned",
+      "note": "superseded by adr-27 (the autonomous run is a pluggable seam); removed in 0b40b5c8 and still named in adr-27's body, the decisions index row and the dangling-reference records. Covered by iss-2608271804496010."
+    },
+    {
+      "id": "adr-17",
+      "class": "pruned",
+      "note": "superseded by adr-22 alongside adr-14 and adr-15; removed in 0b40b5c8 and still named in adr-22's body and the decisions index row."
+    },
+    {
+      "id": "adr-18",
+      "class": "pruned",
+      "note": "superseded by adr-28 (one repository, a curated release artifact); removed in 0b40b5c8 and still named in adr-28's body, the decisions index row and the dangling-reference records. Covered by iss-2608271804496010."
+    },
+    {
+      "id": "spc-1",
+      "class": "never-minted",
+      "note": "reserved by itd-3 and never a file in this history, and separately an id of the retired predecessor spec store; both readings are declared in .abcd/development/specs/README.md, 'Two spc-N Namespaces'. The live store starts at spc-2."
+    },
+    {
+      "id": "spc-74",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling (spc-43..spc-83 name no live record — .abcd/development/specs/README.md). Cited by itd-65 and iss-237."
+    },
+    {
+      "id": "spc-75",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, named as such in .abcd/development/specs/README.md and re-scoped by iss-239. Cited by itd-69, itd-70 and two open issues."
+    },
+    {
+      "id": "spc-76",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling. Cited four times by itd-63 (setup wizard explains installs)."
+    },
+    {
+      "id": "spc-77",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling. Cited by adr-19 and itd-69."
+    },
+    {
+      "id": "spc-78",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling. Cited by itd-66 and itd-72."
+    },
+    {
+      "id": "spc-79",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling. Cited by itd-69 and itd-72."
+    },
+    {
+      "id": "spc-80",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling. Cited by itd-69 and itd-72."
+    },
+    {
+      "id": "spc-83",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store — the bundle handle spc-83-operator-surfaces named in .abcd/development/specs/README.md. Cited by itd-20, itd-24, itd-63, itd-69 and the specs charter itself."
+    },
+    {
+      "id": "itd-38",
+      "class": "never-minted",
+      "note": "an intent id that was released rather than reserved when idea-3's standalone system-impact discipline was absorbed into the modification grammar; itd-37 says so on the citing line ('itd-38 ID released, not reserved'), so no file was ever minted for it."
+    },
+    {
+      "id": "iss-2608310903083914",
+      "class": "never-minted",
+      "note": "names a capture minted inside the throwaway verification repository itd-179's ac-1 audit reports running against ('Against a binary built from the branch tip in a throwaway repo: abcd capture promote iss-2608310903083914 ...'). It never named a record in this tree and correctly does not resolve here."
+    },
+    {
+      "id": "itd-167",
+      "class": "forward-looking",
+      "note": "minted on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606, not an ancestor of HEAD). itd-201 names it in its own out-of-scope list and says so: '(itd-167, itd-168, itd-169 on the design branch)'."
+    },
+    {
+      "id": "itd-168",
+      "class": "forward-looking",
+      "note": "minted on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606); cited by itd-201's out-of-scope list, which names the branch."
+    },
+    {
+      "id": "itd-169",
+      "class": "forward-looking",
+      "note": "minted on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606); cited by itd-201's out-of-scope list, which names the branch."
+    },
+    {
+      "id": "iss-2608291009106041",
+      "class": "forward-looking",
+      "note": "an issue record that exists only on the unmerged design branch origin/design/roles-loopback-workstream (commit af869606, .abcd/work/issues/open/iss-2608291009106041-abcd-cannot-colour-a-selection-the-host-renders-which-bounds.md); iss-168 cites it for the host-rendered-selection colour finding."
+    },
+    {
+      "id": "iss-2608231243286557",
+      "class": "suspect",
+      "note": "PROBABLE DEFECT, carried so the gate can land. No file of this id was ever added in any commit on any branch, and no near-neighbour id exists in the 2608231 window. It is cited five times as a settled fact — 'the renderer half is fixed (iss-2608231243286557)' — in itd-157 (lines 13, 21), spc-50 (line 34), iss-2608231322321751 (line 17) and iss-2608231350127745 (line 18), all copied from one another. Whoever knows which record the by-links renderer fix actually landed under should correct all five sites and delete this entry."
+    },
+    {
+      "id": "iss-196",
+      "class": "never-minted",
+      "note": "named by iss-200's `found_during` ('fix attempt for iss-196 blocked at pre-PR review') and by the 2026-09-05 entry in .abcd/work/DECISIONS.md, which rules that it be treated as superseded by iss-200. No file of this id was added in any commit on any branch: the narrower fix attempt was abandoned before its capture was committed. The mention is a true account of the run and is not illustrative or forward-looking, so no line marker would be honest."
+    },
+    {
+      "id": "adr-260902101",
+      "class": "never-minted",
+      "note": "not an id anyone allocated: it is the 60-character SLUG truncation of adr-2609021016272867 severing that id mid-number, in iss-2609021857343626's `slug:` frontmatter field ('ruling-owed-on-the-reading-of-at-the-target-in-adr-260902101'). The record's body cites the full id, which resolves. The slug is a machine-derived filename component that every reader reconstructing the filename reads verbatim, so it cannot carry a line marker; a long title naming a record id can produce this shape again."
+    }
+  ]
+}
