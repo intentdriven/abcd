@@ -40,6 +40,11 @@ const (
 	Dependency GapCategory = "dependency"
 	// UserState covers ~/.abcd/history registry state (guided, never auto-edited).
 	UserState GapCategory = "user-state"
+	// StatusLine covers the host harness's status-line wiring (spc-70). Its one
+	// gap is advisory and is never written under --yes: the wiring rewrites a
+	// harness-wide user setting and takes element choices, so only an answered
+	// prompt writes it.
+	StatusLine GapCategory = "status-line"
 )
 
 // Gap is one detected discrepancy between desired and actual state.
@@ -149,12 +154,14 @@ type InstallResult struct {
 	// silent failure, so the reason travels with the result.
 	Notes []string `json:"notes,omitempty"`
 	// OptionalSkipped names the optional gaps a --yes run deliberately did not
-	// apply — today the advisory git-identity pin alone. --yes approves every
-	// resolvable CATEGORY, but it never writes the pin, because the pin captures
-	// whatever git identity happens to be configured and an unattended run would
-	// canonicalise a sandbox or agent identity. The exclusion is reported rather
-	// than assumed: a run that says "already up to date" while leaving optional
-	// work on the table has to say so (iss-166).
+	// apply: the advisory git-identity pin and the status-line offer. --yes
+	// approves every resolvable CATEGORY, but it never writes the pin, because
+	// the pin captures whatever git identity happens to be configured and an
+	// unattended run would canonicalise a sandbox or agent identity; and it never
+	// wires the status line, because that rewrites a harness-wide user setting
+	// and takes element choices only a prompt can carry. The exclusion is
+	// reported rather than assumed: a run that says "already up to date" while
+	// leaving optional work on the table has to say so (iss-166).
 	OptionalSkipped []string `json:"optional_skipped,omitempty"`
 }
 
@@ -179,10 +186,20 @@ type SymlinkReceipt struct {
 	Note    string `json:"note"`
 }
 
+// StatusLineReceipt records the outcome of the uninstall status-line restore:
+// whether the harness's status line was handed back to the command recorded
+// before abcd took the row, and — restored or not — why. The note is rendered
+// for a human and carries no home path.
+type StatusLineReceipt struct {
+	Restored bool   `json:"restored"`
+	Note     string `json:"note"`
+}
+
 // UninstallReceipt is the outcome of Uninstall.
 type UninstallReceipt struct {
-	Marker  MarkerReceipt  `json:"marker"`
-	Symlink SymlinkReceipt `json:"symlink"`
+	Marker     MarkerReceipt     `json:"marker"`
+	Symlink    SymlinkReceipt    `json:"symlink"`
+	StatusLine StatusLineReceipt `json:"status_line"`
 }
 
 // DoctorReport is the outcome of Doctor: the detection envelope plus read-only

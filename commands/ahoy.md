@@ -33,6 +33,13 @@ Then summarise the JSON for the user:
   Either non-empty value may carry a trailing ` (shadowed on PATH)` when another
   `abcd` comes first on `PATH`. Report it so a dev install — or an entry abcd
   wrote that is not the one that runs — is never invisible.
+- `signals.statusline` — the host's status line as abcd sees it: `installed`
+  (abcd's own `<entry> statusline` command, entry present), `absent` (no
+  status line configured), `foreign` (a status line that is not abcd's),
+  `dangling` (abcd's, but the entry it names is gone — a required repair,
+  because that blanks the status line in every repository), `unreadable`
+  (the settings file is not a JSON object), or `no-harness` (no settings file
+  was found, so nothing is offered).
 - `vintage` and `staleness` — the running binary's build revision (in a source
   checkout) or pinned version, and whether it is up to date, stale, or of an
   undeterminable vintage relative to the on-disk reference. Report them so a
@@ -95,8 +102,8 @@ category present — often several — and every line after the last one you sup
 reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
-safe-autocreate, config-change, user-state, plugin-owned), so a scripted stream
-of specific answers lines up with them. Each answer is echoed back, so the
+safe-autocreate, config-change, status-line, user-state, plugin-owned), so a
+scripted stream of specific answers lines up with them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
@@ -116,8 +123,31 @@ that must not block and must not prompt, close stdin or pre-answer everything:
 
 `--yes` approves every resolvable category but never adopts the optional
 git-identity pin, because the pin records whatever git identity is currently
-configured. When the result carries `optional_skipped`, report it and offer the
-`yes |` form above as the way to apply it.
+configured, and never wires the status line (below), because that rewrites a
+harness-wide setting. When the result carries `optional_skipped`, report it and
+offer the `yes |` form above as the way to apply it.
+
+**The status-line offer.** When the harness's user-level settings file exists
+(`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
+`statusLine` is absent or is a command that is not abcd's, the install asks
+whether to install abcd's status line — one paragraph of reason, then one
+question, then one on/off prompt per element after the badge (repository,
+branch, model, context, five-hour and seven-day usage, intent and issue
+counts; default on). Present the reason to the user and relay their answer;
+never answer it for them. Consent writes exactly two files: the user-level
+setting `~/.abcd/statusline.json` (the bundled defaults with the switches
+taken, plus `previous_command` recording whatever the harness ran before) and
+the harness's `settings.json`, whose `statusLine` is pointed at
+`'<entry>' statusline` with every other key preserved. In an abcd-managed
+repository the line then becomes abcd's own row, led by a badge saying whether
+abcd is here and whose answer the loop is waiting on; in every other repository
+the previous command runs untouched. Declining writes nothing and records
+nothing, so the next install offers again; `--yes` skips the offer and reports
+it under `optional_skipped`; `yes |` answers it (and keeps every element on). A
+`statusLine` of a type abcd does not understand, or a `settings.json` that
+does not parse, is refused with a note and nothing is written on either side.
+`ahoy uninstall` restores the previous command. The line can be switched off
+or reconfigured at any time in `~/.abcd/statusline.json`.
 
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed
@@ -147,7 +177,12 @@ entry — the owned copy (or a legacy pinned symlink), found wherever it sits on
 repo's record survives. The persistent download cache is left to the harness's
 own uninstall to delete. Report `marker.removed` and the entry note; the
 receipt's `symlink.target` is already rendered in tilde form, so relay it as
-given rather than expanding it. It never touches `hooks.json`. An entry that was
+given rather than expanding it. When the harness's `statusLine` is abcd's, it
+is handed back to the command recorded in `~/.abcd/statusline.json` before
+abcd took the row — or removed, when none was recorded — and the receipt's
+`status_line` says which; a status line that is not abcd's is left alone, and
+`~/.abcd/statusline.json` itself stays, because it is the user's
+configuration. It never touches `hooks.json`. An entry that was
 installed with `--bin-dir` into a directory outside `PATH` cannot be found by a
 `PATH` scan — pass the same `--bin-dir <dir>` to `uninstall` to remove it.
 
