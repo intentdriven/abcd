@@ -1417,3 +1417,56 @@ Per hand-run, append:
   in the file the rules loader puts before every session. The table caught it
   because verifying "already shipped" meant reading both the code and the rule
   that describes it, and they disagreed.
+
+### 2026-09-15 — interview context shown before every question (hand-run at filing)
+
+- **Proposal:** whenever a user is interviewed, provide the appropriate
+  context: before asking whether acceptance criteria stand, show them; for
+  every interaction during the interview.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | The material under decision is shown in full before each question, at every interview step | capability | intent `itd-2609151541116052` |
+  | "Never ask about a text the reader cannot see" as a standing rule | stance | GRILL domain in `.abcd/rules.json`; the bundled default when itd-201 ships |
+  | The `/abcd:intent` interview steps say "summarise back" and "walk every bullet"; make "show it first" explicit | plumbing | `commands/intent.md` |
+
+- **Links:** `refines itd-201` (the draft that governs how a question is asked:
+  one at a time, one sentence of context, an example per option). No reversal.
+- **Verdict:** proposed SPLIT-or-AMEND with four options offered (new intent
+  refining itd-201; amend itd-201's draft; GRILL rule only; decide later); the
+  maintainer chose a NEW INTENT. Routing survived as one of the offered options,
+  not as the table's first line, which had left the choice open.
+- **Notes:** the proposal came from the maintainer's own experience of being
+  asked "does this criterion stand?" with the criterion out of view. The stance
+  and plumbing parts are not filed with the intent; they follow when it is
+  planned, because a rule written before the intent it enforces is the shape
+  itd-201's own filing avoided.
+
+### 2026-09-15 — advisories publish with the release that fixes them (hand-run at filing)
+
+- **Proposal:** a process so that security advisories are captured, resolved,
+  and automatically published once a new release is cut with their fixes;
+  perhaps captured as an intent.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | The release cut publishes each draft advisory whose fixing record shipped in the cut, and closes one whose record was closed as won't-fix | capability | intent `itd-2609151658486398` |
+  | A security record names its advisory in a typed field, not only in its slug and prose | plumbing (schema) | issue `iss-2609151703088754` (split out at the routing) |
+  | Publishing needs the forge token; `launch ship` never publishes, so the act belongs to the release workflow | trust rule, already recorded | unchanged; a scope condition on the intent |
+  | An advisory's specifics stay out of the committed record until it publishes | stance, already in the pilot note of 2026-08-27 | unchanged |
+
+- **Links:** `builds_on itd-70` (release retention at ship time); the pilot
+  note of 2026-08-27 names this publication step as its target and is cited by
+  the intent. No reversal.
+- **Verdict:** four options offered (one intent; SPLIT into intent plus schema
+  issue; HOLD for one more hand-run; decide later); the maintainer chose SPLIT,
+  so the typed field can land first on its own. The table had folded the field
+  into the intent's spec; the routing moved it out.
+- **Notes:** the trigger was a concrete gap found the same day: GHSA-gx3m is
+  fixed in v0.8.0 and was still an unpublished draft five days after the tag,
+  published by hand at the maintainer's word during this run. The three
+  advisories triaged today ended in three different states (fixed and released;
+  fix in progress; not a vulnerability, won't-fix), which is the case split the
+  intent's criteria have to cover.
