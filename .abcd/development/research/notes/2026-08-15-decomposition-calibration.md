@@ -1388,3 +1388,23 @@ Per hand-run, append:
   projects here) surfaced only during the interview and not in the initial
   routing, which is a gap in the pre-pass worth noting: the table asks where
   each part lives, not what the part cannot represent.
+
+## 2026-09-15 — four release-cycle deferrals elevated to intents
+
+- **Proposal:** four findings deferred at the v0.9.0 cut as capabilities rather
+  than defects: the release flow for a non-plugin managed artefact, an errata
+  disposition for durable records, a surface counting owed fidelity reviews, and
+  a claim record for which session holds which worktree.
+- **Initial routing:** all four to intents, each promoted from its issue so the
+  back-edges are stamped rather than narrated.
+- **Confirmed routing:** the product thinker confirmed all four as intents in one
+  instruction, after reviewing the deferrals classed by the reason each was not
+  fixed. No part was split out: none carries a trust rule or a stance separable
+  from the capability, and the plumbing each needs lives inside its own spec.
+- **Verdict:** FILE-AS-IS on all four.
+- **Notes:** the first run in this corpus where the routing question was asked
+  of a whole class at once rather than per proposal, and the class had been drawn
+  by the reason for deferral rather than by subject. The routing held because the
+  class was already "capability wearing a defect's clothes": the classification
+  did the decomposition's work before the table was drawn. Worth noting as a
+  pattern: a deferral classed honestly is most of a routing.
