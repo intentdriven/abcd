@@ -272,6 +272,14 @@ func TestReadCacheAttestationIgnoresMalformed(t *testing.T) {
 		"short hash":        "data_dir=/harness/data\nbinary_sha256=" + sha[:63] + "\ncache_trust=manifest\n",
 		"uppercase hash":    "data_dir=/harness/data\nbinary_sha256=" + strings.ToUpper(sha) + "\ncache_trust=manifest\n",
 		"offline trust":     "data_dir=/harness/data\nbinary_sha256=" + sha + "\ncache_trust=offline\n",
+		// A control character in the directory is a record no bootstrap wrote:
+		// the script strips the class before writing, and a value that
+		// smuggled one in (a hand-edited record, an older writer) is refused
+		// rather than parsed — its path could never name the harness's
+		// directory anyway.
+		"control character in data_dir": "data_dir=/harness/da\x01ta\nbinary_sha256=" + sha + "\ncache_trust=manifest\n",
+		"escape in data_dir":            "data_dir=/harness/data\x1b[31m\nbinary_sha256=" + sha + "\ncache_trust=manifest\n",
+		"no trust":                      "data_dir=/harness/data\nbinary_sha256=" + sha + "\n",
 		"empty":                         "",
 		"oversize":                      good + strings.Repeat("padding=x\n", maxPathEntryBytes/10+1),
 	}

@@ -802,17 +802,23 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 	#     (found in the security review of the first cut). mktemp creates a
 	#     fresh exclusive regular file under a name nobody could plant, and the
 	#     chmod is by the name it returned.
+	#
+	#     The data dir is an environment value written into a line-oriented
+	#     record, so the control characters meta_field strips on READ are
+	#     stripped before the WRITE: a value carrying a newline would otherwise
+	#     inject key=value lines of its own, and the Go reader parses last-wins.
 	if [ -n "$attest" ] && [ -n "$home_dir" ]; then
 		attest_dir="$home_dir/.abcd"
 		attest_path="$attest_dir/cache-attestation"
 		if [ -e "$attest_path" ] && [ ! -f "$attest_path" ]; then
 			attest_note=' (the cache attestation could not be written because its path is occupied by something that is not a regular file, so `ahoy install` will not promote this cache to an owned PATH copy)'
 		else
+			attest_data_dir=$(printf '%s' "$data_dir" | tr -d '\000-\037\177')
 			if mkdir -p "$attest_dir" 2>/dev/null &&
 				attest_tmp=$(mktemp "$attest_dir/.cache-attestation.XXXXXX" 2>/dev/null) &&
 				[ -n "$attest_tmp" ] &&
 				{
-					printf 'data_dir=%s\n' "$data_dir"
+					printf 'data_dir=%s\n' "$attest_data_dir"
 					printf 'binary_sha256=%s\n' "$expected_sha"
 					printf 'cache_trust=manifest\n'
 					printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

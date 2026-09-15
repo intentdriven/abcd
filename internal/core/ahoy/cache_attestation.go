@@ -100,9 +100,22 @@ func readCacheAttestation() (cacheAttestation, bool) {
 			rec.trust = v
 		}
 	}
-	if !filepath.IsAbs(rec.dataDir) || !hexDigestOK(rec.sha) || rec.trust != "manifest" {
+	if !filepath.IsAbs(rec.dataDir) || hasControlChar(rec.dataDir) || !hexDigestOK(rec.sha) || rec.trust != "manifest" {
 		return cacheAttestation{}, false
 	}
 	return rec, true
 }
 
+// hasControlChar reports whether s carries a byte the bootstrap strips before
+// it writes a value into a line-oriented record (\000-\037 and \177). No
+// record the bootstrap wrote holds one, so a data_dir that does was written
+// by something else and is refused rather than parsed — the same class the
+// script's meta_field strips on read.
+func hasControlChar(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return true
+		}
+	}
+	return false
+}

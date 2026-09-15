@@ -1226,3 +1226,43 @@ func TestBootstrapAttestationTempIgnoresAPlantedSymlink(t *testing.T) {
 	}
 }
 
+// TestBootstrapAttestationStripsControlCharactersFromDataDir: the data dir is
+// an environment value, and the record is line-oriented. A value carrying a
+// newline would write extra key=value lines into a record whose Go reader
+// parses last-wins — a forged binary_sha256 line after the real one wins — so
+// the class meta_field strips on read is stripped before the write, and the
+// record holds exactly its four declared fields whatever the variable held.
+func TestBootstrapAttestationStripsControlCharactersFromDataDir(t *testing.T) {
+	root := bootstrapRoot(t)
+	home := t.TempDir()
+	// A directory whose NAME carries a newline and a forged record line after
+	// it: legal on POSIX, and exactly the injection shape.
+	data := filepath.Join(t.TempDir(), "data\nbinary_sha256="+strings.Repeat("f", 64))
+	if err := os.MkdirAll(data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cached := []byte("#!/bin/sh\n# cached artefact\nexit 0\n")
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	fx := bootstrapServer(t, cached, bootstrapManifest(cached))
+
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("the authenticated cache hit must install, got %d (output %q)", code, out)
+	}
+	raw := strings.TrimSpace(mustReadFile(t, homeCacheAttestation(home)))
+	lines := strings.Split(raw, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("a data dir carrying a newline must not inject lines: got %d lines %q", len(lines), raw)
+	}
+	for i, key := range []string{"data_dir", "binary_sha256", "cache_trust", "attested_at"} {
+		if !strings.HasPrefix(lines[i], key+"=") {
+			t.Errorf("line %d must be %s=…, got %q", i+1, key, lines[i])
+		}
+	}
+	if strings.ContainsAny(lines[0], "\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f\t") {
+		t.Errorf("the data_dir value must carry no control character; got %q", lines[0])
+	}
+	if got := attestationValues(t, home); got["binary_sha256"] != sha256Hex(cached) {
+		t.Errorf("the forged line must not reach the parsed hash; got %q", got["binary_sha256"])
+	}
+}
