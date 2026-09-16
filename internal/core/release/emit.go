@@ -22,6 +22,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
 )
 
@@ -83,13 +84,21 @@ const (
 	RefusalReleaseInFlight RefusalKind = "release-in-flight"
 	// RefusalUnlabelled: a record added by the cut carries no valid impact.
 	RefusalUnlabelled RefusalKind = "unlabelled-record"
-	// RefusalStaleIntent: an intent in planned/ has a spec that has closed.
+	// RefusalStaleIntent: an intent in planned/ has no open spec left — every
+	// spec realising it has closed and the record never moved.
 	RefusalStaleIntent RefusalKind = "stale-intent"
 	// RefusalSurfaceGuard: the surface guardrail failed or could not compare.
 	RefusalSurfaceGuard RefusalKind = "surface-guard"
 	// RefusalUnfixedFinding: a consequential finding this cycle captured is
 	// still open, with no recorded decision to defer it.
 	RefusalUnfixedFinding RefusalKind = "unfixed-finding"
+	// RefusalDeletedFinding: a consequential record the anchor held in open/ has
+	// been removed from the ledger rather than answered. It is a kind of its own
+	// rather than a shape of unfixed-finding because the remedy differs — the
+	// record has to come back before it can be resolved, waived or wontfixed —
+	// and because a front door acting on the refusal cannot open a file that is
+	// no longer there.
+	RefusalDeletedFinding RefusalKind = "deleted-finding"
 	// RefusalEmptyCut: nothing user-facing shipped, so there is no release.
 	RefusalEmptyCut RefusalKind = "empty-cut"
 )
@@ -207,8 +216,17 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 		return Cut{}, err
 	}
 	cut.Findings = findings
-	if findings.Status != changelog.FindingGuardPassed {
+	if len(findings.Unfixed) > 0 {
 		cut.Refusals = append(cut.Refusals, unfixedRefusal(findings))
+	}
+	if len(findings.Deleted) > 0 {
+		cut.Refusals = append(cut.Refusals, deletedRefusal(findings))
+	}
+	// The guard's own verdict is the backstop: a failure it reports through
+	// neither list would otherwise pass silently, which is the fail-open shape
+	// this whole gate exists to close.
+	if findings.Status != changelog.FindingGuardPassed && len(findings.Unfixed) == 0 && len(findings.Deleted) == 0 {
+		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalUnfixedFinding, Reason: findings.Reason})
 	}
 	if !derivation.Bumped {
 		cut.Refusals = append(cut.Refusals, Refusal{
@@ -265,30 +283,54 @@ func derivationRefusal(d changelog.Derivation) Refusal {
 // naming the blocking records in Records so a front door can act on the refusal
 // without parsing its prose — the same shape the unlabelled-record refusal takes.
 func unfixedRefusal(g changelog.FindingGuard) Refusal {
-	ref := Refusal{Kind: RefusalUnfixedFinding, Reason: g.Reason}
+	ref := Refusal{Kind: RefusalUnfixedFinding, Reason: g.UnfixedReason()}
 	for _, f := range g.Unfixed {
 		ref.Records = append(ref.Records, f.ID)
 	}
 	return ref
 }
 
-// staleIntent is one intent whose record contradicts its spec's lifecycle.
+// deletedRefusal is unfixedRefusal's twin for the records the cut removed from
+// the ledger instead of answering (iss-2609091143455568). It names them in
+// Records for the same reason — a front door acts on the ids, not on the prose —
+// and the id is all it can name: the path it carries is where the record USED to
+// be, at the anchor.
+func deletedRefusal(g changelog.FindingGuard) Refusal {
+	ref := Refusal{Kind: RefusalDeletedFinding, Reason: g.DeletedReason()}
+	for _, f := range g.Deleted {
+		ref.Records = append(ref.Records, f.ID)
+	}
+	return ref
+}
+
+// staleIntent is one intent whose record contradicts its specs' lifecycle: it
+// sits in planned/ while every spec realising it has closed.
 type staleIntent struct {
 	intentID string
 	path     string
-	specID   string
+	// specIDs are the closed specs that realise it — all of them, because under
+	// the 1:n rule the last close is the one that should have moved the record,
+	// and naming only the first would hide which deliveries are already in.
+	specIDs []string
 }
 
 // staleIntents is outcome 11's fail-closed check: every intent still sitting in
-// planned/ whose linked spec has already CLOSED.
+// planned/ that has no OPEN spec left.
 //
 // Why it exists: derivation reads shipped/, but a feature's code merges before
-// its intent record moves. An intent left in planned/ after its spec closed is
-// invisible to the tree-diff, so the cut silently UNDER-BUMPS — it ships a
-// user-facing feature and derives a version that says nothing shipped. A closed
-// spec means the intent should already have auto-moved to shipped/ (itd-80), so
-// the mismatch is a record defect the operator can fix in one move, and the ship
-// refuses until they do.
+// its intent record moves. An intent left in planned/ after its last spec closed
+// is invisible to the tree-diff, so the cut silently UNDER-BUMPS — it ships a
+// user-facing feature and derives a version that says nothing shipped. The last
+// close is what auto-moves the intent to shipped/ (itd-80, as amended by
+// adr-2609151513118583), so the mismatch is a record defect the operator can fix
+// in one move, and the ship refuses until they do.
+//
+// The question is "any open spec left?", never "has its spec closed?". An intent
+// owns one or more specs (invariant 17), so a planned intent with one closed
+// spec and one open spec is the correct steady state of a partial delivery;
+// asking the old question would refuse every release taken while one was in
+// flight. An intent no spec claims at all is not stale either — it is
+// unscheduled, and there is nothing whose closing should have moved it.
 //
 // It reads the WORKING TREE, not the tagged history, deliberately: the question
 // is "what must you fix before cutting?", and the answer has to be about the
@@ -303,14 +345,46 @@ func staleIntents(root string) ([]staleIntent, error) {
 		if intent.Bucket != "planned" {
 			continue
 		}
-		bucket, found := idx.SpecBucket(intent.SpecID)
-		if !found || bucket != "closed" {
+		// The specs realising this intent: its own back-linked set, plus the spec
+		// its spec_id names when that resolves — a one-sided link (the spec names
+		// another intent, or none) is still a closed spec this record was waiting
+		// on, and dropping it would fail the check open.
+		realising := idx.SpecsForIntent(intent.ID)
+		closedIDs := make([]string, 0, len(realising)+1)
+		anyOpen := false
+		for _, s := range realising {
+			if s.Bucket == "closed" {
+				closedIDs = append(closedIDs, s.ID)
+				continue
+			}
+			anyOpen = true
+		}
+		if bucket, found := idx.SpecBucket(intent.SpecID); found && !containsSpecNum(realising, intent.SpecID) {
+			if bucket == "closed" {
+				closedIDs = append(closedIDs, intent.SpecID)
+			} else {
+				anyOpen = true
+			}
+		}
+		if anyOpen || len(closedIDs) == 0 {
 			continue
 		}
-		out = append(out, staleIntent{intentID: intent.ID, path: filepath.ToSlash(intent.Path), specID: intent.SpecID})
+		out = append(out, staleIntent{intentID: intent.ID, path: filepath.ToSlash(intent.Path), specIDs: closedIDs})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].path < out[j].path })
 	return out, nil
+}
+
+// containsSpecNum reports whether the set already holds the spec the given
+// reference names, through the record's one canonical spec comparison
+// (spec.SameNum: spc-9, spc-9-thing and spc-009 are one spec).
+func containsSpecNum(specs []lint.SpecLink, ref string) bool {
+	for _, s := range specs {
+		if spec.SameNum(s.ID, ref) {
+			return true
+		}
+	}
+	return false
 }
 
 // staleRefusal names every blocking intent and the move that clears it. The
@@ -320,15 +394,19 @@ func staleRefusal(stale []staleIntent) Refusal {
 	lines := make([]string, 0, len(stale))
 	ids := make([]string, 0, len(stale))
 	for _, s := range stale {
-		lines = append(lines, fmt.Sprintf("  - %s (%s) — its spec %s has closed", s.intentID, s.path, s.specID))
+		noun := "its spec %s has closed"
+		if len(s.specIDs) > 1 {
+			noun = "its specs %s have all closed"
+		}
+		lines = append(lines, fmt.Sprintf("  - %s (%s) — "+noun, s.intentID, s.path, strings.Join(s.specIDs, ", ")))
 		ids = append(ids, s.intentID)
 	}
 	return Refusal{
 		Kind:    RefusalStaleIntent,
 		Records: ids,
-		Reason: "an intent whose spec has closed is still in planned/, so its feature is invisible to the cut " +
+		Reason: "an intent whose every spec has closed is still in planned/, so its feature is invisible to the cut " +
 			"and the release would under-bump:\n" + strings.Join(lines, "\n") +
-			"\nmove each record to shipped/ (its spec closing is what moves it) and cut again",
+			"\nmove each record to shipped/ (its last spec closing is what moves it) and cut again",
 	}
 }
 

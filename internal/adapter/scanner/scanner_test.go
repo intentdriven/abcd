@@ -781,6 +781,56 @@ func TestIdentityLocalUsernameCaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestIdentityLocalUsernameDottedIdentifierSuppressed proves
+// iss-2609100505142469: a reverse-DNS identifier whose leading component happens
+// to equal the local account name is a namespace, not a home directory, and must
+// survive a capture intact. The damage is unrecoverable — the placeholder does
+// not say which word it replaced — so the class is made impossible rather than
+// merely reported.
+//
+// It is deliberately NOT the ordinary-dictionary-word case
+// (iss-2609061504302157): a bare word in prose is still the caller's login and
+// still a hard_fail, and the closing assertions hold that line.
+func TestIdentityLocalUsernameDottedIdentifierSuppressed(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+
+	// Every leading component a reverse-DNS identifier ordinarily begins with is
+	// also a plausible Unix login; the collision is the whole finding.
+	for _, prefix := range []string{"com", "io", "app", "net", "org", "me", "sh", "dev"} {
+		id := Identity{HomeUser: prefix}
+		line := "the crash is in the bundle " + prefix + ".acme.app on launch"
+		if got := ScanText(line, id, pats, sev, "f"); hasKind(got, kindLocalUser) {
+			t.Errorf("reverse-DNS identifier %q.acme.app wrongly flagged as the local username: %+v", prefix, got)
+		}
+	}
+	// A middle component is bounded by dots on both sides — a namespace by any
+	// reading — and a Go module path is the same class.
+	mid := Identity{HomeUser: "acme"}
+	if got := ScanText("the package is com.acme.tool.Main", mid, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("dotted namespace component wrongly flagged as the local username: %+v", got)
+	}
+	modID := Identity{HomeUser: "dev"}
+	if got := ScanText("import dev.example.com/pkg/thing", modID, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("module path host wrongly flagged as the local username: %+v", got)
+	}
+
+	// No false negatives. The suppression covers a whole component of a
+	// three-part dotted run and nothing else.
+	keep := Identity{HomeUser: "dev"}
+	for _, line := range []string{
+		"last commit authored by dev",       // bare prose mention
+		"backup written to /home/dev/data",  // abcd-audit:allow
+		"the file is dev.log",               // two components: a filename, not a namespace
+		"the package is my-dev-tool.a.b",    // not a whole component
+		"mail to dev.smith@example.com now", // an address, not a namespace
+	} {
+		if got := ScanText(line, keep, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+			t.Errorf("username not flagged in %q (false negative): %+v", line, got)
+		}
+	}
+}
+
 // TestSerializedShortMultibyteIdentityFullyStarred guards B15: a short non-ASCII
 // identity value that is under 16 RUNES but at or over 16 BYTES must be fully
 // starred in the sealed snippet, consistent with maskSecret's rune-based policy.

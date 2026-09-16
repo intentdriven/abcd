@@ -36,7 +36,7 @@ func TestCaptureDefaultOffStoresResidueVerbatim(t *testing.T) {
 		"assistant: done",
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-defoff", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-defoff", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestCaptureFoldsGitleaksFindings(t *testing.T) {
 		"assistant: done",
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-fold", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-fold", Kind: "native"})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestCaptureGitleaksLoudStagePropagates(t *testing.T) {
 		return nil, gitleaks.ErrConfiguredNotFound
 	}
 
-	_, err := Capture(repoRoot, testRootSHA, "sess-loud", []byte("user: hi\n"), "native")
+	_, err := Capture(repoRoot, testRootSHA, []byte("user: hi\n"), CaptureMeta{SessionID: "sess-loud", Kind: "native"})
 	if err == nil {
 		t.Fatal("expected Capture to fail closed on an armed-but-absent gitleaks")
 	}
@@ -167,7 +167,7 @@ func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 		"assistant: done",
 	}, "\n")
 
-	res, err := Capture(repoRoot, testRootSHA, "sess-unsealed", []byte(transcript), "native")
+	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-unsealed", Kind: "native"})
 	var rerr *RedactionResidualError
 	if !errors.As(err, &rerr) {
 		t.Fatalf("Capture = (wrote=%v, err=%v); want a *RedactionResidualError for the unmasked augmented span", res.Wrote, err)
@@ -205,7 +205,7 @@ func TestCaptureFailsClosedOnUnlocatableGitleaksReport(t *testing.T) {
 		return nil, gitleaks.ErrFindingNotLocated
 	}
 
-	_, err := Capture(repoRoot, testRootSHA, "sess-unlocated", []byte("user: hi\n"), "native")
+	_, err := Capture(repoRoot, testRootSHA, []byte("user: hi\n"), CaptureMeta{SessionID: "sess-unlocated", Kind: "native"})
 	if !errors.Is(err, gitleaks.ErrFindingNotLocated) {
 		t.Fatalf("Capture did not fail closed on an unlocatable gitleaks report: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestCaptureSealsEveryRecurrenceOfAnAugmentedFragment(t *testing.T) {
 			}
 			transcript := strings.Join(lines, "\n") + "\n"
 
-			res, err := Capture(repoRoot, testRootSHA, tc.session, []byte(transcript), "native")
+			res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: tc.session, Kind: "native"})
 			if err != nil {
 				t.Fatalf("Capture refused a transcript it can seal: %v", err)
 			}

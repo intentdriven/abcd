@@ -394,7 +394,10 @@ func TestRule_DocsCurrencyNoConfigWarns(t *testing.T) {
 // AC3: a committed file with an absolute local path → privacy-hygiene error
 // citing file:line — unless a waiver escape is on that line.
 func TestAC_PrivacyAbsolutePath(t *testing.T) {
-	const leak = "see /Users/alice/secret/notes.md for context\n" // abcd-audit:allow
+	// The specimen must NOT be a persona name: a persona home is fixture material
+	// the conventions mandate and is exempt (iss-2609100505145554), so spelling
+	// this leak `alice` made the test assert the exemption rather than the rule.
+	const leak = "see /Users/jdoe/secret/notes.md for context\n" // abcd-audit:allow
 	b := newFixtureRepo(t).conforming().
 		file("docs/how-to/thing.md", leak).
 		commit()
@@ -416,10 +419,11 @@ func TestAC_PrivacyAbsolutePath(t *testing.T) {
 }
 
 // A bare home path with no trailing separator (the username IS the leak, e.g.
-// `HOME=/home/alice` at end of line) must still be flagged — the previous regex abcd-audit:allow
-// required a trailing slash and missed it.
+// `HOME=/home/jdoe` at end of line) must still be flagged — the previous regex abcd-audit:allow
+// required a trailing slash and missed it. The specimen is a non-persona name:
+// a persona home is exempt fixture material (iss-2609100505145554).
 func TestAC_PrivacyBareHomePathNoTrailingSlash(t *testing.T) {
-	const leak = "HOME=/home/alice\n" // abcd-audit:allow
+	const leak = "HOME=/home/jdoe\n" // abcd-audit:allow
 	b := newFixtureRepo(t).conforming().
 		file("reference/env.md", leak).
 		commit()
@@ -629,7 +633,9 @@ func TestAC_PrivacyRelativeHomeSegmentNotFlagged(t *testing.T) {
 // case-insensitive and a lowercase `c:\users\<name>` is a real leak that the
 // capital-U-only literal missed.
 func TestAC_PrivacyWindowsLowercaseUsersPath(t *testing.T) {
-	const leak = "cache dir is c:\\users\\dave\\AppData\\Local\\thing\n" // abcd-audit:allow
+	// Non-persona specimen: a persona home is exempt (iss-2609100505145554), and
+	// `dave` is on the roster, so it tested the exemption, not the case fold.
+	const leak = "cache dir is c:\\users\\jdoe\\AppData\\Local\\thing\n" // abcd-audit:allow
 	b := newFixtureRepo(t).conforming().
 		file("reference/win.md", leak).
 		commit()

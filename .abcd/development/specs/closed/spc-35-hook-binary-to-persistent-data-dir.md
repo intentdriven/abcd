@@ -52,7 +52,15 @@ On a missing root binary (fresh install or fresh post-update root):
    silent fallback (AC 7). Deriving the documented path shape from
    `CLAUDE_PLUGIN_ROOT` is deliberately not attempted: the derivation is
    documented but not endorsed, and a wrong guess plants a trusted artefact
-   in an untracked location.
+   in an untracked location. **Revised 2026-09-15 (GHSA-4q78-ccfv-f374,
+   adr-2609151706587280):** the data dir is taken from the harness (or, from
+   a terminal, the plugin root's `.data-dir` stamp) and never derived — but
+   being taken is a route, not trust. The bootstrap, once it has established
+   manifest trust for the cache, writes `~/.abcd/cache-attestation` naming
+   the data dir, the manifest-authenticated `binary_sha256` and the trust;
+   the cache → PATH promotion in Design 3 accepts a data dir only when that
+   record names it and the hash its `cache/binary-meta` carries. An offline
+   run never writes or rewrites the attestation.
 2. Take the relocated lock in the data dir (per-root locks cannot serialise
    two roots writing one cache). The per-root `.bootstrap.attempt` throttle
    in the hook commands stays as-is — it only rate-limits invocation.
@@ -95,7 +103,11 @@ On a missing root binary (fresh install or fresh post-update root):
 - `installPinnedSymlink` becomes `installOwnedCopy`: re-verify the cache
   artefact against `binary_sha256`, copy to the target (default
   `~/.local/bin/abcd`) as a regular file 0755, record path + hash in the
-  provenance record (AC 4, AC 5).
+  provenance record (AC 4, AC 5). **Revised 2026-09-15:** the re-verify is
+  bound first — the data dir must be the one `~/.abcd/cache-attestation`
+  names and its recorded hash the attested one, or the cache is refused
+  loudly and install degrades to the pinned symlink as with no cache
+  (Design 2 step 1's revision; adr-2609151706587280 decision 6).
 - **Ownership is recorded provenance, never content-guessing**: a regular
   file at the target matching the record's hash is owned (idempotent /
   refreshable); anything else classifies foreign and is refused exactly as
@@ -239,3 +251,13 @@ the surviving findings are iss-2608210934566228 (cache re-verify was
 corruption-only), iss-2608210934566229 (migration `mv`-onto-directory), and
 iss-2608210934566230 (owned copy broke terminal root resolution). adr-46 is
 amended to match.
+
+## Revision (2026-09-15)
+
+GHSA-4q78-ccfv-f374 (iss-2609012039102770): the Design 3 promotion re-verified
+the cache only against its co-located record, which whoever chose the data dir
+through the environment also wrote. Option B was ruled: the bootstrap writes a
+home-scoped attestation after manifest authentication, and the promotion is
+bound to it (Design 2 step 1 and Design 3 above, each marked). adr-46 is
+superseded by adr-2609151706587280, which carries its decisions forward and
+adds the binding as decision 6.

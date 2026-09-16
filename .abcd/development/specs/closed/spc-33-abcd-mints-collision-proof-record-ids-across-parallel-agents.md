@@ -25,7 +25,7 @@ audits against.
 
 A native mint is `<family>-<yymmddHHMMSS><rrrr>`: a 12-digit UTC second stamp
 followed by a 4-digit uniform random suffix, zero-padded to fixed width — 16
-digits, e.g. `iss-2608201142077341`.
+digits, e.g. `iss-2608201142077341`. <!-- record-lint: illustrative -->
 
 Reasoning:
 

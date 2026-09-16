@@ -38,18 +38,24 @@ func writeUserPathEntry(t *testing.T, body string) {
 	}
 }
 
-// seedDataCache provisions a persistent data dir holding the verified cache —
-// artefact plus binary-meta — and points CLAUDE_PLUGIN_DATA at it.
+// seedDataCache provisions a persistent data dir the way a bootstrap run that
+// authenticated it would have left it: the verified cache — artefact plus
+// binary-meta — with the home-scoped attestation binding that directory and
+// that hash, and CLAUDE_PLUGIN_DATA pointed at it. It is the harness's own
+// data dir as `ahoy install` meets it from a hook.
 func seedDataCache(t *testing.T, body []byte) string {
 	t.Helper()
 	data := t.TempDir()
 	seedDataCacheAt(t, data, body)
+	attestDataCache(t, data, body)
 	t.Setenv("CLAUDE_PLUGIN_DATA", data)
 	return data
 }
 
 // seedDataCacheAt writes the self-consistent cache (artefact plus binary-meta)
-// under data, wherever the caller chose to put it; it sets no environment.
+// under data, wherever the caller chose to put it; it sets no environment and
+// writes no attestation — it is exactly what whoever controls the directory
+// can produce on their own (GHSA-4q78-ccfv-f374).
 func seedDataCacheAt(t *testing.T, data string, body []byte) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Join(data, "cache"), 0o755); err != nil {

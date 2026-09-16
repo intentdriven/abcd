@@ -26,7 +26,7 @@ positional is refused as an unknown command.
 **Flags:**
 
 ```
-      --json       emit machine-readable JSON
+      --json       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
       --no-color   render the banner without color
 ```
 
@@ -163,14 +163,14 @@ Capture issues to the ledger; bare invocation is read-only status
 
 ```
       --blocked-by string        comma-separated iss-ids this issue is blocked by
-      --category string          issue category (default observation)
+      --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
       --found-at string          optional repo-relative path or conceptual location
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --severity string          severity: nitpick | minor | major | critical (default minor)
       --slug string              override the slug derived from the text
-      --source string            surfacing channel (default user-observation)
+      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation (default user-observation)
 ```
 
 #### `abcd capture disposition`
@@ -204,6 +204,18 @@ List issues by state (one of --open/--resolved/--wontfix/--all required)
       --open       issues currently in open/
       --resolved   issues currently in resolved/
       --wontfix    issues currently in wontfix/
+```
+
+#### `abcd capture mentions`
+
+List open issues named by default-branch history with no resolution behind them (read-only)
+
+**Usage:** `abcd capture mentions [--ref <branch>] [flags]`
+
+**Flags:**
+
+```
+      --ref string   history to walk (default: the repository's default branch)
 ```
 
 #### `abcd capture promote`
@@ -563,17 +575,75 @@ Redact and store a raw session transcript (reads a file or stdin)
       --session string   session id for the record (default: transcript filename; required for stdin)
 ```
 
+#### `abcd history discard`
+
+Permanently delete one staged or quarantined raw transcript (requires --yes)
+
+**Usage:** `abcd history discard <staged-filename> [flags]`
+
+**Flags:**
+
+```
+      --yes   confirm the irreversible deletion of an unredacted transcript
+```
+
 #### `abcd history drain`
 
 Redact and store every staged transcript for this repo
 
 **Usage:** `abcd history drain`
 
+#### `abcd history ingest`
+
+Redact and store transcripts already on disk into a named destination repository
+
+**Usage:** `abcd history ingest [<path>...] [flags]`
+
+**Flags:**
+
+```
+      --adopt stringArray   project directory name to claim for this run, in addition to adopt_projects (repeatable)
+      --into string         destination repository root (REQUIRED, no default; its own redaction configuration governs everything stored)
+```
+
 #### `abcd history list`
 
 List stored transcripts for this repo, newest first
 
-**Usage:** `abcd history list`
+**Usage:** `abcd history list [flags]`
+
+**Flags:**
+
+```
+      --session string   list one session's whole set — its main-thread record and every sub-agent it spawned, main thread first
+```
+
+#### `abcd history migrate`
+
+Repair records filed under a composite session id (reports; writes only with --apply)
+
+**Usage:** `abcd history migrate [flags]`
+
+**Flags:**
+
+```
+      --apply                      write the repaired records (default: report only)
+      --sidecar-root stringArray   directory to search for the harness's per-agent metadata (repeatable; default: ingest_roots from .abcd/config/history.json)
+```
+
+#### `abcd history reconstruct`
+
+Render one session — the main thread and every sub-agent — as one artefact plus telemetry
+
+**Usage:** `abcd history reconstruct <session-id> [flags]`
+
+**Flags:**
+
+```
+      --max-block-bytes int   truncate one rendered tool input or result at this many bytes (0 disables); what is removed is marked and counted (default 8192)
+      --mode string           full (every turn of every agent) | spine (the main thread whole, each sub-agent reduced to its instruction and its conclusion) (default "full")
+      --out string            directory to write <session>.md and <session>.telemetry.json into, or - for stdout (default ".")
+```
 
 #### `abcd history show`
 
@@ -585,7 +655,13 @@ Show one stored transcript's metadata and redacted body
 
 List transcripts that ended but are not yet redacted into the store
 
-**Usage:** `abcd history staged`
+**Usage:** `abcd history staged [flags]`
+
+**Flags:**
+
+```
+      --all-repos   survey every repository in the store, not just this one
+```
 
 ### `abcd ideate`
 
@@ -754,6 +830,27 @@ Check this repo against the working conventions (read-only)
 
 ```
       --root string   repo root to lint (default: current working directory)
+```
+
+#### `abcd lint outbound`
+
+Refuse outbound text that breaks the session-URL / tool-footer policy (read-only)
+
+**Usage:** `abcd lint outbound [FILE] [flags]`
+
+Judge one outbound artefact — a commit message, a pull-request body, an issue, a
+comment, a release note — against abcd's outbound policy: never a live
+agent-session URL, never a tool's own attribution footer.
+
+Reads FILE, or standard input when FILE is absent or `-`. It REPORTS and REFUSES;
+it never rewrites the text it was given, because the text belongs to whoever
+wrote it. Exit 0 clean, 1 the artefact is refused, 2 the check could not run.
+
+**Flags:**
+
+```
+      --label string   what the artefact is (commit-message, pr-body, issue, comment) — it names the artefact in the report (default "outbound-artefact")
+      --root string    repo root supplying the scanner configuration (default: current working directory)
 ```
 
 ### `abcd memory`
@@ -994,14 +1091,16 @@ Native spec store; bare invocation is read-only status
 
 #### `abcd spec close`
 
-Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)
+Close a spec (open/ -> closed/); ship its linked intent when no open spec is left naming it
 
 **Usage:** `abcd spec close <spc-N> [flags]`
 
 **Flags:**
 
 ```
-      --impact string   product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)
+      --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
+      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)
 ```
 
 ### `abcd statusline`

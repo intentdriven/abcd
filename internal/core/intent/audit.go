@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -319,32 +320,215 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 	if !rcpIDRe.MatchString(rcp) {
 		return fmt.Errorf("intent: receipt id %q is malformed; refusing to build a request path", rcp)
 	}
+	realised, err := deliveredSpecs(repoRoot, it)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
 	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return err
 	}
+	body := auditPromptBody(it, rcp, content, realised)
+	doc := body + auditProvenanceBlock(auditPolicyFor(it, rcp, content, realised))
+
+	path := filepath.Join(dir, rcp+".request.md")
+	if err := fsutil.WriteFileAtomic(path, []byte(doc), 0o644); err != nil {
+		return fmt.Errorf("intent: writing review request %s: %w", filepath.Join(reviewsRelDir, rcp+".request.md"), err)
+	}
+	return nil
+}
+
+// auditPromptBody composes the PROMPT the auditor is handed — everything in the
+// request except the provenance block. It is a pure function of the receipt, the
+// intent's path, the specs that realised it and its Acceptance Criteria, so the
+// ingest can recompute it byte-for-byte and verify the echoed prompt_hash rather
+// than trust it. Anything non-deterministic added here (a timestamp, a host path,
+// a diff range the host resolved) breaks that, so it stays out.
+//
+// `realised` is the intent's whole delivery, not its scalar spec_id. An intent
+// owns one or more specs (adr-2609151513118583), and the ship transition it is
+// audited at arrives only once every one of them has closed — so the diff the
+// auditor has to read spans all of them. Naming one spec asked for a fraction of
+// the delivery while the criteria being judged describe the whole capability,
+// which is a question no honest verdict can answer. It is a caller-supplied
+// argument rather than a store read here so this function stays pure and the
+// ingest recomputes the identical bytes.
+func auditPromptBody(it Intent, rcp, content string, realised []string) string {
 	ac := strings.TrimSpace(sectionBody(content, acHeadingRe))
+	specs := strings.Join(realised, ", ")
+	if specs == "" {
+		specs = "(none recorded)"
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Fidelity review request — %s\n\n", rcp)
 	fmt.Fprintf(&b, "- receipt_id: %s\n", rcp)
 	fmt.Fprintf(&b, "- intent: %s\n", it.Path)
-	fmt.Fprintf(&b, "- spec: %s\n", it.SpecID)
-	fmt.Fprintf(&b, "- delivered: the diff/commit range that realised %s (host supplies the range)\n\n", it.SpecID)
+	fmt.Fprintf(&b, "- specs: %s\n", specs)
+	fmt.Fprintf(&b, "- delivered: the diff/commit range that realised ALL of %s (host supplies the range)\n\n", specs)
 	b.WriteString("## Acceptance Criteria (authority; numbered ac-1..ac-K in order)\n\n")
 	if ac == "" {
 		b.WriteString("(none found)\n")
 	} else {
 		b.WriteString(ac + "\n")
 	}
+	b.WriteString("\n## Rubric (authority; the contract the ingest enforces)\n\n")
+	b.WriteString(rubricText())
 	b.WriteString("\nRun the intent-auditor agent over the criteria and the delivered\n")
 	b.WriteString("diff, then ingest its verdict JSON:\n\n")
 	fmt.Fprintf(&b, "    abcd intent audit ingest --verdict-json <path>   # receipt %s\n", rcp)
+	return b.String()
+}
 
-	path := filepath.Join(dir, rcp+".request.md")
-	if err := fsutil.WriteFileAtomic(path, []byte(b.String()), 0o644); err != nil {
-		return fmt.Errorf("intent: writing review request %s: %w", filepath.Join(reviewsRelDir, rcp+".request.md"), err)
+// ---------------------------------------------------------------------------
+// Host-issued provenance (iss-2609100505140261)
+// ---------------------------------------------------------------------------
+//
+// The two policy hashes are the attestation chain: which rubric and which prompt
+// produced this verdict. They used to be required by the ingest and issued by
+// nobody, so every auditor invented a value, the ingest checked only the SHAPE,
+// and the Audit Notes gained a provenance claim that looked verified and was not.
+//
+// Both are now HOST-COMPUTED and DETERMINISTIC, which is what makes them
+// checkable rather than merely well-formed:
+//
+//   - rubric_hash = sha256 over rubricText() — the judging contract this binary
+//     ENFORCES, serialised from the very vocabularies and rules validateVerdict
+//     applies. It is written verbatim into the request, so the auditor is handed
+//     the exact bytes that were hashed, and it moves the moment the enforced
+//     contract moves.
+//   - prompt_hash = sha256 over auditPromptBody() — the request document the host
+//     hands the auditor, excluding the provenance block itself (a block cannot
+//     carry its own hash). The body is a pure function of the receipt, the
+//     intent's path, its spec id and its Acceptance Criteria, all of which the
+//     ingest holds, so the ingest RECOMPUTES the expected value instead of
+//     trusting the echo.
+//
+// Both are therefore STALENESS-SENSITIVE by construction, and deliberately so.
+// Editing the intent's Acceptance Criteria (or its path or spec id) between the
+// emit and the ingest moves prompt_hash; upgrading the binary across a rubric
+// change moves rubric_hash. Either refuses the verdict, because either means the
+// verdict judged something other than what the receipt issued — the condition
+// that used to pass silently. The remedy in both cases is to re-emit the request
+// and re-run the audit, which the refusal names.
+//
+// A verdict echoing anything else is refused outright rather than dead-lettered:
+// the DEAD_LETTER path is for a payload that IS this receipt's answer but is
+// malformed, while a hash the host never issued says the verdict answers a
+// different question. Refusing outright leaves the OWED marker parked, so
+// re-emitting the request and re-auditing is still open; a DEAD_LETTER is
+// terminal and could not be re-emitted.
+
+// auditRubricID names the judging contract the hash is taken over. It is a
+// version, not a checksum: bump it when the rubric's SHAPE changes, while the
+// hash tracks its content automatically.
+const auditRubricID = "abcd/intent-fidelity-rubric/v1"
+
+// auditRubricRules is the canonical statement of what validateVerdict enforces.
+// Every line names a check that actually runs below; nothing here is decorative,
+// because the hash over it is what a stored Audit Note attests to. It is the ONE
+// home for that statement — agents/intent-auditor.md quotes the rendered block
+// out of the request rather than keeping its own copy.
+var auditRubricRules = []string{
+	"criteria: the intent's Acceptance Criteria bullets are the authority, numbered positionally ac-1..ac-K; every bullet is judged exactly once, and none is reordered, reworded, invented or dropped",
+	"evidence: every criterion cites at least one evidence ref; a criterion with no citation is not MET",
+	"gap audit: every honoured/diverged/missing claim cites at least one evidence ref",
+	"dispositions: every scope-condition identity the intent carries is disposed exactly once, keyed to the minted identity and never to a paraphrase of the condition",
+	"narrowing: required on the `narrowed` disposition, empty on every other one",
+	"rollup: acceptance_rollup keys are acceptance verdicts and sum to the number of criteria",
+}
+
+// rubricText renders the rubric the hash is computed over. The two vocabularies
+// come from the enum maps the validator itself consults (sorted, so the render is
+// deterministic) rather than from a restatement of them: a word added to either
+// map changes the rubric hash without anyone remembering to edit a string.
+func rubricText() string {
+	var b strings.Builder
+	b.WriteString(auditRubricID + "\n")
+	fmt.Fprintf(&b, "acceptance verdicts: %s\n", strings.Join(sortedKeys(verdictEnum), " | "))
+	fmt.Fprintf(&b, "scope-condition dispositions: %s\n", strings.Join(sortedKeys(dispositionEnum), " | "))
+	for _, r := range auditRubricRules {
+		b.WriteString(r + "\n")
 	}
-	return nil
+	return b.String()
+}
+
+// sortedKeys is the deterministic render order for a set.
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// sha256Field renders s as the `sha256:<64 lowercase hex>` shape sha256FieldRe
+// validates — the one spelling every policy hash and attestation digest uses.
+func sha256Field(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// auditPolicy is the provenance the host issues for one receipt: the pair the
+// auditor must echo and the ingest recomputes.
+type auditPolicy struct {
+	RubricHash string
+	PromptHash string
+}
+
+// auditPolicyFor computes the host-issued provenance for one receipt. content is
+// the intent file's bytes as the request was (or will be) composed from them, so
+// emit and ingest agree as long as the record has not moved underneath the audit.
+func auditPolicyFor(it Intent, rcp, content string, realised []string) auditPolicy {
+	return auditPolicy{
+		RubricHash: sha256Field(rubricText()),
+		PromptHash: sha256Field(auditPromptBody(it, rcp, content, realised)),
+	}
+}
+
+// deliveredSpecs lists every CLOSED spec realising the intent, in spec-number
+// (minting) order — the delivery one fidelity audit has to read now that an
+// intent owns one or more specs (adr-2609151513118583).
+//
+// Closed ones only: the audit runs at the ship transition, which by definition
+// arrives when no OPEN spec names the intent, so an open spec in this list would
+// mean the caller is auditing something that has not shipped. An intent whose
+// store holds no closed spec at all — a record whose specs predate the store, or
+// a re-emit in a tree that carries only the intent — falls back to its own
+// scalar spec_id, so the request still names the delivery it can name rather
+// than handing the auditor nothing.
+//
+// Both the emit and the ingest's prompt_hash recomputation read this, so the two
+// agree; a spec closing between them would move the hash, and cannot, because no
+// verb mints or closes a spec against an already-shipped intent.
+func deliveredSpecs(repoRoot string, it Intent) ([]string, error) {
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, sp := range store.SpecsForIntent(it.ID) {
+		if sp.Status == spec.StatusClosed {
+			out = append(out, sp.ID)
+		}
+	}
+	if len(out) == 0 && spec.HasNum(it.SpecID) {
+		out = []string{it.SpecID}
+	}
+	return out, nil
+}
+
+// auditProvenanceBlock renders the block appended to the request. It is NOT part
+// of auditPromptBody: prompt_hash covers the prompt, and a block carrying that
+// hash cannot be inside the bytes it hashes.
+func auditProvenanceBlock(p auditPolicy) string {
+	var b strings.Builder
+	b.WriteString("\n## Provenance (host-computed — echo both verbatim into `policy`)\n\n")
+	fmt.Fprintf(&b, "- rubric_hash: %s\n", p.RubricHash)
+	fmt.Fprintf(&b, "- prompt_hash: %s\n", p.PromptHash)
+	b.WriteString("\nDo not compute these yourself. `abcd intent audit ingest` recomputes both\n")
+	b.WriteString("and refuses a verdict carrying any other value.\n")
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +579,20 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
 	}
 
+	// The attestation chain must be the pair THIS receipt issued, not merely two
+	// well-formed hashes. This is the check that was missing: presence and shape
+	// were enforced and the VALUES were trusted, so a verdict could attest to a
+	// rubric and a prompt nobody ever pinned and read back as verified.
+	//
+	// It sits here rather than in validateVerdict because the consequences differ.
+	// A hash the host never issued says the verdict answers a different question,
+	// which is the unsolicited-receipt shape: refused outright, OWED marker left
+	// parked, so a re-emit and a re-audit are still open. An absent or malformed
+	// hash is a malformed payload and keeps its existing DEAD_LETTER path below.
+	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
+		return IngestVerdictResult{}, err
+	}
+
 	// The free-text renderer for this write, built ONCE and before anything is
 	// composed. Both paths below persist agent-produced prose into a committed
 	// record, so a degraded detector has to stop the write here rather than
@@ -426,6 +624,44 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
 		Untested: split[dispositionUntested],
 	}, nil
+}
+
+// checkIssuedPolicy compares the verdict's policy hashes against the pair the
+// host issued for this receipt, and returns a refusal naming what each hash is
+// computed over when they disagree.
+//
+// It deliberately passes on an ABSENT or MALFORMED hash: that is the malformed-
+// payload class validateVerdict already quarantines with its own message, and
+// duplicating the judgement here would move an established DEAD_LETTER onto the
+// reject path. Only a well-shaped hash that is not ours is refused outright.
+func checkIssuedPolicy(repoRoot string, raw []byte, it Intent, rcp, content string) error {
+	var lenient struct {
+		Policy verdictPolicy `json:"policy"`
+	}
+	if err := json.Unmarshal(raw, &lenient); err != nil {
+		return nil // the strict decode below reports an unparseable payload.
+	}
+	got := lenient.Policy
+	if !sha256FieldRe.MatchString(got.RubricHash) || !sha256FieldRe.MatchString(got.PromptHash) {
+		return nil
+	}
+	realised, err := deliveredSpecs(repoRoot, it)
+	if err != nil {
+		return err
+	}
+	want := auditPolicyFor(it, rcp, content, realised)
+	if got.RubricHash == want.RubricHash && got.PromptHash == want.PromptHash {
+		return nil
+	}
+	// Both values are sha256-shaped by the guard above, so quoting them back
+	// cannot carry payload prose into the message.
+	return fmt.Errorf("intent: verdict %s carries policy hashes this receipt never issued; refusing to ingest.\n"+
+		"  rubric_hash: got %s, issued %s\n"+
+		"  prompt_hash: got %s, issued %s\n"+
+		"The host computes both and writes them into the request's Provenance block: rubric_hash is sha256 over the "+
+		"rubric the request states, prompt_hash is sha256 over the request's prompt body (everything above that block). "+
+		"Re-emit with `abcd intent audit %s` and echo the two values it writes, rather than computing a hash yourself.",
+		rcp, got.RubricHash, want.RubricHash, got.PromptHash, want.PromptHash, it.ID)
 }
 
 // readVerdictFile reads the untrusted verdict payload behind fsutil.ReadGuarded

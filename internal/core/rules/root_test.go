@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -298,6 +299,11 @@ func foreignUID() uint32 { return uint32(os.Getuid()) + 1 }
 // path, delegating every other path to the real one — so a single fixture can
 // hold a foreign-owned root AND a caller-owned home, and the caller-owned cases
 // in the same file keep running against the real filesystem.
+// Both seams are substituted, because two different lookups reach a path here:
+// the MARKER ROOT's owner is checked through this package's own ownerUID, while
+// the DECLARATION FILE's is checked inside fsutil.ReadDeclaration, the shared
+// home-scoped declaration read the guard was lifted into. A fixture naming both
+// a foreign-owned root and a foreign-owned declaration needs both to answer.
 func ownedByAnother(t *testing.T, paths ...string) {
 	t.Helper()
 	real := ownerUID
@@ -305,12 +311,14 @@ func ownedByAnother(t *testing.T, paths ...string) {
 	for _, p := range paths {
 		foreign[resolvedPath(p)] = true
 	}
-	ownerUID = func(path string) (uint32, error) {
+	lookup := func(path string) (uint32, error) {
 		if foreign[resolvedPath(path)] {
 			return foreignUID(), nil
 		}
 		return real(path)
 	}
+	ownerUID = lookup
+	t.Cleanup(fsutil.SwapOwnerUIDForTest(lookup))
 	t.Cleanup(func() { ownerUID = real })
 }
 
@@ -574,12 +582,14 @@ func ownerUnreadable(t *testing.T, path string) {
 	t.Helper()
 	real := ownerUID
 	target := resolvedPath(path)
-	ownerUID = func(p string) (uint32, error) {
+	lookup := func(p string) (uint32, error) {
 		if resolvedPath(p) == target {
 			return 0, errors.New("owner lookup failed")
 		}
 		return real(p)
 	}
+	ownerUID = lookup
+	t.Cleanup(fsutil.SwapOwnerUIDForTest(lookup)) // both seams, per ownedByAnother
 	t.Cleanup(func() { ownerUID = real })
 }
 

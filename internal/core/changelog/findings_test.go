@@ -349,3 +349,143 @@ func TestGuardFindingsReadsTheCommitNotTheWorkingTree(t *testing.T) {
 		t.Fatalf("status = %q, want failed — an uncommitted deletion cleared a committed finding", g.Status)
 	}
 }
+
+// Deleting a record is not a disposition (iss-2609091143455568).
+//
+// The gate once asked only whether a blocking id was still under open/ at HEAD,
+// which made `git rm` clear it exactly as a resolution does — the cheapest way
+// past the gate and the only one that destroys the finding rather than answering
+// it. The sibling gate already refuses this shape (RS001 holds that a bare delete
+// of an open record satisfies no `Resolves:` trailer), so the two sat in one
+// release path disagreeing about what counts as an answer.
+//
+// The fixture's iss-1 is graded major and sits in open/ at the anchor, which is
+// the standing backlog: TestAStandingBacklogFindingDoesNotHoldTheRelease proves
+// leaving it alone passes, so a failure here can only be the deletion.
+func TestDeletingARecordDoesNotClearTheGate(t *testing.T) {
+	r := findingsRepo(t)
+	r.remove(openDir + "iss-1-standing.md")
+	r.commit("delete the finding instead of answering it")
+
+	g, err := GuardFindings(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("GuardFindings: %v", err)
+	}
+	if g.Status != FindingGuardFailed {
+		t.Fatalf("status = %q, want failed — a record deleted from the ledger cleared the gate as "+
+			"effectively as resolving it", g.Status)
+	}
+	if !slices.Equal(findingIDs(g.Deleted), []string{"iss-1"}) {
+		t.Fatalf("deleted = %v, want [iss-1]", findingIDs(g.Deleted))
+	}
+	if g.Deleted[0].Path != openDir+"iss-1-standing.md" || g.Deleted[0].Severity != "major" {
+		t.Errorf("the deleted finding does not carry the record as the anchor held it: %+v", g.Deleted[0])
+	}
+	// The refusal must name the record AND the deletion: "findings are unfixed"
+	// sends an operator looking in open/ for a file that is no longer there.
+	for _, want := range []string{"iss-1", openDir + "iss-1-standing.md", "v0.1.0", "no status directory"} {
+		if !strings.Contains(g.Reason, want) {
+			t.Errorf("the refusal does not name %q:\n%s", want, g.Reason)
+		}
+	}
+}
+
+// A record CAPTURED this cycle and then deleted is the same defect, and it must
+// refuse for the same reason.
+func TestDeletingARecordCapturedSinceTheAnchorDoesNotClearTheGate(t *testing.T) {
+	r := findingsRepo(t)
+	r.issue(openDir+"iss-2-found.md", "iss-2", "critical")
+	r.commit("capture a finding during this cycle")
+	r.git("tag", "v0.2.0")
+	r.remove(openDir + "iss-2-found.md")
+	r.commit("delete the finding rather than answer it")
+
+	g, err := GuardFindings(r.root, "v0.2.0")
+	if err != nil {
+		t.Fatalf("GuardFindings: %v", err)
+	}
+	if g.Status != FindingGuardFailed {
+		t.Fatalf("status = %q, want failed — the record was in open/ at the anchor and is now in no "+
+			"status directory", g.Status)
+	}
+	if !slices.Equal(findingIDs(g.Deleted), []string{"iss-2"}) {
+		t.Fatalf("deleted = %v, want [iss-2]", findingIDs(g.Deleted))
+	}
+}
+
+// The legitimate routes out must go on clearing the gate, which is the half that
+// keeps the deletion check from being "refuse every record that leaves open/".
+//
+// Both terminal folders and a re-slug leave the record somewhere under the status
+// directories; only a deletion leaves the ledger with no record of it at all. The
+// cases run over the STANDING backlog record deliberately: every one of them
+// removes iss-1 from open/, which is the byte-level shape the deletion check
+// reads, so a check keyed on the wrong signal fails every row here.
+func TestTheDispositionsStillClearAStandingFinding(t *testing.T) {
+	tests := []struct {
+		name string
+		act  func(r *fixtureRepo)
+	}{
+		{"resolved", func(r *fixtureRepo) {
+			r.remove(openDir + "iss-1-standing.md")
+			r.issue(resolvedDir+"iss-1-standing.md", "iss-1", "major", "impact: fix")
+		}},
+		{"wontfix", func(r *fixtureRepo) {
+			r.remove(openDir + "iss-1-standing.md")
+			r.issue(wontfixDir+"iss-1-standing.md", "iss-1", "major")
+		}},
+		{"re-slugged in place", func(r *fixtureRepo) {
+			r.remove(openDir + "iss-1-standing.md")
+			r.issue(openDir+"iss-1-standing-renamed.md", "iss-1", "major")
+		}},
+		// A grade below the blocking line is not this gate's business in either
+		// half: the rule has never been "fix every finding", and a nitpick tidied
+		// out of the ledger is not a defect stepped over.
+		{"a nitpick removed", func(r *fixtureRepo) {
+			r.issue(openDir+"iss-9-trivial.md", "iss-9", "nitpick")
+			r.commit("a nitpick, present at the anchor's successor")
+			r.git("tag", "v0.2.0")
+			r.remove(openDir + "iss-9-trivial.md")
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := findingsRepo(t)
+			anchor := "v0.1.0"
+			tc.act(r)
+			r.commit("answer the standing finding")
+			if tc.name == "a nitpick removed" {
+				anchor = "v0.2.0"
+			}
+			g, err := GuardFindings(r.root, anchor)
+			if err != nil {
+				t.Fatalf("GuardFindings: %v", err)
+			}
+			if g.Status != FindingGuardPassed {
+				t.Fatalf("status = %q, want passed (deleted: %v, unfixed: %v)\n%s",
+					g.Status, findingIDs(g.Deleted), findingIDs(g.Unfixed), g.Reason)
+			}
+			if len(g.Deleted) > 0 {
+				t.Fatalf("deleted = %v — the record is still in the ledger", findingIDs(g.Deleted))
+			}
+		})
+	}
+}
+
+// The uncommitted direction, for the reason TestGuardFindingsReadsTheCommitNotThe
+// WorkingTree pins on the other half: a release is cut from a commit, so a
+// working-tree deletion is not yet a deletion the gate judges — and a working-tree
+// deletion that is never committed must not refuse a clean cut.
+func TestTheDeletionCheckReadsTheCommitNotTheWorkingTree(t *testing.T) {
+	r := findingsRepo(t)
+	r.remove(openDir + "iss-1-standing.md")
+
+	g, err := GuardFindings(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("GuardFindings: %v", err)
+	}
+	if g.Status != FindingGuardPassed {
+		t.Fatalf("status = %q, want passed — an uncommitted deletion is not in the cut (%s)",
+			g.Status, g.Reason)
+	}
+}

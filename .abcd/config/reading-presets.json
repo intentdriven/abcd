@@ -5,11 +5,35 @@
       "comment": "The object set is Iteration 1's shipped state (framework 13): the fifteen workstream intents, their fifteen specs, and the packages and pages they delivered that the deny list does not exclude. The kinds are every kind the readings companion's section 5.2 lists for this position - brief current text, the glossary, the disciplines, the specs, and the shipped tree where one exists - with source and test items marked unscanned in the manifest; no intent kind stands here, because neither design document lists the intents in the widening object and itd-194 withdraws the shipped row from the position. The window is the smallest ten-thousand boundary that leaves at least one per cent headroom above what this entry measured on the commit named. The rule is stated because the previous one was not a margin at all: the next boundary above the measurement, whatever room that happened to leave, put detection 63 tokens under its declaration and the entry was breached twice in one day. A boundary is a round number; the headroom has to be asked for separately. The declaration is over the 200,000-token target by a factor of four and inside a reader with a million-token window; the size report states the measured figure on every assembly at this position. A kind that proves useless leaves this entry by a commit that records why: measured here, without test it is about 530,000 estimated tokens and without source and test about 297,000, both still over the target. Changing any part of this entry is a commit, reviewed and inside the dirty gate.",
       "object": {
         "records": [
-          "itd-177", "itd-178", "itd-179", "itd-180", "itd-181", "itd-182",
-          "itd-183", "itd-184", "itd-185", "itd-186", "itd-187", "itd-188",
-          "itd-189", "itd-198", "itd-199",
-          "spc-55", "spc-56", "spc-57", "spc-58", "spc-59", "spc-60", "spc-61",
-          "spc-62", "spc-63", "spc-64", "spc-65", "spc-66", "spc-67", "spc-68",
+          "itd-177",
+          "itd-178",
+          "itd-179",
+          "itd-180",
+          "itd-181",
+          "itd-182",
+          "itd-183",
+          "itd-184",
+          "itd-185",
+          "itd-186",
+          "itd-187",
+          "itd-188",
+          "itd-189",
+          "itd-198",
+          "itd-199",
+          "spc-55",
+          "spc-56",
+          "spc-57",
+          "spc-58",
+          "spc-59",
+          "spc-60",
+          "spc-61",
+          "spc-62",
+          "spc-63",
+          "spc-64",
+          "spc-65",
+          "spc-66",
+          "spc-67",
+          "spc-68",
           "spc-69"
         ],
         "paths": [
@@ -25,27 +49,66 @@
           "commands/intent.md"
         ]
       },
-      "kinds": ["brief-section", "glossary-term", "discipline", "spec", "doc", "config", "source", "test"],
+      "kinds": [
+        "brief-section",
+        "glossary-term",
+        "discipline",
+        "spec",
+        "doc",
+        "config",
+        "source",
+        "test"
+      ],
       "window": {
-        "tokens_est": 850000,
-        "measured_tokens_est": 833115,
-        "measured_bytes": 3207493,
-        "measured_at": "cd5e6e19489ab3be4828296b02f945fd71eab4dc"
+        "tokens_est": 900000,
+        "measured_tokens_est": 890341,
+        "measured_bytes": 3427815,
+        "measured_at": "40361877c4006c7eca3e6fd0cfd56a66d0f59fc8"
       }
     },
     "entailment": {
       "comment": "The object set of the other three entries, extended by the ten Iteration 2 intents the record adds to it. The kinds are the claim record read against the constraint sources, which is what the readings companion's section 6.2 names as this position's object: it holds no tree, so no doc, config, source or test kind stands here and the object set's delivered paths hand this position nothing. The ten Iteration 2 intents are NAMED here rather than reached by admission: the maintainer ruled on 2026-09-02, at the Phase A review, that this position is handed the object set only, so the drafts and planned rows narrow by this record list exactly as the shipped row does and a draft or planned intent travels only when this entry names it. The companion's admissibility is a permission, not the scope, and it survives as the `admit_drafts_and_planned` switch, which this entry does not declare and which defaults to off; with it on, the position would be handed every draft and planned intent in the repository, which on the tree this was measured over is 147 projected intents. Several of the ten are shipped by the time Phase A completes and travel through the shipped row, which is the same object set either way. The window is the smallest ten-thousand boundary that leaves at least one per cent headroom above what this entry measured on the commit named. The rule is stated because the previous one was not a margin at all: the next boundary above the measurement, whatever room that happened to leave, put detection 63 tokens under its declaration and the entry was breached twice in one day. A boundary is a round number; the headroom has to be asked for separately. Measured on the commit named, this entry is over the 200,000-token target and the size report says so on every assembly at this position; the spec's pre-landing estimate of about 121,000 predates itd-194's brief-chapter rows, which add four chapters to every entry naming brief-section, and the figure recorded here is the one measured. Changing any part of this entry is a commit.",
       "object": {
         "records": [
-          "itd-177", "itd-178", "itd-179", "itd-180", "itd-181", "itd-182",
-          "itd-183", "itd-184", "itd-185", "itd-186", "itd-187", "itd-188",
-          "itd-189", "itd-198", "itd-199",
-          "itd-194", "itd-2609021003095168", "itd-2609020625400169",
-          "itd-2609020625400194", "itd-2609020625400445", "itd-2609020625402518",
-          "itd-2609020625402599", "itd-2609020625405170", "itd-2609020625405251",
+          "itd-177",
+          "itd-178",
+          "itd-179",
+          "itd-180",
+          "itd-181",
+          "itd-182",
+          "itd-183",
+          "itd-184",
+          "itd-185",
+          "itd-186",
+          "itd-187",
+          "itd-188",
+          "itd-189",
+          "itd-198",
+          "itd-199",
+          "itd-194",
+          "itd-2609021003095168",
+          "itd-2609020625400169",
+          "itd-2609020625400194",
+          "itd-2609020625400445",
+          "itd-2609020625402518",
+          "itd-2609020625402599",
+          "itd-2609020625405170",
+          "itd-2609020625405251",
           "itd-2609020625407419",
-          "spc-55", "spc-56", "spc-57", "spc-58", "spc-59", "spc-60", "spc-61",
-          "spc-62", "spc-63", "spc-64", "spc-65", "spc-66", "spc-67", "spc-68",
+          "spc-55",
+          "spc-56",
+          "spc-57",
+          "spc-58",
+          "spc-59",
+          "spc-60",
+          "spc-61",
+          "spc-62",
+          "spc-63",
+          "spc-64",
+          "spc-65",
+          "spc-66",
+          "spc-67",
+          "spc-68",
           "spc-69"
         ],
         "paths": [
@@ -61,21 +124,31 @@
           "commands/intent.md"
         ]
       },
-      "kinds": ["brief-section", "glossary-term", "discipline", "spec", "intent-projection"],
+      "kinds": [
+        "brief-section",
+        "glossary-term",
+        "discipline",
+        "spec",
+        "intent-projection"
+      ],
       "window": {
-        "tokens_est": 300000,
-        "measured_tokens_est": 288028,
-        "measured_bytes": 1108908,
-        "measured_at": "cd5e6e19489ab3be4828296b02f945fd71eab4dc"
+        "tokens_est": 310000,
+        "measured_tokens_est": 301560,
+        "measured_bytes": 1161007,
+        "measured_at": "5c8300bbc7258a6a72a82264b9546ed7d81b54bf"
       }
     },
     "comparative": {
       "comment": "The one entry whose object set is a single record. At this position the include table is the whole account of what the reading sees: every other row withdraws, the disciplines row is narrowed by the assembler to itd-191 before this entry is applied, and the candidate set is DERIVED from the record as the one committed widening run at the target whose items carry no disposition and no admission (adr-2609021016272867). So this entry names the repository material passed BESIDE the candidates, which the readings companion's section 7.2 and its ratified position R3 fix as the declared criteria and nothing else; naming a path or another record here would select nothing, because there is nothing else at this position for it to reach. The kind `candidate` is refused as a preset kind for the same reason: a candidate is selected by the derived run, never by an entry. How the window was measured, stated because it could not be measured the way the other three were: a comparative assembly needs a committed widening run to derive, and this repository holds none, so the figure was taken by dry run over a scratch copy of this tree carrying the comparative channel with a three-item widening run planted in it - 1,312 estimated tokens over 5,053 bytes and 7 items, being the criteria discipline at 693 and six candidate fields at 618. `measured_at` names the commit that scratch tree was taken from. The declaration is the smallest ten-thousand boundary that leaves at least one per cent headroom above that figure — the rule the other three entries state, which at a measurement this small is the first boundary there is — and it is where the headroom for a larger widening run sits: the candidate half is bounded by the run rather than by the tree, which is why the preset-windows eval exempts this position by name and the comparative channel's own eval measures it against the fixture run. It is well under the 200,000-token target. Changing any part of this entry is a commit.",
       "object": {
-        "records": ["itd-191"],
+        "records": [
+          "itd-191"
+        ],
         "paths": []
       },
-      "kinds": ["discipline"],
+      "kinds": [
+        "discipline"
+      ],
       "window": {
         "tokens_est": 10000,
         "measured_tokens_est": 1312,
@@ -87,11 +160,35 @@
       "comment": "The same object set. The kinds are every kind the detection definition reads: its object is the shipped tree read against the claim record, and the tree is code, tests, documentation and configuration alike, with source, test and config items marked unscanned in the manifest. The glossary stands here because the design framework's section 9 lists it among what the input assembler reads for this position and its section 7.2 classes brief/glossary/ as committed vocabulary read cold. The window is the smallest ten-thousand boundary that leaves at least one per cent headroom above what this entry measured on the commit named. The rule is stated because the previous one was not a margin at all: the next boundary above the measurement, whatever room that happened to leave, put detection 63 tokens under its declaration and the entry was breached twice in one day. A boundary is a round number; the headroom has to be asked for separately. The declaration is over the 200,000-token target by a factor of four and inside a reader with a million-token window; the size report states the measured figure on every assembly at this position. Two leaner entries are one commit away, measured here: without test about 539,000 estimated tokens, without source and test about 306,000, both still over the target. Changing any part of this entry is a commit.",
       "object": {
         "records": [
-          "itd-177", "itd-178", "itd-179", "itd-180", "itd-181", "itd-182",
-          "itd-183", "itd-184", "itd-185", "itd-186", "itd-187", "itd-188",
-          "itd-189", "itd-198", "itd-199",
-          "spc-55", "spc-56", "spc-57", "spc-58", "spc-59", "spc-60", "spc-61",
-          "spc-62", "spc-63", "spc-64", "spc-65", "spc-66", "spc-67", "spc-68",
+          "itd-177",
+          "itd-178",
+          "itd-179",
+          "itd-180",
+          "itd-181",
+          "itd-182",
+          "itd-183",
+          "itd-184",
+          "itd-185",
+          "itd-186",
+          "itd-187",
+          "itd-188",
+          "itd-189",
+          "itd-198",
+          "itd-199",
+          "spc-55",
+          "spc-56",
+          "spc-57",
+          "spc-58",
+          "spc-59",
+          "spc-60",
+          "spc-61",
+          "spc-62",
+          "spc-63",
+          "spc-64",
+          "spc-65",
+          "spc-66",
+          "spc-67",
+          "spc-68",
           "spc-69"
         ],
         "paths": [
@@ -107,12 +204,22 @@
           "commands/intent.md"
         ]
       },
-      "kinds": ["brief-section", "glossary-term", "discipline", "spec", "intent-projection", "doc", "config", "source", "test"],
+      "kinds": [
+        "brief-section",
+        "glossary-term",
+        "discipline",
+        "spec",
+        "intent-projection",
+        "doc",
+        "config",
+        "source",
+        "test"
+      ],
       "window": {
-        "tokens_est": 860000,
-        "measured_tokens_est": 842152,
-        "measured_bytes": 3242287,
-        "measured_at": "cd5e6e19489ab3be4828296b02f945fd71eab4dc"
+        "tokens_est": 910000,
+        "measured_tokens_est": 899378,
+        "measured_bytes": 3462609,
+        "measured_at": "40361877c4006c7eca3e6fd0cfd56a66d0f59fc8"
       }
     }
   }

@@ -26,6 +26,19 @@ func gitInitAt(t *testing.T, dir string) {
 	}
 }
 
+// gitCommitAt records one empty commit in dir, with the identity pinned per
+// command so the fixture never depends on the developer's global git config.
+func gitCommitAt(t *testing.T, dir, msg string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir,
+		"-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
+		"-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", msg)
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit in the fixture: %v (%s)", err, out)
+	}
+}
+
 // realPath resolves symlinks so macOS /var -> /private/var cannot defeat a
 // compare between a path the test built and one git reported.
 func realPath(t *testing.T, p string) string {

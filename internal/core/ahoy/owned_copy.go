@@ -41,6 +41,47 @@ func cacheMetaPath(dataDir string) string {
 	return filepath.Join(dataDir, "cache", "binary-meta")
 }
 
+// homeScope resolves the directory abcd's home-scoped DECLARATION records live
+// under — ~/.abcd/path-entry and ~/.abcd/cache-attestation — or, when it will
+// not use the one the environment named, the reason.
+//
+// Both records rest on the same argument: the record is a write into the
+// CALLER'S OWN HOME, the one location CLAUDE_PLUGIN_DATA cannot reach
+// (GHSA-4q78-ccfv-f374). HOME is an environment variable too, though, and
+// os.UserHomeDir() hands it back verbatim, so the argument holds only for a
+// value that actually names a home:
+//
+//   - a RELATIVE HOME resolves ~/.abcd against whatever directory the verb
+//     happens to run in, which for a hook is the checkout the session opened.
+//     `HOME=fakehome` would make a committed fakehome/.abcd/cache-attestation
+//     the caller's own home, and the class the attestation closed reopens
+//     through repository content — the very thing it was written to outrank.
+//   - a HOME INSIDE the repository the verb runs against is the same shape
+//     dataDirHazard already refuses for the data dir ("its cache would be
+//     committed bytes"), one record further on and with the same consequence.
+//     It is refused through that guard's own resolution (insideRepo) rather
+//     than a second copy of it.
+//
+// HOME being the working directory itself is NOT that shape: a session started
+// in the home directory is ordinary, and refusing it would break a real install
+// while closing nothing. The refusal is fail-closed — the readers report "no
+// record" — and cacheBindingProblem renders the reason, because an operator
+// told only "start a session with network access" would re-run hooks that
+// decline to write the record for the same reason.
+func homeScope() (string, string) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", "no home directory is resolved (HOME is unset), so there is no ~/.abcd for the record to live in"
+	}
+	if !filepath.IsAbs(home) {
+		return "", "HOME is a relative path, so ~/.abcd resolves against whatever directory the verb happens to run in rather than naming one home"
+	}
+	if cwd, err := os.Getwd(); err == nil && insideRepo(cwd, home) && resolvePath(cwd) != resolvePath(home) {
+		return "", "HOME lies inside the repository the verb is running against, so its ~/.abcd records would be repository content rather than a write into the caller's own home"
+	}
+	return home, ""
+}
+
 // userPathEntryPath is the PATH-copy provenance record, home-scoped and
 // abcd-owned (~/.abcd/path-entry, alongside the history store). It deliberately
 // does NOT live in the harness data dir: CLAUDE_PLUGIN_DATA is exported only to
@@ -49,10 +90,10 @@ func cacheMetaPath(dataDir string) string {
 // could not establish ownership exactly where those verbs run, and would
 // silently reclassify abcd's own binary as foreign (iss-2608210934566230,
 // adr-46 decision 4). The data dir stays the CACHE's home only. Empty when the
-// home directory cannot be resolved (every caller then reads "no record").
+// home directory homeScope refuses (every caller then reads "no record").
 func userPathEntryPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	home, refused := homeScope()
+	if refused != "" {
 		return ""
 	}
 	return filepath.Join(home, ".abcd", "path-entry")
@@ -92,12 +133,21 @@ type pathEntryRecord struct {
 // required fields are present and the hash parses — a truncated record vouches
 // for nothing. plugin_root is optional (a legacy record predating it, or a
 // degraded install, carries none); its absence never fails the read.
+//
+// It reads through fsutil.ReadDeclaration, the shared home-scoped declaration
+// read, rather than the bare guarded read: this record decides which binary the
+// hook shims EXECUTE, so a copy of it that group or other can write, or that
+// another uid owns, is not this session's word and vouches for nothing — the same
+// bar ~/.abcd/trusted-roots and ~/.abcd/local-transcript-roots are held to. An
+// unowned record reports not-ok exactly as a truncated one does
+// (iss-2609091927085132); that is NOT the accepted same-uid residual
+// (iss-2609012039107700), which this check neither closes nor claims to.
 func readPathEntry() (pathEntryRecord, bool) {
 	path := userPathEntryPath()
 	if path == "" {
 		return pathEntryRecord{}, false
 	}
-	raw, err := fsutil.ReadGuarded(path, maxPathEntryBytes)
+	raw, _, err := fsutil.ReadDeclaration(path, maxPathEntryBytes)
 	if err != nil {
 		return pathEntryRecord{}, false
 	}
@@ -231,13 +281,26 @@ func ownedCopySourceReady(cwd, pluginRoot string) bool {
 	return cacheSourceReady(pluginDataDir(pluginRoot).dir, cwd)
 }
 
-// cacheSourceReady reports whether dataDir holds an artefact for this platform
+// cacheSourceReady reports whether dataDir holds a cache that may be promoted:
+// present (cachePresent) AND bound by the home-scoped attestation
+// (cacheBindingProblem). Detection offers the owned-copy heal on exactly this
+// predicate and install performs it on exactly this predicate, so the two can
+// never disagree about the same directory.
+func cacheSourceReady(dataDir, cwd string) bool {
+	if !cachePresent(dataDir, cwd) {
+		return false
+	}
+	_, problem := cacheBindingProblem(dataDir)
+	return problem == ""
+}
+
+// cachePresent reports whether dataDir holds an artefact for this platform
 // together with a parseable recorded hash to re-verify it against. An empty
 // dataDir is no source at all, and neither is one of a shape the harness never
 // produces (see dataDirHazard) — the check applies wherever the path came
 // from, the plugin root's stamp included, because neither source examines the
-// value it hands back.
-func cacheSourceReady(dataDir, cwd string) bool {
+// value it hands back. Presence is not trust: see cacheBindingProblem.
+func cachePresent(dataDir, cwd string) bool {
 	if dataDir == "" || dataDirHazard(dataDir, cwd) != "" {
 		return false
 	}
@@ -245,6 +308,44 @@ func cacheSourceReady(dataDir, cwd string) bool {
 		return false
 	}
 	return fileExists(cacheAssetPath(dataDir))
+}
+
+// cacheBindingProblem reports why the home-scoped attestation does not bind
+// dataDir's cache, or "" when it does: the attestation exists and is
+// well-formed, it names this very directory, and the cache's co-located
+// binary-meta carries the attested hash. Any of the three failing means the
+// directory and its record were chosen by something other than the bootstrap
+// run that authenticated them — an environment variable, a rewritten cache —
+// and nothing in it is a verified release artefact (GHSA-4q78-ccfv-f374). Every
+// path in the reason is rendered in tilde form.
+//
+// On success the attestation itself is handed back, and it is the ONLY record
+// a caller may act on afterwards: the co-located binary-meta is compared here
+// and never read again, because a writer in the attested directory can swap
+// the artefact and that record for a self-consistent forgery in the window
+// between this check and the promotion (found in the security review of the
+// first cut, reproduced in 0.25 s). The promotion hashes the artefact against
+// the attested value, so a pair flipped after the binding fails the hash.
+func cacheBindingProblem(dataDir string) (cacheAttestation, string) {
+	record := "~/.abcd/" + cacheAttestationFile
+	// The home the record would live in is judged before the record: a refused
+	// HOME is a different repair from a missing attestation, and reporting it
+	// as the latter sends the operator to re-run the hooks, which decline to
+	// write the record for the very same reason (homeScope).
+	if _, refused := homeScope(); refused != "" {
+		return cacheAttestation{}, "no " + record + " record can be read at all: " + refused
+	}
+	att, ok := readCacheAttestation()
+	if !ok {
+		return cacheAttestation{}, "no " + record + " record binds it — a session that authenticates the cache against the published release manifest writes one"
+	}
+	if resolvePath(att.dataDir) != resolvePath(dataDir) {
+		return cacheAttestation{}, record + " names a different directory (" + displayPath(att.dataDir) + "), so this one was chosen by something other than the session that authenticated the cache"
+	}
+	if cacheRecordedSHA(dataDir) != att.sha {
+		return cacheAttestation{}, "its recorded binary_sha256 is not the one " + record + " attests, so the cache changed after it was authenticated"
+	}
+	return att, ""
 }
 
 // RefreshPathEntryDigest re-records the provenance hash for the owned PATH

@@ -203,7 +203,7 @@ Both renders — `abcd changelog` and `abcd launch ship` — carry two lines abo
 the issue ledger, and they are the two most easily skipped lines in the report:
 
 ```
-  findings:   failed (2 unfixed finding(s) captured since v0.7.0)
+  findings:   failed (2 unfixed finding(s) captured since v0.7.0) (1 record(s) deleted from the ledger since v0.7.0)
     deferred: iss-2609012313465609 [major] — the CI split lands next cycle
 ```
 
@@ -213,6 +213,14 @@ the refusal kind `unfixed-finding`. A refused cut carries **no derived version**
 so nothing downstream has a release to make. A record whose `severity` is
 missing, misspelled, or outside the ledger's enum refuses too: it has not been
 judged, and "not judged" must not read as "not serious".
+
+**A deletion refuses too**, under its own kind `deleted-finding`. A record the
+anchor tag held in `open/`, graded the same way, that sits in no status directory
+at HEAD has been removed from the ledger rather than answered — and the ledger's
+status signal *is* folder membership, so a record in no folder has no status left
+to read. Every other route leaves a trace the next reader can follow; this one
+leaves nothing to audit, which is why it is named separately: the record has to
+come back before it can be resolved, wontfixed or deferred.
 
 The anchor is what bounds it. Records that already existed at the last tag are
 the standing backlog and are never this cut's to answer; only what this cycle
@@ -247,8 +255,9 @@ ignored. The whole verdict is on the cut's `findings` JSON key.
    it was written. Downgrading a finding to get past the gate is the failure the
    gate exists to catch, and the record's history shows the edit.
 
-Never delete the record to clear the gate, and never hand-edit `CHANGELOG.md` to
-route around a refusal.
+Never delete the record to clear the gate — the cut refuses under
+`deleted-finding` when you do — and never hand-edit `CHANGELOG.md` to route
+around a refusal.
 
 ### 2. Compose the prose (host-delegated)
 

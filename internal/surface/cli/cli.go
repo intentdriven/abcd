@@ -18,6 +18,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -138,6 +139,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"guard"}, {"guard", "hook"},
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
+		{"hook", "subagent-stop"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -251,7 +253,12 @@ func NewRootCommand() *cobra.Command {
 			})
 		},
 	}
-	root.PersistentFlags().BoolVar(&asJSON, "json", false, "emit machine-readable JSON")
+	// The help states WHERE the outcome lands and how a refusal is recognised,
+	// because this flag's whole audience is a consumer that has to tell one from
+	// the other without reading prose (iss-2609100519128005). It is the one line
+	// the generated reference page carries about the contract.
+	root.PersistentFlags().BoolVar(&asJSON, "json", false,
+		`emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero`)
 	// Root-local by design: colour exists only on the bare invocation, so a
 	// persistent flag would be dead surface on every subcommand (itd-112).
 	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner without color")
@@ -1025,6 +1032,16 @@ type hookInput struct {
 	// TranscriptPath is supplied by the Stop hook; it names the session
 	// transcript on disk. Read by `hook session-end` only.
 	TranscriptPath string `json:"transcript_path"`
+
+	// The SubagentStop fields, read by `hook subagent-stop` only. The event
+	// carries the finished sub-agent's own transcript path, which is the whole
+	// reason a sub-agent can be captured without reading the harness's on-disk
+	// layout; agent_id and agent_type are the lineage it carries directly.
+	// parent_agent_id is deliberately absent here — this event does not carry
+	// one, which is why there is an attribution ladder.
+	AgentID             string `json:"agent_id"`
+	AgentTranscriptPath string `json:"agent_transcript_path"`
+	AgentType           string `json:"agent_type"`
 }
 
 // readCappedStdin reads a "-" operand one byte past the cap so an over-cap
@@ -1109,6 +1126,26 @@ func newHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
+			// The LIVE drain (iss-2609090722466403). Everything else in this
+			// verb is the rules loader; this is transcript capture, and it runs
+			// HERE because UserPromptSubmit is the only hook that fires while a
+			// session is still going. Before it, the drain ran at session start
+			// alone, which meant a repository nobody opened again kept its raw
+			// transcripts for as long as the disk lasted — and sub-agent
+			// capture stages DURING a session, so the raw text of a session now
+			// sits on disk while that same session is still running.
+			//
+			// It is placed before the rules work, not after, so that a
+			// rules.json this repository cannot load — the error path below,
+			// which returns early — does not also switch off transcript
+			// redaction. Two unrelated subsystems share this hook; neither may
+			// disable the other.
+			//
+			// Nothing it produces goes to stdout. A UserPromptSubmit hook's
+			// stdout is injected into the session's context, and this drain's
+			// strings are transcript paths and capture errors, which are the
+			// least appropriate text in the program to hand to a model.
+			drainWhileLive(cmd, cwd)
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			rs, err := rules.Load(root)
 			if err != nil {
@@ -1235,7 +1272,10 @@ func newHookCommand() *cobra.Command {
 					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
 				}
 			}
-			res, err := history.Stage(captureRoot(cwd), det.RootSHA, in.SessionID, raw)
+			res, err := history.Stage(captureRoot(cwd), det.RootSHA, history.StageMeta{
+				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
+				SourcePath: in.TranscriptPath,
+			}, raw)
 			if err != nil {
 				return warn("staging failed (%v); this session was not captured", err)
 			}
@@ -1284,6 +1324,10 @@ func newHookCommand() *cobra.Command {
 				}
 			}
 			var notices []string
+			// currentSHA is remembered so the cross-repository survey below can
+			// leave this repository out: the drain reports it entry by entry,
+			// and a summary line repeating it would say the same backlog twice.
+			var currentSHA string
 			// Drain first: SessionEnd only stages the raw transcript, because
 			// redaction at exit loses the race with the host's shutdown
 			// cancellation (iss-2608230817034768). This is where the previous
@@ -1295,6 +1339,16 @@ func newHookCommand() *cobra.Command {
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+				currentSHA = det.RootSHA
+				// Record which store this session belongs to while a real
+				// working directory is still available to say so. A sub-agent
+				// given its own worktree loses that directory when the harness
+				// removes the worktree at the agent's exit, and this note is
+				// how `hook subagent-stop` still finds the store. Best effort:
+				// it degrades a fallback, never a capture.
+				if in.SessionID != "" {
+					_ = history.NoteSessionRepo(captureRoot(cwd), det.RootSHA, in.SessionID)
+				}
 				// Resolving bootstraps the store for this repo — the reason a
 				// machine that never ran `ahoy install` still captures (iss-95)
 				// — and carries out any migration off the legacy location. Its
@@ -1311,13 +1365,29 @@ func newHookCommand() *cobra.Command {
 				}
 				if dr, err := history.Drain(captureRoot(cwd), det.RootSHA, sessionStartDrainBudget); err == nil {
 					for _, f := range dr.Failed {
+						// Rendered by the shared helper so the permanent and
+						// the retryable failure keep saying different things
+						// here and on the live drain both.
+						notices = append(notices, drainFailureNotice(f))
+					}
+					if dr.Overdue > 0 {
+						// Age is reported, never acted on: an overdue entry is
+						// drained through the same fail-closed path as any
+						// other, and nothing deletes it for being old. What the
+						// age buys is this sentence and a place at the front of
+						// the queue.
 						notices = append(notices, fmt.Sprintf(
-							"abcd: session %s ended but could not be stored (%s). Its raw transcript is kept at %s — capture it by hand or delete it; it is unredacted.",
-							termsafe.Sanitize(f.SessionID), termsafe.Sanitize(fsutil.RedactHome(f.Err)), termsafe.Sanitize(fsutil.RedactHome(f.Path))))
+							"abcd: %d staged transcript(s) in this repo are older than %s and still hold UNREDACTED text. They are drained first; `abcd history drain` finishes now.",
+							dr.Overdue, history.StagedTTL))
 					}
 					if dr.Remaining > 0 {
+						// The second sentence is the privacy fact, not a
+						// scheduling one: what is left is raw transcript text
+						// sitting at 0o700, and a count of it belongs where the
+						// backlog is announced rather than only in a verb the
+						// reader has to think to run.
 						notices = append(notices, fmt.Sprintf(
-							"abcd: %d earlier session(s) are still awaiting capture — run `abcd history drain` to finish, or start another session.",
+							"abcd: %d earlier transcript(s) are still awaiting capture — run `abcd history drain` to finish, or start another session. Until then they hold UNREDACTED text on disk.",
 							dr.Remaining))
 					}
 				} else {
@@ -1326,6 +1396,13 @@ func newHookCommand() *cobra.Command {
 						termsafe.Sanitize(err.Error())))
 				}
 			}
+			// The CROSS-REPOSITORY backlog. Everything above answers for this
+			// repository, which is the one repository whose staged files are
+			// certainly being drained — a session is starting in it. The pile
+			// that grows without bound is in the repository nobody opens, and
+			// until this line nothing in abcd could see it from anywhere
+			// (iss-2609090722466403).
+			notices = append(notices, backlogNotices(currentSHA)...)
 			// There is no "the store is not set up for this repo" notice any
 			// more, and there must not be one: the store creates itself on the
 			// line above, so a notice telling the user to run `ahoy install`
@@ -1402,6 +1479,11 @@ func newHookCommand() *cobra.Command {
 		},
 	})
 
+	// subagent-stop — SubagentStop: stage a finished sub-agent's transcript.
+	// Its body lives in hook_subagent.go, with the attribution ladder and the
+	// store resolution it needs.
+	hookCmd.AddCommand(newSubagentStopCommand())
+
 	return hookCmd
 }
 
@@ -1410,14 +1492,182 @@ func newHookCommand() *cobra.Command {
 // while the scanner walks it.
 const maxTranscriptBytes = 64 << 20 // 64 MiB
 
-// sessionStartDrainBudget bounds how many staged transcripts one SessionStart
+// sessionStartDrainBudget bounds how much staged transcript one SessionStart
 // redacts before handing control back to the user. Redaction runs at roughly
 // 0.7s per MB, so an unbounded drain of a backlog would stall the first prompt
-// by however long the backlog happens to be. Four is a compromise: enough that a
-// normal one-session-behind case always clears in a single start, small enough
-// that the worst case stays a few seconds. Anything left is reported, never
+// by however long the backlog happens to be.
+//
+// The bound is bytes AND count, not count alone. It was four entries, tuned
+// when a session staged exactly one transcript at its end. A session that
+// delegates stages one per sub-agent completion as well, so four would leave
+// the rest of a busy session's branches sitting unredacted at 0o700 for as many
+// starts as it took to work through them — and a pile of raw transcript text is
+// a privacy fact, not a scheduling detail. So the byte bound is the one that
+// protects the prompt (4 MiB is under three seconds of redaction), and the
+// count bound is raised to 32 to keep a many-tiny-transcripts pass bounded
+// without throttling the ordinary case. Anything left is reported, never
 // dropped — `abcd history drain` finishes it without waiting for a new session.
-const sessionStartDrainBudget = 4
+var sessionStartDrainBudget = history.DrainBudget{MaxEntries: 32, MaxBytes: 4 << 20}
+
+// livePromptDrainBudget bounds the drain that runs on every prompt of a live
+// session. It is deliberately TINY: one entry and half a megabyte, which is
+// roughly a third of a second of redaction in the worst case and nothing at all
+// in the ordinary one, because the staging directory is usually empty and the
+// pass then costs a directory listing.
+//
+// One entry, not four, because the cost here is paid by a human waiting to be
+// answered, and it is paid on EVERY prompt rather than once at a session start.
+// A session that spawns sub-agents stages one transcript per completion, and a
+// prompt-by-prompt drain of one entry keeps pace with that comfortably: an
+// agent that delegates four times has four prompts' worth of drains to get
+// through four transcripts, and anything it does not reach is drained by the
+// next prompt, the session's end, or `abcd history drain`. The budget's job is
+// to bound a stall, not to clear a backlog in one go.
+var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 10}
+
+// drainWhileLive runs one small drain pass from the UserPromptSubmit hook and
+// reports it out of band.
+//
+// It resolves the repository's key with gitutil.RootCommit rather than
+// ahoy.Detect. Detect is the right call at a session start, where it also
+// answers install-state questions and its cost is paid once; on a per-prompt
+// hook it would run a dozen gap probes to obtain one field. RootCommit is the
+// single git call that field actually needs.
+//
+// EVERY output goes to stderr and nothing to stdout — see the call site. A
+// failure to drain is never a failure of the prompt: this function returns
+// nothing and the hook exits 0 whatever happened here, because a transcript
+// backlog must not be able to wedge a session.
+func drainWhileLive(cmd *cobra.Command, cwd string) {
+	if cwd == "" {
+		return
+	}
+	rootSHA := gitutil.RootCommit(cwd)
+	if rootSHA == "" {
+		return // not a git repo with commits: nothing here has a store
+	}
+	// Look before spending: the ordinary prompt has nothing staged, and this
+	// listing is one readdir of a usually-empty directory, so the redaction
+	// pass and its scanner construction are never entered on a turn with
+	// nothing to drain. The repo root is resolved once and shared with the
+	// drain below, because every store verb now takes it.
+	repoRoot := captureRoot(cwd)
+	if staged, lerr := history.ListStaged(repoRoot, rootSHA); lerr == nil && len(staged) == 0 {
+		return
+	}
+	dr, err := history.Drain(repoRoot, rootSHA, livePromptDrainBudget)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"abcd history: could not drain staged transcripts this turn (%s); they hold UNREDACTED text until one succeeds.\n",
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return
+	}
+	for _, f := range dr.Failed {
+		fmt.Fprintln(cmd.ErrOrStderr(), drainFailureNotice(f))
+	}
+	if dr.Overdue > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"abcd history: %d staged transcript(s) here are older than %s and still hold UNREDACTED text; run `abcd history drain`.\n",
+			dr.Overdue, history.StagedTTL)
+	}
+	if len(dr.Captured) > 0 {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
+	}
+}
+
+// drainFailureNotice renders one DrainFailure as the operator-facing sentence,
+// shared by the live drain and the session-start one so the two cannot drift.
+//
+// The permanent and the retryable case say DIFFERENT things because they ask
+// for different actions, which is the whole point of separating them
+// (iss-2609090722466403). A retryable failure asks the reader to wait or to
+// rerun. A permanent one asks them to decide: the transcript will never pass
+// redaction, nothing will retry it, and only `abcd history discard` removes the
+// raw bytes it is still holding.
+func drainFailureNotice(f history.DrainFailure) string {
+	who := termsafe.Sanitize(f.SessionID)
+	why := termsafe.Sanitize(fsutil.RedactHome(f.Err))
+	if f.Permanent && f.Quarantined {
+		return fmt.Sprintf(
+			"abcd: session %s can NEVER be stored — redaction leaves blocking spans in it (%s). Its raw transcript is quarantined at %s; nothing will retry it. Inspect it, then `abcd history discard` it when you are done: it is unredacted.",
+			who, why, termsafe.Sanitize(fsutil.RedactHome(f.QuarantinePath)))
+	}
+	if f.Permanent {
+		return fmt.Sprintf(
+			"abcd: session %s can NEVER be stored (%s), and its raw copy could not be quarantined, so it stays staged at %s and every drain will refuse it again. It is unredacted.",
+			who, why, termsafe.Sanitize(fsutil.RedactHome(f.Path)))
+	}
+	return fmt.Sprintf(
+		"abcd: session %s ended but could not be stored (%s). Its raw transcript is kept at %s — capture it by hand or delete it; it is unredacted.",
+		who, why, termsafe.Sanitize(fsutil.RedactHome(f.Path)))
+}
+
+// backlogNotices renders the CROSS-REPOSITORY backlog as session-start notices.
+//
+// This is the half no per-repo verb can reach (iss-2609090722466403). `abcd
+// history staged` answers for the repository the operator is standing in, which
+// is by construction a repository being used and therefore drained. The pile
+// that grows without bound is in the repository nobody has opened in a
+// fortnight, and it was invisible from everywhere.
+//
+// skipSHA is the current repository, already reported line by line by the drain
+// above; repeating it here would say the same backlog twice.
+//
+// The notice carries counts, sizes and a repository NAME, and no session ids or
+// paths from another repository: this text is read inside a session belonging to
+// a different repository, and a store that redacts transcripts should not leak
+// one repository's session identifiers into another's notices.
+func backlogNotices(skipSHA string) []string {
+	repos, err := history.SurveyBacklog()
+	if err != nil || len(repos) == 0 {
+		return nil
+	}
+	var others int
+	var bytesHeld int64
+	var overdue, quarantined int
+	var oldest time.Time
+	var names []string
+	for _, b := range repos {
+		if b.RootSHA == skipSHA {
+			continue
+		}
+		others++
+		bytesHeld += b.Total()
+		overdue += b.Overdue
+		quarantined += b.Quarantined
+		if !b.OldestStagedAt.IsZero() && (oldest.IsZero() || b.OldestStagedAt.Before(oldest)) {
+			oldest = b.OldestStagedAt
+		}
+		if b.Name != "" && len(names) < 5 {
+			names = append(names, termsafe.Sanitize(b.Name))
+		}
+	}
+	if others == 0 {
+		return nil
+	}
+	where := ""
+	if len(names) > 0 {
+		where = " (" + strings.Join(names, ", ")
+		if others > len(names) {
+			where += fmt.Sprintf(" and %d more", others-len(names))
+		}
+		where += ")"
+	}
+	age := ""
+	if !oldest.IsZero() {
+		age = fmt.Sprintf(" The oldest has been staged since %s.", oldest.Format("2006-01-02"))
+	}
+	extra := ""
+	if overdue > 0 {
+		extra += fmt.Sprintf(" %d are past the %s staging limit.", overdue, history.StagedTTL)
+	}
+	if quarantined > 0 {
+		extra += fmt.Sprintf(" %d can never be redacted and are quarantined, awaiting `abcd history discard`.", quarantined)
+	}
+	return []string{fmt.Sprintf(
+		"abcd: %d OTHER repositor(y/ies)%s are holding %s of UNREDACTED transcript text that no session here will ever drain — the drain runs per repository.%s%s Run `abcd history staged --all-repos` to see them.",
+		others, where, humanBytes(int(bytesHeld)), age, extra)}
+}
 
 // readTranscript reads the file named by the Stop payload's transcript_path.
 //
@@ -2042,26 +2292,52 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 
-	// close <spc-N> — closes the spec AND reconciles the linked intent
-	// (planned -> shipped). Fail-closed and idempotent (see intent.Reconcile).
+	// close <spc-N> — closes the spec AND, when no open spec is left naming the
+	// linked intent, ships it (planned -> shipped). Fail-closed and idempotent
+	// (see intent.Reconcile).
 	//
 	// --impact is the judgement the shipped intent carries. It is optional
 	// because a record that already declares one needs nothing here, and it
 	// exists because shipped/ is the one bucket intent_impact_valid requires an
 	// impact in: without it the ship verb could only either move an impactless
 	// record into the bucket that refuses it or refuse forever, with no way for
-	// the tool to supply the missing judgement (iss-126).
-	var closeImpact string
+	// the tool to supply the missing judgement (iss-126). It is demanded at the
+	// close that ships and refused at an earlier one, which ships nothing
+	// (adr-2609151513118583).
+	//
+	// --remainder mints the follow-on spec for what this spec did not deliver and
+	// attaches it to the same intent, so the partial-delivery state — spec closed
+	// X, spec open Y, intent still planned — is reached in one operation rather
+	// than by a hand-mint afterwards that nothing enforces.
+	var (
+		closeImpact    string
+		closeRemainder string
+		closeMode      string
+	)
 	closeCmd := &cobra.Command{
 		Use:   "close <spc-N>",
-		Short: "Close a spec (open/ -> closed/) and ship its linked intent (planned/ -> shipped/)",
+		Short: "Close a spec (open/ -> closed/); ship its linked intent when no open spec is left naming it",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
 				return err
 			}
-			res, err := intent.Reconcile(repoRoot, args[0], closeImpact)
+			// A production mode stamps the MINTED remainder and nothing else, so
+			// without --remainder there is no record for it to describe: refuse
+			// rather than accept a disclosure that goes nowhere.
+			if closeMode != "" && closeRemainder == "" {
+				return &exitError{Code: 2, Msg: "abcd spec close: --production-mode stamps the spec --remainder mints, and no remainder was asked for (nothing written)"}
+			}
+			rem := intent.RemainderRequest{Slug: closeRemainder}
+			if closeRemainder != "" {
+				mode, err := resolveProductionMode(repoRoot, closeMode)
+				if err != nil {
+					return err
+				}
+				rem.ProductionMode = mode
+			}
+			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
 			}
@@ -2072,18 +2348,54 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
-				if res.IntentMoved {
+				if res.Remainder.ID != "" {
+					// The mint is idempotent, so a retry after a failure downstream of
+					// it finds the remainder a previous attempt wrote. Saying "minted"
+					// there would credit this invocation with a record it did not write.
+					verb := "minted remainder"
+					if !res.RemainderMinted {
+						verb = "reused existing remainder"
+					}
+					fmt.Fprintf(w, "  %s %s for %s\n  %s\n", verb, res.Remainder.ID, res.Remainder.Intent, termsafe.Sanitize(res.Remainder.Path))
+				}
+				switch {
+				case res.IntentMoved:
 					fmt.Fprintf(w, "  reconciled intent %s: %s -> %s\n", res.Intent.ID, res.From, res.To)
-				} else {
+				case len(res.OpenSpecs) > 0 && res.To == intent.BucketShipped:
+					// A SHIPPED intent with an open spec naming it is not an
+					// outcome, it is a record that disagrees with itself: an intent
+					// ships on the close after which no open spec names it
+					// (invariant 17). Rendering it as "stays shipped — still open"
+					// stated the contradiction in the register of a normal result,
+					// so it is named as the anomaly it is.
+					fmt.Fprintf(w, "  WARNING: intent %s is already shipped, yet %s still names it — a shipped intent has no open spec left (adr-2609151513118583); the record disagrees with itself\n", res.Intent.ID, strings.Join(res.OpenSpecs, ", "))
+				case len(res.OpenSpecs) > 0:
+					// The intent did not move, and the reason is a fact about the
+					// store, not a judgement: name the specs that still hold it.
+					fmt.Fprintf(w, "  intent %s stays %s — still open: %s\n", res.Intent.ID, res.To, strings.Join(res.OpenSpecs, ", "))
+				default:
 					fmt.Fprintf(w, "  intent %s already %s (no move)\n", res.Intent.ID, res.To)
 				}
+				// A close is idempotent, so a re-run against an already-shipped
+				// intent gets the SAME receipt back. Announcing "OWED" each time
+				// reads as a fresh obligation; only the close that actually parked
+				// the stub owes one, and the rest report the state they found.
 				if res.ReceiptID != "" {
-					fmt.Fprintf(w, "  fidelity review OWED: receipt %s\n", res.ReceiptID)
+					switch res.ReceiptStatus {
+					case "owed", "":
+						fmt.Fprintf(w, "  fidelity review OWED: receipt %s\n", res.ReceiptID)
+					case "already_dead_letter":
+						fmt.Fprintf(w, "  fidelity review already dead-lettered: receipt %s\n", res.ReceiptID)
+					default:
+						fmt.Fprintf(w, "  fidelity review already %s: receipt %s\n", strings.TrimPrefix(res.ReceiptStatus, "already_"), res.ReceiptID)
+					}
 				}
 			})
 		},
 	}
-	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal)")
+	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent")
+	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)")
+	closeCmd.Flags().StringVar(&closeMode, "production-mode", "", productionModeFlagHelp)
 	specCmd.AddCommand(closeCmd)
 
 	return specCmd
@@ -2889,9 +3201,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: nitpick | minor | major | critical (default minor)")
-	captureCmd.Flags().StringVar(&category, "category", "", "issue category (default observation)")
-	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel (default user-observation)")
+	// Every closed enum's help NAMES ITS SET, rendered from the one copy in
+	// core/issueschema. --severity always did; --category and --source did not,
+	// and an operator who typed an unknown category had the accepted values in
+	// neither the help nor the refusal (iss-2609100519128005).
+	captureCmd.Flags().StringVar(&severity, "severity", "", "severity: "+enumHelp(issueschema.Severities)+" (default minor)")
+	captureCmd.Flags().StringVar(&category, "category", "", "issue category: "+enumHelp(issueschema.Categories)+" (default observation)")
+	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
 	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path or conceptual location")
@@ -2940,6 +3256,51 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	listCmd.Flags().BoolVar(&lsWontfix, "wontfix", false, "issues currently in wontfix/")
 	listCmd.Flags().BoolVar(&lsAll, "all", false, "issues across all three states")
 	captureCmd.AddCommand(listCmd)
+
+	// mentions — the advisory listing (iss-2609100507421759). Strictly
+	// read-only: it reads the default branch's history and the ledger, and
+	// resolves nothing. The operator reads the row and decides; that division is
+	// the point, and it is why this is a listing rather than a lint that closes
+	// records.
+	var mentionsRef string
+	mentionsCmd := &cobra.Command{
+		Use:   "mentions [--ref <branch>]",
+		Short: "List open issues named by default-branch history with no resolution behind them (read-only)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Mentions(capture.MentionsRequest{RepoRoot: repoRoot, Ref: mentionsRef})
+			if err != nil {
+				return err
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
+					termsafe.Sanitize(res.Ref), res.OpenRecords, res.Commits, len(res.Rows))
+				for _, row := range res.Rows {
+					// The core ranks each row's evidence strongest-first, so the
+					// exemplar shown here is the commit an operator must read —
+					// not merely the latest one that named the record.
+					top := row.Evidence[0]
+					// A subject is a commit author's free text; it reaches a
+					// terminal, so it is sanitised like every other echoed value.
+					fmt.Fprintf(w, "%s  %-8s  %s  %s%s\n", row.ID, row.Strength, top.Commit[:12],
+						termsafe.Sanitize(top.Subject), moreEvidenceNote(len(row.Evidence)))
+				}
+				for _, sk := range res.Skipped {
+					fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+				}
+				if len(res.Rows) > 0 {
+					fmt.Fprintf(w, "\nA mention is not a fix. Read the commit, then resolve what it fixed:\n"+
+						"  abcd capture resolve <iss-N> \"<what fixed it>\" --impact <…> --grounds \"<…>\" --commit <sha>\n")
+				}
+			})
+		},
+	}
+	mentionsCmd.Flags().StringVar(&mentionsRef, "ref", "", "history to walk (default: the repository's default branch)")
+	captureCmd.AddCommand(mentionsCmd)
 
 	// resolve — open -> resolved with a note, a required product impact, and
 	// optional resolved_by provenance (spc-25): the intent, spec, or commit
@@ -3532,6 +3893,18 @@ func blockedNote(iss capture.Issue) string {
 	return " [blocked-by " + strings.Join(iss.BlockedByOpen, ",") + "]"
 }
 
+// moreEvidenceNote renders the tail of a `capture mentions` row: the render shows
+// the row's FIRST evidence in full and says how many others named the same
+// record, so a row stays one line and nothing is silently dropped. First means
+// strongest, and newest among equals — the core ranks the slice before it leaves,
+// so this render and --json lead with the same commit. The full set is in --json.
+func moreEvidenceNote(n int) string {
+	if n <= 1 {
+		return ""
+	}
+	return fmt.Sprintf("  (+%d more)", n-1)
+}
+
 func orDefault(v, def string) string {
 	if v == "" {
 		return def
@@ -3830,247 +4203,6 @@ func readSourceCapped(cmd *cobra.Command, spec string, limit int64) ([]byte, err
 	return readGuardedOperand(spec, limit)
 }
 
-// newHistoryCommand builds the `history` sub-tree over internal/core/history —
-// the native session-transcript store (adr-29). `list`/`show` read; `capture`
-// is the redacting write path. The per-repo store is keyed on the root-commit
-// SHA resolved from cwd.
-func newHistoryCommand(asJSON *bool) *cobra.Command {
-	historyCmd := &cobra.Command{
-		Use:   "history",
-		Short: "Manage the native session-transcript store",
-		Args:  cobra.NoArgs,
-		RunE:  helpRunE,
-	}
-
-	// capture — the redacting write path: read a raw transcript from a file
-	// argument (or stdin with "-"/no arg), sanitise it through the scanner
-	// (two-stage, fail-closed), and store the record. This is the ONLY path that
-	// writes to the store; list/show never mutate.
-	var session, kind string
-	captureCmd := &cobra.Command{
-		Use:   "capture [<transcript-file>|-]",
-		Short: "Redact and store a raw session transcript (reads a file or stdin)",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, rootSHA, err := historyStore(cmd)
-			if err != nil {
-				return err
-			}
-			src := "-"
-			if len(args) == 1 {
-				src = args[0]
-			}
-			// The transcript cap, not the JSON-operand cap: this verb recovers
-			// what the hooks store, so it must accept what they accept.
-			raw, err := readSourceCapped(cmd, src, maxTranscriptBytes)
-			if err != nil {
-				return fmt.Errorf("history capture: cannot read transcript: %w", err)
-			}
-			sess := session
-			if sess == "" && src != "-" {
-				// Derive a session id from the file basename (sans extension).
-				base := filepath.Base(src)
-				sess = strings.TrimSuffix(base, filepath.Ext(base))
-			}
-			if sess == "" {
-				return fmt.Errorf("history capture: --session <id> is required when reading from stdin")
-			}
-			res, err := history.Capture(repoRoot, rootSHA, sess, raw, orDefault(kind, "native"))
-			if err != nil {
-				return err
-			}
-			// The stored path is absolute and home-rooted; this is a success
-			// envelope the CLI error scrub never sees, so redact the home root to
-			// ~ before it is rendered or marshalled. Callers re-derive the file
-			// handle from disk, never from this rendered value.
-			res.Record.Path = fsutil.RedactHome(res.Record.Path)
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				if !res.Wrote {
-					fmt.Fprintf(w, "abcd history capture — %s already stored (no-op); redacted secrets=%d home=%d\n",
-						res.Record.SessionID, res.Record.Secrets, res.Record.HomePaths)
-					return
-				}
-				fmt.Fprintf(w, "abcd history capture — stored %s (%s)\n", res.Record.SessionID, res.Record.SourceKind)
-				fmt.Fprintf(w, "  path:     %s\n", termsafe.Sanitize(res.Record.Path))
-				fmt.Fprintf(w, "  redacted: secrets=%d home=%d\n", res.Record.Secrets, res.Record.HomePaths)
-			})
-		},
-	}
-	captureCmd.Flags().StringVar(&session, "session", "", "session id for the record (default: transcript filename; required for stdin)")
-	captureCmd.Flags().StringVar(&kind, "kind", "", "source kind: native | specstory-import (default native)")
-	historyCmd.AddCommand(captureCmd)
-
-	// list — records newest-first for this repo.
-	historyCmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List stored transcripts for this repo, newest first",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			repoRoot, rootSHA, err := historyStore(cmd)
-			if err != nil {
-				return err
-			}
-			records, err := history.List(repoRoot, rootSHA)
-			if err != nil {
-				return err
-			}
-			// An empty store is an empty LIST in JSON, not bare `null`: the
-			// command doc promises "an empty list means no transcripts", and a
-			// consumer that iterates the value should get [], as every other
-			// --json verb's collection does.
-			if records == nil {
-				records = []history.Record{}
-			}
-			// The path field is absolute and home-rooted; redact the home root to ~
-			// in this success envelope (JSON and text) before it is marshalled.
-			for k := range records {
-				records[k].Path = fsutil.RedactHome(records[k].Path)
-			}
-			return render(cmd.OutOrStdout(), *asJSON, records, func(w io.Writer) {
-				if len(records) == 0 {
-					fmt.Fprintln(w, "abcd history — no transcripts stored for this repo")
-					return
-				}
-				for _, r := range records {
-					fmt.Fprintf(w, "%s  %s  %s  redacted secrets=%d home=%d\n",
-						r.CapturedAt.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(r.SessionID), termsafe.Sanitize(r.SourceKind), r.Secrets, r.HomePaths)
-				}
-			})
-		},
-	})
-
-	// staged — what ended but is not yet stored. This is the outcome axis the
-	// store never had: before staging existed, "absent from the store" spanned
-	// never-ended, ended-before-the-store-existed and ended-and-lost, and nothing
-	// could tell them apart. A staged entry says exactly one thing.
-	historyCmd.AddCommand(&cobra.Command{
-		Use:   "staged",
-		Short: "List transcripts that ended but are not yet redacted into the store",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			repoRoot, rootSHA, err := historyStore(cmd)
-			if err != nil {
-				return err
-			}
-			staged, err := history.ListStaged(repoRoot, rootSHA)
-			if err != nil {
-				return err
-			}
-			if staged == nil {
-				staged = []history.Staged{}
-			}
-			for k := range staged {
-				staged[k].Path = fsutil.RedactHome(staged[k].Path)
-			}
-			return render(cmd.OutOrStdout(), *asJSON, staged, func(w io.Writer) {
-				if len(staged) == 0 {
-					fmt.Fprintln(w, "abcd history — nothing staged; every ended session is stored")
-					return
-				}
-				for _, s := range staged {
-					fmt.Fprintf(w, "%s  %s  %d bytes  awaiting redaction\n",
-						s.StagedAt.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(s.SessionID), s.Bytes)
-				}
-				fmt.Fprintf(w, "\n%d staged transcript(s) hold UNREDACTED text until drained; run `abcd history drain`.\n", len(staged))
-			})
-		},
-	})
-
-	// drain — finish the capture SessionStart bounded. Unbudgeted by design: the
-	// interactive budget exists to protect a session start, and this verb is the
-	// explicit ask, so it runs the backlog to completion.
-	historyCmd.AddCommand(&cobra.Command{
-		Use:   "drain",
-		Short: "Redact and store every staged transcript for this repo",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			repoRoot, rootSHA, err := historyStore(cmd)
-			if err != nil {
-				return err
-			}
-			res, err := history.Drain(repoRoot, rootSHA, 0)
-			if err != nil {
-				return err
-			}
-			if res.Captured == nil {
-				res.Captured = []history.Record{}
-			}
-			for k := range res.Captured {
-				res.Captured[k].Path = fsutil.RedactHome(res.Captured[k].Path)
-			}
-			for k := range res.Failed {
-				res.Failed[k].Path = fsutil.RedactHome(res.Failed[k].Path)
-			}
-			renderErr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				if len(res.Captured) == 0 && len(res.Failed) == 0 {
-					fmt.Fprintln(w, "abcd history — nothing staged; nothing to drain")
-					return
-				}
-				for _, r := range res.Captured {
-					fmt.Fprintf(w, "stored  %s  redacted secrets=%d home=%d\n",
-						termsafe.Sanitize(r.SessionID), r.Secrets, r.HomePaths)
-				}
-				for _, f := range res.Failed {
-					fmt.Fprintf(w, "FAILED  %s  %s\n  raw transcript kept (unredacted): %s\n",
-						termsafe.Sanitize(f.SessionID), termsafe.Sanitize(f.Err), termsafe.Sanitize(f.Path))
-				}
-			})
-			if renderErr != nil {
-				return renderErr
-			}
-			// A drain that could not store something must not exit 0: this verb is
-			// the remedy the SessionStart notice points at, and a silent success
-			// here would leave the user believing the backlog cleared.
-			if len(res.Failed) > 0 {
-				return fmt.Errorf("history: %d staged transcript(s) could not be stored", len(res.Failed))
-			}
-			return nil
-		},
-	})
-
-	// show <session-id-or-filename> — metadata + redacted body of one record.
-	historyCmd.AddCommand(&cobra.Command{
-		Use:   "show <session-id-or-filename>",
-		Short: "Show one stored transcript's metadata and redacted body",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, rootSHA, err := historyStore(cmd)
-			if err != nil {
-				return err
-			}
-			rec, body, err := history.Read(repoRoot, rootSHA, args[0])
-			if err != nil {
-				return err
-			}
-			// Redact the home root out of the absolute stored path in this success
-			// envelope (JSON and the text path line) before it is rendered.
-			rec.Path = fsutil.RedactHome(rec.Path)
-			out := struct {
-				history.Record
-				Body string `json:"body"`
-			}{Record: rec, Body: string(body)}
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
-				// The stored transcript body is untrusted (it may have ingested
-				// hostile fetched pages or target-repo files); capture redacts
-				// only secrets/home paths, so neutralise terminal-control bytes
-				// here before they reach the terminal. SanitizeBlock keeps the
-				// transcript's line structure. The metadata fields are validated
-				// at write time but not re-validated on the read path, so pass
-				// them through too.
-				fmt.Fprintf(w, "session:    %s\n", termsafe.Sanitize(rec.SessionID))
-				fmt.Fprintf(w, "captured:   %s\n", rec.CapturedAt.Format("2006-01-02T15:04:05Z"))
-				fmt.Fprintf(w, "source:     %s\n", termsafe.Sanitize(rec.SourceKind))
-				fmt.Fprintf(w, "path:       %s\n", termsafe.Sanitize(rec.Path))
-				fmt.Fprintf(w, "redacted:   secrets=%d home=%d\n", rec.Secrets, rec.HomePaths)
-				fmt.Fprintln(w, "---")
-				fmt.Fprint(w, termsafe.SanitizeBlock(string(body)))
-			})
-		},
-	})
-
-	return historyCmd
-}
-
 // repoRootSHA resolves the current repo's root-commit SHA (the history store
 // key) via the ahoy detection pass. An empty SHA means cwd is not a git repo
 // with commits, which the history verbs cannot key on.
@@ -4108,14 +4240,27 @@ func historyStore(cmd *cobra.Command) (string, string, error) {
 		return "", "", err
 	}
 	repoRoot := captureRoot(cwd)
+	if err := printStoreNotes(cmd, repoRoot, rootSHA); err != nil {
+		return "", "", err
+	}
+	return repoRoot, rootSHA, nil
+}
+
+// printStoreNotes resolves one repo's store and prints whatever the resolution
+// had to say out loud. It is the half of historyStore a verb that names its own
+// destination — `history ingest`, whose repository is an operand and never the
+// working directory — still owes the seam: the migration and the declined
+// opt-in are facts about the caller's disk, and a verb that resolved silently
+// would move a corpus without saying so.
+func printStoreNotes(cmd *cobra.Command, repoRoot, rootSHA string) error {
 	store, err := history.Resolve(repoRoot, rootSHA)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 	for _, n := range store.Notes {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
 	}
-	return repoRoot, rootSHA, nil
+	return nil
 }
 
 // rulesRoot resolves the repo root the modular-rules loader (and the shell
@@ -4186,11 +4331,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			msg += "\nabcd: " + note
 		}
 		// Honour --json for the error surface too: a caller that asked for
-		// machine output must get a JSON envelope, never raw Go text (iss-29).
+		// machine output must get a JSON envelope, never raw Go text (iss-29) —
+		// and it goes to STDOUT, where a machine-readable consumer reads
+		// (iss-2609100519128005).
 		if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
-			enc := json.NewEncoder(stderr)
+			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
-			_ = enc.Encode(errorEnvelope{Error: msg})
+			_ = enc.Encode(newErrorEnvelope(msg, code))
 		} else {
 			fmt.Fprintln(stderr, "abcd:", msg)
 		}
@@ -4198,10 +4345,49 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	return code
 }
 
-// errorEnvelope is the --json error shape: a single {"error": "..."} object so
-// a machine caller can parse a failure the same way it parses a success.
+// errorEnvelope is the --json refusal shape, and it is written to STDOUT.
+//
+// Two things about it are the fix for iss-2609100519128005, and both come from
+// one field report. An operator ran a `--json` capture that was refused, merged
+// stderr into stdout, parsed the merged stream as JSON, never read the exit
+// status, and concluded two captures had been silently lost. Nothing was lost:
+// the refusal is atomic, wrote nothing, and DID reach them as a well-formed JSON
+// object. The defect is that they could not tell it from a success.
+//
+//   - It is on STDOUT. A run invoked with --json is being read by a machine, and
+//     a machine reads stdout; putting the outcome on the other stream means a
+//     machine-readable invocation produced no machine-readable output. Nothing
+//     is written to stderr in this mode, deliberately: a prose line there would
+//     make the merged stream the report described stop being JSON, which trades
+//     one unparseable shape for another.
+//
+//   - It ANNOUNCES ITSELF. `"abcd": "error"` is a self-describing discriminator —
+//     no success envelope in the tree carries a top-level `abcd` key, and a
+//     reader needs no foreknowledge of abcd's shapes to see what it is holding.
+//     `exit_code` carries the status the stream merge discarded back INTO the
+//     document, so the one fact the consumer threw away is recoverable from the
+//     bytes they kept.
+//
+// Two verbs render a document and then fail: `history drain` reports what it
+// stored before refusing the exit code for what it could not, and `reading
+// assemble` hands out the data its refusal's remedy needs. Those runs put two
+// JSON documents on stdout, which is what they already put across the two
+// streams. Stdout under --json is therefore a STREAM of documents, and the
+// refusal is always the LAST of them, because Run writes it after the command has
+// returned. A consumer decoding a stream (encoding/json's Decoder, or jq) reads
+// them all and finds the outcome at the end.
 type errorEnvelope struct {
-	Error string `json:"error"`
+	// Abcd is always "error". It leads the struct so it leads the encoded
+	// object, where a reader — human or machine — meets it first.
+	Abcd     string `json:"abcd"`
+	Error    string `json:"error"`
+	ExitCode int    `json:"exit_code"`
+}
+
+// newErrorEnvelope builds the refusal envelope, so the discriminator is stated
+// in one place and cannot be forgotten at a call site.
+func newErrorEnvelope(msg string, code int) errorEnvelope {
+	return errorEnvelope{Abcd: "error", Error: msg, ExitCode: code}
 }
 
 // scrubPaths renders err for machine/stderr output with the DEVELOPER-IDENTITY
@@ -4288,3 +4474,8 @@ func render(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
 	text(w)
 	return nil
 }
+
+// enumHelp renders a closed enum's accepted values for a flag's help line. It
+// reads the same slice the reader's membership test and its refusal message read,
+// so a value added to core/issueschema reaches all three at once.
+func enumHelp(vals []string) string { return strings.Join(vals, " | ") }

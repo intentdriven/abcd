@@ -110,10 +110,10 @@ func TestHookSessionStartBootstrapsTheStore(t *testing.T) {
 	}
 
 	// And it captures: the store the hook just made is the one session-end uses.
-	if _, err := history.Stage(repo, rootSHA, "s1", []byte("assistant: hi\n")); err != nil {
+	if _, err := history.Stage(repo, rootSHA, history.StageMeta{Lineage: history.CaptureMeta{SessionID: "s1", Kind: "native"}}, []byte("assistant: hi\n")); err != nil {
 		t.Fatalf("staging into the bootstrapped store failed: %v", err)
 	}
-	if _, err := history.Drain(repo, rootSHA, 0); err != nil {
+	if _, err := history.Drain(repo, rootSHA, history.DrainBudget{}); err != nil {
 		t.Fatalf("draining the bootstrapped store failed: %v", err)
 	}
 	recs, err := history.List(repo, rootSHA)

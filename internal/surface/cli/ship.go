@@ -395,6 +395,13 @@ func findingsLine(g changelog.FindingGuard) string {
 	if len(g.Unfixed) > 0 {
 		line += fmt.Sprintf(" (%d unfixed finding(s) captured since %s)", len(g.Unfixed), g.BaseTag)
 	}
+	// A deletion is counted on its own line-fragment rather than folded into the
+	// unfixed count: the two are different defects with different remedies, and a
+	// single number would let a removed record read as one still sitting in open/
+	// — which is the confusion the deletion check exists to end.
+	if len(g.Deleted) > 0 {
+		line += fmt.Sprintf(" (%d record(s) deleted from the ledger since %s)", len(g.Deleted), g.BaseTag)
+	}
 	if len(g.Waived) > 0 {
 		line += fmt.Sprintf(" (%d deferred)", len(g.Waived))
 	}

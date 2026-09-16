@@ -393,6 +393,19 @@
       ]
     },
     {
+      "path": "abcd capture mentions",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "ref",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture promote",
       "hidden": false,
       "flags": [
@@ -753,14 +766,102 @@
       ]
     },
     {
+      "path": "abcd history discard",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "yes",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd history drain",
       "hidden": false,
       "flags": []
     },
     {
+      "path": "abcd history ingest",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "adopt",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "into",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd history list",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd history migrate",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "sidecar-root",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd history reconstruct",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "max-block-bytes",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd history show",
@@ -770,7 +871,15 @@
     {
       "path": "abcd history staged",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "all-repos",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd hook",
@@ -794,6 +903,11 @@
     },
     {
       "path": "abcd hook session-start",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook subagent-stop",
       "hidden": false,
       "flags": []
     },
@@ -1000,6 +1114,26 @@
       ]
     },
     {
+      "path": "abcd lint outbound",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "label",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd memory",
       "hidden": false,
       "flags": []
@@ -1196,6 +1330,20 @@
       "flags": [
         {
           "name": "impact",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "remainder",
           "shorthand": "",
           "type": "string",
           "required": false,

@@ -447,7 +447,11 @@ jobs:
       - name: Issue-resolution stamps are reachable (RS003)
         run: bash scripts/check-issue-resolution.sh ledger HEAD
 
-      # RS001/RS002 over the pull request's own range. On a push to main the
+      # RS001/RS002/RS004 over the pull request's own range. RS004 is the
+      # commit half of the record-mention rule (iss-2609100507421759): a message
+      # that names an iss-N declares `Resolves:` or `Refs:`. Its pull-request
+      # half lives in attribution.yml, the one workflow that re-runs on an
+      # `edited` title or body. On a push to main the
       # base is the previous tip, so the range is the merge that just landed; on
       # a merge-queue entry it is the base the entry was formed against, so the
       # range is the would-be merge. That last rung is the one this check needs
@@ -456,7 +460,7 @@ jobs:
       # competitor made terminal while it waited, because the only run that
       # could have seen the collision was the one where the check skipped
       # itself. The chain's order is argued at the record-lint step above.
-      - name: Declared resolutions move the record (RS001/RS002)
+      - name: Declared resolutions move the record, mentions declare themselves (RS001/RS002/RS004)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
         run: |
