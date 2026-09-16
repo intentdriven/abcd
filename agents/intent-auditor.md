@@ -5,7 +5,7 @@ description: >-
   Acceptance Criteria and the delivered code diff, and emits one VSA-shaped
   verdict JSON: a per-criterion acceptance verdict plus a honoured/diverged/
   missing audit, every claim carrying a cited file:line evidence pointer.
-prompt_version: 0.3.0
+prompt_version: 0.3.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [intent_audit]
