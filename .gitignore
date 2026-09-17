@@ -66,3 +66,9 @@ references.bib
 
 # Generated docs site output (mkdocs build) — disposable, never committed.
 /site/
+
+# BEGIN ABCD
+# abcd-managed block — do not hand-edit. Run /abcd:ahoy to refresh.
+.abcd/.work.local/
+/memory/
+# END ABCD
