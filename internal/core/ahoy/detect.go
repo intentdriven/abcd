@@ -57,6 +57,12 @@ func Detect(cwd string) (DetectionResult, error) {
 	// kind, surfaced so status reports "dev (tip build)" honestly (never invisible).
 	signals["install_mode"] = detectInstallMode(pluginRoot, pluginOK)
 
+	// The host harness's status line is a machine-scope fact too (spc-70): one
+	// read of the harness's settings, classified, so the board can say whether
+	// abcd's row is wired, absent, foreign, or pointing at an abcd that is gone.
+	harness := readHarnessSettings()
+	signals["statusline"] = string(harness.state)
+
 	// The citation baseline's coverage and age, when this repo has armed the
 	// citation gate (spc-17). Omitted entirely otherwise, so a repo that has not
 	// adopted the gate carries no line about it.
@@ -78,6 +84,7 @@ func Detect(cwd string) (DetectionResult, error) {
 	if kind != UnmanagedFolder {
 		gaps = append(gaps, detectDependencies()...)
 		gaps = append(gaps, detectSkeleton(abs)...)
+		gaps = append(gaps, detectLocalTier(abs)...)
 		gaps = append(gaps, detectIdentity(identity, idx)...)
 		gaps = append(gaps, detectGitIdentity(abs)...)
 		gaps = append(gaps, detectHistoryStore(identity.RootSHA)...)
@@ -85,6 +92,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectConfigValues(abs)...)
 		gaps = append(gaps, detectMarkerDrift(abs)...)
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
+		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
 		// Guard health is computed for every managed or adoptable repo, so a
@@ -468,13 +476,7 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 	// A link of ours whose binary has gone shadows whatever else on PATH would
 	// have answered. It is neither "installed" nor "missing" — it is its own gap.
 	if e, ok := danglingPathEntry(pluginRoot); ok {
-		gaps = append(gaps, Gap{
-			ID: "symlink.dangling", Category: ConfigChange, Scope: "machine",
-			Title:    "PATH entry points at a binary that is gone",
-			Detail:   displayPath(e.path) + " is an abcd-owned entry whose target no longer exists, so it shadows every later PATH entry.",
-			FixHint:  "ahoy install repoints it once the plugin binary is present; remove it with `ahoy uninstall` if abcd is gone.",
-			Required: true, Resolvable: true,
-		})
+		gaps = append(gaps, danglingEntryGap(e.path, true))
 	}
 
 	target := effectiveBinTarget(pluginRoot)
@@ -536,6 +538,19 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 			// Ours, stranded by a plugin update: the symlink.dangling gap above
 			// already carries it, and a foreign-worded gap here would tell the
 			// user to hand-resolve a link abcd itself wrote (iss-345).
+		case linkIsDangling(target):
+			// A link abcd cannot prove it wrote, that resolves to NOTHING
+			// (iss-2609100506256636). Refusing to clobber a foreign entry is
+			// right — it is somebody's working install — but this one is
+			// nobody's: it runs nothing, and it shadows every later PATH entry
+			// including a healthy abcd. Reporting it as foreign made the state
+			// unreachable from inside the tool, because that gap is
+			// `resolvable: false` and there is no --force and no uninstall path
+			// for an entry abcd does not own, so `ahoy install` could never
+			// finish. The discriminator is DANGLINGNESS, not provenance: the
+			// live-link case below still refuses, and clearing this one removes
+			// the link itself (clearDanglingEntry) and never writes through it.
+			gaps = append(gaps, danglingEntryGap(target, false))
 		default:
 			gaps = append(gaps, Gap{
 				ID: "symlink.foreign", Category: ConfigChange, Scope: "machine",
@@ -549,6 +564,31 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 	gaps = append(gaps, detectBinDirOnPath(filepath.Dir(target), installed)...)
 	gaps = append(gaps, detectShadowedEntry(pluginRoot, target)...)
 	return gaps
+}
+
+// danglingEntryGap is the ONE wording for a PATH entry whose target is gone, in
+// both the shapes that reach it: one abcd can prove it wrote (an owned link, or
+// the sibling a plugin update stranded), and one it cannot. The id, category and
+// title are the same because the condition and the remedy are the same — the
+// link resolves to nothing, so clearing it destroys nothing and `ahoy install`
+// writes a fresh entry in its place. Only the two sentences that would otherwise
+// assert provenance differ: abcd never claims to have written a link it cannot
+// prove it wrote, and never points at `ahoy uninstall`, which removes only what
+// abcd owns.
+func danglingEntryGap(path string, owned bool) Gap {
+	detail := displayPath(path) + " points at a target that does not exist, so it runs nothing and shadows every later PATH entry."
+	fix := "ahoy install replaces it once the plugin binary is present: a link that resolves to nothing is nobody's working install."
+	if owned {
+		detail = displayPath(path) + " is an abcd-owned entry whose target no longer exists, so it shadows every later PATH entry."
+		fix = "ahoy install repoints it once the plugin binary is present; remove it with `ahoy uninstall` if abcd is gone."
+	}
+	return Gap{
+		ID: "symlink.dangling", Category: ConfigChange, Scope: "machine",
+		Title:    "PATH entry points at a binary that is gone",
+		Detail:   detail,
+		FixHint:  fix,
+		Required: true, Resolvable: true,
+	}
 }
 
 // unrecordedEntryGap reports an entry abcd owns that ~/.abcd/path-entry does

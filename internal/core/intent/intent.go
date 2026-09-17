@@ -86,9 +86,23 @@ type Corpus struct {
 }
 
 // Lookup returns the intent with the given id; ok is false when absent.
+//
+// Matching is CANONICAL (recordid.SameID) after an exact hit fails, the same
+// two-pass shape spec.Store.Lookup uses and for the same reason: record-lint
+// resolves an intent handle on its number with its leading zeros trimmed, so a
+// link written `itd-007` is green and names itd-7. A literal-only compare here
+// made this verb refuse — "itd-007 not found in any bucket" — a record the lint
+// says exists, which left the spec carrying that spelling permanently unclosable
+// and its intent permanently unlinkable. An exact match still wins when the
+// corpus holds one, so a caller naming a record precisely gets that record.
 func (c Corpus) Lookup(id string) (Intent, bool) {
 	for _, it := range c.Intents {
 		if it.ID == id {
+			return it, true
+		}
+	}
+	for _, it := range c.Intents {
+		if recordid.SameID(it.ID, id) {
 			return it, true
 		}
 	}
@@ -216,12 +230,50 @@ type ReconcileResult struct {
 	IntentMoved bool      `json:"intent_moved"`
 	From        string    `json:"from"`
 	To          string    `json:"to"`
+	// OpenSpecs names the specs that still realise the intent after this close,
+	// in store order. Empty is the ordinary case and the one that ships: the
+	// intent moves planned/ -> shipped/ on the close after which no open spec
+	// names it (adr-2609151513118583). A non-empty list is the visible reason the
+	// intent did NOT move, and the surface prints it.
+	OpenSpecs []string `json:"open_specs,omitempty"`
+	// Remainder is the follow-on spec this close minted for the part of the
+	// intent the closed spec did not deliver (the zero value when none was
+	// asked for). It is attached to the same intent and lands in open/.
+	Remainder spec.Spec `json:"remainder,omitzero"`
+	// RemainderMinted says whether THIS invocation wrote that remainder. The mint
+	// is idempotent — a retry after a failure downstream of it reuses the spec the
+	// previous attempt left behind — so without this the surface reports a record
+	// it did not write as one it just wrote.
+	RemainderMinted bool `json:"remainder_minted,omitempty"`
 	// ReceiptID is the deterministic fidelity-review receipt parked in the
 	// shipped intent's Audit Notes (empty if the emit failed).
 	ReceiptID string `json:"receipt_id,omitempty"`
+	// ReceiptStatus says what the emit did: "owed" on the close that actually
+	// parked a new OWED stub, and "already_owed"/"already_ingested"/
+	// "already_dead_letter" when the intent had shipped before and the receipt
+	// was already there. A close is idempotent, so the same receipt id comes back
+	// on every re-run; without this the surface announced a fresh review on each
+	// one, which reads as a new obligation the operator has to discharge.
+	ReceiptStatus string `json:"receipt_status,omitempty"`
 	// AuditEmitError is a NON-FATAL report of a failed review emit. The review is
 	// report-only, so the intent still ships; the surface prints this loudly.
 	AuditEmitError string `json:"audit_emit_error,omitempty"`
+}
+
+// RemainderRequest asks a close to mint a follow-on spec for the part of the
+// intent the closing spec did not deliver, attached to that same intent. The
+// zero value asks for none, which is the ordinary close.
+//
+// It is how the honest path is taken in one operation: the visible state after
+// a partial delivery is "spec closed X, spec open Y, intent still planned", and
+// minting Y by hand afterwards is the step that gets forgotten
+// (adr-2609151513118583).
+type RemainderRequest struct {
+	// Slug is the kebab-case slug of the spec to mint. Empty means no remainder.
+	Slug string
+	// ProductionMode is the disclosure mode stamped on the minted spec; empty
+	// takes the vocabulary's default (provenance.DefaultMode).
+	ProductionMode string
 }
 
 // LinkedPair is one intent↔spec link in the lifecycle summary.

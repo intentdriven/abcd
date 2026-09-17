@@ -34,6 +34,41 @@ lead with how many errors and warnings there are. The process exit code is the
 Conftest tri-state — `0` clean, `1` warnings only, `2` any error — so
 `abcd lint` can also gate a repo's CI.
 
+## `lint outbound` — judge one piece of outbound text
+
+The sub-verb judges a single artefact rather than the repo: a commit message, a
+pull-request body, an issue, a comment, a release note. It applies abcd's
+outbound policy — never a live agent-session URL, never a tool's own attribution
+footer — and it **reports and refuses; it never rewrites the text**, because the
+text belongs to whoever wrote it.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lint outbound --label pr-body ./body.md
+```
+
+It reads the file named as the positional, or standard input when there is none
+(or when it is `-`). `--label` names the artefact in the report; `--root` picks
+the repo whose `.abcd/config/pii.json` configures the scan (default: the current
+directory).
+
+The exit code is the verdict, and it is **not** the parent verb's Conftest
+tri-state: `0` the artefact is clean, `1` the artefact is refused, `2` the check
+could not run (an unreadable or empty artefact, a degraded scanner config). Both
+patterns are hard-fail, so the tri-state's advisory middle rung has no meaning
+here; a caller that branches on non-zero is right either way, and one that
+distinguishes must not read "the gate was broken" as a verdict on the text.
+
+With `--json` it emits one document: `label`, `findings` (each with a `kind` of
+`harness:session_url` or `harness:attribution_footer`, a `line`, a `column` and a
+`suggested_fix`), and the `policy` text. The matched span is masked in both
+renderings — a CI log on a public repository is public text, so the gate must not
+republish the leak it is reporting. A refusal arrives as the exit status alone;
+there is no second error envelope on top of the report.
+
+This is the check abcd's own CI runs over every commit message in a pull
+request's range and over the pull-request body
+(`scripts/check-attribution.sh`).
+
 A `privacy-hygiene` finding on a deliberately illustrative line can be waived by
 adding `abcd-lint:allow` on that line (the earlier `abcd-audit:allow` spelling is
 honoured too). No other rule honours that marker: a `docs-currency` finding takes

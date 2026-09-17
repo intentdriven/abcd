@@ -230,6 +230,10 @@ func hermeticRepo(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	// The harness's settings resolve under HOME once this is empty, so a
+	// machine that names its own configuration directory never offers its real
+	// status line to a hermetic install (spc-70).
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("ABCD_BIN_TARGET", filepath.Join(t.TempDir(), "bin", "abcd"))
 
 	repo := t.TempDir()

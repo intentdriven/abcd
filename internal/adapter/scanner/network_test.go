@@ -321,24 +321,24 @@ func TestIdentitySkipsNonUserHomeSegments(t *testing.T) {
 	}
 }
 
-// S3: an exempt system directory must not shield a username NESTED under it.
-// The one-segment match stopped at the exempt segment and nothing looked past
-// it — a regression against the behaviour before the exemption landed.
+// S3: an exempt system directory must not shield a username reached by TRAVERSAL
+// out of it. The one-segment match stopped at the exempt segment and nothing
+// looked past it — a regression against the behaviour before the exemption
+// landed.
+//
+// A segment reached DIRECTLY beneath the system root is no longer flagged
+// (iss-2609100505145554): a system root is not a home root, so nothing under it
+// sits in the username position, and flagging it refused writes on the product's
+// own install docs. The traversal assertions below are the ones that matter, and
+// they all still hold.
 func TestIdentityNestedUsernameUnderSystemDirectory(t *testing.T) {
 	id := Identity{HomePath: "/tmp/not-the-caller", HomeUser: "not-the-caller"}
 	scan := func(line string) []Finding {
 		return ScanText(line, id, nil, DefaultIdentitySeverities(), "f")
 	}
 	nested := "keys at /Users/Shared/" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt"
-	got := scan(nested)
-	if !hasKind(got, kindHomeOther) {
-		t.Fatalf("a username nested under an exempt system directory was not flagged: %+v", got)
-	}
-	// The redacted span must cover the nested segment, not stop at the exempt one.
-	for _, f := range got {
-		if f.Kind == kindHomeOther && !strings.Contains(f.Matched, "jdoe") {
-			t.Errorf("matched span %q does not cover the nested username", f.Matched)
-		}
+	if got := scan(nested); hasKind(got, kindHomeOther) {
+		t.Fatalf("a segment reached directly under a system root is a shared-folder entry, not a home path: %+v", got)
 	}
 	if got := scan("the tier lives at /Users/Shared"); hasKind(got, kindHomeOther) {
 		t.Errorf("a bare system directory flagged: %+v", got)

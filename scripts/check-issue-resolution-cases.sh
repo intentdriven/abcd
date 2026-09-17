@@ -573,6 +573,158 @@ git -C "$d" commit -qm "chore: admit a proposal and record a surprise"
 expect pass "$d" "the step-2 records are outside the gate's scope" -- ledger HEAD
 expect pass "$d" "the step-2 records are outside the commits scan too" -- commits main HEAD
 
+# --- RS004: a named record id must declare its relation ----------------------
+#
+# The rule (iss-2609100507421759): a commit message or a pull-request title/body
+# that NAMES an iss-N must say what the change is to it. `Resolves: iss-N` says
+# it fixes it, and RS001 above then requires the record to move in the same
+# change; `Refs: iss-N` says touched-but-not-fixed and requires nothing of the
+# ledger. A bare mention — the shape that let four fixed issues sit open in a
+# managed repository's ledger, with the only evidence buried in commit prose —
+# is refused here, before the merge.
+
+d="$(newrepo rs004-bare-mention)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: the parser hole behind iss-999"
+expect_refusal_naming "$d" "RS004 bare mention in a commit subject" \
+	"RS004.*iss-999" -- commits main HEAD
+
+# The load-bearing case the rule turns on: `Refs:` is INFORMATIONAL. It declares
+# the relation (so RS004 is satisfied) and must NOT drag RS001's move
+# requirement along with it — a commit that merely touches an issue's ground
+# leaves the record exactly where it was.
+d="$(newrepo rs004-refs-no-move)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "refactor: tidy the parser around the iss-999 ground
+
+Refs: iss-999"
+expect pass "$d" "RS004 Refs: declares the relation and demands no ledger move" -- commits main HEAD
+
+# The other declaration, already RS001's: it satisfies RS004 too, so the two
+# rules cannot double-refuse one honest commit.
+d="$(newrepo rs004-resolves-declares)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: close the iss-999 hole
+
+Resolves: iss-999"
+expect pass "$d" "RS004 Resolves: is itself a declaration" -- commits main HEAD
+
+# ONE spelling, deliberately. `Ref:`, `References:`, `See:` are not the trailer;
+# admitting near-misses reopens the omission the rule closes, so a near-miss
+# reads as what it is — an undeclared mention.
+d="$(newrepo rs004-near-miss-trailer)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "refactor: tidy the parser
+
+Ref: iss-999"
+expect_refusal_naming "$d" "RS004 a near-miss trailer is not a declaration" \
+	"RS004.*iss-999" -- commits main HEAD
+
+# A merge commit's message is composed by the forge (`Merge pull request #N from
+# …`) and can carry the branch's own text; the commits scan skips merges for the
+# same reason RS001 does, so a mention inherited from a merged branch — already
+# judged on that branch — is not re-refused here.
+d="$(newrepo rs004-merge-exempt)"
+git -C "$d" checkout -q -b side
+echo "side" >>"$d/SIDE.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: side work
+
+Refs: iss-999"
+git -C "$d" checkout -q work
+echo "work" >>"$d/WORK.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: work"
+git -C "$d" merge -q --no-ff side -m "Merge branch 'side' — carries the iss-999 note"
+expect pass "$d" "RS004 skips a merge commit's forge-composed message" -- commits main HEAD
+
+# A declaration may name more than one id on one line: `Refs: iss-1, iss-2` is
+# the conventional trailer shape, and refusing it made the author write the
+# trailer twice or — the failure the rule exists to close — drop the second id.
+# The vocabulary stays closed at two spellings; only the id LIST widens.
+d="$(newrepo rs004-refs-list)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "refactor: tidy the ground around iss-999 and iss-998
+
+Refs: iss-999, iss-998"
+expect pass "$d" "RS004 a comma-separated Refs: list declares every id on the line" -- commits main HEAD
+
+# The list form must not become an escape from RS001: every id a `Resolves:`
+# line names is a declared resolution, so every one of them must move. RS001
+# reads the whole line for that reason, not just its first id — a rule that read
+# one id would let a comma carry the others past the move requirement.
+d="$(newrepo rs004-resolves-list)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: close the iss-999 hole
+
+Resolves: iss-999, iss-998"
+expect_refusal_naming "$d" "RS001 reads every id in a Resolves: list" \
+	"RS001.*declares 'Resolves: iss-998'" -- commits main HEAD
+
+# --- RS004 on the pull-request form ------------------------------------------
+#
+# The same rule over the artefact a commit message cannot reach: the title and
+# body a human types into the forge. The declaration lives in the BODY (a title
+# has no room for a trailer), so the two are judged against one declaration set.
+#
+# A PR body is also the one artefact a later run may no longer see. A SQUASH
+# merge taken outside the merge queue composes its commit from the pull-request
+# TITLE plus the branch's commit bodies and drops the PR body entirely — so a
+# mention that lives only in the title, declared only in the body, passes here
+# and then fails RS004 on the post-merge commit, which carries the title's
+# mention and none of the body's declaration. This repository's queue merges
+# rather than squashes, so it bites only on a squash taken outside it; the
+# remedy is to put the declaration where the mention is.
+
+d="$(newrepo rs004-pr-title-bare)"
+printf '%s' "fix: the parser hole behind iss-999" >"$d/title.txt"
+printf '%s\n' "Tidies the parser." >"$d/body.md"
+expect_refusal_naming "$d" "RS004 bare mention in a pull-request title" \
+	"RS004.*title.*iss-999|RS004.*iss-999" -- pr title.txt body.md
+
+d="$(newrepo rs004-pr-body-bare)"
+printf '%s' "fix: the parser hole" >"$d/title.txt"
+printf '%s\n' "Tidies the parser; the ground is the one iss-999 describes." >"$d/body.md"
+expect_refusal_naming "$d" "RS004 bare mention in a pull-request body" \
+	"RS004.*iss-999" -- pr title.txt body.md
+
+d="$(newrepo rs004-pr-declared)"
+printf '%s' "fix: the parser hole behind iss-999" >"$d/title.txt"
+printf '%s\n' "Tidies the parser.
+
+Refs: iss-999" >"$d/body.md"
+expect pass "$d" "RS004 a title mention declared in the body" -- pr title.txt body.md
+
+# A non-UTF-8 byte anywhere on a line must not hide the mention on it. Under a
+# UTF-8 locale grep drops a line holding an invalid byte ENTIRELY (verified on
+# BSD grep) and tr refuses it outright, so a title or body carrying one — a
+# Latin-1 accent from an editor that never converted — got a silent pass from
+# the whole rule. The gate pins LC_ALL=C for exactly that, so this case runs it
+# under a UTF-8 locale on purpose. It is staged on the pull-request form rather
+# than on a commit message because git transcodes a message it judges
+# non-conforming, which would settle the fixture per platform instead of per
+# rule.
+d="$(newrepo rs004-latin1-byte)"
+printf 'fix: the caf\xe9 parser hole behind iss-999' >"$d/title.txt"
+printf '%s\n' "Tidies the parser." >"$d/body.md"
+utf8_locale="$(locale -a 2>/dev/null | grep -iE '^(en_US|C)\.(utf-?8)$' | head -1 || true)"
+saved_lc_all="${LC_ALL-}"
+if [ -n "$utf8_locale" ]; then export LC_ALL="$utf8_locale"; fi
+expect_refusal_naming "$d" "RS004 a mention on a line carrying a non-UTF-8 byte" \
+	"RS004.*iss-999" -- pr title.txt body.md
+if [ -n "$saved_lc_all" ]; then export LC_ALL="$saved_lc_all"; else unset LC_ALL; fi
+
+d="$(newrepo rs004-pr-clean)"
+printf '%s' "chore: tidy the parser" >"$d/title.txt"
+printf '%s\n' "No record is named here." >"$d/body.md"
+expect pass "$d" "RS004 a pull-request form naming no record" -- pr title.txt body.md
+
 if [ "$failures" -gt 0 ]; then
 	printf 'cases: FAILED — %d case(s) did not behave\n' "$failures" >&2
 	exit 1

@@ -1349,3 +1349,385 @@ Per hand-run, append:
   occupied, unlike the three preceding runs; the record has no comparable
   capability for any of them, which is consistent with the design documents
   having scheduled them for a later iteration.
+
+### 2026-09-08 — the OpenAI-compatible api oracle adapter (hand-run at filing, one proposal in two framings)
+
+- **Proposal:** one capability offered in two framings across consecutive
+  prompts — "an OpenRouter api adapter", then "an api adaptor for a local
+  server (Gropius)". Both name the same record: abcd reaching a model over a
+  direct HTTP API, adr-25's `api` oracle-backend shape, with the provider
+  (cloud aggregator vs localhost MLX server) as configuration.
+- **Initial routing:** the adapter as the intent (refining adr-25, sibling of
+  itd-6's mcp-shape adapter); backend resolution via `oracle.backend` config
+  as brief plumbing already designed; provider-credential handling as covered
+  by existing scanner/redaction invariants (itd-152, itd-28) unless key
+  storage becomes abcd's job; the host-delegated-default stance as already
+  settled by adr-25. The ahoy-time "probe OpenRouter and offer it" discovery
+  behaviour surfaced as a second part inside the proposal.
+- **Confirmed routing:** the human confirmed the generic
+  provider-agnostic intent (not a Gropius-only narrow one), and routed the
+  OpenRouter discovery-and-offer behaviour OUT to a captured issue
+  (iss-2609081951416843) rather than folding it into the intent's acceptance
+  criteria. No split: every piece kept its initial home. The intent filed as
+  itd-2609081951381895 with the first wired provider the local Gropius MLX
+  server and OpenRouter named as config-only.
+- **Verdict:** FILE-AS-IS, with one part (ahoy discovery-and-offer) captured
+  separately at the human's choice.
+- **Notes:** the same proposal arriving twice under two provider framings was
+  itself the decomposition signal — the run turned on recognising that
+  "OpenRouter" and "Gropius" are values of one configuration axis, not two
+  capabilities, so the choice put to the human was generic-vs-narrow rather
+  than capability-vs-trust-rule. Second run in a row where the home was
+  already occupied (adr-25 names the shape; itd-6 is the sibling adapter) and
+  the work was filling an existing slot, not minting a concept.
+
+### 2026-09-09 — the lifeboat widens to narrower sources (hand-run at filing)
+
+- **Proposal:** "expand the lifeboat mechanics to also cover (beside entire
+  repos) a worktree, lab session, and otherwise abandoned feature
+  test/experiment/implementation" — the widening the press release had
+  recorded that morning under the not-yet-real marker.
+- **Initial routing:** one capability intent (narrower sources); source-kind
+  plumbing and the git-assuming acceptance rows to the brief's disembark
+  chapter as a refinement of adr-35; the harness-name confinement on a pack
+  from a lab home as already covered by adr-39 rule 6 and scan-before-write,
+  flagged rather than filed; the graveyard's tier-0 reading of abandoned
+  branches noted as existing behaviour (adr-35 §7). Typed links: refines
+  itd-88 and adr-35; touches the 2026-08-31 lab convention, the unfiled
+  capstone lab intent, itd-118 and itd-8. No reversal.
+- **Confirmed routing:** the human SPLIT by source kind — git sources
+  (worktree, branch, abandoned feature work) as one intent, the lab session
+  home as another, because the second source is not a repository and its
+  packer waits on the lab verb family. Filed as itd-2609090746410233 and
+  itd-2609090746414083. The plumbing and trust parts kept their initial homes.
+- **Verdict:** SPLIT (proposed FILE-AS-IS; the initial routing did not
+  survive on the count of intents, survived on every other part).
+- **Notes:** the split axis was the SOURCE's nature (git vs non-git), not a
+  trust rule inside a capability — a new split shape for the corpus. Third run
+  in a row where the home was already occupied: adr-35 owns the mechanics,
+  itd-88 the coverage readout, and both intents fill slots those records left
+  rather than minting a concept.
+## 2026-09-09 — sub-agent transcript capture (itd-2609090559376002)
+
+- **Proposal:** the transcript store keeps only the top-level session
+  transcript, so every sub-agent transcript is missed. Measured on this
+  machine's corpus, that is roughly three quarters of all recorded bytes.
+- **Initial routing:** five parts. The capture capability to an intent; the
+  lineage representation (explicit fields for the spawning session and agent
+  kind, against the composite identifier already in hand-use) to an ADR
+  refining adr-29; the migration of existing composite records to the intent's
+  spec; a cross-repo ingest seam to its own record; and a candidate principle
+  about a record being reachable from the identifier a reader holds.
+- **Confirmed routing:** the product thinker adopted the SPLIT, then widened
+  the intent twice in the same session: reconstruction of a session as one
+  agent-readable artefact, and a telemetry file beside it. Both were folded
+  into the intent rather than split out, because neither is a separable
+  capability: an artefact nothing can read is not a reconstruction, and the
+  telemetry is derived from the same bytes in the same pass. The cross-repo
+  ingest seam, initially routed out as its own record, came back INTO the
+  intent when the product thinker specified that reconstruction is repo-wide
+  and covers the history already on disk. The candidate principle was not
+  filed; it reads as the ADR's rationale rather than a standing stance.
+- **Verdict:** SPLIT, but a narrower split than proposed. One intent
+  (capture, ingest, reconstruction, telemetry), one ADR (lineage), one issue
+  already filed as the source record. Typed links: `refines itd-59`,
+  `refines adr-29`.
+- **Notes:** the first run where the initial routing was too aggressive rather
+  than too coarse. Three of the five parts were re-merged into the intent by
+  the human, and the re-merge was correct each time: the parts were stages of
+  one user-visible capability, not separable capabilities, and splitting them
+  would have produced records that could not ship independently. The table
+  caught the one part that genuinely was a different record type (the lineage
+  decision), which is what it exists for. A reversal flag was raised and stands
+  advisory: itd-59 records interactive-session capture as already solved, which
+  the measurement contradicts for everything below the main thread. The orphan
+  case (transcripts whose repository no longer exists, about a quarter of the
+  projects here) surfaced only during the interview and not in the initial
+  routing, which is a gap in the pre-pass worth noting: the table asks where
+  each part lives, not what the part cannot represent.
+
+### 2026-09-11 — lifecycle symmetry across record families
+
+- **Proposal:** all artefacts must be consistent where possible: issues, specs
+  and intents should close the same way, and since issues are minted to avoid
+  conflicts, specs, intents, ADRs and everything else should be minted the same
+  way.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | Every write-side family mints through one allocator | already shipped | verify only (adr-45, `recordid.Minter`) |
+  | `CLAUDE.md` states ADRs keep a hand-numbered ordinal | defect | issue `iss-2609111002410678` |
+  | Terminal moves are asymmetric across families | capability | intent `itd-2609111003026787` |
+  | Supersede has no verb for intents or ADRs | capability | same intent (maintainer's routing) |
+
+- **Links:** `related_adrs: adr-45`, cited by analogy. The first routing said
+  `refines`, which is wrong twice: `refines` is not a field the schema knows
+  (`internal/core/lint/schema.go:113-115`), and adr-45's five rulings are about id
+  allocation, which this narrows none of. `related_intents: itd-34` was MISSED at
+  routing and is the run's blocking defect — see the correction below.
+- **Corrected after the two adversarial reviews (2026-09-11).** The run's
+  routing was WRONG in one part and the table's own method produced two false
+  numbers. Recorded here because the calibration corpus is worth less if it only
+  records the runs that went well.
+
+  **The blocking miss:** the table asserted "Supersede has no verb for intents or
+  ADRs". Half wrong. `itd-34` sits in `planned/` and already specifies
+  `/abcd:intent reclassify --kind superseded --by`, with a richer contract
+  (`kind_at_supersession`) than the draft proposed. The run's own stated lesson —
+  check whether each part is already shipped before routing it — was applied
+  against SHIPPED CODE only, never against PLANNED RECORDS, and that is exactly
+  the blind spot that produced the duplicate. The lesson generalises further than
+  it was written: check the record store, not just the tree.
+
+  **Why nothing caught it:** the draft omitted `## Prior Art`, which
+  `intents/README.md:206-209` makes required, and which exists precisely to
+  surface this. Four of the five minted-era drafts carry it; this was the only one
+  without.
+
+  **Two false numbers**, both from counting directory entries rather than
+  records: "7 superseded intents" (6 records plus a `README.md`) and "60 ADRs
+  carry a superseded edge" (5 carry an edge; 60 was the file count, and every ADR
+  carries `superseded_by:` as a null-initialised schema field written at mint by
+  `decide.go:222`). A count of files is not a count of acts.
+
+- **Verdict:** SPLIT, confirmed by the maintainer, who chose one intent plus one
+  issue over three offered alternatives (a single intent carrying the minting
+  audit as a criterion; two intents split by act; hold and file nothing).
+- **Notes:** the first run where a whole half of the proposal was found ALREADY
+  SHIPPED. The minting half needed no record: every write-side family already
+  holds a `recordid.Minter` and names its family tag, `core/decide` last on the
+  2026-09-01 ruling. The corpus reads as mixed (295 sequential ids against 34
+  minted) only because minting is forward-only, which is a property of ids as
+  citations rather than evidence of a split surface — a distinction a table that
+  counted filenames would have got backwards.
+
+  That finding was only reachable by measuring the tree and reading the package
+  map before routing. A decomposition run from the proposal's own words would
+  have filed an intent to build what exists. Worth generalising into the
+  protocol: check whether each part is already shipped BEFORE routing it, not
+  after.
+
+  The run also turned up a defect the proposal did not mention and could not
+  have: `CLAUDE.md` asserts the exact opposite of the shipped minting behaviour,
+  in the file the rules loader puts before every session. The table caught it
+  because verifying "already shipped" meant reading both the code and the rule
+  that describes it, and they disagreed.
+
+## 2026-09-15 — four release-cycle deferrals elevated to intents
+
+- **Proposal:** four findings deferred at the v0.9.0 cut as capabilities rather
+  than defects: the release flow for a non-plugin managed artefact, an errata
+  disposition for durable records, a surface counting owed fidelity reviews, and
+  a claim record for which session holds which worktree.
+- **Initial routing:** all four to intents, each promoted from its issue so the
+  back-edges are stamped rather than narrated.
+- **Confirmed routing:** the product thinker confirmed all four as intents in one
+  instruction, after reviewing the deferrals classed by the reason each was not
+  fixed. No part was split out: none carries a trust rule or a stance separable
+  from the capability, and the plumbing each needs lives inside its own spec.
+- **Verdict:** FILE-AS-IS on all four.
+- **Notes:** the first run in this corpus where the routing question was asked
+  of a whole class at once rather than per proposal, and the class had been drawn
+  by the reason for deferral rather than by subject. The routing held because the
+  class was already "capability wearing a defect's clothes": the classification
+  did the decomposition's work before the table was drawn. Worth noting as a
+  pattern: a deferral classed honestly is most of a routing.
+
+## 2026-09-15 — append-only logs conflict on every merge (iss-2609100507439414)
+
+- **Proposal:** a managed repository's `.abcd/work/DECISIONS.md` conflicted on
+  the first two of 27 branch merges in a single day's autonomous run, and
+  `CHANGELOG.md`'s `[Unreleased]` section conflicted on four of the eight merges
+  that carried an entry. abcd had answered both halves for itself — a union
+  merge attribute for the log, a derived changelog for the cut — and neither
+  answer travelled to a repository it manages.
+- **Initial routing:** one capability, framed as propagation. Scaffold the union
+  attribute into a managed repository at adoption time, and give the changelog a
+  per-change fragment directory; the shape change to the decisions log was listed
+  as an alternative in the source record's own "wanted" paragraph, costed as "a
+  new id family" and not routed anywhere.
+- **Confirmed routing:** the product thinker reframed the question before
+  routing it. Not "how does abcd propagate its two workarounds" but "why do these
+  two files conflict when five record families did not" — and the answer is in
+  the run's own positive finding, iss-2609100508570803: the two that conflicted
+  are the two single append-to-the-bottom files, and the five that did not are
+  all one file per entry. That makes the capability a shape change (the decisions
+  log becomes a folder of minted records with an assembled index, in abcd and in
+  every managed repository) and lifts a shape rule out of it (a decision is a
+  record, minted like every other, stored one per file; the index is derived and
+  never appended to). Capability → itd-2609151138388536; shape rule →
+  adr-2609151138420062. The changelog half was NOT folded in: union is the wrong
+  remedy there rather than an unapplied one, and abcd's own answer to it —
+  derive the changelog from records at the cut — is a capability a managed
+  repository cannot yet use, which is itd-2609150819432059, already filed.
+- **Verdict:** SPLIT. One intent, one ADR, the source issue and its positive
+  sibling as the evidence, and an existing intent named as the companion that
+  closes the other class. Typed links: `related_adrs` adr-2609151138420062,
+  `refines` adr-45 (a sixth caller of the id seam, unchanged), `promoted_from`
+  iss-2609100507439414.
+- **Notes:** the routing changed because the question changed, and the table did
+  not catch it — the table asks where each part lives, and every part of the
+  proposal as framed lived in one capability. What surfaced the better question
+  was the deferral reason already written on the record at the v0.8.0 cut, which
+  said in as many words that scaffolding a merge attribute into somebody's
+  repository unasked is the act this project's own rule about user-owned space
+  tells it to think twice about. A deferral classed honestly named the objection
+  to the workaround, and the objection is what made the shape option visible. The
+  2026-09-15 run above noted that a deferral classed honestly is most of a
+  routing; this is the sharper form of the same observation — it can also be most
+  of a reframe. Second note: the evidence for the split was a positive finding.
+  iss-2609100508570803 was filed as an observation, not a defect, and it is the
+  measurement the whole decision rests on; had it not been recorded, the
+  comparison between the two shapes would have had to be reconstructed from
+  memory.
+
+## 2026-09-15 — closing a spec ships its intent (iss-2609100508566552)
+
+- **Proposal:** `abcd spec close` moves the spec to `closed/` and, as its
+  close-hook, the intent from `planned/` to `shipped/`. A session in an
+  autonomous run met a spec that was complete against an intent whose acceptance
+  criteria were roughly half met, and stopped rather than close — correctly, since
+  every move available to it would have produced a false record.
+- **Initial routing:** three options, all of them capabilities, all of them
+  changes to what the verb does. Close the spec while leaving the intent planned,
+  with the reason recorded on the intent; or split the intent at close, minting a
+  successor intent for the unmet criteria and shipping the delivered half; or,
+  failing both, make the close refuse — or demand an explicit acknowledgement —
+  when the criteria are visibly unmet. The first two are the source record's own
+  "wanted" paragraph; the third is its fallback.
+- **Confirmed routing:** the product thinker reframed the question before routing
+  it. Not "what should the verb do when an intent is half delivered" but "what is
+  the relationship between an intent and its specs" — and the answer is 1:n. An
+  intent that has been thought through stands as written, so a spec that delivers
+  part of it is closed on its own terms and a new spec is minted for the
+  remainder and attached to the same intent; the intent ships when its last spec
+  closes. That makes every one of the three initial options wrong in the same
+  way: each keeps the 1:1 link and buys honesty by narrowing something — the
+  intent, the shipped claim, or the operator's attention. Because it changes what
+  closing a spec means everywhere rather than adding a capability, the confirmed
+  routing is a DECISION RECORD plus one brief invariant and no intent:
+  adr-2609151513118583, invariant 17. The source record stays open, annotated
+  with the ruling, because the build is owed.
+- **Verdict:** RULE, NOT CAPABILITY. One ADR, one invariant, zero intents. Typed
+  links: `related_intents` itd-80 (the record that shipped the close-hook this
+  narrows), `related_adrs` adr-26 and adr-31; the motivating issue and its
+  adjacent finding iss-2609091732329046 are cited in prose, the shape an ADR
+  already uses for an issue, since no frontmatter field carries that edge.
+- **Notes:** the table did not catch this and could not have, which is worth
+  recording precisely. It asks where each part lives, and all three proposed
+  parts lived in one verb — they differ only in what `spec close` does next, so
+  every decomposition of the proposal as framed returns the same home. What
+  surfaced the better question was asking what the RECORD should be able to
+  represent rather than what the verb should do: the state the field session was
+  actually in — work finished, capability not yet whole — had no representation
+  at all, and once that is the question the cardinality is the answer and the
+  verb behaviour falls out of it. Second note: the rule arrived with a cost that
+  a pure-capability routing would have hidden. Three readers assume one spec per
+  intent, and one of them is the release cut's stale-intent refusal, which under
+  the new rule would refuse a cut during exactly the partial delivery the rule
+  exists to permit. Naming that in the ADR's consequences is what stops the
+  invariant reading as free.
+
+## 2026-09-15 — the committed banlist cannot exist when a repo most needs it (iss-2609100506269348)
+
+- **Proposal:** on a fresh PUBLIC repository the committed banned-names layer
+  cannot be created, because the visibility fence narrows only on positive
+  evidence of tracked record files and the fence is what prevents that evidence
+  from ever existing. The window in which the layer is unavailable is exactly the
+  window in which a repository is being set up to ban a name.
+- **Initial routing:** none, and that is the finding's own state. Three candidate
+  reconciliations were left for a human to pick between in iss-176 — move the
+  config outside the fenced namespace, carve a single un-ignore into a table with
+  no exceptions, or declare the committed layer private-visibility-only — and the
+  intent the adjacent record iss-223 was promoted into, itd-159, has sat as an
+  unfilled skeleton since. The proposal as it reached the routing question was
+  therefore "pick one of three", with the fourth shape (a committed-record
+  declaration that suppresses the fence) stated in iss-223's own title and routed
+  nowhere.
+- **Confirmed routing:** the product thinker took the fourth shape and added a
+  second capability the tree does not have. (a) A committed declaration lifts the
+  fence, so the evidence the narrowing waits on becomes something a repository can
+  give on its first commit. (b) A machine-global private banned-names list in the
+  user-level home, applying across every repository on the machine — their own
+  framing, from the observation that the home already exists and holds the other
+  machine-scoped stores. It was made explicit before the ruling that a home list
+  cannot be seen by CI and therefore cannot rescue the committed layer; they chose
+  BOTH halves with that limit stated, which is what makes them one record rather
+  than two. Capability → intent promoted from the issue, itd-2609151516525843,
+  `impact: additive`, left in drafts. A shared or multi-user home was held OUT of
+  scope as the product thinker's own open question.
+- **Verdict:** FILE-AS-IS, one intent carrying both halves. No rule was split
+  out: the trust rule this case sits under is already ruled — adr-56, an
+  exclusion control asserts only what it can prove — and the intent `refines` it
+  rather than restating it, since what changes is that the control is given a
+  fact it CAN prove, not what it may assert. Typed links: `builds_on` itd-74 (the
+  shipped two-layer banlist), `refines` adr-56, `promoted_from`
+  iss-2609100506269348.
+- **Notes:** the run's most useful signal is a variant of the table's
+  "is the home already occupied" question, which has now turned three consecutive
+  hand-runs. Here the home was occupied by a SKELETON: itd-159 exists, names the
+  right shape in its title, and contains nothing — no press release, no criteria,
+  no mechanism. An occupied home that is a skeleton reads as coverage to a
+  scanner and as nothing to a builder, and the table as drawn cannot tell the two
+  apart. Second note: the widening again came from the product thinker rather
+  than from the decomposition, as it did on 2026-09-09, and again it was correct
+  to fold rather than split — the two halves are one user moment (declare a name
+  you must never publish, and have the declaration take effect), and the second
+  half cannot be stated honestly without the first half's limit beside it. Third:
+  this is the first entry in the corpus where the initial routing was not a
+  proposed decomposition at all but an unmade choice left in a record, which is
+  its own failure mode — three candidates and no owner is indistinguishable, from
+  the outside, from a question nobody has asked.
+### 2026-09-15 — interview context shown before every question (hand-run at filing)
+
+- **Proposal:** whenever a user is interviewed, provide the appropriate
+  context: before asking whether acceptance criteria stand, show them; for
+  every interaction during the interview.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | The material under decision is shown in full before each question, at every interview step | capability | intent `itd-2609151541116052` |
+  | "Never ask about a text the reader cannot see" as a standing rule | stance | GRILL domain in `.abcd/rules.json`; the bundled default when itd-201 ships |
+  | The `/abcd:intent` interview steps say "summarise back" and "walk every bullet"; make "show it first" explicit | plumbing | `commands/intent.md` |
+
+- **Links:** `refines itd-201` (the draft that governs how a question is asked:
+  one at a time, one sentence of context, an example per option). No reversal.
+- **Verdict:** proposed SPLIT-or-AMEND with four options offered (new intent
+  refining itd-201; amend itd-201's draft; GRILL rule only; decide later); the
+  maintainer chose a NEW INTENT. Routing survived as one of the offered options,
+  not as the table's first line, which had left the choice open.
+- **Notes:** the proposal came from the maintainer's own experience of being
+  asked "does this criterion stand?" with the criterion out of view. The stance
+  and plumbing parts are not filed with the intent; they follow when it is
+  planned, because a rule written before the intent it enforces is the shape
+  itd-201's own filing avoided.
+
+### 2026-09-15 — advisories publish with the release that fixes them (hand-run at filing)
+
+- **Proposal:** a process so that security advisories are captured, resolved,
+  and automatically published once a new release is cut with their fixes;
+  perhaps captured as an intent.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | The release cut publishes each draft advisory whose fixing record shipped in the cut, and closes one whose record was closed as won't-fix | capability | intent `itd-2609151658486398` |
+  | A security record names its advisory in a typed field, not only in its slug and prose | plumbing (schema) | issue `iss-2609151703088754` (split out at the routing) |
+  | Publishing needs the forge token; `launch ship` never publishes, so the act belongs to the release workflow | trust rule, already recorded | unchanged; a scope condition on the intent |
+  | An advisory's specifics stay out of the committed record until it publishes | stance, already in the pilot note of 2026-08-27 | unchanged |
+
+- **Links:** `builds_on itd-70` (release retention at ship time); the pilot
+  note of 2026-08-27 names this publication step as its target and is cited by
+  the intent. No reversal.
+- **Verdict:** four options offered (one intent; SPLIT into intent plus schema
+  issue; HOLD for one more hand-run; decide later); the maintainer chose SPLIT,
+  so the typed field can land first on its own. The table had folded the field
+  into the intent's spec; the routing moved it out.
+- **Notes:** the trigger was a concrete gap found the same day: GHSA-gx3m is
+  fixed in v0.8.0 and was still an unpublished draft five days after the tag,
+  published by hand at the maintainer's word during this run. The three
+  advisories triaged today ended in three different states (fixed and released;
+  fix in progress; not a vulnerability, won't-fix), which is the case split the
+  intent's criteria have to cover.

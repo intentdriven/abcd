@@ -30,6 +30,7 @@ func allCategoryGaps() []Gap {
 		{ID: "plugin.c", Category: PluginOwned, Resolvable: true},
 		{ID: "deps.d", Category: Dependency, Resolvable: true},
 		{ID: "skeleton.e", Category: SafeAutocreate, Resolvable: true},
+		{ID: "statusline.f", Category: StatusLine, Resolvable: true},
 	}
 }
 
@@ -46,6 +47,7 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 		"Apply dependency changes?",
 		"Apply safe-autocreate changes?",
 		"Apply config-change changes?",
+		"Apply status-line changes?",
 		"Apply user-state changes?",
 		"Apply plugin-owned changes?",
 	}
@@ -62,7 +64,7 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 // a category missing from it would be asked in the sorted-tail fallback, which
 // is still deterministic but no longer the order the apply pass acts in.
 func TestCategoryPromptOrderCoversEveryCategory(t *testing.T) {
-	all := []GapCategory{SafeAutocreate, ConfigChange, PluginOwned, Dependency, UserState}
+	all := []GapCategory{SafeAutocreate, ConfigChange, PluginOwned, Dependency, UserState, StatusLine}
 	for _, c := range all {
 		found := false
 		for _, oc := range categoryPromptOrder {
@@ -91,10 +93,10 @@ func TestResolveApprovalAsksUnknownCategoriesLast(t *testing.T) {
 	for i := 0; i < 32; i++ {
 		p := &recordingPrompter{confirm: true}
 		resolveApproval(gaps, InstallOptions{}, p)
-		if len(p.asked) != 7 {
-			t.Fatalf("asked %d questions, want 7: %v", len(p.asked), p.asked)
+		if len(p.asked) != 8 {
+			t.Fatalf("asked %d questions, want 8: %v", len(p.asked), p.asked)
 		}
-		tail := strings.Join(p.asked[5:], "|")
+		tail := strings.Join(p.asked[6:], "|")
 		if tail != "Apply alpha changes?|Apply zeta changes?" {
 			t.Fatalf("run %d: unknown categories not asked last and sorted: %v", i, p.asked)
 		}

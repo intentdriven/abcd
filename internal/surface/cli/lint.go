@@ -80,6 +80,11 @@ func newLintCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&rootDir, "root", "", "repo root to lint (default: current working directory)")
+	// `lint outbound` judges one piece of TEXT the caller hands it rather than
+	// this repository, and it lives here because adr-40's vocabulary puts a verb
+	// that applies rules about form in the lint bucket. See lint_outbound.go for
+	// why the outbound policy's session-URL half cannot be gated in shell.
+	cmd.AddCommand(newLintOutboundCommand(asJSON))
 	return cmd
 }
 

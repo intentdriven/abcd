@@ -235,9 +235,23 @@ irreversible; guessing downward costs nothing.**
   maximum (adr-45), so two current checkouts minting in the same window
   allocate distinct ids unless they share the same second and the same
   four-digit draw, a coincidence the armed uniqueness detectors assert against;
-  the per-checkout mint lock only serialises minters inside one checkout. ADRs keep their hand-numbered
-  filename ordinal, so an ADR is the one record family where minting from two
-  checkouts still needs a word first.
+  the per-checkout mint lock only serialises minters inside one checkout. ADRs
+  mint through that same seam: `abcd decide "<title>"` allocates
+  `adr-<yymmddHHMMSS><rrrr>` and files it as `<stamp>-<slug>.md` (the 2026-09-01
+  ruling in `.abcd/work/DECISIONS.md`, the turn adr-45 ruling 3 deferred), so two
+  checkouts deciding in the same window cannot allocate one number either. The
+  ordinals `0001`–`0058` keep their ids and their filenames and every reader
+  admits both vintages through one derivation, so no record family needs a word
+  first — mint the ADR.
+- **A record is resolved on the branch that carries it**, never re-added to the
+  default branch after a branch was cut from it. The ledger's status signal IS
+  folder membership, so the one state it cannot represent is a record in two
+  status folders at once — and that is what the re-add produces: the branch moves
+  the record `open/` → `resolved/` while the default branch adds it back into
+  `open/`, git pairs an add on one side with a delete-plus-add on the other, and
+  the integration tree carries both copies with no status at all. Every read of
+  the ledger now refuses on it and names both files (iss-2609100507430423), so
+  the remedy is to move or remove one; the convention is what stops it arising.
 
 ## Definition of done
 

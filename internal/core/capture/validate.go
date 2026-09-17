@@ -61,14 +61,22 @@ func validateStrict(fm map[string]any) error {
 	if !reSlug.MatchString(fm["slug"].(string)) {
 		return fmt.Errorf("%w: slug %q is not kebab-case", ErrMalformedFrontmatter, fm["slug"])
 	}
+	// A closed enum's refusal NAMES THE SET IT ACCEPTS. It has the legal values
+	// in hand, and withholding them turns one round trip into several: an
+	// operator told only that their value was rejected has to go looking, and
+	// the field report behind iss-2609100519128005 is what that costs — a
+	// refusal naming an invalid category with no accepted set, arriving as JSON
+	// on a stream the operator was not reading, made them doubt the store rather
+	// than the flag. The set is rendered from the ONE copy in core/issueschema,
+	// so it can never drift from the membership test on the line above it.
 	if !validSeverities[Severity(fm["severity"].(string))] {
-		return fmt.Errorf("%w: invalid severity %q", ErrMalformedFrontmatter, fm["severity"])
+		return fmt.Errorf("%w: invalid severity %q; %s", ErrMalformedFrontmatter, fm["severity"], acceptedValues(issueschema.Severities))
 	}
 	if !validCategories[Category(fm["category"].(string))] {
-		return fmt.Errorf("%w: invalid category %q", ErrMalformedFrontmatter, fm["category"])
+		return fmt.Errorf("%w: invalid category %q; %s", ErrMalformedFrontmatter, fm["category"], acceptedValues(issueschema.Categories))
 	}
 	if !validSources[Source(fm["source"].(string))] {
-		return fmt.Errorf("%w: invalid source %q", ErrMalformedFrontmatter, fm["source"])
+		return fmt.Errorf("%w: invalid source %q; %s", ErrMalformedFrontmatter, fm["source"], acceptedValues(issueschema.Sources))
 	}
 	if strings.TrimSpace(fm["found_during"].(string)) == "" {
 		return fmt.Errorf("%w: found_during must be non-empty", ErrMalformedFrontmatter)
@@ -107,18 +115,14 @@ func validateStrict(fm map[string]any) error {
 			}
 		}
 	}
-	// lapsed_at is optional for every category and REQUIRED for lapse (spc-60).
-	// It is checked after the type loop above, so a non-string value is reported as
-	// the type error it is rather than as an absent timestamp. Which category
-	// requires it, and what a well-formed value is, are read from the ONE shared
-	// definition in core/issueschema — the same one the committed-ledger gate
-	// reads, so a record this reader refuses (and therefore SKIPS, making it
-	// invisible to every capture surface) is never lint-green.
+	// lapsed_at is optional for every category, lapse included, and an RFC 3339
+	// instant whenever it is present. spc-60 made it REQUIRED on a lapse; that
+	// refusal is parked (iss-2609091009111294) until the rethink of the reading
+	// work settles what a lapse record must carry. The format half is checked
+	// after the type loop above, so a non-string value is reported as the type
+	// error it is, and it reads the ONE shared definition in core/issueschema —
+	// the same one the committed-ledger gate reads.
 	lapsedAt := strings.TrimSpace(asString(fm["lapsed_at"]))
-	if issueschema.LapsedAtRequired(fm["category"].(string)) && lapsedAt == "" {
-		return fmt.Errorf("%w: a %q record must carry 'lapsed_at', the instant the discipline gave way",
-			ErrMissingRequiredField, issueschema.CategoryLapse)
-	}
 	if lapsedAt != "" && !issueschema.ValidLapsedAt(lapsedAt) {
 		return fmt.Errorf("%w: lapsed_at %q is not an RFC 3339 instant (want 2026-08-28T00:00:00Z)",
 			ErrMalformedFrontmatter, lapsedAt)
@@ -344,4 +348,13 @@ func groundsEntries(body string) []string {
 		out = append(out, g.String())
 	}
 	return out
+}
+
+// acceptedValues renders a closed enum's legal set for a refusal message.
+//
+// One helper rather than three literal lists, so the message and the membership
+// test read the same slice: a value added to core/issueschema appears in the
+// refusal without anyone remembering to add it.
+func acceptedValues(vals []string) string {
+	return "accepted values: " + strings.Join(vals, " | ")
 }

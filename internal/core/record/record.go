@@ -171,6 +171,22 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	if !frontmatter.IsNull(it.SpecID) && it.SpecID != "" {
 		d.Links["spec_id"] = it.SpecID
 	}
+	// An intent owns one or more specs (adr-2609151513118583). The scalar spec_id
+	// names the spec it was planned with, so for an intent that owns more than one
+	// it is a true but partial answer: list the whole set with each spec's status,
+	// which is what says "half of this is delivered and the rest is open". A
+	// single-spec intent gets no second line — spec_id already said it.
+	// A store that cannot be read is SAID so rather than rendered as silence: an
+	// unreadable store and a single-spec intent produce the same absent line, and
+	// the second is a claim about the record that this page would then be making
+	// without having looked.
+	realising, specErr := specsRealising(repoRoot, id)
+	switch {
+	case specErr != nil:
+		d.Links["specs"] = "(store unreadable: " + specErr.Error() + ")"
+	case len(realising) > 1:
+		d.Links["specs"] = strings.Join(realising, ", ")
+	}
 	if it.PromotedFrom != "" {
 		d.Links["promoted_from"] = it.PromotedFrom
 	}
@@ -219,6 +235,29 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	return d, nil
 }
 
+// specsRealising renders every spec that names the given intent as
+// "<id> (<status>)", in minting order — the set the 1:n link makes derivable
+// from the spec store alone.
+//
+// A store that cannot be read is RETURNED as an error, not swallowed. Failing
+// the whole render over a supplementary line would turn a link report into an
+// outage, so the caller still renders the page — but it renders the failure
+// where the line would have been. Dropping it silently was worse than either:
+// the absent line is exactly what a single-spec intent renders, so a multi-spec
+// intent whose store happened to be unreadable was presented, confidently, as an
+// intent with one spec.
+func specsRealising(repoRoot, intentID string) ([]string, error) {
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, sp := range store.SpecsForIntent(intentID) {
+		out = append(out, sp.ID+" ("+sp.Status+")")
+	}
+	return out, nil
+}
+
 // describeSpec renders a spec: status, linked intent, and — for an open spec
 // — the linked intent's readiness decides the move.
 func describeSpec(repoRoot, id string) (Description, error) {
@@ -240,6 +279,17 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		Links:  map[string]string{"intent": sp.Intent},
 	}
 	if sp.Status == spec.StatusClosed {
+		// A closed spec whose intent still has open specs delivered part of it: say
+		// which sibling the intent is now waiting on, rather than leaving the reader
+		// to wonder why the intent did not ship (adr-2609151513118583).
+		if open := store.OpenSpecsForIntent(sp.Intent); len(open) > 0 {
+			ids := make([]string, len(open))
+			for i, s := range open {
+				ids[i] = s.ID
+			}
+			d.NextMoves = []string{"none — closed; " + sp.Intent + " stays planned until " + strings.Join(ids, ", ") + " closes"}
+			return d, nil
+		}
 		d.NextMoves = []string{"none — closed; the linked intent is " + sp.Intent}
 		return d, nil
 	}

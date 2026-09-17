@@ -1264,8 +1264,10 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		add("grounds", groundsField.line, "grounds is in frontmatter; a frontmatter scalar is SET, so a later triage route overwrites the conjecture an earlier one recorded — grounds are appended as `- <token>: <text>` bullets under a `## Grounds` heading in the record body, and a frontmatter value is read by nothing")
 	}
 
-	// lapsed_at: required exactly when the category is lapse, and an RFC 3339
-	// instant whenever it is present. Both halves read the ONE shared definition in
+	// lapsed_at: optional on every category, lapse included, and an RFC 3339
+	// instant whenever it is present. The absence finding spc-60 raised on a lapse
+	// record is parked (iss-2609091009111294) until the rethink of the reading
+	// work; the format half stays, and it reads the ONE shared definition in
 	// core/issueschema, the same one capture's validateStrict reads, so this gate
 	// refuses exactly the record the reader refuses (and therefore skips, making it
 	// invisible to every capture surface while it still sits in the ledger).
@@ -1304,10 +1306,6 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		if block := r.blocks["lapsed_at"]; block != "" {
 			lapsedAt, fromBlock = block, true
 		}
-	}
-	if f, present := r.fields["category"]; present && !isAbsentValue(f.value) &&
-		issueschema.LapsedAtRequired(issueScalar(f.value)) && lapsedAt == "" {
-		add("lapsed_at", f.line, "lapse record carries no 'lapsed_at'; capture refuses a lapse entry with no instant at which the discipline gave way and skips the record")
 	}
 	switch {
 	case fromBlock:

@@ -58,7 +58,8 @@ func conditionedRepo(t *testing.T) (root, verdictPath string) {
 		t.Fatal(err)
 	}
 	var emitted struct {
-		ReceiptID string `json:"receipt_id"`
+		ReceiptID   string `json:"receipt_id"`
+		RequestPath string `json:"request_path"`
 	}
 	if err := json.Unmarshal(runCLI(t, "intent", "audit", "itd-10", "--json"), &emitted); err != nil {
 		t.Fatalf("intent audit output not JSON: %v", err)
@@ -66,7 +67,41 @@ func conditionedRepo(t *testing.T) (root, verdictPath string) {
 	if emitted.ReceiptID == "" {
 		t.Fatal("intent audit emitted no receipt id")
 	}
-	return root, writeVerdict(t, conditionedVerdict(emitted.ReceiptID))
+	payload := echoRequestPolicy(t, root, emitted.RequestPath, conditionedVerdict(emitted.ReceiptID))
+	return root, writeVerdict(t, payload)
+}
+
+// echoRequestPolicy takes the two policy hashes out of the request the front door
+// just emitted and puts them in the verdict, which is the whole loop
+// iss-2609100505140261 was missing: the host issues the provenance, the auditor
+// echoes it, and the ingest recomputes and checks it. Reading them from the
+// request is how a real auditor gets them, so this doubles as the wiring proof
+// that `intent audit` states them at all.
+func echoRequestPolicy(t *testing.T, root, requestRel, payload string) string {
+	t.Helper()
+	if requestRel == "" {
+		t.Fatal("intent audit reported no request path, so the auditor has no provenance to echo")
+	}
+	rb, err := os.ReadFile(filepath.Join(root, requestRel))
+	if err != nil {
+		t.Fatalf("reading the emitted request %s: %v", requestRel, err)
+	}
+	var n int
+	for _, ln := range strings.Split(string(rb), "\n") {
+		for _, f := range []struct{ prefix, placeholder string }{
+			{"- rubric_hash: ", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+			{"- prompt_hash: ", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+		} {
+			if v, ok := strings.CutPrefix(ln, f.prefix); ok {
+				payload = strings.Replace(payload, f.placeholder, strings.TrimSpace(v), 1)
+				n++
+			}
+		}
+	}
+	if n != 2 {
+		t.Fatalf("the emitted request states %d of the 2 policy hashes an auditor must echo:\n%s", n, rb)
+	}
+	return payload
 }
 
 // TestIntentAuditIngestReportsTheDispositionSplit is the machine surface: the

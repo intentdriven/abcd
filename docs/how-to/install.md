@@ -46,7 +46,11 @@ authenticating the cached hash against the release's published `checksums.txt`
 when online, or noting in its success line that it provisioned from an
 unauthenticated cache when offline. Only an empty, stale, or unavailable cache
 falls back to downloading the release binary and `checksums.txt` and verifying
-the binary's SHA-256 against the manifest. A mismatch, a manifest that doesn't
+the binary's SHA-256 against the manifest. Whenever a run has established that
+manifest trust — an authenticated cache hit, or a fresh verified download — it
+also writes `~/.abcd/cache-attestation`, a small home-scoped record naming the
+data directory, the manifest-verified SHA-256, and the trust it rests on; an
+offline run writes nothing there and leaves an existing record as it was. A mismatch, a manifest that doesn't
 list the platform, or a platform outside the released matrix (darwin and linux
 on amd64 and arm64) installs nothing and says why in plain language. A plugin
 root that already holds the binary costs one file test and no network.
@@ -75,7 +79,17 @@ outside the one the session is working in, that is not world-writable, **and**
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
 own install verb — whichever entry it leaves on `PATH`: the copy of the
 verified release binary it prefers, the symlink it degrades to when there is no
-verified copy to make, and the track-latest shim `--dev` writes. Uninstalling
+verified copy to make, and the track-latest shim `--dev` writes. The copy is
+made only from a cache that `~/.abcd/cache-attestation` vouches for — the
+directory it names, holding the hash it names — so a data directory pointed at
+by an environment variable alone is never promoted onto `PATH`; the install
+says which record is missing or disagrees and degrades to the symlink until a
+session with network access re-authenticates the cache. The record is read
+only from a home directory the session can trust: one that is absolute and
+not inside the repository being installed, since a home the environment can
+point anywhere could name the attestation too. A refused home is named as the
+reason, and the remedy is to start the session with an ordinary home rather
+than with network access. Uninstalling
 takes the record away with the entry, so nothing that lands in that directory
 later inherits the claim. A binary nothing recorded is ignored with one line
 naming it and the reason, and the hook takes its degraded path instead; an
@@ -140,6 +154,21 @@ path. A plugin root provisioned from the cache carries no root-local
 — so a hand-built binary reports that release's vintage. Replace or remove the
 cached provenance you control if you want a hand-built binary to stop reporting
 a release it did not come from.
+
+## The status line
+
+Where the agent harness renders a status line by running a command, `abcd ahoy
+install` offers to make that line abcd's own in the repositories abcd manages.
+It explains the offer, asks once, and lets you switch each element after the
+badge on or off. On consent the line leads with a badge saying whether abcd is
+here and whose answer the loop is waiting on, followed by the repository, the
+branch, the model, the context and usage figures, and the record's intent and
+issue counts; in every other repository the status command you had before runs
+untouched, because abcd records it and hands the payload straight through.
+Declining writes nothing. `--yes` never takes this choice for you. Switch the
+line off, or change which elements show, at any time in
+`~/.abcd/statusline.json`; `abcd ahoy uninstall` restores the previous
+command.
 
 ## Where your session transcripts are kept
 

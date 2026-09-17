@@ -262,7 +262,7 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 	if err != nil {
 		return TransitionResult{}, err
 	}
-	g, gRedacted, gDegraded, err := requireGrounds(rr, "resolve", req.Grounds)
+	g, gRedacted, gDegraded, err := optionalGrounds(rr, "resolve", req.Grounds)
 	if err != nil {
 		return TransitionResult{}, err
 	}
@@ -300,7 +300,7 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 		extras = append(extras, kv{"resolved_by", members})
 	}
 	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolve", "resolution", req.Resolution,
-		extras, &g, req.ProductionMode, StateResolved)
+		extras, g, req.ProductionMode, StateResolved)
 	if err != nil {
 		return TransitionResult{}, err
 	}
@@ -599,6 +599,9 @@ func List(req ListRequest) (ListResult, error) {
 	if err != nil {
 		return ListResult{}, err
 	}
+	if err := checkOneStatusPerID(repoRoot, ir); err != nil {
+		return ListResult{}, err
+	}
 	state := req.State
 	if state == "" {
 		state = StateAll
@@ -643,6 +646,9 @@ func relativiseLedgerPaths(repoRoot string, issues []Issue, skipped []SkipRecord
 func Status(req StatusRequest) (StatusResult, error) {
 	repoRoot, ir, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
+		return StatusResult{}, err
+	}
+	if err := checkOneStatusPerID(repoRoot, ir); err != nil {
 		return StatusResult{}, err
 	}
 	var res StatusResult
@@ -846,4 +852,128 @@ func issNumber(s string) int {
 		return -1
 	}
 	return n
+}
+
+// checkOneStatusPerID refuses a ledger in which one id is claimed by more than
+// one record file (iss-2609100507430423).
+//
+// WHY IT IS A REFUSAL rather than a row. This store's status model rests on ONE
+// fact: the directory a record sits in IS its lifecycle state (adr-3). The one
+// state that model cannot represent is a record in two directories at once —
+// such an id is open and resolved simultaneously, which is not a status the
+// ledger has a word for. Rendering it would mean either printing the id twice
+// with two contradictory statuses or picking one arbitrarily, and both answer a
+// question that has no answer. So every read of the ledger refuses until the
+// duplicate is gone, and the refusal names both files, which is what the fix
+// needs: one of them moves or goes.
+//
+// HOW IT HAPPENS is not hypothetical, and it is not a hand-edit. Landing a batch
+// of worker branches produced it: two records were committed to the default
+// branch, in open/, AFTER the branches had been cut, and those branches then
+// resolved the same issues. Git's rename detection saw an add on one side and a
+// delete-plus-add at a different path on the other, paired neither, and the
+// integration branch carried both copies. It was found by reading open/ by hand
+// and recognising a slug that had already been closed. The convention that
+// avoids it is stated with the rest of the record rules in AGENTS.md: a record is
+// resolved on the branch that carries it, never re-added to the default branch
+// after a branch was cut from it.
+//
+// It is the READER's check rather than a new rule because the rule already
+// exists on both sides of this one and neither covers a read: findIssue refuses
+// a TRANSITION on a duplicated id, and record-lint's issue_id_unique refuses a
+// COMMITTED tree that carries one. What had no check was the board in between —
+// `capture list`, `capture status` and `abcd <iss-N>`, the surfaces a managed
+// repository actually has, which rendered the duplicate twice and said nothing.
+//
+// The scan reads NAMES only: no file is opened, so it costs one readdir per
+// status directory and a hostile leaf behind a well-formed name is irrelevant
+// here (the guarded read that handles those is scanLedger's).
+func checkOneStatusPerID(repoRoot, issuesRoot string) error {
+	claims := map[string][]string{}
+	var ids []string
+	for _, sub := range statusDirs {
+		dir := filepath.Join(issuesRoot, statusDirName[sub])
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue // virgin/absent ledger tolerance, as scanLedger has
+		}
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			id := recordIDOfFilename(name)
+			if id == "" {
+				continue
+			}
+			if len(claims[id]) == 0 {
+				ids = append(ids, id)
+			}
+			claims[id] = append(claims[id], fsutil.RepoRel(repoRoot, filepath.Join(dir, name)))
+		}
+	}
+
+	// Every conflicting id is named, not the first: an operator fixing a merge
+	// artefact should see the whole list in one pass, and a refusal that named one
+	// would send them round the loop once per duplicate.
+	sort.Strings(ids)
+	var conflicts []string
+	for _, id := range ids {
+		paths := claims[id]
+		if len(paths) < 2 {
+			continue
+		}
+		// The two shapes are told apart because the remedy differs: two status
+		// folders is a status with no answer, while two files in one folder is a
+		// duplicated record whose status is at least legible.
+		diagnosis := "the status folder IS the record's status, so an id in two of them at once has no " +
+			"defined status at all"
+		if oneStatusFolder(paths) {
+			diagnosis = "an id is the record's identity across the ledger and must name one record"
+		}
+		conflicts = append(conflicts, fmt.Sprintf("%s is claimed by %s — %s",
+			id, strings.Join(paths, " and "), diagnosis))
+	}
+	if len(conflicts) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: %s; move or remove one of each pair so the ledger says which status the record is in",
+		ErrDuplicateIssueID, strings.Join(conflicts, "; and "))
+}
+
+// oneStatusFolder reports whether every claimant of an id sits in the same status
+// directory.
+func oneStatusFolder(paths []string) bool {
+	for _, p := range paths[1:] {
+		if statusDirOfLedgerPath(p) != statusDirOfLedgerPath(paths[0]) {
+			return false
+		}
+	}
+	return true
+}
+
+// recordIDOfFilename returns the canonical id a ledger filename claims, or "" for
+// a file that claims none (README.md, the allocator lock, a stray note).
+//
+// The number is REBUILT from the parsed ordinal rather than echoed, so a
+// zero-padded twin (`iss-007-x.md`) keys with `iss-7` instead of beside it. A
+// duplicate detector that keyed on the raw text would fail open on exactly the
+// spelling a hand-written file is most likely to carry.
+func recordIDOfFilename(name string) string {
+	m := issFileNumRe.FindStringSubmatch(name)
+	if m == nil {
+		return ""
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return ""
+	}
+	return issFamily + "-" + strconv.Itoa(n)
+}
+
+// statusDirOfLedgerPath reads the status directory out of a ledger path — the
+// segment before the filename, which is the record's lifecycle state.
+func statusDirOfLedgerPath(rel string) string {
+	return filepath.Base(filepath.Dir(filepath.FromSlash(rel)))
 }

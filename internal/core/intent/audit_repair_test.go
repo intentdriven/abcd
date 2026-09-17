@@ -35,6 +35,39 @@ func owedIntent(id, slug, specID, rcp string) string {
 		"\n## Audit Notes\n\n<!-- abcd-review: OWED receipt=" + rcp + " -->\nFidelity review OWED.\n"
 }
 
+// echoIssuedPolicy substitutes the placeholder policy hashes for the pair the
+// host issues for this receipt, recovered the way an auditor recovers them: by
+// reading the request `abcd intent audit` writes (iss-2609100505140261). This
+// package is external, so it cannot reach the computation — which is the point.
+// A real auditor reads the request too.
+func echoIssuedPolicy(t *testing.T, root, intentID, payload string) string {
+	t.Helper()
+	res, err := intent.ReEmitAudit(root, intentID)
+	if err != nil {
+		t.Fatalf("re-emit to obtain the host-issued provenance: %v", err)
+	}
+	rb, err := os.ReadFile(filepath.Join(root, res.RequestPath))
+	if err != nil {
+		t.Fatalf("reading the emitted request: %v", err)
+	}
+	var n int
+	for _, ln := range strings.Split(string(rb), "\n") {
+		for _, f := range []struct{ prefix, placeholder string }{
+			{"- rubric_hash: ", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+			{"- prompt_hash: ", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+		} {
+			if v, ok := strings.CutPrefix(ln, f.prefix); ok {
+				payload = strings.Replace(payload, f.placeholder, strings.TrimSpace(v), 1)
+				n++
+			}
+		}
+	}
+	if n != 2 {
+		t.Fatalf("the emitted request states %d of the 2 policy hashes an auditor must echo:\n%s", n, rb)
+	}
+	return payload
+}
+
 // verdictWithAttestation builds a schema-valid verdict whose ONE input
 // attestation carries the caller's three untrusted fields — the three the
 // ingested block renders adjacent on a single line as `%s:%s@%s`.
@@ -96,7 +129,8 @@ func TestIngestedAttestationLineCannotRePairACodeSpan(t *testing.T) {
 	const rcp = "rcp-0123456789ab"
 	writeAt(t, root, shippedIntentsDir+"/itd-10-alpha.md", owedIntent("itd-10", "alpha", "spc-1", rcp))
 
-	payload := verdictWithAttestation(rcp, "diff`", "`<script>alert(1)`", "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc")
+	payload := echoIssuedPolicy(t, root, "itd-10",
+		verdictWithAttestation(rcp, "diff`", "`<script>alert(1)`", "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"))
 	p := filepath.Join(root, "verdict.json")
 	if err := os.WriteFile(p, []byte(payload), 0o644); err != nil {
 		t.Fatal(err)
@@ -141,7 +175,7 @@ func TestIngestedEvidenceLineKeepsTheCleanedBytes(t *testing.T) {
 
 	// One stray backtick. The cleaner escapes it; %q would have doubled the escape's
 	// backslash and handed the record a live delimiter back.
-	payload := verdictWithEvidenceQuote(rcp, "a stray ` backtick")
+	payload := echoIssuedPolicy(t, root, "itd-10", verdictWithEvidenceQuote(rcp, "a stray ` backtick"))
 	p := filepath.Join(root, "verdict.json")
 	if err := os.WriteFile(p, []byte(payload), 0o644); err != nil {
 		t.Fatal(err)

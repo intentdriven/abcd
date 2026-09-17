@@ -32,9 +32,84 @@ binary="$plugin_root/abcd"
 binary_quoted="'$(printf '%s' "$binary" | sed "s/'/'\\\\''/g")'"
 
 # HOME is a filesystem destination here, never a fetch origin: it locates the
-# owned-copy provenance record (below) and renders user-scope paths in their
-# tilde form. Empty when HOME is unset, which every use guards.
+# owned-copy provenance record and the cache attestation (both below) and
+# renders user-scope paths in their tilde form. Empty when HOME is unset, which
+# every use guards.
+#
+# Both records rest on being a write into the CALLER'S OWN HOME — the one place
+# the environment the harness hands this hook does not reach
+# (GHSA-4q78-ccfv-f374). HOME is part of that same environment, so the value is
+# checked before it is used as that place, and the two shapes refused here are
+# the two the Go readers refuse (ahoy.homeScope):
+#
+#   - a RELATIVE HOME resolves ~/.abcd against whatever directory this hook
+#     happens to run in, which is the checkout the session opened — so a
+#     committed fakehome/.abcd/cache-attestation would become the record the
+#     PATH promotion trusts, reopening through repository content the very class
+#     the attestation exists to outrank;
+#   - a HOME INSIDE that directory is the same shape by another spelling.
+#
+# HOME being the working directory itself is ordinary (a session started in the
+# home directory) and is not refused. A refusal empties home_dir, so every
+# home-scoped write below is skipped by the guard it already carries, and
+# home_refusal carries the reason onto the success notice — a write skipped in
+# silence sends the reader to `ahoy install`, whose own refusal names a remedy
+# that cannot help.
 home_dir="${HOME:-}"
+
+# home_inside_cwd reports whether $HOME lies strictly inside the directory this
+# hook is running in.
+#
+# The running directory is taken from `pwd -P` and never from $PWD: $PWD is an
+# inherited environment claim, and a guard whose whole subject is "the
+# environment named a home it should not have" cannot rest on the environment's
+# word about where it is standing. (The allowlist in
+# TestBootstrapFetchOriginsAreConstants holds the same line from the other side:
+# CLAUDE_PLUGIN_ROOT, CLAUDE_PLUGIN_DATA and HOME are the only names this script
+# may read.)
+#
+# Both sides are resolved with `pwd -P` where they exist, because a checkout
+# reached through a symlink is otherwise two spellings of one place that never
+# compare equal (macOS names a temp tree /var/… while getcwd answers
+# /private/var/…); the unresolved spelling is compared as well, so a home
+# nothing can resolve is still caught lexically. The Go reader makes the same
+# comparison through resolvePath.
+home_inside_cwd() {
+	_hic_cwd=$(pwd -P 2>/dev/null) || _hic_cwd=''
+	[ -n "$_hic_cwd" ] || return 1
+	case "$_hic_cwd" in /*) ;; *) return 1 ;; esac
+	_hic_home=$(cd "$home_dir" 2>/dev/null && pwd -P) || _hic_home=''
+	if [ -z "$_hic_home" ] && [ "${home_dir%/*}" != "$home_dir" ]; then
+		# HOME itself does not exist yet — a planted one need not, since the
+		# write below would create it. Resolve its existing PARENT and rejoin
+		# the leaf, which is the same "longest existing prefix" resolution
+		# fsutil.RealExistingPath makes on the Go side. Parameter expansion, not
+		# dirname/basename: a missing external would otherwise leave `cd` with
+		# no argument, which is `cd $HOME` — the one directory this must not
+		# silently become.
+		_hic_parent=$(cd "${home_dir%/*}" 2>/dev/null && pwd -P) || _hic_parent=''
+		[ -n "$_hic_parent" ] && _hic_home="$_hic_parent/${home_dir##*/}"
+	fi
+	[ -n "$_hic_home" ] || _hic_home="$home_dir"
+	if [ "$_hic_home" != "$_hic_cwd" ] && [ "${_hic_home#"$_hic_cwd"/}" != "$_hic_home" ]; then
+		return 0
+	fi
+	if [ "$home_dir" != "$_hic_cwd" ] && [ "${home_dir#"$_hic_cwd"/}" != "$home_dir" ]; then
+		return 0
+	fi
+	return 1
+}
+
+home_refusal=''
+if [ -z "$home_dir" ]; then
+	home_refusal='HOME is unset, so there is no home directory to write it into'
+elif [ "${home_dir#/}" = "$home_dir" ]; then
+	home_refusal='HOME is a relative path, so ~/.abcd would resolve against whatever directory this hook happens to run in rather than naming one home'
+	home_dir=''
+elif home_inside_cwd; then
+	home_refusal='HOME lies inside the directory this hook is running in, so its ~/.abcd records would be repository content rather than a write into your own home'
+	home_dir=''
+fi
 
 # The persistent data dir is taken from the harness or not at all. Its
 # documented path shape could be derived from the plugin root, but a wrong
@@ -88,6 +163,7 @@ tmp=''
 root_tmp=''
 path_tmp=''
 auth_tmp=''
+attest_tmp=''
 
 # staged records that provisioning BEGAN, and terminal that the run has already
 # had its last word (a notice or a refusal). Together they are the contract this
@@ -106,6 +182,7 @@ cleanup() {
 	[ -n "$root_tmp" ] && rm -rf "$root_tmp"
 	[ -n "$path_tmp" ] && rm -f "$path_tmp"
 	[ -n "$auth_tmp" ] && rm -rf "$auth_tmp"
+	[ -n "$attest_tmp" ] && rm -f "$attest_tmp"
 	[ -n "$lock" ] && rm -rf "$lock"
 	return 0
 }
@@ -377,6 +454,26 @@ fi
 path_entry=''
 [ -n "$home_dir" ] && path_entry="$home_dir/.abcd/path-entry"
 
+# path_entry_owned: the record is honoured only when it is THIS user's word — a
+# regular file (never a symlink, which `[ -f ]` follows), owned by the caller, and
+# not writable by group or other. The same three-part guard the Go reader applies
+# through fsutil.ReadDeclaration, and the one the two sibling declaration records
+# (~/.abcd/trusted-roots, ~/.abcd/local-transcript-roots) have always applied.
+#
+# It matters at BOTH uses below even though neither executes the recorded binary:
+# the first reads `path=` and then writes the release copy to it, and the second
+# preserves the recorded path and hash while re-stamping plugin_root — so an
+# unowned record can aim a write, or get laundered into a record that looks like
+# the user's own (iss-2609091927085132).
+#
+# One `find` establishes all four facts: the -maxdepth 0 idiom the lock rung
+# above already uses on both CI legs, printing the path only when every test
+# passes, so empty output is the refusal. A missing `find` or `id` fails closed.
+path_entry_owned() {
+	[ -n "$path_entry" ] || return 1
+	[ -n "$(find "$path_entry" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]
+}
+
 # 4. Concurrency lock. mkdir is atomic on POSIX, so the loser of the race is the
 #    process whose mkdir fails; it exits quietly rather than racing the winner.
 #    In cache mode the lock lives in the DATA dir, because per-root locks cannot
@@ -492,8 +589,17 @@ fi
 #   - Resolve answers a different tag -> download path.
 # The accepted gap: a release cut with no plugin update never triggers a fetch
 # here — the version-skew notice surfaces it, `abcd update` is the explicit path.
+#
+# attest records whether this run established MANIFEST trust for the bytes the
+# cache holds — the equal-tag authentication below, or the download path's
+# verification of a fresh artefact against the same-origin checksums.txt. Only
+# such a run may write the home-scoped cache attestation (§9b): an offline run
+# proves corruption evidence only and attests nothing, and leaves any existing
+# attestation exactly as it found it — the record moves on evidence, never on
+# a run that could not check.
 use_cache=''
 cache_trust=''
+attest=''
 stale_note=''
 if [ -n "$cached_sha" ]; then
 	if [ -z "$resolved_tag" ]; then
@@ -510,6 +616,7 @@ if [ -n "$cached_sha" ]; then
 			if [ -n "$published" ] && [ "$published" = "$cached_sha" ]; then
 				use_cache=yes
 				cache_trust=manifest
+				attest=yes
 			else
 				# Mismatch or an unlisted asset leaves use_cache empty: the cache
 				# is tampered or stale, so it is discarded and the download path
@@ -534,6 +641,7 @@ cache_note=''
 path_note=''
 from_note=''
 stamp_note=''
+attest_note=''
 
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
@@ -631,6 +739,12 @@ else
 			cache_note=' (the cache provenance record could not be written because its path is occupied by something that is not a regular file, so the next update may re-download)'
 		elif ! mv -f "$tmp/binary-meta" "$cache_meta" 2>/dev/null; then
 			cache_note=' (the cache provenance record could not be written, so the next update may re-download)'
+		else
+			# The artefact AND the record that names its manifest-verified hash
+			# are both in the cache now: this is the state the attestation
+			# describes, and only this state. A record that failed to land
+			# leaves nothing `ahoy install` could bind, so nothing is attested.
+			attest=yes
 		fi
 
 		# Refresh the abcd-owned PATH copy in the same run: a NEW release just
@@ -649,7 +763,7 @@ else
 		# or `ahoy` calls it foreign. So every branch that declines names what it
 		# left untouched and why, on the success notice — which is one line, and
 		# fires once per NEW release: a cache hit never reaches this block.
-		if [ -n "$path_entry" ] && [ -f "$path_entry" ]; then
+		if path_entry_owned; then
 			entry_path=$(sed -n 's/^path=//p' "$path_entry" 2>/dev/null | head -n 1 | tr -d '\000-\037\177')
 			entry_sha=$(meta_field "$path_entry" binary_sha256)
 			refresh_ok=yes
@@ -753,6 +867,75 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 	fi
 	rm -rf "$root_tmp"
 	root_tmp=''
+
+	# 9b. Attest the cache, in the HOME. The data dir above came from the
+	#     environment, and the cache's binary-meta sits beside the artefact it
+	#     vouches for, so an `ahoy install` that trusted those two alone could
+	#     be pointed at a directory of anyone's choosing holding a pair that
+	#     agree with each other (GHSA-4q78-ccfv-f374). This run is the one
+	#     process that holds the harness's REAL data dir and has just proved
+	#     the cached bytes against the published release manifest — and, in §9,
+	#     re-hashed the very copy it installed against that hash — so it writes
+	#     what the environment cannot: a home-scoped record naming the data
+	#     dir, the manifest-authenticated hash and the trust established. The
+	#     PATH promotion accepts a cache only when this record names its
+	#     directory and its recorded hash (adr-46 decision 4's ownership root,
+	#     the home write, now also the cache's trust floor).
+	#
+	#     Written only on manifest trust (attest, above): an offline run wrote
+	#     nothing into the cache and authenticated nothing about it, so it
+	#     neither creates nor rewrites this record. Written whole into a
+	#     sibling temp file and renamed in, mode 0600 — it is the reader's own
+	#     record — and a directory squatting the path is reported, not renamed
+	#     into. The path is rendered nowhere: the note carries no home path.
+	#
+	#     The temp file comes from mktemp, never from a name this script can
+	#     predict: `> "$dir/.name.$$"` and a chmod by that name both FOLLOW a
+	#     symlink pre-planted there, so a same-UID writer could have this run
+	#     write the record's bytes and mode onto a file of their choosing and
+	#     then rename the planted link itself into place as the attestation
+	#     (found in the security review of the first cut). mktemp creates a
+	#     fresh exclusive regular file under a name nobody could plant, and the
+	#     chmod is by the name it returned.
+	#
+	#     The data dir is an environment value written into a line-oriented
+	#     record, so the control characters meta_field strips on READ are
+	#     stripped before the WRITE: a value carrying a newline would otherwise
+	#     inject key=value lines of its own, and the Go reader parses last-wins.
+	#
+	#     A home this run will not write into is SAID, not passed over: the
+	#     whole block used to be skipped with its note, so the install reported
+	#     nothing and the reader met the consequence later at `ahoy install`,
+	#     whose refusal names re-running the hooks — which would decline for
+	#     exactly the same reason. The note names HOME as the reason instead.
+	if [ -n "$attest" ] && [ -z "$home_dir" ]; then
+		attest_note=" (the cache attestation could not be written because $home_refusal, so \`ahoy install\` will not promote this cache to an owned PATH copy)"
+	elif [ -n "$attest" ]; then
+		attest_dir="$home_dir/.abcd"
+		attest_path="$attest_dir/cache-attestation"
+		if [ -e "$attest_path" ] && [ ! -f "$attest_path" ]; then
+			attest_note=' (the cache attestation could not be written because its path is occupied by something that is not a regular file, so `ahoy install` will not promote this cache to an owned PATH copy)'
+		else
+			attest_data_dir=$(printf '%s' "$data_dir" | tr -d '\000-\037\177')
+			if mkdir -p "$attest_dir" 2>/dev/null &&
+				attest_tmp=$(mktemp "$attest_dir/.cache-attestation.XXXXXX" 2>/dev/null) &&
+				[ -n "$attest_tmp" ] &&
+				{
+					printf 'data_dir=%s\n' "$attest_data_dir"
+					printf 'binary_sha256=%s\n' "$expected_sha"
+					printf 'cache_trust=manifest\n'
+					printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+				} > "$attest_tmp" 2>/dev/null &&
+				chmod 0600 "$attest_tmp" 2>/dev/null &&
+				mv -f "$attest_tmp" "$attest_path" 2>/dev/null; then
+				attest_tmp=''
+			else
+				[ -n "$attest_tmp" ] && rm -f "$attest_tmp" 2>/dev/null
+				attest_tmp=''
+				attest_note=' (the cache attestation could not be written, so `ahoy install` will not promote this cache to an owned PATH copy)'
+			fi
+		fi
+	fi
 else
 	# Degraded install (no usable data dir, or a hash that failed to parse):
 	# the spc-21 per-root path, verbatim — the artefact was verified in a temp
@@ -804,7 +987,7 @@ fi
 # keeps it current. Only an existing, well-formed record is rewritten (this
 # re-stamps provenance, never creates it); path + hash are preserved verbatim.
 # Runs for cache hits too, where the PATH-copy refresh above did not fire.
-if [ -n "$path_entry" ] && [ -f "$path_entry" ]; then
+if path_entry_owned; then
 	rec_path=$(sed -n 's/^path=//p' "$path_entry" 2>/dev/null | head -n 1 | tr -d '\000-\037\177')
 	rec_sha=$(meta_field "$path_entry" binary_sha256)
 	rec_ok=yes
@@ -840,5 +1023,5 @@ fi
 #
 # The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
 # the reason given there: this string is printed to be pasted into a shell.
-notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$degrade_note" "$binary_quoted")"
+notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$degrade_note" "$binary_quoted")"

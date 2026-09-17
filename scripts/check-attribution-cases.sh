@@ -30,6 +30,22 @@ SCRIPT=scripts/check-attribution.sh
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# The gate delegates its session-URL half to `abcd lint outbound`, so every case
+# below spawns the checker once. Build it ONCE from THIS checkout and hand the path
+# to the script, rather than letting it fall back to `go run` per case: the corpus
+# is 90-odd cases and `go run` costs ~0.3s each even fully warm.
+#
+# From THIS checkout, and never an installed `abcd`: in this repository a released
+# binary is by construction older than the thing being tested, and a verb or
+# refusal added since the last cut is simply unknown to it (AGENTS.md). A build
+# failure here is fatal rather than a fallback — a corpus that silently stopped
+# exercising one half of the gate is worse than one that does not run.
+if ! go build -o "$tmp/abcd" ./cmd/abcd; then
+	echo "check-attribution-cases: cannot build the outbound checker from this checkout" >&2
+	exit 2
+fi
+export ABCD_OUTBOUND_BIN="$tmp/abcd"
+
 pass=0
 fail=0
 
@@ -767,6 +783,88 @@ Assisted-by: None'
 case_is_crlf reject "CRLF body, tool footer still refused" 'Text.
 
 🤖 Generated with [Some Tool](https://example.invalid)
+
+Assisted-by: Claude:claude-opus-5'
+
+# --- The session-URL half (iss-2609061438431625) ------------------------------
+#
+# This half is not a regex in the gate; it is `abcd lint outbound` reading the
+# scanner's canonical pattern set plus its opacity classifier. The cases here pin
+# the two properties that decide whether the delegation was worth making: the
+# opaque shapes a harness actually mints are REFUSED, and the documentation slugs
+# that made a shell-only version unusable are ACCEPTED.
+#
+# The ids are synthetic and 22 characters of base62 carrying both a digit and an
+# upper-case letter, which is one of the three shapes the classifier calls opaque.
+#
+# THE FIXTURES ARE ASSEMBLED AT RUNTIME and no host ever sits beside an id in this
+# file, which is not fastidiousness — it is the only way this corpus can exist. The
+# harness-leak class lives in the scanner's canonical pattern set, so every surface
+# that judges committed text reads it: `abcd lint`'s privacy rule, the record/docs
+# `harness_leak` rule, and the launch payload scan, which ships this directory. A
+# literal session URL written here would be a hard-fail finding in all three, and
+# the first cut of this section was exactly that — five findings, caught by the
+# payload scan. The corpus for a gate cannot be the thing the gate's own siblings
+# refuse.
+#
+# The split is chosen against the detector rather than by feel: its pattern needs a
+# scheme, a host, a `session` segment and >=12 id characters CONTIGUOUS, so a host
+# ending at `session_` matches nothing and a bare id matches nothing, while the
+# concatenation the shell performs at runtime is the whole URL. This is the shell
+# counterpart of internal/testsecret (secret-shaped fixtures at runtime), which the
+# Go tests for the same detector already use for the same reason.
+sess_path='https://claude.ai/code/session_'
+sess_other='https://agent-host.dev/code/session_'
+sess_query='https://agent-host.dev/code?session_id='
+sid_a='qNs22jeg43nekhIpcwrcSr'
+sid_b='PPAsvYrLD4BZJKj5XkbGO1'
+sid_c='bIJJA09KIsF8191faSgaLU'
+sid_d='NTjb2HNiFyiMIckFYEWYV7'
+sid_e='Z7Oiylrwwj5X1FEPkdIO2e'
+
+case_is reject "session URL, base62 id (iss-2609061438431625)" "Fixes the walk.
+
+${sess_path}${sid_a}
+
+Assisted-by: Claude:claude-opus-5"
+case_is reject "session URL on a harness trailer line" "Fixes the walk.
+
+Session: ${sess_path}${sid_b}
+
+Assisted-by: Claude:claude-opus-5"
+case_is reject "session URL mid-sentence" "See ${sess_other}${sid_c} for the run.
+
+Assisted-by: Claude:claude-opus-5"
+case_is reject "session URL as a query parameter" "Fixes the walk.
+
+${sess_query}${sid_d}
+
+Assisted-by: Claude:claude-opus-5"
+# THE FENCE IS NOT AN ESCAPE HERE, and this is the case that says the two halves
+# of the gate treat a fence differently on purpose. `strip_fenced_blocks` exists so
+# the repository can document the banned FOOTER shape; a fenced session URL is not
+# an illustration of a session URL, it is a live one the forge renders and keeps.
+case_is reject "session URL inside a fenced block is still refused" "Fixes the walk.
+
+\`\`\`
+${sess_path}${sid_e}
+\`\`\`
+
+Assisted-by: Claude:claude-opus-5"
+
+# --- Accepted: the URLs a regex-only version could not tell from a leak --------
+#
+# These are why the classifier exists rather than a bare pattern. Each satisfies
+# every structural test a regex can state and is not a session link at all, and the
+# first shape is in this repository's own research notes — a shell-only gate flagged
+# it, which is the concrete reason this half is delegated to Go.
+case_is accept "documentation slug after the word session" 'See https://example-host.dev/blog/using-agent-session-management-and-1m for background.
+
+Assisted-by: Claude:claude-opus-5'
+case_is accept "hyphenated English after the word session" 'Read https://docs.example-host.dev/guide/session-handling-and-recovery first.
+
+Assisted-by: Claude:claude-opus-5'
+case_is accept "prose naming the rule without a URL" 'Never put a live session URL or a tool attribution footer into public text.
 
 Assisted-by: Claude:claude-opus-5'
 

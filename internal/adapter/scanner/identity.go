@@ -442,11 +442,25 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 		// (iss-153). The audit rule applies the same allowlist, so the two
 		// detectors cannot disagree about what a username is.
 		//
-		// The exemption stops at the system directory ITSELF: a name nested
-		// under it (/Users/Shared/<user>/...) is still a user, and letting the
-		// one-segment match end on the exempt segment made the system directory
-		// a shield. When a further segment follows, the match is EXTENDED over
-		// it so the redacted span covers the name, not just the prefix.
+		// The exemption covers the whole SUBTREE (iss-2609100505145554). A system
+		// root is not a home root: the username position is the segment right
+		// after /Users, and here it is held by a directory that names no user, so
+		// nothing deeper is in that position either. The product creates such a
+		// directory and names it in its own comments, tests and install docs, and
+		// because home_path_other is an identity kind, BlockingResidual refused a
+		// write on that text whatever its severity.
+		//
+		// It stops at a TRAVERSAL segment: "/Users/Shared/../<user>" and
+		// "/Users/Shared//<user>" leave the shared root, so the name after them is
+		// a home segment again and the match is EXTENDED over it so the redacted
+		// span covers the name, not just the prefix. That is the half of the old
+		// narrowing that was load-bearing.
+		//
+		// Deliberately NOT exempted here, unlike in the lint gate: a persona-named
+		// home path. The gate judges curated committed text, where the roster is a
+		// declaration that the name is fixture material; a transcript is live
+		// session content, where a persona-shaped name is as likely to be a real
+		// person, and the redactor's job is to fail safe.
 		if isNonUserHomeMatch(matched) {
 			end, ok := nextPathSegmentEnd(line, loc[1])
 			if !ok {
@@ -504,6 +518,12 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			if isSystemPathSegment(line, loc[0], loc[1]) {
 				return
 			}
+			// A whole component of a reverse-DNS identifier is a namespace, not a
+			// home directory (iss-2609100505142469). Rewriting it corrupts the
+			// technical content the record exists to hold, unrecoverably.
+			if isDottedNamespaceComponent(line, loc[0], loc[1]) {
+				return
+			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
 				"(local machine username; replace with [USERNAME] or remove)")
 		}
@@ -532,18 +552,21 @@ func isNonUserHomeMatch(matched string) bool {
 	return i >= 0 && IsNonUserHomeSegment(matched[i+1:])
 }
 
-// nextPathSegmentEnd returns the end offset of the NAME-BEARING path segment
-// that follows pos, and whether one is there at all. "/Users/Shared" and
-// "/Users/Shared/" have none; nor does a segment of pure dots on its own, which
-// is prose ("/Users/Shared/...") or a relative marker, never a username.
-// "/Users/Shared/<name>/x" has "<name>".
+// nextPathSegmentEnd returns the end offset of a NAME-BEARING path segment that
+// follows pos AND was reached through a traversal segment — a dots-only or empty
+// one ("/Users/Shared/../<user>", "/Users/Shared//<user>"). Those walk back out
+// of the system root, so the name after them is in the username position again
+// and must not be shielded.
 //
-// A dots-only or an empty segment does not end the walk, though: either one
-// between the system directory and a name ("/Users/Shared/../<user>",
-// "/Users/Shared//<user>") would otherwise re-create the shield the exemption is
-// not allowed to give. genericHomeRe is POSIX-only, so '/' is the only separator
-// that can reach here.
+// It reports false for everything else. "/Users/Shared" and "/Users/Shared/" have
+// no following segment; "/Users/Shared/..." is prose with an ellipsis; and
+// "/Users/Shared/<seg>/x" reached directly is an entry inside a shared folder
+// rather than a home directory, which is the subtree the exemption now covers
+// (iss-2609100505145554).
+//
+// genericHomeRe is POSIX-only, so '/' is the only separator that can reach here.
 func nextPathSegmentEnd(line string, pos int) (int, bool) {
+	traversed := false
 	for pos < len(line) && line[pos] == '/' {
 		i, named := pos+1, false
 		for i < len(line) && isHomeSegmentByte(line[i]) {
@@ -553,9 +576,12 @@ func nextPathSegmentEnd(line string, pos int) (int, bool) {
 			i++
 		}
 		if named {
-			return i, true
+			return i, traversed
 		}
-		pos = i // an empty or dots-only segment: skip it and keep looking
+		// The segment names nothing: pure dots, or empty (two separators in a
+		// row). Either is the escape out of the system root.
+		traversed = true
+		pos = i
 	}
 	return 0, false
 }
@@ -665,6 +691,78 @@ func isSystemPathSegment(line string, start, end int) bool {
 	}
 	root := start - 1
 	return root == 0 || !isPathSegmentByte(line[root-1])
+}
+
+// isDottedNamespaceComponent reports whether line[start:end] is one WHOLE
+// component of a dotted, reverse-DNS-shaped identifier — a bundle id, a Java or
+// Swift package, a Go module path's host, a domain name — rather than a mention
+// of the caller's account.
+//
+// It is the second structural suppression on the bare-username matcher, the
+// sibling of isSystemPathSegment above, and it exists for the same reason: a
+// login is a very short word, and a very short word collides. The leading
+// component of a reverse-DNS identifier is drawn from a handful of them — com,
+// io, app, net, org, me, sh, dev — and every one is a plausible Unix login, so a
+// maintainer whose account name is one of them could not write their own bundle
+// identifier into a capture without the redactor rewriting it
+// (iss-2609100505142469).
+//
+// The suppression is made rather than merely reported because the damage is
+// UNRECOVERABLE: the placeholder does not say which word it replaced, the
+// capture is often the only place the identifier was written down, and the
+// written record looks clean. Everywhere else abcd fails closed and says so; here
+// it corrupted and said nothing. So the collision is made impossible instead.
+//
+// Three conditions keep it from disarming a genuine leak. The match must be an
+// ENTIRE component ("dev" inside "my-dev-tool.a.b" is still flagged); the run
+// must have at least THREE components, so a filename ("dev.log") and a
+// two-label host are untouched; and a run followed by '@' is an address's local
+// part, where the mailbox is the identity, so that stays a leak too. A bare word
+// in prose has no dots at all and is unaffected — the ordinary-dictionary-word
+// over-redaction (iss-2609061504302157) is a different finding and stays open.
+func isDottedNamespaceComponent(line string, start, end int) bool {
+	lo, hi := start, end
+	for lo > 0 && isDottedIdentifierByte(line[lo-1]) {
+		lo--
+	}
+	for hi < len(line) && isDottedIdentifierByte(line[hi]) {
+		hi++
+	}
+	// A dotted local part is an address, not a namespace.
+	if hi < len(line) && line[hi] == '@' {
+		return false
+	}
+	whole, components := false, 0
+	for i := lo; i <= hi; {
+		j := i
+		for j < hi && line[j] != '.' {
+			j++
+		}
+		if j == i {
+			// An empty component. A leading or trailing one is the punctuation a
+			// sentence leaves behind ("…com.acme.app." at a full stop); an interior
+			// one ("com..acme") is not an identifier at all.
+			if i != lo && i != hi {
+				return false
+			}
+		} else {
+			components++
+			if i == start && j == end {
+				whole = true
+			}
+		}
+		i = j + 1
+	}
+	return whole && components >= 3
+}
+
+// isDottedIdentifierByte reports whether b can be part of a dotted identifier —
+// the component bytes plus the '.' that separates them. It is deliberately
+// narrower than isPathSegmentByte (no '/'): a path is judged by the path
+// suppressions, and a namespace by this one.
+func isDottedIdentifierByte(b byte) bool {
+	return b == '.' || b == '-' || b == '_' ||
+		(b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
 }
 
 // isPathSegmentByte reports whether b can be part of a path segment, used to

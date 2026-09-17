@@ -36,6 +36,64 @@ import (
 // string BEFORE it is looked up or echoed, and they must all agree on the shape.
 var CitedIDRe = regexp.MustCompile(`^(?:adr|itd|iss|spc)-[0-9]+$`)
 
+// citedIDPartsRe splits a cited id into its family and its number, folding case.
+// It is CitedIDRe's grammar with the two halves captured, and it exists so the
+// canonicaliser below cannot drift from the shape every ingest boundary bounds a
+// citation with.
+var citedIDPartsRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-([0-9]+)$`)
+
+// CanonCitedID folds a cited id into the one spelling Lookup keys on: lower-case
+// family, number with its leading zeros trimmed. "" when the string is not a
+// cited id at all.
+//
+// A record's PROSE writes a handle in whatever spelling reads best in the
+// sentence — `ADR-6's concern`, `spc-009`, `Adr-0035` — while the resolver's keys
+// are built from filenames and are uniformly lower-case and unpadded. Without one
+// canonicaliser between them, a reader of the resolver would report a record that
+// plainly exists as naming nothing, which is the single worst failure a citation
+// gate can have: it trains the author to distrust it.
+//
+// This is the general form of CanonADRID, which stays as the ADR-only door its
+// two callers (the read-side resolver, the mint's presence check) already use.
+// Both trim TEXTUALLY, never through an integer parse, for the reason canonADRNum
+// states: a number wider than any integer type must still canonicalise rather
+// than collapse to "not a record". An all-zero number is refused on the same
+// terms — the allocator issues no zero id, so nothing can ever answer to one.
+func CanonCitedID(s string) string {
+	m := citedIDPartsRe.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	trimmed := strings.TrimLeft(m[2], "0")
+	if trimmed == "" {
+		return ""
+	}
+	return strings.ToLower(m[1]) + "-" + trimmed
+}
+
+// SameID reports whether two references name the same record — CanonCitedID's
+// comparison, and the one every reader of a record link has to make.
+//
+// It exists because the record writes one handle in more than one spelling. A
+// spec's `intent:` back-link, an intent's `spec_id`, a citation in prose: all
+// three are `itd-7`, `itd-007` or `ITD-7` at the author's discretion, and
+// record-lint calls every spelling green. A reader comparing the strings
+// literally therefore disagrees with the gate about two records that plainly
+// match — and where the readers of ONE question disagree with each other, the
+// question has two answers: an intent can ship while a spec still holds it open,
+// and that spec becomes unclosable because the verb cannot find the intent the
+// lint can. One primitive is what stops that, so every intent-link comparison
+// goes through here.
+//
+// A value that is not a cited id at all matches NOTHING, including another such
+// value: `intent: null` on two specs does not make them realise one pseudo-record
+// named "null". That is the fail-closed half — an unresolvable link is a defect
+// for the lint to report, never a group to join.
+func SameID(a, b string) bool {
+	ca := CanonCitedID(a)
+	return ca != "" && ca == CanonCitedID(b)
+}
+
 // adrFileRe matches an ADR filename NNNN-slug.md and captures the number. ADRs
 // are the one family whose file does not carry its own id spelling, so the id is
 // derived from the numeric prefix.

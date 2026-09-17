@@ -45,6 +45,18 @@ banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
 
+**The presence line** (itd-200, spc-70) is the one addition the shipped board
+has taken since: in a repository abcd manages, the text render carries a
+`presence:` line and the JSON a `statusline` object, both the plain form of the
+same row the host's status line shows — the badge first (`abcd`, `waiting:
+facilitator`, `waiting: product thinker`), then the repository, the branch and
+the record's counts. The state behind the badge is what `abcd mode` stores at
+`.abcd/.work.local/mode`; the board reads it and never writes it. In an
+unmanaged repository the line is absent and the field omitted. The board is the
+fallback for a host with no status surface, so it renders the line even where
+the user-level setting has switched the status line off, and it never runs the
+previous status command that `abcd statusline` falls back to.
+
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in

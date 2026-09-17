@@ -34,16 +34,23 @@ import (
 type binaryHook struct {
 	event string
 	verb  string
+	// neverBootstraps marks a hook that must NOT attempt the salvage download.
+	// Both such hooks fire where the harness will cancel a slow hook rather
+	// than wait — SessionEnd at session exit, SubagentStop at a sub-agent's —
+	// and a blocking download there loses the transcript the hook exists to
+	// capture (iss-2608210934566223).
+	neverBootstraps bool
 }
 
 // binaryHooks enumerates every hook that invokes the binary outside the
 // SessionStart chain (which has its own tests and remains the loud, primary
 // provisioner).
 var binaryHooks = []binaryHook{
-	{"UserPromptSubmit", "prompt-router"},
-	{"PreToolUse", "guard"},
-	{"PreCompact", "prompt-router-reset"},
-	{"SessionEnd", "session-end"},
+	{event: "UserPromptSubmit", verb: "prompt-router"},
+	{event: "PreToolUse", verb: "guard"},
+	{event: "PreCompact", verb: "prompt-router-reset"},
+	{event: "SessionEnd", verb: "session-end", neverBootstraps: true},
+	{event: "SubagentStop", verb: "subagent-stop", neverBootstraps: true},
 }
 
 // hookCommand returns the single command string for an event, failing on any
@@ -175,7 +182,7 @@ func hookRoot(t *testing.T, bootstrap string, withBinary bool) string {
 // (iss-2608210934566223) — TestSessionEndNeverBootstraps pins the inverse.
 func TestBinaryHooksProvisionWhenTheBinaryIsAbsent(t *testing.T) {
 	for _, h := range binaryHooks {
-		if h.event == "SessionEnd" {
+		if h.neverBootstraps {
 			continue
 		}
 		t.Run(h.event, func(t *testing.T) {
@@ -571,7 +578,15 @@ var pathRefusalReasons = []string{
 	"its directory could not be resolved",
 	"its directory is world-writable",
 	pathRefusalUnowned,
+	pathRefusalUnownedRecord,
 }
+
+// pathRefusalUnownedRecord is the refusal when the RECORD ITSELF is not this
+// user's word — group- or other-writable, foreign-owned, or not a regular file.
+// It is separate from pathRefusalUnowned because the two say different things to
+// an operator: "you never recorded this binary" versus "you recorded it, but the
+// file saying so is one another local uid can rewrite" (iss-2609091927085132).
+const pathRefusalUnownedRecord = "its ~/.abcd/path-entry record is not owned by you or is writable by others"
 
 // pathRefusalUnowned is the ownership refusal — the rung's last gate and the
 // one GHSA-gx3m-3224-qqcv turns on. It is spelled once here and asserted
@@ -702,5 +717,134 @@ func TestBinaryHooksRefuseAWorldWritablePathBinary(t *testing.T) {
 				[]string{filepath.Join(pathDir, "abcd")},
 				[]string{"its directory is world-writable"})
 		})
+	}
+}
+
+// TestBinaryHooksRefuseAPathBinaryVouchedForByAnUnownedRecord is the first
+// acceptance criterion of iss-2609091927085132. The shim carefully establishes
+// that the candidate binary resolves absolutely, sits outside the working tree
+// and lives in a directory that is not world-writable — and then read the file
+// that NAMES that binary with no check on the file at all.
+//
+// A group- or other-writable path-entry is not covered by the accepted same-uid
+// residual (iss-2609012039107700). It lets a DIFFERENT local uid name a binary of
+// their choosing in a directory they own at mode 755: every check the shim makes
+// about the binary passes, and the hook then executes it on every prompt, tool
+// call and compaction. That is the case Perm()&0o022 exists to refuse, and the
+// two sibling declaration files have always refused it.
+func TestBinaryHooksRefuseAPathBinaryVouchedForByAnUnownedRecord(t *testing.T) {
+	for _, mode := range []os.FileMode{0o664, 0o646, 0o666} {
+		t.Run(mode.String(), func(t *testing.T) {
+			for _, h := range binaryHooks {
+				t.Run(h.event, func(t *testing.T) {
+					root := hookRoot(t, failingBootstrap, false)
+					pathDir := t.TempDir()
+					home := t.TempDir()
+					pathStub(t, pathDir)
+					// The record names the binary correctly. The ONLY defect is
+					// the mode of the record itself.
+					writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
+					if err := os.Chmod(filepath.Join(home, ".abcd", "path-entry"), mode); err != nil {
+						t.Fatal(err)
+					}
+					_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
+					assertPathBinaryRefused(t, h, root, stderr, code,
+						[]string{filepath.Join(pathDir, "abcd")},
+						[]string{pathRefusalUnownedRecord})
+				})
+			}
+		})
+	}
+}
+
+// TestBinaryHooksRefuseAPathBinaryVouchedForByASymlinkedRecord: `[ -f "$e" ]`
+// FOLLOWS a symlink, so a record that is a link to a file some other uid owns
+// passed the shim's only test of it. The guard judges the link as itself.
+func TestBinaryHooksRefuseAPathBinaryVouchedForByASymlinkedRecord(t *testing.T) {
+	for _, h := range binaryHooks {
+		t.Run(h.event, func(t *testing.T) {
+			root := hookRoot(t, failingBootstrap, false)
+			pathDir := t.TempDir()
+			home := t.TempDir()
+			pathStub(t, pathDir)
+			// A well-formed record, reached through a symlink at the declared
+			// location — the shape whose target's owner the shim never saw.
+			elsewhere := t.TempDir()
+			writeHookPathEntry(t, elsewhere, filepath.Join(pathDir, "abcd"))
+			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(elsewhere, ".abcd", "path-entry"),
+				filepath.Join(home, ".abcd", "path-entry")); err != nil {
+				t.Fatal(err)
+			}
+			_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
+			assertPathBinaryRefused(t, h, root, stderr, code,
+				[]string{filepath.Join(pathDir, "abcd")},
+				[]string{pathRefusalUnownedRecord})
+		})
+	}
+}
+
+// TestBinaryHooksStillRunAnOwnedPathBinaryWithATightRecord is the third
+// acceptance criterion at the shim: the guard must refuse the unowned shapes and
+// NOTHING else. A 0600 record — tighter than the 0644 the install writes — still
+// vouches, so the documented rescue through ~/.local/bin keeps working.
+func TestBinaryHooksStillRunAnOwnedPathBinaryWithATightRecord(t *testing.T) {
+	for _, mode := range []os.FileMode{0o600, 0o640, 0o644} {
+		t.Run(mode.String(), func(t *testing.T) {
+			for _, h := range binaryHooks {
+				t.Run(h.event, func(t *testing.T) {
+					root := hookRoot(t, failingBootstrap, false)
+					pathDir := t.TempDir()
+					home := t.TempDir()
+					pathStub(t, pathDir)
+					writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
+					if err := os.Chmod(filepath.Join(home, ".abcd", "path-entry"), mode); err != nil {
+						t.Fatal(err)
+					}
+					_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
+					if code != 0 {
+						t.Fatalf("%s exit = %d with a %v record it owns; stderr: %s", h.event, code, mode, stderr)
+					}
+					if !strings.Contains(callLog(t, filepath.Join(root, "calls.log")), h.verb) {
+						t.Fatalf("%s did not run the owned PATH binary with verb %q; stderr: %s", h.event, h.verb, stderr)
+					}
+					if strings.Contains(stderr, "ignoring the abcd found on PATH") {
+						t.Fatalf("%s refused the abcd its own %v path-entry vouches for; stderr: %s", h.event, mode, stderr)
+					}
+				})
+			}
+		})
+	}
+}
+
+// TestSubagentStopNeverBootstraps is TestSessionEndNeverBootstraps' argument at
+// the other exit. SubagentStop fires when a sub-agent is going away, and the
+// harness cancels a still-running hook there the same way it does at session
+// end — so a blocking bootstrap download is a race the sub-agent's transcript
+// loses, and it would stall the parent session while it lost it. Plugin-root
+// binary first, PATH binary second, else one plain line and a non-blocking exit.
+func TestSubagentStopNeverBootstraps(t *testing.T) {
+	command := hookCommand(t, "SubagentStop")
+	if strings.Contains(command, "bootstrap.sh") {
+		t.Fatalf("the SubagentStop command references bootstrap.sh — a sub-agent's exit must never download the binary: %q", command)
+	}
+	if !strings.Contains(command, "hook subagent-stop") {
+		t.Fatalf("the SubagentStop command no longer invokes `hook subagent-stop`: %q", command)
+	}
+	root := hookRoot(t, provisioningBootstrap, false)
+	_, stderr, code := hookRun(t, "SubagentStop", root, "")
+	if callLog(t, filepath.Join(root, "boot.log")) != "" {
+		t.Fatal("SubagentStop invoked the bootstrap; a download there races the harness's hook cancellation and stalls the session")
+	}
+	if code == 2 {
+		t.Fatal("SubagentStop exited 2 without a binary — that is the host's BLOCKING status and would stop the sub-agent from finishing")
+	}
+	if code == 0 || code == 127 {
+		t.Fatalf("SubagentStop exit = %d without a binary; want a non-zero, non-exec-failure exit", code)
+	}
+	if !strings.Contains(stderr, "transcript was not captured") || !strings.Contains(stderr, "#install") {
+		t.Fatalf("SubagentStop stderr must keep the one-line transcript-not-captured remedy: %q", stderr)
 	}
 }

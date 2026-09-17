@@ -181,9 +181,11 @@ on stderr under `--json` — as `recorded grounds on <path> (<n> entries)`. Rela
 it. Recording is append-only, so a caller who retries after missing the receipt
 adds a second entry rather than replacing the first.
 
-**The gate refuses a planned record that carries no entry.** The `grounds` check
-is the seventh and last row of the report, and its remedy names this exact
-command. Terminal buckets are exempt on the same rule the claim checks follow:
+**The gate reports a planned record that carries no entry, and does not refuse
+it.** The `grounds` check is the seventh and last row of the report and is
+advisory: its remedy names this exact command, and the verdict ignores the row
+until the rethink of the reading work settles what a human is asked for here
+(iss-2609091009111294). Relay the row; do not treat it as a refusal. Terminal buckets are exempt on the same rule the claim checks follow:
 `shipped/` and `superseded/` records are never backfilled, and a discipline
 record carries no conjecture of its own. The write enforces that rule too: this
 verb REFUSES a `shipped/` or `superseded/` record, so no grounds this tool
@@ -220,8 +222,8 @@ own recording requirement:
 | Claim | Section | Requirement |
 | --- | --- | --- |
 | Criterion | `## Acceptance Criteria` | Mandatory — at least one Given-When-Then bullet |
-| Mechanism | `## Mechanism` | Prompted, nullable — an absent section passes; a heading with nothing under it is a fault |
-| Context | `## Scope Conditions` | Mandatory — top-level bullets, or the explicit nullity |
+| Mechanism | `## Mechanism` | Prompted, nullable — an absent section passes; a heading with nothing under it is named on an advisory row |
+| Context | `## Scope Conditions` | Reported — top-level bullets, or the explicit nullity; an absent or malformed section is named on an advisory row and never withholds readiness (iss-2609091009111294) |
 
 The nullity is one exact token, `None stated.`, alone on its line under the
 heading — the same grammar for both sections. Three byte states carry three
@@ -338,12 +340,25 @@ gate that will refuse the move mechanically is a recorded seed until built.
 
 The loop has a last step, and nothing runs it for you. `abcd intent plan` moves
 a draft to `planned/`; the only verb that moves a planned intent to `shipped/`
-is the spec store's close, which ships the linked intent as its close-hook:
+is the spec store's close, which ships the linked intent as its close-hook —
+but only on the close after which no open spec names it:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --json    # open/ -> closed/, and planned/ -> shipped/
+"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --json    # open/ -> closed/, and planned/ -> shipped/ when it was the last open spec
 "${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --impact fix --json   # …stamping the judgement the record lacks
+"${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --remainder <slug> --json   # partial delivery: close this spec, mint the rest, leave the intent planned
 ```
+
+**An intent owns one or more specs.** Where the work did not fit one piece of
+scheduled work, the spec that delivered part of it is closed on its own terms
+and a new spec is minted for the remainder and attached to the same intent —
+`--remainder <slug>` does both in one command, and the visible state afterwards
+is exactly what happened: spec closed X, spec open Y, intent still `planned/`.
+The intent is never narrowed to match what was built; it stands as written, and
+it ships on the close after which no open spec names it. A close that ships
+nothing refuses `--impact`, because that judgement is written only at the close
+that ships (adr-2609151513118583, invariant 17). Report the specs the close
+names as still open — they are the reason the intent did not move.
 
 Run it in the **same change** that lands the intent's work — the commit or
 pull request that makes the acceptance criteria true — the way a captured
@@ -352,8 +367,8 @@ issue is resolved in the change that fixes it. The reason is the release cut:
 folders, and a planned intent is not a refusal, it is simply not seen. An
 intent whose code is on `main` but whose spec is still open ships with no
 changelog line and exits 0 doing so; two intents delivering a breaking CLI
-change were caught that way only by a reviewer. The close needs the intent's
-`impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
+change were caught that way only by a reviewer. The close that ships needs the
+intent's `impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
 there is no default, because the judgement decides the derived version. A
 record that already declares it needs nothing; a record that does not takes
 `--impact additive|breaking|fix` on the close, which stamps it before the move
@@ -407,6 +422,14 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
 or `noop`) and, for `dead_letter`, the reason.
+
+**Hand the auditor the whole request file.** `intent audit` writes it to the
+reported `request_path`, and its `## Provenance` block states the
+`rubric_hash` and `prompt_hash` the host computed. The auditor echoes both
+verbatim into `policy`; it never computes either itself. The ingest recomputes
+them and refuses a verdict carrying any other value, leaving the receipt parked
+so the request can be re-emitted and the audit re-run — so a made-up hash costs
+a whole review rather than quietly writing provenance nobody issued.
 
 The verdict also disposes the intent's scope conditions, keyed to the `cond-…`
 identity each one carries: every condition receives exactly one of `survived`,

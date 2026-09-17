@@ -95,11 +95,35 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-163` — Reference-closure and acknowledgements-mirror gate: every citation resolves to the CSL references, the references and acknowledgements mirror both ways, and a committed influence registry backs the Inspirations list (supersedes itd-145; filed from the 2026-08-28 attribution review with the backfill issue iss-2608280824478819)
 - `itd-164` — Licence vetting at source admission: `docs cite refresh` records each source's licence verdict into the committed baseline, and the zero-network gate refuses a new entry without one (builds on itd-163)
 - `itd-159` — the repo visibility model has a committed-record mode between private and public, with the matching fence-suppression (graduated from iss-223)
+- `itd-165` — A failed fidelity verdict becomes work somebody can see (Phase 8 adjacent; the ratchet half is split out as a seed)
+- `itd-166` — A run records what it was actually run with (facilitator-tier diagnostics)
+- `itd-167` — The product thinker answers a stop in a medium they already use (Phase 8; adr-2609151528057131 gives abcd that surface)
+- `itd-168` — The product thinker sets how the system talks to them (Phase 7, the legible surface)
+- `itd-169` — An agent loop that stops says who it is asking and what it needs (Phase 8)
+- `itd-170` — What the product thinker reports after using the product finds its way back to the promise that predicted it (Phase 8)
+- `itd-171` — A decision points back to the conversation where it was reached (Phase 8)
+- `itd-172` — Every record has a short title and a one-line summary a non-engineer can read
+- `itd-173` — Verification escalates from the built-in check to an outside audit (security is the first rung built out)
+- `itd-174` — Each repository configures how far its facilitator is consulted and when it escalates (sequenced after itd-169)
+- `itd-175` — The product thinker writes down how this could be wrong, and what would show it (Phase 8; the defeater list an acceptance rests on)
+- `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
+- `itd-2609061543533170` — one verb sets up a managed repository's release-rendered site end to end: the site composition, the wrangler configuration, the render-then-deploy workflow, the environments it needs, and the worker itself where a credential is held
+- `itd-2609151541116052` — every question an interview puts to a human shows the thing being decided before it asks, at every step (refines itd-201)
+- `itd-2609151658486398` — a release cut publishes the security advisories its fixes close, and closes those resolved as won't-fix (the publication step the 2026-08-27 advisory-handling pilot named as its target)
 - `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091248200336; `builds_on` itd-118, whose worktree clause it supplies the store and the reclaim verb for)
 - `itd-2609091416295622` — A session sees the records its sibling worktrees hold before it mints or fixes one: a read-only ledger diff over `git worktree list --porcelain` (open there and absent here; open here and terminal there), a line on the `/abcd` board and on the record dispatch, no claim and no write (split from itd-2609091034175565 on the maintainer's ruling of 2026-09-09; the shippable piece)
 - `itd-2609091416304128` — `capture resolve` and `capture wontfix` refuse a record already terminal at the local `origin/main` ref as last fetched, stating the ref's age and performing no fetch; the same judgement rendered read-only on `abcd <record-id>` (split from itd-2609091034175565 on the same ruling; the third clause of iss-2609020716570699's remedy, RS001's answer moved earlier)
 - `itd-2609091034175565` — A record says who is working on it before anyone else starts: the claim verb, the session lease and the write-verb refusals, with the `claimed_by` stamp bounded by a two-release migration (promoted from iss-2609020716570699; the read-only listing and the upstream refusal were split out on 2026-09-09; not ready — carries the refusal-surface, liveness and pushed-price questions as open questions)
+- `itd-2609150819432059` — the release flow for a managed artefact that is not a plugin: a declared artefact kind shapes what launch scaffolds and refuses to guess (promoted from iss-2609061432214212)
+- `itd-2609150819439571` — errata as a fourth terminal disposition on a durable record, appended rather than edited, so a correction is distinguishable from the error it corrects (promoted from iss-2609100505146979)
+- `itd-2609150819445595` — owed fidelity reviews are counted on the bare status surfaces, so a debt nothing lists becomes a debt somebody sees (promoted from iss-2609100509537730)
+- `itd-2609150819440345` — a claim record beside the machine-scoped worktree store says which session holds which worktree, branch or record, replacing the per-session handshake (promoted from iss-2609100519122086)
+- `itd-2609151138388536` — the decisions log becomes a folder of individually minted decision records with an assembled index, `DECISIONS.md` a symlink to it, in abcd and in every managed repository; the shape retires the decisions-append gate (the rule is adr-2609151138420062; promoted from iss-2609100507439414)
+- `itd-2609151516525843` — a committed declaration lifts the public visibility fence so a fresh public repository can create its committed banned-names layer on day one, and a machine-global private banned-names list in the user-level home bans a name in every repository on the machine; CI never reads the home list and no pattern from it reaches a committed file (`builds_on` itd-74, `refines` adr-56; promoted from iss-2609100506269348)
+- `itd-2609081951381895` — abcd ships an OpenAI-compatible api oracle adapter, the first wired provider a local MLX server with a cloud aggregator as config-only (refines adr-25; filed 2026-09-08)
+- `itd-2609090746410233` — A lifeboat packs from a worktree, a branch, or an abandoned feature test, experiment or implementation, not only from a whole repository (refines itd-88 and adr-35; realises the press release's not-yet-real widening, git-source half)
+- `itd-2609090746414083` — A lifeboat packs from a lab session home, the throwaway experiment's intention, harvest and bundle, with the same coverage honesty as a repository (refines itd-88 and adr-35; the non-git half, sequenced after the lab verb family)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
@@ -118,6 +142,6 @@ for a capture pass:
 
 **Superseded addition (2026-08-28):** itd-145 (the acknowledgement convention arming itself, captured 2026-08-22) has been superseded by itd-163 in the list above, which delivers its mechanically checkable core, and moved to `intents/superseded/`. (See `superseded/itd-145-an-adopted-idea-cannot-ship-uncredited-abcd-enforces-its-own.md`.)
 
-Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>`. It reaches `shipped/` one way only: closing its linked spec, which moves the intent as its close-hook. There is no `intent ship` verb, so nothing promotes a record on its own — the close is a manual step run in the change that lands the work.
+Each intent captures the press-release-shaped scope and acceptance criteria. A later-phase intent enters work by being scoped into a phase, then promoted to `planned/` via `/abcd:intent plan <itd-N>`. It reaches `shipped/` one way only: closing the last of the specs that realise it, which moves the intent as its close-hook — an intent owns one or more specs, so a spec that delivered only part of it closes on its own terms while the intent stays planned. There is no `intent ship` verb, so nothing promotes a record on its own — the close is a manual step run in the change that lands the work.
 
 The brief does not get re-versioned. What has shipped is defined by which phases are complete and which intents are in `shipped/`; this brief stays the canonical current-state design record.

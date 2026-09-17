@@ -104,11 +104,11 @@ func TestJSONErrorShapeIsJSON(t *testing.T) {
 	var env struct {
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("--json error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("--json error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 	if env.Error == "" {
-		t.Fatalf("--json error envelope has an empty message:\n%s", stderr.String())
+		t.Fatalf("--json error envelope has an empty message:\n%s", stdout.String())
 	}
 }
 
@@ -140,8 +140,8 @@ func TestDocsLintMissingConfigCleanError(t *testing.T) {
 	var env struct {
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("--json docs lint error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("--json docs lint error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 }
 
@@ -504,23 +504,30 @@ func TestCaptureLapsedAtWritesTheGivenInstant(t *testing.T) {
 }
 
 // TestCaptureLapsedAtHasNoDefault is the flag's whole point, made checkable: a
-// lapse capture with --lapsed-at omitted is refused, names the flag, and writes
-// nothing. Every other provenance flag on capture falls back to a default; the
-// only fallback available here is the wall clock at write-up, which is the one
-// value itd-182's criterion rules out — so the surface must refuse rather than
-// invent, and it must refuse BEFORE the ledger gains a record.
+// lapse capture with --lapsed-at omitted records NO instant. Every other
+// provenance flag on capture falls back to a default; the only fallback
+// available here is the wall clock at write-up, which is the one value itd-182's
+// criterion rules out. The refusal that stood here is parked
+// (iss-2609091009111294): the record is written, and it carries no lapsed_at.
 func TestCaptureLapsedAtHasNoDefault(t *testing.T) {
 	repo := captureLedgerRepo(t)
 
-	out, err := runCLIErr(t, "capture", "the discipline gave way here", "--category", "lapse")
-	if err == nil {
-		t.Fatalf("a lapse capture with no --lapsed-at succeeded:\n%s", out)
+	out := runCLI(t, "capture", "the discipline gave way here", "--category", "lapse", "--json")
+	var minted struct {
+		Path string `json:"path"`
 	}
-	if !strings.Contains(err.Error(), "--lapsed-at") {
-		t.Fatalf("the refusal does not name the flag the caller must supply: %v", err)
+	if err := json.Unmarshal(out, &minted); err != nil || minted.Path == "" {
+		t.Fatalf("capture envelope unreadable: %v\n%s", err, out)
 	}
-	if n := ledgerIssueCount(t, repo); n != 0 {
-		t.Fatalf("the refused lapse capture wrote %d record(s); it must write nothing", n)
+	if n := ledgerIssueCount(t, repo); n != 1 {
+		t.Fatalf("the lapse capture wrote %d record(s); want exactly 1", n)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, minted.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "lapsed_at:") {
+		t.Fatalf("a lapse capture with no --lapsed-at invented an instant:\n%s", body)
 	}
 }
 
@@ -779,11 +786,12 @@ func captureRecordFields(t *testing.T, repo, text string, extra ...string) map[s
 // cliGrounds is a conjecture-shaped operand for the capture surface tests.
 const cliGrounds = "pursued: we expect the recorded reasoning to outlive the session that had it"
 
-// TestCapturePromoteMissingGroundsExit2 is itd-179's refusal at the surface: the
-// flag is mandatory in effect and its absence is a USAGE error, refused at exit 2
-// with nothing written — the same shape `--category lapse` without `--lapsed-at`
-// already has. Exit 1 is reserved for a gate's own verdict.
-func TestCapturePromoteMissingGroundsExit2(t *testing.T) {
+// TestCapturePromoteMissingGroundsRecordsNone: itd-179 refused an absent
+// --grounds at exit 2; that refusal is parked (iss-2609091009111294). Promote and
+// resolve without the flag complete, and neither writes a `## Grounds` entry the
+// caller did not give. A MALFORMED value is still a usage error at exit 2
+// (TestCaptureMalformedGroundsExit2).
+func TestCapturePromoteMissingGroundsRecordsNone(t *testing.T) {
 	repo := captureLedgerRepo(t)
 
 	capOut := runCLI(t, "capture", "an observation that may turn out to be a capability", "--json")
@@ -794,25 +802,25 @@ func TestCapturePromoteMissingGroundsExit2(t *testing.T) {
 		t.Fatalf("capture envelope unreadable: %v\n%s", err, capOut)
 	}
 
-	for _, args := range [][]string{
-		{"capture", "promote", minted.ID},
-		{"capture", "resolve", minted.ID, "fixed", "--impact", "fix"},
-	} {
-		_, err := runCLIErr(t, args...)
-		if exitCodeOf(err) != 2 {
-			t.Fatalf("%v exit = %d (%v), want 2", args, exitCodeOf(err), err)
-		}
-		if !strings.Contains(err.Error(), "--grounds") {
-			t.Fatalf("%v error must name the flag, got %q", args, err.Error())
-		}
+	runCLI(t, "capture", "promote", minted.ID)
+	if entries, _ := os.ReadDir(filepath.Join(repo, cliDrafts)); len(entries) != 1 {
+		t.Fatalf("a promote without grounds minted %d draft(s), want 1", len(entries))
 	}
-	// Nothing was written: no draft minted, and the issue is still open.
-	if entries, _ := os.ReadDir(filepath.Join(repo, cliDrafts)); len(entries) != 0 {
-		t.Fatalf("a refused promote minted %d draft(s), want 0", len(entries))
-	}
-	out := runCLI(t, "capture", "list", "--open", "--json")
+	runCLI(t, "capture", "resolve", minted.ID, "fixed", "--impact", "fix")
+	out := runCLI(t, "capture", "list", "--resolved", "--json")
 	if !strings.Contains(string(out), minted.ID) {
-		t.Fatalf("a refused triage moved the issue out of open/:\n%s", out)
+		t.Fatalf("a resolve without grounds left the issue out of resolved/:\n%s", out)
+	}
+	matches, _ := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "resolved", minted.ID+"-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("resolved record for %s: %d match(es)", minted.ID, len(matches))
+	}
+	body, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(body), "## Grounds") {
+		t.Fatalf("a triage without grounds invented a grounds entry:\n%s", body)
 	}
 }
 

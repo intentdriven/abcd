@@ -25,22 +25,31 @@ const (
 
 // ReadyCheck is one finding of the implement-readiness gate.
 type ReadyCheck struct {
-	Name   string `json:"name"` // bucket | acceptance_criteria | mechanism_claim | scope_conditions | spec_link | spec_body | grounds
-	OK     bool   `json:"ok"`
-	Detail string `json:"detail"`           // why it passed or failed
-	Remedy string `json:"remedy,omitempty"` // the exact next command/action when !OK
+	Name string `json:"name"` // bucket | acceptance_criteria | mechanism_claim | scope_conditions | spec_link | spec_body | grounds
+	OK   bool   `json:"ok"`
+	// Advisory marks a check that REPORTS and never gates: its verdict and its
+	// remedy are shown, and Ready ignores it. The two claim checks and the
+	// grounds check are advisory until the rethink of the reading work settles
+	// what a human is asked for at this gate (iss-2609091009111294); the four
+	// structural checks are not.
+	Advisory bool   `json:"advisory,omitempty"`
+	Detail   string `json:"detail"`           // why it passed or failed
+	Remedy   string `json:"remedy,omitempty"` // the exact next command/action when !OK
 }
 
 // ReadyResult is the structured readiness verdict for one intent: may this
 // intent be implemented now? Every check is always evaluated and reported, so a
 // surface presents the full picture rather than the first failure.
 type ReadyResult struct {
-	IntentID string       `json:"intent_id"`
-	Path     string       `json:"path"`   // repo-relative intent path
-	Bucket   string       `json:"bucket"` // directory-as-truth state
-	SpecID   string       `json:"spec_id"`
-	Ready    bool         `json:"ready"`
-	Checks   []ReadyCheck `json:"checks"` // always exactly 7, fixed order
+	IntentID string `json:"intent_id"`
+	Path     string `json:"path"`   // repo-relative intent path
+	Bucket   string `json:"bucket"` // directory-as-truth state
+	// SpecID is the spec this gate judged: the intent's own spec_id, or — when
+	// the intent owns more than one spec and the spec_id names a closed one — the
+	// open spec that realises the remainder (adr-2609151513118583).
+	SpecID string       `json:"spec_id"`
+	Ready  bool         `json:"ready"`
+	Checks []ReadyCheck `json:"checks"` // always exactly 7, fixed order
 	// Conditions is the record's scope conditions with their minted identities —
 	// the observable surface the identity criteria assert against. Empty for a
 	// record whose conditions are absent, or recorded as the nullity token.
@@ -51,7 +60,9 @@ type ReadyResult struct {
 // (directory-as-truth), carrying enumerable Acceptance Criteria, linked
 // bidirectionally to a spec, and that spec's body written past its minted stub.
 // It is a read-only reporter — the machine-checkable form of the run protocol's
-// "is this item ready?" question — and never mutates the store.
+// "is this item ready?" question — and never mutates the store. The mechanism,
+// scope-condition and grounds checks are evaluated and reported beside the four
+// structural ones but are advisory: a failing one never withholds readiness.
 //
 // "Not ready" is a result, never an error: error is reserved for structural
 // faults (malformed id, unknown intent, unreadable record, store load failure),
@@ -94,6 +105,13 @@ func Ready(repoRoot, intentID string) (ReadyResult, error) {
 	res.Checks = append(res.Checks, scopeConditionsCheck(it, claims))
 	linkOK, linked := specLinkCheck(it, store)
 	res.Checks = append(res.Checks, linkOK)
+	// The spec this gate JUDGED, which for an intent owning more than one spec is
+	// the open one rather than the spec_id the record was planned with — so a
+	// surface that prints "when done, `abcd spec close <SpecID>`" names the spec
+	// the reader is about to finish (adr-2609151513118583).
+	if linked.ID != "" {
+		res.SpecID = linked.ID
+	}
 	bodyCheck, err := specBodyCheck(repoRoot, it, linked, linkOK.OK)
 	if err != nil {
 		return ReadyResult{}, err
@@ -103,7 +121,7 @@ func Ready(repoRoot, intentID string) (ReadyResult, error) {
 
 	res.Ready = true
 	for _, c := range res.Checks {
-		if !c.OK {
+		if !c.OK && !c.Advisory {
 			res.Ready = false
 			break
 		}
@@ -164,7 +182,7 @@ func acCheck(acCount int) ReadyCheck {
 // token passes as a claim considered and declined. A heading with nothing under
 // it is neither, and is the section's one fault.
 func mechanismCheck(it Intent, claims Claims) ReadyCheck {
-	c := ReadyCheck{Name: CheckMechanismClaim, OK: true}
+	c := ReadyCheck{Name: CheckMechanismClaim, OK: true, Advisory: true}
 	if detail, exempt := claimCheckExemption(it); exempt {
 		c.Detail = detail
 		return c
@@ -194,7 +212,7 @@ func mechanismCheck(it Intent, claims Claims) ReadyCheck {
 // carries an identity — the same rule acCheck already holds the criteria to.
 // Each condition must carry exactly one identity, and no two may share one.
 func scopeConditionsCheck(it Intent, claims Claims) ReadyCheck {
-	c := ReadyCheck{Name: CheckScopeConditions, OK: true}
+	c := ReadyCheck{Name: CheckScopeConditions, OK: true, Advisory: true}
 	if detail, exempt := claimCheckExemption(it); exempt {
 		c.Detail = detail
 		return c
@@ -296,7 +314,7 @@ func scopeConditionsCheck(it Intent, claims Claims) ReadyCheck {
 // can make, and the substance floor is deliberately the whole of the machine's
 // claim.
 func groundsCheck(it Intent, content string) ReadyCheck {
-	c := ReadyCheck{Name: CheckGrounds, OK: true}
+	c := ReadyCheck{Name: CheckGrounds, OK: true, Advisory: true}
 	if detail, exempt := groundsCheckExemption(it); exempt {
 		c.Detail = detail
 		return c
@@ -409,10 +427,23 @@ func specLinkCheck(it Intent, store spec.Store) (ReadyCheck, spec.Spec) {
 		return c, spec.Spec{}
 	}
 	c.OK = true
-	c.Detail = fmt.Sprintf("linked to %s (bidirectional)", sp.ID)
-	if sp.Status == spec.StatusClosed && it.Bucket == BucketPlanned {
-		c.Detail += "; note: the spec is closed while the intent is still planned (drift)"
+	// An intent owns one or more specs (adr-2609151513118583). The gate reports on
+	// the spec that is still being built — the OPEN one — because that is the
+	// design record the implementation it is gating builds against; the spec_id
+	// names the spec the intent was planned with, which after a partial delivery
+	// is the closed one.
+	if sp.Status == spec.StatusClosed {
+		if open := store.OpenSpecsForIntent(it.ID); len(open) > 0 {
+			c.Detail = fmt.Sprintf("linked to %s (bidirectional); %s is closed and %s is the open spec realising %s",
+				open[0].ID, sp.ID, open[0].ID, it.ID)
+			return c, open[0]
+		}
+		if it.Bucket == BucketPlanned {
+			c.Detail = fmt.Sprintf("linked to %s (bidirectional); note: the spec is closed while the intent is still planned (drift)", sp.ID)
+			return c, sp
+		}
 	}
+	c.Detail = fmt.Sprintf("linked to %s (bidirectional)", sp.ID)
 	return c, sp
 }
 

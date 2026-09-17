@@ -2,7 +2,6 @@ package capture
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -175,12 +174,12 @@ func lapseFrontmatter() map[string]any {
 	}
 }
 
-// TestValidateStrictLapseRequiresLapsedAt is the refusing half of spc-60: a lapse
-// entry with no lapse time is refused, not warned about. The working claim the
-// log bears on is that recording at the point of commitment beats retrospective
-// reconstruction, and a lapse record carrying no instant is the reconstruction
-// wearing the evidence's clothes.
-func TestValidateStrictLapseRequiresLapsedAt(t *testing.T) {
+// TestValidateStrictLapseAcceptsAbsentLapsedAt: spc-60 refused a lapse entry
+// with no lapse time; that refusal is parked (iss-2609091009111294) until the
+// rethink of the reading work settles what a lapse record must carry. Absent,
+// blank and whitespace all read as "no instant recorded", and the record is
+// accepted with none — never with a defaulted one.
+func TestValidateStrictLapseAcceptsAbsentLapsedAt(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		mutit func(map[string]any)
@@ -192,12 +191,8 @@ func TestValidateStrictLapseRequiresLapsedAt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fm := lapseFrontmatter()
 			tc.mutit(fm)
-			err := validateStrict(fm)
-			if err == nil {
-				t.Fatal("a lapse record with no lapse time was accepted")
-			}
-			if !strings.Contains(err.Error(), "lapsed_at") {
-				t.Fatalf("the refusal does not name the property: %v", err)
+			if err := validateStrict(fm); err != nil {
+				t.Fatalf("a lapse record with no lapse time was refused: %v", err)
 			}
 		})
 	}
