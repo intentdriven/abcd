@@ -1350,6 +1350,63 @@ Per hand-run, append:
   capability for any of them, which is consistent with the design documents
   having scheduled them for a later iteration.
 
+### 2026-09-08 — the OpenAI-compatible api oracle adapter (hand-run at filing, one proposal in two framings)
+
+- **Proposal:** one capability offered in two framings across consecutive
+  prompts — "an OpenRouter api adapter", then "an api adaptor for a local
+  server (Gropius)". Both name the same record: abcd reaching a model over a
+  direct HTTP API, adr-25's `api` oracle-backend shape, with the provider
+  (cloud aggregator vs localhost MLX server) as configuration.
+- **Initial routing:** the adapter as the intent (refining adr-25, sibling of
+  itd-6's mcp-shape adapter); backend resolution via `oracle.backend` config
+  as brief plumbing already designed; provider-credential handling as covered
+  by existing scanner/redaction invariants (itd-152, itd-28) unless key
+  storage becomes abcd's job; the host-delegated-default stance as already
+  settled by adr-25. The ahoy-time "probe OpenRouter and offer it" discovery
+  behaviour surfaced as a second part inside the proposal.
+- **Confirmed routing:** the human confirmed the generic
+  provider-agnostic intent (not a Gropius-only narrow one), and routed the
+  OpenRouter discovery-and-offer behaviour OUT to a captured issue
+  (iss-2609081951416843) rather than folding it into the intent's acceptance
+  criteria. No split: every piece kept its initial home. The intent filed as
+  itd-2609081951381895 with the first wired provider the local Gropius MLX
+  server and OpenRouter named as config-only.
+- **Verdict:** FILE-AS-IS, with one part (ahoy discovery-and-offer) captured
+  separately at the human's choice.
+- **Notes:** the same proposal arriving twice under two provider framings was
+  itself the decomposition signal — the run turned on recognising that
+  "OpenRouter" and "Gropius" are values of one configuration axis, not two
+  capabilities, so the choice put to the human was generic-vs-narrow rather
+  than capability-vs-trust-rule. Second run in a row where the home was
+  already occupied (adr-25 names the shape; itd-6 is the sibling adapter) and
+  the work was filling an existing slot, not minting a concept.
+
+### 2026-09-09 — the lifeboat widens to narrower sources (hand-run at filing)
+
+- **Proposal:** "expand the lifeboat mechanics to also cover (beside entire
+  repos) a worktree, lab session, and otherwise abandoned feature
+  test/experiment/implementation" — the widening the press release had
+  recorded that morning under the not-yet-real marker.
+- **Initial routing:** one capability intent (narrower sources); source-kind
+  plumbing and the git-assuming acceptance rows to the brief's disembark
+  chapter as a refinement of adr-35; the harness-name confinement on a pack
+  from a lab home as already covered by adr-39 rule 6 and scan-before-write,
+  flagged rather than filed; the graveyard's tier-0 reading of abandoned
+  branches noted as existing behaviour (adr-35 §7). Typed links: refines
+  itd-88 and adr-35; touches the 2026-08-31 lab convention, the unfiled
+  capstone lab intent, itd-118 and itd-8. No reversal.
+- **Confirmed routing:** the human SPLIT by source kind — git sources
+  (worktree, branch, abandoned feature work) as one intent, the lab session
+  home as another, because the second source is not a repository and its
+  packer waits on the lab verb family. Filed as itd-2609090746410233 and
+  itd-2609090746414083. The plumbing and trust parts kept their initial homes.
+- **Verdict:** SPLIT (proposed FILE-AS-IS; the initial routing did not
+  survive on the count of intents, survived on every other part).
+- **Notes:** the split axis was the SOURCE's nature (git vs non-git), not a
+  trust rule inside a capability — a new split shape for the corpus. Third run
+  in a row where the home was already occupied: adr-35 owns the mechanics,
+  itd-88 the coverage readout, and both intents fill slots those records left
+  rather than minting a concept.
 ## 2026-09-09 — sub-agent transcript capture (itd-2609090559376002)
 
 - **Proposal:** the transcript store keeps only the top-level session
