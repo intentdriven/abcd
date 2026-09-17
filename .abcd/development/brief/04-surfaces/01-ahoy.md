@@ -241,7 +241,7 @@ carries the prompt-router entries it expects. Neither install nor uninstall ever
 mutates it: the manifest is plugin-static. A missing or malformed manifest
 surfaces as a non-resolvable diagnostic.
 
-The shipped manifest wires five event types, and every event command is a
+The shipped manifest wires six event types, and every event command is a
 resolving shim rather than a plain binary call. Four of them self-provision.
 `UserPromptSubmit`, `PreToolUse` and `PreCompact` each attempt
 `hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
@@ -253,11 +253,14 @@ provisioning housekeeping that keeps the next plugin update served from the
 local cache rather than the network, and it is the one place a binary that no
 longer matches its provenance record is called out. It stamps the same marker,
 so the three throttled events see a recent try, and reads no throttle of its
-own. `SessionEnd` is the deliberate exception and downloads nothing: it fires
-as the session is going away, the host cancels a slow hook there rather than
-wait, and a mid-flight fetch loses the very transcript the hook exists to
-capture (iss-2608210934566223). It resolves the plugin root, then `PATH`, then
-says in one line that the transcript was not captured.
+own. `SessionEnd` and `SubagentStop` are the deliberate exceptions and download
+nothing: both fire where the host cancels a slow hook rather than wait — one as
+the session is going away, the other inside a live session as a sub-agent
+finishes — and a mid-flight fetch loses the very transcript the hook exists to
+capture (iss-2608210934566223). Each resolves the plugin root, then `PATH`, then
+says in one line that the transcript was not captured. `SubagentStop` never
+returns a non-zero code of its own beyond that refusal, because exit 2 is the
+host's BLOCKING status on that event and would stop the sub-agent finishing.
 
 **The `PATH` rung is owned-only** (GHSA-gx3m-3224-qqcv, CWE-426). It accepts only
 an absolute resolution out of a directory that is neither under the shim's

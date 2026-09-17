@@ -106,6 +106,62 @@ func ScrubOutbound(repoRoot, text, label string) (string, []Finding, error) {
 	return redacted, findings, nil
 }
 
+// CheckOutbound is the CHECK-direction twin of ScrubOutbound: it reports the
+// outbound-policy findings in one artefact and refuses, and it has no way to
+// hand back rewritten text at all.
+//
+// WHY A SECOND DIRECTION, when ScrubOutbound already exists. A scrub is right
+// for text a ROUTINE is about to post: the routine owns that text, nobody has
+// read it yet, and rewriting it is the remedy. A gate judges text a PERSON
+// already wrote — a commit message in a pull request's range, a pull-request
+// body — and rewriting that is not a remedy, it is an edit made on the author's
+// behalf to something already in the history. So this direction returns no text.
+// The absence of a string return is the guarantee: a caller cannot silently
+// rewrite an author's commit message through this door, because the door has no
+// such outlet.
+//
+// WHY IT REPORTS ONLY THE HARNESS-LEAK CLASS, where the scrub masks everything
+// it finds. Masking more than the policy names is free — the artefact still
+// reads and the extra mask costs the routine nothing. REFUSING more than the
+// policy names is not free: this runs as a required check over every commit
+// message of every pull request, so each extra class is a new way for the gate
+// to go red on text that breaks no stated rule (a commit message quoting a
+// private address is the live example), and a gate that reds on the innocent is
+// a gate somebody switches off. Committed text is judged for the other classes
+// by `abcd lint`'s privacy rule and by the record/docs `harness_leak` rule; this
+// door judges the two shapes a harness stamps onto public text, which is the
+// class OutboundPolicy actually states.
+//
+// The error is non-nil whenever the artefact is refused, findings or not, so a
+// caller that reads only the error still fails closed.
+func CheckOutbound(repoRoot, text, label string) ([]Finding, error) {
+	sc, err := New(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	// Same degraded-config refusal ScrubOutbound makes, for the same reason and
+	// then one more. New() returns a usable scanner on every degradation path,
+	// so an unreadable or unparseable .abcd/config/pii.json silently drops the
+	// repo's OWN detectors and leaves the built-in set — and a GATE that reports
+	// "clean" from a weakened set is worse than one that reports nothing: the
+	// green tick is read as "this was checked".
+	if degraded, reason := sc.Unavailable(); degraded {
+		return nil, fmt.Errorf("outbound artefact %q: refusing to judge with a degraded scanner config: %s", label, reason)
+	}
+
+	var leaks []Finding
+	for _, f := range sc.ScanText(text, label) {
+		if IsHarnessLeakKind(f.Kind) {
+			leaks = append(leaks, f)
+		}
+	}
+	if len(leaks) == 0 {
+		return nil, nil
+	}
+	return leaks, fmt.Errorf("outbound artefact %q carries %d outbound-policy violation(s); %s",
+		label, len(leaks), OutboundPolicy)
+}
+
 // dropLines removes the 1-based line numbers in drop from text, preserving the
 // trailing-newline shape of the input (a text ending in "\n" still does).
 func dropLines(text string, drop map[int]bool) string {

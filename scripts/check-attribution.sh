@@ -8,6 +8,11 @@
 # and never `Co-Authored-By:` for an AI, and never a tool's own "Generated with
 # <tool>" footer.
 #
+# It also refuses a LIVE AGENT-SESSION URL, and that half is not a regex in this
+# file — it is delegated to `abcd lint outbound`, the front door onto
+# scanner.CheckOutbound. See outbound_checker() below for why it cannot be a regex
+# here, and why delegating is not the usual shell-calls-Go mistake.
+#
 # Stopgap: the convention has lived as prose in AGENTS.md and CONTRIBUTING.md
 # since the beginning and drifted anyway — itd-91 records a reconciliation sweep
 # across 78 pull requests after PR bodies picked up a tool's default footer. Prose
@@ -160,6 +165,123 @@ AUTHOR_ONLY_MAIL_RE='^[[:space:]]*(no-?reply|do-?not-?reply)@'
 
 fail=0
 note() { echo "  $1" >&2; }
+
+# --- The session-URL half, delegated ------------------------------------------
+#
+# The outbound policy AGENTS.md states has two halves: a tool's attribution footer
+# (GENERATED_RE above) and a LIVE AGENT-SESSION URL. Until this delegation landed
+# the second half was gated nowhere at all — not here, not in a hook, not in Go —
+# and one reached three commit messages and two pull-request bodies of a managed
+# public repo before anyone noticed (iss-2609061438431625). A merged commit message
+# comes out only by rewriting a protected branch, so "catch it in review" is not a
+# control.
+#
+# WHY IT IS NOT A REGEX IN THIS FILE, which is where every other rule here lives
+# and would have been the smaller diff. The detector is not a pattern; it is a
+# pattern PLUS an opacity classifier (scanner.hasOpaqueSessionID), and that
+# classifier is a CONJUNCTION: a UUID, or a token carrying both a digit and an
+# upper-case letter, or a long lower-case hex run. POSIX ERE cannot express it. The
+# pattern without the classifier flags every page written about session handling —
+# including this repository's own research notes, which is where that case was
+# actually found. So the choice was never "shell or Go". It was "the real policy in
+# Go, or a policy in shell that is weaker than the one it claims to enforce", and a
+# gate that is quietly weaker than its own documentation is the failure mode this
+# whole file exists to correct.
+#
+# One definition of the class survives the delegation, which is the property that
+# matters: `abcd lint outbound` reads scanner.HarnessLeakPatterns, the same set
+# `abcd lint`'s privacy rule and the record/docs `harness_leak` rule read.
+
+# resolve_outbound_mode / run_outbound_checker say HOW the artefact is judged.
+#
+# Two functions and a mode string rather than an argv array, because stock macOS
+# still ships bash 3.2, where `mapfile` does not exist and `${#arr[@]}` on an empty
+# array is an unbound-variable error under `set -u`. Every other construct in this
+# file is 3.2-safe and this stays so.
+#
+# ABCD_OUTBOUND_BIN is an OPTIMISATION with a narrow contract: a binary built from
+# THIS checkout, in THIS run, by the caller that is about to invoke this script in
+# a loop (the cases harness, and the CI workflow). It exists because the commits
+# arm and the 86-case corpus each pay a process spawn per artefact, and `go run`
+# costs ~0.3s of that even fully warm.
+#
+# It is deliberately NOT a way to point at an installed `abcd`. A binary on PATH or
+# in a plugin root is whatever version was last released, and in THIS repository
+# that is the thing being developed — a verb, flag or refusal added since the last
+# cut is simply unknown to it, and the failure is a plausible wrong answer rather
+# than an error (AGENTS.md § Build, test, and checks). Both accepted values are
+# built from the tree under test, so neither can be stale.
+OUTBOUND_MODE=""
+
+resolve_outbound_mode() {
+	[ -z "$OUTBOUND_MODE" ] || return 0
+	if [ -n "${ABCD_OUTBOUND_BIN:-}" ]; then
+		OUTBOUND_MODE=bin
+		return 0
+	fi
+	if [ -d cmd/abcd ] && command -v go >/dev/null 2>&1; then
+		OUTBOUND_MODE=gorun
+		return 0
+	fi
+	OUTBOUND_MODE=none
+	return 1
+}
+
+# STDIN IS CLOSED on every invocation, which is load-bearing rather than tidy. The
+# commits arm calls this from inside a `while IFS= read -r sha` loop fed by a
+# here-string, and a child process that reads even one byte of that stream eats the
+# loop's remaining input — the loop then ends early and the commits it never reached
+# are reported as checked. The verb reads a FILE here and would not touch stdin, but
+# the cost of not depending on that is one redirection.
+run_outbound_checker() {
+	case "$OUTBOUND_MODE" in
+	bin) "$ABCD_OUTBOUND_BIN" lint outbound "$@" </dev/null ;;
+	gorun) go run ./cmd/abcd lint outbound "$@" </dev/null ;;
+	*) return 2 ;;
+	esac
+}
+
+# check_outbound refuses an artefact carrying a live session URL (or, redundantly
+# with GENERATED_RE, a tool attribution footer — one definition, judged twice, is
+# the position AGENTS.md takes).
+#
+# FAIL CLOSED ON AN UNAVAILABLE CHECKER, at exit 2 rather than by setting fail=1.
+# A check that cannot run is an environment fault, and the one answer it must never
+# give is silence: a green tick that means "the session-URL half was skipped" is
+# indistinguishable from one that means "there was no session URL", and this gate
+# is a required check whose green tick people rely on.
+check_outbound() {
+	local label="$1" text="$2" artefact rc=0 out=""
+	if ! resolve_outbound_mode; then
+		echo "check-attribution: cannot run the outbound (session-URL) check: no abcd to run it with" >&2
+		note "This gate delegates the session-URL half to \`abcd lint outbound\`. Run it from a"
+		note "source checkout of abcd with Go available, or set ABCD_OUTBOUND_BIN to a binary"
+		note "built from THIS checkout (go build -o \"\$tmp/abcd\" ./cmd/abcd)."
+		exit 2
+	fi
+	artefact="$(mktemp)"
+	# printf, never echo: the artefact is attacker-controlled text, and echo
+	# interprets backslash escapes in some shells.
+	printf '%s' "$text" >"$artefact"
+	out="$(run_outbound_checker --label "$label" "$artefact" 2>&1)" || rc=$?
+	rm -f "$artefact"
+	# 0 clean, 1 the artefact is refused, 2 the check could not run. Anything
+	# non-zero is a failure of this gate: a check that could not run has not
+	# cleared anything.
+	if [ "$rc" -ne 0 ]; then
+		if [ "$rc" -eq 1 ]; then
+			echo "check-attribution: $label breaks the outbound policy (live session URL or tool attribution footer)" >&2
+		else
+			echo "check-attribution: the outbound check could not judge $label (exit $rc)" >&2
+		fi
+		# The verb's own report, indented. It names the line and the kind and
+		# deliberately does NOT echo the matched span — a CI log on a public
+		# repository is public text, so reprinting a live session URL here would
+		# publish the very handle the gate exists to catch.
+		printf '%s\n' "$out" | sed 's/^/  /' >&2
+		fail=1
+	fi
+}
 
 usage() {
 	echo "usage: check-attribution.sh commits <base-ref> <head-ref> | body <file>" >&2
@@ -430,6 +552,22 @@ commits)
 			IFS= read -r committer_email
 			IFS= read -r parents
 		} <<<"$(git show -s --format='%an%n%ae%n%cn%n%ce%n%P' "$sha")"
+		# The outbound check runs on EVERY commit in the range, before both
+		# `continue`s below, and that reach is deliberate on both counts.
+		#
+		# Before the identity `continue`: a machine-authored commit is still a
+		# commit whose message may carry a live session URL, and the reason that
+		# continue exists — "add a trailer" is the wrong remedy for a bot — says
+		# nothing about a leak.
+		#
+		# Before the merge `continue`: a merge commit's message is exempt from the
+		# TRAILER rule because the forge composes it, and that exemption does not
+		# transfer. A squash merge's body is the branch's commit messages and a merge
+		# commit's body can carry the pull-request description, so a forge-composed
+		# message is one of the places a leaked session URL actually lands — and
+		# there is no reading under which "the forge wrote it" makes a live handle
+		# acceptable.
+		check_outbound "commit ${sha:0:12}" "$(git show -s --format='%B' "$sha")"
 		ident_ok=1
 		check_ident "$label" author "$author_name" "$author_email" || ident_ok=0
 		check_ident "$label" committer "$committer_name" "$committer_email" || ident_ok=0
@@ -451,6 +589,20 @@ body)
 	}
 	# The body is markdown a forge renders, so a fenced block reads as an example.
 	check_text "the pull-request body" "$(strip_fenced_blocks <"$2")"
+	# The outbound check reads the UNSTRIPPED body, and that difference from the
+	# line above is the point rather than an oversight.
+	#
+	# The fence concession exists so the repository can DOCUMENT the footer shape it
+	# bans: a fenced `Generated with [...]` is an example, and a gate that cannot be
+	# written about is a gate people route around. That argument has no counterpart
+	# for a session URL. A fenced session URL is not an illustration of one — it IS
+	# one: the forge renders it, stores it in the pull request's edit history, and it
+	# stays live. Nor is the escape needed in order to write about the rule, because
+	# the opacity classifier already passes every documentation slug
+	# (".../session-management-guide") — that is what the classifier is for. Granting
+	# the fence here would add a one-line bypass to the only half of this gate whose
+	# subject is a live credential.
+	check_outbound "the pull-request body" "$(cat "$2")"
 	;;
 *)
 	usage

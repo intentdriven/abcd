@@ -449,6 +449,17 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, rs...)
 	}
 
+	// prose_citation_resolves reads the BODIES of the same stores, which straddle
+	// cfg.Roots for the same reason, so it runs once here beside record_schema —
+	// the frontmatter half and the prose half of one question, armed together.
+	if pcCfg, ok := cfg.Rules[ruleProseCitationResolves]; ok && pcCfg.Enabled {
+		pc, err := checkProseCitations(repoRoot, pcCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, pc...)
+	}
+
 	// cross_store_id_claim is the other half of the same cross-store question: it
 	// walks the markdown OUTSIDE those stores, which is every tree at once, so it
 	// too runs once here.
@@ -2096,6 +2107,19 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 	}
 	knownIntent := idx.KnownIntents()
 	intentSpecID := idx.IntentSpecID()
+	// Whether each intent's own spec_id resolves to a spec that realises it —
+	// computed once over the shared index, so the per-spec agreement check below
+	// asks the 1:n question ("does the back-link point at one of MY intent's
+	// specs?") rather than the 1:1 one it replaced.
+	backLinkResolves := make(map[string]bool, len(idx.Intents))
+	for _, it := range idx.Intents {
+		for _, s := range idx.SpecsForIntent(it.ID) {
+			if specNum(s.ID) >= 0 && specNum(s.ID) == specNum(it.SpecID) {
+				backLinkResolves[canonRecordID(it.ID)] = true
+				break
+			}
+		}
+	}
 
 	var out []Finding
 	for _, spec := range idx.Specs {
@@ -2107,7 +2131,7 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 			out = append(out, validateSpecWellFormed(spec.Path, spec.fields, spec.preamble, cfg.Severity)...)
 			continue
 		}
-		out = append(out, validateSpec(spec.Path, spec.fields, knownIntent, intentSpecID, spec.preamble, cfg.Severity)...)
+		out = append(out, validateSpec(spec.Path, spec.fields, knownIntent, intentSpecID, backLinkResolves, spec.preamble, cfg.Severity)...)
 	}
 	return out, nil
 }
@@ -2209,7 +2233,7 @@ func validateSpecWellFormed(rel string, fields map[string]fmField, preamble int,
 	return out
 }
 
-func validateSpec(rel string, fields map[string]fmField, knownIntent map[string]bool, intentSpecID map[string]string, preamble int, severity string) []Finding {
+func validateSpec(rel string, fields map[string]fmField, knownIntent map[string]bool, intentSpecID map[string]string, backLinkResolves map[string]bool, preamble int, severity string) []Finding {
 	// The well-formedness subset first, so the id/intent patterns and the
 	// frontmatter-placement rule are stated once for both the exempt and the
 	// non-exempt path.
@@ -2243,13 +2267,17 @@ func validateSpec(rel string, fields map[string]fmField, knownIntent map[string]
 		add(intent.line, "spec intent '"+intent.value+"' does not exist in any bucket")
 		return out
 	}
-	// Bidirectional agreement: the named intent must carry spec_id == this spec's
-	// id. Drift either way (the intent points elsewhere, or at null) is flagged.
-	if idValid {
+	// Bidirectional agreement, 1:n-aware. An intent owns one or more specs
+	// (adr-2609151513118583, invariant 17), so the intent's scalar spec_id names
+	// the spec it was planned with and cannot name the rest: requiring it to equal
+	// THIS spec's id would flag every remainder spec as drift. What must hold is
+	// that the intent's spec_id names a spec that actually realises it — the link
+	// is checkable from both sides, and a spec_id pointing at null or at some
+	// other intent's spec is still the one-sided link this rule exists to catch.
+	if idValid && !backLinkResolves[canonRecordID(intent.value)] {
 		back := intentSpecID[canonRecordID(intent.value)]
-		if specNum(back) != specNum(id.value) {
-			add(intent.line, "bidirectional drift: spec '"+id.value+"' names intent '"+intent.value+"' but that intent's spec_id is '"+back+"'")
-		}
+		add(intent.line, "bidirectional drift: spec '"+id.value+"' names intent '"+intent.value+
+			"' but that intent's spec_id is '"+back+"', which names no spec realising it")
 	}
 	return out
 }

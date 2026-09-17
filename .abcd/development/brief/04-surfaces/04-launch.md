@@ -205,7 +205,7 @@ any intent falls back to conventional-commit derivation.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are seven, and an operator sees them as
+would be wrong. There are eight, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -216,6 +216,7 @@ would be wrong. There are seven, and an operator sees them as
 | `stale-intent` | an intent in `planned/` has a spec that has closed |
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
+| `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
 | `empty-cut` | nothing user-facing shipped, so there is no release |
 
 `release-in-flight` is the one an operator meets most often outside a release
@@ -387,6 +388,13 @@ performed by a human and by CI.
   `unfixed-finding`, the refusal names every such record with its grade and path,
   no version is derived, and the findings line says how many were counted and
   from which anchor.
+- **Given** an issue record the anchor tag held in `open/`, graded major or
+  critical (or carrying no readable grade), and present in no status directory at
+  HEAD, **when** `ship` or `changelog` runs, **then** the cut is refused under
+  `deleted-finding`, the refusal names the record with the grade and path the
+  anchor held and says it is in no status directory, and the three dispositions —
+  a move to `resolved/`, a move to `wontfix/`, a re-slug inside `open/` — each go
+  on clearing the gate, because each leaves the record in the ledger.
 - **Given** the same record carrying a waiver anchored to that cut's anchor tag
   and a non-empty reason, **when** the cut is emitted, **then** the gate passes
   and the render carries a deferred line naming the record, its severity and its

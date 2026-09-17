@@ -21,6 +21,7 @@ package spec
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -99,15 +100,74 @@ func (s Store) Lookup(specID string) (Spec, bool) {
 	return Spec{}, false
 }
 
-// ByIntent returns the spec linked to the given intent id; ok is false when no
-// spec realises that intent.
+// ByIntent returns the FIRST spec linked to the given intent id; ok is false
+// when no spec realises that intent. An intent owns one or more specs
+// (adr-2609151513118583), so a caller that must reason about the whole set —
+// "does this intent still have an open spec?" — asks SpecsForIntent or
+// OpenSpecsForIntent instead. This one answers only "does any spec claim it",
+// which is what the one-sided-link reports need.
+//
+// The match is canonical (recordid.SameID) for the reason SpecsForIntent states.
 func (s Store) ByIntent(intentID string) (Spec, bool) {
 	for _, sp := range s.Specs {
-		if sp.Intent == intentID {
+		if recordid.SameID(sp.Intent, intentID) {
 			return sp, true
 		}
 	}
 	return Spec{}, false
+}
+
+// SpecsForIntent returns every spec whose back-link names intentID, ordered by
+// spec number — which for a native timestamp-numeric id is the order they were
+// minted in, so an intent's specs read as the delivery sequence they are.
+//
+// The spec's `intent:` field is the source of truth for the link: an intent
+// carries a scalar spec_id naming the spec it was planned with, and nothing on
+// the intent side can carry a SET, so the set of specs realising an intent is
+// derived here from the back-links and nowhere else. Every reader that has to
+// answer "is this intent still being delivered" reads this, so the question has
+// one answer (adr-2609151513118583, invariant 17).
+//
+// The match is CANONICAL (recordid.SameID), never literal, and that is what
+// makes the one answer one: record-lint resolves an intent handle on its number
+// with its leading zeros trimmed, so a back-link written `itd-007` is green and
+// names itd-7. Comparing the strings here instead made the store and the lint
+// answer the same question differently — the lint saw two specs on one intent
+// while the store saw one, so the intent shipped with the second spec still
+// open, and that spec could then never be closed, because the verb resolving its
+// back-link found no intent of that spelling. One primitive, one answer.
+func (s Store) SpecsForIntent(intentID string) []Spec {
+	var out []Spec
+	for _, sp := range s.Specs {
+		if recordid.SameID(sp.Intent, intentID) {
+			out = append(out, sp)
+		}
+	}
+	SortByNumber(out)
+	return out
+}
+
+// OpenSpecsForIntent is SpecsForIntent narrowed to the open bucket — the
+// question the lifecycle actually asks at a close: does this intent have an
+// open spec left?
+func (s Store) OpenSpecsForIntent(intentID string) []Spec {
+	var out []Spec
+	for _, sp := range s.SpecsForIntent(intentID) {
+		if sp.Status == StatusOpen {
+			out = append(out, sp)
+		}
+	}
+	return out
+}
+
+// SortByNumber orders specs by their spec NUMBER, ascending — the order a
+// reader expects an intent's specs in, because a native id is timestamp-numeric
+// so the number IS the minting order. It sorts in place through the one spec-id
+// number parser, so a legacy variable-width id (spc-9 before spc-10) orders
+// correctly where a string sort would not. A reference carrying no usable
+// number sorts first and keeps its relative order.
+func SortByNumber(specs []Spec) {
+	sort.SliceStable(specs, func(i, j int) bool { return specNum(specs[i].ID) < specNum(specs[j].ID) })
 }
 
 // Validate enforces the id regexes and that intent is a well-formed itd-N. It

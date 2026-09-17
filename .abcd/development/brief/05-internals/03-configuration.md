@@ -516,10 +516,19 @@ that reach `bootstrap.sh` at all. The last three self-provision only when the
 plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within a
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, not world-writable, and recorded as this
-machine's own, before failing loudly. `SessionEnd` is the exception and downloads
-nothing at all: a fetch as the session exits races the harness's hook cancellation
-and loses the transcript the hook exists to capture (iss-2608210934566223), so it
-resolves the plugin root, then PATH, then says the transcript was not captured.
+machine's own, before failing loudly. `SessionEnd` and `SubagentStop` are the two
+exceptions and download nothing at all: each fires where the harness cancels a slow
+hook rather than wait — one as the session exits, the other inside a live session as
+a sub-agent finishes — so a fetch there races that cancellation and loses the
+transcript the hook exists to capture (iss-2608210934566223). Both resolve the
+plugin root, then PATH, then say the transcript was not captured. `SubagentStop`
+additionally never exits non-zero beyond that refusal, because exit 2 is the host's
+BLOCKING code on that event.
+
+`SessionEnd` carries `hook session-end`, which stages the session's own transcript;
+`SubagentStop` carries `hook subagent-stop`, which stages a finished sub-agent's
+transcript beside it with the lineage the harness payload and its per-agent sidecar
+supply. `SessionStart` drains both through the fail-closed redaction path.
 
 **The plugin-internal development namespace** (committed in private repos,
 gitignored in public) holds, at its root, the config file and the per-surface

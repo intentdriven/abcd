@@ -266,6 +266,21 @@
         "srp": ".abcd/work/issues/surprises"
       }
     },
+    "prose_citation_resolves": {
+      "enabled": true,
+      "severity": "blocker",
+      "record_stores": {
+        "adr": ".abcd/development/decisions/adrs",
+        "itd": ".abcd/development/intents",
+        "spc": ".abcd/development/specs",
+        "iss": ".abcd/work/issues",
+        "rdi": ".abcd/work/issues/readings",
+        "dsp": ".abcd/work/issues/dispositions",
+        "rdg": ".abcd/development/readings",
+        "adm": ".abcd/work/issues/admissions",
+        "srp": ".abcd/work/issues/surprises"
+      }
+    },
     "record_provenance": {
       "enabled": true,
       "severity": "blocker"

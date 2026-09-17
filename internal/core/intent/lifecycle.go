@@ -391,7 +391,10 @@ func Link(repoRoot, intentID, specID string) (LinkResult, error) {
 	if !ok {
 		return LinkResult{}, fmt.Errorf("intent: spec %s not found", specID)
 	}
-	if sp.Intent != intentID {
+	// Canonical, not literal: a back-link written `itd-007` names itd-7 and is
+	// lint-green, so refusing it here would make a spec unlinkable for a spelling
+	// difference the gate accepts (recordid.SameID).
+	if !recordid.SameID(sp.Intent, intentID) {
 		return LinkResult{}, fmt.Errorf("intent: spec %s realises %s, not %s (mismatch); refusing to link", specID, sp.Intent, intentID)
 	}
 
@@ -474,31 +477,47 @@ func SetPromotedFrom(repoRoot, intentID, source string) (Intent, error) {
 	return it, nil
 }
 
-// Reconcile is the deterministic half of `abcd spec close`: it advances the
-// intent a spec realises, then closes the spec, so one command marks the spec
-// done AND ships its linked intent.
+// Reconcile is the deterministic half of `abcd spec close`: it closes a spec
+// and, when that close was the intent's last open spec, ships the intent — so
+// one command marks the spec done AND moves the intent exactly when the
+// capability is whole.
 //
-// Ordering is intent-first, spec-last, so a partial failure is recoverable by
-// re-running: the intent moves planned/ → shipped/ before spec.Close runs, so a
-// failure at the move leaves the spec OPEN (retry-safe), never a closed spec with
-// a still-planned intent. It is idempotent: an already-shipped intent is not
-// re-moved, and a re-run on an already-closed spec is a clean no-op/complete
-// rather than an error.
+// An intent owns one or more specs (adr-2609151513118583, invariant 17). A spec
+// that delivers only part of an intent is closed on its own terms while another
+// spec still names the intent, and the intent stays in planned/; the close after
+// which no open spec names it is the one that ships it. More than one spec
+// naming one intent is the normal state, not an ambiguity — the question that
+// decides the move is "does this intent have an open spec left?".
+//
+// Ordering is intent-first, spec-last on the close that ships, so a partial
+// failure is recoverable by re-running: the intent moves planned/ → shipped/
+// before spec.Close runs, so a failure at the move leaves the spec OPEN
+// (retry-safe), never a closed spec with a still-planned intent. A remainder is
+// minted before either, so a failure there moves nothing at all. It is
+// idempotent: an already-shipped intent is not re-moved, and a re-run on an
+// already-closed spec is a clean no-op/complete rather than an error.
 //
 // It fails closed with NO partial move when: the spec has no/empty intent link;
-// the named intent does not exist; the link is ambiguous (more than one spec
-// realises the intent); the intent's spec_id disagrees with this spec
-// (bidirectional drift); the intent is in an unexpected bucket (e.g. still in
-// drafts — it was never planned); or the intent would enter shipped/ without the
-// impact judgement that bucket requires (see resolveShipImpact). Every id is
-// validated against the ^spc-/^itd- regexes before any path is built. The
-// intent's `## Audit Notes` are left untouched (the fidelity audit is a later
-// phase; the intent ships with them empty).
+// the named intent does not exist; the intent's spec_id names no spec that
+// realises it (bidirectional drift); the intent is in an unexpected bucket (e.g.
+// still in drafts — it was never planned); an impact is supplied at a close that
+// ships nothing; a remainder is asked for on an already-shipped intent or an
+// already-closed spec (neither has a delivery boundary left to split); or the
+// intent would enter shipped/ without the impact judgement that bucket requires
+// (see resolveShipImpact). Every id is validated against
+// the ^spc-/^itd- regexes before any path is built. The intent's `## Audit
+// Notes` are left untouched (the fidelity audit is a later phase; the intent
+// ships with them empty).
 //
 // impact is the judgement `abcd spec close --impact` carries: empty means "the
 // record already carries its own", and a value is stamped onto a record that has
-// none. It is never a silent override — see resolveShipImpact.
-func Reconcile(repoRoot, specID, impact string) (ReconcileResult, error) {
+// none. It is never a silent override — see resolveShipImpact — and it is
+// accepted only at the close that ships, because that is the only close that
+// writes it.
+//
+// remainder asks this close to mint the follow-on spec for what the closing spec
+// did not deliver (see RemainderRequest); the zero value asks for none.
+func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (ReconcileResult, error) {
 	if !recordid.ValidSpecID(specID) {
 		return ReconcileResult{}, fmt.Errorf("intent: spec id %q must match ^spc-[0-9]+$", specID)
 	}
@@ -517,18 +536,6 @@ func Reconcile(repoRoot, specID, impact string) (ReconcileResult, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return ReconcileResult{}, fmt.Errorf("intent: spec %s has no well-formed intent link (got %q); refusing to reconcile", specID, intentID)
 	}
-	// Ambiguity guard: cross-check the spec's link against the whole store. If more
-	// than one spec claims this intent, the link is ambiguous and we refuse rather
-	// than ship an intent whose realising spec is undetermined.
-	var claimers []string
-	for _, s := range store.Specs {
-		if s.Intent == intentID {
-			claimers = append(claimers, s.ID)
-		}
-	}
-	if len(claimers) > 1 {
-		return ReconcileResult{}, fmt.Errorf("intent: link ambiguous — %d specs realise %s (%s); refusing to reconcile", len(claimers), intentID, strings.Join(claimers, ", "))
-	}
 
 	corpus, err := Load(repoRoot)
 	if err != nil {
@@ -538,14 +545,26 @@ func Reconcile(repoRoot, specID, impact string) (ReconcileResult, error) {
 	if !ok {
 		return ReconcileResult{}, fmt.Errorf("intent: %s (linked by spec %s) not found in any bucket; refusing to reconcile", intentID, specID)
 	}
-	// Bidirectional agreement: the intent must point back at THIS spec. A null or
-	// mismatched spec_id is drift (a one-sided link) — fail closed rather than ship
-	// an intent that names a different, or no, spec.
+	// Bidirectional agreement, 1:n-aware: the intent's spec_id must name one of
+	// the specs that realise it. Under the 1:1 rule this was equality with THIS
+	// spec; under 1:n the second spec of an intent legitimately closes while the
+	// intent's spec_id still names the first, so the check is membership. A null
+	// spec_id, or one naming a spec that does not realise this intent, is still
+	// drift (a one-sided link) and still fails closed.
 	// The comparison is canonical (spec.SameNum), not literal: record-lint matches
 	// a spec_id on its NUMBER, so a slug-suffixed or zero-padded value is
 	// lint-green and this verb must not refuse what the lint accepts.
-	if !spec.SameNum(it.SpecID, specID) {
-		return ReconcileResult{}, fmt.Errorf("intent: %s spec_id is %q but spec %s claims it (bidirectional link disagrees); refusing to reconcile", intentID, it.SpecID, specID)
+	claimers := store.SpecsForIntent(intentID)
+	backLinked := false
+	for _, c := range claimers {
+		if spec.SameNum(it.SpecID, c.ID) {
+			backLinked = true
+			break
+		}
+	}
+	if !backLinked {
+		return ReconcileResult{}, fmt.Errorf("intent: %s spec_id is %q but no spec realising it carries that id (spec %s claims it; bidirectional link disagrees); refusing to reconcile",
+			intentID, it.SpecID, specID)
 	}
 	// Bucket guard runs BEFORE any move, so an unexpected bucket (drafts,
 	// disciplines, superseded) yields no partial move.
@@ -556,24 +575,103 @@ func Reconcile(repoRoot, specID, impact string) (ReconcileResult, error) {
 		return ReconcileResult{}, fmt.Errorf("intent: %s is in %s (linked by spec %s); expected planned or shipped — refusing to reconcile", intentID, it.Bucket, specID)
 	}
 
+	// --remainder mints a follow-on spec for what THIS close did not deliver, so
+	// it is meaningful only at a close that is actually happening against an
+	// intent that can still receive work. Two shapes are refused here, before any
+	// mint, rather than acted on:
+	//
+	//   - a SHIPPED intent. The capability is already announced and its fidelity
+	//     audit already owed; attaching a fresh OPEN spec to it produces exactly
+	//     the shipped-intent-with-an-open-spec state invariant 17 forbids, which
+	//     the surface could only render as a contradiction ("stays shipped —
+	//     still open"). The remainder of a shipped intent is a NEW intent.
+	//   - an already-CLOSED spec. The close is complete, so there is no delivery
+	//     boundary left to split. Without this the flag mints another spec on
+	//     every invocation of a command that is otherwise a clean no-op — the
+	//     re-run of a finished close silently grows the ledger.
+	//
+	// Both refuse before the mint for the same reason the impact refusal does: a
+	// failure that has already written a record is not a refusal.
+	if remainder.Slug != "" {
+		if it.Bucket == BucketShipped {
+			// it.ID, not the back-link spelling: the message names the record as
+			// the tree holds it, so a padded link does not read as a second intent.
+			return ReconcileResult{}, fmt.Errorf("intent: %s is already shipped, and --remainder would attach an OPEN spec to it — a shipped intent has no open spec left (adr-2609151513118583); nothing was minted. Plan a new intent for the remaining work",
+				it.ID)
+		}
+		if sp.Status != spec.StatusOpen {
+			return ReconcileResult{}, fmt.Errorf("intent: spec %s is already %s, so this close splits no delivery boundary; --remainder would mint another spec on every re-run; nothing was minted. Mint the follow-on deliberately if one is still wanted",
+				specID, sp.Status)
+		}
+	}
+
+	// Does any OTHER spec still hold this intent open? Asked before the mint, so
+	// the impact refusal below can fire before anything is written, and asked
+	// again after it (the remainder counts too).
+	held := otherOpenSpecs(claimers, specID)
+
+	// An impact supplied at a close that ships nothing is refused, not ignored:
+	// the flag's only effect is to stamp the judgement shipped/ requires, so
+	// accepting it here would report a write that never happened — and stamping it
+	// early would pre-decide the derived version of a release this close does not
+	// reach. The judgement belongs at the close that ships (adr-2609151513118583).
+	if strings.TrimSpace(impact) != "" {
+		if len(held) > 0 {
+			return ReconcileResult{}, fmt.Errorf("intent: --impact is the judgement %s carries into shipped/, and this close ships nothing — %s is still open on %s; re-run without --impact, and supply it at the close that ships",
+				intentID, strings.Join(specIDs(held), ", "), intentID)
+		}
+		if remainder.Slug != "" {
+			return ReconcileResult{}, fmt.Errorf("intent: --impact is the judgement %s carries into shipped/, and a remainder spec leaves it planned; re-run without --impact, and supply it at the close that ships",
+				intentID)
+		}
+	}
+
+	// Mint the remainder FIRST, before any move: a failure here leaves the spec
+	// open and the intent planned, and nothing at all has been written.
+	//
+	// The mint is IDEMPOTENT, because a failure at any LATER step of this
+	// operation leaves the remainder already on disk. Re-running the same command
+	// — which is the documented recovery, and the only one the operator has — then
+	// minted a second remainder for the same work, and a third on the next
+	// attempt: the ledger grew a spec per retry while the state the retry was
+	// trying to reach never arrived. So an OPEN spec that already realises this
+	// intent under the requested slug IS the remainder, and is reused. It is
+	// already counted in `held` (it is an open spec naming the intent and is not
+	// the closing spec), so it is not appended a second time.
+	var minted spec.Spec
+	mintedHere := false
+	if remainder.Slug != "" {
+		if existing, ok := openRemainderWithSlug(claimers, remainder.Slug, specID); ok {
+			minted = existing
+		} else {
+			minted, err = spec.Create(repoRoot, intentID, remainder.Slug, remainder.ProductionMode)
+			if err != nil {
+				return ReconcileResult{}, err
+			}
+			mintedHere = true
+			held = append(held, minted)
+		}
+	}
+
 	// Impact gate, ahead of every write: shipped/ is the one bucket
 	// intent_impact_valid requires an impact in, and this is the one verb that
 	// moves a record there. Resolving it here — not after the move — is what
 	// keeps abcd from producing, out of its own verbs alone, a record its own
 	// record-lint refuses (iss-126).
 	stamp := ""
-	if it.Bucket == BucketPlanned {
+	if it.Bucket == BucketPlanned && len(held) == 0 {
 		if stamp, err = resolveShipImpact(repoRoot, it, impact); err != nil {
 			return ReconcileResult{}, err
 		}
 	}
 
-	res := ReconcileResult{Spec: sp, Intent: it, From: it.Bucket, To: it.Bucket}
-	// 1. Advance the intent planned/ → shipped/ FIRST. Its (kind, spec_id) are
-	// already set (Plan wrote them), and its impact is either already recorded or
-	// stamped just below, so the shipped record is lint-valid. If this fails, the
-	// spec stays open — the whole operation retries cleanly.
-	if it.Bucket == BucketPlanned {
+	res := ReconcileResult{Spec: sp, Intent: it, From: it.Bucket, To: it.Bucket, Remainder: minted, RemainderMinted: mintedHere, OpenSpecs: specIDs(held)}
+	// 1. Advance the intent planned/ → shipped/ FIRST — but only when this close
+	// leaves no open spec naming it. Its (kind, spec_id) are already set (Plan
+	// wrote them), and its impact is either already recorded or stamped just
+	// below, so the shipped record is lint-valid. If this fails, the spec stays
+	// open — the whole operation retries cleanly.
+	if it.Bucket == BucketPlanned && len(held) == 0 {
 		// The stamp is written while the record is still in planned/, where a
 		// valid impact is equally lint-legal, so a failure at the move leaves a
 		// consistent record and the retry finds the judgement already recorded.
@@ -613,9 +711,64 @@ func Reconcile(repoRoot, specID, impact string) (ReconcileResult, error) {
 			res.AuditEmitError = err.Error()
 		} else {
 			res.ReceiptID = emit.ReceiptID
+			res.ReceiptStatus = emit.Status
 		}
 	}
 	return res, nil
+}
+
+// otherOpenSpecs narrows a set of specs realising one intent to the OPEN ones
+// that are not the spec being closed — the specs that, after this close, still
+// hold the intent in planned/. It is the single question the 1:n lifecycle asks
+// (adr-2609151513118583), and the answer is derived from the specs' own
+// back-links, never from a list on the intent.
+//
+// The exclusion is canonical (spec.SameNum), for the same reason the
+// bidirectional check is: a caller may name the spec bare, slug-suffixed or
+// zero-padded, and all three name one record.
+func otherOpenSpecs(claimers []spec.Spec, closingID string) []spec.Spec {
+	var out []spec.Spec
+	for _, c := range claimers {
+		if c.Status != spec.StatusOpen || spec.SameNum(c.ID, closingID) {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// openRemainderWithSlug finds an OPEN spec already realising this intent under
+// the requested slug, excluding the spec being closed. It is what makes the
+// remainder mint idempotent: a retry after a failure downstream of the mint
+// recognises the spec the previous attempt left behind instead of minting a
+// second one for the same remaining work.
+//
+// The slug is the whole identity test on purpose. The operator names the
+// remainder by slug and by nothing else, so two closes asking for `the-rest` on
+// one intent are one request repeated; a genuinely different second remainder is
+// asked for under a different slug and mints normally.
+func openRemainderWithSlug(claimers []spec.Spec, slug, closingID string) (spec.Spec, bool) {
+	for _, c := range claimers {
+		if c.Status != spec.StatusOpen || spec.SameNum(c.ID, closingID) {
+			continue
+		}
+		if c.Slug == slug {
+			return c, true
+		}
+	}
+	return spec.Spec{}, false
+}
+
+// specIDs renders a spec set as its ids, for a refusal or a result.
+func specIDs(specs []spec.Spec) []string {
+	if len(specs) == 0 {
+		return nil
+	}
+	out := make([]string, len(specs))
+	for i, s := range specs {
+		out[i] = s.ID
+	}
+	return out
 }
 
 // shipImpactValues is the vocabulary a shipping intent may declare, spelled for

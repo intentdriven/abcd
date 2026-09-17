@@ -24,8 +24,12 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 | Verb | Bucket | Status |
 |---|---|---|
 | `capture` | — | shipped |
+| `discard` | — | shipped |
 | `drain` | — | shipped |
+| `ingest` | — | shipped |
 | `list` | — | shipped |
+| `migrate` | — | shipped |
+| `reconstruct` | — | shipped |
 | `show` | — | shipped |
 | `staged` | — | shipped |
 
@@ -53,6 +57,74 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   copy. It exits non-zero when anything failed, and this verb runs the backlog to
   completion where the session-start hook drains a bounded number.
 
+- **`/abcd:history ingest [<path>...]`** — redact and store transcripts that are
+  already on disk and were never captured. The **destination repository is an
+  operand, never the working directory**: `--into <repo-root>` is REQUIRED and
+  has no default, and the run prints which repository it wrote into, so a
+  repository's own redaction configuration governs its own transcripts and can
+  never be applied to another's. `--into .` is a fine answer; an unasked
+  question is not. Sources are the paths given, or the `ingest_roots` declared in
+  `.abcd/config/history.json`; no vendor directory is ever assumed. The owning
+  repository is resolved from the `cwd` recorded inside the transcript lines,
+  **per session before per file** — a sub-agent handed a worktree that no longer
+  exists is placed by the session that spawned it — and the harness's project
+  directory name is never decoded, because that name is not reversible to a
+  path. A transcript owned elsewhere is skipped and its owner named by root SHA;
+  one recorded in two repositories is skipped rather than split. A transcript
+  whose repository is not on this machine is an **orphan: ignored, reported,
+  never guessed**, and adopted only when this repository claims its project name
+  in `adopt_projects` or `--adopt`; an adopted record carries
+  `adopted_project`. Setting `on_orphan` to `prompt` makes the CLI ask —
+  core never prompts. Ingesting the same material twice adds nothing.
+- **`/abcd:history migrate`** — repair the records filed under the pre-lineage
+  composite session id (`<truncated-parent>--agent-<agent>`). The full parent
+  session id is recovered from the record's **own body**, which still carries it
+  on every transcript line, and the stored prefix is only the check: a body that
+  disagrees leaves the record untouched and is reported. `source_sha256` and the
+  filename are not touched, so a migrated record still dedups and every path a
+  reader holds still resolves. It **reports by default and writes only under
+  `--apply`**, because the store holds the only copy of these records, and a
+  second run is a no-op. `--sidecar-root` (or the declared `ingest_roots`) names
+  where the harness's per-agent metadata is searched for, by filename; where it
+  answers, the record gains the agent type, spawn depth, spawning tool call and
+  parent agent, and where it does not the record says its lineage is unknown
+  through `spawn_attribution`.
+
+- **`/abcd:history reconstruct <session-id>`** — render one session as **one
+  self-contained artefact** (`<session>.md`) and **one telemetry file**
+  (`<session>.telemetry.json`), written into `--out` (default the working
+  directory) or to stdout with `--out -`. The artefact is Markdown because its
+  consumer is a model being handed the session as context; it names its records
+  by basename and carries no store path, so it reads with the store gone.
+
+  **The main thread stays contiguous and the sub-agent sections are appended**,
+  each marked twice in the thread that spawned it — spawned here, joined here —
+  with an agent timeline table at the head carrying every agent's spawn turn,
+  span and join turn. The spec asked for the sections to be nested at their
+  spawn points; the corpus refuted it. The agents whose id a spawning transcript
+  records are the ASYNCHRONOUS ones, and for those the spawn and the join are
+  many turns apart, so nesting puts a delegate's conclusions in front of
+  main-thread turns that ran before those conclusions existed. Concurrency is
+  read off the table; section order asserts nothing about time. An agent nothing
+  could place goes under **Unattributed sub-agents**, last and labelled.
+  `--mode spine` keeps the thread whole and reduces each delegate to its
+  instruction and its conclusion, for when the full artefact will not fit the
+  context it is read into; `--max-block-bytes` caps one rendered tool input or
+  result, marked where it happens and counted in the telemetry.
+
+  The telemetry file carries the span, turn counts, token usage, a per-tool
+  call count, the models and agent types seen, and the same breakdown per agent.
+  **Tokens are counted once per distinct response id, never once per transcript
+  line**: the host writes one line per content block and repeats the response's
+  usage on every one of them, which inflates a naive sum by a factor that varies
+  per session — 2.44x on one stored transcript, 5.28x across ten
+  (iss-2609090723027424). `api_responses` and `usage_lines_seen` are both
+  reported so a consumer can see that the de-duplication happened. A
+  `completeness` block says what is missing — an absent main thread, agents
+  nothing could place, records found and not used, truncated captures — because
+  a derived measure that cannot state its own gaps must not be compared across
+  runs.
+
 Bare `abcd history` prints command usage rather than a status board. The global
 `--json` flag emits machine-readable output for every sub-verb.
 
@@ -71,10 +143,17 @@ old path.
 Redaction is not free, and the host cancels a shutdown hook rather than wait for
 it, so redacting at exit silently dropped every transcript past a couple of
 megabytes: the long, dense sessions most worth keeping
-(iss-2608230817034768). `abcd hook session-start` drains staging into the store
-through the same fail-closed `capture` path, where there is a real time budget.
-Whatever the budget leaves is reported rather than dropped, because a repo with
-a dozen missed sessions must not stall the user's first prompt.
+(iss-2608230817034768). `abcd hook subagent-stop` stages on the same terms when a
+sub-agent finishes, writing that agent's own transcript with the lineage that
+says which session and which agent produced it — and its exit code matters in a
+way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
+every failure path there is a diagnostic and an exit 0. `abcd hook session-start`
+drains staging into the store through the same fail-closed `capture` path, where
+there is a real time budget; it takes main-thread transcripts before sub-agent
+ones and bounds the pass by bytes as well as count, so a truncated pass stores
+the part that makes the rest legible. Whatever the budget leaves is reported
+rather than dropped, because a repo with a dozen missed sessions must not stall
+the user's first prompt.
 
 Session start is also the one moment abcd can tell a user about install trouble
 before they act on it, so the same hook carries a short notice channel: a
@@ -91,13 +170,47 @@ these notices quote values read off tracked files, which a pull request or a
 fork can write.
 
 Staging is the one place abcd holds unredacted transcript text on purpose: mode
-`0o700`, files `0o600`, each file living only until the next session drains it.
-The handshake is locked and keyed on content: a re-fired session end carrying
-identical bytes is a no-op, one carrying different bytes replaces the staged
-copy (the later snapshot of a session is the one worth keeping), and a drain
-removes a staged file only while it still holds the bytes it captured. One
-session has one staged copy, and a fresher copy is never lost
-(GHSA-xq36-hcgf-9wrj).
+`0o700`, files `0o600`. How long a staged file lives is a question the store
+answered wrongly for its first weeks — the code claimed "only until the next
+session starts", and the drain ran from a hook of the repository the file
+belongs to, so a repository nobody opened again kept its raw transcripts for as
+long as the disk lasted (iss-2609090722466403). Four such files, thirteen
+megabytes, the oldest a fortnight old, were found on the author's own machine.
+Three mechanisms now bound it, and a fourth names the case none of them can
+clear:
+
+- **A drain runs while a session is LIVE**, not only at its start:
+  `abcd hook prompt-router` (`UserPromptSubmit`) drains one entry and at most
+  half a megabyte per prompt, so a session that spawns sub-agents redacts its own
+  branches as it goes. Everything it says goes to stderr, never to the hook's
+  stdout, which is model context.
+- **`StagedTTL` (seven days) is the maximum staged age.** Past it an entry is
+  OVERDUE: it sorts to the front of every drain and is named in every notice. Age
+  buys priority and volume, and nothing else — an overdue transcript is never
+  deleted, never redacted down, never degraded. Losing the only copy is worse
+  than keeping it, which is the premise staging is built on.
+- **Session start reports EVERY repository in the store**, not just the one the
+  operator is standing in, and `abcd history staged --all-repos` is the
+  read-only verb behind the same survey. A per-repo listing is blind to exactly
+  the pile that grows: the one nobody opens. The survey carries counts, sizes and
+  repository names — never another repository's session ids.
+- **A transcript the fail-closed scanner will never pass is QUARANTINED**, not
+  retried forever. A `*RedactionResidualError` is a property of the transcript's
+  own bytes, so every future drain reaches the same refusal; such an entry moves
+  to `quarantine/` (also `0o700`/`0o600`) with a written reason and leaves the
+  queue. It is still raw, and nothing removes it but a person running
+  `abcd history discard <file> --yes`. A retryable failure — an unwritable store
+  path, a corrupt sidecar an operator can repair — stays staged and stays queued.
+
+Each staged transcript carries a `.stage.json` sidecar holding its session and
+its lineage, so nothing is ever encoded in the filename; a staged file written
+before the sidecar existed has none and drains as a main-thread transcript,
+which is what it is. The handshake is locked and keyed on content per
+`(session, agent)`: a re-fired session end carrying identical bytes is a no-op,
+one carrying different bytes replaces the staged copy (the later snapshot of a
+session is the one worth keeping), and a drain removes a staged file only while
+it still holds the bytes it captured. One `(session, agent)` has one staged
+copy, and a fresher copy is never lost (GHSA-xq36-hcgf-9wrj).
 
 Staging is also **the outcome record the store never had.** Before it, an absent
 record spanned "never ended", "ended before the store existed" and "ended and

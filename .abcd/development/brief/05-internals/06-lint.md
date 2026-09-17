@@ -6,12 +6,23 @@ Canonical reference for the lint engine in `internal/core/lint` — the determin
 
 The lint engine lives in `internal/core/lint` (Go). It is driven by two armed, deterministic gates, each reading its own JSON rule config as the single source of truth for the armed rule set:
 
-- **Record-currency** (`cmd/record-lint`, config `.abcd/record-lint.json`) lints the markdown design record under `.abcd/development/` for drift: frontmatter and schema shape, resolvable cross-links, directory coverage, intent-lifecycle placement, retired or banned tokens, index-drift on generated regions, delivery-state agreement, and citation currency. `make record-lint` runs it, and CI runs the same job on every push.
+- **Record-currency** (`cmd/record-lint`, config `.abcd/record-lint.json`) lints the markdown design record under `.abcd/development/` for drift: frontmatter and schema shape, resolvable cross-links, directory coverage, intent-lifecycle placement, retired or banned tokens, index-drift on generated regions, delivery-state agreement, citation currency, and record ids cited in record PROSE (`prose_citation_resolves`: an id written in a record's prose must name a record that exists, unless the author marks the line `<!-- record-lint: illustrative -->` or `<!-- record-lint: forward-looking -->`, or the id is carried by the ratcheting baseline `.abcd/prose-citations-baseline.json`; §1.1 says exactly what counts as prose). `make record-lint` runs it, and CI runs the same job on every push.
 - **Docs-currency** (`abcd docs lint`, config `.abcd/docs-lint.json`) lints `docs/` and the repo-root prose for change-narration (past-tense drift such as "previously" or "formerly"), broken relative links, stray root markdown, host-name leakage, British-spelling drift, em-dash-in-list-item punctuation, and citation health. `make docs-lint` runs it, and CI runs it on the Linux leg.
 
 Each rule carries a severity (`blocker`, `warn`, or `info`) resolved from its config entry; the severity model is §2. A rule is enabled, disabled, or re-severitied by editing its config entry, so the armed set is always the JSON config, never this document.
 
 The engine carries no numbered code catalogue: rules are named, not numbered, and their definitions live in the two JSON configs above. Any literal enumeration of rules in the record belongs in a generated, gated region (an `index_drift`-style marked block that fails when it drifts from the config), never a hand-kept table — a hand-typed catalogue goes stale against the engine's own rules the moment a rule is added.
+
+### 1.1 What `prose_citation_resolves` reads
+
+The rule reads a record's free text, which is wider than its body and narrower than its bytes. Four boundaries an author meets:
+
+- **Frontmatter free text is prose.** The whole document is read, minus the frontmatter lines whose key is one of the typed cross-reference fields `record_schema` already resolves (and the indented block under such a key). Everything else above the `---` — `deferral_reason`, `found_during`, `resolution`, a `kind_notes` sentence — is a sentence someone wrote, and an id inside one must resolve like any other. A YAML comment after the value carries the line marker where a value must stay verbatim: `found_during: "…" # <!-- record-lint: illustrative -->`.
+- **A slug does not stop an id being an id.** `itd-160-dangling-….md` in a sentence cites `itd-160`. `links_resolve` judges markdown link *targets*, `[..](..)`, so a bare filename-shaped handle in prose reaches no other rule; treating the shape as a filename let an invented id go quiet under an appended slug. A placeholder written with a LETTER — `itd-N`, `spc-<id>`, `adr-NNNN` — is still not a citation and still needs no marker.
+- **Only triple-backtick fences are code.** A `~~~` fence is not recognised, and neither is four-space indented code: an id inside either is read as prose and must resolve or carry a marker. The rule fails toward asking rather than toward silence, and this is the one place an author meets that.
+- **Nine stores are scanned; four families resolve.** The `record_stores` config names nine roots so every record's prose is read, but only `adr`, `itd`, `iss` and `spc` are the cited-id grammar. An `rdi`, `dsp`, `rdg`, `adm` or `srp` id is not a citation to this rule and is checked by nothing here — those stores are in the list for the prose their files carry, not for their own ids.
+
+The committed baseline `.abcd/prose-citations-baseline.json` carries the ids that predate the rule, one entry per id with a class and a note, and it ratchets down: an entry whose id resolves or that nothing cites any more is reported as spent (`prose_citation_baseline_stale`, `info`). An entry is a GLOBAL licence for its id, so a mention that can carry a line marker takes the marker instead.
 
 ## 2. Severity model
 

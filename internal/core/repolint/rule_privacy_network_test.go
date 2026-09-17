@@ -162,15 +162,29 @@ func TestAC_PrivacyNetworkHonoursRepoSeverityOverride(t *testing.T) {
 	}
 }
 
-// S3: an exempt system directory must not shield a username nested under it.
+// S3: an exempt system directory must not shield a username nested under it —
+// narrowed by iss-2609100505145554 to the TRAVERSAL shapes only.
+//
+// A system root is not a home root, so a segment reached directly beneath it
+// ("/Users/Shared/abcd-data/x") is an entry in a shared folder, not a home path,
+// and flagging it taxed the product code that has to name its own shared
+// directory — 147-213 errors on a conforming repo, every one benign. What the
+// shield rule was really protecting is the traversal escape: "/Users/Shared/../x"
+// leaves the shared root, so the name after it is a home segment again, and those
+// cases all still flag below.
+//
+// The cost, stated where it is incurred: a personal name used directly as a
+// shared-folder directory name is no longer flagged by this rule. The committing
+// user's own name there is still caught by the scanner's local_username detector
+// at hard_fail.
 func TestAC_PrivacyNestedUsernameUnderSystemDirectory(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
 		want bool
 	}{
-		{"nested username", "keys at /Users/Shared/" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt\n", true},
-		{"nested non-username segment", "data at /Users/Shared/abcd-data/x\n", true}, // abcd-audit:allow
+		{"nested name reached directly", "keys at /Users/Shared/" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt\n", false},
+		{"nested non-username segment", "data at /Users/Shared/abcd-data/x\n", false}, // abcd-audit:allow
 		{"bare system directory", "the installer writes to /Users/Shared\n", false},
 		{"system directory trailing slash", "the installer writes to /Users/Shared/ and stops\n", false},
 		// Prose, not a path: an ellipsis after the system directory is not a
@@ -184,22 +198,22 @@ func TestAC_PrivacyNestedUsernameUnderSystemDirectory(t *testing.T) {
 		{"parent marker then name", "keys at /Users/Shared/../" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt\n", true},
 		{"doubled separator then name", "keys at /Users/Shared//" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt\n", true},
 		// F3: absPathRe matches the Windows spelling too, so the same nested-name
-		// semantics have to hold on a backslash separator — otherwise the system
-		// directory shields a username there while flagging it on POSIX.
-		{"windows nested username", `keys at C:\Users\Public\` + strings.Join([]string{"j", "doe"}, "") + `\keys.txt` + "\n", true},
+		// semantics have to hold on a backslash separator — the system directory
+		// must not behave differently there from POSIX, in either direction.
+		{"windows nested name reached directly", `keys at C:\Users\Public\` + strings.Join([]string{"j", "doe"}, "") + `\keys.txt` + "\n", false},
 		{"windows parent marker then name", `keys at C:\Users\Public\..\` + strings.Join([]string{"j", "doe"}, "") + "\n", true},
 		{"windows bare system directory", `the installer writes to C:\Users\Public` + "\n", false},
 		{"windows system directory trailing separator", `the installer writes to C:\Users\Public\ and stops` + "\n", false},
-		// Parity, deliberately: a plain file under the system directory flags on
+		// Parity, deliberately: a plain file under the system directory is clean on
 		// BOTH spellings, exactly as its POSIX twin /Users/Shared/abcd-data/x  abcd-audit:allow
-		// above does. The exemption covers the system directory itself, never a
-		// name-bearing segment beneath it.
-		{"windows file under system directory", `report at C:\Users\Public\report.txt` + "\n", true}, // abcd-audit:allow
-		{"posix file under system directory", "report at /Users/Shared/report.txt\n", true},          // abcd-audit:allow
-		// G3: Windows accepts BOTH separators in one path, so a nested name written
-		// after a forward slash is a name the system directory must not shield.
-		// Picking a single separator for the walk exempted the whole mixed spelling.
-		{"windows mixed separator then name", `keys at C:\Users\Shared/` + strings.Join([]string{"j", "doe"}, "") + `/keys.txt` + "\n", true},
+		// above is. A file name is not a username in any spelling, and this pair is
+		// the shape install docs actually carry.
+		{"windows file under system directory", `report at C:\Users\Public\report.txt` + "\n", false}, // abcd-audit:allow
+		{"posix file under system directory", "report at /Users/Shared/report.txt\n", false},          // abcd-audit:allow
+		// G3: Windows accepts BOTH separators in one path, so the walk must read a
+		// forward slash as a separator there too — asserted on the traversal
+		// shapes, which are the ones that still flag.
+		{"windows mixed separator then name", `keys at C:\Users\Shared/` + strings.Join([]string{"j", "doe"}, "") + `/keys.txt` + "\n", false},
 		{"windows mixed separator then marker and name", `keys at C:\Users\Public/../` + strings.Join([]string{"j", "doe"}, "") + "\n", true},
 		// The POSIX walk stays slash-only: a backslash after a POSIX path is a Go
 		// string escape, not a segment, and reading it as one flagged the escape.
@@ -235,15 +249,21 @@ func TestAC_PrivacySharedAndGuestAreNotUsernames(t *testing.T) {
 	}
 }
 
-// The exemption is narrow in two independent ways, so each is asserted on its
-// OWN line: a segment that merely BEGINS with a system-directory name is not
-// exempt, and a name nested under the system directory is not shielded by it.
-// Carried on one line, the first path satisfied the assertion by itself and the
-// second proved nothing.
+// The exemption stays narrow, and each way is asserted on its OWN line: a
+// segment that merely BEGINS with a system-directory name is not a system root
+// at all, and a name reached through a TRAVERSAL out of the system root is back
+// in the username position. Carried on one line, the first path satisfied the
+// assertion by itself and the second proved nothing.
+//
+// The third case this test used to carry — a name reached directly beneath the
+// system root ("/Users/Shared/abcd/notes.md") — moved to the exempt set in
+// iss-2609100505145554: it is the product's own shared directory, which the docs
+// have to name, and the case is covered as `product dir` in
+// TestAC_PrivacySharedRootSubtreeIsNotALeak.
 func TestAC_PrivacyRealUsernameStillFlaggedAlongsideExemption(t *testing.T) {
 	cases := []struct{ name, body string }{
 		{"segment merely beginning with a system directory name", "notes at /Users/sharedstuff/notes.md\n"}, // abcd-audit:allow — the specimen IS the case under test
-		{"name nested under a system directory", "notes at /Users/Shared/abcd/notes.md\n"},                  // abcd-audit:allow — the specimen IS the case under test
+		{"name reached by traversal out of a system directory", "notes at /Users/Shared/../" + strings.Join([]string{"j", "doe"}, "") + "/notes.md\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

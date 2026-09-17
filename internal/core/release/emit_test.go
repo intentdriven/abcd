@@ -460,3 +460,66 @@ func contains(haystack []string, needle string) bool {
 	}
 	return false
 }
+
+// A cut that DELETES a blocking record instead of answering it is refused under
+// its own kind (iss-2609091143455568).
+//
+// The composition half again: core/changelog owns the judgement and is exercised
+// there, and what has to hold here is that the verdict reaches the cut as a
+// refusal of its own kind, naming the record — because the remedy differs from
+// the unfixed case. The record has to come back before it can be resolved,
+// waived or wontfixed, and a front door handed `unfixed-finding` would send its
+// reader to open a file that is no longer in the tree.
+func TestEmitRefusesACutThatDeletesItsFindingsRecord(t *testing.T) {
+	r := releasedRepo(t)
+	r.Write(openIssuesDir+"iss-91-found-last-cycle.md",
+		"---\nid: \"iss-91\"\nseverity: \"major\"\n---\n\nfound before the anchor moved.\n")
+	r.Commit("capture a finding")
+	r.Git("tag", "v0.5.0")
+	r.Write("CHANGELOG.md", "# Changelog\n\n## [0.5.0] - 2026-07-02\n\n### Added\n\n- the base.\n")
+	r.Write(shippedDir+"itd-74-something-shipped.md",
+		"---\nid: itd-74\nimpact: additive\n---\n\n# Something Shipped\n\nderived.\n")
+	r.Remove(openIssuesDir + "iss-91-found-last-cycle.md")
+	r.Commit("ship an intent and delete the standing finding")
+
+	cut := emit(t, r)
+
+	if cut.Ready {
+		t.Fatalf("the cut is ready having removed a major finding from the ledger: %+v", cut.Findings)
+	}
+	if !contains(refusalKinds(cut), string(RefusalDeletedFinding)) {
+		t.Fatalf("refusals = %v, want one of kind %q", refusalKinds(cut), RefusalDeletedFinding)
+	}
+	for _, ref := range cut.Refusals {
+		if ref.Kind != RefusalDeletedFinding {
+			continue
+		}
+		if !contains(ref.Records, "iss-91") {
+			t.Errorf("the refusal does not name iss-91 in Records (%v), so a front door has to "+
+				"parse its prose to act on it", ref.Records)
+		}
+		if !strings.Contains(ref.Reason, "no status directory") {
+			t.Errorf("the refusal does not say the record left the ledger: %q", ref.Reason)
+		}
+		// The unfixed half's remedy must not ride along on this refusal: there is
+		// no open record to resolve until the deleted one is restored.
+		if strings.Contains(ref.Reason, "has not answered") {
+			t.Errorf("the deletion refusal carries the unfixed half's prose:\n%s", ref.Reason)
+		}
+	}
+	if cut.NextTag != "" || cut.Bumped {
+		t.Errorf("NextTag = %q bumped=%v on a refused cut", cut.NextTag, cut.Bumped)
+	}
+
+	// Restoring the record and resolving it clears the gate: the ledger can say
+	// what happened to the finding again.
+	r.Write(resolvedDir+"iss-91-found-last-cycle.md",
+		"---\nid: \"iss-91\"\nseverity: \"major\"\nimpact: fix\n---\n\nfixed rather than removed.\n")
+	r.Commit("restore the record into resolved/")
+
+	cut = emit(t, r)
+
+	if !cut.Ready {
+		t.Fatalf("the cut is still refused after the record was restored and resolved: %+v", cut.Refusals)
+	}
+}

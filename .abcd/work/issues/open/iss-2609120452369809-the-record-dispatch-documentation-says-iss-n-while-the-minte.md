@@ -12,7 +12,7 @@ found_at: "commands/abcd.md"
 ---
 
 Reported from a downstream repository using abcd: `abcd capture "<text>"` mints
-ids like `iss-2609120433096312` while every pre-existing record there uses the
+ids like `iss-2609120433096312` while every pre-existing record there uses the <!-- record-lint: illustrative -->
 short form (`iss-188`, `iss-227`). That ledger now holds two id shapes — about
 48 records in the old shape and 8 in the new — and the record-dispatch
 documentation says `iss-N`.

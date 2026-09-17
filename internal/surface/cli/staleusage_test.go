@@ -113,15 +113,15 @@ func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {
 	})
 
 	t.Run("json envelope carries the note", func(t *testing.T) {
-		code, _, stderr := runMain(t, "--json", "frobnicate")
+		code, stdout, _ := runMain(t, "--json", "frobnicate")
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
 		var env struct {
 			Error string `json:"error"`
 		}
-		if err := json.Unmarshal([]byte(stderr), &env); err != nil {
-			t.Fatalf("stderr is not the JSON error envelope: %v\n%s", err, stderr)
+		if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+			t.Fatalf("stdout is not the JSON error envelope: %v\n%s", err, stdout)
 		}
 		if !strings.HasPrefix(env.Error, "unknown command \"frobnicate\" for \"abcd\"") ||
 			!strings.Contains(env.Error, "predates the `frobnicate` command") ||

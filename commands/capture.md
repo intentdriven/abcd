@@ -131,10 +131,61 @@ same result.
 ```
 
 The unfiltered form `abcd capture list` exits 2 with a "choose a filter"
-message; there is no implicit default. Summarise each issue's `id`, `status`,
+message; there is no implicit default.
+
+**One id, one status folder.** Every read — `list`, the bare `abcd capture`
+board, and `abcd <iss-N>` — refuses when one id is claimed by two record files,
+naming both. The status folder *is* the record's status, so an id sitting in
+`open/` and `resolved/` at once has no defined status to report, and rendering it
+would mean printing two contradictory rows or picking one arbitrarily. The state
+is a merge artefact rather than a hand edit: a record committed to the default
+branch after a branch was cut from it, and then resolved on that branch, arrives
+as an add on one side and a delete-plus-add on the other, which rename detection
+does not pair. Relay the refusal; the fix is to move or remove one of the two
+files so the ledger says which status the record is in. Summarise each issue's `id`, `status`,
 `severity`, and `slug`. The list is returned in **derived-priority order**:
 unblocked issues first, then by severity (`critical` → `nitpick`); rows still
 blocked by an open dependency are demoted and annotated `[blocked-by iss-N,…]`.
+
+## Which open issues may already be fixed
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture mentions --json          # or --ref <branch>
+```
+
+`mentions` reads the default branch's history and lists the open records its
+commit messages name. It is **advisory and strictly read-only**: it resolves
+nothing, moves nothing, and writes nothing. A mention is not a fix, and the row
+exists so a human reads the commit and decides.
+
+The rule it complements is the resolution gate's: a commit message, or a
+pull-request title **or body**, that names an `iss-N` must declare its relation
+to it — `Resolves: iss-N` for a change that fixes it, `Refs: iss-N` for one that
+touched it without fixing it. One line may name several records
+(`Refs: iss-1, iss-2`); the two spellings are the whole vocabulary. That gate
+runs before a merge and cannot reach backwards, so this listing is what reads
+the history a repository already has.
+
+Each row carries the strongest evidence found for the record, rows are ordered
+strongest first, and a row's own evidence is ranked the same way — so the commit
+shown is the one to read, not merely the latest one that named the record:
+
+| Strength | What it means |
+|---|---|
+| `resolves` | a commit declared `Resolves: iss-N` and the record is still in `open/` — somebody said it was fixed and the ledger never moved |
+| `tree` | a commit that changed something outside `.abcd/` named the record |
+| `record` | only the record tiers changed — somebody wrote *about* the record |
+
+Two mentions are deliberately silent. A commit that **filed** the record names
+the id it is filing: that is provenance, not evidence, and it is the commonest
+mention in any ledger's history. A commit that declared `Refs: iss-N` said in
+so many words that it did not fix it, and the listing takes the author at their
+word — reporting it anyway would teach people to stop declaring.
+
+Relay the `id`, `strength` and the naming commit; the JSON carries every mention
+under `evidence`. The next move is a human's: read the commit, then
+`capture resolve <iss-N> "<what fixed it>" --commit <sha>` with its impact and
+grounds, or leave the record open.
 
 ## Grounds: why this triage, not just which one
 

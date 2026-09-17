@@ -3,6 +3,7 @@ package surface
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -62,15 +63,28 @@ const nameKey = "name"
 // adds one; both are ordinary entry sets, so the absence of a version is not an
 // anomaly and its later presence reads as one added entry.
 //
-// A manifest that cannot be read or parsed, or whose root is not a JSON object,
-// is an error rather than an empty entry set: reporting "no entries" for a
-// manifest that failed to load would make every declared entry look like surface
-// that was never there, which is exactly the removal the guardrail exists to
-// catch.
+// A manifest that is PRESENT and cannot be read or parsed, or whose root is not
+// a JSON object, is an error rather than an empty entry set: reporting "no
+// entries" for a manifest that failed to load would make every declared entry
+// look like surface that was never there.
+//
+// An ABSENT manifest is not that case. It contributes no entries, because a repo
+// whose artefact is not a plugin — a binary, an application bundle, a library —
+// declares no plugin surface, and treating the absence as an unreadable payload
+// stopped every caller of the snapshot before it ran, `abcd changelog` included
+// (iss-2609100506255436). Where a plugin manifest lives is fixed; whether this
+// artefact has one is a per-repo fact, the same distinction adr-19 already drew
+// for the version location. Nor does absence hide a removal: a manifest that WAS
+// declared at the last release and is gone now yields a manifest_entry_removed
+// break against that baseline, which is the channel the guardrail exists to
+// report through — an error at this seam produced no verdict at all.
 func ManifestEntries(repoRoot string) ([]ManifestEntry, error) {
 	var out []ManifestEntry
 	for _, rel := range manifestPaths {
 		data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(rel)), maxManifestBytes)
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("reading %s: %w", rel, err)
 		}

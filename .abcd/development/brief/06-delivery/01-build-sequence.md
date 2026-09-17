@@ -84,7 +84,8 @@ core and the packaging boundary holds.
   alias; the shipped sub-verbs are the machine-checked table in
   [`../04-surfaces/05-intent.md`](../04-surfaces/05-intent.md). Shipping runs the
   other way round: an intent moves to `shipped/` as the close-hook of `abcd spec
-  close`, so there is no `intent ship`. `grill` is a design target (itd-27); the
+  close` — on the close after which no open spec names it, since an intent owns
+  one or more specs — so there is no `intent ship`. `grill` is a design target (itd-27); the
   admission gauntlet that ships is `/abcd:ideate`.
 - **review**: the oracle seam, **host-delegated by default**
   ([adr-25](../../decisions/adrs/0025-host-delegated-llm-default.md)): abcd emits
@@ -104,7 +105,8 @@ core and the packaging boundary holds.
   ([adr-3](../../decisions/adrs/0003-directory-as-truth-for-lifecycle.md)) plus a
   dependency graph over specs and tasks, enough to plan, sequence and track work
   with no external tool. Directory-as-truth ships: a spec's status is its folder,
-  and `abcd spec close` moves it and ships its linked intent. The dependency graph
+  and `abcd spec close` moves it and ships its linked intent once no open spec is
+  left naming that intent. The dependency graph
   and the sequencing over it are a **design target**; readiness today is
   per-intent, through `abcd intent ready`.
 - **A companion-harness backend** *(design target)*: read and written at the

@@ -12,6 +12,12 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 )
 
+// mainStage is the StageMeta for a main-thread transcript: a session id and
+// nothing else. Sub-agent stages fill the lineage in.
+func mainStage(sessionID string) StageMeta {
+	return StageMeta{Lineage: CaptureMeta{SessionID: sessionID, Kind: "native"}}
+}
+
 // stagedNames lists the staging dir's staged transcripts (the .raw entries; the
 // staging lock file is not a transcript) for assertions.
 func stagedNames(t *testing.T, home string) []string {
@@ -42,7 +48,7 @@ func TestStageWritesRawWithoutRedacting(t *testing.T) {
 	secret := "ghp_" + strings.Repeat("a", 36)
 	raw := []byte("assistant: token is " + secret + "\n")
 
-	res, err := Stage(repoRoot, testRootSHA, "sess-stage", raw)
+	res, err := Stage(repoRoot, testRootSHA, mainStage("sess-stage"), raw)
 	if err != nil {
 		t.Fatalf("Stage failed: %v", err)
 	}
@@ -66,7 +72,7 @@ func TestStageWritesRawWithoutRedacting(t *testing.T) {
 // secret the store exists to keep out.
 func TestStagingDirIsOwnerOnly(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	if _, err := Stage(repoRoot, testRootSHA, "sess-perm", []byte("hello\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-perm"), []byte("hello\n")); err != nil {
 		t.Fatalf("Stage failed: %v", err)
 	}
 	sdir := filepath.Join(home, ".abcd", "transcripts", testRootSHA, "staging")
@@ -96,10 +102,10 @@ func TestStagingDirIsOwnerOnly(t *testing.T) {
 // the different-bytes case is TestStageReplacesStaleCopyOnDifferentContent.
 func TestStageIsIdempotentPerSession(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	if _, err := Stage(repoRoot, testRootSHA, "sess-dup", []byte("one\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-dup"), []byte("one\n")); err != nil {
 		t.Fatal(err)
 	}
-	second, err := Stage(repoRoot, testRootSHA, "sess-dup", []byte("one\n"))
+	second, err := Stage(repoRoot, testRootSHA, mainStage("sess-dup"), []byte("one\n"))
 	if err != nil {
 		t.Fatalf("second Stage failed: %v", err)
 	}
@@ -119,10 +125,10 @@ func TestStageIsIdempotentPerSession(t *testing.T) {
 // copy of the newer transcript.
 func TestStageReplacesStaleCopyOnDifferentContent(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	if _, err := Stage(repoRoot, testRootSHA, "sess-restage", []byte("one\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-restage"), []byte("one\n")); err != nil {
 		t.Fatal(err)
 	}
-	second, err := Stage(repoRoot, testRootSHA, "sess-restage", []byte("one\ntwo\n"))
+	second, err := Stage(repoRoot, testRootSHA, mainStage("sess-restage"), []byte("one\ntwo\n"))
 	if err != nil {
 		t.Fatalf("second Stage failed: %v", err)
 	}
@@ -145,7 +151,7 @@ func TestStageReplacesStaleCopyOnDifferentContent(t *testing.T) {
 		t.Errorf("staged file holds %q, want the newer bytes %q", body, "one\ntwo\n")
 	}
 
-	if _, err := Drain(repoRoot, testRootSHA, 0); err != nil {
+	if _, err := Drain(repoRoot, testRootSHA, DrainBudget{}); err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
 	_, stored, err := Read(repoRoot, testRootSHA, "sess-restage")
@@ -182,7 +188,7 @@ func TestStageConcurrentSameSessionYieldsOneCopy(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				<-start
-				if _, err := Stage(repoRoot, testRootSHA, id, []byte("copy "+strconv.Itoa(i)+"\n")); err != nil {
+				if _, err := Stage(repoRoot, testRootSHA, mainStage(id), []byte("copy "+strconv.Itoa(i)+"\n")); err != nil {
 					errs <- err
 				}
 			}(i)
@@ -208,7 +214,7 @@ func TestStageConcurrentSameSessionYieldsOneCopy(t *testing.T) {
 		}
 	}
 
-	res, err := Drain(repoRoot, testRootSHA, 0)
+	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
@@ -235,11 +241,11 @@ func TestStageConcurrentSameSessionYieldsOneCopy(t *testing.T) {
 func TestDrainCapturesRedactedAndRemovesStaged(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	secret := "ghp_" + strings.Repeat("b", 36)
-	if _, err := Stage(repoRoot, testRootSHA, "sess-drain", []byte("assistant: "+secret+"\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-drain"), []byte("assistant: "+secret+"\n")); err != nil {
 		t.Fatal(err)
 	}
 
-	res, err := Drain(repoRoot, testRootSHA, 0)
+	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("Drain failed: %v", err)
 	}
@@ -274,13 +280,13 @@ func TestDrainCapturesRedactedAndRemovesStaged(t *testing.T) {
 func TestDrainBudgetLeavesRemainderLoudly(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	for _, id := range []string{"sess-a", "sess-b", "sess-c"} {
-		if _, err := Stage(repoRoot, testRootSHA, id, []byte("body "+id+"\n")); err != nil {
+		if _, err := Stage(repoRoot, testRootSHA, mainStage(id), []byte("body "+id+"\n")); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(2 * time.Millisecond) // distinct stamps so ordering is stable
 	}
 
-	res, err := Drain(repoRoot, testRootSHA, 2)
+	res, err := Drain(repoRoot, testRootSHA, DrainBudget{MaxEntries: 2})
 	if err != nil {
 		t.Fatalf("Drain failed: %v", err)
 	}
@@ -300,7 +306,7 @@ func TestDrainBudgetLeavesRemainderLoudly(t *testing.T) {
 // holds; deleting it would turn a reported failure into permanent silent loss.
 func TestDrainKeepsStagedOnCaptureFailure(t *testing.T) {
 	repoRoot, home := setupStore(t)
-	if _, err := Stage(repoRoot, testRootSHA, "sess-fail", []byte("hello\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-fail"), []byte("hello\n")); err != nil {
 		t.Fatal(err)
 	}
 	// Break the store's records dir so Capture cannot write into it. Removing
@@ -313,7 +319,7 @@ func TestDrainKeepsStagedOnCaptureFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(tdir, 0o700) })
 
-	res, err := Drain(repoRoot, testRootSHA, 0)
+	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("Drain returned a hard error rather than a per-item failure: %v", err)
 	}
@@ -333,7 +339,7 @@ func TestListStagedIsTheEndedSignal(t *testing.T) {
 	if got, err := ListStaged(repoRoot, testRootSHA); err != nil || len(got) != 0 {
 		t.Fatalf("empty staging should list nothing: %v %v", got, err)
 	}
-	if _, err := Stage(repoRoot, testRootSHA, "sess-ended", []byte("body\n")); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-ended"), []byte("body\n")); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ListStaged(repoRoot, testRootSHA)
@@ -343,7 +349,7 @@ func TestListStagedIsTheEndedSignal(t *testing.T) {
 	if len(got) != 1 || got[0].SessionID != "sess-ended" {
 		t.Fatalf("ListStaged = %+v, want one entry for sess-ended", got)
 	}
-	if _, err := Drain(repoRoot, testRootSHA, 0); err != nil {
+	if _, err := Drain(repoRoot, testRootSHA, DrainBudget{}); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := ListStaged(repoRoot, testRootSHA); err != nil || len(got) != 0 {
@@ -378,7 +384,7 @@ func TestDrainLeavesAReStagedCopyForTheNextPass(t *testing.T) {
 	repoRoot, home := setupStore(t)
 	const older = "user: older snapshot\n"
 	const newer = "user: older snapshot\nuser: newer snapshot\n"
-	if _, err := Stage(repoRoot, testRootSHA, "sess-middrain", []byte(older)); err != nil {
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-middrain"), []byte(older)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -389,14 +395,14 @@ func TestDrainLeavesAReStagedCopyForTheNextPass(t *testing.T) {
 	scanGitleaks = func(_, _, _ string) ([]scanner.Finding, error) {
 		if !restaged {
 			restaged = true
-			if _, err := Stage(repoRoot, testRootSHA, "sess-middrain", []byte(newer)); err != nil {
+			if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-middrain"), []byte(newer)); err != nil {
 				restageErr = err
 			}
 		}
 		return nil, nil
 	}
 
-	res, err := Drain(repoRoot, testRootSHA, 0)
+	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
@@ -427,7 +433,7 @@ func TestDrainLeavesAReStagedCopyForTheNextPass(t *testing.T) {
 	}
 
 	// The next pass stores what the first one left behind.
-	second, err := Drain(repoRoot, testRootSHA, 0)
+	second, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {
 		t.Fatalf("second Drain: %v", err)
 	}

@@ -51,10 +51,12 @@ type SpecLink struct {
 // It exists because two consumers ask opposite questions of the same two trees.
 // spec_lifecycle walks the specs and asks whether each names an intent that
 // agrees with it; the release cut walks the intents and asks whether any still
-// sitting in planned/ has a spec that has already CLOSED — a merged feature whose
-// record never moved, which is invisible to the shipped/-tree diff and would
-// silently under-bump the release. Two walks would be two answers about one tree,
-// so there is one scan and two readings of it.
+// sitting in planned/ has no OPEN spec left — a merged feature whose record never
+// moved, which is invisible to the shipped/-tree diff and would silently
+// under-bump the release. Two walks would be two answers about one tree, so
+// there is one scan and two readings of it — and since an intent owns one or
+// more specs (adr-2609151513118583), both readings derive that set through
+// SpecsForIntent rather than each resolving a scalar of its own.
 type SpecLinkIndex struct {
 	Intents []IntentLink
 	Specs   []SpecLink
@@ -74,6 +76,33 @@ func (x SpecLinkIndex) KnownIntents() map[string]bool {
 	out := make(map[string]bool, len(x.Intents))
 	for _, i := range x.Intents {
 		out[i.ID] = true
+	}
+	return out
+}
+
+// SpecsForIntent returns every spec whose back-link names the given intent.
+//
+// An intent owns one or more specs (adr-2609151513118583, invariant 17), and the
+// spec's own `intent:` field is the source of truth for that link: nothing on
+// the intent side carries a set. Every consumer of this index that must reason
+// about the whole set — the bidirectional check, and the release cut's
+// stale-intent question — derives it here, so there is one answer to "which
+// specs realise this intent".
+//
+// Matching is canonical on both sides, so a zero-padded spelling on either side
+// resolves. It goes through recordid.SameID — the SAME primitive the spec store
+// compares with — rather than a private canonicaliser, because this index and
+// that store answer one question ("which specs realise this intent") for two
+// callers, and two implementations of one question are two answers waiting to
+// diverge. SameID also fails closed where the private form did not: a value that
+// is not a record id at all (`intent: null`) matches nothing, so two unresolvable
+// back-links no longer group into one pseudo-intent.
+func (x SpecLinkIndex) SpecsForIntent(intentID string) []SpecLink {
+	var out []SpecLink
+	for _, s := range x.Specs {
+		if recordid.SameID(s.IntentID, intentID) {
+			out = append(out, s)
+		}
 	}
 	return out
 }

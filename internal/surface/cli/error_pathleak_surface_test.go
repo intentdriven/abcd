@@ -52,8 +52,8 @@ func TestJSONErrorEnvelopeNoAbsolutePathLeak(t *testing.T) {
 			var env struct {
 				Error string `json:"error"`
 			}
-			if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-				t.Fatalf("--json error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+				t.Fatalf("--json error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 			}
 			if strings.Contains(env.Error, repo) {
 				t.Fatalf("envelope leaked the absolute path %q:\n%s", repo, env.Error)
@@ -281,8 +281,8 @@ func TestMemoryIngestErrorNoAbsolutePathLeakOutsideRoots(t *testing.T) {
 	var env struct {
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("--json error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("--json error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 	if strings.Contains(env.Error, outside) {
 		t.Fatalf("ingest envelope leaked the absolute source path %q:\n%s", outside, env.Error)
@@ -316,8 +316,8 @@ func TestCaptureSymlinkErrorNoPathLeak(t *testing.T) {
 	var env struct {
 		Error string `json:"error"`
 	}
-	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("--json error not JSON-shaped: %v\nstderr: %q", err, stderr.String())
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("--json error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 	if strings.Contains(env.Error, repo) {
 		t.Fatalf("capture envelope leaked the absolute repo path %q:\n%s", repo, env.Error)
