@@ -109,6 +109,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
 - `itd-2609061543533170` — one verb sets up a managed repository's release-rendered site end to end: the site composition, the wrangler configuration, the render-then-deploy workflow, the environments it needs, and the worker itself where a credential is held
+- `itd-2609151838312703` — sessions on one machine or one local network leave each other messages in a shared mailbox abcd owns (the built-in basic; nothing leaves the local network)
+- `itd-2609151838327688` — an opt-in adapter to a local message broker brings push delivery and cross-machine reach to the session mailbox (sequenced after the mailbox)
 - `itd-2609151541116052` — every question an interview puts to a human shows the thing being decided before it asks, at every step (refines itd-201)
 - `itd-2609151658486398` — a release cut publishes the security advisories its fixes close, and closes those resolved as won't-fix (the publication step the 2026-08-27 advisory-handling pilot named as its target)
 - `itd-2609091014076309` — Session and agent worktrees live in a machine-scoped store (`~/.abcd/worktrees/<root-sha>/<name>/`) that abcd lists and reclaims, never beside the user's own projects (the rule is adr-2609091248200336; `builds_on` itd-118, whose worktree clause it supplies the store and the reclaim verb for)
