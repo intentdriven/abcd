@@ -78,6 +78,112 @@ func ReadGuarded(path string, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// DeclarationRefusal names which of ReadDeclaration's guards refused a
+// home-scoped declaration file. It exists so each caller can render the refusal
+// in its own voice — the rules loader says a root "re-admitted nothing", the
+// transcript store says "transcripts stay in ~/.abcd/transcripts" — while the
+// judgement itself is made in exactly one place.
+//
+// DeclarationAbsent is separated from DeclarationUnreadable deliberately: no
+// declaration is the ordinary case and not a diagnostic, whereas a declaration
+// that is there and cannot be read is something the operator needs told.
+type DeclarationRefusal int
+
+const (
+	// DeclarationOK: the file passed every guard and its bytes were returned.
+	DeclarationOK DeclarationRefusal = iota
+	// DeclarationAbsent: there is no declaration (the ordinary case).
+	DeclarationAbsent
+	// DeclarationNotRegular: a symlink, directory, FIFO or device.
+	DeclarationNotRegular
+	// DeclarationWritableByOthers: mode carries group or other write.
+	DeclarationWritableByOthers
+	// DeclarationForeignOwner: owned by another uid, or the owner could not be read.
+	DeclarationForeignOwner
+	// DeclarationUnreadable: it passed the guards but the read itself failed.
+	DeclarationUnreadable
+)
+
+// ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
+// are ReadDeclaration's own, rather than ReadGuarded's. They are returned as
+// errors as well as refusals so that a caller which checks only `err` — the
+// shape a drop-in replacement of ReadGuarded takes — still fails closed.
+var (
+	ErrDeclarationWritable     = errors.New("fsutil: declaration is writable by group or other")
+	ErrDeclarationForeignOwner = errors.New("fsutil: declaration is not owned by this session's uid")
+)
+
+// ownerUID is the package's own view of OwnerUID, held as a var for the same
+// reason caseFoldingFS is: the foreign-owner branch cannot be provoked on a host
+// where the test process can create only its own files, so substituting the
+// lookup is the only way a detector can prove the refusal — and, with it left
+// alone, that a declaration the caller really owns is admitted unchanged.
+var ownerUID = OwnerUID
+
+// SwapOwnerUIDForTest substitutes the owner lookup ReadDeclaration uses and
+// returns the restore. It is exported because the callers whose refusals need
+// proving live in other packages (rules, history, ahoy) and a second uid is not
+// something a test process can create. Tests only; never called in production
+// code, and never safe to call from a parallel test.
+func SwapOwnerUIDForTest(fn func(string) (uint32, error)) (restore func()) {
+	prev := ownerUID
+	ownerUID = fn
+	return func() { ownerUID = prev }
+}
+
+// ReadDeclaration is the guarded read for a HOME-SCOPED DECLARATION FILE — a
+// record in the caller's own home that re-admits something abcd would otherwise
+// refuse (~/.abcd/trusted-roots re-admits a marker root, ~/.abcd/path-entry
+// names the binary the hook shims execute, ~/.abcd/local-transcript-roots pulls
+// a repo's transcripts into its own tree).
+//
+// It is ReadGuarded plus the two facts that make the file the CALLER'S WORD:
+//
+//   - not writable by group or other (Perm()&0o022 == 0), so nobody else could
+//     have written what it says;
+//   - owned by this session's uid, so it is not another account's declaration
+//     being honoured as though it were this one's.
+//
+// A declaration this process does not own, or one anyone can write, is not the
+// caller's word and re-admits nothing. That is the whole reason this is one
+// primitive rather than a guard each caller writes: the three records differ in
+// what they declare, not in what makes a declaration trustworthy, and the one
+// that skipped the two checks was the one whose consequence is code execution
+// (iss-2609091927085132).
+//
+// The permission and owner checks run on an Lstat BEFORE the open, so a symlink
+// is judged as itself rather than through its target; ReadGuarded then re-opens
+// with O_NOFOLLOW and re-validates on its own descriptor, so the lstat→open
+// window cannot promote a swapped-in symlink into a read.
+//
+// The returned error is ALWAYS non-nil when the refusal is not DeclarationOK, so
+// a caller that inspects only the error still fails closed. Callers that need to
+// say WHICH guard refused — and to keep "absent" silent while reporting
+// "unreadable" — switch on the refusal instead.
+func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, DeclarationAbsent, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, DeclarationNotRegular, ErrNotRegular
+	}
+	if fi.Mode().Perm()&0o022 != 0 {
+		return nil, DeclarationWritableByOthers, ErrDeclarationWritable
+	}
+	// An unreadable owner is refused too: "I could not learn who owns this" and
+	// "I own this" are different answers, and a fail-closed gate must not spell
+	// them the same way.
+	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
+		return nil, DeclarationForeignOwner, ErrDeclarationForeignOwner
+	}
+	raw, err := ReadGuarded(path, limit)
+	if err != nil {
+		return nil, DeclarationUnreadable, err
+	}
+	return raw, DeclarationOK, nil
+}
+
 // ReadGuardedInRoot is ReadGuarded resolved inside an os.Root containment
 // scope. rel is a slash-separated path relative to root; every component is
 // resolved by the OS within root, so a symlinked ANCESTOR directory — the shape

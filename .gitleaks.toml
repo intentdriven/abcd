@@ -1,13 +1,13 @@
 # gitleaks configuration for abcd-cli.
 #
 # Keeps the full default rule set (every real secret is still caught) and adds
-# one narrow allowlist: the native secret/PII scanner's own unit-test files
-# necessarily embed realistic *fake* secrets — a GitHub-PAT-shaped token, an
-# AWS-key-shaped token, a session-key-shaped value — to prove the scanner
-# detects them. These fixtures are the test's whole point; they are not live
-# credentials. The allowlist is scoped to exactly those two files by path, so a
-# real secret committed anywhere else (including other test files) still fails
-# the scan.
+# one narrow allowlist: the native secret/PII scanner's own unit-test files (the
+# seal's byte-length and identity-span tests included) necessarily embed
+# realistic *fake* secrets — a GitHub-PAT-shaped token, an AWS-key-shaped token,
+# a session-key-shaped value — to prove the scanner detects them. These fixtures
+# are the test's whole point; they are not live credentials. The allowlist is
+# scoped to exactly those three files by path, so a real secret committed
+# anywhere else (including other test files) still fails the scan.
 
 title = "abcd-cli gitleaks config"
 
@@ -18,5 +18,6 @@ useDefault = true
 description = "abcd secret-scanner test fixtures (intentional fake secrets, not live credentials)"
 paths = [
   '''internal/adapter/scanner/scanner_test\.go''',
+  '''internal/adapter/scanner/identity_span_test\.go''',
   '''internal/core/launch/dryrun_test\.go''',
 ]

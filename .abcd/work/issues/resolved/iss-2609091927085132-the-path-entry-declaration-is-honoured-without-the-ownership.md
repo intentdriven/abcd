@@ -11,6 +11,8 @@ production_mode: hand-written
 found_at: "internal/core/ahoy/owned_copy.go"
 deferred_after: "v0.7.1"
 deferral_reason: "The scope of what `~/.abcd/path-entry` is trusted to assert is a decision already recorded in DECISIONS.md and disclosed to users in the v0.8.0 notes: it is ownership against a hijacked PATH, not verification against a compromised account. Extending it to refuse a file another uid can write is a widening of that decision, not a defect against it, and widening it belongs to the maintainer rather than to the release that is mid-tag. Nothing user-facing claims the stronger property: the brief did, and that false claim is corrected in this same release. Deferred for one cycle so the decision is taken deliberately; the waiver lapses at v0.8.0 and the finding returns to the gate."
+resolution: "A declaration naming which binary the hooks may execute is now honoured only when this session owns it and nobody else can write it. Four live read sites accepted a group-writable or foreign-owned record, and every one of the five hooks executed an attacker-named binary in the proving test; the presence test also followed a symlinked record. One canonical primitive beside the existing guarded read now checks link, regular file, mode and owner before reading, with a refusal enum so each caller keeps its own wording, and the two existing copies were migrated onto it rather than a third being added. The shell shims test the same properties with one file test rather than parsing a listing, which avoids field-position, locale and access-control-suffix assumptions and catches the symlink shape, and fails closed when its tools are missing. The accepted residual that a home-scoped record is writable by the same account stands untouched and is stated in the code, as does the parent directory's own mode, whose closure is a widening across all three declaration files rather than a defect in this one."
+impact: fix
 ---
 
 `~/.abcd/path-entry` decides which binary the hook shims execute. It is read
@@ -72,3 +74,7 @@ other write.
   loads it, **then** it reports not-ok exactly as a truncated record does.
 - **Given** a correctly owned, correctly permissioned record, **when** either
   reader loads it, **then** behaviour is unchanged from v0.8.0.
+
+## Grounds
+
+- pursued: we expect ownership and write-exclusivity on the declaration to be the property that matters, because the declaration's whole job is to vouch for a binary and a record anyone can rewrite vouches for nothing; it is shown wrong if the directory holding it is writable by another account, which this does not close

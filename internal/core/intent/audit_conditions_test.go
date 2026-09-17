@@ -38,7 +38,7 @@ func shipWithConditions(t *testing.T, root string, bullets ...string) string {
 		"\n\n## Acceptance Criteria\n\n- ok\n\n## Audit Notes\n"
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", body)
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
-	res, err := Reconcile(root, "spc-1", "")
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}

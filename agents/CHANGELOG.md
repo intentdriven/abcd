@@ -12,6 +12,26 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-16 (iss-2609100505140261 — the provenance pair is echoed, never computed)
+
+The fidelity-review request now carries a `## Provenance (host-computed …)`
+block stating the `rubric_hash` and `prompt_hash` the host derived, and the
+ingest recomputes both — the rubric hash over the rubric the request quotes, the
+prompt hash over the request body above that block — refusing any other value.
+Before this, thirty-six ingested verdicts carried thirteen distinct rubric values
+and two digests under both field names, so neither field meant anything across
+the corpus. The definition now says where the pair comes from and what happens to
+a value the auditor chose itself.
+
+### intent-auditor 0.3.1
+
+PATCH: the `policy` input note and ingest rule 6 name the Provenance block as the
+sole source of both hashes, forbid computing or substituting either, and tell the
+auditor to report a request that carries no such block rather than invent a
+value. The verdict's shape, the rubric, the acceptance and scope-condition
+judgements and every other ingest rule are untouched, so a verdict that was valid
+before stays valid. Unmeasured, as before.
+
 ## 2026-09-02 (iss-2609021833302981 — "at the target", as the derivation reads it)
 
 The comparative derivation admits a widening run whose recorded target is an

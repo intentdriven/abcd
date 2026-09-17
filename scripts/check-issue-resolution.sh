@@ -34,6 +34,29 @@
 #          is shape-checked only (^[0-9a-f]{7,64}$), so a stamp naming a commit
 #          that never existed reads exactly like a good one.
 #
+#   RS004  A commit message, or a pull-request title/body, that NAMES an iss-N
+#          must declare its relation to it: `Resolves: iss-N` (this change fixes
+#          it — RS001 then requires the record to move in the same change) or
+#          `Refs: iss-N` (touched, not fixed — informational, demanding nothing
+#          of the ledger). A bare mention is refused before the merge.
+#          This is iss-2609100507421759's half that a gate can hold. Four fixed
+#          issues sat open in a managed repository's ledger because the only
+#          evidence of their fix was commit prose the ledger never reads; a
+#          mention that must declare itself turns that prose into a signal both
+#          this gate and `abcd capture mentions` can read. `Refs:` is
+#          deliberately NOT a resolution: it is the escape that keeps the rule
+#          honest, so a commit that merely touches an issue's ground is not
+#          pushed into claiming a fix it did not make.
+#
+#          SCOPE. RS004 judges COMMIT MESSAGES and PULL-REQUEST TITLES/BODIES,
+#          and nothing else. An id written in the BODY OF A RECORD is a
+#          different surface with its own rule — `prose_citation_resolves`, in
+#          internal/core/lint — because a record citing another record is making
+#          a reference, not claiming to have changed anything. The gate is also
+#          only the forward-looking half: it runs before a merge and cannot
+#          reach the history a repository already has, which is what the
+#          read-only `abcd capture mentions` listing reads.
+#
 #   RS003  Every resolved_by.commit already in the ledger must still be
 #          reachable. This is the drift detector, and it is not hypothetical:
 #          the repository allows merge, squash AND rebase, the method is a
@@ -42,11 +65,22 @@
 #          this landed; RS003 is what notices the day one is not.
 #
 # Usage:
-#   check-issue-resolution.sh commits <base-ref> <head-ref>   # RS001 + RS002
+#   check-issue-resolution.sh commits <base-ref> <head-ref>   # RS001 + RS002 + RS004
 #   check-issue-resolution.sh ledger [<ref>]                  # RS003 (default HEAD)
+#   check-issue-resolution.sh pr <title-file> <body-file>     # RS004 on the PR form
 #
 # Exit 0 clean, 1 a violation, 2 a usage/environment fault.
 set -euo pipefail
+
+# Every scan below is over BYTES, not characters, so the whole script runs in the
+# C locale. Under a UTF-8 locale a line carrying an invalid byte — a Latin-1
+# accent from an editor that never converted, in a commit message or a pull-request
+# body — is dropped ENTIRELY by grep (verified on BSD grep) and rejected outright
+# by tr, so the mention on that line passes unseen and the gate reports a clean
+# pass on the artefact it could not read. Nothing here is language-aware: the ids
+# are ASCII and the declaration keywords are ASCII, so there is nothing a locale
+# could usefully decide. Set once, at the top, so a scan added later inherits it.
+export LC_ALL=C
 
 # Resolve every path from the repository root, like the sibling gate
 # check-reviews.sh. ISSUES_DIR and the git pathspecs below are relative, and a
@@ -95,7 +129,42 @@ STATUS_PATHSPECS=()
 for status_dir in "${STATUS_DIRS[@]}"; do
 	STATUS_PATHSPECS+=("$ISSUES_DIR/$status_dir")
 done
-TRAILER_RE='^Resolves:[[:space:]]+(iss-[0-9]+)[[:space:]]*$'
+# The `Resolves:` trailer RS001 judges. Its id half is a comma-separated LIST, in
+# step with DECLARE_RE below: one line may resolve several records, and every id
+# on it is a declared resolution RS001 holds to the same move requirement. The ids
+# are taken back out of the line with a second scan rather than from a capture
+# group, because ERE has no repeated-group capture.
+TRAILER_RE='^Resolves:[[:space:]]+iss-[0-9]+([[:space:]]*,[[:space:]]*iss-[0-9]+)*[[:space:]]*$'
+
+# RS004's two spellings, and the mention scanner they are checked against.
+#
+# DECLARE_RE is the whole declaration vocabulary: `Resolves:` and `Refs:`,
+# nothing but the declaration on the line. The ids are a COMMA-SEPARATED LIST,
+# because `Refs: iss-1, iss-2` is the conventional trailer shape and refusing it
+# made an author write the trailer twice or — the failure the rule exists to
+# close — drop the second id. The VOCABULARY stays closed at two spellings; only
+# the id list widens. `Ref:`, `References:`, `See:` and `Related:` are near-misses, and
+# admitting them would reopen the omission the rule closes — the same argument
+# that makes `Assisted-by: None` the only accepted non-vendor value in
+# check-attribution.sh. A near-miss therefore reads as what it is: an
+# undeclared mention, refused with the spelling named in the remedy.
+#
+# It shares TRAILER_RE's id shape rather than restating it, so the two rules
+# cannot drift apart on what an id looks like: the `Resolves:` half of
+# DECLARE_RE must match everything TRAILER_RE matches, or a commit RS001 judges
+# would be a bare mention to RS004.
+DECLARE_RE='^(Resolves|Refs):[[:space:]]+iss-[0-9]+([[:space:]]*,[[:space:]]*iss-[0-9]+)*[[:space:]]*$'
+
+# MENTION_RE finds an id ANYWHERE in an artefact — subject line, prose body,
+# trailer — because a mention is a mention wherever a reader meets it.
+#
+# The leading guard is a hand-rolled word boundary. POSIX ERE has none, `\b` is a
+# GNU extension BSD grep does not share, and this gate runs on macOS as well as
+# on CI: without the guard, `xiss-999` inside a longer token reads as a mention
+# and the gate refuses a commit that names no record at all. The guard character
+# is captured and stripped by the second grep rather than matched with a
+# look-behind, which ERE also lacks.
+MENTION_RE='(^|[^A-Za-z0-9])iss-[0-9]+'
 
 violations=0
 
@@ -105,7 +174,7 @@ fail() {
 }
 
 usage() {
-	echo "usage: check-issue-resolution.sh commits <base-ref> <head-ref> | ledger [<ref>]" >&2
+	echo "usage: check-issue-resolution.sh commits <base-ref> <head-ref> | ledger [<ref>] | pr <title-file> <body-file>" >&2
 	exit 2
 }
 
@@ -171,6 +240,69 @@ reachable() {
 	return 0
 }
 
+# declared_ids prints every iss-N an artefact DECLARES a relation to, one per
+# line. The grep pair is the guard described at MENTION_RE: select the whole
+# declaration lines first, then take the id out of them, so a `Resolves:` line
+# mentioning a second id in a comment cannot declare it by accident.
+declared_ids() {
+	printf '%s\n' "$1" | grep -E "$DECLARE_RE" | grep -oE 'iss-[0-9]+' | sort -u || true
+}
+
+# mentioned_ids prints every iss-N an artefact NAMES, one per line, declarations
+# included — the declaration lines are mentions too, and are cancelled by being
+# matched in declared_ids rather than by being excluded here. Keeping the two
+# scans independent is what makes `Refs: iss-1` + prose about iss-2 report iss-2
+# alone.
+mentioned_ids() {
+	printf '%s\n' "$1" | grep -oE "$MENTION_RE" | grep -oE 'iss-[0-9]+' | sort -u || true
+}
+
+# check_mentions applies RS004 to one artefact: every id it NAMES must appear in
+# a declaration. `declared` is passed in rather than derived, because a
+# pull-request TITLE has no room for a trailer — its declaration lives in the
+# body, and the two halves are judged against one declaration set.
+check_mentions() {
+	local label="$1" text="$2" declared="$3" id
+	for id in $(mentioned_ids "$text"); do
+		printf '%s\n' "$declared" | grep -qx "$id" && continue
+		fail "RS004 $label names $id without declaring its relation to it. Add exactly one declaration line: 'Resolves: $id' if this change fixes it (RS001 then requires the record to enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in the same change), or 'Refs: $id' if it is touched but not fixed (informational; no ledger move required). Those two spellings are the whole vocabulary — 'Ref:', 'See:' and 'Related:' are not declarations."
+	done
+}
+
+check_pr() {
+	local title_file="$1" body_file="$2" title body declared
+	local f
+	for f in "$title_file" "$body_file"; do
+		[ -f "$f" ] || {
+			echo "check-issue-resolution: no such file: $f" >&2
+			exit 2
+		}
+	done
+	# A body typed or edited in the forge's web UI arrives CRLF-terminated, and
+	# DECLARE_RE anchors at end of line: without this, `Refs: iss-N\r` is not a
+	# declaration and the gate false-reds a pull request that declared correctly.
+	# check-attribution.sh's check_text normalises for the same reason.
+	title="$(tr -d '\r' <"$title_file")"
+	body="$(tr -d '\r' <"$body_file")"
+	# The declaration set is read from BOTH halves, though only a body can
+	# realistically carry a trailer line: a title that is nothing but
+	# `Refs: iss-N` is a degenerate but honest declaration, and refusing it would
+	# be a rule about formatting rather than about disclosure.
+	declared="$(declared_ids "$title
+$body")"
+	# Judged separately so the refusal says WHERE the undeclared id is — the title
+	# and the body are edited in different boxes.
+	check_mentions "the pull-request title" "$title" "$declared"
+	check_mentions "the pull-request body" "$body" "$declared"
+	# Deliberately NOT fence-stripped, unlike check-attribution.sh's body arm.
+	# That concession exists so a repository can DOCUMENT a banned footer shape;
+	# there is no counterpart here, because a record id inside a fence is not an
+	# illustration of a mention — it IS one, and the remedy costs a single
+	# `Refs:` line that is true anyway. Striping would also delete declarations,
+	# since a fenced commit message carries its own trailers.
+	echo "check-issue-resolution: RS004 checked the pull-request title and body"
+}
+
 check_commits() {
 	local base="$1" head="$2"
 	local range
@@ -206,49 +338,67 @@ check_commits() {
 	local declared=""
 	local behind
 	behind="$(git rev-list --count "$head".."$base")"
+	local scanned=0
 	while IFS= read -r sha; do
 		[ -n "$sha" ] || continue
+		# RS004 — every id this message names must declare its relation. It reads
+		# the same $range as RS001, so MERGE COMMITS ARE EXEMPT: `Merge pull
+		# request #N from …` is composed by the forge, and a merge's body can carry
+		# a branch's text that was already judged, commit by commit, on the branch.
+		# A SQUASH merge is not a merge commit — its message is the branch's
+		# messages concatenated, so it arrives here carrying the branch's own
+		# declarations and passes for the same reason the branch did.
+		local msg
+		msg="$(git show -s --format='%B' "$sha")"
+		check_mentions "commit ${sha:0:12}" "$msg" "$(declared_ids "$msg")"
+		scanned=$((scanned + 1))
 		while IFS= read -r line; do
 			[[ "$line" =~ $TRAILER_RE ]] || continue
-			local id="${BASH_REMATCH[1]}"
-			declared="$declared $id"
-			printf '%s\n' "$closed" | grep -qx "$id" && continue
-			local head_path base_path base_status
-			head_path="$(record_path "$head" "$id")"
-			base_path="$(record_path "$base" "$id")"
-			base_status=""
-			[ -n "$base_path" ] && base_status="$(status_of "$base_path")"
-			# Absence from the head tree is the most specific fact and is
-			# checked first: whatever the base holds, "resolve it in this
-			# change" cannot be done for a record the tree lacks.
-			if [ -z "$head_path" ] && [ -n "$base_path" ]; then
-				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id has no record at $head, while $base holds it in $ISSUES_DIR/$base_status/ — this branch predates the record. Rebase onto $base, then resolve it in this change (abcd capture resolve $id ...) if it is still open there, or drop the trailer if it is already terminal."
-				continue
-			elif [ -z "$head_path" ]; then
-				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id has no record at $head or at $base. Check the id, or capture the issue and resolve it in this change (abcd capture resolve $id ...)."
-				continue
-			fi
-			case "$base_status" in
-			resolved | wontfix)
-				# Terminal at the base. Whether a rebase is the remedy turns on
-				# WHEN it got there: a base-side commit the head lacks placed it
-				# after the branch diverged (the stale-branch shape), or it was
-				# terminal already at the merge base, in which case the trailer
-				# names an issue resolved before this commit and nothing but
-				# dropping it helps. The behind-count alone cannot tell them apart;
-				# the record's base-side history can.
-				local placer
-				placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
-				if [ -n "$placer" ]; then
-					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
-				else
-					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sat in $ISSUES_DIR/$base_status/ before this branch diverged from $base: the trailer names an issue that was resolved before this commit. Drop the trailer."
+			# Every id on the line, not just the first: a `Resolves:` list declares
+			# a resolution for each of them, and an id RS001 did not read would be
+			# a declared resolution with no move requirement behind it — the exact
+			# drift this rule exists to stop, reopened by a comma.
+			local id
+			for id in $(printf '%s\n' "$line" | grep -oE 'iss-[0-9]+'); do
+				declared="$declared $id"
+				printf '%s\n' "$closed" | grep -qx "$id" && continue
+				local head_path base_path base_status
+				head_path="$(record_path "$head" "$id")"
+				base_path="$(record_path "$base" "$id")"
+				base_status=""
+				[ -n "$base_path" ] && base_status="$(status_of "$base_path")"
+				# Absence from the head tree is the most specific fact and is
+				# checked first: whatever the base holds, "resolve it in this
+				# change" cannot be done for a record the tree lacks.
+				if [ -z "$head_path" ] && [ -n "$base_path" ]; then
+					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id has no record at $head, while $base holds it in $ISSUES_DIR/$base_status/ — this branch predates the record. Rebase onto $base, then resolve it in this change (abcd capture resolve $id ...) if it is still open there, or drop the trailer if it is already terminal."
+					continue
+				elif [ -z "$head_path" ]; then
+					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id has no record at $head or at $base. Check the id, or capture the issue and resolve it in this change (abcd capture resolve $id ...)."
+					continue
 				fi
-				;;
-			*)
-				fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id does not enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in $base..$head. Resolve it in this change (abcd capture resolve $id ...) or drop the trailer."
-				;;
-			esac
+				case "$base_status" in
+				resolved | wontfix)
+					# Terminal at the base. Whether a rebase is the remedy turns on
+					# WHEN it got there: a base-side commit the head lacks placed it
+					# after the branch diverged (the stale-branch shape), or it was
+					# terminal already at the merge base, in which case the trailer
+					# names an issue resolved before this commit and nothing but
+					# dropping it helps. The behind-count alone cannot tell them apart;
+					# the record's base-side history can.
+					local placer
+					placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+					if [ -n "$placer" ]; then
+						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+					else
+						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sat in $ISSUES_DIR/$base_status/ before this branch diverged from $base: the trailer names an issue that was resolved before this commit. Drop the trailer."
+					fi
+					;;
+				*)
+					fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id does not enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in $base..$head. Resolve it in this change (abcd capture resolve $id ...) or drop the trailer."
+					;;
+				esac
+			done
 		done <<<"$(git show -s --format='%B' "$sha")"
 	done <<<"$range"
 
@@ -286,6 +436,7 @@ check_commits() {
 	if [ -n "${declared// /}" ]; then
 		echo "check-issue-resolution: RS001 checked$declared"
 	fi
+	echo "check-issue-resolution: RS004 checked $scanned commit message(s) for undeclared record mentions"
 }
 
 check_ledger() {
@@ -362,6 +513,15 @@ commits)
 ledger)
 	[ $# -le 2 ] || usage
 	check_ledger "${2:-HEAD}"
+	;;
+pr)
+	# RS004 over the artefact no commit message reaches: the title and body a
+	# human types into the forge. Two FILES rather than two arguments, because
+	# both are attacker-controlled text and a workflow that spliced them into an
+	# argv would be the template-injection hole check-attribution.sh's body arm
+	# avoids the same way.
+	[ $# -eq 3 ] || usage
+	check_pr "$2" "$3"
 	;;
 *)
 	usage

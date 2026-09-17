@@ -50,6 +50,10 @@ func (l dataDirLookup) explainMissingCache() string {
 //     directory; the artefact it leads to is re-verified by every caller that
 //     copies it.
 //
+// Either source is a ROUTE to the cache and neither is trust: a promotion out
+// of the directory returned here happens only when the home-scoped
+// cache-attestation binds it (cacheBindingProblem), whichever source named it.
+//
 // The documented path shape is deliberately never derived from the plugin
 // root, and the harness's own configuration is never read: a wrong guess
 // would plant a trusted artefact in an untracked location. With no source
@@ -91,6 +95,22 @@ func metaField(path, key string) string {
 	return ""
 }
 
+// insideRepo reports whether p resolves inside the repository the verb is
+// running against. It is the one resolution the in-checkout shape guards share
+// — dataDirHazard for the cache's directory, homeScope for the home the
+// attestation and the path entry are read from — so the two can never disagree
+// about what "inside the checkout" means, and neither carries a second copy of
+// the absolutise-then-resolve sequence. Equality counts as inside; a caller for
+// which the repository BEING the path is ordinary rather than hazardous says so
+// itself.
+func insideRepo(cwd, p string) bool {
+	abs, err := filepath.Abs(cwd)
+	if err != nil {
+		return false
+	}
+	return under(resolvePath(abs), resolvePath(p))
+}
+
 // dataDirHazard reports why dataDir cannot be trusted as the harness's
 // persistent data directory, or "" when it has the shape that directory always
 // has: an absolute path, outside the repository being installed, not
@@ -104,9 +124,10 @@ func metaField(path, key string) string {
 // in-checkout value is committed bytes, a world-writable cache is any local
 // user's — bless their own bytes as the owned PATH binary (sub-finding of
 // GHSA-4q78-ccfv-f374). The harness never produces these shapes, so refusing
-// them costs a real install nothing; binding the cache to an attestation the
-// env cannot supply is the parent record's open decision and is not attempted
-// here.
+// them costs a real install nothing. This is the shape check only; the trust
+// binding — the cache is promoted only when ~/.abcd/cache-attestation names
+// the directory and its recorded hash — is cacheBindingProblem, and a
+// directory that passes here is still not promoted without it.
 func dataDirHazard(dataDir, cwd string) string {
 	if dataDir == "" {
 		return ""
@@ -114,7 +135,7 @@ func dataDirHazard(dataDir, cwd string) string {
 	if !filepath.IsAbs(dataDir) {
 		return "it is a relative path, which resolves against whatever directory the verb happens to run in"
 	}
-	if abs, err := filepath.Abs(cwd); err == nil && under(resolvePath(abs), resolvePath(dataDir)) {
+	if insideRepo(cwd, dataDir) {
 		return "it lies inside the repository being installed, so its cache would be committed bytes"
 	}
 	for _, dir := range []string{dataDir, filepath.Join(dataDir, "cache")} {

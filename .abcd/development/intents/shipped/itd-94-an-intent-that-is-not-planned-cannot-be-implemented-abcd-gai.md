@@ -90,8 +90,8 @@ Per-criterion verdicts:
 - ac-3 — MET: Live run on planned itd-88 (bidirectionally linked to spc-3, body written) reports all four named checks passing and exits 0.
   evidence: cmd: go run ./cmd/abcd intent ready itd-88 (exit 0) — "abcd intent ready — itd-88 READY (planned) / [ ok ] bucket / [ ok ] acceptance_criteria / [ ok ] spec_link: linked to spc-3 (bidirectional) / [ ok ] spec_body: … is written"
   evidence: internal/core/intent/ready.go:13-18 — "CheckBucket = \"bucket\" … CheckAcceptanceCriteria … CheckSpecLink … CheckSpecBody"
-- ac-4 — MET: Unknown id itd-9999 and malformed id not-an-id each produce a one-line stderr diagnostic and exit 2 (observed as `exit status 2` from go run), via the structural-fault mapping at cli.go:1174 — distinct from the exit-1 not-ready path.
-  evidence: cmd: go run ./cmd/abcd intent ready itd-9999 (exit 2) — "abcd: abcd intent ready: intent: itd-9999 not found in any bucket / exit status 2"
+- ac-4 — MET: Unknown id itd-9999 and malformed id not-an-id each produce a one-line stderr diagnostic and exit 2 (observed as `exit status 2` from go run), via the structural-fault mapping at cli.go:1174 — distinct from the exit-1 not-ready path. <!-- record-lint: illustrative -->
+  evidence: cmd: go run ./cmd/abcd intent ready itd-9999 (exit 2) — "abcd: abcd intent ready: intent: itd-9999 not found in any bucket / exit status 2" <!-- record-lint: illustrative -->
   evidence: cmd: go run ./cmd/abcd intent ready not-an-id (exit 2) — "abcd: abcd intent ready: intent: id \"not-an-id\" must match ^itd-[0-9]+$ / exit status 2"
   evidence: internal/surface/cli/cli.go:1173-1174 — "return &exitError{Code: 2, Msg: \"abcd intent ready: \" + err.Error()}"
 - ac-5 — MET: The committed plugin surface carries THE RULE: on exit 1 the host must refuse, present each failing check's detail and remedy, offer the planning interview, and is forbidden from improvising acceptance criteria or running `abcd intent plan` without the human's explicit in-session sign-off.
@@ -106,7 +106,7 @@ Gap audit:
 - honoured:
   - A single read-only verb with a strict exit-code contract (0 ready / 1 not ready / 2 fault) gates implementation
     evidence: internal/surface/cli/cli.go:1159-1162 — "Exit codes are the machine seam an autonomous run gates on: 0 ready, 1 not ready … 2 structural fault."
-    evidence: cmd: go run ./cmd/abcd intent ready itd-97|itd-88|itd-9999 — "observed exits 1 / 0 / 2"
+    evidence: cmd: go run ./cmd/abcd intent ready itd-97|itd-88|itd-9999 — "observed exits 1 / 0 / 2" <!-- record-lint: illustrative -->
   - Refusal tells the user plainly the intent is not specced and offers the planning interview; `abcd intent plan` is the human sign-off act
     evidence: commands/abcd/intent.md:52-54 — "\"`<itd-N>` is not specced, so it cannot be implemented yet\" … offer the planning interview"
     evidence: commands/abcd/intent.md:80 — "This invocation IS the maintainer's sign-off act"
