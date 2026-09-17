@@ -120,6 +120,9 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609150819440345` — a claim record beside the machine-scoped worktree store says which session holds which worktree, branch or record, replacing the per-session handshake (promoted from iss-2609100519122086)
 - `itd-2609151138388536` — the decisions log becomes a folder of individually minted decision records with an assembled index, `DECISIONS.md` a symlink to it, in abcd and in every managed repository; the shape retires the decisions-append gate (the rule is adr-2609151138420062; promoted from iss-2609100507439414)
 - `itd-2609151516525843` — a committed declaration lifts the public visibility fence so a fresh public repository can create its committed banned-names layer on day one, and a machine-global private banned-names list in the user-level home bans a name in every repository on the machine; CI never reads the home list and no pattern from it reaches a committed file (`builds_on` itd-74, `refines` adr-56; promoted from iss-2609100506269348)
+- `itd-2609081951381895` — abcd ships an OpenAI-compatible api oracle adapter, the first wired provider a local MLX server with a cloud aggregator as config-only (refines adr-25; filed 2026-09-08)
+- `itd-2609090746410233` — A lifeboat packs from a worktree, a branch, or an abandoned feature test, experiment or implementation, not only from a whole repository (refines itd-88 and adr-35; realises the press release's not-yet-real widening, git-source half)
+- `itd-2609090746414083` — A lifeboat packs from a lab session home, the throwaway experiment's intention, harvest and bundle, with the same coverage honesty as a repository (refines itd-88 and adr-35; the non-git half, sequenced after the lab verb family)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
