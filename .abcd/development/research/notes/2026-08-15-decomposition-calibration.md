@@ -1350,6 +1350,63 @@ Per hand-run, append:
   capability for any of them, which is consistent with the design documents
   having scheduled them for a later iteration.
 
+### 2026-09-08 — the OpenAI-compatible api oracle adapter (hand-run at filing, one proposal in two framings)
+
+- **Proposal:** one capability offered in two framings across consecutive
+  prompts — "an OpenRouter api adapter", then "an api adaptor for a local
+  server (Gropius)". Both name the same record: abcd reaching a model over a
+  direct HTTP API, adr-25's `api` oracle-backend shape, with the provider
+  (cloud aggregator vs localhost MLX server) as configuration.
+- **Initial routing:** the adapter as the intent (refining adr-25, sibling of
+  itd-6's mcp-shape adapter); backend resolution via `oracle.backend` config
+  as brief plumbing already designed; provider-credential handling as covered
+  by existing scanner/redaction invariants (itd-152, itd-28) unless key
+  storage becomes abcd's job; the host-delegated-default stance as already
+  settled by adr-25. The ahoy-time "probe OpenRouter and offer it" discovery
+  behaviour surfaced as a second part inside the proposal.
+- **Confirmed routing:** the human confirmed the generic
+  provider-agnostic intent (not a Gropius-only narrow one), and routed the
+  OpenRouter discovery-and-offer behaviour OUT to a captured issue
+  (iss-2609081951416843) rather than folding it into the intent's acceptance
+  criteria. No split: every piece kept its initial home. The intent filed as
+  itd-2609081951381895 with the first wired provider the local Gropius MLX
+  server and OpenRouter named as config-only.
+- **Verdict:** FILE-AS-IS, with one part (ahoy discovery-and-offer) captured
+  separately at the human's choice.
+- **Notes:** the same proposal arriving twice under two provider framings was
+  itself the decomposition signal — the run turned on recognising that
+  "OpenRouter" and "Gropius" are values of one configuration axis, not two
+  capabilities, so the choice put to the human was generic-vs-narrow rather
+  than capability-vs-trust-rule. Second run in a row where the home was
+  already occupied (adr-25 names the shape; itd-6 is the sibling adapter) and
+  the work was filling an existing slot, not minting a concept.
+
+### 2026-09-09 — the lifeboat widens to narrower sources (hand-run at filing)
+
+- **Proposal:** "expand the lifeboat mechanics to also cover (beside entire
+  repos) a worktree, lab session, and otherwise abandoned feature
+  test/experiment/implementation" — the widening the press release had
+  recorded that morning under the not-yet-real marker.
+- **Initial routing:** one capability intent (narrower sources); source-kind
+  plumbing and the git-assuming acceptance rows to the brief's disembark
+  chapter as a refinement of adr-35; the harness-name confinement on a pack
+  from a lab home as already covered by adr-39 rule 6 and scan-before-write,
+  flagged rather than filed; the graveyard's tier-0 reading of abandoned
+  branches noted as existing behaviour (adr-35 §7). Typed links: refines
+  itd-88 and adr-35; touches the 2026-08-31 lab convention, the unfiled
+  capstone lab intent, itd-118 and itd-8. No reversal.
+- **Confirmed routing:** the human SPLIT by source kind — git sources
+  (worktree, branch, abandoned feature work) as one intent, the lab session
+  home as another, because the second source is not a repository and its
+  packer waits on the lab verb family. Filed as itd-2609090746410233 and
+  itd-2609090746414083. The plumbing and trust parts kept their initial homes.
+- **Verdict:** SPLIT (proposed FILE-AS-IS; the initial routing did not
+  survive on the count of intents, survived on every other part).
+- **Notes:** the split axis was the SOURCE's nature (git vs non-git), not a
+  trust rule inside a capability — a new split shape for the corpus. Third run
+  in a row where the home was already occupied: adr-35 owns the mechanics,
+  itd-88 the coverage readout, and both intents fill slots those records left
+  rather than minting a concept.
 ## 2026-09-09 — sub-agent transcript capture (itd-2609090559376002)
 
 - **Proposal:** the transcript store keeps only the top-level session
@@ -1622,6 +1679,11 @@ Per hand-run, append:
   proposed decomposition at all but an unmade choice left in a record, which is
   its own failure mode — three candidates and no owner is indistinguishable, from
   the outside, from a question nobody has asked.
+### 2026-09-15 — interview context shown before every question (hand-run at filing)
+
+- **Proposal:** whenever a user is interviewed, provide the appropriate
+  context: before asking whether acceptance criteria stand, show them; for
+  every interaction during the interview.
 ### 2026-09-15 — messaging between sessions on one machine and one local network (hand-run at filing)
 
 - **Proposal:** the best way for a local setup that lets agents communicate
@@ -1632,6 +1694,49 @@ Per hand-run, append:
 
   | Part | Type | Home |
   | --- | --- | --- |
+  | The material under decision is shown in full before each question, at every interview step | capability | intent `itd-2609151541116052` |
+  | "Never ask about a text the reader cannot see" as a standing rule | stance | GRILL domain in `.abcd/rules.json`; the bundled default when itd-201 ships |
+  | The `/abcd:intent` interview steps say "summarise back" and "walk every bullet"; make "show it first" explicit | plumbing | `commands/intent.md` |
+
+- **Links:** `refines itd-201` (the draft that governs how a question is asked:
+  one at a time, one sentence of context, an example per option). No reversal.
+- **Verdict:** proposed SPLIT-or-AMEND with four options offered (new intent
+  refining itd-201; amend itd-201's draft; GRILL rule only; decide later); the
+  maintainer chose a NEW INTENT. Routing survived as one of the offered options,
+  not as the table's first line, which had left the choice open.
+- **Notes:** the proposal came from the maintainer's own experience of being
+  asked "does this criterion stand?" with the criterion out of view. The stance
+  and plumbing parts are not filed with the intent; they follow when it is
+  planned, because a rule written before the intent it enforces is the shape
+  itd-201's own filing avoided.
+
+### 2026-09-15 — advisories publish with the release that fixes them (hand-run at filing)
+
+- **Proposal:** a process so that security advisories are captured, resolved,
+  and automatically published once a new release is cut with their fixes;
+  perhaps captured as an intent.
+- **Table:**
+
+  | Part | Type | Home |
+  | --- | --- | --- |
+  | The release cut publishes each draft advisory whose fixing record shipped in the cut, and closes one whose record was closed as won't-fix | capability | intent `itd-2609151658486398` |
+  | A security record names its advisory in a typed field, not only in its slug and prose | plumbing (schema) | issue `iss-2609151703088754` (split out at the routing) |
+  | Publishing needs the forge token; `launch ship` never publishes, so the act belongs to the release workflow | trust rule, already recorded | unchanged; a scope condition on the intent |
+  | An advisory's specifics stay out of the committed record until it publishes | stance, already in the pilot note of 2026-08-27 | unchanged |
+
+- **Links:** `builds_on itd-70` (release retention at ship time); the pilot
+  note of 2026-08-27 names this publication step as its target and is cited by
+  the intent. No reversal.
+- **Verdict:** four options offered (one intent; SPLIT into intent plus schema
+  issue; HOLD for one more hand-run; decide later); the maintainer chose SPLIT,
+  so the typed field can land first on its own. The table had folded the field
+  into the intent's spec; the routing moved it out.
+- **Notes:** the trigger was a concrete gap found the same day: GHSA-gx3m is
+  fixed in v0.8.0 and was still an unpublished draft five days after the tag,
+  published by hand at the maintainer's word during this run. The three
+  advisories triaged today ended in three different states (fixed and released;
+  fix in progress; not a vulnerability, won't-fix), which is the case split the
+  intent's criteria have to cover.
   | A shared-directory mailbox between sessions, across accounts and mounts, delivered by the prompt hook | capability | intent `itd-2609151838312703` |
   | An opt-in adapter to an embedded broker for push delivery and cross-machine reach | capability | intent `itd-2609151838327688`, sequenced after the mailbox |
   | "abcd comes with basic functionality; an external dependency brings full power" | stance | principle `basics-built-in-adapters-bring-power` |
