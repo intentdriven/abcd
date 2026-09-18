@@ -1757,3 +1757,44 @@ Per hand-run, append:
   out to be agent runtimes with their own peer protocols, not message paths
   for a foreign harness, which is the finding that made "build it into abcd"
   the answer rather than "adopt one of them".
+
+## 2026-09-18 — per-task oracle routing (itd-2609170822093401, promoted from iss-2609170818061083)
+
+- **Proposal:** configure the oracle choice by task (local model for some,
+  harness decides for some, frontier or economy for others) and configure
+  whether the harness may use sub-agents and how many. Filed as an issue,
+  promoted to a draft, then two independent adversarial reviews
+  (design/feasibility; record discipline) before the interview.
+- **Table (reviewer-proposed, then confirmed):**
+
+  | Part | Type | Home | Typed link |
+  | --- | --- | --- | --- |
+  | Routing rows: tier and fan-out per agent, layered bundled → machine → repo → `--route` | capability | this intent | refines adr-25; builds on itd-2, itd-2609081951381895 |
+  | Every ingested payload names its model and agent count; refuse silence | capability | its own intent, `itd-2609180517121254` | this intent builds on it |
+  | Fan-out ceiling declared on the agent contract, a row may only tighten | trust rule | agent contract (`capability_scope`); enforcement rides the provenance intent | refines adr-2609090636172016 |
+  | Refuse-vs-fall-back on an unwired backend | standing stance | loud-staging, applied: fall back to the harness, announced on stderr and the receipt | — |
+  | Which settings a provider accepts; refuse an unsupported one | plumbing of the adapter | `itd-2609081951381895` | — |
+  | Learned routing across repos | capability | itd-17 refines this (declared rows are the floor) | refines |
+
+- **Verdict:** SPLIT (provenance out to its own intent; fan-out enforcement
+  and provider settings to their homes; learning stays itd-17). The human
+  adopted the split, then reframed the capability twice in the same
+  interview: from operator-written rows the host is asked to honour, to a
+  proposal abcd ships and applies on consent with best-effort facilitation
+  through configured providers and the harness as the loud fallback; then a
+  per-invocation `--route` override for autonomous measurement runs, and
+  provider settings layered connection → row → flag.
+- **Routing survived?** Partly. The initial key (task class) fell to the
+  design review (uneven distribution, no binary schema, proactive agents
+  unroutable) and was re-taken twice — verb, then agent — as the frame
+  moved from operator-written to abcd-proposed. The near-duplicate with
+  itd-17 was resolved as `itd-17 refines this`. The fallback ruling
+  reversed mid-interview (refuse → fall back loudly) when "harness always
+  as fallback" was stated. The adr-25 reversal flag was ruled a refinement
+  on the ground that acceptance of the proposal is the opt-in.
+- **Notes:** the first run where the two reviews converged on the same
+  finding (the binary has no enforcement site on a host-delegated step; the
+  honest product is provenance) and the human's reframing dissolved it by
+  adding a leg the binary does own. Reviewer evidence that the repo-wide
+  `oracle.backend` is read by nothing was decisive and would not have
+  surfaced from the record alone.
