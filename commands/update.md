@@ -51,6 +51,9 @@ error.** Every refusal is a named shape with a remedy in `refusal`:
   install` switches modes first.
 - `owned-dangling` — a plugin update stranded the entry; `abcd ahoy install`
   repoints it.
+- `owned-superseded` — the entry is abcd's own pin into a plugin vintage the
+  harness has moved past, so `abcd` answers an older release than the plugin
+  holds; `abcd ahoy install` replaces it with the current release.
 - `package-manager` — the binary resolves into a Homebrew Cellar; relay the
   printed `brew upgrade abcd`.
 - `foreign` / `unprovenanced-file` — abcd never clobbers a binary it cannot

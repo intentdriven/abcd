@@ -23,6 +23,11 @@ const (
 	// UpdateTargetDangling: an abcd-owned entry whose binary is gone (the
 	// iss-345 stranded shape included) — `ahoy install` is the heal.
 	UpdateTargetDangling UpdateTargetKind = "owned-dangling"
+	// UpdateTargetSuperseded: an owned symlink into a sibling plugin-cache
+	// vintage the harness has moved past — the binary still exists, so it is
+	// not stranded, but it answers an older release than the plugin now holds
+	// (iss-2609161805447092). `ahoy install` is the heal.
+	UpdateTargetSuperseded UpdateTargetKind = "owned-superseded"
 	// UpdateTargetFile: a regular file. Ownership is decided by the update
 	// verb's provenance check (digest against a published release), not here.
 	UpdateTargetFile UpdateTargetKind = "file"
@@ -79,6 +84,8 @@ func ResolveUpdateTarget() UpdateTarget {
 		tgt.Kind = UpdateTargetDevShim
 	case first.owned() && first.dangling:
 		tgt.Kind = UpdateTargetDangling
+	case first.kind == binTargetOwnedSymlink && first.superseded:
+		tgt.Kind = UpdateTargetSuperseded
 	case first.kind == binTargetOwnedSymlink:
 		tgt.Kind = UpdateTargetPluginRoot
 	default:

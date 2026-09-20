@@ -938,7 +938,7 @@ func (a *applyCtx) stepSymlink() {
 		return
 	}
 	gapDriven := a.approved[ConfigChange] &&
-		(a.has("symlink.missing") || a.has("symlink.dangling") || a.has("symlink.legacy"))
+		(a.has("symlink.missing") || a.has("symlink.dangling") || a.has("symlink.legacy") || a.has("symlink.superseded"))
 	if !gapDriven && !a.modeForced {
 		return
 	}
@@ -1250,7 +1250,17 @@ func (a *applyCtx) installPinnedSymlink(target string, kind binTargetKind) {
 		return
 	}
 	if kind == binTargetOwnedSymlink {
-		return
+		// Idempotent only when the pin already resolves to the current binary. A
+		// pin into a superseded vintage (iss-2609161805447092) classifies as
+		// owned too, and returning here would leave it answering the old
+		// release with the gap that named this verb as the remedy still open.
+		if dest, err := os.Readlink(target); err == nil && resolveSymlinkDest(target, dest) == resolvePath(source) {
+			return
+		}
+		if err := os.Remove(target); err != nil {
+			a.refuse("could not replace the superseded PATH entry " + displayPath(target) + ": " + errText(err))
+			return
+		}
 	}
 	if kind == binTargetDevShim {
 		if err := os.Remove(target); err != nil {
