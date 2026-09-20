@@ -7,10 +7,14 @@ suggested_kind: null
 reclassification_history: []
 blocked_by: [itd-27]
 builds_on: [itd-28]
+superseded_by: itd-2609201916151817
+kind_at_supersession: standalone
 severity: major
 ---
 
 # Domain Experts Run A Spec Autonomously And Recover From Anything Without Touching Git
+
+> **Superseded by itd-2609201916151817** on 2026-09-20, on the product thinker's ruling: the implement verb re-lands this record's run verbs on the intent key as a loop over a state file; the budget check before a run and the checkpoint on a rate-limit response move into the pacing intent (itd-2609201925079472) as criteria; the mid-run telemetry and the operator's hand verbs are dropped until someone wants them. The substrate specs this record cites now name unrelated things.
 
 ## Press Release
 

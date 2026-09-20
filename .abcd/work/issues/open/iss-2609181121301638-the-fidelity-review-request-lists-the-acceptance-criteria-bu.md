@@ -18,3 +18,13 @@ The same request also says "numbered ac-1..ac-K in order" and never prints K.
 A lane briefed its auditor with the wrong count; the auditor counted the
 bullets itself and was right. Printing K beside the block, and the cond-…
 identities this record asks for, are one change to the same composer.
+
+**Addendum (2026-09-20, Dessau pilot, session gropiusllm-64, relayed to
+abcd-17).** A third thing the request leaves to the host with nothing
+supplying it: the `delivered:` line reads "the diff/commit range that
+realised ALL of spc-… (host supplies the range)", and the orchestrator
+hand-composed the range from the base sha to the merge commit into the
+auditor's brief. The range is knowable to the verb that lands the PR (the
+implement verb, itd-2609201916151817) and, after the merge, to `intent
+audit` itself from the spec's close commit and the branch's merge commit.
+Same composer, same fix family as the cond ids and the criterion count.
