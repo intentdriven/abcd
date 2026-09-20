@@ -21,11 +21,15 @@ glossary_terms_used:
   - distribution/end-user
   - distribution/release
   - interview/embark
+superseded_by: itd-121
+kind_at_supersession: bundle-member
 severity: minor
 builds_on: [itd-4]
 ---
 
 # `/abcd` Tells You Where You Are
+
+> **Superseded by itd-121** on 2026-09-20, on the product thinker's ruling: the board this intent describes is built on dev-sync and the logbook, neither of which the Go rebuild has; the bare status board and the record dispatcher answer the same question in the shipped shape. The two pieces still wanted, a next-actions list and the planned intents with their spec, are captured as iss-2609201954342967.
 
 ## Press Release
 
