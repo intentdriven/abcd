@@ -19,3 +19,17 @@ abcd launch cannot set up the release flow for a managed repo that is not a plug
 ## Grounds
 
 - pursued: we expect a managed artefact that is not a plugin to need a declared artefact kind and a release flow shaped by it, because the current flow assumes a plugin at three places and a repository can only say what it is not by failing; it is shown wrong if a single generic flow serves every artefact kind without a declaration
+
+**Corroboration (2026-09-18, Gropius managed-repo session gropiusllm-56, relayed
+to abcd-17).** Second managed repository, same wall, at v0.9.0: `abcd launch
+--dry-run` and `launch ship` refuse with the same `include config not found:
+.abcd/config/launch-payload.json`, and `launch scaffold` does not lay that
+include. The cost is now measured: that repository cut three releases in one
+day (its 0.6.0, 0.7.0 and 0.7.1) entirely by hand, each as a dated CHANGELOG
+heading on a release branch, a script writing `deferred_after` and
+`deferral_reason` into the open major records, a pull request, and the tag from
+the repository's own auto-release workflow. The release-cut gate (refuse on an
+open major captured since the anchor tag unless deferred) therefore never ran
+there; the session enforced it by reading the ledger. The ask is the one this
+record already carries: the launch verbs for a managed repository that is not a
+plugin, or a `launch scaffold` that lays the missing include and says so.

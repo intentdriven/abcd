@@ -20,3 +20,17 @@ Nothing tells an agent that a record it is about to fix has been claimed or reso
 ## Grounds
 
 - pursued: we expect a session to be able to tell, before it starts work, that another session has already claimed or resolved the record it is about to fix, so the duplicated effort this record measured stops happening; a claim signal nobody reads, or one that goes stale and blocks a session from work nobody is doing, would show it wrong.
+
+**Corroboration (2026-09-18, Gropius managed-repo session gropiusllm-56, relayed
+to abcd-17).** The sibling-worktree half, split into itd-2609091416295622 on
+2026-09-09, was met again at v0.9.0 in a second managed repository: the ledger
+is per worktree and says so nowhere. A capture filed in one worktree was
+invisible to `capture resolve` in another until the branch carrying it merged
+main (recorded in that repository's own ledger), and an audit agent working from
+a worktree that predated a merge reported three shipped intents as existing
+nowhere. The session's ask is either of two things the draft intent already
+weighs: resolve the store through `git rev-parse --git-common-dir` and warn, or
+have every ledger verb print which checkout's ledger it addressed. Note the
+same mechanism produced this batch's "not found in any bucket" diagnosis from
+`intent audit`, which at v0.9.0 does distinguish a draft from a never-minted id
+in the same checkout; what it cannot see is a record on another worktree.

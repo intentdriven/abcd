@@ -25,3 +25,28 @@ Wanted, in either order: scaffold the union attribute for the decisions log at a
 ## Grounds
 
 - pursued: the two files that conflict on every merge are the two that are single append-to-the-bottom files, and the five record families that never conflicted in 27 branch merges are all one-file-per-entry — so the conflict is a property of the file shape, not of the content, and giving the decisions log the ledger's shape removes the class rather than patching it. What would show this wrong: a folder of minted decision files that still conflicts on merge (an index assembled into one committed file would do it, if the assembly is committed rather than derived), or a measured cost of reading the decision history that the index does not recover.
+
+**Corroboration (2026-09-19, Gropius session gropiusllm-66, relayed to
+abcd-17).** The conflict became a livelock at scale: a merge queue plus some
+twenty pull requests that each append to DECISIONS.md and CHANGELOG.md. The
+forge ignores the union merge driver, every landing re-dirties every other
+entry, CI on every push saturates the runners, and the queue drops entries
+that wait past its timeout. The session landed them as one integration branch
+in one queue entry. Worth a line wherever the landing process is documented
+for a managed repository, beside this record's deferral.
+
+**Corroboration (2026-09-20, Gropius session gropiusllm-2b, relayed to
+abcd-17).** Two further facets from a sub-agent-lane experiment in the same
+repository. Inside one checkout: two sessions appending to DECISIONS.md at once
+have no lock, and keep the file consistent only by an append-only discipline
+agreed by message; the session asks for an append verb (`abcd decide --line
+"…"` in shape) or for the log to become a directory of dated files, so
+concurrent sessions are safe by construction rather than by agreement. Across
+branches: the livelock recorded on 2026-09-19 recurred, and the
+integration-branch landing that resolves it is folklore in that repository's
+handover file; the session asks for a `launch integrate` verb or a documented
+recipe so the pattern is abcd's rather than each repository's.
+
+Same day, second session (gropiusllm-97): the two-session append to
+DECISIONS.md and NEXT.md held by convention only, and the ask is the same
+append-only `decide line` verb.
