@@ -5,7 +5,7 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2609091416295622]
 severity: minor
 promoted_from: iss-2609100519122086
 origin: extracted-from-record
@@ -17,6 +17,14 @@ production_mode: hand-written
 ## Press Release
 
 > _Seeded by promotion from iss-2609100519122086. Expand into the full press-release narrative before planning._
+
+## Decisions
+
+Settled with the product thinker on 2026-09-20, while interviewing the listing draft (itd-2609091416295622):
+
+1. **This record is the register.** Where a session's claims and the records it holds live so any other session can see them: across accounts on one machine and across machines on a network, a tailnet being the working example. The listing draft is the local read of that register; the claim draft (itd-2609091034175565) is the write; the implement verb (itd-2609201916151817) is the consumer that claims, checks, and implements or drops and picks the next.
+2. **Built-in basic, pluggable SOTA**, as abcd's practice: a basic register abcd carries itself, and an adapter seam for an external implementation. The first agent to work on a repository registers it; others discover it.
+3. **The transport is the interview's first question.** Candidates: the forge as the register (one ref per session pushed to the remote; needs no daemon, sees only what was pushed); a small peer service abcd runs per machine, found over the tailnet by its DNS name or by an announcement, which sees uncommitted state but needs a process that stays up; or both, the service first and the forge as the fallback when no peer answers. A LAN-only discovery (mDNS) reaches one network segment and is a candidate for the adapter, not the built-in.
 
 ## Why This Matters
 
