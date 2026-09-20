@@ -59,7 +59,7 @@ This matters beyond one nightly drain: it is the honest bridge between abcd's tw
 
 ## Prior Art
 
-- **[itd-29](../planned/itd-29-autonomous-run-resilience.md)** (autonomous-run resilience) — the run/execution surface `drain` dispatches the fix path onto; `drain` is the *planning/triage* half itd-29's run half assumes exists.
+- **[itd-29](../superseded/itd-29-autonomous-run-resilience.md)** (autonomous-run resilience) — the run/execution surface `drain` dispatches the fix path onto; `drain` is the *planning/triage* half itd-29's run half assumes exists.
 - **[itd-46](../shipped/itd-46-abcd-intent-quoted-text-create-symmetric.md)** / **spc-30** (symmetric intent/capture create) — owns `capture promote <iss-N>`, the issue→intent elevator `drain` reuses. Cut A stubs it.
 - **[itd-4](../planned/itd-4-issue-capture.md)** (issue capture) — the ledger substrate (`list`/`resolve`) `drain` reads and mutates.
 - **`.abcd/development/plans/2026-07-12-abcd-run-protocol.md`** + the ledger-drain run plan — the C-phase evidence that the fix loop works and that triage is the missing, human-shaped piece.

@@ -48,7 +48,7 @@ Ordering and item specs unchanged from that plan:
    — the intent frame A1/A2 deliver into. Lifecycle first: planned but
    spec-less, so the first milestone is the spec and `intent ready`, never
    code.
-4. **[itd-20](../intents/planned/itd-20-top-level-abcd-dispatcher.md)** —
+4. **[itd-20](../intents/superseded/itd-20-top-level-abcd-dispatcher.md)** —
    "`/abcd` tells you where you are". Same lifecycle-first rule; last in the
    queue, dropped first when trimming.
 

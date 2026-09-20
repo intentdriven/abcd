@@ -5,6 +5,7 @@ kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
+supersedes: [itd-20]
 severity: major
 impact: additive
 slug: type-the-id-get-your-next-move-abcd-id-dispatches-on-a-recor

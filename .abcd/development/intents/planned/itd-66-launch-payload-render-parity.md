@@ -1,7 +1,7 @@
 ---
 id: itd-66
 slug: launch-payload-render-parity
-spec_id: null
+spec_id: spc-2609201955277614
 kind: standalone
 suggested_kind: standalone
 reclassification_history: []
@@ -56,6 +56,22 @@ The pre-flight gate suite ([[itd-65-launch-preflight-gate-suite]]) decides wheth
 ## Scope Conditions
 
 None stated.
+
+## Delivery Status
+
+Reviewed against the v0.9.0 tree on 2026-09-20. Delivered and cited: every
+include root rendered and the record namespace structurally excluded
+(`TestAbcdNamespaceStructurallyExcluded`, `TestNestedDeniedNamespaceExcluded`,
+`TestBundleShipsEveryPluginSurface`); a denied-rooted include refused
+(`TestAbcdCannotBeReincluded`); a symlink into the namespace refused
+(`TestSymlinkToRepoRootDoesNotLeakDenied`); no residue in the dev repo
+(`TestRenderPayloadLeavesSourceTreeUnversioned`); the gate consuming the
+render's own resolution (`TestPayloadTreeImplementationsResolveIdentically`);
+the light smoke tier resolving commands, skills and hooks. Moot: the
+Python-import clause (nothing shipped imports) and the seeded first baseline
+(the first release is manual by the brief's bootstrap exception). Open, and
+scoped by spc-2609201955277614: the file-level parity diff and the deep smoke
+tier.
 
 ## Acceptance Criteria
 
