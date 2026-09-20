@@ -83,6 +83,11 @@ is aspiration the binary does not yet reach.
 
 2. /abcd:intent plan <itd-N>            (the maintainer's sign-off act)
    │
+   ├─ Refuses a HELD record before anything moves — `held: "<reason>"`,
+   │  written by /abcd:intent hold <itd-N> --reason "<one line>" and removed
+   │  by /abcd:intent unhold <itd-N>; the refusal names the reason and
+   │  the lift (drafts/ and planned/ only)                            [shipped]
+   │
    ├─ standalone (exactly one intent ID):                            [shipped]
    │     ├─ Refuses if `## Acceptance Criteria` is missing or empty (itd-1)
    │     ├─ Writes binding `kind:` — defaults to standalone
@@ -129,8 +134,9 @@ is aspiration the binary does not yet reach.
       The intents in superseded/ were moved by hand.
 ```
 
-**Shipped verb set:** `intent "<text>"`, `intent plan`, `intent ready`,
-`intent link`, `intent audit`, `intent audit ingest`, and `spec close`.
+**Shipped verb set:** `intent "<text>"`, `intent plan`, `intent hold`,
+`intent unhold`, `intent ready`, `intent link`, `intent audit`,
+`intent audit ingest`, and `spec close`.
 
 **Manual overrides:**
 
@@ -166,6 +172,8 @@ slug: <kebab-case-slug>
 #   See brief/04-surfaces/05-intent.md § 6 for the lint rule and rationale.
 kind: null               # set by /abcd:intent plan: "standalone" | "bundle-member" | "discipline"
 spec_id: null
+# held: "<reason>"       # written by /abcd:intent hold, removed by /abcd:intent unhold (drafts/ and
+#                        #   planned/ only); one non-empty line. /abcd:intent plan refuses while it stands
 # spc-3 fields (optional; additive — pre-existing intents valid without them):
 contexts: null           # [list] of bounded-context IDs; required when term has cross-context collision
 glossary_terms_used: null  # [list] of qualified <context>/<term> IDs; auto-populated by grill skill

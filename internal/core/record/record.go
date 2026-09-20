@@ -55,6 +55,7 @@ type Description struct {
 const (
 	verbIntentPlan     = "intent plan"
 	verbIntentReady    = "intent ready"
+	verbIntentUnhold   = "intent unhold"
 	verbSpecClose      = "spec close"
 	verbCapturePromote = "capture promote"
 	verbCaptureResolve = "capture resolve"
@@ -71,7 +72,7 @@ const (
 // for the surface-side anti-drift test.
 func RecommendedVerbPaths() []string {
 	return []string{
-		verbIntentPlan, verbIntentReady, verbIntentLink, verbSpecClose,
+		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbSpecClose,
 		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix,
 	}
 }
@@ -193,6 +194,9 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	if sup := fields["superseded_by"].Value; sup != "" && !frontmatter.IsNull(sup) {
 		d.Links["superseded_by"] = sup
 	}
+	if it.Held != "" {
+		d.Links["held"] = it.Held
+	}
 
 	switch it.Bucket {
 	case intent.BucketDrafts:
@@ -232,7 +236,32 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	default: // disciplines
 		d.NextMoves = []string{"none — a discipline is read, not shipped"}
 	}
+	// A hold is the next move, in front of whatever the bucket would otherwise
+	// say: `intent plan` refuses a held record, so a page that led with "plan
+	// it" would be telling its reader to run a verb that will refuse. The row
+	// names the reason and the verb that lifts it (iss-2609200830076665). What
+	// the row can vouch for is the trust boundary hold.go states: the loader
+	// read a `held:` line, and a legal line typed by hand reads exactly as the
+	// verb's write does; a value in a shape no verb writes is reported as that,
+	// never as a reason, and sent to the rule that names the line.
+	if move, ok := holdMove(it, id); ok {
+		d.NextMoves = append([]string{move}, d.NextMoves...)
+	}
 	return d, nil
+}
+
+// holdMove renders the hold row for a held record, and reports false for a
+// record that carries no `held:` key at all.
+func holdMove(it intent.Intent, id string) (string, bool) {
+	switch {
+	case it.HeldMalformed:
+		return "held, but the `" + intent.HeldKey + ":` value is in a shape no verb writes — `abcd " + verbIntentPlan +
+			"` refuses it, and `abcd " + verbIntentUnhold + "` will not remove what it could not have written; repair or remove the line by hand (record-lint's record_provenance rule names it)", true
+	case it.Held != "":
+		return "held — " + it.Held + "; `abcd " + verbIntentUnhold + " " + id + "` lifts the hold, and `abcd " + verbIntentPlan +
+			"` refuses until then", true
+	}
+	return "", false
 }
 
 // specsRealising renders every spec that names the given intent as

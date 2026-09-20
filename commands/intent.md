@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
+argument-hint: "[text] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -403,6 +403,38 @@ invariant is exactly what it exists to catch. It never edits the draft, never
 files the routing, and never runs `plan`; the interview then starts from the
 brief instead of a cold read, and grading into the calibration note still
 happens only when the human confirms the routing.
+
+## Hold
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent hold <itd-N> --reason "<one line: why>" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent unhold <itd-N> --json
+```
+
+A hold is a frontmatter **state**, not prose: `hold` writes `held: "<reason>"`
+onto a record in `drafts/` or `planned/`, and `unhold` removes the line. While
+it stands, `abcd intent plan <itd-N>` refuses before anything moves — the
+draft's plan and the planned record's identity-only re-run alike — naming the
+reason and `intent unhold` as the remedy, and `abcd <itd-N>` reports the hold
+as the first next move. So a lane that follows its own brief rather than this
+page now has something mechanical in its way; a Review or Open Questions note
+saying "held" stopped nothing.
+
+The reason is required, one line, and redacted through the store's scanner
+before it is written; report `redacted` from the JSON when it is non-zero, the
+way the other write verbs do. A record already held is refused naming the
+standing reason — an updated reason is `unhold` then `hold`, so the lift is a
+visible act. Both verbs refuse a shipped, superseded or discipline record: a
+hold on a record nothing will plan means nothing. `ready` is unchanged by a
+hold — readiness is about the spec and the criteria.
+
+The value is written by the verb, and a hand-typed `held: "<reason>"` is
+byte-identical to that write, so nothing can tell the two apart and both stop
+`plan`. What record-lint's `record_provenance` rule reports is a `held` value
+in a shape the verb never writes — blank, null, a list, a map, a block scalar,
+or a legal value on a record in a bucket the verbs refuse — and `plan` refuses
+those too (fail closed) while `hold` and `unhold` send you to the line to
+repair it by hand.
 
 ## Link
 

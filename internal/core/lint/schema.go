@@ -100,7 +100,9 @@ var (
 	// not of the value: `grounds: | # nothing` over an empty block is the empty
 	// string exactly as a bare `grounds: |` is, and a pattern that read only the
 	// bare spellings left the reported defect passing under four legal ones.
-	blockScalarIndicatorRe = regexp.MustCompile(`^[|>][0-9+-]*(?:\s+#.*)?$`)
+	// The pattern is the scanner package's own, so the record readers that ask
+	// "is this a single-line string?" and this gate recognise one header.
+	blockScalarIndicatorRe = frontmatter.BlockScalarHeaderRe
 	// The cross-reference frontmatter fields whose targets must resolve. They are
 	// the record's machine-readable claims that another record exists and is a
 	// live input — as distinct from prose, where naming a released or retired id

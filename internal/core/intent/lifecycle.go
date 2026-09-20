@@ -82,6 +82,18 @@ func parseIntent(relPath, content, bucket string) (Intent, error) {
 		Path:         relPath,
 		PromotedFrom: fields["promoted_from"].Value,
 	}
+	// The hold is read leniently: a `held:` key in a shape the verb never
+	// writes marks the record MALFORMED rather than failing the corpus, because
+	// one hand edit fail-closing every intent verb for everyone who pulls it is
+	// the outage iss-2608270500198764 already taught. What that means for the
+	// trust boundary is spelled out on Hold in hold.go.
+	if f, ok := fields[HeldKey]; ok {
+		if reason, ok := frontmatter.ScalarString(f.Value); ok {
+			it.Held = reason
+		} else {
+			it.HeldMalformed = true
+		}
+	}
 	if err := Validate(it); err != nil {
 		return Intent{}, fmt.Errorf("intent: malformed %s: %w", relPath, err)
 	}
@@ -116,6 +128,17 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 	if !ok {
 		return PlanResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
 	}
+	if it.Bucket != BucketPlanned && it.Bucket != BucketDrafts {
+		return PlanResult{}, fmt.Errorf("intent: %s is in %s, not drafts; only a draft can be planned", intentID, it.Bucket)
+	}
+	// A hold stops Plan before anything moves, on BOTH buckets it acts on: the
+	// draft's plan and the planned record's identity-only re-run are the same
+	// verb, and a hold that stopped one and not the other would be prose again
+	// (iss-2609200830076665). The refusal names the reason and the verb that
+	// lifts it, so the way past is a deliberate act and not a re-run.
+	if err := refuseIfHeld(it, "plan"); err != nil {
+		return PlanResult{}, err
+	}
 	// A record already in planned/ takes the identity step alone. Conditions get
 	// written after planning — the elicitation is a human conversation, not a
 	// one-shot — and Plan is the only writer of a marker there is, so refusing the
@@ -123,9 +146,6 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 	// demands the marker (iss-2608300210588874).
 	if it.Bucket == BucketPlanned {
 		return stampPlanned(repoRoot, it)
-	}
-	if it.Bucket != BucketDrafts {
-		return PlanResult{}, fmt.Errorf("intent: %s is in %s, not drafts; only a draft can be planned", intentID, it.Bucket)
 	}
 	if !slugRe.MatchString(it.Slug) {
 		return PlanResult{}, fmt.Errorf("intent: %s has slug %q which must be kebab-case", intentID, it.Slug)

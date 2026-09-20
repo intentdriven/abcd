@@ -78,6 +78,14 @@ type Intent struct {
 	// PromotedFrom is the iss-N this intent graduated from (spc-24's two-sided
 	// promote edge). Parsed leniently: absent on every non-promoted record.
 	PromotedFrom string `json:"promoted_from,omitempty"`
+	// Held is the reason the record is held — the value `abcd intent hold`
+	// wrote — and empty when it is not. HeldMalformed reports a `held:` key
+	// present in a shape no verb writes (blank, null, a list, a map, a block
+	// scalar): the loader stays lenient so one hand edit cannot fail-close the
+	// whole corpus, and record-lint is what names the line. See hold.go for the
+	// trust boundary between the two.
+	Held          string `json:"held,omitempty"`
+	HeldMalformed bool   `json:"held_malformed,omitempty"`
 }
 
 // Corpus is the in-memory set of intent records discovered across every bucket.

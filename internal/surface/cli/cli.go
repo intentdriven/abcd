@@ -2071,6 +2071,59 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
+	// hold <itd-N> --reason "<text>" / unhold <itd-N> — the hold is a
+	// frontmatter STATE the plan verb refuses on, written and lifted only here
+	// (iss-2609200830076665). The reason is validated at this door as well as in
+	// the core, so an empty one is refused before the store is even loaded.
+	var holdReason string
+	holdCmd := &cobra.Command{
+		Use:   "hold <itd-N> --reason \"<text>\"",
+		Short: "Hold a draft or planned intent (writes `held: \"<reason>\"`; `intent plan` refuses it until `intent unhold`)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			if strings.TrimSpace(holdReason) == "" {
+				return &exitError{Code: 2, Msg: "abcd intent hold: --reason is required — a hold with no reason is a state nobody can lift on its merits (nothing written)"}
+			}
+			res, err := intent.Hold(repoRoot, args[0], holdReason)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent hold: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				// The reason is the operator's prose and the path is a filename
+				// tail, neither charset-validated.
+				fmt.Fprintf(w, "abcd intent hold — %s held (%s): %s\n", res.IntentID, termsafe.Sanitize(res.Bucket), termsafe.Sanitize(res.Reason))
+				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
+				emitRedactionNote(w, res.Redacted, "")
+			})
+		},
+	}
+	holdCmd.Flags().StringVar(&holdReason, "reason", "", "why the record is held: one line, required; redacted before it is written")
+	intentCmd.AddCommand(holdCmd)
+
+	intentCmd.AddCommand(&cobra.Command{
+		Use:   "unhold <itd-N>",
+		Short: "Lift a hold (removes the `held:` line `intent hold` wrote); refused on a record not held",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := intent.Unhold(repoRoot, args[0])
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent unhold: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd intent unhold — %s lifted (%s); the hold was: %s\n", res.IntentID, termsafe.Sanitize(res.Bucket), termsafe.Sanitize(res.Reason))
+				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
+			})
+		},
+	})
+
 	intentCmd.AddCommand(newIntentAuditCommand(asJSON))
 	return intentCmd
 }

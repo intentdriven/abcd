@@ -1019,6 +1019,19 @@
       ]
     },
     {
+      "path": "abcd intent hold",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent link",
       "hidden": false,
       "flags": []
@@ -1053,6 +1066,11 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd intent unhold",
+      "hidden": false,
+      "flags": []
     },
     {
       "path": "abcd launch",

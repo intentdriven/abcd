@@ -49,9 +49,11 @@ judgement no verb makes.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `hold` | — | shipped |
 | `link` | — | shipped |
 | `new` | — | shipped |
 | `plan` | — | shipped |
+| `unhold` | — | shipped |
 | `ready` | gate | shipped |
 | `audit` | audit | shipped |
 | `audit ingest` | audit | shipped |
@@ -183,10 +185,24 @@ its own condition rather than one still waiting on it.
    └─ Writes intents/drafts/itd-N-<slug>.md (no spec created yet)
 
 2. /abcd:intent plan <itd-N>    (when ready to commit to work; single intent ID)
+   ├─ Refuses a HELD record before anything moves, naming the reason and
+   │  `intent unhold` (the identity-only re-run on a held planned record refuses too)
    ├─ Refuses to promote if `## Acceptance Criteria` is missing/malformed (the intent package's own hasAcceptanceCriteria check, not internal/core/lint)
    ├─ Mints (or reuses) the intent's native spec; kind defaults to standalone
    ├─ Injects bidirectional link (spec.intent: itd-N; intent.spec_id: spc-N)
    └─ Moves intents/drafts/itd-N-*.md → intents/planned/itd-N-*.md
+
+   A hold is the one state a draft or planned record carries beside its bucket:
+   /abcd:intent hold <itd-N> --reason "<one line>" writes `held: "<reason>"`
+   (required, single-line, redacted through the store's scanner) and
+   /abcd:intent unhold <itd-N> removes the line; a record already held is
+   refused naming the standing reason, a record not held is refused by unhold,
+   and both refuse shipped/, superseded/ and disciplines/. `abcd <itd-N>` reports
+   the hold as the first next move. The verb writes the value; a hand-typed legal
+   line is byte-identical to that write and stops plan the same way, and the
+   record_provenance lint rule reports only a `held` value in a shape no verb
+   writes (blank, null, a list, a map, a block scalar, or a legal value in a
+   bucket the verbs refuse), which plan refuses too — fail closed.
 
    Later phase — plan grows a PRD-freeze front end and multi-kind dispatch:
      a prd_path read + provenance freeze sequence (§ 5); a suggested_kind-driven
@@ -256,6 +272,8 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 | `/abcd:intent consistency [<itd-N>]` | **Role 2 — cross-document fidelity.** Surfaces five judgement categories (terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts) across briefs + intents. **Bare** scans the whole corpus; **with `<itd-N>`** narrows to one intent's relationship with the rest. Findings land in `.abcd/.work.local/logs/audit/consistency-<ts>/report.{json,md}`. The judgement half + on-demand verb are the predecessor's spc-29 (a later phase); mechanical-half categories and pre-commit hook are deferred follow-ups. | (stays) |
 | `/abcd:intent shape [<itd-N>]` | **Role 3 — kind classification.** Examines whether an intent's declared `kind` (the noun) still fits the corpus. Surfaces *suggested* reclassifications across three live types: `kind_change`, `bundle`, `supersession`. **Bare** scans the corpus; **with `<itd-N>`** checks one intent. Pairs with `reclassify` (action verb that commits a `shape` finding). On-demand only per spc-29 (predecessor store; a later phase); findings land in `.abcd/.work.local/logs/audit/shape-<ts>/report.{json,md}`. Concurrency via `flock(2)` on `.abcd/coordination/shape.lock` (see § 7). Scheduled / continuous invocation is a deferred follow-up. | (stays) |
 | `/abcd:intent reclassify <itd-N> --kind <new-kind> [--reason <text>]` | **A later phase — no `reclassify` sub-verb ships yet.** Late reclassification (e.g., a standalone intent realised to be a bundle-member; a draft realised to be a discipline; a shipped intent superseded by a later one). Records `reclassification_history` entry; moves the file between directories as the new kind dictates. `--kind superseded --by <handle>` is the supersession path: the file moves to `superseded/`, frontmatter records `superseded_by: <handle>` — the record that formally supersedes this intent, either an intent (`itd-M`) or an ADR (`adr-M`) when a decision redecided the question — AND `kind_at_supersession: <original-kind>` so future readers know what shape the intent had when retired. | varies by destination kind |
+| `/abcd:intent hold <itd-N> --reason "<text>"` | Holds a draft or planned intent: writes `held: "<reason>"` — the reason is required, single-line and redacted through the store's scanner before the write, and the JSON reports `redacted` like the other write verbs. `plan` refuses a held record before anything moves, naming the reason and `intent unhold`; `abcd <itd-N>` reports the hold as the next move. Refused on a record already held (naming the standing reason — an updated reason is `unhold` then `hold`) and on a shipped, superseded or discipline record. The `record_provenance` lint rule reports a `held` value in a shape the verb never writes; a legal hand-typed line is byte-identical to the write and is not reported. | (no move; writes `held`) |
+| `/abcd:intent unhold <itd-N>` | Lifts a hold: removes the `held:` line `hold` wrote and reports the reason that stood. Refused on a record not held, on a terminal record, and on a `held` value in a shape the verb never writes (a hand repair record-lint names). | (no move; removes `held`) |
 | `/abcd:intent link <itd-N> <spc-N>` | Manual completion of a half-made link: used if the auto-link missed (rare) or for retroactive linking of pre-existing specs. It writes ONE side, the intent's `spec_id`, and refuses unless the spec already declares this intent, so it completes a link from the spec side rather than forging one. A spec that realises a different intent is a mismatch and fails closed. The intent must be in `planned/` | (no move; writes the intent's `spec_id`) |
 
 **No aggregator verb.** A `check` subverb that runs `audit` + `consistency` + `shape` together is *not* provided — the three primitives have very different runtime costs (the audit is code+oracle expensive; consistency is corpus-wide expensive; shape is cheap on demand). Bundling them produces a slow verb users avoid. Release-readiness is `/abcd:launch`'s pre-flight job. (Note: a scheduled / pre-commit shape leg is a **deferred follow-up**; the predecessor's spc-29 shape surface is on demand only.)
@@ -294,6 +312,11 @@ production_mode: hand-written # how the text was produced: hand-written | dictat
 #                                   nothing. The shipped record_provenance rule holds it against
 #                                   origin: extracted-from-record / contributed-by-reading
 # Added later, not part of the seed skeleton:
+#   held: "<reason>"              — the hold `abcd intent hold` writes and `abcd intent unhold` removes, on a
+#                                   drafts/ or planned/ record only: one non-empty line, redacted before the
+#                                   write. `intent plan` refuses while it stands. The record_provenance rule
+#                                   reports a value in a shape no verb writes; a legal hand-typed line is
+#                                   byte-identical to the verb's and is not reported
 #   bundle: <id>                  — for kind: bundle-member, the bundle ID
 #   impact: additive|breaking|fix — the compatibility judgement the derived version is computed from. Never "internal" (a press-release-first intent is user-facing by definition), and required before the intent may move to shipped/. Optionally stamped at create time via the `--impact` flag, by `abcd spec close --impact` at the move, or added by hand in between
 #   surface_history: []           — appended when an intent's user-facing surface shape changes (e.g., skill → sub-verb, top-level command → sub-verb, command → flag) WITHOUT changing kind. Distinct from reclassification_history. Schema: { date, from, to, reason }

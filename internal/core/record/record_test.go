@@ -365,7 +365,8 @@ func TestDescribeUnknownIDFaults(t *testing.T) {
 func TestRecommendedVerbPathsClosed(t *testing.T) {
 	want := map[string]bool{
 		"intent plan": true, "intent ready": true, "intent link": true,
-		"spec close": true, "capture promote": true, "capture resolve": true,
+		"intent unhold": true,
+		"spec close":    true, "capture promote": true, "capture resolve": true,
 		"capture wontfix": true,
 	}
 	got := RecommendedVerbPaths()
@@ -471,5 +472,56 @@ func TestDescribeADRAdmitsBothIDVintages(t *testing.T) {
 		if d.ID != tc.ask || d.Title != tc.title || d.Status != tc.status {
 			t.Errorf("Describe(%s) = %+v, want title %q status %q", tc.ask, d, tc.title, tc.status)
 		}
+	}
+}
+
+// TestDescribeIntentReportsAHold: a held record's next move IS the hold — the
+// row names the reason and `abcd intent unhold <itd-N>`, in front of the plan
+// suggestion, so nothing reading the dispatcher is told to plan a record the
+// verb will refuse (iss-2609200830076665).
+func TestDescribeIntentReportsAHold(t *testing.T) {
+	repo := t.TempDir()
+	intentFixture(t, repo, "drafts", "itd-1", "held-draft",
+		"---\nid: itd-1\nslug: held-draft\nspec_id: null\nkind: null\nheld: \"awaiting the reading rethink\"\n---\n\n# H\n")
+	d, err := Describe(repo, "itd-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.NextMoves) == 0 {
+		t.Fatal("no next moves rendered")
+	}
+	first := d.NextMoves[0]
+	for _, want := range []string{"held", "awaiting the reading rethink", "abcd intent unhold itd-1"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("the hold must be the FIRST row and carry %q: %v", want, d.NextMoves)
+		}
+	}
+	if d.Links["held"] != "awaiting the reading rethink" {
+		t.Errorf("the hold is a link-grade fact about the record: %+v", d.Links)
+	}
+
+	// A planned held record reports the hold in front of the readiness rows.
+	intentFixture(t, repo, "planned", "itd-2", "held-planned",
+		"---\nid: itd-2\nslug: held-planned\nspec_id: spc-1\nkind: standalone\nheld: \"scope under review\"\n---\n\n# P\n\n## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- **Given** x, **then** y.\n")
+	write(t, repo, ".abcd/development/specs/open/spc-1-held-planned.md",
+		"---\nid: spc-1\nslug: held-planned\nintent: itd-2\n---\n# held-planned\n\n_Draft: describe what shipping itd-2 means._\n")
+	d, err = Describe(repo, "itd-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.NextMoves) < 2 || !strings.Contains(d.NextMoves[0], "scope under review") || !strings.Contains(d.NextMoves[0], "abcd intent unhold itd-2") {
+		t.Fatalf("planned held record must lead with the hold: %v", d.NextMoves)
+	}
+
+	// A hold in a shape the verb never writes is reported as such, never as a
+	// reason — and never rendered as a plain "plan it" suggestion.
+	intentFixture(t, repo, "drafts", "itd-3", "bad-hold",
+		"---\nid: itd-3\nslug: bad-hold\nspec_id: null\nkind: null\nheld: null\n---\n\n# B\n")
+	d, err = Describe(repo, "itd-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.NextMoves) == 0 || !strings.Contains(d.NextMoves[0], "held") || !strings.Contains(d.NextMoves[0], "record_provenance") {
+		t.Fatalf("a malformed hold must be reported as one, naming the rule that sees it: %v", d.NextMoves)
 	}
 }
