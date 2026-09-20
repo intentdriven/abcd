@@ -75,14 +75,16 @@ documented protocol is the gate.
 Files `drafts/itd-N-<slug>.md`. **The text is the press release**: the whole
 of it seeds the `## Press Release` section as prose, so write it as the user
 moment — the paragraph a shipped intent opens with. The H1 title is the text's
-first sentence (up to the first `.`, `!` or `?` followed by a space, cut on a
-word boundary at the slug cap if longer), and `--title "<title>"` replaces it
-with a heading of your own — one line, non-empty, redacted like the text. The
-slug is derived from the text either way. `## Why This Matters` is seeded with
-a prompt, not with the text again. Report the new `id` and `path`, and tell the
-user the seeded Why This Matters and Acceptance Criteria sections are
-placeholders that must be replaced — the criteria with real Given-When-Then
-bullets, via the planning interview below — before the draft can be planned.
+first sentence: the split is at the first `.`, `!` or `?` followed by
+whitespace or the end of the text, the terminator is dropped from the title,
+and a sentence longer than the slug cap is cut on a word boundary.
+`--title "<title>"` replaces it with a heading of your own — one line,
+non-empty, redacted like the text. The slug is derived from the text either
+way. `## Why This Matters` is seeded with a prompt, not with the text again.
+Report the new `id` and `path`, and tell the user the seeded Why This Matters
+and Acceptance Criteria sections are placeholders that must be replaced — the
+criteria with real Given-When-Then bullets, via the planning interview below —
+before the draft can be planned.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a

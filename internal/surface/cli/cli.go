@@ -1856,8 +1856,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
 						args[0])}
 				}
+				// Changed, not the value: `--title ""` is a title the user gave and
+				// the core refuses it, where an unset flag leaves the H1 derived.
 				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intent.TextOptions{
-					Title: intentTitle, Impact: intentImpact, ProductionMode: intentProductionMode,
+					Title: intentTitle, TitleSet: cmd.Flags().Changed("title"),
+					Impact: intentImpact, ProductionMode: intentProductionMode,
 				}, *asJSON)
 			}
 			v, err := intent.Status(repoRoot)

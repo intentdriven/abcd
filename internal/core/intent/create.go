@@ -65,9 +65,11 @@ func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 	// An explicit title is held to the text's own bar before anything is
 	// derived: non-empty once trimmed, and one line — it becomes the H1, where a
 	// second line would open a new block. It is redacted below through the same
-	// scanner as the text.
+	// scanner as the text. A title is given when the caller says so (TitleSet)
+	// or supplies any text at all, so `--title ""` and `--title " "` are refused
+	// alike rather than one of them silently falling back to the derived H1.
 	title := strings.TrimSpace(opts.Title)
-	if opts.Title != "" && title == "" {
+	if (opts.TitleSet || opts.Title != "") && title == "" {
 		return Intent{}, fmt.Errorf("intent: refusing an empty --title (nothing written)")
 	}
 	if strings.ContainsAny(title, "\r\n") {
@@ -109,12 +111,18 @@ func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 	})
 }
 
-// TextOptions parameterises CreateFromText beyond the text itself: an explicit
+// TextOptions parameterizes CreateFromText beyond the text itself: an explicit
 // H1 title in place of the derived first sentence, the optional impact
 // judgement and the production mode. Impact and mode are stamped as CreateDraft
 // validates them; the title is validated and redacted by CreateFromText.
+//
+// TitleSet says the caller gave a title at all, so that an explicit empty one
+// (`--title ""`) is refused like a blank one rather than read as no title: the
+// surface passes whether the flag was set, and a non-empty Title counts as set
+// on its own.
 type TextOptions struct {
 	Title          string
+	TitleSet       bool
 	Impact         string
 	ProductionMode string
 }
@@ -209,7 +217,7 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 		return Intent{}, fmt.Errorf("intent: refusing to create a draft with an empty title")
 	}
 	if strings.TrimSpace(opts.SeedBody) == "" && strings.TrimSpace(opts.PressRelease) == "" {
-		return Intent{}, fmt.Errorf("intent: refusing to create a draft with an empty seed body")
+		return Intent{}, fmt.Errorf("intent: refusing to create a draft with neither a press release nor a seed body")
 	}
 	if opts.PromotedFrom != "" && !promotedFromRe.MatchString(opts.PromotedFrom) {
 		return Intent{}, fmt.Errorf("intent: promoted_from %q must match ^(iss|rdi)-[0-9]+$", opts.PromotedFrom)
@@ -513,7 +521,7 @@ func IsClaimPrompt(body string) bool {
 // The Press Release placeholders this package mints, in their parts: a per-path
 // opening clause and the instruction all of them close with. The capture form
 // is no longer minted — the quoted-text route seeds the section with its text —
-// but drafts already in the record carry it, so it stays recognised.
+// but drafts already in the record carry it, so it stays recognized.
 const (
 	captureSeedOpening   = "Seeded from a quoted-text intent capture."
 	promotionSeedOpening = "Seeded by promotion from "
@@ -528,7 +536,7 @@ const (
 )
 
 // CaptureSeedNote is the placeholder a quoted-text capture once minted, whole:
-// recognised on the drafts that carry it, written by no route today.
+// recognized on the drafts that carry it, written by no route today.
 const CaptureSeedNote = captureSeedOpening + " " + seedNoteTail
 
 // IsSeedNote reports whether a press-release body is still one of the templates

@@ -534,12 +534,17 @@ func TestCreateFromTextTitleOverride(t *testing.T) {
 		t.Errorf("an explicit title persisted a raw home path:\n%s", data2)
 	}
 
-	// Degenerate titles are refused with nothing written.
+	// Degenerate titles are refused with nothing written. An explicitly set
+	// empty title is held to the same bar as a blank one — "non-empty after
+	// trimming" — rather than read as no title given.
 	before := draftCount(t, root)
 	for _, bad := range []string{"   ", "\t\n", "two\nlines", "carriage\rreturn"} {
 		if _, err := CreateFromText(root, text, TextOptions{Title: bad}); err == nil {
 			t.Errorf("Title %q must be refused", bad)
 		}
+	}
+	if _, err := CreateFromText(root, text, TextOptions{Title: "", TitleSet: true}); err == nil {
+		t.Error("an explicitly set empty Title must be refused")
 	}
 	if after := draftCount(t, root); after != before {
 		t.Errorf("a refused title wrote a draft: %d -> %d", before, after)

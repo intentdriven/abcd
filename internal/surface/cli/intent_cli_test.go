@@ -823,7 +823,10 @@ func TestIntentCreateTitleFlag(t *testing.T) {
 
 	before := intentDraftCount(t, repo)
 	if _, err := runCLIErr(t, "intent", text, "--title", "   "); err == nil {
-		t.Error("an empty --title must be refused")
+		t.Error("a blank --title must be refused")
+	}
+	if _, err := runCLIErr(t, "intent", text, "--title", ""); err == nil {
+		t.Error("an explicit empty --title must be refused")
 	}
 	if after := intentDraftCount(t, repo); after != before {
 		t.Errorf("a refused --title wrote a draft: %d -> %d", before, after)
