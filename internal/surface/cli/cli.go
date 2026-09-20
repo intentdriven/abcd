@@ -1910,10 +1910,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	})
 
 	// plan <itd-N> — mint the spec, write both link sides, move drafts -> planned.
-	var planProductionMode string
+	var planProductionMode, planImpact string
 	planCmd := &cobra.Command{
 		Use:   "plan <itd-N>",
-		Short: "Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions",
+		Short: "Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions — either face takes --impact to stamp the judgement",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -1926,7 +1926,12 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := intent.Plan(repoRoot, args[0], mode)
+			// The impact belongs to the INTENT: plan is the verb that runs when the
+			// planning interview settles the judgement, so it is where a draft filed
+			// without one gets it (iss-2609170726457256). The core validates it at
+			// the create path's bar and refuses a value that disagrees with what the
+			// record already carries, before anything moves.
+			res, err := intent.Plan(repoRoot, args[0], intent.PlanOptions{ProductionMode: mode, Impact: planImpact})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
@@ -1934,7 +1939,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.StampOnly {
 					// The identity step alone, over a record already planned: say what
 					// was done and nothing more, so the line cannot read as a move.
-					fmt.Fprintf(w, "abcd intent plan — %s already planned; stamped its unmarked scope conditions\n", res.Intent.ID)
+					fmt.Fprintf(w, "abcd intent plan — %s already planned; stamped in place\n", res.Intent.ID)
 				} else {
 					fmt.Fprintf(w, "abcd intent plan — %s drafts -> planned, linked %s\n", res.Intent.ID, res.Spec.ID)
 				}
@@ -1945,10 +1950,16 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.ConditionsStamped > 0 {
 					fmt.Fprintf(w, "  scope-condition identities stamped: %d\n", res.ConditionsStamped)
 				}
+				if res.ImpactStamped != "" {
+					fmt.Fprintf(w, "  impact stamped: %s\n", res.ImpactStamped)
+				}
 			})
 		},
 	}
 	planCmd.Flags().StringVar(&planProductionMode, "production-mode", "", productionModeFlagHelp)
+	// --impact on plan is the same closed choice the create path and `spec close`
+	// carry, taken at the moment the judgement is actually made.
+	planCmd.Flags().StringVar(&planImpact, "impact", "", "stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)")
 	intentCmd.AddCommand(planCmd)
 
 	// ready <itd-N> — the read-only implement-readiness gate. Exit codes are the

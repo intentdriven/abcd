@@ -761,13 +761,14 @@ Deprecated alias for `abcd intent "<text>"` (files a draft from the text)
 
 #### `abcd intent plan`
 
-Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions
+Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions — either face takes --impact to stamp the judgement
 
 **Usage:** `abcd intent plan <itd-N> [flags]`
 
 **Flags:**
 
 ```
+      --impact string            stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 

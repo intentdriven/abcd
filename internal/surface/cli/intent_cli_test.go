@@ -783,3 +783,70 @@ func TestSpecCloseRefusesAnImpactlessIntent(t *testing.T) {
 		t.Fatalf("the refused close still moved the intent out of planned/: %v", statErr)
 	}
 }
+
+// TestIntentPlanImpactFlag is the surface half of iss-2609170726457256: the
+// planning interview settles the impact class, and `intent plan` is the verb
+// that runs at that moment, so the flag the create and close paths carry has to
+// exist here too — else the judgement is hand-edited into the frontmatter past
+// every validator. The stamp reaches the planned record in the create path's
+// shape and is reported in the render; a value the gate would refuse exits 2
+// with the draft untouched.
+func TestIntentPlanImpactFlag(t *testing.T) {
+	repo := intentTestRepo(t)
+	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
+
+	if _, err := runCLIErr(t, "intent", "plan", "itd-10", "--impact", "internal"); exitCodeOf(err) != 2 {
+		t.Fatalf("plan --impact internal must exit 2, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, cliDrafts, "itd-10-alpha.md")); err != nil {
+		t.Fatalf("a refused --impact moved the draft: %v", err)
+	}
+
+	out := string(runCLI(t, "intent", "plan", "itd-10", "--impact", "additive"))
+	if !strings.Contains(out, "impact stamped: additive") {
+		t.Fatalf("the render must say the judgement was stamped:\n%s", out)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo, cliPlanned, "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatalf("planned file missing: %v", err)
+	}
+	if !strings.Contains(string(raw), "\nimpact: additive\n") {
+		t.Fatalf("the planned record must carry the bare impact:\n%s", raw)
+	}
+}
+
+// TestIntentPlanImpactFlagOnAPlannedRecord: the stamp-only re-run takes the
+// flag too, so a planned record filed without a judgement gets one before its
+// close through a verb rather than an editor, and the JSON names what was
+// written.
+func TestIntentPlanImpactFlagOnAPlannedRecord(t *testing.T) {
+	repo := intentTestRepo(t)
+	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
+			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n"+cliGroundsSection)
+	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n")
+
+	out := runCLI(t, "intent", "plan", "itd-10", "--impact", "fix", "--json")
+	var got struct {
+		StampOnly     bool   `json:"stamp_only"`
+		ImpactStamped string `json:"impact_stamped"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("plan --json not JSON: %v\n%s", err, out)
+	}
+	if !got.StampOnly || got.ImpactStamped != "fix" {
+		t.Fatalf("plan --impact on a planned record = %+v\n%s", got, out)
+	}
+	// A second run with the same judgement and nothing else to do is the
+	// existing refusal, naming the judgement so it cannot read as unstamped.
+	_, err := runCLIErr(t, "intent", "plan", "itd-10", "--impact", "fix")
+	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), `already records impact "fix"`) {
+		t.Fatalf("the no-op re-run must refuse and name the judgement: %v", err)
+	}
+	// And a disagreeing one is refused in the close's shape.
+	_, err = runCLIErr(t, "intent", "plan", "itd-10", "--impact", "breaking")
+	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "does not revise a recorded judgement") {
+		t.Fatalf("a disagreeing --impact must be refused: %v", err)
+	}
+}
