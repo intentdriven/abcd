@@ -42,17 +42,36 @@ const maxSlugLen = 60
 // the capture engine's create shape: it derives a filename-safe slug, mints a
 // native timestamp-numeric itd id under the store mint lock, and atomically
 // writes drafts/itd-N-<slug>.md with the canonical draft frontmatter set and a
-// minimal, honest body skeleton carrying the text. Empty/whitespace text is
-// refused and nothing is written.
+// minimal, honest body skeleton. Empty/whitespace text is refused and nothing
+// is written.
+//
+// The text IS the press release: the whole of it seeds `## Press Release` as
+// prose, and the H1 is its first sentence (deriveTitle), or opts.Title when the
+// caller gives one. Neither is pasted a second time under `## Why This
+// Matters`, which takes a prompt for its own content instead
+// (iss-2609170726360399: a paragraph as a heading is unreadable, the slug
+// truncates it, and a draft whose one press-release-first section is a
+// placeholder reads as malformed on sight).
 //
 // The seeded record is lint-valid (intent_lifecycle accepts a draft whose kind is
 // null and whose spec_id is null) and passes Validate; a human expands it, then
 // `abcd intent plan` schedules it. This is the quoted-text create path itd-46
 // delivers — the create half of what spc-6 AC3 (promote) needs.
-func CreateFromText(repoRoot, text, impact, productionMode string) (Intent, error) {
+func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return Intent{}, fmt.Errorf("intent: refusing to create from empty text")
+	}
+	// An explicit title is held to the text's own bar before anything is
+	// derived: non-empty once trimmed, and one line — it becomes the H1, where a
+	// second line would open a new block. It is redacted below through the same
+	// scanner as the text.
+	title := strings.TrimSpace(opts.Title)
+	if opts.Title != "" && title == "" {
+		return Intent{}, fmt.Errorf("intent: refusing an empty --title (nothing written)")
+	}
+	if strings.ContainsAny(title, "\r\n") {
+		return Intent{}, fmt.Errorf("intent: --title must be a single line (nothing written)")
 	}
 	// Redact the caller's text through the one canonical scanner BEFORE anything
 	// derived from it is built (gh-486). The slug becomes the filename and is
@@ -69,26 +88,87 @@ func CreateFromText(repoRoot, text, impact, productionMode string) (Intent, erro
 	if err != nil {
 		return Intent{}, err
 	}
+	if title == "" {
+		title = deriveTitle(redacted)
+	} else {
+		// The same boundary the text crossed: the title is free prose too, and
+		// CreateDraft's own pass is idempotent on it.
+		if title, _, err = redactIntentText(repoRoot, title); err != nil {
+			return Intent{}, err
+		}
+	}
 	return CreateDraft(repoRoot, DraftOptions{
-		Slug:     slug,
-		Title:    titleLine(redacted),
-		SeedBody: redacted,
-		Impact:   impact,
+		Slug:         slug,
+		Title:        title,
+		PressRelease: redacted,
+		Impact:       opts.Impact,
 		// A quoted-text create is a person at a keyboard, so the arrival path is
 		// the default; the production mode is the operator's declared one, or the
 		// repo's default resolved by the surface.
-		ProductionMode: productionMode,
+		ProductionMode: opts.ProductionMode,
 	})
 }
 
-// DraftOptions parameterises CreateDraft: the explicit slug and title, the Why
-// This Matters seed body, an optional impact judgement, and — on the promote
-// path (spc-24) — the iss-N the draft graduated from, written as the
-// promoted_from back-edge (an iss-N, or the rdi-N of a dispositioned reading
-// item).
+// TextOptions parameterises CreateFromText beyond the text itself: an explicit
+// H1 title in place of the derived first sentence, the optional impact
+// judgement and the production mode. Impact and mode are stamped as CreateDraft
+// validates them; the title is validated and redacted by CreateFromText.
+type TextOptions struct {
+	Title          string
+	Impact         string
+	ProductionMode string
+}
+
+// sentenceEndRe finds a sentence terminator that is followed by whitespace or
+// ends the text. A terminator glued to the next token (`v0.9`, `e.g.x`) is not
+// a boundary; there is no abbreviation list, deliberately — the split is simple
+// and the caller can override the result with an explicit title.
+var sentenceEndRe = regexp.MustCompile(`[.!?](\s|$)`)
+
+// deriveTitle is the H1 a quoted-text create derives: the text's first sentence
+// with its terminator dropped (no intent in the record ends its H1 with one),
+// whitespace collapsed, and — when the sentence is longer than the slug cap —
+// cut on a word boundary at or before maxSlugLen runes, so the title stays a
+// heading and never a paragraph. A single unbroken token longer than the cap is
+// cut at the cap. It never returns an empty string for non-empty input: a text
+// that is only terminators keeps its first sentence whole.
+func deriveTitle(text string) string {
+	first := text
+	if loc := sentenceEndRe.FindStringIndex(text); loc != nil {
+		// Trim the run, not just the match, so an ellipsis leaves no stub.
+		first = strings.TrimRight(text[:loc[0]], ".!?")
+	}
+	first = titleLine(first)
+	if first == "" {
+		first = titleLine(text)
+	}
+	runes := []rune(first)
+	if len(runes) <= maxSlugLen {
+		return first
+	}
+	cut := string(runes[:maxSlugLen])
+	if i := strings.LastIndexAny(cut, " "); i > 0 {
+		cut = cut[:i]
+	}
+	return strings.TrimSpace(cut)
+}
+
+// DraftOptions parameterises CreateDraft: the explicit slug and title, the
+// prose that seeds the two narrative sections, an optional impact judgement,
+// and — on the promote path (spc-24) — the iss-N the draft graduated from,
+// written as the promoted_from back-edge (an iss-N, or the rdi-N of a
+// dispositioned reading item).
+//
+// The two prose members are per-section, and each is optional on its own:
+// PressRelease seeds `## Press Release` as prose (the quoted-text route, whose
+// text is the press release) and, when empty, that section takes the route's
+// seed note; SeedBody seeds `## Why This Matters` (the promote route's by-id
+// pointer) and, when empty, that section takes WhyThisMattersPrompt. A draft
+// with neither carries no prose at all and is refused.
 type DraftOptions struct {
 	Slug         string
 	Title        string
+	PressRelease string
 	SeedBody     string
 	Impact       string
 	PromotedFrom string
@@ -128,7 +208,7 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	if strings.TrimSpace(opts.Title) == "" {
 		return Intent{}, fmt.Errorf("intent: refusing to create a draft with an empty title")
 	}
-	if strings.TrimSpace(opts.SeedBody) == "" {
+	if strings.TrimSpace(opts.SeedBody) == "" && strings.TrimSpace(opts.PressRelease) == "" {
 		return Intent{}, fmt.Errorf("intent: refusing to create a draft with an empty seed body")
 	}
 	if opts.PromotedFrom != "" && !promotedFromRe.MatchString(opts.PromotedFrom) {
@@ -170,11 +250,16 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	if err != nil {
 		return Intent{}, err
 	}
+	rPress, _, err := redactIntentText(repoRoot, opts.PressRelease)
+	if err != nil {
+		return Intent{}, err
+	}
 	rBody, _, err := redactIntentText(repoRoot, opts.SeedBody)
 	if err != nil {
 		return Intent{}, err
 	}
 	opts.Title = rTitle
+	opts.PressRelease = rPress
 	opts.SeedBody = rBody
 
 	var created Intent
@@ -315,10 +400,10 @@ var intentFileNumRe = recordid.FilenameNumRe(intentFamily)
 // (id, slug, spec_id: null, kind: null, suggested_kind: null,
 // reclassification_history: [], builds_on: [], severity: minor, plus the
 // promoted_from back-edge when the draft graduated from an issue, plus the
-// origin/production_mode disclosure pair) and an honest,
-// minimal body carrying the seed text under Why This Matters, with the itd-1
-// discipline's Acceptance Criteria section left as a placeholder for the human to
-// fill before planning.
+// origin/production_mode disclosure pair) and an honest, minimal body: the
+// Press Release prose or the route's seed note, the Why This Matters seed body
+// or its prompt, and the itd-1 discipline's Acceptance Criteria section left as
+// a placeholder for the human to fill before planning.
 func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp) string {
 	var b strings.Builder
 	b.WriteString("---\n")
@@ -351,9 +436,20 @@ func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp) string {
 	b.WriteString("---\n\n")
 	b.WriteString("# " + opts.Title + "\n\n")
 	b.WriteString("## Press Release\n\n")
-	b.WriteString("> " + seedNote(opts) + "\n\n")
+	if strings.TrimSpace(opts.PressRelease) != "" {
+		// Prose, in the blockquote every written press release in the record
+		// uses — never the seed note, which would make a press release the
+		// caller wrote read as a placeholder nobody filled.
+		b.WriteString(blockquote(opts.PressRelease) + "\n\n")
+	} else {
+		b.WriteString("> " + seedNote(opts) + "\n\n")
+	}
 	b.WriteString("## Why This Matters\n\n")
-	b.WriteString(opts.SeedBody + "\n\n")
+	if strings.TrimSpace(opts.SeedBody) != "" {
+		b.WriteString(opts.SeedBody + "\n\n")
+	} else {
+		b.WriteString(WhyThisMattersPrompt + "\n\n")
+	}
 	// The two claim sections the claim-recording gradient prompts for, each with
 	// its one-line contract. They sit above the criteria, matching the record
 	// template, and they arrive as a PROMPT: a seeded nullity token would record a
@@ -370,6 +466,29 @@ func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp) string {
 	b.WriteString("_Empty. Populated by intent-auditor when intent moves to shipped/._\n")
 	return b.String()
 }
+
+// blockquote renders prose as a Markdown blockquote, one `> ` per line so a
+// multi-paragraph text stays one quote.
+func blockquote(text string) string {
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			lines[i] = ">"
+			continue
+		}
+		lines[i] = "> " + line
+	}
+	return strings.Join(lines, "\n")
+}
+
+// WhyThisMattersPrompt is what `## Why This Matters` carries on a draft whose
+// route seeded no body for it — the quoted-text route, whose text is the press
+// release and is not pasted here a second time. Same register as the claim
+// prompts below: a contract the human replaces, not content anybody wrote. No
+// gate reads the section today, so nothing needs to tell the prompt from prose;
+// a reader that comes to need that compares against this constant, for the
+// reason IsClaimPrompt gives.
+const WhyThisMattersPrompt = "> _Why this matters to the user — replace before planning._"
 
 // The two claim-section prompts this package seeds. They are the contract a
 // human replaces, not a claim a human made, so a gate that reads one has to be
@@ -392,7 +511,9 @@ func IsClaimPrompt(body string) bool {
 }
 
 // The Press Release placeholders this package mints, in their parts: a per-path
-// opening clause and the instruction all of them close with.
+// opening clause and the instruction all of them close with. The capture form
+// is no longer minted — the quoted-text route seeds the section with its text —
+// but drafts already in the record carry it, so it stays recognised.
 const (
 	captureSeedOpening   = "Seeded from a quoted-text intent capture."
 	promotionSeedOpening = "Seeded by promotion from "
@@ -406,7 +527,8 @@ const (
 	readingSeedSource = "a reading item"
 )
 
-// CaptureSeedNote is the placeholder a quoted-text capture mints, whole.
+// CaptureSeedNote is the placeholder a quoted-text capture once minted, whole:
+// recognised on the drafts that carry it, written by no route today.
 const CaptureSeedNote = captureSeedOpening + " " + seedNoteTail
 
 // IsSeedNote reports whether a press-release body is still one of the templates
@@ -428,8 +550,8 @@ func IsSeedNote(text string) bool {
 	return strings.HasPrefix(text, promotionSeedOpening) && strings.HasSuffix(text, seedNoteTail)
 }
 
-// seedNote is the standard Press Release placeholder, honest about which create
-// path seeded the draft.
+// seedNote is the standard Press Release placeholder for a draft whose route
+// supplied no press-release prose, honest about which create path seeded it.
 //
 // The reading route names the KIND of source rather than the source: same
 // opening, same tail, so IsSeedNote goes on matching both forms by prefix and
@@ -445,7 +567,7 @@ func seedNote(opts DraftOptions) string {
 	return "_" + CaptureSeedNote + "_"
 }
 
-// titleLine collapses internal whitespace and trims the seed text into a single
+// titleLine collapses internal whitespace and trims a text into a single
 // heading line (a multi-word free-text line becomes one clean title).
 func titleLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")

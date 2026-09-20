@@ -32,7 +32,7 @@ func TestCreateFromTextRedactsEveryGitIdentity(t *testing.T) {
 
 func createDraft(t *testing.T, root, text string) string {
 	t.Helper()
-	it, err := CreateFromText(root, text, "", "")
+	it, err := CreateFromText(root, text, TextOptions{})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}

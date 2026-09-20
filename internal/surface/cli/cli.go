@@ -1816,7 +1816,7 @@ func intentStoreRoot(cmd *cobra.Command) (string, error) {
 // lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
 // the mutations. Usage/lookup failures exit 2.
 func newIntentCommand(asJSON *bool) *cobra.Command {
-	var intentImpact, intentProductionMode string
+	var intentTitle, intentImpact, intentProductionMode string
 	intentCmd := &cobra.Command{
 		Use:   "intent [text]",
 		Short: "Intent lifecycle; bare invocation is read-only status, quoted text files a draft",
@@ -1856,7 +1856,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
 						args[0])}
 				}
-				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intentImpact, intentProductionMode, *asJSON)
+				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intent.TextOptions{
+					Title: intentTitle, Impact: intentImpact, ProductionMode: intentProductionMode,
+				}, *asJSON)
 			}
 			v, err := intent.Status(repoRoot)
 			if err != nil {
@@ -1881,6 +1883,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// travels unchanged to shipped/, where intent_impact_valid requires it — so the
 	// tool's own create->plan->ship path can produce a record that clears the gate.
 	intentCmd.Flags().StringVar(&intentImpact, "impact", "", "stamp the draft's product impact: additive|breaking|fix (optional)")
+	// --title replaces the H1 the create derives from the text's first sentence.
+	// The text itself always seeds the Press Release; the title is only the
+	// heading over it, held to the same bar as the text (non-empty, one line,
+	// redacted).
+	intentCmd.Flags().StringVar(&intentTitle, "title", "", "the draft's H1 title (default: the first sentence of the text, cut at the slug cap)")
 	// --production-mode is a CLOSED CHOICE, refused outright outside the
 	// vocabulary — the same shape as --impact and --severity, both of which
 	// already stamp machine-read enums. There is no flag for `origin`: it is
@@ -1905,7 +1912,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.ErrOrStderr(),
 				"WARNING: `abcd intent new` is deprecated; use `abcd intent \"<text>\"` (quoted text is the create signal).")
-			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), "", "", *asJSON)
+			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intent.TextOptions{}, *asJSON)
 		},
 	})
 
@@ -2128,12 +2135,13 @@ var productionModeFlagHelp = "how this record's text was produced: " + provenanc
 	" (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
 
 // this surface stays a thin marshaller.
-func createIntentFromText(cmd *cobra.Command, repoRoot, text, impact, productionMode string, asJSON bool) error {
-	mode, err := resolveProductionMode(repoRoot, productionMode)
+func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent.TextOptions, asJSON bool) error {
+	mode, err := resolveProductionMode(repoRoot, opts.ProductionMode)
 	if err != nil {
 		return err
 	}
-	it, err := intent.CreateFromText(repoRoot, text, impact, mode)
+	opts.ProductionMode = mode
+	it, err := intent.CreateFromText(repoRoot, text, opts)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}

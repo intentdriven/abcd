@@ -17,7 +17,7 @@ import (
 func TestCreateFromTextSeedsDraft(t *testing.T) {
 	root := t.TempDir()
 
-	it, err := CreateFromText(root, "I want users to feel the card respects their time", "", "")
+	it, err := CreateFromText(root, "I want users to feel the card respects their time", TextOptions{})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestCreateFromTextSeedsDraft(t *testing.T) {
 func TestCreateFromTextRefusesEmpty(t *testing.T) {
 	root := t.TempDir()
 	for _, in := range []string{"", "   ", "\t\n"} {
-		if _, err := CreateFromText(root, in, "", ""); err == nil {
+		if _, err := CreateFromText(root, in, TextOptions{}); err == nil {
 			t.Fatalf("CreateFromText(%q) must be refused", in)
 		}
 	}
@@ -81,7 +81,7 @@ func TestCreateFromTextRedactsSecretsAndHomePaths(t *testing.T) {
 	const fakeHome = "/Users/alice/.ssh/id_rsa"
 	text := "leftover " + fakeToken + " and " + fakeHome + " in the install receipt"
 
-	it, err := CreateFromText(root, text, "", "")
+	it, err := CreateFromText(root, text, TextOptions{})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestCreateFromTextRedactsSecretsAndHomePaths(t *testing.T) {
 // over a freshly seeded draft — the "abcd lint stays green" guarantee.
 func TestCreateFromTextPassesRecordLint(t *testing.T) {
 	root := t.TempDir()
-	if _, err := CreateFromText(root, "seeded from a quoted-text capture", "", ""); err != nil {
+	if _, err := CreateFromText(root, "seeded from a quoted-text capture", TextOptions{}); err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}
 	cfg := lint.Config{
@@ -167,7 +167,7 @@ func TestCreateDraftPromotedFromRoundTrip(t *testing.T) {
 		t.Fatalf("parsed-back PromotedFrom = %q, want iss-7", got.PromotedFrom)
 	}
 	// Absent on every existing record: a draft minted from text has none.
-	plain, err := CreateFromText(root, "a plain quoted-text draft", "", "")
+	plain, err := CreateFromText(root, "a plain quoted-text draft", TextOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestCreateDraftValidatesInputs(t *testing.T) {
 // anything is written.
 func TestSeedDraftStampsProvenance(t *testing.T) {
 	root := t.TempDir()
-	it, err := CreateFromText(root, "a draft worth stamping with its provenance", "", "")
+	it, err := CreateFromText(root, "a draft worth stamping with its provenance", TextOptions{})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestSeedDraftStampsProvenance(t *testing.T) {
 	}
 
 	// A declared mode is stamped; the origin does not move with it.
-	it2, err := CreateFromText(root, "a dictated draft worth stamping", "", "dictated-and-formatted")
+	it2, err := CreateFromText(root, "a dictated draft worth stamping", TextOptions{ProductionMode: "dictated-and-formatted"})
 	if err != nil {
 		t.Fatalf("CreateFromText with a declared mode: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestSeedDraftStampsProvenance(t *testing.T) {
 
 	// An out-of-vocabulary mode is refused before anything is written.
 	before := draftCount(t, root)
-	if _, err := CreateFromText(root, "a draft with a bogus production mode", "", "typed"); err == nil {
+	if _, err := CreateFromText(root, "a draft with a bogus production mode", TextOptions{ProductionMode: "typed"}); err == nil {
 		t.Error("an out-of-vocabulary production mode must be refused")
 	}
 	if after := draftCount(t, root); after != before {
@@ -413,4 +413,165 @@ func seedWords(body string) string {
 	body = strings.ReplaceAll(body, ">", " ")
 	body = strings.ReplaceAll(body, "_", " ")
 	return strings.Join(strings.Fields(body), " ")
+}
+
+// TestCreateFromTextSeedsPressRelease is the iss-2609170726360399 headline: the
+// quoted text IS the press release, so it seeds `## Press Release` as prose
+// rather than sitting under a placeholder; the H1 is the text's first sentence,
+// not the whole paragraph; and `## Why This Matters` prompts for its own
+// content instead of repeating the text a second time.
+func TestCreateFromTextSeedsPressRelease(t *testing.T) {
+	root := t.TempDir()
+	const first = "Teams see who is waiting on whom without asking"
+	const second = "Every session prints its owed answer."
+	text := first + ". " + second
+
+	it, err := CreateFromText(root, text, TextOptions{})
+	if err != nil {
+		t.Fatalf("CreateFromText: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, it.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+
+	if !strings.Contains(doc, "\n# "+first+"\n") {
+		t.Errorf("H1 is not the first sentence %q:\n%s", first, doc)
+	}
+	if strings.Contains(doc, "# "+text) {
+		t.Errorf("H1 carries the whole quoted paragraph:\n%s", doc)
+	}
+	press := namedSection(t, doc, "## Press Release")
+	if !strings.Contains(press, first) || !strings.Contains(press, second) {
+		t.Errorf("Press Release does not carry the whole quoted text:\n%s", press)
+	}
+	if IsSeedNote(seedWords(press)) {
+		t.Errorf("Press Release is still the seed placeholder: %q", seedWords(press))
+	}
+	why := namedSection(t, doc, "## Why This Matters")
+	if strings.Contains(why, first) || strings.Contains(why, second) {
+		t.Errorf("Why This Matters repeats the quoted text:\n%s", why)
+	}
+	if why == "" {
+		t.Errorf("Why This Matters is empty; want the seeded prompt")
+	}
+}
+
+// TestDeriveTitle pins the sentence split the H1 is derived from: the text up
+// to the first `.`, `!` or `?` that is followed by whitespace or ends the text,
+// with that terminator dropped (no shipped intent's H1 carries one); a text
+// with no terminator is one sentence; a sentence longer than the slug cap is
+// cut on a word boundary at or before the cap.
+func TestDeriveTitle(t *testing.T) {
+	longSentence := "a sentence that runs on well past the sixty-character slug cap without ever reaching a terminator"
+	cases := []struct {
+		name, text, want string
+	}{
+		{"two sentences", "Teams see who is waiting. Every session prints its answer.", "Teams see who is waiting"},
+		{"no terminator", "Teams see who is waiting on whom", "Teams see who is waiting on whom"},
+		{"terminator at the end only", "Teams see who is waiting on whom.", "Teams see who is waiting on whom"},
+		{"question mark", "Who is waiting on whom? Everyone.", "Who is waiting on whom"},
+		{"exclamation", "Nobody waits! Every session prints its answer.", "Nobody waits"},
+		{"a period inside a token is not a boundary", "v0.9 prints its answer. Then more.", "v0.9 prints its answer"},
+		{"whitespace collapses", "Teams   see\twho\nis waiting. More.", "Teams see who is waiting"},
+		{"an ellipsis leaves no stub", "Wait... what is owed? Everything.", "Wait"},
+		{"one long sentence is cut on a word boundary", longSentence, "a sentence that runs on well past the sixty-character slug"},
+		{"a long sentence with a terminator is cut the same way", longSentence + ". Then more.", "a sentence that runs on well past the sixty-character slug"},
+		{"one unbroken word is cut at the cap", strings.Repeat("x", maxSlugLen+5), strings.Repeat("x", maxSlugLen)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := deriveTitle(tc.text)
+			if got != tc.want {
+				t.Errorf("deriveTitle(%q) = %q, want %q", tc.text, got, tc.want)
+			}
+			if n := len([]rune(got)); n > maxSlugLen {
+				t.Errorf("derived title is %d runes, over the %d cap", n, maxSlugLen)
+			}
+		})
+	}
+}
+
+// TestCreateFromTextTitleOverride: an explicit Title replaces the derived one
+// and is held to the text's own bar — non-empty after trimming, one line,
+// redacted through the same scanner — while the slug stays derived from the
+// text and the Press Release still carries the whole text.
+func TestCreateFromTextTitleOverride(t *testing.T) {
+	root := t.TempDir()
+	text := "Teams see who is waiting on whom without asking. Every session prints its owed answer."
+
+	it, err := CreateFromText(root, text, TextOptions{Title: "  Nobody waits on a silent session  "})
+	if err != nil {
+		t.Fatalf("CreateFromText with a title: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, it.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	if !strings.Contains(doc, "\n# Nobody waits on a silent session\n") {
+		t.Errorf("H1 is not the explicit title:\n%s", doc)
+	}
+	if !strings.HasPrefix(it.Slug, "teams-see-who-is-waiting") {
+		t.Errorf("slug %q is not derived from the text", it.Slug)
+	}
+	if press := namedSection(t, doc, "## Press Release"); !strings.Contains(press, "owed answer") {
+		t.Errorf("Press Release lost the text under an explicit title:\n%s", press)
+	}
+
+	// The title is redacted through the same scanner as the text.
+	const fakeHome = "/Users/alice/.ssh/id_rsa"
+	it2, err := CreateFromText(root, text, TextOptions{Title: "the key at " + fakeHome + " leaks"})
+	if err != nil {
+		t.Fatalf("CreateFromText with a title to redact: %v", err)
+	}
+	data2, err := os.ReadFile(filepath.Join(root, it2.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data2), "/Users/alice") {
+		t.Errorf("an explicit title persisted a raw home path:\n%s", data2)
+	}
+
+	// Degenerate titles are refused with nothing written.
+	before := draftCount(t, root)
+	for _, bad := range []string{"   ", "\t\n", "two\nlines", "carriage\rreturn"} {
+		if _, err := CreateFromText(root, text, TextOptions{Title: bad}); err == nil {
+			t.Errorf("Title %q must be refused", bad)
+		}
+	}
+	if after := draftCount(t, root); after != before {
+		t.Errorf("a refused title wrote a draft: %d -> %d", before, after)
+	}
+}
+
+// TestPromotePathSeedUnchanged: the promote route keeps its shape — the Press
+// Release is the promotion seed note and the seed body sits under Why This
+// Matters — so the site's placeholder exclusion and the by-id pointer a
+// promoted draft carries are untouched by the quoted-text route moving.
+func TestPromotePathSeedUnchanged(t *testing.T) {
+	root := t.TempDir()
+	it, err := CreateDraft(root, DraftOptions{
+		Slug: "graduated-from-an-issue", Title: "Graduated from an issue",
+		SeedBody: "Graduated from `iss-1`: read that issue record for the source observation.", PromotedFrom: "iss-1",
+		Origin: provenance.Origin{Kind: provenance.KindExtractedFromRecord},
+	})
+	if err != nil {
+		t.Fatalf("CreateDraft: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, it.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	if press := namedSection(t, doc, "## Press Release"); !IsSeedNote(seedWords(press)) {
+		t.Errorf("the promote route's Press Release is no longer the seed note: %q", seedWords(press))
+	}
+	if why := namedSection(t, doc, "## Why This Matters"); !strings.Contains(why, "Graduated from `iss-1`") {
+		t.Errorf("the promote route's Why This Matters lost its by-id pointer:\n%s", why)
+	}
+	if !strings.Contains(doc, "\n# Graduated from an issue\n") {
+		t.Errorf("the promote route's H1 is not the explicit title:\n%s", doc)
+	}
 }

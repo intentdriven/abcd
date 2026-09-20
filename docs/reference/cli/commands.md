@@ -727,6 +727,7 @@ Intent lifecycle; bare invocation is read-only status, quoted text files a draft
 ```
       --impact string            stamp the draft's product impact: additive|breaking|fix (optional)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --title string             the draft's H1 title (default: the first sentence of the text, cut at the slug cap)
 ```
 
 #### `abcd intent audit`

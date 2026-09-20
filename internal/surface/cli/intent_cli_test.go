@@ -783,3 +783,49 @@ func TestSpecCloseRefusesAnImpactlessIntent(t *testing.T) {
 		t.Fatalf("the refused close still moved the intent out of planned/: %v", statErr)
 	}
 }
+
+// TestIntentCreateTitleFlag: `abcd intent "<text>" --title "<title>"` files the
+// text as the Press Release under the explicit H1, and without the flag the H1
+// is the text's first sentence (iss-2609170726360399, the surface half).
+func TestIntentCreateTitleFlag(t *testing.T) {
+	repo := intentTestRepo(t)
+	text := "Teams see who is waiting on whom without asking. Every session prints its owed answer."
+
+	out := runCLI(t, "intent", text, "--title", "Nobody waits on a silent session", "--json")
+	var got struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("intent --json not JSON: %v\n%s", err, out)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, got.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(data)
+	if !strings.Contains(doc, "\n# Nobody waits on a silent session\n") {
+		t.Errorf("H1 is not the --title value:\n%s", doc)
+	}
+	if !strings.Contains(doc, "## Press Release\n\n> "+text) {
+		t.Errorf("Press Release is not the quoted text:\n%s", doc)
+	}
+
+	out = runCLI(t, "intent", text, "--json")
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("intent --json not JSON: %v\n%s", err, out)
+	}
+	if data, err = os.ReadFile(filepath.Join(repo, got.Path)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "\n# Teams see who is waiting on whom without asking\n") {
+		t.Errorf("H1 is not the first sentence:\n%s", data)
+	}
+
+	before := intentDraftCount(t, repo)
+	if _, err := runCLIErr(t, "intent", text, "--title", "   "); err == nil {
+		t.Error("an empty --title must be refused")
+	}
+	if after := intentDraftCount(t, repo); after != before {
+		t.Errorf("a refused --title wrote a draft: %d -> %d", before, after)
+	}
+}
