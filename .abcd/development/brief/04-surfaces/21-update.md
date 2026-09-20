@@ -50,7 +50,8 @@ ownership.
 
 Everything else on `PATH` is a loud refusal naming its remedy rather than a swap:
 a plugin-root binary belongs to the plugin update, a Homebrew-resolved install to
-`brew upgrade`, a stranded owned entry to `ahoy install`, a track-latest dev shim
+`brew upgrade`, a stranded owned entry to `ahoy install`, an owned pin into a
+superseded plugin vintage to that same `ahoy install`, a track-latest dev shim
 to a mode switch first, and a foreign occupant to whoever put it there, its
 remedy asking for that occupant to be removed or renamed. Two more answer the
 cases where there is nothing to act on at all: no `abcd` anywhere on `PATH`, and

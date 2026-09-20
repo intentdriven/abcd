@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -193,6 +194,12 @@ func Plan(t ahoy.UpdateTarget) *Refusal {
 			Shape:  string(t.Kind),
 			Detail: "the entry at " + targetPath + " is an abcd-owned link whose binary is gone (a plugin update strands it)",
 			Remedy: "run `abcd ahoy install` — it repoints the entry at the current plugin binary",
+		}
+	case ahoy.UpdateTargetSuperseded:
+		return &Refusal{
+			Shape:  string(t.Kind),
+			Detail: "the entry at " + targetPath + " is abcd's own pin, but it points into a superseded plugin vintage (" + filepath.Dir(resolvedPath) + "), so the binary answering is an older release than the plugin now holds",
+			Remedy: "run `abcd ahoy install` — it replaces the pin with the current release",
 		}
 	case ahoy.UpdateTargetForeign:
 		detail := "the entry at " + targetPath + " is not something abcd owns, and abcd never clobbers a binary it does not own"
