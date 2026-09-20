@@ -1798,3 +1798,38 @@ Per hand-run, append:
   adding a leg the binary does own. Reviewer evidence that the repo-wide
   `oracle.backend` is read by nothing was decisive and would not have
   surfaced from the record alone.
+
+## 2026-09-20 — the implement verb (itd-2609201916151817)
+
+- **Proposal:** "a new verb (implement) as a fully autonomous implementation
+  run for a single intent, verifying that all design decisions have been
+  made, then plan, implement, and validate autonomously using sub-agents
+  (configurable), incl. for orchestration, implementation, validation;
+  multiple agents using either claude CLI and/or opencode/openrouter models."
+- **Table (as proposed):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | One verb runs a READY intent to delivered through orchestrator, implementer and validator sub-agents, configurable | capability | this intent | refines itd-29, itd-50, itd-2 |
+  | "All design decisions made" as a precondition: no open question, no unanswered claim, not held | gate | refines the readiness gate; the answer verb and the held state are iss-2609200830002711 and iss-2609200830076665 | refines |
+  | Validator independent of implementer | stance | evaluator-outside-the-loop, already a principle | cited, nothing new |
+  | Agents run through the claude CLI or opencode/openrouter | capability | refines itd-2609170822093401 (per-agent model tier); the opt-in cli oracle rung | refines |
+  | "Plan … autonomously" | reversal | the intent page rules `plan` never unattended; flagged for the human | reverses (flagged) |
+
+- **Verdict:** SPLIT. The human ruled the reversal a flagged path (`--plan`
+  allowed for a draft whose decisions are all recorded, default refuses,
+  ADR owed before that path ships), routed the provider part to its own
+  draft (itd-2609201916056194) that this one builds on, and adopted the
+  four refinement links.
+- **Routing survived?** Yes, with one widening: the proposal's "plan"
+  became a flagged path rather than being struck or adopted whole, which
+  neither the table's "reverses" nor a plain "refines" would have named;
+  the three-way question (never / always / behind a flag) was what let the
+  human answer it. The provider part went to a separate draft rather than
+  into the planned model-tier intent, on the ground that a remainder spec
+  on a planned intent widens what a human already signed off.
+- **Notes:** the first run where the field evidence preceded the filing:
+  four managed-repo sessions had hand-built the verb's shape (coordinator,
+  implementer, three reviewers, adjudicator, pause-and-resume) in the four
+  days before, and one of them asked for the recipe outright. The
+  decomposition was faster for it; every part had a record to land on.
