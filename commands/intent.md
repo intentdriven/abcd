@@ -162,8 +162,10 @@ the thing being pursued rather than of the architecture:
 ```
 
 The vocabulary is closed — `pursued`, `deferred`, `declined` — and the text is
-free prose. The flag writes one entry to the record's `## Grounds` section and
-then reports the gate exactly as it would without it: the report is unchanged by
+free prose. Grounds are recorded on a draft or a planned intent alike, and
+refused on a shipped or superseded one. The flag writes one entry to the
+record's `## Grounds` section and then reports the gate exactly as it would
+without it: the report is unchanged by
 the flag, the exit code is the gate's own, and a failed write exits 2 rather than
 borrowing the gate's exit 1.
 
