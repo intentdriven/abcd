@@ -3,10 +3,10 @@
     "target": "agents_md"
   },
   "meta": {
-    "project_name": "abcd-cli",
+    "project_name": "abcd",
     "schema_version": 1,
-    "setup_date": "2026-07-14",
-    "setup_version": "dev"
+    "setup_date": "2026-09-17",
+    "setup_version": "v0.9.0"
   },
   "oracle": {
     "backend": "host-delegated"

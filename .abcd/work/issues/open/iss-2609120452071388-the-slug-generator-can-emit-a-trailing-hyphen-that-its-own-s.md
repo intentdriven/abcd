@@ -67,6 +67,19 @@ So the refusal is correct and the surface around it is not. Two sessions
 independently guessed values that do not exist, which is evidence about the help
 text rather than about the guessers.
 
+The peer session supplied the controlled comparison that turns this from a
+complaint into a diagnosis. In the same `--help` output, `--severity` names its
+four members inline and `--source` and `--category` name none. Their report:
+severity was right first time *because* it was named; the other two were right
+only by accident. Two sessions, three flags, and the one flag that documents its
+vocabulary is the one nobody got wrong.
+
+That isolates the cause. It is not that the vocabularies are closed, and not that
+the values are unguessable — it is that two of the three do not say what they
+accept, while the third, in the same help text, does. Whatever is decided about
+`autonomous-hunt`, naming the members would have prevented both of the day's
+wrong guesses independently of it.
+
 ## What is owed
 
 - **Trim the separator when truncating a slug**, so the generator cannot emit
@@ -91,4 +104,5 @@ text rather than about the guessers.
   board renders, **then** the count and the diagnostic agree about what was
   excluded and why.
 - **Given** `capture --help`, **when** a caller reads it, **then** the legal
-  values for `--source` and `--category` are named there.
+  values for `--source` and `--category` are named inline, as `--severity`
+  already names its four.

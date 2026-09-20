@@ -230,6 +230,22 @@ irreversible; guessing downward costs nothing.**
   mutation from real work. Correspondingly, a merge, commit, push or gate run
   proves the tree clean **immediately before the act**, never inheriting an
   emptiness check from earlier in the sequence (itd-193).
+- **A session cutting a release has the final say on what merges before its
+  tag.** A change ready to land while a peer is mid-cut is handed over as a
+  pull request, announced to the cutting session with the records it would
+  move into the cut, and merged or held on that session's ruling, never on the
+  landing session's. The cutting session reads the diff for anything its
+  release gate's semantic review will see and answers with one of two
+  orderings: merge now and sync into the release branch, so the records join
+  this cut, or hold until the tag, so they fall into the next. A record closed
+  for work an earlier release already carried is stamped `shipped_in:` with
+  that release, whichever ordering is chosen, or it lands in the changelog as
+  if it shipped today. The rule holds even when the change is orthogonal to
+  the release gates: orthogonal to the gates is not orthogonal to the release
+  branch, the cutting session is the one that can see the overlap, and a
+  full-tier release receipt names the commit its reviewers read, so nothing
+  merges between the CHANGELOG roll and the tag (iss-2609091037191879 seeds
+  the mechanical form).
 - **Record ids need no coordination between checkouts.** Captures, intents
   and specs mint timestamp-numeric ids through one allocator that reads no
   maximum (adr-45), so two current checkouts minting in the same window
