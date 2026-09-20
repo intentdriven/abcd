@@ -297,7 +297,7 @@ production_mode: hand-written # how the text was produced: hand-written | dictat
 #                                   origin: extracted-from-record / contributed-by-reading
 # Added later, not part of the seed skeleton:
 #   bundle: <id>                  — for kind: bundle-member, the bundle ID
-#   impact: additive|breaking|fix — the compatibility judgement the derived version is computed from. Never "internal" (a press-release-first intent is user-facing by definition), and required before the intent may move to shipped/. Stamped by a verb, never by hand: at create time via the `--impact` flag, at the planning interview via `abcd intent plan --impact` (the moment the judgement is made), or by `abcd spec close --impact` at the move
+#   impact: additive|breaking|fix — the compatibility judgement the derived version is computed from. Never "internal" (a press-release-first intent is user-facing by definition), and required before the intent may move to shipped/. Three verbs stamp it: `abcd intent "<text>" --impact` at create time, `abcd intent plan --impact` at the planning interview (the moment the judgement is made), and `abcd spec close --impact` at the move. A verb refuses to overwrite a judgement the record already holds, so a judgement that changed is revised by editing the record — the refusal names the path
 #   surface_history: []           — appended when an intent's user-facing surface shape changes (e.g., skill → sub-verb, top-level command → sub-verb, command → flag) WITHOUT changing kind. Distinct from reclassification_history. Schema: { date, from, to, reason }
 ---
 

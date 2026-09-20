@@ -338,9 +338,9 @@ func (e *probeEntropy) Read(p []byte) (int, error) {
 // result back, touching nothing else — no spec, no other frontmatter, no bucket
 // move. An already-marked bullet is left byte-identical, so re-running after an
 // edit stamps only what is new. The impact is taken here under the same rules
-// as on a draft, because "stamp the judgement" is exactly what a planned record
-// without one needs before its close — the close refuses without it, and until
-// now the only way to supply it short of the close was a hand edit.
+// as on a draft: plan is the verb that runs when the judgement is made, so it
+// takes the flag, and "stamp the judgement" is exactly what a planned record
+// without one needs before its close, which refuses without it.
 //
 // A run with nothing to stamp is a refusal, not a quiet success: the caller
 // asked for work to be done, and a verb that exits 0 having done none of it
