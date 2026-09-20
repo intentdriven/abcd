@@ -128,3 +128,36 @@ func TestUpdateTargetReportsLaterOwnedEntry(t *testing.T) {
 		t.Errorf("later owned entry = %q, want the shadowed install", tgt.LaterOwned)
 	}
 }
+
+// TestUpdateTargetSupersededVintagePin is iss-2609161805447092: a pin into a
+// plugin-cache vintage the harness has since moved past — the destination still
+// exists, so it is not stranded — is abcd's own entry pointing at a superseded
+// release, never a foreign occupant.
+func TestUpdateTargetSupersededVintagePin(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	linkSuperseded(t, filepath.Join(binDir, "abcd"), pluginRoot)
+
+	tgt := ResolveUpdateTarget()
+	if tgt.Kind != UpdateTargetSuperseded {
+		t.Errorf("pin into a superseded vintage classified %q, want %q", tgt.Kind, UpdateTargetSuperseded)
+	}
+}
+
+// A LIVE link into a sibling directory of a source checkout is a developer's
+// own working install (a second checkout's build), not a cache vintage: the
+// superseded shape is scoped to a plugin root that is not a git checkout.
+func TestUpdateTargetLiveSiblingLinkBesideSourceCheckoutIsForeign(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	if err := os.Mkdir(filepath.Join(pluginRoot, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	linkSuperseded(t, filepath.Join(binDir, "abcd"), pluginRoot)
+
+	if tgt := ResolveUpdateTarget(); tgt.Kind != UpdateTargetForeign {
+		t.Errorf("live sibling link beside a source checkout classified %q, want %q", tgt.Kind, UpdateTargetForeign)
+	}
+}

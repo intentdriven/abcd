@@ -206,9 +206,10 @@ func dirOnPath(dir string) bool {
 
 // pathEntry is one `abcd` found on PATH, classified.
 type pathEntry struct {
-	path     string        // the entry as it sits on PATH (unresolved)
-	kind     binTargetKind // dev-shim / owned / foreign
-	dangling bool          // ours, but the binary it points at is gone
+	path       string        // the entry as it sits on PATH (unresolved)
+	kind       binTargetKind // dev-shim / owned / foreign
+	dangling   bool          // ours, but the binary it points at is gone
+	superseded bool          // ours, but pinned into a plugin vintage the harness moved past
 }
 
 // owned reports whether the entry is one abcd installed (the owned copy, a
@@ -235,6 +236,11 @@ func scanPathEntries(pluginRoot string) []pathEntry {
 			continue
 		}
 		e := pathEntry{path: candidate, kind: classifyBinTarget(candidate, pluginRoot), dangling: linkIsDangling(candidate)}
+		if e.kind == binTargetOwnedSymlink && !e.dangling {
+			if dest, err := os.Readlink(candidate); err == nil {
+				e.superseded = supersededSiblingDest(candidate, dest, pluginRoot)
+			}
+		}
 		entries = append(entries, e)
 	}
 	return entries
@@ -347,6 +353,8 @@ func describeEntry(e pathEntry) string {
 		return "abcd's own installed copy"
 	case e.kind == binTargetOwnedSymlink && e.dangling:
 		return "an abcd symlink whose target is gone"
+	case e.kind == binTargetOwnedSymlink && e.superseded:
+		return "an abcd symlink into a superseded plugin vintage"
 	case e.kind == binTargetOwnedSymlink:
 		return "an abcd symlink"
 	case e.dangling:
@@ -485,6 +493,9 @@ func classifyBinTarget(target, pluginRoot string) binTargetKind {
 		if strandedSiblingDest(target, dest, pluginRoot) {
 			return binTargetOwnedSymlink
 		}
+		if supersededSiblingDest(target, dest, pluginRoot) {
+			return binTargetOwnedSymlink
+		}
 		return binTargetForeign
 	}
 	if isDevShimFile(target) {
@@ -516,20 +527,65 @@ func classifyBinTarget(target, pluginRoot string) binTargetKind {
 // scope is every sibling project dir — wider than the plugin cache, still the
 // developer's own tree, and still gated on the destination being gone.
 func strandedSiblingDest(symlinkPath, dest, pluginRoot string) bool {
-	if pluginRoot == "" {
+	dest, ok := siblingRootBinary(symlinkPath, dest, pluginRoot)
+	if !ok {
 		return false
+	}
+	present, err := fsutil.Exists(dest)
+	return err == nil && !present
+}
+
+// supersededSiblingDest is the live twin of strandedSiblingDest
+// (iss-2609161805447092): the destination is the binary of a sibling plugin
+// root that STILL EXISTS — the harness kept the old cache directory — while the
+// current root is a newer vintage. The pin answers an older release than the
+// plugin holds, and it is abcd's own pin: `ahoy install` wrote it, into abcd's
+// own cache. Ownership extends to exactly that shape: the leaf is the binary
+// name, the sibling shares the current root's parent, the destination is
+// present, it is not the current root's own binary, and the current root is a
+// harness-unpacked cache directory rather than a git checkout. That last gate
+// is the discriminator the stranded case gets from danglingness: beside a
+// SOURCE checkout the parent is the developer's projects directory, and a live
+// link into a sibling checkout's build is somebody's chosen working install,
+// which stays foreign.
+func supersededSiblingDest(symlinkPath, dest, pluginRoot string) bool {
+	dest, ok := siblingRootBinary(symlinkPath, dest, pluginRoot)
+	if !ok {
+		return false
+	}
+	if present, err := fsutil.Exists(dest); err != nil || !present {
+		return false
+	}
+	if resolvePath(dest) == resolvePath(pluginBinaryPath(pluginRoot)) {
+		return false
+	}
+	return !isDir(filepath.Join(pluginRoot, ".git"))
+}
+
+// siblingRootBinary resolves a symlink destination and reports whether it names
+// the abcd binary at the root of a SIBLING of the current plugin root — one
+// sharing the current root's parent directory. It is the scope both the
+// stranded and the superseded predicates share; each adds its own gate on the
+// destination's presence. The destination itself may not exist (the stranded
+// case), so its grandparent — which survives a plugin update — is resolved and
+// compared against the parent of the RESOLVED current root; a plugin root that
+// is itself a symlink out of its own parent therefore never matches, which
+// fails toward foreign, the refusing side.
+func siblingRootBinary(symlinkPath, dest, pluginRoot string) (string, bool) {
+	if pluginRoot == "" {
+		return "", false
 	}
 	if !filepath.IsAbs(dest) {
 		dest = filepath.Join(filepath.Dir(symlinkPath), dest)
 	}
 	if filepath.Base(dest) != binName {
-		return false
-	}
-	if present, err := fsutil.Exists(dest); err != nil || present {
-		return false
+		return "", false
 	}
 	oldRoot := filepath.Dir(dest)
-	return resolvePath(filepath.Dir(oldRoot)) == filepath.Dir(resolvePath(pluginRoot))
+	if resolvePath(filepath.Dir(oldRoot)) != filepath.Dir(resolvePath(pluginRoot)) {
+		return "", false
+	}
+	return dest, true
 }
 
 func isDir(p string) bool {

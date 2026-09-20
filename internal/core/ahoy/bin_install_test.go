@@ -935,3 +935,76 @@ func TestDetectLiveForeignSymlinkStaysForeign(t *testing.T) {
 		t.Fatalf("install clobbered a live symlink abcd does not own: %q (%v), want %q", dest, rerr, elsewhere)
 	}
 }
+
+// linkSuperseded plants the shape iss-2609161805447092 describes: a pin into a
+// sibling plugin-cache vintage whose binary STILL EXISTS — the harness kept the
+// old cache dir — while the current root is the fresh one.
+func linkSuperseded(t *testing.T, path, pluginRoot string) {
+	t.Helper()
+	oldRoot := filepath.Join(filepath.Dir(pluginRoot), "0ld5up3r53d3d")
+	if err := os.MkdirAll(oldRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldRoot, "abcd"), []byte("#!/bin/sh\n# superseded\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(oldRoot, "abcd"), path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDetectSupersededVintagePinIsItsOwnGap: the pin abcd wrote into a vintage
+// the plugin has moved past is reported as ours with its own remedy, never as a
+// foreign symlink the user is told to hand-resolve (iss-2609161805447092).
+func TestDetectSupersededVintagePinIsItsOwnGap(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	linkSuperseded(t, filepath.Join(binDir, "abcd"), pluginRoot)
+
+	det, err := Detect(managedRepo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := gapByID(det.Gaps, "symlink.superseded"); g == nil {
+		t.Fatalf("a pin into a superseded vintage produced no symlink.superseded gap: %+v", det.Gaps)
+	} else if !g.Resolvable || !g.Required {
+		t.Errorf("symlink.superseded must be required and resolvable, got %+v", *g)
+	}
+	if hasGap(det.Gaps, "symlink.foreign") {
+		t.Errorf("a superseded pin of our own was described as foreign: %+v", det.Gaps)
+	}
+}
+
+// TestInstallRepointsSupersededVintagePin: `ahoy install` is the remedy the
+// superseded gap names, so it must adopt the pin in place and point it at the
+// current plugin binary — no refusal, no second entry.
+func TestInstallRepointsSupersededVintagePin(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	other := filepath.Join(t.TempDir(), "opt", "bin")
+	t.Setenv("PATH", other)
+	link := filepath.Join(other, "abcd")
+	linkSuperseded(t, link, pluginRoot)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, rerr := os.Readlink(link)
+	if rerr != nil {
+		t.Fatalf("the superseded pin is no longer a symlink: %v", rerr)
+	}
+	if resolveSymlinkDest(link, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
+		t.Errorf("pin was not repointed at the current plugin binary: %s -> %s (notes: %v)", link, dest, res.Notes)
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".local", "bin", "abcd")); !os.IsNotExist(err) {
+		t.Errorf("install planted a second entry at ~/.local/bin beside the repointed one: %v", err)
+	}
+}

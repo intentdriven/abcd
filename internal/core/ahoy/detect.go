@@ -534,6 +534,18 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 					Required: true, Resolvable: true,
 				})
 			}
+		case supersededSiblingDest(target, dest, pluginRoot):
+			// Ours, pinned into a vintage the harness has moved past but not yet
+			// deleted (iss-2609161805447092): a working install that answers an
+			// older release. Its remedy is the one every owned shape gets, never
+			// the foreign gap's "resolve manually".
+			gaps = append(gaps, Gap{
+				ID: "symlink.superseded", Category: ConfigChange, Scope: "machine",
+				Title:    "PATH entry points into a superseded plugin vintage",
+				Detail:   displayPath(target) + " -> " + displayPath(dest) + " is abcd's own pin, but the plugin has moved on to " + displayPath(pluginRoot) + ", so `abcd` answers an older release than the plugin holds.",
+				FixHint:  "ahoy install replaces it with the current release.",
+				Required: true, Resolvable: true,
+			})
 		case strandedSiblingDest(target, dest, pluginRoot):
 			// Ours, stranded by a plugin update: the symlink.dangling gap above
 			// already carries it, and a foreign-worded gap here would tell the

@@ -605,3 +605,19 @@ func TestApplyRecordsManifestOwnershipOnAnOrdinarySwap(t *testing.T) {
 		t.Errorf("a provable old build is reported by version, not by digest: %+v", rep)
 	}
 }
+
+// TestPlanRefusesSupersededNamingAhoyInstall is iss-2609161805447092: a pin into
+// a superseded plugin vintage is abcd's own entry, so the refusal says which
+// vintage it points at and names `abcd ahoy install`, never "remove the occupant".
+func TestPlanRefusesSupersededNamingAhoyInstall(t *testing.T) {
+	r := Plan(ahoy.UpdateTarget{Path: "/x/abcd", ResolvedPath: "/cache/abcd/old1234/abcd", Kind: ahoy.UpdateTargetSuperseded})
+	if r == nil || !strings.Contains(r.Remedy, "abcd ahoy install") {
+		t.Fatalf("superseded target must refuse naming the ahoy heal: %+v", r)
+	}
+	if !strings.Contains(r.Detail, "superseded") || !strings.Contains(r.Detail, "/cache/abcd/old1234") {
+		t.Errorf("the refusal must say the pin points at a superseded vintage and name it: %+v", r)
+	}
+	if strings.Contains(r.Remedy, "remove or rename") {
+		t.Errorf("the foreign remedy must not be offered for abcd's own pin: %+v", r)
+	}
+}
