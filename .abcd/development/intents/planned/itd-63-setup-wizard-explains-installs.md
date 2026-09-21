@@ -1,8 +1,8 @@
 ---
 id: itd-63
 slug: setup-wizard-explains-installs
-spec_id: null
-kind: bundle-member
+spec_id: spc-2609211955339422
+kind: standalone
 bundle: spc-83-operator-surfaces
 suggested_kind: standalone
 reclassification_history: []
@@ -18,6 +18,7 @@ glossary_terms_used:
   - distribution/release
 builds_on: [itd-62]
 severity: major
+impact: additive
 ---
 
 # The Amateur Coder Is Told What Is Being Installed And Why, Not Just Asked To Run A Command
@@ -49,20 +50,29 @@ abcd's safety gate (itd-62/spc-76) ALWAYS blocks on a missing scanner rather tha
 
 None stated.
 
+## Mechanism
+
+We expect people to accept an install they understand and decline one they do not, so an explanation before the ask raises the opt-in to the adapters that make a capability better; shown wrong if the same installs are still skipped, or blindly run, after it ships.
+
 ## Acceptance Criteria
 
-> _Given-When-Then per the itd-1 discipline._
+- **Given** a verb finds a tool missing, **when** it names the gap, **then** it states the tool's name, whether it is optional or required for this capability, what works without it, what the tool would do, and the exact install step, from abcd's registry entry for that tool.
+- **Given** the explanation, **when** the person answers, **then** the install runs only on an explicit yes and the verb reports what it ran and whether it worked; a no leaves the capability on its native default and says so, weakening nothing silently.
+- **Given** a tool the registry does not know, **when** the gap is named, **then** the generic explanation and the step are shown and the registry gap is captured.
+- **Given** the safety gate's missing-scanner case, **when** it surfaces the prerequisite, **then** it routes through this mode, not a bare command.
+- **Given** a plain terminal outside any agent host, **when** the mode runs, **then** it works with no host dependency.
 
-- **Given** a capability needs a dependency the machine lacks (an optional adapter or a genuine prerequisite), **when** the wizard runs, **then** it states the tool name, the requiring capability, the native default already covering it (for an adapter) or what fails without it (for a prerequisite), a plain-language description, and the exact install step before any install.
-- **Given** the wizard's explanation, **when** the human decides, **then** the install proceeds only on explicit confirmation; declining does not silently weaken the gate that required it.
-- **Given** itd-62/spc-76's missing-scanner block, **when** it surfaces the prerequisite, **then** it routes through this wizard rather than a bare command.
-- **Given** the explain-and-guide mechanics, **when** invoked outside Claude Code, **then** they run with no Claude-Code dependency.
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **Runs the install on confirmation**, and reports the result.
+2. **Descriptions come from a curated registry** abcd ships; a gap is captured.
+3. **A mode other verbs call**, not a surface of its own; standalone kind, since its bundle mate (itd-62) is a draft.
 
 ## Open Questions
 
-- Does the wizard ever RUN the install (confirmed, explained) or only show the step for the human to run? Running is friendlier; showing is safer/more portable.
-- How does it describe a tool it does not have a canned blurb for — a curated registry of known deps vs a generated description?
-- Is it a standalone surface or a sub-mode other surfaces invoke (itd-62 first)?
+_None open; decisions 1 to 3 settle the three this record carried._
 
 ## Audit Notes
 
@@ -86,3 +96,7 @@ for GR001). Full record in the spec's process-exception note.
 - First consumer: [[itd-62-pluggable-safety-gate]] (the safety gate's missing-scanner path).
 - Thesis tie: keeping human JUDGMENT the constraint requires the human to understand what
   they are consenting to, not just be handed a command.
+
+## Grounds
+
+- pursued: the run lands two new adapters and a scanner rule, each of which will meet a machine without the tool; we expect the explained ask to be answered yes where a bare command was ignored; shown wrong if the same installs are still skipped or blindly run
