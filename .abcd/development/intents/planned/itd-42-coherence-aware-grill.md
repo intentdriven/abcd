@@ -1,7 +1,7 @@
 ---
 id: itd-42
 slug: coherence-aware-grill
-spec_id: null
+spec_id: spc-2609211918551301
 kind: standalone
 suggested_kind: standalone
 reclassification_history: []
@@ -21,9 +21,13 @@ warrants_assumed:
 blocked_by: [itd-27]
 builds_on: [itd-41]
 severity: major
+impact: additive
 ---
 
 # Grill Reads an Intent Against the Brief and Its Siblings, Not Just the Glossary
+
+> **Re-scoped on 2026-09-21** by the product thinker: this record is the automated pre-pass the decomposition discipline (itd-84) names as its next rung. Before the planning interview, abcd reads the brief's invariants, the principles and a one-line index of every intent, and writes the coherence questions into the planning brief the interview starts from. The grill it first named is superseded (itd-27); the press release and scope below are read through this paragraph and the Decisions section.
+
 
 ## Press Release
 
@@ -66,30 +70,33 @@ The brief is already structured for selective loading — numbered sections, inv
 - **Grilling against shipped *code*** — Tier 3 reads shipped *intents*, not the implementation. Delivered-reality comparison remains `intent-fidelity-reviewer`'s job at the shipped transition.
 - **A new sub-verb or command** — this is a capability of the existing `/abcd:intent grill`, not a sibling verb.
 
+## Mechanism
+
+We expect a pre-pass that reads the invariants and the sibling index to catch the contradiction or the duplicate before a spec exists, because both are visible from the record alone and the interview today finds them only when the person happens to remember; shown wrong if planned intents still turn out to duplicate or contradict one another after it ships.
+
 ## Scope Conditions
 
 None stated.
 
 ## Acceptance Criteria
 
-> _BDD format, per the itd-1 discipline._
+- **Given** a draft intent, **when** the pre-pass runs, **then** the planning brief it writes names every brief invariant the draft's text implies a conflict with, quoting the invariant's line and the draft's.
+- **Given** a draft that overlaps an existing intent on any shelf, **when** the pre-pass runs, **then** the brief names the sibling from a one-line index of every intent, writes the question with the four answers (keep both, bundle, supersede, refine), and, where it has one, its recommendation with the reason in the prose beside the question and never as a marked option.
+- **Given** the pre-pass has run, **when** the tree is inspected, **then** the draft, the brief and the sibling intents are unchanged; the pre-pass read the invariants, the principles, the index and the draft, and wrote only the planning brief under the local tier.
+- **Given** a planning brief with questions, **when** the interview runs, **then** each question is asked, and the answer lands on the record as a decision or a typed link.
+- **Given** a concern the pre-pass cannot anchor to a named invariant or record, **when** it writes the brief, **then** the concern is a question marked unanchored, not a finding.
 
-- **Given** an intent in `drafts/`, **when** the product thinker runs a light grill on it, **then** the grill loads at most the glossary tier and does not load brief or sibling context — capture-stage grilling stays cheap.
-- **Given** an intent being promoted out of `drafts/`, **when** the full grill runs, **then** it loads the glossary tier, the named brief invariant/scope/surface slices, the `principles/` set, and the one-line sibling-intent index.
-- **Given** an intent whose body implies behaviour that a `02-constraints/03-invariants.md` invariant forbids, **when** the full grill runs, **then** it surfaces the conflict and cites the specific invariant; a conflict surfaced without such a citation is a defect.
-- **Given** an intent that overlaps a sibling intent, **when** the full grill runs, **then** it names the sibling intent ID and asks the product thinker to state the difference as a Socratic question — sibling overlap is never asserted as fact, because a draft sibling is a mutable anchor.
-- **Given** the product thinker answers a surfaced overlap question, **when** the session ends, **then** the answer — the stated difference, or a kill/merge decision — is captured in the `grill-report` against that question, so the claimed distinction is on record.
-- **Given** a coherence concern the grill cannot anchor to a named invariant or scope clause, **when** it surfaces that concern, **then** it is phrased as a Socratic question tagged with a named move — never as an asserted conflict.
-- **Given** a full grill has run, **when** the `grill-report.json` is written, **then** coherence questions and any grounded conflicts appear in it alongside the existing question stream, each grounded conflict carrying its invariant or scope-clause anchor reference.
-- **Given** the grill has surfaced a coherence conflict, **when** the session ends, **then** the intent, the brief, and the sibling intents are unchanged on disk — the grill's coherence output is advisory.
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **The record is the pre-pass**, run before the interview and writing into the planning brief; the interview stays the human's.
+2. **Overlaps are asked with the four standard answers**, and the pre-pass may recommend one with its reason in the prose beside the question, never as a marked option (the GRILL rule).
+3. **The loader is the interview's own** (the planning-brief writer the intent page describes), not a module shared with the phase negotiator or the fidelity reviewer; the context is the invariants, the principles, the index and the draft, and nothing else, which is the budget.
 
 ## Open Questions
 
-> _Tier-selection surface and the Tier 3 index mechanism were resolved during the grill (2026-05-16): tier set is lifecycle-derived with `--light`/`--full` override; the sibling index is built fresh each grill, not a maintained file. Brief-slice degradation is resolved in scope (skip-and-warn). The questions below remain genuine plan-time decisions._
-
-- Does coherence grilling share a context-loading module with itd-41's phase negotiator and itd-31's cross-document fidelity reviewer, or keep its own loader until the three demonstrably converge?
-- Should a surfaced sibling-overlap question, once the thinker answers it, be allowed to *recommend* reclassification (bundle-member) or supersession, or strictly surface-and-record? itd-27's grill already touches reclassification-adjacent territory.
-- Token budget — at 40+ intents the one-line index is small, but the brief slices plus glossary plus intent body must still fit. Is there a point where Tier 2/3 must itself become selective (the itd-39 boundary)?
+_None open; decisions 2 and 3 settle the three this record carried._
 
 ## Audit Notes
 
@@ -101,3 +108,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 - Shares the grounded-adversary pattern with: [itd-41](../drafts/itd-41-phase-negotiator.md) (phase negotiator) — Socratic where it questions, grounded where it asserts.
 - Defers to: [itd-39](../drafts/itd-39-scope-aware-memory-retrieval.md) (scope-aware memory retrieval) — full-body cross-intent comparison at scale is itd-39's problem, not this intent's.
 - Coordinates with: [itd-48](itd-48-intent-fidelity-reviewer-roles-2-3.md) (cross-document fidelity reviewer — supersedes [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md)) — different register: itd-48's Role 2 reviews delivered documents for drift; this grills an intent for coherence before it is planned.
+
+## Grounds
+
+- pursued: the autonomous run may prepare interviews but not perform them, and the planning brief it writes is only worth reading if this pass fed it; we expect the first briefs to carry a conflict or an overlap the person had not seen; shown wrong if the briefs raise nothing the person did not already know
