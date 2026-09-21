@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -150,13 +151,7 @@ var reNonSlug = regexp.MustCompile(`[^a-z0-9]+`)
 // is redacted (gh-485). Deriving here, after redaction, closes that seam and
 // mirrors the intent engine's deriveIntentSlug, which likewise keeps derivation
 // in core rather than trusting a pre-kebab'd slug.
-func deriveSlug(text string) string {
-	collapsed := strings.Trim(reNonSlug.ReplaceAllString(strings.ToLower(text), "-"), "-")
-	if len(collapsed) > 60 {
-		collapsed = strings.Trim(collapsed[:60], "-")
-	}
-	return collapsed
-}
+func deriveSlug(text string) string { return recordid.Slug(text, 60) }
 
 // normaliseSlug lowercases, collapses non-alphanumeric runs to a single hyphen,
 // and trims hyphens, mirroring _normalise_slug. Empty result is an error.
