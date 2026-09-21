@@ -84,3 +84,12 @@ and calls `receipt`, so the loop is proven without any model.
 piece 9; 7 by pieces 1 and 2; 8 by piece 2; 9 by piece 3; 10 by piece 10;
 11 by the refusal shape every piece shares.
 
+## Invariant folded in on 2026-09-21 (itd-58)
+
+Only the loop writes a verdict. The validator stage records each validator's
+verdict into the state file from the validator's own return, before the
+advance is decided; the lane's receipt and report carry no verdict field the
+loop reads, and a report that carries one is refused at the advance naming
+it. The end-to-end test enters through the loop's step interface, has a
+fake validator return SHIP, and asserts the advance; a second run has the
+lane write a SHIP into its report and asserts the refusal.

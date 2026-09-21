@@ -1,5 +1,6 @@
 ---
 id: itd-58
+superseded_by: itd-2609201916151817
 slug: session-reviewer-verdict-ingestion
 spec_id: null
 kind: standalone
@@ -11,6 +12,9 @@ severity: major
 ---
 
 # A Real Reviewer's SHIP Verdict Reaches The Session Gate Through A Channel The Worker Cannot Forge
+
+> **Superseded by itd-2609201916151817** on 2026-09-21, on the product thinker's ruling: the unforgeable verdict is an invariant of the build machinery, not a record of its own. That intent's decision 9 and its last criterion carry it: only the loop writes a verdict, from the validator's own return, and a lane report carrying one is refused at the advance.
+
 
 ## Press Release
 
