@@ -112,11 +112,10 @@ func parseIntent(relPath, content, bucket string) (Intent, error) {
 // spec_id — is chosen so that (kind=standalone, spec_id=null) is the only
 // transient frontmatter, and that shape is valid in BOTH drafts and planned.
 //
-// productionMode is the disclosure the MINTED SPEC carries (itd-178); it is
-// validated by the spec store before the id is minted, and an empty value takes
-// the vocabulary's default. It has no bearing on the intent record, whose own
-// stamp was written when the draft was created and is never rewritten.
-func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
+// opts carries the two optional judgements the verb takes: the production mode
+// the MINTED SPEC carries, and the impact the INTENT record is stamped with
+// (see PlanOptions).
+func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return PlanResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
 	}
@@ -145,7 +144,7 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 	// re-run would leave such a record permanently unable to satisfy the gate that
 	// demands the marker (iss-2608300210588874).
 	if it.Bucket == BucketPlanned {
-		return stampPlanned(repoRoot, it)
+		return stampPlanned(repoRoot, it, opts.Impact)
 	}
 	if !slugRe.MatchString(it.Slug) {
 		return PlanResult{}, fmt.Errorf("intent: %s has slug %q which must be kebab-case", intentID, it.Slug)
@@ -153,7 +152,6 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 
 	draftRel := it.Path
 	draftAbs := filepath.Join(repoRoot, draftRel)
-
 	// Everything from the read to the last write is ONE critical section under
 	// the store's advisory lock, as stampPlanned's stamp is
 	// (iss-2608300235388164): the hold is judged on the bytes read HERE, and
@@ -175,6 +173,7 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 		kind              string
 		plannedRel        string
 		conditionsStamped int
+		impactStamp       string
 	)
 	if err := withIntentMintLock(repoRoot, func() error {
 		content, err := readIntentRefusingHold(draftAbs, draftRel, intentID, "plan")
@@ -188,6 +187,14 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 		// lint-invalid): refuse rather than mint a second spec for it.
 		if !frontmatter.IsNull(it.SpecID) {
 			return fmt.Errorf("intent: %s is a draft with spec_id %q already set (half-planned); refusing to plan", intentID, it.SpecID)
+		}
+		// The impact judgement is settled BEFORE the first write and before the
+		// spec is minted, so a refused value — out of vocabulary, `internal`, or a
+		// disagreement with what the record already says — leaves the draft
+		// byte-identical with no spec pointing at it.
+		impactStamp, err = resolvePlanImpact(it, content, opts.Impact)
+		if err != nil {
+			return err
 		}
 
 		// 1. Reuse the spec already realising this intent, or mint one. Reusing makes
@@ -219,24 +226,27 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 				return err
 			}
 		}
-		if err := checkDraftFaceSize(content, it, specID, draftRel); err != nil {
+		if err := checkDraftFaceSize(content, it, specID, impactStamp, draftRel); err != nil {
 			return err
 		}
 
 		if !ok {
-			sp, err = spec.Create(repoRoot, intentID, it.Slug, productionMode)
+			sp, err = spec.Create(repoRoot, intentID, it.Slug, opts.ProductionMode)
 			if err != nil {
 				return err
 			}
 		}
 
-		// 2. Stamp an identity onto every unmarked scope-condition bullet, and set the
-		// binding kind (default standalone), while still in drafts. Plan is the
-		// write-capable verb of the lifecycle, so it is where the identities are
-		// minted: the readiness gate reports a missing marker but never writes one, a
-		// reporter that writes being a reporter whose output depends on who ran it.
-		// A draft with (kind=standalone, spec_id=null) stays lint-valid, so a failure
-		// here leaves a consistent record (the spec exists but the intent is unlinked).
+		// 2. Stamp an identity onto every unmarked scope-condition bullet, set the
+		// binding kind (default standalone), and write the impact judgement when one
+		// was supplied — all while still in drafts. Plan is the write-capable verb of
+		// the lifecycle, so it is where the identities are minted: the readiness gate
+		// reports a missing marker but never writes one, a reporter that writes being
+		// a reporter whose output depends on who ran it. The impact rides the same
+		// write as the kind: a draft carrying (kind=standalone, spec_id=null) and an
+		// impact is exactly what the create path can seed, so it stays lint-valid,
+		// and a failure here leaves a consistent record (the spec exists but the
+		// intent is unlinked).
 		stampedContent, n, err := stampScopeConditions(content, recordid.Minter{})
 		if err != nil {
 			return err
@@ -246,7 +256,7 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 		if frontmatter.IsNull(kind) {
 			kind = KindStandalone
 		}
-		withKind, err := setFrontmatterFields(stampedContent, map[string]string{"kind": kind})
+		withKind, err := setFrontmatterFields(stampedContent, draftFaceFields(kind, impactStamp))
 		if err != nil {
 			return err
 		}
@@ -279,13 +289,26 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 	it.SpecID = sp.ID
 	it.Bucket = BucketPlanned
 	it.Path = plannedRel
-	return PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped}, nil
+	return PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped, ImpactStamped: impactStamp}, nil
+}
+
+// draftFaceFields is the frontmatter rewrite the draft face makes in one
+// write: the binding kind, plus the impact judgement when the run carries one
+// to stamp. One function so the size probe and the real write cannot disagree
+// about what that write contains.
+func draftFaceFields(kind, impact string) map[string]string {
+	fields := map[string]string{"kind": kind}
+	if impact != "" {
+		fields["impact"] = impact
+	}
+	return fields
 }
 
 // checkDraftFaceSize refuses a draft whose planned form would not fit under the
 // cap its own reader enforces, BEFORE the first write and before the bucket
-// move. It reproduces the three growth steps in order and judges the largest.
-func checkDraftFaceSize(content string, it Intent, specID, rel string) error {
+// move. It reproduces the three growth steps in order and judges the largest;
+// impact is the judgement the kind write will carry alongside it, or empty.
+func checkDraftFaceSize(content string, it Intent, specID, impact, rel string) error {
 	// The probe's entropy has to advance: a constant source hands the second
 	// bullet the id the first already used, the redraw loop exhausts, and the
 	// whole judgement is lost behind a mint error on every record with more than
@@ -300,7 +323,7 @@ func checkDraftFaceSize(content string, it Intent, specID, rel string) error {
 	if frontmatter.IsNull(kind) {
 		kind = KindStandalone
 	}
-	withKind, err := setFrontmatterFields(stamped, map[string]string{"kind": kind})
+	withKind, err := setFrontmatterFields(stamped, draftFaceFields(kind, impact))
 	if err != nil {
 		return err
 	}
@@ -356,18 +379,25 @@ func (e *probeEntropy) Read(p []byte) (int, error) {
 }
 
 // stampPlanned is Plan's idempotent second face: it mints an identity for every
-// unmarked scope-condition bullet of an already-planned record and writes it
-// back, touching nothing else — no spec, no frontmatter, no bucket move. An
-// already-marked bullet is left byte-identical, so re-running after an edit
-// stamps only what is new.
+// unmarked scope-condition bullet of an already-planned record, writes the
+// impact judgement when the run carries one the record lacks, and writes the
+// result back, touching nothing else — no spec, no other frontmatter, no bucket
+// move. An already-marked bullet is left byte-identical, so re-running after an
+// edit stamps only what is new. The impact is taken here under the same rules
+// as on a draft: plan is the verb that runs when the judgement is made, so it
+// takes the flag, and "stamp the judgement" is exactly what a planned record
+// without one needs before its close, which refuses without it.
 //
 // A run with nothing to stamp is a refusal, not a quiet success: the caller
 // asked for work to be done, and a verb that exits 0 having done none of it
-// teaches its user that the command is a no-op.
-func stampPlanned(repoRoot string, it Intent) (PlanResult, error) {
+// teaches its user that the command is a no-op. An impact stamped counts as
+// work; an impact that merely agrees with the record does not, and the refusal
+// then names the recorded judgement so it cannot read as "not stamped".
+func stampPlanned(repoRoot string, it Intent, impact string) (PlanResult, error) {
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
 	var stampedCount int
+	var impactStamp string
 	// The read, the mint and the write are one critical section under the store's
 	// existing advisory lock: two sessions stamping the same record would
 	// otherwise each write the file they read, and the later write would drop the
@@ -377,23 +407,40 @@ func stampPlanned(repoRoot string, it Intent) (PlanResult, error) {
 		if err != nil {
 			return err
 		}
-		stamped, n, err := stampScopeConditions(string(data), recordid.Minter{})
+		content := string(data)
+		// The judgement is settled before the identity mint, so a refused value
+		// leaves the record byte-identical: no bullet is marked on a run that
+		// then reports a refusal.
+		stamp, err := resolvePlanImpact(it, content, impact)
 		if err != nil {
 			return err
 		}
-		if n == 0 {
+		stamped, n, err := stampScopeConditions(content, recordid.Minter{})
+		if err != nil {
+			return err
+		}
+		if n == 0 && stamp == "" {
+			if impact != "" {
+				return fmt.Errorf("intent: %s is already planned, carries no unmarked scope condition and already records impact %q; nothing to stamp", it.ID, impact)
+			}
 			return fmt.Errorf("intent: %s is already planned and carries no unmarked scope condition; nothing to stamp", it.ID)
+		}
+		if stamp != "" {
+			if stamped, err = setFrontmatterFields(stamped, map[string]string{"impact": stamp}); err != nil {
+				return err
+			}
 		}
 		if err := writeIntentFile(abs, rel, stamped); err != nil {
 			return err
 		}
 		stampedCount = n
+		impactStamp = stamp
 		return nil
 	})
 	if err != nil {
 		return PlanResult{}, err
 	}
-	res := PlanResult{Intent: it, ConditionsStamped: stampedCount, StampOnly: true}
+	res := PlanResult{Intent: it, ConditionsStamped: stampedCount, StampOnly: true, ImpactStamped: impactStamp}
 	// The stamp mints no spec, but the intent has one, and an empty spec object in
 	// the result reads as "this intent has no spec" to anything consuming it. The
 	// lookup is lenient: a broken link is the readiness gate's finding to report,
@@ -890,10 +937,7 @@ func resolveShipImpact(repoRoot string, it Intent, supplied string) (string, err
 	if err != nil {
 		return "", err
 	}
-	recorded := frontmatter.Fields(strings.Split(string(data), "\n"))["impact"].Value
-	if frontmatter.IsNull(recorded) {
-		recorded = ""
-	}
+	recorded := recordedImpact(string(data))
 	supplied = strings.TrimSpace(supplied)
 
 	switch {
@@ -910,13 +954,72 @@ func resolveShipImpact(repoRoot string, it Intent, supplied string) (string, err
 		}
 		return supplied, nil
 	case recorded != supplied:
-		return "", fmt.Errorf("intent: %s already records impact %q but --impact says %q; a close does not revise a recorded judgement — edit %s if the judgement changed", it.ID, recorded, supplied, it.Path)
+		return "", impactDisagreement(it, recorded, supplied, "close")
 	default:
 		if err := validShipImpact(recorded); err != nil {
 			return "", fmt.Errorf("intent: %s records %w; refusing to ship a record its own record-lint would refuse", it.ID, err)
 		}
 		return "", nil
 	}
+}
+
+// resolvePlanImpact decides the impact `intent plan --impact` writes onto the
+// record — the value to STAMP, or empty when nothing needs writing. Plan is the
+// verb that runs when the judgement is made (the planning interview settles the
+// impact class), so it is where a draft filed without one gets it, and the
+// identity-step re-run over a planned record takes it for the same reason: a
+// planned record without a judgement is the record the close refuses
+// (iss-2609170726457256). The rules are the create path's and the close's, not
+// a third set:
+//
+//   - nothing supplied → nothing written, whatever the record carries. The bare
+//     verb behaves as it always has, and the judgement stays owed to the close.
+//   - supplied, record has none → validated at the one bar CreateFromText and
+//     resolveShipImpact apply (validShipImpact: a legal member of the vocabulary,
+//     never `internal`), then stamped. The value is taken as typed, as the create
+//     path takes it: `Fix` and ` fix` are refused, not repaired.
+//   - supplied, record disagrees → refused before anything is written, in the
+//     shape the close uses: a plan does not revise a recorded judgement either.
+//   - supplied, record agrees → a no-op, validated so a hand-typed value the gate
+//     would refuse is named here rather than carried on.
+func resolvePlanImpact(it Intent, content, supplied string) (string, error) {
+	if supplied == "" {
+		return "", nil
+	}
+	recorded := recordedImpact(content)
+	switch {
+	case recorded == "":
+		if err := validShipImpact(supplied); err != nil {
+			return "", fmt.Errorf("intent: --impact %w", err)
+		}
+		return supplied, nil
+	case recorded != supplied:
+		return "", impactDisagreement(it, recorded, supplied, "plan")
+	default:
+		if err := validShipImpact(supplied); err != nil {
+			return "", fmt.Errorf("intent: --impact %w", err)
+		}
+		return "", nil
+	}
+}
+
+// impactDisagreement is the one refusal every verb that takes --impact over an
+// existing record shares: the record already holds a judgement and the flag
+// says otherwise. Neither verb revises it as a side effect — the human edits the
+// record they meant to change — and the two refusals read the same so a reader
+// of one recognises the other.
+func impactDisagreement(it Intent, recorded, supplied, verb string) error {
+	return fmt.Errorf("intent: %s already records impact %q but --impact says %q; a %s does not revise a recorded judgement — edit %s if the judgement changed", it.ID, recorded, supplied, verb, it.Path)
+}
+
+// recordedImpact reads the impact a record's frontmatter carries, with a null
+// or absent field read as "none".
+func recordedImpact(content string) string {
+	recorded := frontmatter.Fields(strings.Split(content, "\n"))["impact"].Value
+	if frontmatter.IsNull(recorded) {
+		return ""
+	}
+	return recorded
 }
 
 // validShipImpact applies the shipped/ bar to one impact value: a legal member

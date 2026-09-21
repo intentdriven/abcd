@@ -136,6 +136,6 @@ forbidden. Nothing routes them today.
 ## Related documentation
 
 - Naming discipline: [`../02-constraints/04-naming.md`](../02-constraints/04-naming.md)
-- Intent: [`itd-20`](../../intents/planned/itd-20-top-level-abcd-dispatcher.md)
+- Intent: [`itd-20`](../../intents/superseded/itd-20-top-level-abcd-dispatcher.md)
 - The command surface this board sits at the head of: [`README.md`](README.md)
 - The per-verb bare renders it complements: [`05-intent.md`](05-intent.md), [`01-ahoy.md`](01-ahoy.md)

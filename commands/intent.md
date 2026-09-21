@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -69,13 +69,22 @@ documented protocol is the gate.
 ## Create a draft
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" intent "<text>" [--impact <additive|breaking|fix>] [--production-mode <hand-written|dictated-and-formatted|scribe-transcribed>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent "<text>" [--title "<title>"] [--impact <additive|breaking|fix>] [--production-mode <hand-written|dictated-and-formatted|scribe-transcribed>] --json
 ```
 
-Files `drafts/itd-N-<slug>.md` seeded from the text. Report the new `id` and
-`path`, and tell the user the seeded Acceptance Criteria section is a
-placeholder that must be replaced with real Given-When-Then bullets — via the
-planning interview below — before the draft can be planned.
+Files `drafts/itd-N-<slug>.md`. **The text is the press release**: the whole
+of it seeds the `## Press Release` section as prose, so write it as the user
+moment — the paragraph a shipped intent opens with. The H1 title is the text's
+first sentence: the split is at the first `.`, `!` or `?` followed by
+whitespace or the end of the text, the terminator is dropped from the title,
+and a sentence longer than the slug cap is cut on a word boundary.
+`--title "<title>"` replaces it with a heading of your own — one line,
+non-empty, redacted like the text. The slug is derived from the text either
+way. `## Why This Matters` is seeded with a prompt, not with the text again.
+Report the new `id` and `path`, and tell the user the seeded Why This Matters
+and Acceptance Criteria sections are placeholders that must be replaced — the
+criteria with real Given-When-Then bullets, via the planning interview below —
+before the draft can be planned.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
@@ -90,7 +99,11 @@ argument carrying a space.
 no field. When you do set it, the value is validated (one of `additive`,
 `breaking`, `fix` — never `internal`, since an intent is user-facing by
 definition) and stamped onto the draft, where it travels unchanged through
-planning to `shipped/`, which the `intent_impact_valid` gate requires.
+planning to `shipped/`, which the `intent_impact_valid` gate requires. A draft
+filed without one is judged later, at the planning interview — and `abcd intent
+plan <itd-N> --impact <value>` is the verb that stamps it then, at the same
+bar (see step 10 of the interview). Never hand-edit the field in: the verbs
+carry the validators.
 
 ## Disclosure: where a record came from and how its text was produced
 
@@ -155,8 +168,10 @@ the thing being pursued rather than of the architecture:
 ```
 
 The vocabulary is closed — `pursued`, `deferred`, `declined` — and the text is
-free prose. The flag writes one entry to the record's `## Grounds` section and
-then reports the gate exactly as it would without it: the report is unchanged by
+free prose. Grounds are recorded on a draft or a planned intent alike, and
+refused on a shipped or superseded one. The flag writes one entry to the
+record's `## Grounds` section and then reports the gate exactly as it would
+without it: the report is unchanged by
 the flag, the exit code is the gate's own, and a failed write exits 2 rather than
 borrowing the gate's exit 1.
 
@@ -248,8 +263,11 @@ reporter that writes is a reporter whose output depends on who ran it. That
 remedy runs on a planned record too: `abcd intent plan <itd-N>` on an intent
 already in `planned/` does the identity step alone — it mints for every
 unmarked bullet, moves no bucket and touches no spec — so a condition written
-after planning still reaches the mint. With nothing unmarked it refuses and
-says so, rather than exiting quietly having done nothing. The
+after planning still reaches the mint. That re-run also takes `--impact`,
+under the rules step 10 gives, so a planned record filed without a judgement
+gets one before its close through the verb rather than an editor. With nothing
+unmarked (and no judgement to add) it refuses and says so, rather than exiting
+quietly having done nothing. The
 identities are rendered by `abcd intent ready <itd-N> --json` under
 `conditions`, which is where a consumer reads them; bare `abcd intent` is a
 corpus-wide count-and-link status and carries no per-record body.
@@ -319,13 +337,26 @@ gate that will refuse the move mechanically is a recorded seed until built.
 10. Only after the human explicitly confirms the criteria are theirs, run:
 
    ```bash
-   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--production-mode <mode>] --json
+   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--impact <additive|breaking|fix>] [--production-mode <mode>] --json
    ```
 
    This invocation IS the maintainer's sign-off act — never run it unattended
    or infer consent. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
    `drafts/ → planned/`.
+
+   **`--impact` is the judgement the interview settled**, stamped here because
+   this is the moment it is made: a draft filed without one gets it now, in the
+   same shape the create path writes (`impact: <value>`), validated at the same
+   bar — one of `additive`, `breaking`, `fix`, never `internal`. Ask the human
+   for the class if the draft does not carry it, and pass their answer; never
+   type it into the frontmatter. The rules are the close's: a value that
+   disagrees with one the record already carries is refused before anything
+   moves (a plan does not revise a recorded judgement — the human edits the
+   record they meant to change), the same value is accepted as a no-op, and
+   without the flag the verb leaves the field as it found it, so the judgement
+   stays owed to the close that ships. On an intent already in `planned/` the
+   flag works the same way alongside the identity stamp.
 
    **"Plan" means this act and nothing else here.** The build plan the phase
    docs hold, a dated design plan, and a session's planning brief are three
@@ -370,8 +401,9 @@ changelog line and exits 0 doing so; two intents delivering a breaking CLI
 change were caught that way only by a reviewer. The close that ships needs the
 intent's `impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
 there is no default, because the judgement decides the derived version. A
-record that already declares it needs nothing; a record that does not takes
-`--impact additive|breaking|fix` on the close, which stamps it before the move
+record that already declares it — at create time, or where the interview
+settled it, at `abcd intent plan --impact` — needs nothing; a record that does
+not takes `--impact additive|breaking|fix` on the close, which stamps it before the move
 (`internal` is a category error on a press-release-first intent, and is
 refused). The close refuses rather than shipping a record with neither, and it
 refuses a `--impact` that disagrees with one already written down: a close does

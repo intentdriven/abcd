@@ -1816,7 +1816,7 @@ func intentStoreRoot(cmd *cobra.Command) (string, error) {
 // lifecycle status board (never mutates); the `plan` and `link` sub-verbs carry
 // the mutations. Usage/lookup failures exit 2.
 func newIntentCommand(asJSON *bool) *cobra.Command {
-	var intentImpact, intentProductionMode string
+	var intentTitle, intentImpact, intentProductionMode string
 	intentCmd := &cobra.Command{
 		Use:   "intent [text]",
 		Short: "Intent lifecycle; bare invocation is read-only status, quoted text files a draft",
@@ -1856,7 +1856,12 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
 						args[0])}
 				}
-				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intentImpact, intentProductionMode, *asJSON)
+				// Changed, not the value: `--title ""` is a title the user gave and
+				// the core refuses it, where an unset flag leaves the H1 derived.
+				return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intent.TextOptions{
+					Title: intentTitle, TitleSet: cmd.Flags().Changed("title"),
+					Impact: intentImpact, ProductionMode: intentProductionMode,
+				}, *asJSON)
 			}
 			v, err := intent.Status(repoRoot)
 			if err != nil {
@@ -1881,6 +1886,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// travels unchanged to shipped/, where intent_impact_valid requires it — so the
 	// tool's own create->plan->ship path can produce a record that clears the gate.
 	intentCmd.Flags().StringVar(&intentImpact, "impact", "", "stamp the draft's product impact: additive|breaking|fix (optional)")
+	// --title replaces the H1 the create derives from the text's first sentence.
+	// The text itself always seeds the Press Release; the title is only the
+	// heading over it, held to the same bar as the text (non-empty, one line,
+	// redacted).
+	intentCmd.Flags().StringVar(&intentTitle, "title", "", "the draft's H1 title (default: the first sentence of the text, cut at the slug cap)")
 	// --production-mode is a CLOSED CHOICE, refused outright outside the
 	// vocabulary — the same shape as --impact and --severity, both of which
 	// already stamp machine-read enums. There is no flag for `origin`: it is
@@ -1905,15 +1915,15 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.ErrOrStderr(),
 				"WARNING: `abcd intent new` is deprecated; use `abcd intent \"<text>\"` (quoted text is the create signal).")
-			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), "", "", *asJSON)
+			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intent.TextOptions{}, *asJSON)
 		},
 	})
 
 	// plan <itd-N> — mint the spec, write both link sides, move drafts -> planned.
-	var planProductionMode string
+	var planProductionMode, planImpact string
 	planCmd := &cobra.Command{
 		Use:   "plan <itd-N>",
-		Short: "Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions",
+		Short: "Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions — either face takes --impact to stamp the judgement",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
@@ -1926,7 +1936,12 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := intent.Plan(repoRoot, args[0], mode)
+			// The impact belongs to the INTENT: plan is the verb that runs when the
+			// planning interview settles the judgement, so it is where a draft filed
+			// without one gets it (iss-2609170726457256). The core validates it at
+			// the create path's bar and refuses a value that disagrees with what the
+			// record already carries, before anything moves.
+			res, err := intent.Plan(repoRoot, args[0], intent.PlanOptions{ProductionMode: mode, Impact: planImpact})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
@@ -1934,7 +1949,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.StampOnly {
 					// The identity step alone, over a record already planned: say what
 					// was done and nothing more, so the line cannot read as a move.
-					fmt.Fprintf(w, "abcd intent plan — %s already planned; stamped its unmarked scope conditions\n", res.Intent.ID)
+					fmt.Fprintf(w, "abcd intent plan — %s already planned; stamped in place\n", res.Intent.ID)
 				} else {
 					fmt.Fprintf(w, "abcd intent plan — %s drafts -> planned, linked %s\n", res.Intent.ID, res.Spec.ID)
 				}
@@ -1945,10 +1960,16 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.ConditionsStamped > 0 {
 					fmt.Fprintf(w, "  scope-condition identities stamped: %d\n", res.ConditionsStamped)
 				}
+				if res.ImpactStamped != "" {
+					fmt.Fprintf(w, "  impact stamped: %s\n", res.ImpactStamped)
+				}
 			})
 		},
 	}
 	planCmd.Flags().StringVar(&planProductionMode, "production-mode", "", productionModeFlagHelp)
+	// --impact on plan is the same closed choice the create path and `spec close`
+	// carry, taken at the moment the judgement is actually made.
+	planCmd.Flags().StringVar(&planImpact, "impact", "", "stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)")
 	intentCmd.AddCommand(planCmd)
 
 	// ready <itd-N> — the read-only implement-readiness gate. Exit codes are the
@@ -2181,12 +2202,13 @@ var productionModeFlagHelp = "how this record's text was produced: " + provenanc
 	" (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
 
 // this surface stays a thin marshaller.
-func createIntentFromText(cmd *cobra.Command, repoRoot, text, impact, productionMode string, asJSON bool) error {
-	mode, err := resolveProductionMode(repoRoot, productionMode)
+func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent.TextOptions, asJSON bool) error {
+	mode, err := resolveProductionMode(repoRoot, opts.ProductionMode)
 	if err != nil {
 		return err
 	}
-	it, err := intent.CreateFromText(repoRoot, text, impact, mode)
+	opts.ProductionMode = mode
+	it, err := intent.CreateFromText(repoRoot, text, opts)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}

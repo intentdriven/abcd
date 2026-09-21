@@ -42,7 +42,7 @@ func TestHoldWritesTheKeyAndUnholdRemovesIt(t *testing.T) {
 	if it.Held != "awaiting the reading rethink" || it.HeldMalformed {
 		t.Fatalf("loader must read the hold back: %+v", it)
 	}
-	if _, err := Plan(root, "itd-10", ""); err == nil || !strings.Contains(err.Error(), "intent unhold itd-10") {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil || !strings.Contains(err.Error(), "intent unhold itd-10") {
 		t.Fatalf("Plan must refuse the held draft naming the remedy: %v", err)
 	}
 
@@ -56,7 +56,7 @@ func TestHoldWritesTheKeyAndUnholdRemovesIt(t *testing.T) {
 	if got := readIntent(t, root, rel); got != before {
 		t.Fatalf("unhold must remove exactly the line hold wrote:\n--- before\n%s\n--- after\n%s", before, got)
 	}
-	if _, err := Plan(root, "itd-10", ""); err != nil {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err != nil {
 		t.Fatalf("the record plans once the hold is lifted: %v", err)
 	}
 }
@@ -160,7 +160,7 @@ func TestUnholdRefusesWhatItDidNotWrite(t *testing.T) {
 	if _, err := Hold(root, "itd-11", "why"); err == nil || !strings.Contains(err.Error(), "record_provenance") {
 		t.Errorf("hold over a malformed value must send the caller to the line: %v", err)
 	}
-	if _, err := Plan(root, "itd-11", ""); err == nil || !strings.Contains(err.Error(), "shape no verb writes") {
+	if _, err := Plan(root, "itd-11", PlanOptions{}); err == nil || !strings.Contains(err.Error(), "shape no verb writes") {
 		t.Errorf("plan over a malformed value must refuse, fail closed: %v", err)
 	}
 }
@@ -325,7 +325,7 @@ func TestUnholdRefusesAHandWrittenKeySpelling(t *testing.T) {
 		t.Fatalf("the record is still held after the refusal: %+v", it)
 	}
 	// Plan still refuses it: the hold stands however it was spelled.
-	if _, err := Plan(root, "itd-10", ""); err == nil || !strings.Contains(err.Error(), "by hand") {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil || !strings.Contains(err.Error(), "by hand") {
 		t.Fatalf("plan must still refuse the held record: %v", err)
 	}
 }
@@ -365,7 +365,7 @@ func TestPlanRefusesAHoldOnTheBytesItReReads(t *testing.T) {
 	}
 	// And Plan as a whole still refuses the held draft with nothing moved.
 	before := readIntent(t, root, rel)
-	if _, err := Plan(root, "itd-10", ""); err == nil || !strings.Contains(err.Error(), "landed late") {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil || !strings.Contains(err.Error(), "landed late") {
 		t.Fatalf("Plan must refuse: %v", err)
 	}
 	if readIntent(t, root, rel) != before {
@@ -408,7 +408,7 @@ func TestPlanRefusesAHoldLandingBeforeItsLockedRead(t *testing.T) {
 	writeFile(t, root, rel, draftWithAC("itd-10", "alpha"))
 	fired := landHoldAtLockEntry(t, root, "itd-10", "landed in the window")
 
-	_, err := Plan(root, "itd-10", "")
+	_, err := Plan(root, "itd-10", PlanOptions{})
 	if !*fired {
 		t.Error("Plan never took the store lock before its write: the seam never fired")
 	}

@@ -3,7 +3,7 @@ id: adr-37
 slug: changelog-driven-releases
 status: accepted
 date: 2026-07-17
-supersedes: null
+supersedes: [itd-72]
 superseded_by: null
 related_intents: [itd-73]
 related_rfcs: []

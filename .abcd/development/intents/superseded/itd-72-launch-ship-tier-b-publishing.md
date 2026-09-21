@@ -17,15 +17,19 @@ glossary_terms_used:
   - distribution/version
   - distribution/end-user
 blocked_by: [itd-67]
+superseded_by: adr-37
+kind_at_supersession: standalone
 severity: major
 builds_on: [itd-65, itd-66]
 ---
 
 # Publishing A Release Is One Atomic, Refusable `ship`
 
+> **Superseded by adr-37** on 2026-09-20, on the product thinker's ruling: publishing moved into CI behind the changelog-driven gate (adr-37), versions are derived (adr-31) and the semantic gate runs before the tag (adr-52), so every criterion here is met in another shape or moot; a review on 2026-09-20 found no criterion still open.
+
 > _Retroactive intent record for spc-80. spc-80 builds the Tier B (publishing)
 > half of the itd-67 consolidated PRD — see
-> [itd-67](itd-67-installable-versioned-plugin.md), whose grilled PRD defines
+> [itd-67](../planned/itd-67-installable-versioned-plugin.md), whose grilled PRD defines
 > both tiers. This record exists so the spec resolves to an intent under
 > `planned/`/`shipped/`; the two-key grandfather marks that it did not pass
 > through its own grill (the grilled provenance lives on itd-67)._

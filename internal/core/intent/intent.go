@@ -206,6 +206,26 @@ func sortStrings(s []string) {
 	}
 }
 
+// PlanOptions parameterises Plan. Both fields are optional: the zero value
+// plans a draft exactly as the bare verb does.
+type PlanOptions struct {
+	// ProductionMode is the disclosure the MINTED SPEC carries (itd-178); it is
+	// validated by the spec store before the id is minted, and an empty value
+	// takes the vocabulary's default. It has no bearing on the intent record,
+	// whose own stamp was written when the draft was created and is never
+	// rewritten.
+	ProductionMode string
+	// Impact is the product-impact judgement to stamp onto the INTENT record
+	// (`impact: additive|breaking|fix`), the same field the create path writes
+	// from its own --impact and the close that ships demands. Plan is the verb
+	// that runs when the judgement is actually made — the planning interview
+	// settles the impact class — so it is where a draft filed without one gets
+	// it. It is validated at the bar the create and close paths apply, refused
+	// when it disagrees with a judgement the record already carries, and
+	// accepted as a no-op when it agrees; empty leaves the record unjudged.
+	Impact string
+}
+
 // PlanResult reports a completed Plan: the updated planned intent and the spec
 // minted to realise it.
 type PlanResult struct {
@@ -219,6 +239,10 @@ type PlanResult struct {
 	// condition written after planning reaches the mint, which is what makes the
 	// readiness gate's remedy a command that works.
 	StampOnly bool `json:"stamp_only"`
+	// ImpactStamped is the impact judgement this run wrote onto the record, and
+	// empty when it wrote none — because no --impact was supplied, or because the
+	// record already carried the same value.
+	ImpactStamped string `json:"impact_stamped"`
 }
 
 // LinkResult reports a completed Link: the updated intent and the spec it now

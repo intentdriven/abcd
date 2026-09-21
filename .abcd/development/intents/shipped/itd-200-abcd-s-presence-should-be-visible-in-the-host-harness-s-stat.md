@@ -75,7 +75,7 @@ not options.
 - **Where the host has no status surface**, one line at the stop names whose
   answer is owed, once, and the bare `/abcd` board shows the same state on
   demand. The board is the fallback, never a separate status command
-  ([itd-20](../planned/itd-20-top-level-abcd-dispatcher.md) owns it).
+  ([itd-20](../superseded/itd-20-top-level-abcd-dispatcher.md) owns it).
 - **First harness only.** This cut wires the harness abcd already ships
   lifecycle hooks for. Others follow one at a time in the roster order the
   record sets.

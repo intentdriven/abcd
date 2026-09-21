@@ -5,10 +5,14 @@ spec_id: null
 kind: standalone
 suggested_kind: null
 reclassification_history: []
+superseded_by: itd-2609201916056194
+kind_at_supersession: standalone
 severity: critical
 ---
 
 # In-Session Subagent Dispatch — the Default Host-Delegated Oracle
+
+> **Superseded by itd-2609201916056194** on 2026-09-20, on the product thinker's ruling: host-delegated dispatch became the default by the boundary rule in AGENTS.md rather than by the `auto` and `in-session` config values this record names, which were never built; the one repo-wide oracle backend it keys on is read by nothing and is re-decided per agent by itd-2609170822093401; the CLI adapter draft is what finally gives that backend a second value. The multi-iteration audit-fix loop is itd-50's and reaching another harness is itd-22's.
 
 ## Press Release
 

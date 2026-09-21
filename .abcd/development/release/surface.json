@@ -997,6 +997,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "title",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -1045,6 +1052,13 @@
       "path": "abcd intent plan",
       "hidden": false,
       "flags": [
+        {
+          "name": "impact",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "production-mode",
           "shorthand": "",

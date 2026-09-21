@@ -31,7 +31,7 @@ func TestCreateFromTextMintsPastTheOrdinalsWithoutCounting(t *testing.T) {
 	writeFile(t, root, plannedDir+"/itd-9-beta.md",
 		"---\nid: itd-9\nslug: beta\nspec_id: spc-1\nkind: standalone\n---\n# beta\n")
 
-	it, err := CreateFromText(root, "another product intent", "", "")
+	it, err := CreateFromText(root, "another product intent", TextOptions{})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestPlanMintsATimestampSpecForATimestampDraft(t *testing.T) {
 	const draftID = "itd-2608221126066632"
 	writeFile(t, root, draftsDir+"/"+draftID+"-alpha.md", draftWithAC(draftID, "alpha"))
 
-	res, err := Plan(root, draftID, "")
+	res, err := Plan(root, draftID, PlanOptions{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}
@@ -134,11 +134,11 @@ func TestCreateFromTextInTwoCheckoutsNeverCollides(t *testing.T) {
 		writeFile(t, root, draftsDir+"/itd-200-alpha.md", draftWithAC("itd-200", "alpha"))
 	}
 
-	itA, err := CreateFromText(checkoutA, "the first session's intent", "", "")
+	itA, err := CreateFromText(checkoutA, "the first session's intent", TextOptions{})
 	if err != nil {
 		t.Fatalf("checkout A CreateFromText: %v", err)
 	}
-	itB, err := CreateFromText(checkoutB, "the second session's intent", "", "")
+	itB, err := CreateFromText(checkoutB, "the second session's intent", TextOptions{})
 	if err != nil {
 		t.Fatalf("checkout B CreateFromText: %v", err)
 	}

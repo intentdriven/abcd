@@ -1,7 +1,7 @@
 ---
 id: itd-65
 slug: launch-preflight-gate-suite
-spec_id: null
+spec_id: spc-2609201955279019
 kind: standalone
 suggested_kind: standalone
 reclassification_history: []
@@ -67,6 +67,21 @@ abcd's whole thesis is routing the risks a non-expert cannot see to a fail-close
 ## Scope Conditions
 
 None stated.
+
+## Delivery Status
+
+Reviewed against the v0.9.0 tree on 2026-09-20. Delivered and cited: the
+identity hard-fails on a home path, a real email and a username, naming the
+file (`internal/adapter/scanner/identity.go`, `TestRenderPayloadSecretRefuses`,
+`TestShipBlocksOnSecret`); the scanner failing closed when unavailable
+(`TestZeroCoverageRefuses`); a local identity flagged while an org handle
+passes (`TestOtherIdentitiesArmMatchersAndHandleStaysPublic`); a clean payload
+exiting 0 (`TestShipCleanWouldPublish`); the manifest half of the marker
+criterion (`smoke.go`). Moot: the auto-append of narration into the changelog,
+because the changelog is derived (adr-37); the reroute-not-dirt criterion,
+because no reroute exists. Open, and scoped by spc-2609201955279019: the
+marker-block check, the change-narration detector, the dirty-tree refusal,
+the two warn-fail rows, the report file, the multi-gate test.
 
 ## Acceptance Criteria
 

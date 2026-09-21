@@ -194,7 +194,7 @@ func TestStampPlannedHoldsTheMintLock(t *testing.T) {
 	}()
 	<-held
 	start := time.Now()
-	if _, err := Plan(root, "itd-10", ""); err != nil {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	waited := time.Since(start)
@@ -261,7 +261,7 @@ func TestPlanLeavesACommentedSectionByteIdentical(t *testing.T) {
 		"## Scope Conditions\n\n" + commentedSection + "\n## Acceptance Criteria\n\n- ok\n"
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", before)
 
-	if _, err := Plan(root, "itd-10", ""); err == nil {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil {
 		t.Fatal("Plan must refuse a section carrying a comment span")
 	}
 	after, err := os.ReadFile(filepath.Join(root, plannedDir, "itd-10-alpha.md"))
@@ -322,7 +322,7 @@ func TestStampRefusesToWritePastTheReadCap(t *testing.T) {
 	}
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", record)
 
-	if _, err := Plan(root, "itd-10", ""); err == nil {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil {
 		t.Fatal("stamping past the read cap must refuse")
 	} else if !strings.Contains(err.Error(), "cap") {
 		t.Fatalf("the refusal must name the cap, got %q", err)
@@ -352,7 +352,7 @@ func TestPlanRefusesToGrowADraftPastTheReadCap(t *testing.T) {
 	}
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", record)
 
-	if _, err := Plan(root, "itd-10", ""); err == nil {
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil {
 		t.Fatal("Plan must refuse rather than write a record past the read cap")
 	} else if !strings.Contains(err.Error(), "cap") {
 		t.Fatalf("the refusal must name the cap, got %q", err)
@@ -401,7 +401,7 @@ func TestQuotedCommentOpenerDoesNotMaskTheRecord(t *testing.T) {
 		t.Fatal("the quoted opener swallowed the Acceptance Criteria")
 	}
 	// And the draft plans: the AC discipline sees its criterion, and the stamp runs.
-	res, err := Plan(root, "itd-10", "")
+	res, err := Plan(root, "itd-10", PlanOptions{})
 	if err != nil {
 		t.Fatalf("Plan must succeed: %v", err)
 	}
@@ -491,7 +491,7 @@ func TestPlanRefusesBeforeAnyWriteOnTheDraftFace(t *testing.T) {
 			}
 			writeFile(t, root, draftsDir+"/itd-10-alpha.md", record)
 
-			if _, err := Plan(root, "itd-10", ""); err == nil {
+			if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil {
 				t.Fatal("Plan must refuse before any write")
 			} else if !strings.Contains(err.Error(), "cap") {
 				t.Fatalf("the refusal must name the cap, got %q", err)

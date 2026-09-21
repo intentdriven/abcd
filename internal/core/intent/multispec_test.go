@@ -169,7 +169,7 @@ func TestReconcileRefusesImpactWithARemainder(t *testing.T) {
 func TestPartialDeliveryResidualPassesRecordLint(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
-	pr, err := Plan(root, "itd-10", "")
+	pr, err := Plan(root, "itd-10", PlanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
