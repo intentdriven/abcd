@@ -153,103 +153,125 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 
 	draftRel := it.Path
 	draftAbs := filepath.Join(repoRoot, draftRel)
-	// The hold is judged a second time, on the bytes re-read here rather than
-	// on the corpus loaded above: a hold written between the load and this read
-	// would otherwise be planned past. The refusal above is the early one; this
-	// is the last read before the first write (the spec mint), so a refusal here
-	// still leaves nothing minted and nothing moved.
-	content, err := readIntentRefusingHold(draftAbs, draftRel, intentID, "plan")
-	if err != nil {
-		return PlanResult{}, err
-	}
-	if !hasAcceptanceCriteria(content) {
-		return PlanResult{}, fmt.Errorf("intent: %s has no non-empty '## Acceptance Criteria' section (itd-1 discipline); refusing to plan", intentID)
-	}
-	// A draft that already carries a non-null spec_id is half-planned (and
-	// lint-invalid): refuse rather than mint a second spec for it.
-	if !frontmatter.IsNull(it.SpecID) {
-		return PlanResult{}, fmt.Errorf("intent: %s is a draft with spec_id %q already set (half-planned); refusing to plan", intentID, it.SpecID)
-	}
 
-	// 1. Reuse the spec already realising this intent, or mint one. Reusing makes
-	// Plan retry-safe: a re-run after a failed drafts->planned rename completes the
-	// operation instead of duplicating the spec. Both branches write the reciprocal
-	// intent: itd-N side (Create writes it; a reused spec already carries it).
-	store, err := spec.Load(repoRoot)
-	if err != nil {
-		return PlanResult{}, err
-	}
-	sp, ok := store.ByIntent(intentID)
-
-	// 1a. The draft face grows the record THREE times — the identity stamp, the
-	// kind rewrite, the spec_id rewrite — and the largest of them is knowable
-	// before any of them is written. Checking per write let a record pass the kind
-	// write, MOVE to planned, and only then fail the spec_id write, leaving a
-	// half-planned record neither Plan nor Link repairs; and it left a freshly
-	// minted spec behind with nothing pointing at it (iss-2608300335369473). The
-	// check runs first, before the spec is minted. A reused spec is judged by its
-	// own id; a spec still to be minted is judged by a probe id of the mint's
-	// width — every native id is the same width (adr-45), so the probe measures
-	// exactly what the mint will write, and no second judgement is owed once the
-	// real id is known. The check runs before the first write, so a refusal
-	// leaves no half-planned record.
-	specID := sp.ID
-	if !ok {
-		if specID, err = probeMinter().Mint(specFamily); err != nil {
-			return PlanResult{}, err
-		}
-	}
-	if err := checkDraftFaceSize(content, it, specID, draftRel); err != nil {
-		return PlanResult{}, err
-	}
-
-	if !ok {
-		sp, err = spec.Create(repoRoot, intentID, it.Slug, productionMode)
+	// Everything from the read to the last write is ONE critical section under
+	// the store's advisory lock, as stampPlanned's stamp is
+	// (iss-2608300235388164): the hold is judged on the bytes read HERE, and
+	// those bytes are what the stamp, the kind write and the move are made
+	// from. Judged outside the lock, a hold landing after the read — through
+	// `intent hold`, which takes this lock, re-reads, writes atomically and
+	// exits 0 — was erased by a rewrite from the stale bytes, and the record
+	// reached planned/ with both verbs reporting success. The refusal above,
+	// on the corpus, is the early one; this is the one that binds.
+	//
+	// The spec mint stays inside: spec.Create takes only the spec store's own
+	// lock, nothing takes that lock and then this one (the spec package cannot
+	// import this one), and keeping it inside is what keeps "a refusal here
+	// leaves nothing minted" true — a spec left behind by a refused plan is
+	// retry-safe through store.ByIntent, but a mint that never happened needs
+	// no retry.
+	var (
+		sp                spec.Spec
+		kind              string
+		plannedRel        string
+		conditionsStamped int
+	)
+	if err := withIntentMintLock(repoRoot, func() error {
+		content, err := readIntentRefusingHold(draftAbs, draftRel, intentID, "plan")
 		if err != nil {
-			return PlanResult{}, err
+			return err
 		}
-	}
+		if !hasAcceptanceCriteria(content) {
+			return fmt.Errorf("intent: %s has no non-empty '## Acceptance Criteria' section (itd-1 discipline); refusing to plan", intentID)
+		}
+		// A draft that already carries a non-null spec_id is half-planned (and
+		// lint-invalid): refuse rather than mint a second spec for it.
+		if !frontmatter.IsNull(it.SpecID) {
+			return fmt.Errorf("intent: %s is a draft with spec_id %q already set (half-planned); refusing to plan", intentID, it.SpecID)
+		}
 
-	// 2. Stamp an identity onto every unmarked scope-condition bullet, and set the
-	// binding kind (default standalone), while still in drafts. Plan is the
-	// write-capable verb of the lifecycle, so it is where the identities are
-	// minted: the readiness gate reports a missing marker but never writes one, a
-	// reporter that writes being a reporter whose output depends on who ran it.
-	// A draft with (kind=standalone, spec_id=null) stays lint-valid, so a failure
-	// here leaves a consistent record (the spec exists but the intent is unlinked).
-	stampedContent, conditionsStamped, err := stampScopeConditions(content, recordid.Minter{})
-	if err != nil {
-		return PlanResult{}, err
-	}
-	kind := it.Kind
-	if frontmatter.IsNull(kind) {
-		kind = KindStandalone
-	}
-	withKind, err := setFrontmatterFields(stampedContent, map[string]string{"kind": kind})
-	if err != nil {
-		return PlanResult{}, err
-	}
-	if err := writeIntentFile(draftAbs, draftRel, withKind); err != nil {
-		return PlanResult{}, err
-	}
+		// 1. Reuse the spec already realising this intent, or mint one. Reusing makes
+		// Plan retry-safe: a re-run after a failed drafts->planned rename completes the
+		// operation instead of duplicating the spec. Both branches write the reciprocal
+		// intent: itd-N side (Create writes it; a reused spec already carries it).
+		store, err := spec.Load(repoRoot)
+		if err != nil {
+			return err
+		}
+		var ok bool
+		sp, ok = store.ByIntent(intentID)
 
-	// 3. Move drafts/ → planned/ via the shared, trust-guarded move. The moved
-	// file's (kind=standalone, spec_id=null) shape is a valid planned intent, so a
-	// rename failure leaves a consistent state either side.
-	plannedRel, err := moveIntentToBucket(repoRoot, draftRel, BucketPlanned)
-	if err != nil {
-		return PlanResult{}, err
-	}
-	plannedAbs := filepath.Join(repoRoot, plannedRel)
+		// 1a. The draft face grows the record THREE times — the identity stamp, the
+		// kind rewrite, the spec_id rewrite — and the largest of them is knowable
+		// before any of them is written. Checking per write let a record pass the kind
+		// write, MOVE to planned, and only then fail the spec_id write, leaving a
+		// half-planned record neither Plan nor Link repairs; and it left a freshly
+		// minted spec behind with nothing pointing at it (iss-2608300335369473). The
+		// check runs first, before the spec is minted. A reused spec is judged by its
+		// own id; a spec still to be minted is judged by a probe id of the mint's
+		// width — every native id is the same width (adr-45), so the probe measures
+		// exactly what the mint will write, and no second judgement is owed once the
+		// real id is known. The check runs before the first write, so a refusal
+		// leaves no half-planned record.
+		specID := sp.ID
+		if !ok {
+			if specID, err = probeMinter().Mint(specFamily); err != nil {
+				return err
+			}
+		}
+		if err := checkDraftFaceSize(content, it, specID, draftRel); err != nil {
+			return err
+		}
 
-	// 4. Write the derived link (spec_id) now that the file is in planned. A
-	// planned intent with spec_id=null is still lint-valid, so a failure here is
-	// consistent too.
-	withSpec, err := setFrontmatterFields(withKind, map[string]string{"spec_id": sp.ID})
-	if err != nil {
-		return PlanResult{}, err
-	}
-	if err := writeIntentFile(plannedAbs, plannedRel, withSpec); err != nil {
+		if !ok {
+			sp, err = spec.Create(repoRoot, intentID, it.Slug, productionMode)
+			if err != nil {
+				return err
+			}
+		}
+
+		// 2. Stamp an identity onto every unmarked scope-condition bullet, and set the
+		// binding kind (default standalone), while still in drafts. Plan is the
+		// write-capable verb of the lifecycle, so it is where the identities are
+		// minted: the readiness gate reports a missing marker but never writes one, a
+		// reporter that writes being a reporter whose output depends on who ran it.
+		// A draft with (kind=standalone, spec_id=null) stays lint-valid, so a failure
+		// here leaves a consistent record (the spec exists but the intent is unlinked).
+		stampedContent, n, err := stampScopeConditions(content, recordid.Minter{})
+		if err != nil {
+			return err
+		}
+		conditionsStamped = n
+		kind = it.Kind
+		if frontmatter.IsNull(kind) {
+			kind = KindStandalone
+		}
+		withKind, err := setFrontmatterFields(stampedContent, map[string]string{"kind": kind})
+		if err != nil {
+			return err
+		}
+		if err := writeIntentFile(draftAbs, draftRel, withKind); err != nil {
+			return err
+		}
+
+		// 3. Move drafts/ → planned/ via the shared, trust-guarded move. The moved
+		// file's (kind=standalone, spec_id=null) shape is a valid planned intent, so a
+		// rename failure leaves a consistent state either side.
+		plannedRel, err = moveIntentToBucket(repoRoot, draftRel, BucketPlanned)
+		if err != nil {
+			return err
+		}
+		plannedAbs := filepath.Join(repoRoot, plannedRel)
+
+		// 4. Write the derived link (spec_id) now that the file is in planned. A
+		// planned intent with spec_id=null is still lint-valid, so a failure here is
+		// consistent too.
+		withSpec, err := setFrontmatterFields(withKind, map[string]string{"spec_id": sp.ID})
+		if err != nil {
+			return err
+		}
+		return writeIntentFile(plannedAbs, plannedRel, withSpec)
+	}); err != nil {
 		return PlanResult{}, err
 	}
 
@@ -601,7 +623,9 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// A hold blocks EVERY lifecycle move until `intent unhold`, and the close is
 	// one: a held planned record is refused here, ahead of the remainder mint,
 	// the impact stamp, the move and the close, naming the reason and the lift
-	// exactly as Plan does (iss-2609200830076665). The key is never stripped by
+	// exactly as Plan does (iss-2609200830076665). This is the early refusal, on
+	// the corpus; the one that binds is re-run under the store lock on the bytes
+	// the move is made from, immediately before it. The key is never stripped by
 	// this verb. A shipped record is past every move a hold stops and no verb
 	// can put a hold on one — hold refuses the bucket, and this refusal is what
 	// keeps a held record out of shipped/ — so a `held:` there is
@@ -710,16 +734,38 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// below, so the shipped record is lint-valid. If this fails, the spec stays
 	// open — the whole operation retries cleanly.
 	if it.Bucket == BucketPlanned && len(held) == 0 {
-		// The stamp is written while the record is still in planned/, where a
-		// valid impact is equally lint-legal, so a failure at the move leaves a
-		// consistent record and the retry finds the judgement already recorded.
-		if stamp != "" {
-			if err := stampIntentImpact(repoRoot, it, stamp); err != nil {
-				return ReconcileResult{}, err
+		// The read, the hold check, the stamp and the move are ONE critical
+		// section under the store's advisory lock, and the hold is judged on the
+		// bytes read HERE — the bytes the stamp writes from and the rename moves.
+		// The refusal on the corpus above is the early one; a hold landing after
+		// that load, through `intent hold` (which takes this lock, re-reads and
+		// writes atomically), was otherwise shipped intact under it: nothing
+		// re-read the record between the corpus and the rename. Refused here,
+		// nothing has been written by this close — the remainder mint cannot have
+		// run, because a remainder leaves the record planned and this branch is
+		// never entered.
+		abs := filepath.Join(repoRoot, it.Path)
+		var dstRel string
+		if err := withIntentMintLock(repoRoot, func() error {
+			content, err := readIntentRefusingHold(abs, it.Path, it.ID, "spec close")
+			if err != nil {
+				return err
 			}
-		}
-		dstRel, err := moveIntentToBucket(repoRoot, it.Path, BucketShipped)
-		if err != nil {
+			// The stamp is written while the record is still in planned/, where a
+			// valid impact is equally lint-legal, so a failure at the move leaves a
+			// consistent record and the retry finds the judgement already recorded.
+			if stamp != "" {
+				updated, err := setFrontmatterFields(content, map[string]string{"impact": stamp})
+				if err != nil {
+					return err
+				}
+				if err := writeIntentFile(abs, it.Path, updated); err != nil {
+					return err
+				}
+			}
+			dstRel, err = moveIntentToBucket(repoRoot, it.Path, BucketShipped)
+			return err
+		}); err != nil {
 			return ReconcileResult{}, err
 		}
 		it.Bucket = BucketShipped
@@ -886,21 +932,6 @@ func validShipImpact(value string) error {
 		return fmt.Errorf("impact internal, which an intent may not hold — a press-release-first intent is user-facing by definition; declare one of %s, or record the work as an issue instead", shipImpactValues)
 	}
 	return nil
-}
-
-// stampIntentImpact writes a resolved impact onto an intent record in place,
-// through the package's one writer.
-func stampIntentImpact(repoRoot string, it Intent, impact string) error {
-	abs := filepath.Join(repoRoot, it.Path)
-	data, err := readRepoFile(abs, it.Path)
-	if err != nil {
-		return err
-	}
-	updated, err := setFrontmatterFields(string(data), map[string]string{"impact": impact})
-	if err != nil {
-		return err
-	}
-	return writeIntentFile(abs, it.Path, updated)
 }
 
 // writeIntentFile is the one way this package writes an intent record — the

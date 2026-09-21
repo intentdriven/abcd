@@ -122,7 +122,11 @@ func checkRecordProvenance(repoRoot string, cfg Config, rc RuleConfig) ([]Findin
 // once as intent.HeldKey; it is restated here because this package cannot
 // import the store (the store's own tests import this gate), and the shared
 // half — what a legal value IS — lives in frontmatter.ScalarString, which both
-// sides call.
+// sides call. The match is exact and case-sensitive: a `Held:`, `HELD:` or
+// `"held":` key is read by nothing and reported by nothing, because the store
+// declares no closed key list for an unknown key to fall outside of; the
+// hand-spelled `held :` (a space before the colon), which the scanner
+// normalises and every reader honours, is iss-2609210748122003.
 const heldKey = "held"
 
 // heldBuckets are the buckets `abcd intent hold` acts on. A legal hold

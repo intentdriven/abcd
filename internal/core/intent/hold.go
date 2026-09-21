@@ -19,7 +19,10 @@ package intent
 //     record in drafts/ or planned/, written atomically through the package's
 //     one intent writer. A record it holds is refused by EVERY lifecycle move
 //     — Plan, and the spec close that would ship it (Reconcile) — until
-//     unhold, so a held record never reaches shipped/ through a verb, and a
+//     unhold, and each move judges the hold UNDER THE STORE LOCK, on the bytes
+//     it then writes from and renames, so a hold that lands while a move is in
+//     flight is refused rather than erased by a rewrite from stale bytes. A
+//     held record therefore never reaches shipped/ through a verb, and a
 //     `held:` on a shipped, superseded or discipline record is by construction
 //     a hand edit (record_provenance reports it).
 //   - What only LINT can see: a hand edit can forge a hold or lift one, and a
@@ -140,6 +143,7 @@ func Hold(repoRoot, intentID, reason string) (HoldResult, error) {
 		// bytes, so a hold a peer wrote between the corpus load and this write is
 		// refused rather than overwritten.
 		fresh := parseHeldField(frontmatter.Fields(strings.Split(content, "\n")))
+		fresh.ID = it.ID
 		if err := refuseIfHeld(fresh, "hold"); err != nil {
 			return err
 		}
@@ -357,10 +361,12 @@ func handWrittenHeldError(it Intent, content string) error {
 }
 
 // readIntentRefusingHold reads one intent file and judges the hold on the
-// bytes it just read, refusing as refuseIfHeld does for verb. It is Plan's
-// second look: the corpus it loaded gave the early refusal, and this is the
-// last read before its first write, so a hold that landed between the two is
-// refused with nothing minted and nothing moved.
+// bytes it just read, refusing as refuseIfHeld does for verb. It is the
+// lifecycle move's second look, taken UNDER the store lock: the corpus the
+// verb loaded gave the early refusal, and this read is the one whose bytes
+// the move's writes are made from, so a hold that landed between the two is
+// refused with nothing minted and nothing moved — and a hold cannot land
+// after it, because `intent hold` takes the same lock.
 func readIntentRefusingHold(abs, rel, id, verb string) (string, error) {
 	data, err := readRepoFile(abs, rel)
 	if err != nil {

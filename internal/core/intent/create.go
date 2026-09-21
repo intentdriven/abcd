@@ -451,6 +451,12 @@ func titleLine(text string) string {
 	return strings.Join(strings.Fields(text), " ")
 }
 
+// beforeIntentMintLock is a test seam, nil outside tests: called once per
+// acquisition, BEFORE the lock is taken, so a test can land a write in the
+// window between a verb's corpus load and its locked read and prove that the
+// locked read — not the corpus — is what the verb judges.
+var beforeIntentMintLock func()
+
 // withIntentMintLock runs fn while holding an exclusive advisory lock over the
 // intent store. It serializes the presence check and the write of one mint
 // against concurrent abcd processes in the SAME checkout (two agent sessions, a
@@ -462,6 +468,9 @@ func titleLine(text string) string {
 // itself, so no lock artifact is left in the committed record tree (mirroring
 // the spec store's mint lock). O_NOFOLLOW refuses a symlinked intents/.
 func withIntentMintLock(repoRoot string, fn func() error) error {
+	if beforeIntentMintLock != nil {
+		beforeIntentMintLock()
+	}
 	intentsDir := filepath.Join(repoRoot, IntentsRelDir)
 	if err := ensureRecordDir(repoRoot, IntentsRelDir); err != nil {
 		return err

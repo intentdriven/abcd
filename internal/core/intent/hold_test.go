@@ -1,6 +1,8 @@
 package intent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -329,12 +331,12 @@ func TestUnholdRefusesAHandWrittenKeySpelling(t *testing.T) {
 }
 
 // TestPlanRefusesAHoldOnTheBytesItReReads: Plan judges the hold on the corpus
-// it loads AND on the bytes it re-reads before its first write, so a hold
-// written between the load and the re-read is refused rather than planned
-// past. Plan's load and re-read are one call with no seam between them, so
-// the re-read half is exercised through the reader Plan calls: given a file
-// carrying a hold, it refuses naming the reason and the lift; given one
-// without, it returns the bytes.
+// it loads AND on the bytes it re-reads under the store lock before its first
+// write, so a hold written between the load and the re-read is refused rather
+// than planned past. This is the reader's own contract, exercised directly:
+// given a file carrying a hold, it refuses naming the reason and the lift;
+// given one without, it returns the bytes. The window itself is
+// TestPlanRefusesAHoldLandingBeforeItsLockedRead.
 func TestPlanRefusesAHoldOnTheBytesItReReads(t *testing.T) {
 	root := t.TempDir()
 	rel := draftsDir + "/itd-10-alpha.md"
@@ -368,5 +370,133 @@ func TestPlanRefusesAHoldOnTheBytesItReReads(t *testing.T) {
 	}
 	if readIntent(t, root, rel) != before {
 		t.Fatal("a refused plan wrote the draft")
+	}
+}
+
+// landHoldAtLockEntry arms the lock seam so that the FIRST acquisition of the
+// store lock — the verb under test entering its critical section — is preceded
+// by a hold landing on id through the verb, uncontended. That is the window the
+// security review named: after the verb's corpus load and its early refusal,
+// before the read its write uses. The seam disarms itself before the hold's own
+// acquisition, so it fires exactly once, and it reports whether it fired at
+// all — a verb that never takes the lock never reaches the seam, which is the
+// finding in its original shape.
+func landHoldAtLockEntry(t *testing.T, root, id, reason string) *bool {
+	t.Helper()
+	fired := false
+	beforeIntentMintLock = func() {
+		beforeIntentMintLock = nil
+		fired = true
+		if _, err := Hold(root, id, reason); err != nil {
+			t.Errorf("the hold landing in the window must succeed: %v", err)
+		}
+	}
+	t.Cleanup(func() { beforeIntentMintLock = nil })
+	return &fired
+}
+
+// TestPlanRefusesAHoldLandingBeforeItsLockedRead (fix round 2, finding 1): a
+// hold written between Plan's corpus load and its critical section — by a verb
+// that took the lock, re-read, wrote atomically and exited 0 — is refused by
+// Plan, not erased. Plan's read, hold check, stamp, writes and move are one
+// critical section under the store lock, and the bytes it writes from are the
+// bytes it read there: the record stays in drafts/ carrying the hold, nothing is
+// minted, and both verbs cannot exit 0.
+func TestPlanRefusesAHoldLandingBeforeItsLockedRead(t *testing.T) {
+	root := t.TempDir()
+	rel := draftsDir + "/itd-10-alpha.md"
+	writeFile(t, root, rel, draftWithAC("itd-10", "alpha"))
+	fired := landHoldAtLockEntry(t, root, "itd-10", "landed in the window")
+
+	_, err := Plan(root, "itd-10", "")
+	if !*fired {
+		t.Error("Plan never took the store lock before its write: the seam never fired")
+	}
+	if err == nil {
+		t.Fatal("Plan must refuse the hold that landed before its locked read; it planned past it")
+	}
+	for _, want := range []string{"landed in the window", "intent unhold itd-10", "plan refuses"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must carry %q: %v", want, err)
+		}
+	}
+	after := readIntent(t, root, rel)
+	if !containsLine(frontmatterLines(t, after), `held: "landed in the window"`) {
+		t.Fatalf("the draft must still carry the hold, in drafts/:\n%s", after)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, specsOpen)); statErr == nil {
+		t.Fatal("no spec may be minted when the locked read refuses")
+	}
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := c.Lookup("itd-10"); it.Bucket != BucketDrafts || it.Held != "landed in the window" {
+		t.Fatalf("the record must stay a held draft: %+v", it)
+	}
+}
+
+// TestReconcileRefusesAHoldLandingBeforeItsLockedRead (fix round 2, finding
+// 2): the close judges the hold on the bytes it reads under the store lock,
+// immediately before the impact stamp and the rename into shipped/, so a hold
+// landing after the corpus load is refused before the move — the intent stays
+// planned and held, the spec stays open and byte-identical.
+func TestReconcileRefusesAHoldLandingBeforeItsLockedRead(t *testing.T) {
+	root := t.TempDir()
+	intentRel := plannedDir + "/itd-10-alpha.md"
+	specRel := specsOpen + "/spc-1-alpha.md"
+	writeFile(t, root, intentRel, plannedLinked("itd-10", "alpha", "spc-1"))
+	writeFile(t, root, specRel, specNaming("spc-1", "alpha", "itd-10"))
+	specBefore := readIntent(t, root, specRel)
+	fired := landHoldAtLockEntry(t, root, "itd-10", "landed in the window")
+
+	_, err := Reconcile(root, "spc-1", "", RemainderRequest{})
+	if !*fired {
+		t.Error("the close never took the store lock before its move: the seam never fired")
+	}
+	if err == nil {
+		t.Fatal("spec close must refuse the hold that landed before its locked read; it shipped past it")
+	}
+	for _, want := range []string{"landed in the window", "intent unhold itd-10", "spec close"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must carry %q: %v", want, err)
+		}
+	}
+	after := readIntent(t, root, intentRel)
+	if !containsLine(frontmatterLines(t, after), `held: "landed in the window"`) {
+		t.Fatalf("the intent must still carry the hold, in planned/:\n%s", after)
+	}
+	if got := readIntent(t, root, specRel); got != specBefore {
+		t.Fatalf("the spec must stay open and byte-identical:\n%s", got)
+	}
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := c.Lookup("itd-10"); it.Bucket != BucketPlanned || it.Held != "landed in the window" {
+		t.Fatalf("the record must stay planned and held: %+v", it)
+	}
+}
+
+// TestHoldNamesTheRecordWhenItsLockedReadRefuses (fix round 2, cosmetic): the
+// already-held refusal Hold raises on the bytes it re-reads under the lock names
+// the record, as the early refusal does — `intent: itd-10 is already held`,
+// never `intent:  is already held`.
+func TestHoldNamesTheRecordWhenItsLockedReadRefuses(t *testing.T) {
+	root := t.TempDir()
+	rel := draftsDir + "/itd-10-alpha.md"
+	writeFile(t, root, rel, draftWithAC("itd-10", "alpha"))
+	fired := landHoldAtLockEntry(t, root, "itd-10", "first, in the window")
+
+	_, err := Hold(root, "itd-10", "second")
+	if !*fired {
+		t.Fatal("the seam never fired")
+	}
+	if err == nil || !strings.Contains(err.Error(), "intent: itd-10 is already held") || !strings.Contains(err.Error(), "first, in the window") {
+		t.Fatalf("the race-time refusal must name the record and the standing reason: %v", err)
+	}
+	after := readIntent(t, root, rel)
+	if !containsLine(frontmatterLines(t, after), `held: "first, in the window"`) {
+		t.Fatalf("the first hold must stand:\n%s", after)
 	}
 }
