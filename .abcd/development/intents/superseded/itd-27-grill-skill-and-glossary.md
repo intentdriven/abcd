@@ -1,5 +1,6 @@
 ---
 id: itd-27
+superseded_by: itd-94
 slug: grill-skill-and-glossary
 spec_id: null
 kind: standalone
@@ -28,6 +29,9 @@ severity: major
 ---
 
 # Domain Experts Get Their Intents Grilled Before Anyone Codes Them
+
+> **Superseded by itd-94** on 2026-09-21, on the product thinker's ruling: the planning interview that itd-94's readiness gate requires is the grilling this record asked for, run one question at a time under the GRILL rules; the PRD it synthesised is the native spec `abcd intent plan` mints; the glossary lives in the brief; the external planner it handed the PRD to no longer exists. The named Socratic moves and the per-session question cap are not carried forward.
+
 
 ## Press Release
 
