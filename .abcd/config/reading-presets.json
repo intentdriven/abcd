@@ -60,10 +60,10 @@
         "test"
       ],
       "window": {
-        "tokens_est": 910000,
-        "measured_tokens_est": 900584,
-        "measured_bytes": 3467249,
-        "measured_at": "64d0722418371fca2def0372805daf6a72aa6148"
+        "tokens_est": 920000,
+        "measured_tokens_est": 907030,
+        "measured_bytes": 3492067,
+        "measured_at": "fd7065ed429847a01d6f38c81fc7aabcc8fbe6b0"
       }
     },
     "entailment": {
@@ -216,10 +216,10 @@
         "test"
       ],
       "window": {
-        "tokens_est": 920000,
-        "measured_tokens_est": 909621,
-        "measured_bytes": 3502043,
-        "measured_at": "64d0722418371fca2def0372805daf6a72aa6148"
+        "tokens_est": 930000,
+        "measured_tokens_est": 916067,
+        "measured_bytes": 3526861,
+        "measured_at": "fd7065ed429847a01d6f38c81fc7aabcc8fbe6b0"
       }
     }
   }

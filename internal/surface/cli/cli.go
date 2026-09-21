@@ -3234,10 +3234,6 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// it scrubs the body (gh-485). Core derives from the redacted text when
 			// this is empty; an explicit --slug is passed through and redacted there
 			// too.
-			blocked, err := parseBlockedBy(blockedBy)
-			if err != nil {
-				return err
-			}
 			req := capture.CaptureRequest{
 				RepoRoot:    repoRoot,
 				Text:        text,
@@ -3248,7 +3244,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				FoundDuring: orDefault(foundDuring, "manual-capture"),
 				FoundAt:     foundAt,
 				LapsedAt:    lapsedAt,
-				BlockedBy:   blocked,
+				BlockedBy:   splitIDList(blockedBy),
 			}
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
@@ -3289,7 +3285,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
-	captureCmd.Flags().StringVar(&blockedBy, "blocked-by", "", "comma-separated iss-ids this issue is blocked by")
+	// The help names where the field is documented, as the refusal does: the
+	// session behind iss-2609200951237670 found the key's shape by running
+	// strings on the binary, with two documents already carrying it.
+	captureCmd.Flags().StringVar(&blockedBy, "blocked-by", "", capture.BlockedByFlagHelp)
 	// A closed choice, refused outright outside the vocabulary — the same shape
 	// as --severity. There is no flag for `origin`: a capture is
 	// researcher-authored by construction (itd-178).
@@ -3430,6 +3429,42 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		"restamp how this record's text was produced: "+provenance.ModeList()+" (default: leave the record's existing stamp alone; refused on a record that predates disclosure)")
 	resolveCmd.Flags().StringVar(&resolveShippedIn, "shipped-in", "", "MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start")
 	captureCmd.AddCommand(resolveCmd)
+
+	// link — edit one record's blocked_by AFTER capture (iss-2609200951237670).
+	// The create-time flag serves only the case where the blocker already
+	// exists; this is the verb for the ordinary one, where the blocker was
+	// captured later or in another lane. The subject keeps its status folder —
+	// a resolved record's edges are history, still editable — and the targets
+	// go through the same validator the create-time flag runs.
+	var linkBlockedBy, linkUnblock string
+	linkCmd := &cobra.Command{
+		Use:   "link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>]",
+		Short: "Add or remove blocked_by edges on an existing issue (any status folder; unblock is applied before blocked-by)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Link(capture.LinkRequest{
+				RepoRoot: repoRoot, ID: args[0],
+				BlockedBy: splitIDList(linkBlockedBy), Unblock: splitIDList(linkUnblock),
+			})
+			if err != nil {
+				return err
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				list := "[]"
+				if len(res.BlockedBy) > 0 {
+					list = "[" + strings.Join(res.BlockedBy, ", ") + "]"
+				}
+				fmt.Fprintf(w, "%s  blocked_by: %s — %s\n", res.ID, list, termsafe.Sanitize(res.Path))
+			})
+		},
+	}
+	linkCmd.Flags().StringVar(&linkBlockedBy, "blocked-by", "", "append: "+capture.BlockedByFlagHelp)
+	linkCmd.Flags().StringVar(&linkUnblock, "unblock", "", "remove: comma-separated iss-N ids to drop from blocked_by; each must currently be in the list. With --blocked-by in the same call the removals are applied first, then the additions")
+	captureCmd.AddCommand(linkCmd)
 
 	// promote — graduate an issue, or a dispositioned reading item, into an
 	// intent draft (spc-24, step 2 of the record walk; spc-58 for the reading
@@ -3706,19 +3741,15 @@ func listState(open, resolved, wontfix, all bool) (capture.State, error) {
 	return chosen, nil
 }
 
-// issIDRe validates a --blocked-by token at the CLI boundary (mirrors the core
-// ^iss-[0-9]+$ schema constraint).
-var issIDRe = regexp.MustCompile(`^iss-[0-9]+$`)
-
 // readingItemIDRe validates a --recurs token at the CLI boundary (mirrors the
 // core ^rdi-[0-9]+$ schema constraint).
 var readingItemIDRe = regexp.MustCompile(`^rdi-[0-9]+$`)
 
 // recordIDRe matches any abcd record id (issue, intent, or spec). It is used
-// only by unrecognizedSubverb's shape check — distinct from issIDRe, which
-// validates a real iss-only --blocked-by token — so the typo guard recognises a
-// subcommand call in either verb family (capture's iss-N ids, intent's itd/spc
-// ids) without loosening iss-id validation elsewhere.
+// only by unrecognizedSubverb's shape check — an iss-only --blocked-by token
+// is judged by the core's shared blocked_by validator, not here — so the typo
+// guard recognises a subcommand call in either verb family (capture's iss-N
+// ids, intent's itd/spc ids) without loosening iss-id validation elsewhere.
 var recordIDRe = regexp.MustCompile(`^(iss|itd|spc)-[0-9]+$`)
 
 // retiredSubverbs maps a parent command to sub-verb spellings that were
@@ -3872,25 +3903,20 @@ func levenshtein(a, b string) int {
 	return prev[len(rb)]
 }
 
-// parseBlockedBy splits the comma-separated --blocked-by value into iss-ids,
-// dropping blanks and rejecting any token that is not ^iss-[0-9]+$. An empty
-// input yields a nil slice (the field is omitted).
-func parseBlockedBy(raw string) ([]string, error) {
-	if strings.TrimSpace(raw) == "" {
-		return nil, nil
-	}
+// splitIDList splits a comma-separated id flag value into tokens, dropping
+// blanks. It judges nothing: the shape, the self-edge, the existence probe and
+// the duplicate collapse are the core's one blocked_by validator, shared by
+// `capture --blocked-by` and `capture link`, so this front door cannot come to
+// refuse a value the other accepts. An empty input yields a nil slice (the
+// field is omitted).
+func splitIDList(raw string) []string {
 	var ids []string
 	for _, tok := range strings.Split(raw, ",") {
-		tok = strings.TrimSpace(tok)
-		if tok == "" {
-			continue
+		if tok = strings.TrimSpace(tok); tok != "" {
+			ids = append(ids, tok)
 		}
-		if !issIDRe.MatchString(tok) {
-			return nil, fmt.Errorf("capture: --blocked-by token %q must match iss-N", tok)
-		}
-		ids = append(ids, tok)
 	}
-	return ids, nil
+	return ids
 }
 
 // captureBoard is the bare status board: the ledger counts and the
