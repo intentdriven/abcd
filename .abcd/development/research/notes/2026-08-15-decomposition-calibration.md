@@ -1877,3 +1877,51 @@ Per hand-run, append:
   answered with a clarification instead of an option, both taken as the
   answer. One capture filed for a part outside the proposal (the
   person/agent verb split, iss-2609211119023345).
+
+### Run: the fourteen specless planned intents and the two run drafts (2026-09-21, product thinker's interview)
+
+- **Proposal (as received):** "interview me on all remaining intents so that
+  the autonomous run can include them, too" — scoped by the human to the
+  fourteen planned intents with no spec plus the two drafts of the same
+  morning (`abcd build next`, `abcd drain`).
+- **Table (as run, one row per record; the routing was the first question
+  each time):**
+
+  | Record | Verdict | Home |
+  | --- | --- | --- |
+  | itd-24 reflect | FILE-AS-IS (re-planned) | intent; two open questions ruled |
+  | itd-27 grill | RETIRE | superseded by itd-94 (the planning interview) |
+  | itd-28 reviews | SPLIT | the pin and the staleness view kept as the intent; the store, the redaction and the verifier dropped to what the record already holds |
+  | itd-34 kinds | SPLIT | the shipped kinds read, not built; the bundle command and the reclassify verb kept |
+  | itd-36 memory | CLOSE AS DELIVERED | three remainders to the ledger |
+  | itd-42 coherence | FILE-AS-IS (re-scoped) | the itd-84 pre-pass |
+  | itd-48 fidelity roles | SPLIT | consistency pass kept; shape role to itd-34's lint; overlap to itd-42 |
+  | itd-50 loop | FILE-AS-IS (re-scoped) | build's last stage |
+  | itd-53 owed drainer | FILE-AS-IS (re-scoped) | one bounded command; the gate to itd-2609150819445595 |
+  | itd-58 verdict | FOLD | an invariant on the build intent (decision 9) |
+  | itd-6 RepoPrompt | FILE-AS-IS (re-filed) | one opt-in reviewer adapter |
+  | itd-7 RP workspace | HOLD | waits on itd-6 |
+  | itd-63 wizard | FILE-AS-IS | intent; three open questions ruled |
+  | itd-69 lockstep | CLOSE AS DELIVERED | nothing owed |
+  | build next | FILE-AS-IS after two reviews | intent; three rulings on the reviews' findings |
+  | drain | SPLIT after two reviews | intent; the issue key to the build intent (decision 10); the eligibility rule to a decision record the spec mints |
+
+- **Verdict:** nine re-planned and READY, two closed as delivered, two
+  retired (one folded), one held, two planned after review. A question the
+  human raised mid-interview (whether phases survive bundles) was routed to
+  a new draft (itd-2609211913453478) rather than answered in passing.
+- **Routing survived?** Largely. Three rows moved from where the table
+  first put them: itd-58 went from "keep as its own record" to a fold, on
+  the observation that the build intent lacked the invariant in so many
+  words; itd-53 went from "retire" to "one command", on the human's want
+  for the run's batch 0 to have a verb; drain's lane went from "the loop
+  stays intent-only" to "the loop grows an issue key", on the design
+  review's first finding, which the human ruled rather than the table.
+- **Notes:** the two adversarial reviews on the run drafts changed the
+  records more than the interview did (seventeen findings applied); the
+  design lens caught false premises (a field that does not exist; a lane
+  keyed to the wrong record family) that no question to the human would
+  have surfaced. The "close as delivered" row is a shape the run file's
+  batch 0 hunts for among READY intents and cannot reach among specless
+  ones; iss-2609211738504433 records the gap. Fourteen records took three
+  hours of the human's time at one question per turn.
