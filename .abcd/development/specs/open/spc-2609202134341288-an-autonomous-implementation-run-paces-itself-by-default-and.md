@@ -48,3 +48,7 @@ default lives in one constant the run record names.
 1 to 3 and 9 by piece 1; 4 and 5 by piece 2; 6 by piece 3; 7 by piece 4;
 8 by piece 5.
 
+## Evidence the build must answer
+
+- The pause has never fired. Three Dessau pilots on 2026-09-21 ran the scripted outer loop under a pacing window, and each finished inside its first window, so the gate that refuses an early start and the resume on `next_eligible_at` are untested by a real pause; the abcd pilot of 2026-09-20/21 paced by hand (idle wake-ups from the orchestrator's own scheduler) and broke its second pause on the facilitator's word. The build proves the pause with a test that sets the clock past the window and watches the refusal, and the first real run records whether the pause fired.
+- The ceiling turned reviews into a queue: 40 minutes of a two-hour window with a lane waiting on the two-agent ceiling, 27 minutes for one review (iss-2609211105014235). Reviewers counted separately from implementers, or a ceiling set from the lane shape, is a criterion this spec takes from that record.
