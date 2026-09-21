@@ -1,5 +1,6 @@
 ---
 id: itd-94
+supersedes: [itd-27]
 slug: an-intent-that-is-not-planned-cannot-be-implemented-abcd-gai
 spec_id: spc-9
 kind: standalone

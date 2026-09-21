@@ -1,15 +1,20 @@
 ---
 id: itd-36
+shipped_in: v0.1.0
 slug: memory-unification
-spec_id: null
+spec_id: spc-2609211905174684
 kind: standalone
 suggested_kind: null
 reclassification_history: []
 related_adrs: [adr-28]
 severity: major
+impact: additive
 ---
 
 # Knowledge That Compounds, Not Knowledge That Re-Derives
+
+> **Closed as delivered on 2026-09-21** on the product thinker's ruling: `/abcd:memory ingest`, `ask` and `lint`, the quotation budgets (MQ001, MQ002), the source-class rules (MS001, MS002), the licence rule (ML001) and `--keep-original` shipped in v0.1.0 while this record sat planned with no spec. The three criteria that wait on other records (the dredge synthesiser's output, the shared registry with the code-vendoring path, the lifeboat's restrictive-licence gate on a kept original) are captured as their own issues rather than carried here: iss-2609211905340006, iss-2609211905346507 and iss-2609211905347458.
+
 
 > **Packaging framing per [adr-28](../../decisions/adrs/0028-single-repo-curated-release.md) (supersedes adr-18).** The restrictive-licence gate's consumer is the **lifeboat** (`/abcd:disembark`), future/inert at launch: the curated release excludes `.abcd/**` wholesale, so `/abcd:launch` never evaluates what the gate guards. The canonical framing lives in the brief (`05-internals/09-provenance-substrate.md § 4`, `07-memory.md § 4`, `04-surfaces/04-launch.md § 2`).
 
@@ -54,6 +59,10 @@ There's a real gap: **per-project durable knowledge has multiple legitimate upst
 - **Auto-classify the upstream.** This intent requires the user to invoke `/abcd:memory ingest <path>` explicitly. Auto-detection (e.g., scanning `~/Downloads/*.pdf` for ingest candidates) is deferred — a separate intent if friction proves real.
 - **MCP server for runtime memory editing.** Other knowledge frameworks ship MCP servers for `add_page`, `merge_pages`, etc. This intent ships JSON-on-disk + CLI surface only; the curator agent (`principle-distiller`) edits via standard file-edit tools. MCP integration is deferred if friction is real.
 
+## Mechanism
+
+None stated.
+
 ## Scope Conditions
 
 None stated.
@@ -96,16 +105,18 @@ Per the idea-1 R5 review: the push replaces "≥3 projects in anger" (unachievab
 
 If all three produce coherent `.abcd/memory/` outputs, this intent ships. If one produces sprawl or fails the licence gates, scope is reduced and the failed example becomes the primary debug target.
 
+## Decisions
+
+Ruled by the product thinker on 2026-09-21: close as delivered; the remainders become issues so they are not forgotten.
+
 ## Open Questions
 
-- **Persona for the press release** — Carol is product-lead per `personas.json`. The current draft assigns Carol "technical lead" instead — verify that the persona registry's role assignment doesn't conflict, OR pick a persona whose role-hint is "researcher" / "engineer" / "lead investigator" instead. (Closing fix expected at promotion time.)
-- **Lint code numbering** (`MQ001`/`MQ002`/`MS001`/`MS002`/`ML001`) — illustrative; verify against [`05-internals/06-lint.md`](../../brief/05-internals/06-lint.md) reservation table at promotion time. Adjacent reserved codes (`SD001` per the bare-command-as-render discipline; `VR001` per the vocabulary-registration requirement; `MG001`-`MG004` per itd-37) should not collide.
-- **Recursive ingest** — does `/abcd:memory ingest` accept a directory (recursive ingest of all files) or only one source per call? Operational decision, not architectural. Lean: one source per call (avoids accidental "ingest the whole filesystem" mistake); directory-walk via `--recursive` flag is a candidate if friction is real.
-- **Cumulative coverage state location** — `.abcd/memory/.coverage_index.json` (per-source cumulative coverage) is its own JSON registry rebuilt by full crawl on demand. Drift between the index and source-of-truth pages IS the lint signal. Verify location matches existing dotfile conventions in `.abcd/memory/`.
+_None open; the four this record carried were operational and are answered by what shipped (the persona quote's role stands as written; the lint codes are the ones the package carries; ingest takes one source per call; the coverage index is rebuilt on demand)._
 
 ## Audit Notes
 
-_Empty. Populated by `intent-fidelity-reviewer` Role 1 (single-document fidelity per the itd-1 discipline) when this intent moves to `shipped/`._
+<!-- abcd-review: OWED receipt=rcp-f3f5495f519e -->
+Fidelity review OWED (receipt rcp-f3f5495f519e).
 
 ## References
 
@@ -120,3 +131,7 @@ _Empty. Populated by `intent-fidelity-reviewer` Role 1 (single-document fidelity
 - [`itd-26-loot-oss-vendor.md`](../drafts/itd-26-loot-oss-vendor.md) — sibling intent; consumes the same provenance/licence substrate this intent ships.
 
 [karpathy-llm-wiki]: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f "Karpathy LLM Wiki gist (April 2026)"
+
+## Grounds
+
+- pursued: the record is being closed for work v0.1.0 carried, so that the store's state matches what ships and the release cut stops carrying a planned intent whose code is on main; shown wrong if the delivered verbs are found not to meet the criteria this record keeps

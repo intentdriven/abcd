@@ -7,7 +7,7 @@ impact: internal
 category: "inconsistency"
 source: "review-followup"
 found_during: "roadmap-consistency-review"
-found_at: ".abcd/development/intents/planned/itd-36-memory-unification.md"
+found_at: ".abcd/development/intents/shipped/itd-36-memory-unification.md"
 resolution: "Memory docs no longer assert shipped state: spc-38/spc-39 references demoted from delivery claims to spec attribution, 07-memory header states itd-36 is planned/ and defers delivery state to the intent lifecycle, backed by the new brief-README provenance note."
 ---
 

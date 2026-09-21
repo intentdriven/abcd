@@ -1,7 +1,7 @@
 ---
 id: itd-28
 slug: rp-reviews-into-flow
-spec_id: null
+spec_id: spc-2609211854150455
 kind: standalone
 suggested_kind: null
 reclassification_history: []
@@ -20,9 +20,13 @@ glossary_terms_used:
   - core/transport
 builds_on: [itd-1]
 severity: major
+impact: additive
 ---
 
 # Spec-Tied Reviews Live Next To The Spec They Reviewed
+
+> **Re-scoped on 2026-09-21** by the product thinker: the record keeps the pin and the staleness view and drops its own review store, its two-stage redaction and its pre-commit verifier. The record already holds dated review folders under `.abcd/work/reviews/` and gate receipts keyed by the commit they gate; what is missing is that every review names the commit it read and the status board says how stale each has become. The scrub rides the scanner that already exists. The press release and scope below are read through this paragraph and the Decisions section.
+
 
 ## Press Release
 
@@ -85,30 +89,32 @@ The unscoped-transport sweep is adapter-scoped and runs only when an oracle adap
 - **Unscoped oracle transport storage** — covered by the adapter-scoped sweep into `.abcd/work/reviews/`.
 - **`Reviewed-by:` git trailer auto-injection on implementation commits** — out of scope (nice-to-have bidirectional linkage).
 
+## Mechanism
+
+We expect a visible staleness count to make a stale review get re-run before a release rather than trusted, because the count turns "is this still valid" from a question nobody asks into a row on the board everyone sees; shown wrong if a release cut still cites reviews past the threshold with nobody re-running them.
+
 ## Scope Conditions
 
 None stated.
 
 ## Acceptance Criteria
 
-- **Given** a persona runs a plan-review for `spc-X` end-to-end via any oracle adapter, **when** the review completes, **then** a per-review directory lands at `.abcd/reviews/spc-X/<NNNN>-<slug>-<ref>/` containing `review.json` (all required fields populated, `verdict` ∈ `{SHIP, NEEDS_WORK, MAJOR_RETHINK}`, non-empty `body_markdown` and `reviewed_files`) and `review.md` (mechanically rendered from `review.json`).
-- **Given** the post-processor runs twice on the same receipt, **when** both invocations complete, **then** there is exactly one per-review directory in `.abcd/reviews/spc-X/` (idempotent; the second invocation is a no-op).
-- **Given** the post-processor is killed mid-write (`kill -9`), **when** the persona inspects the working tree, **then** no `.tmp` or partial files are visible to git.
-- **Given** 5 concurrent post-processor invocations on the same spec, **when** they complete, **then** 5 distinct sequence numbers exist (no collisions).
-- **Given** the persona sets `ABCD_REVIEW_POSTPROCESS=0` and runs a plan-review, **when** the review completes, **then** the post-processor exits 0 with no side effects and the review remains only in the producing oracle adapter's raw output.
-- **Given** a staged `.abcd/reviews/**` file containing a multi-cloud secret (AWS access key, fine-grained GitHub PAT, Anthropic key, JWT, or PEM private key) that was NOT caught by Stage 1, **when** the pre-commit hook runs the Stage-2 scan (native engine, or gitleaks when present), **then** the commit is blocked with the finding path/line/rule reported (never the raw secret value).
-- **Given** the gitleaks binary is absent, **when** the pre-commit hook runs the Stage-2 scan, **then** the native engine runs and the hook output names the engine that ran — a downgrade is never silent.
-- **Given** a committed `.abcd/reviews/**/*.md` file containing `AKIAIOSFODNN7EXAMPLE`, **when** the pre-commit hook runs, **then** the EXAMPLE-allowlisted value is NOT redacted.
-- **Given** a review file with a `review_of_commit` SHA that fails `git rev-parse --verify`, **when** the pre-commit hook runs, **then** the commit is rejected with a clear error message.
-- **Given** a `review.json` with `body_markdown` exceeding `body_max_bytes`, **when** the pre-commit verifier runs, **then** the commit is rejected with guidance (the post-processor truncates automatically; this acceptance captures the case where someone manually edits the sidecar to violate the cap).
-- **Given** a CI run on a PR touching `.abcd/reviews/**`, **when** `reviews-index --check --all` runs, **then** the workflow fails on drift with the exact remediation command and never writes back to the branch.
-- **Given** the brief is updated, **when** a contributor reads `05-internals/02-adapters.md` and `05-internals/03-configuration.md`, **then** they find explicit text describing the two-store carve-out (spec-tied via the native review pipeline; unscoped via a configured oracle adapter).
-- **Given** the README is updated, **when** a contributor reads the Acknowledgements section, **then** they find explicit citations of `gitleaks` (Apache-2.0) and `REPPL/abcdZero` F-075 / F-037 prior art.
+- **Given** a review folder under `.abcd/work/reviews/` is filed by any of abcd's own review paths, **when** it is written, **then** its summary carries `review_of_commit: <full sha>` written by the tool, and the record lint refuses a review folder without one (a folder that predates the rule is named as legacy, not refused).
+- **Given** the bare `abcd` status board renders, **when** review folders exist, **then** each is listed with the spec or scope it reviewed and the number of commits the default branch has moved since its `review_of_commit`, and one past twenty is flagged for a re-run.
+- **Given** a review of a spec, **when** it is filed, **then** its folder name carries the spec's id, so a reader finds it from the spec.
+- **Given** a review body carries a secret, **when** it is committed, **then** the scanner the repository already runs refuses it; this record builds no second scrubber.
+- **Given** `--json`, **when** the board renders, **then** the staleness rows and the threshold are in the payload.
+
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **Pin and staleness only.** The review store, the two-stage redaction and the pre-commit verifier this record first described are dropped: the dated review folders and the gate receipts are the store, and the scanner is the scrub.
+2. **The staleness view is on the status board**, flagged past twenty commits.
 
 ## Open Questions
 
-- **Hook coverage for hosts without a Stop-hook equivalent**: standalone invocation of the post-processor with `--from-receipt <path> --spec <id>` is the documented fallback. Should a per-host wrapper also ship?
-- **Stale review threshold for `staleness` column**: currently `<N>_commits` since `review_of_commit`. Should we add a "danger" threshold (e.g., `>20_commits` shown red)? Deferred polish.
+_None open; the hook-coverage and the danger-threshold questions this record carried fall away with the store, and the threshold is decision 2._
 
 ## Audit Notes
 
@@ -124,3 +130,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 [bias]: https://arxiv.org/html/2603.18740v1 "Confirmation Bias in `LLM`-Assisted Security Code Review"
 [liip]: https://www.liip.ch/en/blog/preventing-context-pollution-for-%61i-agents "Liip — Preventing Context Pollution for `AI` Agents"
+
+## Grounds
+
+- pursued: the release gate now demands review receipts, and a receipt with no commit named cannot be judged fresh; we expect the next cut to read the staleness rows before it trusts a receipt; shown wrong if the next cut never asks how old a receipt is

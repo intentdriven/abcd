@@ -10,6 +10,9 @@ severity: minor
 
 # Lifeboats Carry RepoPrompt Workspace Definitions Forward
 
+> **Waiting on itd-6** (ruled 2026-09-21 by the product thinker): the RepoPrompt route is one opt-in reviewer adapter now; this record is planned as written and gets its spec after that adapter ships. It is not in the autonomous run.
+
+
 ## Press Release
 
 > **When the RepoPrompt adapter is configured, abcd packs the RP workspace definition into the lifeboat.** When `dev-sync` runs (and as part of `/abcd:disembark`), abcd reads the project's RepoPrompt workspace definition from `~/Library/Application Support/RepoPrompt/Workspaces/` and writes it into `.abcd/rp/workspace.json` in the repo. On `/abcd:embark`, the workspace is read back and offered for registration with RepoPrompt on the new machine. For personas who drive RepoPrompt, migrating to a fresh user account no longer means rebuilding workspace boundaries by hand for every active project.

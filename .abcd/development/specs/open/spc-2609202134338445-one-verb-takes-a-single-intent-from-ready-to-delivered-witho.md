@@ -82,5 +82,31 @@ and calls `receipt`, so the loop is proven without any model.
 
 1 and 2 by piece 4; 3 by pieces 1, 5, 6; 4 by piece 7; 5 by piece 8; 6 by
 piece 9; 7 by pieces 1 and 2; 8 by piece 2; 9 by piece 3; 10 by piece 10;
-11 by the refusal shape every piece shares.
+11 (the issue key) by the fold-in below; 12 (only the loop writes a verdict)
+by the invariant below; 13 by the refusal shape every piece shares. The
+criteria are numbered in the order the intent lists them, which is the
+order the fidelity auditor numbers them.
 
+## Invariant folded in on 2026-09-21 (itd-58)
+
+Only the loop writes a verdict. The validator stage records each validator's
+verdict into the state file from the validator's own return, before the
+advance is decided; the lane's receipt and report carry no verdict field the
+loop reads, and a report that carries one is refused at the advance naming
+it. The end-to-end test enters through the loop's step interface, has a
+fake validator return SHIP, and asserts the advance; a second run has the
+lane write a SHIP into its report and asserts the refusal.
+
+## The issue key, folded in on 2026-09-21 (decision 10, for itd-82)
+
+The state file's lane carries `key: itd-N | iss-N`. For an issue: the
+pre-start checks are itd-82's eligibility rule (fields only: `remedy:`
+present, fixable category, severity below major, nothing unshipped in
+`blocked_by`); the brief renderer takes the record and its remedy in place
+of the intent and spec; the validators run unchanged; the landing runs
+`capture resolve <iss-N> --commit <sha>` in the lane's change instead of
+`spec close`; the fidelity audit does not run (an issue has no criteria);
+itd-50's fix round runs from the reviewers' findings instead; the lane's definition of done is the repository's (a detector watched to fail before the fix and pass after), rendered into the issue brief. The lane report
+schema gains `handback: {kind, reason}`; the loop reads it before the
+validators and ends the lane with that outcome when present. `abcd build
+<iss-N>` is the person's form; `drain` calls the same loop with the key.

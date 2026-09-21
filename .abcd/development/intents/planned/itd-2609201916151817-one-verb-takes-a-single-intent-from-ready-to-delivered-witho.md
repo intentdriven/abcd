@@ -6,7 +6,7 @@ kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609201916056194, itd-2609091014076309, itd-2609091416295622]
-supersedes: [itd-29]
+supersedes: [itd-29, itd-58]
 related_intents: [itd-29, itd-50, itd-2, itd-2609170822093401]
 severity: major
 impact: additive
@@ -71,10 +71,13 @@ Asked and answered on 2026-09-20:
 Ruled by the product thinker on 2026-09-21, in the interview that filed `itd-2609211116005482` (`abcd build next`) and revived `itd-82` (`abcd drain`):
 
 8. **`build` for people, `implement` for the machinery.** `abcd build <itd-N>` is what a person types and is the verb this record's press release names; `abcd build next` and `abcd drain` are the two customised runs that hand over to the same loop. `abcd implement` is that loop, with the step-level words a driving host calls renamed from `next` to `step` (`implement step` returns the brief, `implement receipt <path>` advances) so that `next` is free to mean the pick. Which verbs the command list shows a person and which it shows an agent is its own record (`iss-2609211119023345`).
+9. **Only the loop writes a verdict** (itd-58 folded in). A validator's verdict is recorded by the loop from the validator's own return, into the state file, before the advance is decided; a lane has no write to it, and a receipt carrying a verdict the loop did not record is refused at the advance, naming the receipt.
+
+10. **The loop takes an issue as well as an intent** (ruled 2026-09-21 for `abcd drain`, itd-82). `abcd implement` is keyed by `itd-N` or `iss-N`; for an issue the brief is the record and its `remedy:` field, the checks before it starts are drain's eligibility rule, the validators are the same, and the landing is `capture resolve --commit` in the lane's change; the lane report carries a `handback:` field the loop reads as a first-class outcome. `abcd build <iss-N>` is the person's form.
 
 ## Open Questions
 
-_None open; decisions 5 to 7 settle the interview's questions._
+_None open; decisions 5 to 7 settle the interview's questions, and decisions 8 to 10 record the rulings of 2026-09-21 (the verb's name, the unforgeable verdict, the issue key)._
 
 ## Acceptance Criteria
 
@@ -88,6 +91,8 @@ _None open; decisions 5 to 7 settle the interview's questions._
 - **Given** a host with no configured runner, **when** `abcd implement step` returns a brief, **then** the host is told which agent to start and where the receipt goes, and the loop advances only on `abcd implement receipt`.
 - **Given** a configured runner and the process driver opted in, **when** the loop reaches a lane, **then** it starts the lane through the runner itself, and the run record names the runner.
 - **Given** a completed run, **when** the run record is read, **then** it names every lane, receipt, reviewer verdict, the model each runner reported, and the transcripts captured into the history store.
+- **Given** an eligible issue, **when** `abcd build <iss-N>` runs, **then** the lane's brief is the record and its remedy, its landing resolves the record with the fix commit, and a `handback:` in the lane report stops the lane and is reported as its own outcome.
+- **Given** a validator has returned, **when** the loop records its verdict, **then** the verdict in the state file is the one the loop parsed from the validator's return, and a lane report carrying a verdict the loop did not record is refused at the advance, naming the report; a real SHIP recorded by the loop lets the advance proceed.
 - **Given** any refusal, **when** it is rendered, **then** it names the step, the reason and the remedy, in text and in `--json`.
 
 ## Typed Links

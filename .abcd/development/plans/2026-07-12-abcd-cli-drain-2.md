@@ -5,7 +5,7 @@ to three self-contained fixables: the two follow-ups surfaced by drain #1
 ([`2026-07-12-abcd-cli-ledger-drain-run.md`](2026-07-12-abcd-cli-ledger-drain-run.md))
 plus iss-73, unblocked by a 2026-07-12 maintainer adjudication. This is a
 deliberately small, safe batch — the hand-authored precursor to `abcd drain`'s triage
-([itd-82](../intents/drafts/itd-82-drain-ledger-triage.md)).
+([itd-82](../intents/planned/itd-82-drain-ledger-triage.md)).
 
 Invoke (30m work / 30m pause, dynamic ScheduleWakeup 1800s):
 
