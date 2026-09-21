@@ -1,7 +1,7 @@
 ---
 id: itd-48
 slug: intent-fidelity-reviewer-roles-2-3
-spec_id: null
+spec_id: spc-2609211921272106
 kind: standalone
 suggested_kind: bundle-member
 reclassification_history:
@@ -11,9 +11,13 @@ related_adrs: []
 routed_from: ["spc-33:A1", "spc-33:A2", "spc-33:A3", "spc-33:A4", "spc-33:G1"]
 builds_on: [itd-34, itd-5]
 severity: major
+impact: additive
 ---
 
 # `intent-fidelity-reviewer` Gains Its Cross-Doc And Kind-Classification Roles
+
+> **Re-scoped on 2026-09-21** by the product thinker: the consistency pass only. The shape role goes to the kinds lint (itd-34) and the overlap question to the pre-pass (itd-42); the headless oracle leg this record named no longer exists. The press release and scope below are read through this paragraph and the Decisions section.
+
 
 ## Press Release
 
@@ -125,32 +129,27 @@ The intent is project-agnostic: every abcd project that uses the intent corpus b
 
 None stated.
 
+## Mechanism
+
+We expect a whole-corpus read to find contradictions no single-record review can, because terminology drift, a premise that two records state differently and a scope that leaked are visible only with both ends in view; shown wrong if a pass over the current corpus finds nothing the ledger did not already hold.
+
 ## Acceptance Criteria
 
-- *Given* the agent file with Roles 2 and 3 sections added, *when* `lint_prompts.py` runs, *then* `prompt_version` is bumped, the CHANGELOG carries the bump entry, and at least one injection canary per role exists in `agents/intent-fidelity-reviewer/fixtures/`.
-- *Given* a facilitator runs `/abcd:intent consistency` (bare), *when* the corpus contains a known seeded drift (terminology, premise, scope, sequencing, or naming), *then* the command writes a structured report to `.abcd/logbook/audit/consistency-<ts>/report.{json,md}` whose findings name the judgement category, the conflicting documents, and the drift kind.
-- *Given* a facilitator runs `/abcd:intent consistency itd-N`, *when* the named intent contradicts another corpus document, *then* the persisted report identifies both ends of the contradiction.
-- *Given* a facilitator runs `/abcd:intent shape` (bare), *when* an intent in the corpus has drifted from its declared `kind` (e.g., a `standalone` that has become bundle-shaped), *then* the command writes `.abcd/logbook/audit/shape-<ts>/report.{json,md}` with a suggestion naming the reclassification target.
-- *Given* a facilitator runs `/abcd:intent shape itd-N`, *when* the named intent's kind still fits, *then* a `KIND_OK` scoped verdict is emitted in the persisted report.
-- *Given* a Ralph session runs the consistency or shape verb in headless mode, *when* the call reaches `_build_cli_oracle()`, *then* the Codex leg is used (per itd-47) and the command completes with a real verdict.
-- *Given* itd-48 is the standalone intent owning Roles 2 and 3, *when* it is planned, *then* the planned spec ships only the on-demand verbs (no pre-commit hook installation) and records pre-commit scheduling for both roles as deferred follow-ups.
+- **Given** `abcd intent consistency` runs bare, **when** it completes, **then** a dated report exists under the reviews shelf listing each contradiction found across the brief and every intent (terminology, premise, scope, sequencing, naming), with both ends quoted and located, and the commit it read named.
+- **Given** the report's findings, **when** the pass files them, **then** each is an issue naming both ends with the report as its evidence, and a finding the ledger already holds is linked to the existing record rather than filed twice.
+- **Given** `abcd intent consistency <itd-N>`, **when** it runs, **then** the pass is scoped to that intent against the corpus and the report says so.
+- **Given** the pass has run, **when** the tree is inspected, **then** the brief and the intents are unchanged; the binary assembled the input and validated the return, and the judgement rode the host.
+
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **The consistency pass only.** The shape role is the kinds lint in itd-34; the overlap question is the pre-pass in itd-42.
+2. **A report, and a capture per finding**, deduplicated against the ledger.
 
 ## Open Questions
 
-- **Standalone vs. two standalones.** Plan time resolved this in favour of
-  one standalone intent whose scope covers both roles: the shared agent
-  file, shared `prompt_version` family, shared injection-canary discipline,
-  and shared oracle infrastructure all argue against splitting. A future
-  spec could split the prompt sections without splitting the intent if the
-  roles diverge.
-- **Pre-commit follow-up shape.** A follow-up intent will define when and
-  how `/abcd:intent consistency` and `/abcd:intent shape` run in
-  pre-commit (every intent-touching commit, every kind-frontmatter-touching
-  commit, or only at state transitions). Out of scope for this intent.
-- **Mechanical Role 2 categories.** Schema/state contradictions, reference
-  rot, and acknowledgement gaps are deferred to a separate intent that
-  owns the mechanical (lint-driven) half of cross-doc fidelity. spc-29
-  ships only the judgement half.
+_None open; the standalone-versus-two question this record carried is moot with one role left._
 
 ## Routed Deferrals (spc-33)
 
@@ -199,3 +198,7 @@ scope captured here — NOT active spc-33 work:
   rows this intent makes real.
 - **a dated working-log entry (2026-05-16)** — the gap entry that motivated
   this intent.
+
+## Grounds
+
+- pursued: the autonomous run builds forty-eight intents against this corpus, and a contradiction between two of them is a stop condition it cannot resolve; we expect the first whole-corpus pass to find contradictions the ledger does not hold; shown wrong if it finds none
