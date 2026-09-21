@@ -1060,6 +1060,13 @@
       "hidden": false,
       "flags": [
         {
+          "name": "impact",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "production-mode",
           "shorthand": "",
           "type": "string",
