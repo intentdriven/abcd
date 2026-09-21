@@ -173,7 +173,7 @@ slug: <kebab-case-slug>
 kind: null               # set by /abcd:intent plan: "standalone" | "bundle-member" | "discipline"
 spec_id: null
 # held: "<reason>"       # written by /abcd:intent hold, removed by /abcd:intent unhold (drafts/ and
-#                        #   planned/ only); one non-empty line. /abcd:intent plan refuses while it stands
+#                        #   planned/ only); one non-empty line. /abcd:intent plan and /abcd:spec close refuse while it stands
 # spc-3 fields (optional; additive — pre-existing intents valid without them):
 contexts: null           # [list] of bounded-context IDs; required when term has cross-context collision
 glossary_terms_used: null  # [list] of qualified <context>/<term> IDs; auto-populated by grill skill

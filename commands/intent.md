@@ -375,7 +375,9 @@ record that already declares it needs nothing; a record that does not takes
 (`internal` is a category error on a press-release-first intent, and is
 refused). The close refuses rather than shipping a record with neither, and it
 refuses a `--impact` that disagrees with one already written down: a close does
-not revise a recorded judgement. `spec close` is CLI-only — there is no
+not revise a recorded judgement. It also refuses when the linked planned
+intent is held (see Hold below), naming the reason and `intent unhold`, with
+nothing closed and nothing moved. `spec close` is CLI-only — there is no
 `/abcd:spec` page.
 Both spec verbs — the close and the bare `abcd spec` status render — resolve the
 repository root first, so they address the checkout's spec store from anywhere in
@@ -413,12 +415,14 @@ happens only when the human confirms the routing.
 
 A hold is a frontmatter **state**, not prose: `hold` writes `held: "<reason>"`
 onto a record in `drafts/` or `planned/`, and `unhold` removes the line. While
-it stands, `abcd intent plan <itd-N>` refuses before anything moves — the
-draft's plan and the planned record's identity-only re-run alike — naming the
-reason and `intent unhold` as the remedy, and `abcd <itd-N>` reports the hold
-as the first next move. So a lane that follows its own brief rather than this
-page now has something mechanical in its way; a Review or Open Questions note
-saying "held" stopped nothing.
+it stands, every lifecycle move refuses before anything moves, naming the
+reason and `intent unhold` as the remedy: `abcd intent plan <itd-N>` — the
+draft's plan and the planned record's identity-only re-run alike — and
+`abcd spec close <spc-N>` on a spec realising the held record (no spec is
+closed, no intent moves, the key is never stripped). `abcd <itd-N>` reports
+the hold as the first next move. The hold is the mechanism under the "never
+run `plan` unattended" convention: a lane that follows its own brief rather
+than this page meets it.
 
 The reason is required, one line, and redacted through the store's scanner
 before it is written; report `redacted` from the JSON when it is non-zero, the
@@ -430,11 +434,14 @@ hold — readiness is about the spec and the criteria.
 
 The value is written by the verb, and a hand-typed `held: "<reason>"` is
 byte-identical to that write, so nothing can tell the two apart and both stop
-`plan`. What record-lint's `record_provenance` rule reports is a `held` value
-in a shape the verb never writes — blank, null, a list, a map, a block scalar,
-or a legal value on a record in a bucket the verbs refuse — and `plan` refuses
-those too (fail closed) while `hold` and `unhold` send you to the line to
-repair it by hand.
+`plan` and `spec close`. What record-lint's `record_provenance` rule reports
+is a `held` value in a shape the verb never writes — blank, null, a list, a
+map, a block scalar, or a legal value on a record in a bucket the verbs refuse
+— and `plan` refuses those too (fail closed) while `hold` and `unhold` send
+you to the line to repair it by hand. A key spelled by hand in a way the reader
+accepts but the verb never writes (`held : "…"`, a space before the colon) is
+honoured as a hold and refused by `unhold` as a hand repair, never reported as
+a lift that did not happen.
 
 ## Link
 
