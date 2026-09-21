@@ -33,7 +33,7 @@ severity: major
 
 ## Why This Matters
 
-The intent layer is abcd's highest-leverage moment for product clarity ([itd-27](itd-27-grill-skill-and-glossary.md) built `/abcd:intent grill` on exactly that premise). But the grill itd-27 shipped has a blind spot its `--with-docs` flag name actively hides: "glossary-aware" mode loads **only** the terminology database. It checks that an intent *speaks* the brief's words. It never reads the brief, never reads another intent, never reads a shipped spec. It enforces vocabulary; it does not enforce coherence. This intent also corrects the misnomer: `--with-docs` becomes `--glossary` (the terminology tier it always was), the new coherence tier is `--coherence`, and `--full` runs both.
+The intent layer is abcd's highest-leverage moment for product clarity ([itd-27](../superseded/itd-27-grill-skill-and-glossary.md) built `/abcd:intent grill` on exactly that premise). But the grill itd-27 shipped has a blind spot its `--with-docs` flag name actively hides: "glossary-aware" mode loads **only** the terminology database. It checks that an intent *speaks* the brief's words. It never reads the brief, never reads another intent, never reads a shipped spec. It enforces vocabulary; it does not enforce coherence. This intent also corrects the misnomer: `--with-docs` becomes `--glossary` (the terminology tier it always was), the new coherence tier is `--coherence`, and `--full` runs both.
 
 So an intent can pass a full grill — crisp terms, EARS-clean acceptance, warrants surfaced — and still:
 
@@ -97,7 +97,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 ## References
 
-- Extends: [itd-27](itd-27-grill-skill-and-glossary.md) (grill skill & glossary) — adds a coherence tier to the grill itd-27 built; the glossary tier's behaviour is unchanged. **Also renames itd-27's `--with-docs` flag to `--glossary` and adds `--coherence` / `--full`** — itd-27's surface table and the grill `SKILL.md` flag list must be updated when this intent is planned.
+- Extends: [itd-27](../superseded/itd-27-grill-skill-and-glossary.md) (grill skill & glossary) — adds a coherence tier to the grill itd-27 built; the glossary tier's behaviour is unchanged. **Also renames itd-27's `--with-docs` flag to `--glossary` and adds `--coherence` / `--full`** — itd-27's surface table and the grill `SKILL.md` flag list must be updated when this intent is planned.
 - Shares the grounded-adversary pattern with: [itd-41](../drafts/itd-41-phase-negotiator.md) (phase negotiator) — Socratic where it questions, grounded where it asserts.
 - Defers to: [itd-39](../drafts/itd-39-scope-aware-memory-retrieval.md) (scope-aware memory retrieval) — full-body cross-intent comparison at scale is itd-39's problem, not this intent's.
 - Coordinates with: [itd-48](itd-48-intent-fidelity-reviewer-roles-2-3.md) (cross-document fidelity reviewer — supersedes [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md)) — different register: itd-48's Role 2 reviews delivered documents for drift; this grills an intent for coherence before it is planned.
