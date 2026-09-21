@@ -75,7 +75,7 @@ func TestPlanMintsATimestampSpecForATimestampDraft(t *testing.T) {
 	const draftID = "itd-2608221126066632"
 	writeFile(t, root, draftsDir+"/"+draftID+"-alpha.md", draftWithAC(draftID, "alpha"))
 
-	res, err := Plan(root, draftID, "")
+	res, err := Plan(root, draftID, PlanOptions{})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
 	}

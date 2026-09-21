@@ -237,7 +237,7 @@ func TestPlanStampsConditionIdentities(t *testing.T) {
 		"## Acceptance Criteria\n\n- ok\n"
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draft)
 
-	res, err := Plan(root, "itd-10", "")
+	res, err := Plan(root, "itd-10", PlanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestPlanLeavesTheNullityTokenAlone(t *testing.T) {
 		"# alpha\n\n## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n"
 	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draft)
 
-	res, err := Plan(root, "itd-10", "")
+	res, err := Plan(root, "itd-10", PlanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +333,7 @@ func TestPlanStampsAPlannedRecordInPlace(t *testing.T) {
 			"## Scope Conditions\n\n"+markedLine+"\n- written after planning\n\n"+
 			"## Acceptance Criteria\n\n- ok\n")
 
-	res, err := Plan(root, "itd-10", "")
+	res, err := Plan(root, "itd-10", PlanOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +385,7 @@ func TestPlanOnAPlannedRecordWithNothingToStampRefuses(t *testing.T) {
 				"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 					section+"## Acceptance Criteria\n\n- ok\n")
 
-			_, err := Plan(root, "itd-10", "")
+			_, err := Plan(root, "itd-10", PlanOptions{})
 			if err == nil {
 				t.Fatal("a planned record with nothing unmarked must refuse")
 			}

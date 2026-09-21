@@ -240,3 +240,277 @@ func TestReconcileRefusesToShipAnIllegalRecordedImpact(t *testing.T) {
 		})
 	}
 }
+
+// draftWithImpact is a plannable draft that already carries a judgement, laid
+// down the way the create path writes it: a bare scalar in the frontmatter.
+func draftWithImpact(id, slug, impact string) string {
+	return "---\nid: " + id + "\nslug: " + slug + "\nspec_id: null\nkind: null\nimpact: " + impact + "\n---\n" +
+		"# " + slug + "\n\n## Acceptance Criteria\n\n- **Given** a user, **when** they act, **then** it works.\n"
+}
+
+// countImpactLines counts the impact keys a record carries; a stamp that adds
+// a second line instead of rewriting the one there would read as two
+// judgements.
+func countImpactLines(body string) int {
+	return strings.Count("\n"+body, "\nimpact: ")
+}
+
+// TestPlanStampsTheImpactItIsGiven is iss-2609170726457256: the planning
+// interview is where the impact class is settled, and `intent plan` is the verb
+// that runs at that moment — so it takes the judgement and writes it onto the
+// record, in the create path's own shape, before the bucket move. Without it
+// three sessions hand-edited the frontmatter, past every validator the verbs
+// carry.
+func TestPlanStampsTheImpactItIsGiven(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+
+	res, err := Plan(root, "itd-10", PlanOptions{Impact: "additive"})
+	if err != nil {
+		t.Fatalf("Plan with an impact: %v", err)
+	}
+	if res.ImpactStamped != "additive" {
+		t.Fatalf("ImpactStamped = %q, want additive", res.ImpactStamped)
+	}
+	if res.Intent.Bucket != BucketPlanned || res.StampOnly {
+		t.Fatalf("Plan result = %+v", res)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, res.Intent.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "\nimpact: additive\n") {
+		t.Fatalf("the planned record must carry the bare impact the create path writes:\n%s", body)
+	}
+	if n := countImpactLines(body); n != 1 {
+		t.Fatalf("the record carries %d impact lines, want 1:\n%s", n, body)
+	}
+	// The stamped record is one the close can ship without a second judgement:
+	// the value survives the planned->shipped move and passes intent_impact_valid.
+	writeFile(t, root, specsOpen+"/"+res.Spec.ID+"-alpha.md", specNaming(res.Spec.ID, "alpha", "itd-10"))
+	if _, err := Reconcile(root, res.Spec.ID, "", RemainderRequest{}); err != nil {
+		t.Fatalf("the close must accept the judgement plan stamped: %v", err)
+	}
+	if fs := lintIntentImpact(t, root); len(fs) != 0 {
+		t.Fatalf("the shipped record trips intent_impact_valid: %+v", fs)
+	}
+}
+
+// TestPlanWithoutImpactLeavesTheRecordUnjudged keeps the bare verb as it was: no
+// flag writes no field, and the judgement stays owed to the close.
+func TestPlanWithoutImpactLeavesTheRecordUnjudged(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+	res, err := Plan(root, "itd-10", PlanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ImpactStamped != "" {
+		t.Fatalf("ImpactStamped = %q, want empty", res.ImpactStamped)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, res.Intent.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "impact:") {
+		t.Fatalf("a plan without --impact must write no impact line:\n%s", raw)
+	}
+}
+
+// TestPlanRefusesAnImpactItsOwnGateWouldReject: the value is validated at the
+// one bar the create and close paths apply — a legal member of the vocabulary,
+// never `internal` — and a refused value moves nothing: the draft stays a
+// draft and no spec is minted for it.
+func TestPlanRefusesAnImpactItsOwnGateWouldReject(t *testing.T) {
+	for _, bad := range []string{"internal", "braking", "Fix", " fix"} {
+		t.Run(bad, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+			_, err := Plan(root, "itd-10", PlanOptions{Impact: bad})
+			if err == nil {
+				t.Fatalf("Plan accepted --impact %q", bad)
+			}
+			if !strings.Contains(err.Error(), "impact") {
+				t.Fatalf("the refusal must name the flag: %v", err)
+			}
+			assertDraftUntouched(t, root, draftWithAC("itd-10", "alpha"))
+		})
+	}
+}
+
+// TestPlanRefusesAnImpactThatDisagreesWithTheRecord: a plan is not the place to
+// revise a recorded judgement any more than a close is. A disagreement is
+// refused before anything is written, in the shape the close uses, and the
+// human edits the record they meant to change.
+func TestPlanRefusesAnImpactThatDisagreesWithTheRecord(t *testing.T) {
+	root := t.TempDir()
+	draft := draftWithImpact("itd-10", "alpha", "fix")
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draft)
+
+	_, err := Plan(root, "itd-10", PlanOptions{Impact: "additive"})
+	if err == nil {
+		t.Fatal("Plan accepted an --impact that disagrees with the recorded one")
+	}
+	for _, want := range []string{"itd-10", `already records impact "fix"`, `--impact says "additive"`, "does not revise a recorded judgement"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q lacks %q", err, want)
+		}
+	}
+	assertDraftUntouched(t, root, draft)
+}
+
+// TestPlanAcceptsAnImpactThatAgreesWithTheRecord: the same value as already
+// stamped is a no-op, not a refusal — the record is planned with its one
+// judgement intact and nothing is reported as newly stamped.
+func TestPlanAcceptsAnImpactThatAgreesWithTheRecord(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithImpact("itd-10", "alpha", "fix"))
+
+	res, err := Plan(root, "itd-10", PlanOptions{Impact: "fix"})
+	if err != nil {
+		t.Fatalf("an --impact agreeing with the record must be accepted: %v", err)
+	}
+	if res.ImpactStamped != "" {
+		t.Fatalf("ImpactStamped = %q, want empty for an agreeing value", res.ImpactStamped)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, res.Intent.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "\nimpact: fix\n") || countImpactLines(string(raw)) != 1 {
+		t.Fatalf("the planned record must carry its one recorded judgement:\n%s", raw)
+	}
+}
+
+// assertDraftUntouched proves a refused plan wrote nothing: the draft is
+// byte-identical, nothing landed in planned/, and no spec was minted.
+func assertDraftUntouched(t *testing.T, root, want string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, draftsDir, "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatalf("the refused plan moved the draft: %v", err)
+	}
+	if string(raw) != want {
+		t.Fatalf("the refused plan rewrote the draft:\n%s", raw)
+	}
+	if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); !os.IsNotExist(err) {
+		t.Fatal("the refused plan left a record in planned/")
+	}
+	if _, err := os.Stat(filepath.Join(root, specsOpen)); !os.IsNotExist(err) {
+		t.Fatal("the refused plan minted a spec")
+	}
+}
+
+// plannedWithoutImpact lays a planned record with the given scope-condition
+// bullets and no judgement — the record the close would refuse, and the one
+// the second face of plan exists to repair.
+func plannedWithoutImpact(conditions string) string {
+	return "---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n" +
+		"## Scope Conditions\n\n" + conditions + "\n## Acceptance Criteria\n\n- ok\n"
+}
+
+// TestPlanStampsImpactOnAPlannedRecord: the identity-step re-run over a planned
+// record takes --impact under the same rules, because "stamp the judgement" is
+// exactly what a planned record without one needs before its close — and it is
+// work done, so a record with no unmarked condition is not refused for having
+// nothing to stamp.
+func TestPlanStampsImpactOnAPlannedRecord(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedWithoutImpact(NullityToken+"\n"))
+
+	res, err := Plan(root, "itd-10", PlanOptions{Impact: "fix"})
+	if err != nil {
+		t.Fatalf("Plan --impact on a planned record: %v", err)
+	}
+	if !res.StampOnly || res.ConditionsStamped != 0 || res.ImpactStamped != "fix" {
+		t.Fatalf("Plan result = %+v", res)
+	}
+	if res.Intent.Bucket != BucketPlanned || res.Intent.SpecID != "spc-1" {
+		t.Fatalf("the stamp moved or relinked the record: %+v", res.Intent)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, res.Intent.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "\nimpact: fix\n") || countImpactLines(string(raw)) != 1 {
+		t.Fatalf("the planned record must carry the one stamped judgement:\n%s", raw)
+	}
+	if _, err := os.Stat(filepath.Join(root, specsOpen)); !os.IsNotExist(err) {
+		t.Fatal("the stamp step must mint no spec")
+	}
+}
+
+// TestPlanOnAPlannedRecordStampsConditionsAndImpactTogether: both stamps land in
+// one write, so a re-run that has an unmarked condition and a judgement to
+// record does both and reports both.
+func TestPlanOnAPlannedRecordStampsConditionsAndImpactTogether(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedWithoutImpact("- written after planning\n"))
+
+	res, err := Plan(root, "itd-10", PlanOptions{Impact: "breaking"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ConditionsStamped != 1 || res.ImpactStamped != "breaking" {
+		t.Fatalf("Plan result = %+v", res)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, res.Intent.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(raw)
+	if !strings.Contains(body, "\nimpact: breaking\n") {
+		t.Fatalf("the impact was not stamped:\n%s", body)
+	}
+	if conds := ParseClaims(body).Conditions; len(conds) != 1 || conds[0].ID == "" {
+		t.Fatalf("the condition was not stamped: %+v", conds)
+	}
+}
+
+// TestPlanOnAPlannedRecordRefusesADisagreeingImpact: the disagreement refusal
+// holds on the second face too, and it fires before the identity stamp — a
+// refused run writes nothing, so the unmarked bullet stays unmarked.
+func TestPlanOnAPlannedRecordRefusesADisagreeingImpact(t *testing.T) {
+	root := t.TempDir()
+	record := "---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n# alpha\n\n" +
+		"## Scope Conditions\n\n- written after planning\n\n## Acceptance Criteria\n\n- ok\n"
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", record)
+
+	_, err := Plan(root, "itd-10", PlanOptions{Impact: "additive"})
+	if err == nil {
+		t.Fatal("Plan accepted an --impact that disagrees with the recorded one")
+	}
+	if !strings.Contains(err.Error(), `already records impact "fix"`) {
+		t.Fatalf("refusal must name the disagreement: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, plannedDir, "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != record {
+		t.Fatalf("the refused run rewrote the record:\n%s", raw)
+	}
+}
+
+// TestPlanOnAPlannedRecordWithNothingToDoStillRefuses: an agreeing --impact is
+// accepted, but it is not work — a planned record whose conditions are all
+// identified and whose judgement is already the one supplied gets the same
+// refusal the bare re-run gets, and the refusal names the judgement so it
+// cannot read as "the impact was not stamped".
+func TestPlanOnAPlannedRecordWithNothingToDoStillRefuses(t *testing.T) {
+	root := t.TempDir()
+	record := "---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n# alpha\n\n" +
+		"## Scope Conditions\n\n" + NullityToken + "\n\n## Acceptance Criteria\n\n- ok\n"
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", record)
+
+	_, err := Plan(root, "itd-10", PlanOptions{Impact: "fix"})
+	if err == nil {
+		t.Fatal("a planned record with nothing unmarked and its judgement already recorded must refuse")
+	}
+	for _, want := range []string{"nothing to stamp", `already records impact "fix"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q lacks %q", err, want)
+		}
+	}
+}
