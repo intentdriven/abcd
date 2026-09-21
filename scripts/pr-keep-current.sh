@@ -43,6 +43,15 @@ pass() {
     if [ "$state" = "BEHIND" ] && [ "$queue" = "none" ]; then
       msg=$(gh api -X PUT "repos/$repo/pulls/$n/update-branch" -f update_method=merge -q .message 2>&1 || true)
       printf '%s PR #%s was BEHIND with auto-merge armed: %s\n' "$(date +%H:%M)" "$n" "$msg"
+      # The forge's update-branch disarms auto-merge on the pull request it
+      # updates (observed 2026-09-21 on PR 652: CLEAN, every check green, no
+      # queue entry for fifteen minutes), so the remedy re-arms once the
+      # update has landed. A re-arm on a pull request already armed is a no-op.
+      if gh pr merge "$n" --auto --merge >/dev/null 2>&1; then
+        printf '%s PR #%s auto-merge re-armed after the update\n' "$(date +%H:%M)" "$n"
+      else
+        printf '%s PR #%s auto-merge could NOT be re-armed; arm it by hand\n' "$(date +%H:%M)" "$n"
+      fi
     fi
   done < <(gh pr list --state open --json number,autoMergeRequest \
              -q '.[] | select(.autoMergeRequest != null) | .number')
