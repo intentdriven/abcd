@@ -9,6 +9,14 @@ found_during: "Dessau pilot 3, relayed by session gropiusllm-34 on 2026-09-21"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/roots.go deriveSlug; internal/core/intent/create.go deriveIntentSlug; internal/core/decide/decide.go deriveSlug"
+resolution: "one slug cap in the record-id package, between words, with the three stores calling it"
+impact: fix
+resolved_by:
+  commit: "94141ed4c1ce236a920639e4c2436b2853cf02ae"
 ---
 
 A record slug is cut mid-token at the sixty-character cap, so a slug that ends in a numbered token reads as a different token: a capture whose text named acceptance criterion ac-10 landed as ...-ac-1, and one naming ac-13 the same, which reads as a capture about ac-1 and makes two distinct records look like one in a directory listing. The cut is collapsed[:60] followed by a hyphen trim, in three places that each derive a slug the same way and cap it the same way: the capture ledger, the intent store and the decision store. Wanted: one slug cap in the record-id package, the one home for record filenames, that cuts at the last token boundary at or before the cap (and only falls back to a hard cut when the first token alone exceeds it), with the three sites calling it; a slug never ends in a token the text did not contain.
+
+## Grounds
+
+- pursued: we expect a slug capped between words to stop reading as a token the text did not contain, because the misleading token was only ever the tail of a cut word; shown wrong by a new record whose slug ends in a token absent from its text
