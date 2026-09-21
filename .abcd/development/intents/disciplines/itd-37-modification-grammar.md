@@ -22,7 +22,7 @@ Every spec carries a `## Modification Grammar` section with three sub-headings, 
 
 A fourth axis — **`### Ripple`** — captures the per-spec-external concerns absorbed from idea-3 (systems thinking) at adversarial review (chat `idea-3-itd-38-adversaria-31A06A`, MAJOR_RETHINK outcome): vocabulary delta (HARD-enforced via the [vocabulary-registration requirement in `02-constraints/04-naming.md`](../../brief/02-constraints/04-naming.md)), surface delta (new commands / sub-verbs / agents / disciplines), coupling delta (what this spec newly depends on; what newly depends on it). The `Ripple` axis stays under itd-37 (same retrieval key as modification grammar — domain) rather than spawning a separate discipline.
 
-At spec completion, `principle-distiller` (the role-extended curator from [itd-36](../planned/itd-36-memory-unification.md)) extracts the `## Modification Grammar` section into two memory pages per [`05-internals/07-memory.md`](../../brief/05-internals/07-memory.md):
+At spec completion, `principle-distiller` (the role-extended curator from [itd-36](../shipped/itd-36-memory-unification.md)) extracts the `## Modification Grammar` section into two memory pages per [`05-internals/07-memory.md`](../../brief/05-internals/07-memory.md):
 
 - **`spec_modification_grammar_<spec_id>.md`** — append-only, per-spec. Source class `spec_modification_grammar`. Lifecycle: append-only per [`05-internals/04-universal-patterns.md § 8`](../../brief/05-internals/04-universal-patterns.md#8-artefact-lifecycle-taxonomy).
 - **`modification_grammar_<domain>.md`** — compounding-curated, per-domain. `principle-distiller` runs a curator-pass that synthesises across the per-spec pages. Lifecycle: compounding-curated per the same taxonomy.
@@ -111,7 +111,7 @@ _Empty. Populated by `intent-auditor` Role 1 (single-document fidelity per itd-1
 - [`research/related-work.md § Naur 1985`](../../research/related-work.md#naur-1985--programming-as-theory-building) — full prior-art comparison.
 - [`itd-1-acceptance-gates.md`](itd-1-acceptance-gates.md) — companion discipline; this discipline's acceptance criteria conform to its Given-When-Then shape.
 - [`itd-5-prompt-quality-additions.md`](itd-5-prompt-quality-additions.md) — companion discipline; disciplines stack at three (itd-1 + itd-5 + itd-37).
-- [`../planned/itd-36-memory-unification.md`](../planned/itd-36-memory-unification.md) — companion intent (standalone); ships alongside itd-37; provides the substrate for `spec_modification_grammar` and `modification_grammar` page classes.
+- [`../shipped/itd-36-memory-unification.md`](../shipped/itd-36-memory-unification.md) — companion intent (standalone); ships alongside itd-37; provides the substrate for `spec_modification_grammar` and `modification_grammar` page classes.
 - [`05-internals/07-memory.md`](../../brief/05-internals/07-memory.md) — substrate spec for the curator agent's two-page-class extraction.
 - [`02-constraints/04-naming.md`](../../brief/02-constraints/04-naming.md) — vocabulary-registration requirement (HARD) and bare-command-as-render discipline; both companion rules to this discipline's `Ripple` axis.
 - [`01-product/03-mental-model.md § The Naurian gap`](../../brief/01-product/03-mental-model.md) — the framing this discipline closes.
