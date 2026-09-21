@@ -61,9 +61,6 @@ const maxSlugLen = 60
 // (not const) so a test can shorten it to exercise contention.
 var mintLockTimeout = 5 * time.Second
 
-// slugNonAlnumRe collapses every run of non-slug characters to one hyphen.
-var slugNonAlnumRe = regexp.MustCompile(`[^a-z0-9]+`)
-
 // slugRe is the kebab-case shape a derived slug must land in before it may
 // become a filename.
 var slugRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
@@ -145,10 +142,7 @@ func Create(repoRoot, title string) (Decision, error) {
 // and non-empty — the slug becomes a filename, so it is validated before any
 // path is built.
 func deriveSlug(title string) (string, error) {
-	collapsed := strings.Trim(slugNonAlnumRe.ReplaceAllString(strings.ToLower(title), "-"), "-")
-	if len(collapsed) > maxSlugLen {
-		collapsed = strings.Trim(collapsed[:maxSlugLen], "-")
-	}
+	collapsed := recordid.Slug(title, maxSlugLen)
 	if collapsed == "" {
 		return "", fmt.Errorf("decide: title %q has no slug-able characters", title)
 	}

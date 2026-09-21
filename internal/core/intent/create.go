@@ -338,11 +338,7 @@ func draftStamp(opts DraftOptions) (provenance.Stamp, error) {
 // is kebab-case and non-empty — the slug becomes a filename, so it is validated
 // before any path is built (path-traversal / filename-safety defence).
 func deriveIntentSlug(text string) (string, error) {
-	lowered := strings.ToLower(text)
-	collapsed := strings.Trim(slugNonAlnumRe.ReplaceAllString(lowered, "-"), "-")
-	if len(collapsed) > maxSlugLen {
-		collapsed = strings.Trim(collapsed[:maxSlugLen], "-")
-	}
+	collapsed := recordid.Slug(text, maxSlugLen)
 	if collapsed == "" {
 		return "", fmt.Errorf("intent: text %q has no slug-able characters", text)
 	}
@@ -351,8 +347,6 @@ func deriveIntentSlug(text string) (string, error) {
 	}
 	return collapsed, nil
 }
-
-var slugNonAlnumRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // mintIntentID draws a native itd id that names no record in any bucket of this
 // checkout. It reads no maximum (adr-45 ruling 2): the clock orders the ids and
