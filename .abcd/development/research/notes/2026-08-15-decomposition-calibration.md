@@ -1833,3 +1833,47 @@ Per hand-run, append:
   implementer, three reviewers, adjudicator, pause-and-resume) in the four
   days before, and one of them asked for the recipe outright. The
   decomposition was faster for it; every part had a record to land on.
+
+### Run: `abcd build next` and `abcd drain` (2026-09-21, product thinker's interview)
+
+- **Proposal (as received):** "abcd implement next and abcd implement drain
+  as two customised runs: 'next' asks the agent to pick the next intent to
+  implement autonomously (and to record why it was picked) and 'drain' drains
+  the ledger of issues that do not require a design decision. Conduct SOTA as
+  part of the plan to write the intent."
+- **Table (as proposed):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | A run that picks the next READY intent itself and records why | capability | new draft (itd-2609211116005482) | builds_on itd-2609201916151817 |
+  | The ordering the pick uses | capability | itd-78 already claims the derivation | builds_on or refines itd-78 |
+  | A run that drains the ledger of no-decision issues | capability | itd-82 (draft) is this idea; supersede or revive | supersedes itd-82 (flagged) |
+  | The rule for "needs no design decision" | trust rule | ADR + brief invariant, owed before the path ships | refines the human-owns-decisions boundary |
+  | "A machine-made choice records a falsifiable rationale" | stance | principle | new |
+  | `implement next` already names the step interface | plumbing | the implement spec: rename the step or the run | edit |
+
+- **Verdict:** SPLIT. The human revived itd-82 rather than superseding it
+  (so the flagged supersession became an edit), filed the pick as a new
+  draft that refines itd-78 (filters on edges, ranks on none), kept the
+  trust rule as a decision record owed before ship (recorded as the drain
+  draft's decision 4, the `--auto-plan` pattern), and folded the stance into
+  the new draft's decision 5 ("computed, never composed") with no principle
+  file written. The plumbing part became a ruling on the planned implement
+  intent (decision 8): `build` for people, `implement` for the machinery,
+  the step word renamed from `next` to `step`.
+- **Routing survived?** Mostly. Two changes the table did not anticipate:
+  the human renamed the whole family (`build` / `drain` / `implement`) from
+  a naming question the table had filed as plumbing, and the drain's
+  hand-back was routed by kind on the human's own objection that an issue
+  is not always a user moment, which turned "promote to intent" into the
+  itd-84 routing itself applied at run time. The principle part did not get
+  a file; whether it deserves one is left to a later recall.
+- **Notes:** the SOTA pass ran independently before the interview
+  (evaluator outside the loop) and changed two answers the human would
+  otherwise have been asked cold: the ordering (readiest-first, on the
+  psychometrics and the dotnet/runtime evidence, over oldest- or
+  severity-first) and the rationale's form (computed facts, on the
+  audited-ADR failure rate). Questions asked: seven, one at a time; two
+  answered with a clarification instead of an option, both taken as the
+  answer. One capture filed for a part outside the proposal (the
+  person/agent verb split, iss-2609211119023345).
