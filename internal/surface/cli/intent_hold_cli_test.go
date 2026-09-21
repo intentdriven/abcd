@@ -20,8 +20,8 @@ func TestIntentHoldUnholdAtTheCLI(t *testing.T) {
 	before, _ := os.ReadFile(filepath.Join(repo, rel))
 
 	// A missing reason is refused at the door.
-	if _, err := runCLIErr(t, "intent", "hold", "itd-10"); err == nil || !strings.Contains(err.Error(), "--reason is required") {
-		t.Fatalf("hold without --reason must refuse: %v", err)
+	if _, err := runCLIErr(t, "intent", "hold", "itd-10"); err == nil || !strings.Contains(err.Error(), "--reason is required") || exitCodeOf(err) != 2 {
+		t.Fatalf("hold without --reason must refuse on exit 2: exit = %d (%v)", exitCodeOf(err), err)
 	}
 	if after, _ := os.ReadFile(filepath.Join(repo, rel)); string(after) != string(before) {
 		t.Fatal("a refused hold wrote the record")
@@ -52,16 +52,16 @@ func TestIntentHoldUnholdAtTheCLI(t *testing.T) {
 	}
 
 	// plan refuses, exit 2, naming the reason and the lift; nothing moves.
-	if _, err := runCLIErr(t, "intent", "plan", "itd-10"); err == nil || !strings.Contains(err.Error(), "awaiting the reading rethink") || !strings.Contains(err.Error(), "intent unhold itd-10") {
-		t.Fatalf("plan must refuse a held draft naming the remedy: %v", err)
+	if _, err := runCLIErr(t, "intent", "plan", "itd-10"); err == nil || !strings.Contains(err.Error(), "awaiting the reading rethink") || !strings.Contains(err.Error(), "intent unhold itd-10") || exitCodeOf(err) != 2 {
+		t.Fatalf("plan must refuse a held draft on exit 2 naming the remedy: exit = %d (%v)", exitCodeOf(err), err)
 	}
 	if _, statErr := os.Stat(filepath.Join(repo, rel)); statErr != nil {
 		t.Fatal("the held draft moved")
 	}
 
 	// A second hold is refused naming the standing reason.
-	if _, err := runCLIErr(t, "intent", "hold", "itd-10", "--reason", "another"); err == nil || !strings.Contains(err.Error(), "awaiting the reading rethink") {
-		t.Fatalf("re-hold must refuse naming the standing reason: %v", err)
+	if _, err := runCLIErr(t, "intent", "hold", "itd-10", "--reason", "another"); err == nil || !strings.Contains(err.Error(), "awaiting the reading rethink") || exitCodeOf(err) != 2 {
+		t.Fatalf("re-hold must refuse on exit 2 naming the standing reason: exit = %d (%v)", exitCodeOf(err), err)
 	}
 
 	// unhold removes the line and reports what stood; the record is byte-identical
@@ -73,8 +73,8 @@ func TestIntentHoldUnholdAtTheCLI(t *testing.T) {
 	if after, _ := os.ReadFile(filepath.Join(repo, rel)); string(after) != string(before) {
 		t.Fatalf("unhold must restore the record byte for byte:\n%s", after)
 	}
-	if _, err := runCLIErr(t, "intent", "unhold", "itd-10"); err == nil || !strings.Contains(err.Error(), "not held") {
-		t.Fatalf("unhold on a record not held must refuse: %v", err)
+	if _, err := runCLIErr(t, "intent", "unhold", "itd-10"); err == nil || !strings.Contains(err.Error(), "not held") || exitCodeOf(err) != 2 {
+		t.Fatalf("unhold on a record not held must refuse on exit 2: exit = %d (%v)", exitCodeOf(err), err)
 	}
 	if out := string(runCLI(t, "intent", "plan", "itd-10")); !strings.Contains(out, "drafts -> planned") {
 		t.Fatalf("the lifted record plans: %s", out)

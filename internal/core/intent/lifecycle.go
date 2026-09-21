@@ -153,11 +153,15 @@ func Plan(repoRoot, intentID, productionMode string) (PlanResult, error) {
 
 	draftRel := it.Path
 	draftAbs := filepath.Join(repoRoot, draftRel)
-	data, err := readRepoFile(draftAbs, draftRel)
+	// The hold is judged a second time, on the bytes re-read here rather than
+	// on the corpus loaded above: a hold written between the load and this read
+	// would otherwise be planned past. The refusal above is the early one; this
+	// is the last read before the first write (the spec mint), so a refusal here
+	// still leaves nothing minted and nothing moved.
+	content, err := readIntentRefusingHold(draftAbs, draftRel, intentID, "plan")
 	if err != nil {
 		return PlanResult{}, err
 	}
-	content := string(data)
 	if !hasAcceptanceCriteria(content) {
 		return PlanResult{}, fmt.Errorf("intent: %s has no non-empty '## Acceptance Criteria' section (itd-1 discipline); refusing to plan", intentID)
 	}
@@ -593,6 +597,20 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		// planned → advance; shipped → idempotent (already advanced).
 	default:
 		return ReconcileResult{}, fmt.Errorf("intent: %s is in %s (linked by spec %s); expected planned or shipped — refusing to reconcile", intentID, it.Bucket, specID)
+	}
+	// A hold blocks EVERY lifecycle move until `intent unhold`, and the close is
+	// one: a held planned record is refused here, ahead of the remainder mint,
+	// the impact stamp, the move and the close, naming the reason and the lift
+	// exactly as Plan does (iss-2609200830076665). The key is never stripped by
+	// this verb. A shipped record is past every move a hold stops and no verb
+	// can put a hold on one — hold refuses the bucket, and this refusal is what
+	// keeps a held record out of shipped/ — so a `held:` there is
+	// record_provenance's finding, not this verb's, and the idempotent re-run
+	// is left to complete.
+	if it.Bucket == BucketPlanned {
+		if err := refuseIfHeld(it, "spec close"); err != nil {
+			return ReconcileResult{}, err
+		}
 	}
 
 	// --remainder mints a follow-on spec for what THIS close did not deliver, so

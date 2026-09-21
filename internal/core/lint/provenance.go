@@ -38,7 +38,9 @@ package lint
 // record in drafts/ or planned/, and `abcd intent unhold` removes the line, so
 // the shapes reported are the ones neither verb produces — a blank value, a
 // null, a flow or block list, a map, a block scalar, or a legal value on a
-// record in a bucket the verbs refuse. The residual is the same: a legal
+// record in a bucket the verbs refuse (which no verb carries one into either:
+// `spec close` refuses a held record before it moves). The residual is the
+// same: a legal
 // single-line string typed by hand is byte-identical to the verb's write and is
 // NOT reported. What the reader does with a reported shape is fail closed —
 // `intent plan` refuses it exactly as it would a real hold — so the forgery
@@ -172,7 +174,7 @@ func heldFindings(r schemaRecord, severity string) []Finding {
 		return finding("`" + heldKey + "` is blank inside its quotes; `abcd intent hold` refuses an empty reason, so a blank value is a state no command produced")
 	}
 	if !heldBuckets[r.bucket] {
-		return finding("`" + heldKey + "` on a record in " + r.bucket + "/; `abcd intent hold` acts on drafts/ and planned/ only, because a hold stops `intent plan` and nothing plans a " + r.bucket + " record, so no command wrote this one")
+		return finding("`" + heldKey + "` on a record in " + r.bucket + "/; `abcd intent hold` acts on drafts/ and planned/ only, and `spec close` refuses a held record before it moves, so no command wrote this one")
 	}
 	return nil
 }

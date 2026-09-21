@@ -236,3 +236,137 @@ func TestHoldWriteStaysLintValid(t *testing.T) {
 		}
 	}
 }
+
+// TestReconcileRefusesAHeldPlannedRecord: a hold blocks EVERY lifecycle move
+// until `intent unhold`, the close included. `spec close` (Reconcile) on a held
+// planned record refuses before anything moves — the spec stays open, the
+// intent stays planned, both files byte-identical — naming the reason and the
+// lift, and it never strips the key (fix round 1, R1).
+func TestReconcileRefusesAHeldPlannedRecord(t *testing.T) {
+	root := t.TempDir()
+	intentRel := plannedDir + "/itd-10-alpha.md"
+	specRel := specsOpen + "/spc-1-alpha.md"
+	writeFile(t, root, intentRel, plannedLinked("itd-10", "alpha", "spc-1"))
+	writeFile(t, root, specRel, specNaming("spc-1", "alpha", "itd-10"))
+	if _, err := Hold(root, "itd-10", "scope under review"); err != nil {
+		t.Fatal(err)
+	}
+	intentBefore := readIntent(t, root, intentRel)
+	specBefore := readIntent(t, root, specRel)
+
+	_, err := Reconcile(root, "spc-1", "", RemainderRequest{})
+	if err == nil {
+		t.Fatal("spec close must refuse a held planned record")
+	}
+	for _, want := range []string{"scope under review", "intent unhold itd-10", "spec close"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must carry %q: %v", want, err)
+		}
+	}
+	if got := readIntent(t, root, intentRel); got != intentBefore {
+		t.Fatalf("the held intent must be byte-identical after the refusal (and still planned):\n%s", got)
+	}
+	if got := readIntent(t, root, specRel); got != specBefore {
+		t.Fatalf("the spec must be byte-identical after the refusal (and still open):\n%s", got)
+	}
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := c.Lookup("itd-10"); it.Bucket != BucketPlanned || it.Held != "scope under review" {
+		t.Fatalf("the record must stay planned and held: %+v", it)
+	}
+	// Lifted, the same close ships.
+	if _, err := Unhold(root, "itd-10"); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := Reconcile(root, "spc-1", "", RemainderRequest{}); err != nil || !res.IntentMoved {
+		t.Fatalf("the close ships once the hold is lifted: %+v %v", res, err)
+	}
+}
+
+// TestUnholdRefusesAHandWrittenKeySpelling: a `held` line the reader accepts
+// but the remover does not match — `held : "x"`, a space before the colon —
+// is a spelling no verb writes. Unhold must not report a removal it did not
+// make: it refuses naming the line as hand-written, the file is untouched,
+// and the loader still reports the record held (fix round 1, R2).
+func TestUnholdRefusesAHandWrittenKeySpelling(t *testing.T) {
+	root := t.TempDir()
+	rel := draftsDir + "/itd-10-alpha.md"
+	writeFile(t, root, rel, "---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: null\nheld : \"by hand\"\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+	before := readIntent(t, root, rel)
+
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := c.Lookup("itd-10"); it.Held != "by hand" {
+		t.Fatalf("precondition: the reader accepts the spelling as a hold: %+v", it)
+	}
+	_, err = Unhold(root, "itd-10")
+	if err == nil {
+		t.Fatal("unhold must refuse when the removal would change nothing")
+	}
+	for _, want := range []string{"hand", "held : ", "nothing written"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must carry %q: %v", want, err)
+		}
+	}
+	if got := readIntent(t, root, rel); got != before {
+		t.Fatalf("a refused unhold must leave the file untouched:\n%s", got)
+	}
+	c, err = Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it, _ := c.Lookup("itd-10"); it.Held != "by hand" {
+		t.Fatalf("the record is still held after the refusal: %+v", it)
+	}
+	// Plan still refuses it: the hold stands however it was spelled.
+	if _, err := Plan(root, "itd-10", ""); err == nil || !strings.Contains(err.Error(), "by hand") {
+		t.Fatalf("plan must still refuse the held record: %v", err)
+	}
+}
+
+// TestPlanRefusesAHoldOnTheBytesItReReads: Plan judges the hold on the corpus
+// it loads AND on the bytes it re-reads before its first write, so a hold
+// written between the load and the re-read is refused rather than planned
+// past. Plan's load and re-read are one call with no seam between them, so
+// the re-read half is exercised through the reader Plan calls: given a file
+// carrying a hold, it refuses naming the reason and the lift; given one
+// without, it returns the bytes.
+func TestPlanRefusesAHoldOnTheBytesItReReads(t *testing.T) {
+	root := t.TempDir()
+	rel := draftsDir + "/itd-10-alpha.md"
+	writeFile(t, root, rel, draftWithAC("itd-10", "alpha"))
+	abs := root + "/" + rel
+
+	content, err := readIntentRefusingHold(abs, rel, "itd-10", "plan")
+	if err != nil {
+		t.Fatalf("an unheld draft reads: %v", err)
+	}
+	if content != draftWithAC("itd-10", "alpha") {
+		t.Fatalf("the bytes read are the file's:\n%s", content)
+	}
+	// The hold lands after the load Plan would have done and before the write.
+	if _, err := Hold(root, "itd-10", "landed late"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = readIntentRefusingHold(abs, rel, "itd-10", "plan")
+	if err == nil {
+		t.Fatal("a hold on the re-read bytes must refuse")
+	}
+	for _, want := range []string{"landed late", "intent unhold itd-10", "plan refuses"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must carry %q: %v", want, err)
+		}
+	}
+	// And Plan as a whole still refuses the held draft with nothing moved.
+	before := readIntent(t, root, rel)
+	if _, err := Plan(root, "itd-10", ""); err == nil || !strings.Contains(err.Error(), "landed late") {
+		t.Fatalf("Plan must refuse: %v", err)
+	}
+	if readIntent(t, root, rel) != before {
+		t.Fatal("a refused plan wrote the draft")
+	}
+}

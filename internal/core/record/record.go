@@ -237,13 +237,16 @@ func describeIntent(repoRoot, id string) (Description, error) {
 		d.NextMoves = []string{"none — a discipline is read, not shipped"}
 	}
 	// A hold is the next move, in front of whatever the bucket would otherwise
-	// say: `intent plan` refuses a held record, so a page that led with "plan
-	// it" would be telling its reader to run a verb that will refuse. The row
-	// names the reason and the verb that lifts it (iss-2609200830076665). What
-	// the row can vouch for is the trust boundary hold.go states: the loader
-	// read a `held:` line, and a legal line typed by hand reads exactly as the
-	// verb's write does; a value in a shape no verb writes is reported as that,
-	// never as a reason, and sent to the rule that names the line.
+	// say: `intent plan` and `spec close` refuse a held record, so a page that
+	// led with "plan it" would be telling its reader to run a verb that will
+	// refuse. The row names the reason and the verb that lifts it
+	// (iss-2609200830076665). What the row can vouch for is the trust boundary
+	// hold.go states: the loader read a `held:` line, and a legal line typed by
+	// hand reads exactly as the verb's write does; a value in a shape no verb
+	// writes is reported as that, never as a reason, and sent to the rule that
+	// names the line — as is a legal value on a record in a bucket no verb can
+	// hold, where `intent unhold` refuses too and the only remedy is the hand
+	// edit that put it there.
 	if move, ok := holdMove(it, id); ok {
 		d.NextMoves = append([]string{move}, d.NextMoves...)
 	}
@@ -253,13 +256,21 @@ func describeIntent(repoRoot, id string) (Description, error) {
 // holdMove renders the hold row for a held record, and reports false for a
 // record that carries no `held:` key at all.
 func holdMove(it intent.Intent, id string) (string, bool) {
+	holdable := it.Bucket == intent.BucketDrafts || it.Bucket == intent.BucketPlanned
 	switch {
 	case it.HeldMalformed:
 		return "held, but the `" + intent.HeldKey + ":` value is in a shape no verb writes — `abcd " + verbIntentPlan +
 			"` refuses it, and `abcd " + verbIntentUnhold + "` will not remove what it could not have written; repair or remove the line by hand (record-lint's record_provenance rule names it)", true
+	case it.Held != "" && !holdable:
+		// hold and unhold both refuse this bucket, and spec close refuses a held
+		// record before it moves, so the key is here by hand; sending the reader
+		// to unhold would name a verb that refuses.
+		return "held — " + it.Held + "; but " + it.Bucket + "/ is a bucket no verb can hold (`abcd intent hold` and `abcd " + verbIntentUnhold +
+			"` both refuse it, and `abcd " + verbSpecClose + "` refuses a held record before it moves), so the `" + intent.HeldKey +
+			":` line was written by hand — remove it by hand (record-lint's record_provenance rule reports it)", true
 	case it.Held != "":
 		return "held — " + it.Held + "; `abcd " + verbIntentUnhold + " " + id + "` lifts the hold, and `abcd " + verbIntentPlan +
-			"` refuses until then", true
+			"` and `abcd " + verbSpecClose + "` refuse until then", true
 	}
 	return "", false
 }

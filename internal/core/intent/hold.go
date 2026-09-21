@@ -2,8 +2,8 @@ package intent
 
 // hold.go is the intent record's hold: a frontmatter STATE, `held: "<reason>"`,
 // written by `abcd intent hold` and removed by `abcd intent unhold`, that Plan
-// refuses on before anything moves and the record dispatcher reports as the
-// next move (iss-2609200830076665).
+// and the spec close (Reconcile) refuse on before anything moves and the record
+// dispatcher reports as the next move (iss-2609200830076665).
 //
 // Before this, a hold was prose — a Review or Open Questions section saying the
 // draft is held and why — and nothing mechanical read it: `intent plan` checked
@@ -17,7 +17,11 @@ package intent
 //   - What the VERB guarantees: a `held:` value it wrote is a non-empty,
 //     single-line string, redacted through the store's canonical scanner, on a
 //     record in drafts/ or planned/, written atomically through the package's
-//     one intent writer. A record it holds is refused by Plan until unhold.
+//     one intent writer. A record it holds is refused by EVERY lifecycle move
+//     — Plan, and the spec close that would ship it (Reconcile) — until
+//     unhold, so a held record never reaches shipped/ through a verb, and a
+//     `held:` on a shipped, superseded or discipline record is by construction
+//     a hand edit (record_provenance reports it).
 //   - What only LINT can see: a hand edit can forge a hold or lift one, and a
 //     legal single-line string typed by hand is byte-identical to the verb's
 //     write, so no read of committed bytes can tell them apart. record-lint's
@@ -26,7 +30,11 @@ package intent
 //     on a record in a bucket the verb refuses — and nothing else. A forged
 //     hold FAILS CLOSED (Plan refuses it, exactly as it would a real one); a
 //     hand-lifted hold is a deleted line, which nothing here can distinguish
-//     from `unhold`, and which the review of the diff is left to see.
+//     from `unhold`, and which the review of the diff is left to see. A key
+//     SPELLED by hand in a way the reader accepts but no verb writes (`held :
+//     "x"`, a space before the colon) is a hold every reader honours and a
+//     line `unhold` cannot remove; it is refused as a hand repair rather than
+//     reported as a lift that never happened.
 //   - What the READERS do with a malformed value: the loader marks the record
 //     HeldMalformed rather than failing the corpus; Plan refuses it (fail
 //     closed — the key's presence is somebody's attempt at a hold, whatever
@@ -37,6 +45,7 @@ package intent
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -157,7 +166,9 @@ func Hold(repoRoot, intentID, reason string) (HoldResult, error) {
 // `held` value is in a shape the verb never writes is refused too, naming the
 // line as a hand repair: the verb only removes what the verb could have
 // written, so its write stays a single-line delete with no guess about which
-// following lines were part of somebody's block.
+// following lines were part of somebody's block. And a removal that changes
+// nothing — a `held` line the reader accepts but the writer's key pattern does
+// not match — is refused the same way, never reported as a lift.
 func Unhold(repoRoot, intentID string) (UnholdResult, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return UnholdResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
@@ -200,6 +211,14 @@ func Unhold(repoRoot, intentID string) (UnholdResult, error) {
 		updated, err := removeFrontmatterField(content, HeldKey)
 		if err != nil {
 			return err
+		}
+		// The reader's key pattern is wider than the writer's: it admits
+		// whitespace before the colon, the writer does not. A `held :` line is
+		// therefore a hold every reader honours that the remover leaves in
+		// place, and a write here would report a lift it did not make. Nothing
+		// removed is a refusal naming the line as hand-written, not a success.
+		if updated == content {
+			return handWrittenHeldError(it, content)
 		}
 		if err := writeIntentFile(abs, it.Path, updated); err != nil {
 			return err
@@ -256,14 +275,14 @@ func malformedHeldError(it Intent, verb string) error {
 }
 
 // refuseTerminalBucket refuses a hold verb on a record in a bucket a hold is
-// meaningless in: nothing plans a shipped, superseded or discipline record, so
-// a hold there would be a key that stops nothing.
+// meaningless in: nothing plans or closes a shipped, superseded or discipline
+// record, so a hold there would be a key that stops nothing.
 func refuseTerminalBucket(it Intent, verb string) error {
 	switch it.Bucket {
 	case BucketDrafts, BucketPlanned:
 		return nil
 	}
-	return fmt.Errorf("intent: %s is in %s; a hold stops `intent plan`, which acts on drafts/ and planned/ only, so %s refuses a %s record (nothing written)",
+	return fmt.Errorf("intent: %s is in %s; a hold stops `intent plan` and `spec close`, the moves out of drafts/ and planned/, so %s refuses a %s record (nothing written)",
 		it.ID, it.Bucket, verb, it.Bucket)
 }
 
@@ -315,4 +334,43 @@ func removeFrontmatterField(content, key string) (string, error) {
 		out = append(out, line)
 	}
 	return strings.Join(out, "\n"), nil
+}
+
+// handSpelledHeldRe is the reader's key pattern narrowed to the hold key: the
+// spellings frontmatter.Fields reads as `held`, of which the writer's fmKeyRe
+// produces exactly one (no whitespace before the colon).
+var handSpelledHeldRe = regexp.MustCompile(`^` + HeldKey + `[ \t]*:`)
+
+// handWrittenHeldError is the refusal for a `held` line the reader accepts but
+// no verb wrote — the one spelling the remover cannot match — quoting the line
+// so the repair is a copy-edit and not a hunt.
+func handWrittenHeldError(it Intent, content string) error {
+	line := HeldKey + " : ..."
+	for _, l := range strings.Split(content, "\n") {
+		if handSpelledHeldRe.MatchString(l) {
+			line = strings.TrimRight(l, "\r")
+			break
+		}
+	}
+	return fmt.Errorf("intent: %s carries a `%s` line spelled by hand (%q) — the reader honours it, so the record IS held, but no verb writes that spelling and `abcd intent unhold` removes only what it could have written; repair the line by hand to `%s: \"<reason>\"` and re-run, or remove it (nothing written)",
+		it.ID, HeldKey, line, HeldKey)
+}
+
+// readIntentRefusingHold reads one intent file and judges the hold on the
+// bytes it just read, refusing as refuseIfHeld does for verb. It is Plan's
+// second look: the corpus it loaded gave the early refusal, and this is the
+// last read before its first write, so a hold that landed between the two is
+// refused with nothing minted and nothing moved.
+func readIntentRefusingHold(abs, rel, id, verb string) (string, error) {
+	data, err := readRepoFile(abs, rel)
+	if err != nil {
+		return "", err
+	}
+	content := string(data)
+	fresh := parseHeldField(frontmatter.Fields(strings.Split(content, "\n")))
+	fresh.ID = id
+	if err := refuseIfHeld(fresh, verb); err != nil {
+		return "", err
+	}
+	return content, nil
 }

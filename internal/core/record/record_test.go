@@ -525,3 +525,33 @@ func TestDescribeIntentReportsAHold(t *testing.T) {
 		t.Fatalf("a malformed hold must be reported as one, naming the rule that sees it: %v", d.NextMoves)
 	}
 }
+
+// TestDescribeIntentReportsAHoldOnATerminalRecordAsHandWritten: a shipped,
+// superseded or discipline record carrying `held:` is a state no verb can
+// reach — hold refuses those buckets and spec close refuses a held record
+// before it moves — and `intent unhold` refuses there too. So the row must
+// not send its reader to unhold; it says the key is on a record no verb can
+// hold and names the record-lint rule that reports it (fix round 1, item 3).
+func TestDescribeIntentReportsAHoldOnATerminalRecordAsHandWritten(t *testing.T) {
+	repo := t.TempDir()
+	intentFixture(t, repo, "shipped", "itd-4", "done",
+		"---\nid: itd-4\nslug: done\nspec_id: spc-1\nkind: standalone\nimpact: additive\nheld: \"forged by hand\"\n---\n\n# D\n")
+	write(t, repo, ".abcd/development/specs/closed/spc-1-done.md",
+		"---\nid: spc-1\nslug: done\nintent: itd-4\n---\n# done\n")
+	d, err := Describe(repo, "itd-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.NextMoves) == 0 {
+		t.Fatal("no next moves rendered")
+	}
+	first := d.NextMoves[0]
+	for _, want := range []string{"held", "shipped", "no verb can hold", "record_provenance"} {
+		if !strings.Contains(first, want) {
+			t.Errorf("the row must say the key is on a record no verb can hold and name the rule, carrying %q: %v", want, d.NextMoves)
+		}
+	}
+	if strings.Contains(first, "abcd intent unhold itd-4") {
+		t.Errorf("the row must not hand the reader the unhold remedy, which refuses there: %v", d.NextMoves)
+	}
+}
