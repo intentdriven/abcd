@@ -761,6 +761,18 @@ Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
       --verdict-json string   path to the intent-audit verdict JSON
 ```
 
+#### `abcd intent hold`
+
+Hold a draft or planned intent (writes `held: "<reason>"`; `intent plan` refuses it until `intent unhold`)
+
+**Usage:** `abcd intent hold <itd-N> --reason "<text>" [flags]`
+
+**Flags:**
+
+```
+      --reason string   why the record is held: one line, required; redacted before it is written
+```
+
 #### `abcd intent link`
 
 Link a planned intent to an existing spec (writes the intent's spec_id)
@@ -797,6 +809,12 @@ Report whether an intent is ready to implement (planned + AC + written spec; cla
 ```
       --grounds string   record the conjecture behind this gate decision: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
 ```
+
+#### `abcd intent unhold`
+
+Lift a hold (removes the `held:` line `intent hold` wrote); refused on a record not held
+
+**Usage:** `abcd intent unhold <itd-N>`
 
 ### `abcd launch`
 

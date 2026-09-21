@@ -798,3 +798,97 @@ func containsLine(lines []string, want string) bool {
 	}
 	return false
 }
+
+// heldDraft is a draft carrying the hold the verb writes: a quoted single-line
+// reason under `held:`, byte-identical to `abcd intent hold`'s own write.
+func heldDraft(id, slug, reason string) string {
+	return "---\n" +
+		"id: " + id + "\n" +
+		"slug: " + slug + "\n" +
+		"spec_id: null\n" +
+		"kind: null\n" +
+		"held: \"" + reason + "\"\n" +
+		"---\n" +
+		"# " + slug + "\n\n" +
+		"## Acceptance Criteria\n\n" +
+		"- **Given** a user, **when** they act, **then** it works.\n"
+}
+
+// TestPlanRefusesHeldDraft: a hold is a frontmatter state, and Plan refuses it
+// BEFORE anything moves — naming the reason and `intent unhold` as the remedy —
+// so a lane that follows its own brief rather than the surface page has
+// something mechanical in its way (iss-2609200830076665).
+func TestPlanRefusesHeldDraft(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", heldDraft("itd-10", "alpha", "awaiting the reading rethink"))
+	_, err := Plan(root, "itd-10", PlanOptions{})
+	if err == nil {
+		t.Fatal("Plan must refuse a held draft")
+	}
+	for _, want := range []string{"held", "awaiting the reading rethink", "intent unhold itd-10"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal must carry %q: %v", want, err)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(root, draftsDir, "itd-10-alpha.md")); statErr != nil {
+		t.Fatalf("the draft must not have moved: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(root, specsOpen)); statErr == nil {
+		t.Fatal("no spec may be minted for a held draft")
+	}
+}
+
+// TestPlanRefusesHeldPlannedStampRun: the identity-only re-run over a planned
+// record is a Plan too, and a hold stops it on the same terms.
+func TestPlanRefusesHeldPlannedStampRun(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-2-beta.md",
+		"---\nid: itd-2\nslug: beta\nspec_id: spc-1\nkind: standalone\nheld: \"scope under review\"\n---\n# beta\n\n## Scope Conditions\n\n- runs on one host\n")
+	before, _ := os.ReadFile(filepath.Join(root, plannedDir, "itd-2-beta.md"))
+	_, err := Plan(root, "itd-2", PlanOptions{})
+	if err == nil || !strings.Contains(err.Error(), "scope under review") || !strings.Contains(err.Error(), "intent unhold itd-2") {
+		t.Fatalf("stamp re-run must refuse a held planned record naming the reason and the remedy: %v", err)
+	}
+	after, _ := os.ReadFile(filepath.Join(root, plannedDir, "itd-2-beta.md"))
+	if string(before) != string(after) {
+		t.Fatal("a refused stamp run must write nothing")
+	}
+}
+
+// TestLoadReadsHeld: the loader carries the hold so every read surface sees it,
+// and a hand-typed value in a shape the verb never writes is loaded as MALFORMED
+// rather than failing the corpus — record-lint is what names the line.
+func TestLoadReadsHeld(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", heldDraft("itd-10", "alpha", "say \\\"why\\\""))
+	writeFile(t, root, draftsDir+"/itd-11-bare.md",
+		"---\nid: itd-11\nslug: bare\nspec_id: null\nkind: null\nheld: a bare reason\n---\n# bare\n")
+	writeFile(t, root, draftsDir+"/itd-12-block.md",
+		"---\nid: itd-12\nslug: block\nspec_id: null\nkind: null\nheld: |\n  two\n  lines\n---\n# block\n")
+	writeFile(t, root, draftsDir+"/itd-13-null.md",
+		"---\nid: itd-13\nslug: null-held\nspec_id: null\nkind: null\nheld: null\n---\n# n\n")
+	writeFile(t, root, draftsDir+"/itd-14-free.md", draftWithAC("itd-14", "free"))
+	c, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]struct {
+		held      string
+		malformed bool
+	}{
+		"itd-10": {held: `say "why"`},
+		"itd-11": {held: "a bare reason"},
+		"itd-12": {malformed: true},
+		"itd-13": {malformed: true},
+		"itd-14": {},
+	}
+	for id, w := range want {
+		it, ok := c.Lookup(id)
+		if !ok {
+			t.Fatalf("%s not loaded", id)
+		}
+		if it.Held != w.held || it.HeldMalformed != w.malformed {
+			t.Errorf("%s: held=%q malformed=%v, want held=%q malformed=%v", id, it.Held, it.HeldMalformed, w.held, w.malformed)
+		}
+	}
+}
