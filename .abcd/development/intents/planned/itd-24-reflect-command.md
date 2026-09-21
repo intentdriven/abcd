@@ -1,7 +1,7 @@
 ---
 id: itd-24
 slug: reflect-command
-spec_id: null
+spec_id: spc-2609211751376504
 kind: bundle-member
 bundle: spc-83-operator-surfaces
 suggested_kind: null
@@ -14,6 +14,7 @@ prd_path: null
 prd_grandfathered: true
 severity: minor
 builds_on: [itd-27]
+impact: additive
 ---
 
 # Completed Phases Get A Retrospective
@@ -34,6 +35,10 @@ The legacy `~/.claude/templates/retrospective.md.template` had the right prompt 
 
 A phase audit and a phase retrospective are **distinct activities**, the same split `intent-fidelity-reviewer` Role 1 draws at the intent grain — one grain up. The audit asks *did the phase's `## Phase Acceptance` pass* (a per-bullet verdict). The retrospective asks *what did we learn* (transferable insight, interview-driven). `/abcd:reflect` does not replace the audit — it **consumes** it: the audit's verdicts are the seed material the retrospective interview opens from.
 
+## Mechanism
+
+We expect the value of a retrospective to be in the lifeboat: a new project that starts from an old one's lessons avoids a repeat, because the lessons arrive with the work rather than being re-derived; shown wrong if projects embarked from a lifeboat carrying retrospectives never open a surfaced lesson.
+
 ## What's In Scope
 
 - **`/abcd:reflect <phase-id>`** — retrospective for a completed phase, and the command's *only* argument form. Examples: `/abcd:reflect phase-1-substrate`, `/abcd:reflect phase-2-ahoy`. Per-intent reflection is out of scope (see below) — `/abcd:reflect` operates at the phase grain only.
@@ -46,7 +51,7 @@ A phase audit and a phase retrospective are **distinct activities**, the same sp
   - Lessons learned (transferable insights, framed for future-you)
   - Decisions made (architectural / design choices crystallised during the phase)
   - Metrics (intents shipped, audit-note severity distribution, time-to-ship if measurable)
-- **Output**: `.abcd/retrospectives/<phase-id>/README.md` — a peer of `.abcd/intents/` and `.abcd/logbook/`, committed as part of the phase's permanent record.
+- **Output**: `.abcd/development/retrospectives/<phase-id>/README.md` — a peer of `.abcd/development/intents/`, committed as part of the phase's permanent record.
 - **Lifeboat integration**: `/abcd:disembark to <path>` packs *all* of the voyage's phase retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
 - **Reference back to intents and the audit**: the retrospective links to the phase doc, to the intents the phase bundled, and to the phase audit; per-intent reviewer notes are referenced (not duplicated).
 - **`reflection-composer` agent** — runs the interview, drafts the structured output, asks clarifying questions when answers feel thin.
@@ -69,14 +74,22 @@ None stated.
 - **Given** a completed phase with no phase audit yet recorded, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command reports the missing audit and offers to run the phase-fidelity-reviewer inline before continuing into the retrospective.
 - **Given** a phase doc that exists but has no spec carrying its `phase:` anchor, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command refuses with "no specs anchored to `<phase-id>` — nothing shipped to reflect on" and writes no output.
 - **Given** a draft retrospective with thin answers (e.g. "what went well: it worked"), **when** the agent drafts the output, **then** the agent surfaces the thinness as a clarifying question rather than committing the thin answer.
-- **Given** the same repo's lifeboat is then packed via `/abcd:disembark to <path>`, **when** the lifeboat is inspected, **then** every `.abcd/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
-- **Given** a target repo embarked from a lifeboat that includes retrospectives, **when** `/abcd:embark from <path>` runs the press-release interview, **then** the persona is shown predecessor retrospective lessons and asked which apply to the new voyage.
+- **Given** the same repo's lifeboat is then packed via `/abcd:disembark to <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
+- **Given** a target repo embarked from a lifeboat that includes retrospectives, **when** `/abcd:embark from <path>` runs the press-release interview, **then** the persona is shown the few predecessor lessons ranked most like the new voyage's brief, with the rest as a list, and asked which apply.
 - **Given** an attempt to reflect on a phase whose specs are not all closed, **when** `/abcd:reflect <phase-id>` runs, **then** the command warns the persona, lists the open specs anchored to that phase, and asks for confirmation to proceed anyway.
+- **Given** the last piece of work anchored to a phase closes, **when** that close completes, **then** abcd says once that a retrospective for the phase is owed and names the command, and says nothing further about it.
+
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **Nudge once.** When a phase's last piece of work closes, abcd says once that a retrospective is owed; it is not repeated and it is not a gate.
+2. **A ranked few on embark.** Predecessor lessons most like the new voyage's brief are shown; the rest are a list opened on request.
+3. **Layout.** The retrospective lives under the durable record tier, `.abcd/development/retrospectives/<phase-id>/README.md`; the paths this record was written against predate the three-tier layout and are read as that.
 
 ## Open Questions
 
-- **Reflection cadence** — is there a soft prompt to encourage running it (e.g. when the last spec of a phase closes), or fully on-demand?
-- **Lifeboat surfacing on embark** — how intrusive? The lifeboat carries all phase retrospectives; how should embark present them — show every one, or rank by relevance to the new voyage? Risk of "previous-voyage lessons" feeling like noise on a brand-new voyage.
+_None open; decisions 1 and 2 settle the two this record carried (the reflection cadence and the lifeboat surfacing on embark)._
 
 ## Blocking Dependency
 
@@ -125,3 +138,7 @@ spec" as a bundle (`kind: bundle-member` + shared `bundle: spc-83-operator-surfa
 require. Bundle member by delivery relationship, not a scope change. This intent
 keeps its real grill linkage (`grill_session_id`); GR002 is handled via
 `prd_grandfathered`. Full record in the spec's process-exception note.
+
+## Grounds
+
+- pursued: nine phases have closed with their lessons living only in session handovers; we expect the first retrospectives to hold what the handovers do not, and a new voyage to open a carried lesson; shown wrong if the first retrospectives say nothing the handovers did not, or if no embarked project opens one
