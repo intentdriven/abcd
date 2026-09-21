@@ -1,7 +1,7 @@
 ---
 name: capture
-description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/list/promote/resolve/wontfix act on the ledger.
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held>"
+description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/link/list/promote/resolve/wontfix act on the ledger.
+argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held>"
 ---
 
 # `/abcd:capture` — issue ledger
@@ -54,7 +54,9 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 `--found-at` (optional repo-relative path), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
 write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
-(comma-separated `iss-N` ids this issue depends on), `--production-mode`
+(comma-separated `iss-N` ids this issue depends on; each must already exist in
+the ledger, and an edge to a record captured later is written afterwards with
+`link`, below), `--production-mode`
 (`hand-written|dictated-and-formatted|scribe-transcribed`, default: the repo's
 declared mode, else `hand-written`). Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
 too whenever it is non-zero: it counts the spans rewritten before the text was
@@ -121,6 +123,44 @@ one direction only (the inverse is computed). A target the reader had to skip
 counts as open — it is still in `open/`, and being unreadable says nothing about
 whether it was resolved — so it goes on blocking, with the skip reported in the
 same result.
+
+## Link: add or remove a dependency edge after capture
+
+`--blocked-by` at capture time serves only the case where the blocker already
+exists. The ordinary case is the other one — the blocker is captured after the
+blocked record, or in another lane — and `link` is the verb that writes the edge
+whichever record came first:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture link <iss-N> --blocked-by <iss-M,...> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture link <iss-N> --unblock <iss-M,...> --json
+```
+
+`--blocked-by` appends the given ids to the record's existing `blocked_by` list;
+`--unblock` removes them. At least one of the two is required, both in one call
+are allowed, and the removals are applied **before** the additions — so the same
+id on both sides is removed and re-added, a net no-op. The subject may sit in
+any status folder and never moves: a resolved record's edges are history, still
+editable. Report the `id`, `path` and `blocked_by` (the list **after** the
+write) from the JSON; the plain render is one line carrying the same three.
+
+The targets are validated exactly as the capture-time flag validates them — one
+validator, two callers — and every refusal writes nothing: an id that is not
+`iss-N`, a record naming itself (a record cannot block itself), and a target
+absent from the ledger in every status folder, which is refused naming the two
+places the field is documented (`.abcd/work/issues/README.md`, its "Derived
+priority" section, and this page). Blocking on a resolved or wontfix target is
+legal — existence is what the edge claims, and whether it still holds anything
+up is the derived view's question. Duplicates collapse, so linking an edge the
+record already carries succeeds unchanged. An `--unblock` of an id the list does
+not currently hold is refused naming the current list: removing an edge that is
+not there is a wrong belief about the record, not a no-op. When the last edge is
+removed the key is dropped, and the record reads as one captured without the
+flag.
+
+The write goes through the ledger's in-place frontmatter rewrite, so the list
+is spelled exactly as capture spells it and the derived-priority view picks the
+change up on the next `list` or status render with nothing else to run.
 
 ## Query the ledger
 

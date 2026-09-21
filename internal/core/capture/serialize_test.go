@@ -3,6 +3,7 @@ package capture
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
@@ -157,6 +158,48 @@ func TestSetScalarFieldReplaceAndInsert(t *testing.T) {
 	}
 	if want2 := "---\nid: \"iss-1\"\ncreated: \"2026-03-03\"\nupdated: \"2026-02-02\"\n---\n\nbody\n"; got2 != want2 {
 		t.Fatalf("replace got:\n%q\nwant:\n%q", got2, want2)
+	}
+}
+
+// TestSetListFieldInsertReplaceRemove: the list sibling of setScalarField
+// inserts before the closing delimiter, replaces in place with order kept,
+// spells ids bare exactly as buildIssueText does, removes the key on an empty
+// list, and leaves the body byte-for-byte alone throughout.
+func TestSetListFieldInsertReplaceRemove(t *testing.T) {
+	content := "---\nid: \"iss-1\"\nslug: \"one\"\n---\n\nbody with blocked_by: [iss-9] in prose\n"
+	got, err := setListField(content, "blocked_by", []string{"iss-2", "iss-3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "---\nid: \"iss-1\"\nslug: \"one\"\nblocked_by: [iss-2, iss-3]\n---\n\nbody with blocked_by: [iss-9] in prose\n"
+	if got != want {
+		t.Fatalf("insert got:\n%q\nwant:\n%q", got, want)
+	}
+	got2, err := setListField("---\nid: \"iss-1\"\nblocked_by: [iss-2]\nslug: \"one\"\n---\n\nbody\n", "blocked_by", []string{"iss-4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want2 := "---\nid: \"iss-1\"\nblocked_by: [iss-4]\nslug: \"one\"\n---\n\nbody\n"; got2 != want2 {
+		t.Fatalf("replace got:\n%q\nwant:\n%q", got2, want2)
+	}
+	got3, err := setListField(got2, "blocked_by", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want3 := "---\nid: \"iss-1\"\nslug: \"one\"\n---\n\nbody\n"; got3 != want3 {
+		t.Fatalf("remove got:\n%q\nwant:\n%q", got3, want3)
+	}
+	// Removing a key that is absent is the identity.
+	if got4, err := setListField(got3, "blocked_by", nil); err != nil || got4 != got3 {
+		t.Fatalf("remove of an absent key: %q, %v", got4, err)
+	}
+	// Non-id items are quoted per item, as the create path writes them.
+	got5, err := setListField(got3, "synthesis_clusters", []string{"a b", "c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got5, "synthesis_clusters: [\"a b\", \"c\"]\n") {
+		t.Fatalf("quoted list got:\n%q", got5)
 	}
 }
 

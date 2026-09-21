@@ -162,7 +162,7 @@ Capture issues to the ledger; bare invocation is read-only status
 **Flags:**
 
 ```
-      --blocked-by string        comma-separated iss-ids this issue is blocked by
+      --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
       --found-at string          optional repo-relative path or conceptual location
       --found-during string      session/command context (default manual-capture)
@@ -189,6 +189,19 @@ Answer one reading item (a separate record, keyed to the item)
       --recurs string                comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join
       --state string                 the answer: accepted | rejected | declined | held (availability varies by the item's position)
       --supersedes string            the standing dsp-N this answer replaces; required once an item already carries one
+```
+
+#### `abcd capture link`
+
+Add or remove blocked_by edges on an existing issue (any status folder; unblock is applied before blocked-by)
+
+**Usage:** `abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]`
+
+**Flags:**
+
+```
+      --blocked-by string   append: comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
+      --unblock string      remove: comma-separated iss-N ids to drop from blocked_by; each must currently be in the list. With --blocked-by in the same call the removals are applied first, then the additions
 ```
 
 #### `abcd capture list`

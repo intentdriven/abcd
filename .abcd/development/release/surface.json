@@ -359,6 +359,26 @@
       ]
     },
     {
+      "path": "abcd capture link",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "blocked-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "unblock",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture list",
       "hidden": false,
       "flags": [

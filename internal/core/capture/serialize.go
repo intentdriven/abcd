@@ -77,22 +77,11 @@ func buildIssueText(fields []kv, body string) (string, error) {
 	for _, f := range fields {
 		switch v := f.val.(type) {
 		case []string:
-			switch {
-			case len(v) == 0:
-				lines = append(lines, f.key+": []")
-			case allAbcdIDs(v):
-				lines = append(lines, f.key+": ["+strings.Join(v, ", ")+"]")
-			default:
-				parts := make([]string, len(v))
-				for i, item := range v {
-					enc, err := yamlScalar(item)
-					if err != nil {
-						return "", err
-					}
-					parts[i] = enc
-				}
-				lines = append(lines, f.key+": ["+strings.Join(parts, ", ")+"]")
+			enc, err := yamlList(v)
+			if err != nil {
+				return "", err
 			}
+			lines = append(lines, f.key+": "+enc)
 		default:
 			enc, err := yamlScalar(v)
 			if err != nil {
@@ -115,6 +104,30 @@ func buildIssueText(fields []kv, body string) (string, error) {
 		out += "\n"
 	}
 	return out, nil
+}
+
+// yamlList encodes a string list as the inline flow form buildIssueText has
+// always written and parseScalarOrList reads back: `[]` when empty, bare ids
+// when every item is an abcd id (`[itd-4, iss-12]`), per-item quoted otherwise.
+// It is the ONE list encoder, shared by the create path and the in-place list
+// rewrite (setListField), so a list a verb edits after capture is spelled
+// exactly as a list capture wrote.
+func yamlList(items []string) (string, error) {
+	switch {
+	case len(items) == 0:
+		return "[]", nil
+	case allAbcdIDs(items):
+		return "[" + strings.Join(items, ", ") + "]", nil
+	}
+	parts := make([]string, len(items))
+	for i, item := range items {
+		enc, err := yamlScalar(item)
+		if err != nil {
+			return "", err
+		}
+		parts[i] = enc
+	}
+	return "[" + strings.Join(parts, ", ") + "]", nil
 }
 
 func allAbcdIDs(items []string) bool {
@@ -174,6 +187,61 @@ func setScalarField(content, key string, value any) (string, error) {
 	if !replaced {
 		lines = append(lines[:closeIdx], append([]string{newLine}, lines[closeIdx:]...)...)
 	}
+	return strings.Join(lines, ""), nil
+}
+
+// setListField sets `key: [<items>]` inside content's frontmatter block, the
+// list sibling of setScalarField: an existing top-level key is replaced in place
+// (order preserved), an absent one is inserted before the closing ---. An EMPTY
+// list removes the key instead of writing `key: []`: the one caller (link, on an
+// --unblock that empties blocked_by) is returning the record to the shape a
+// capture that never named a blocker writes, and a leftover empty list would read
+// as a field somebody set to nothing. The body is preserved byte-for-byte.
+func setListField(content, key string, items []string) (string, error) {
+	if !reScalarKey.MatchString(key) {
+		return "", fmt.Errorf("%w: invalid key %q", ErrMalformedFrontmatter, key)
+	}
+	encoded, err := yamlList(items)
+	if err != nil {
+		return "", err
+	}
+
+	lines := splitKeepEnds(content)
+	openIdx, closeIdx, err := frontmatterBounds(lines)
+	if err != nil {
+		return "", err
+	}
+
+	eol := "\n"
+	if strings.HasSuffix(lines[openIdx], "\r\n") {
+		eol = "\r\n"
+	}
+	newLine := key + ": " + encoded + eol
+
+	for k := openIdx + 1; k < closeIdx; k++ {
+		ln := lines[k]
+		if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
+			continue
+		}
+		bodyLn := strings.TrimRight(ln, "\r\n")
+		if bodyLn == "" || strings.HasPrefix(bodyLn, "#") {
+			continue
+		}
+		idx := strings.Index(bodyLn, ":")
+		if idx < 0 || strings.TrimSpace(bodyLn[:idx]) != key {
+			continue
+		}
+		if len(items) == 0 {
+			lines = append(lines[:k], lines[k+1:]...)
+		} else {
+			lines[k] = newLine
+		}
+		return strings.Join(lines, ""), nil
+	}
+	if len(items) == 0 {
+		return content, nil
+	}
+	lines = append(lines[:closeIdx], append([]string{newLine}, lines[closeIdx:]...)...)
 	return strings.Join(lines, ""), nil
 }
 
