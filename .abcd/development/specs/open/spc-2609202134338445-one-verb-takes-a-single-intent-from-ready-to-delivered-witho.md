@@ -25,15 +25,15 @@ boundary) is minted before either path ships and is a delivery of this spec.
    the run record accumulated as steps complete. One reader and one atomic
    writer (`fsutil.WriteFileAtomic`); every verb below reads it first and
    writes it last.
-2. **The step interface** (decision 5, the default): `abcd implement <itd-N>`
-   creates the run after the checks (criteria 1 and 2); `abcd implement next`
+2. **The step interface** (decision 5, the default): `abcd build <itd-N>`
+   creates the run after the checks (criteria 1 and 2); `abcd implement step`
    performs the next binary-owned step and, when a step needs an agent,
    returns the brief path, the agent role and the receipt path it expects
    (criterion 8); `abcd implement receipt <path>` verifies and advances
    (criterion 4); `abcd implement status` renders the state. Every
    invocation exits after one step (criterion 7).
 3. **The process driver** (decision 5, opt-in by configuration): the same
-   loop calling itself through `next` and `receipt`, starting each agent
+   loop calling itself through `step` and `receipt`, starting each agent
    through the CLI adapter (`itd-2609201916056194`) and waiting for it;
    named in the run record (criterion 9).
 4. **The checks** (criteria 1, 2): the readiness gate, the claim sections,
