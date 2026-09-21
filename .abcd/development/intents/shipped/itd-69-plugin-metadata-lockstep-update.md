@@ -1,8 +1,9 @@
 ---
 id: itd-69
+shipped_in: v0.1.0
 slug: plugin-metadata-lockstep-update
-spec_id: null
-kind: bundle-member
+spec_id: spc-2609211957080006
+kind: standalone
 bundle: spc-83-operator-surfaces
 suggested_kind: standalone
 reclassification_history: []
@@ -15,9 +16,13 @@ glossary_terms_used:
   - distribution/version
 severity: minor
 builds_on: [itd-67]
+impact: additive
 ---
 
 # Plugin Metadata Stays Consistent Across Every Duplicated Surface
+
+> **Closed as delivered on 2026-09-21** on the product thinker's ruling: the lockstep check (`launch.CheckLockstep`, run by every `launch --dry-run`) shipped in v0.1.0 with per-field drift lines, the dev-tree absent-key rule and no bypass flag, while this record sat planned with no spec.
+
 
 ## Press Release
 
@@ -70,6 +75,10 @@ turns that latent drift into an early, loud refusal.
 
 None stated.
 
+## Mechanism
+
+None stated.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._
@@ -85,9 +94,18 @@ None stated.
   dirty/skip bypass flag — manifest consistency cannot be waved through at its
   own layer.
 
+## Decisions
+
+Ruled by the product thinker on 2026-09-21: close as delivered.
+
+## Open Questions
+
+_None open._
+
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-2cf45c57ec66 -->
+Fidelity review OWED (receipt rcp-2cf45c57ec66).
 
 ### Linkage note (spc-83.5)
 
@@ -99,3 +117,7 @@ require. Bundle member by delivery relationship, not a scope change. The grill/P
 bypass for this ungrilled intent is handled via the grandfather fields
 (`prd_grandfathered` for GR002; two-key `grandfathered` + `grandfathered_at_phase`
 for GR001). Full record in the spec's process-exception note.
+
+## Grounds
+
+- pursued: the record is being closed for work v0.1.0 carried so the store matches what ships; shown wrong if the lockstep check is found not to meet the criteria this record keeps
