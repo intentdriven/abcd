@@ -1,17 +1,21 @@
 ---
 id: itd-6
 slug: rp-mcp-only-integration
-spec_id: null
+spec_id: spc-2609211950427074
 kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2]
 severity: minor
+impact: additive
 ---
 
 > **⚠️ Framing superseded by [ADR-25](../../decisions/adrs/0025-host-delegated-llm-default.md)** (host-delegated LLM is the default; RepoPrompt is one optional oracle adapter among many, not abcd's single integration — see also [ADR-22](../../decisions/adrs/0022-bundled-deps-as-pluggable-adapters.md)). The intent itself stays live and is scheduled in Phase 0's `## Scope` as the oracle adapter seam: read "abcd's only RP integration is MCP" below as the contract of the *RP adapter*, not of abcd — the RP-specific mechanics (MCP bridge, cascade position, `chat_id` semantics) are adapted to the adapter seam at spec time.
 
-# RP-Only Integration: abcd Talks to RepoPrompt via MCP, Period
+# RepoPrompt over MCP is one opt-in reviewer route, beside the host's own agents
+
+> **Re-filed on 2026-09-21** by the product thinker: not abcd's one integration but one opt-in reviewer adapter. abcd is host-delegated by default; with `oracle.review = rp` configured, a lane's reviews go to RepoPrompt over MCP, and when it is unreachable the host's own agent runs the review and the receipt says so. The three-step cascade, the setup discovery and the non-Mac flow this record first described are dropped; the press release and scope below are read through this paragraph and the Decisions section. itd-7 waits on this record.
+
 
 ## Press Release
 
@@ -54,23 +58,29 @@ This intent re-frames the brief's RP integration: drop "select RP backend with p
 
 None stated.
 
+## Mechanism
+
+We expect a reviewer route a person has already configured and paid for to be used over one abcd would have to own, because the review is the run's scarcest step and the person's own tool is where their model choices already live; shown wrong if nobody opts in within a release of it shipping.
+
 ## Acceptance Criteria
 
-> _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._
+- **Given** `oracle.review = rp` in the repository's or the machine's abcd configuration, **when** a `build` lane reaches its reviews, **then** the ruthless and security review requests are sent to RepoPrompt over MCP and each returned verdict is recorded by the loop as any validator's is.
+- **Given** the adapter is configured and RepoPrompt is unreachable, **when** a review is due, **then** the host's own agent runs it and the receipt states that the review fell back and why; no review is silently skipped.
+- **Given** the adapter is not configured, **when** a review runs, **then** nothing differs from today, and abcd never spawns, installs or configures RepoPrompt.
+- **Given** the adapter ships, **when** the brief's adapters chapter and the command page are read, **then** the adapter is one entry beside the command-line runner, with the opt-in named.
 
-- **Given** a macOS user with RepoPrompt installed and `oracle.backend = "rp"` (or `"auto"` with RP available), **when** any abcd command invokes the oracle (lifeboat-oracle, press-release-composer, intent-fidelity-reviewer, plan-review, impl-review, prompt SOTA audit), **then** the call goes through `mcp__RepoPrompt__*` tools exclusively — no `claude -p` subprocess spawn, no direct OpenAI / Anthropic / Google API call, and no preset-selection prompt to the user.
-- **Given** abcd issues an RP MCP audit call, **when** the call returns, **then** `McpResult.chat_id` is populated AND the audit-fix loop in `oracle.py` threads that `chat_id` back as the `chat_id` argument on the next call — never `--new-chat`, never a fresh `rp builder`. This holds within a single `abcd-cli` invocation across plan-review→fix→re-review, impl-review→fix→re-review, and lifeboat-oracle→fix→re-audit cycles. (Per ADR-02 § 3: "same chat" is scoped to within one `abcd-cli` command invocation; cross-invocation chat continuation requires fresh GUI approval and is not supported for autonomous operation.)
-- **Given** an audit-fix iteration produces a verdict change in either direction (NEEDS_WORK→SHIP after fixes; SHIP→NEEDS_WORK after a regression), **when** abcd's `re_audit` runs, **then** both directions are accepted as valid signal — no rejection of downgrades, no special-casing of upgrades.
-- **Given** RP MCP is unreachable (RP not running, MCP server config missing, network failure), **when** abcd attempts an oracle call with `oracle.backend = "auto"`, **then** the resolution chain falls through to Codex CLI (if `codex` is on PATH) and then to in-session subagent (per itd-2) — three-step cascade, surfaced in the run log so the user can see which backend served the call.
-- **Given** the user runs `/abcd:ahoy` for the first time on a macOS machine with RP installed, **when** ahoy's setup discovery runs, **then** the RP MCP config path is detected (in `~/Library/Application Support/RepoPrompt/MCP/` or the project's `.mcp.json`), recorded in `.abcd/config.json` → `oracle.rp.mcp_config_path`, reachability is tested, and `oracle.backend` is locked to `"rp"` on success or to the next available backend on failure (with a one-time hint about how to enable RP later).
-- **Given** the user has configured Claude, Codex, and Gemini as separate model presets inside RP, **when** abcd issues different oracle call types (review, audit, question), **then** abcd makes no preset-selection decision — RP routes to whatever the user has configured for that call type. abcd's logs record only the MCP call shape, never the resolved model.
-- **Given** a non-Mac user with Codex CLI but no RP, **when** abcd's resolution chain runs, **then** Codex CLI is selected and the user is never prompted about RP setup; RP-related friction is invisible to non-Mac users.
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **One opt-in reviewer route**, not the integration; the host stays the default.
+2. **Reviews only**, not audits.
+3. **Unreachable falls back to the host**, with the receipt saying so.
+4. **itd-7 waits** on this record and is not in the run.
 
 ## Open Questions
 
-- What does the RP MCP API actually expose for "review this prompt" vs "ask this question" vs "audit this content"? Need to verify which `mcp__RepoPrompt__*` tools cover the abcd oracle use cases (lifeboat-oracle, press-release-composer, intent-fidelity-reviewer, prompt SOTA audit, plan-review, impl-review). _(Open: this is an RP-API-shape sub-question; spc-5 delivered the `MCPBridge` transport but not the per-oracle-call tool mapping.)_
-- How does this interact with itd-22 (OpenCode portability)? OpenCode probably has its own equivalent integration pattern (its own MCP setup, or a different surface entirely). The harness's `mcp_call(server, tool, args)` shim should treat "RP" as one server name; OpenCode's equivalent picks up via its own server config.
-- **Standardised review-chat naming — naming affordance sub-question (still Open).** When abcd opens an RP chat for an oracle/review call, the chat should carry a deterministic, identifiable label — e.g. `spc-6: Phase 1 reconciliation` (or `<itd-N>: <slug>` for intent-stage work) — not RP's auto-generated `untitled-chat-<hex>`. Field evidence (2026-05-16, spc-6 plan-review): the RepoPrompt MCP `oracle_send` tool exposes **no chat-name parameter** — it always auto-names — and the MCP toolset has no rename op. Naming only worked via `flowctl rp chat-send --chat-name`, a path broken against rp-cli 2.x. itd-6 must still settle: does abcd's RP integration name chats at creation (needs an MCP affordance RP may not currently provide — verify against the RP MCP API), name the *tab* instead (the `builder` path does title tabs from its summary), or rename post-creation? A consistent `<id>: <label>` convention makes review chats findable — RP windows accumulate dozens of review tabs. Cross-ref: the `feedback-rp-window-per-repo` agent-memory note has the full rp-cli 2.x / flow-next skew diagnosis. _(The chat-**identity / continuation** half of this question — what a `chat_id` means and whether it survives across invocations — is now resolved; see "Resolved (post-spc-5)" below. Only the cosmetic naming-affordance half stays Open.)_
+_None open._
 
 ## Resolved (post-spc-5)
 
@@ -128,3 +138,7 @@ shipped here.
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+
+## Grounds
+
+- pursued: the run's reviews are its scarcest step, one at a time on a weekly budget that ran out mid-pilot, and a second route is the relief; we expect the person's own configured reviewer to carry some of them; shown wrong if nobody opts in within a release
