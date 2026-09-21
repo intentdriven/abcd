@@ -66,7 +66,7 @@ func TestCreateFromTextRefusesADegradedScanner(t *testing.T) {
 	root := t.TempDir()
 	degradeIntentScanner(t, root)
 
-	it, err := CreateFromText(root, "The collector reaches the lab box directly", "", "")
+	it, err := CreateFromText(root, "The collector reaches the lab box directly", TextOptions{})
 	if err == nil {
 		t.Fatalf("CreateFromText wrote %+v under a degraded scanner; want a refusal", it)
 	}
@@ -84,7 +84,7 @@ func TestCreateFromTextRefusesADegradedScanner(t *testing.T) {
 func TestCreateFromTextWritesWhenTheScannerIsHealthy(t *testing.T) {
 	root := t.TempDir()
 
-	if _, err := CreateFromText(root, "The collector reaches the lab box directly", "", ""); err != nil {
+	if _, err := CreateFromText(root, "The collector reaches the lab box directly", TextOptions{}); err != nil {
 		t.Fatalf("CreateFromText on a healthy scanner: %v", err)
 	}
 	if files := draftsOnDisk(t, root); len(files) != 1 {

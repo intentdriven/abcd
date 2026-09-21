@@ -170,7 +170,7 @@ optional layer, never the headline.
   verdicts, so it is calibrated (corpus, TNR floor, failure-scenario admissibility)
   under the judge-calibration discipline; it must never become a blocking gate.
 - **Enforces:** the `sota-per-intent` principle — this validator subsumes the
-  unbuilt `intent_sota` gate [itd-29](../planned/itd-29-autonomous-run-resilience.md)
+  unbuilt `intent_sota` gate [itd-29](../superseded/itd-29-autonomous-run-resilience.md)
   gestures at.
 - **Embodies:** the `facilitator-default-thinker-optional` principle (landing in
   the auto-merge groundwork change), plus `evaluator-outside-the-loop`,

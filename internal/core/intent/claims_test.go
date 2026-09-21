@@ -293,7 +293,7 @@ func TestPlanLeavesTheNullityTokenAlone(t *testing.T) {
 // create-path scaffold, so a drafted intent arrives carrying the prompt.
 func TestSeedDraftCarriesClaimSections(t *testing.T) {
 	root := t.TempDir()
-	it, err := CreateFromText(root, "the card respects the reader's time", "", "")
+	it, err := CreateFromText(root, "the card respects the reader's time", TextOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -33,7 +33,7 @@ func lintIntentImpact(t *testing.T, root string) []lint.Finding {
 // intent the tool can never ship past its own blocker.
 func TestCreateFromTextStampsImpact(t *testing.T) {
 	root := t.TempDir()
-	it, err := CreateFromText(root, "a user-facing improvement worth shipping", "additive", "")
+	it, err := CreateFromText(root, "a user-facing improvement worth shipping", TextOptions{Impact: "additive"})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestCreateFromTextStampsImpact(t *testing.T) {
 func TestCreateFromTextRejectsBadImpact(t *testing.T) {
 	root := t.TempDir()
 	for _, bad := range []string{"additiv", "Additive", "internal", `"fix"`} {
-		if _, err := CreateFromText(root, "some intent text", bad, ""); err == nil {
+		if _, err := CreateFromText(root, "some intent text", TextOptions{Impact: bad}); err == nil {
 			t.Fatalf("CreateFromText with impact %q must be refused", bad)
 		}
 	}
@@ -82,7 +82,7 @@ func TestCreateFromTextRejectsBadImpact(t *testing.T) {
 // before, so the existing capture->intent promotion flow is unchanged.
 func TestCreateFromTextImpactOptional(t *testing.T) {
 	root := t.TempDir()
-	it, err := CreateFromText(root, "seeded without a judgement yet", "", "")
+	it, err := CreateFromText(root, "seeded without a judgement yet", TextOptions{})
 	if err != nil {
 		t.Fatalf("CreateFromText: %v", err)
 	}

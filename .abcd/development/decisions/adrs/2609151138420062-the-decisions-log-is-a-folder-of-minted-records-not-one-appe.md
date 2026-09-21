@@ -207,7 +207,7 @@ criteria.
   deriving the changelog from records at the cut and refusing a non-empty
   `## [Unreleased]`; what a managed repository lacks is the ability to use that
   flow, which is
-  [itd-2609150819432059](../../intents/drafts/itd-2609150819432059-abcd-launch-cannot-set-up-the-release-flow-for-a-managed-rep.md).
+  [itd-2609150819432059](../../intents/planned/itd-2609150819432059-abcd-launch-cannot-set-up-the-release-flow-for-a-managed-rep.md).
   Neither record refines the other; both conflict classes close only when both
   land.
 - **The union attribute for `CHANGELOG.md` stays where it is.** This record

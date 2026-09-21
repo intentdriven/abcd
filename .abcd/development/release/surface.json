@@ -997,6 +997,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "title",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
