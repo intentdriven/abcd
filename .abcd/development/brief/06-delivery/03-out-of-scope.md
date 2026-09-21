@@ -126,6 +126,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609180517121254` — every payload a host hands back from a delegated step names the model that produced it and the number of agents that ran, and the ingesting verb refuses one that does not
 - `itd-2609201916056194` — a delegated agent runs through a command-line model runner the operator chose (claude CLI, opencode/openrouter); the opt-in cli oracle rung
 - `itd-2609211116005482` — `abcd build next` picks the readiest planned intent itself, writes on the record why and what would show the pick wrong, and hands it to the implement machinery; one by default, all by flag
+- `itd-2609211913453478` — one glossary page maps the record families (intent, spec, bundle, phase, batch, issue, roadmap, release) and how they relate, and answers whether a phase is still the sequencing layer
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
