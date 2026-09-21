@@ -1,7 +1,7 @@
 ---
 id: itd-53
 slug: review-queue-auto-drain-fidelity-gate
-spec_id: null
+spec_id: spc-2609211930059886
 kind: standalone
 suggested_kind: standalone
 reclassification_history: []
@@ -9,9 +9,13 @@ related_adrs: [adr-16]
 routed_from: ["spc-33:I-D2"]
 prd_path: null
 severity: major
+impact: additive
 ---
 
 # A Shipped Intent No Longer Drifts Out Of Audit Just Because Nobody Ran The Review
+
+> **Re-scoped on 2026-09-21** by the product thinker: one bounded command that pays the backlog, `abcd intent audit --owed`, run once by the autonomous run's first batch. The standing list is itd-2609150819445595 and the inline audit of every new lane is `abcd build`'s (itd-2609201916151817, itd-50); the boundary-hooked autodrain and the blocking gate this record first described are dropped. The press release and scope below are read through this paragraph and the Decisions section.
+
 
 ## Press Release
 
@@ -43,22 +47,28 @@ The fix is not to make the close hook run the review — that would break loop p
 
 None stated.
 
+## Mechanism
+
+We expect the backlog of owed audits to clear once paying it is one bounded command, because the debt accrued only while each audit was a hand-run request and ingest; shown wrong if the owed count is unchanged a month after it ships.
+
 ## Acceptance Criteria
 
-> _Given-When-Then per the itd-1 discipline._
+- **Given** `abcd intent audit --owed [--max <n>]`, **when** it runs, **then** it lists the owed audits oldest first and runs each as the host pass a single-intent audit uses, ingesting each verdict; the cap stops it and the summary names how many remain.
+- **Given** no reviewer is reachable, **when** it runs, **then** every entry is left owed, not failed, and the summary says why nothing ran.
+- **Given** a verdict, **when** it is ingested, **then** it lands exactly as a single audit's does (audit notes, receipt, scope-condition dispositions), and a not-met verdict on a long-shipped intent is captured, not fixed.
+- **Given** a spec closes, **when** the close hook runs, **then** it still only enqueues; nothing starts a reviewer from it.
 
-- **Given** `review.autodrain` is enabled, **when** a safe boundary is reached and a review backend is reachable, **then** pending fidelity-review queue entries are run and their verdicts recorded.
-- **Given** no review backend is reachable, **when** the drainer runs, **then** entries are left `deferred` (not failed) and nothing blocks.
-- **Given** the close hook, **when** a spec closes, **then** it still only enqueues — no subprocess or oracle dispatch is added to it (loop purity preserved).
-- **Given** the consistency gate, **when** it runs, **then** it lists every shipped intent whose latest fidelity review is absent or not-met.
-- **Given** `review.autodrain` is off (default), **when** specs close, **then** behavior is unchanged from today (enqueue-only, manual review).
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **One bounded command for the backlog**, run once by the autonomous run's batch 0; no boundary-hooked autodrain.
+2. **The gate reports and never blocks**; the report is itd-2609150819445595's listing.
+3. **Cost is bounded by `--max`** and by the host pass running one audit at a time.
 
 ## Open Questions
 
-- Which safe boundary is the primary drain point — a post-turn hook, a session-edge step, a pre-commit/CI step, or several, configurably?
-- Does the gate merely report, or can it be wired to block a commit / a phase transition when a shipped intent is unaudited or not-met? (Report first; blocking is a policy decision.)
-- How does the drainer bound its own cost (number of reviews per drain, token budget) so a large backlog does not stall the boundary it runs at?
-- Interaction with itd-50 (loop-toward-acceptance): does the drainer just run reviews, with itd-50's policy deciding what a not-met verdict triggers, or does the drainer need hooks for that policy from the outset?
+_None open; decisions 1 to 3 settle the three this record carried._
 
 ## Audit Notes
 
@@ -75,3 +85,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
   NO; add a drainer instead).
 - Touches: the pure on-close lifecycle hook (spc-28) and the review-queue
   drain/claim machinery; the fidelity reviewer (spc-12) is the run target.
+
+## Grounds
+
+- pursued: the run's first batch audits every shipped-but-open intent and has no verb to run the audits with; we expect the owed count to fall to zero in that batch and stay near it once build audits inline; shown wrong if the owed count is unchanged a month after it ships
