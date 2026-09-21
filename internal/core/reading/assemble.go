@@ -525,7 +525,15 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		}
 	}
 
-	runID, err := mintRunID()
+	// The id names the default run directory, so where the run lands there the
+	// mint redraws while the drawn directory exists; an operator-named directory
+	// keeps its own occupancy refusal, and a dry run writes nothing to check.
+	var runID string
+	if req.OutDir == "" && !req.DryRun {
+		runID, err = freeRunID(req.RepoRoot)
+	} else {
+		runID, err = mintRunID()
+	}
 	if err != nil {
 		return AssembleResult{}, fmt.Errorf("reading: minting a run id: %w", err)
 	}

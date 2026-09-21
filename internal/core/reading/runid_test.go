@@ -3,6 +3,8 @@ package reading
 import (
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -85,5 +87,52 @@ func TestRunIDReadsNoMaximum(t *testing.T) {
 	}
 	if first == second {
 		t.Error("two mints in one clock tick collided; the suffix is what separates them")
+	}
+}
+
+// TestFreeRunIDRedrawsWhenTheDefaultDirectoryIsTaken holds the residue adr-45
+// leaves to the detectors: two draws in one second that agree on the suffix
+// name one directory, and the second run is not wrong for it. The mint redraws
+// while the drawn default directory exists, so the refusal that guards an
+// operator's occupied directory is never raised against a coincidence.
+func TestFreeRunIDRedrawsWhenTheDefaultDirectoryIsTaken(t *testing.T) {
+	root := t.TempDir()
+	setMinter(t, recordid.Minter{
+		Now: func() time.Time { return time.Date(2026, 9, 21, 12, 9, 40, 0, time.UTC) },
+		// Three draws: 789, 789 again, then 42.
+		Entropy: bytes.NewReader([]byte{0x03, 0x15, 0x03, 0x15, 0x00, 0x2a}),
+	})
+	taken := filepath.Join(root, filepath.FromSlash(DefaultRunDir), "rdg-2609211209400789")
+	if err := os.MkdirAll(taken, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(taken, ManifestFileName), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id, err := freeRunID(root)
+	if err != nil {
+		t.Fatalf("freeRunID: %v", err)
+	}
+	if id != "rdg-2609211209400042" {
+		t.Errorf("run id is %q, want the third draw rdg-2609211209400042 (the first two name a taken directory)", id)
+	}
+}
+
+// TestFreeRunIDGivesUpNamingTheCollision holds the bound: entropy that never
+// leaves the taken suffix is refused after the attempt budget, naming the
+// directory it kept drawing, rather than looping or handing back a taken id.
+func TestFreeRunIDGivesUpNamingTheCollision(t *testing.T) {
+	root := t.TempDir()
+	setMinter(t, fixedMinter("2609211209", 789))
+	taken := filepath.Join(root, filepath.FromSlash(DefaultRunDir), "rdg-2609211209000789")
+	if err := os.MkdirAll(taken, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := freeRunID(root)
+	if err == nil {
+		t.Fatal("freeRunID handed back a run id whose directory is taken")
+	}
+	if !strings.Contains(err.Error(), "rdg-2609211209000789") {
+		t.Errorf("the refusal does not name the colliding id: %v", err)
 	}
 }
