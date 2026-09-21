@@ -102,7 +102,13 @@
         "version"
       ],
       "rules": [
-        "In a source checkout of abcd itself, every abcd invocation is `go run ./cmd/abcd <verb>` from the repo root — never the plugin-root binary and never an `abcd` on PATH. Both are the last PUBLISHED version, stale by construction here and further behind with every commit, and the failure is often silent rather than a refusal: an empty `changelog --json` cut, a record written through a schema the gates no longer accept. The documented resolution ladder reaches the plugin-root binary first and it answers, so the `go run` fallback is never reached by following it; go straight to `go run ./cmd/abcd` (AGENTS.md, Build, test, and checks)."
+        "In a source checkout of abcd itself, every abcd invocation is `go run ./cmd/abcd <verb>` from the repo root \u2014 never the plugin-root binary and never an `abcd` on PATH. Both are the last PUBLISHED version, stale by construction here and further behind with every commit, and the failure is often silent rather than a refusal: an empty `changelog --json` cut, a record written through a schema the gates no longer accept. The documented resolution ladder reaches the plugin-root binary first and it answers, so the `go run` fallback is never reached by following it; go straight to `go run ./cmd/abcd` (AGENTS.md, Build, test, and checks)."
+      ]
+    },
+    "ROADMAP": {
+      "rules": [
+        "Phases and milestones are retired (adr-2609212115255771): sequencing is dependencies (blocked_by, builds_on) plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release plus each intent's acceptance criteria; an intent that must land by a cut carries target_release, which the cut reports and moves forward.",
+        "No time estimates and no roadmap document: the press-release intent format carries priority; the word roadmap is retired and the phase documents under roadmap/ are history."
       ]
     }
   },

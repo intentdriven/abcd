@@ -1,3 +1,5 @@
+> **Retired on 2026-09-21** (adr-2609212115255771): phases and milestones are no longer units of the record. Sequencing is dependencies plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release. The documents below stay as history and are not maintained.
+
 # abcd Phases
 
 The **phase** is abcd's sequencing layer — an ordered stretch of work that ends

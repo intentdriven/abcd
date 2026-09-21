@@ -1,3 +1,5 @@
+> **Read with adr-2609212115255771 (2026-09-21).** The phase layer described below is retired: the layers are the brief, the intent and the spec (with its steps), the bundle is a delivery grouping of intents, the derived release is the checkpoint, and Now / Next / Later is a rendered status, never a stored unit. The diagram and the prose keep the phase until itd-2609211913453478 rewrites this chapter; until then, read "phase" as history.
+
 # Four-Layer Mental Model
 
 abcd uses four layers to organise development work, each tuned to the kind of question it answers. Three are the original design layers — brief, intent, spec; the fourth, **phase**, is the sequencing-and-reflection layer added per [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md). The diagram below shows the brief → intent → spec flow into delivered reality, with the phase as the audit target of delivered reality; the phase layer is explained in full after it.

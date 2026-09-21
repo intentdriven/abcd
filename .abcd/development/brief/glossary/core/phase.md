@@ -4,16 +4,19 @@ bounded_context: core
 definition: An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. Unqualified it always carries that sense, the brief's own numbered build milestones being plumbing-phases.
 aliases: ["roadmap phase"]
 forbidden_synonyms: ["version", "release", "milestone", "sprint", "iteration"]
-status: stable
+status: superseded
 introduced_in: adr-9
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/spec
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # phase
+
+> **Superseded on 2026-09-21 (adr-2609212115255771): the sequencing layer is dependencies plus the lifecycle shelves, rendered as the Now / Next / Later status block; the phase documents stay as history.** See [record-families](record-families.md).
+
 
 A **phase** is abcd's sequencing layer — an ordered stretch of work that ends in a
 **milestone** (a concrete, checkable end condition). Phases replace plugin-version language
