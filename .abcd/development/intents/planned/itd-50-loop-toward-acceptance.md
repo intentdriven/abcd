@@ -1,7 +1,7 @@
 ---
 id: itd-50
 slug: loop-toward-acceptance
-spec_id: null
+spec_id: spc-2609211924346308
 kind: standalone
 suggested_kind: standalone
 reclassification_history: []
@@ -12,9 +12,13 @@ grilled_at: 2026-06-02
 blocked_by: [itd-53]
 builds_on: [itd-44, itd-43]
 severity: major
+impact: additive
 ---
 
 # The Audit Loop Drives An Intent To Acceptance — Or Calls For A Replan
+
+> **Re-scoped on 2026-09-21** by the product thinker: the loop is the last stage of `abcd build` (itd-2609201916151817), not a per-intent mode. After the fidelity audit, a not-met verdict starts a fix round with a fresh implementer, bounded by the pace rule's fix-round count; exhaustion hands the intent back as unachievable, reopened to drafts with the reason. The press release and scope below are read through this paragraph and the Decisions section.
+
 
 ## Press Release
 
@@ -65,17 +69,17 @@ This intent is **project-agnostic**: every abcd project ships intents whose deli
 
 None stated.
 
+## Mechanism
+
+We expect a bounded fix round after the audit to turn most not-met verdicts into met without a person, because a not-met criterion names exactly what to change and a fresh implementer with that criterion is the shape the pilot's fix rounds already proved; shown wrong if the loop's fix rounds mostly end unachievable.
+
 ## Acceptance Criteria
 
-- *Given* an intent carries `audit_mode: loop-to-acceptance` in its frontmatter (set at plan time; portable with the intent), *when* a fidelity review returns `NOT_MET` for a criterion, *then* the linked work is re-opened and re-reviewed against the same criteria, and the cycle repeats until all criteria read `MET` or the iteration budget is exhausted.
-- *Given* an intent in `loop-to-acceptance` whose iteration budget is exhausted (or whose criteria are judged unmeetable as written), *when* the loop terminates, *then* the intent-level Family-2 rollup becomes `UNACHIEVABLE`, the loop **stops** (never auto-continues), the intent is **marked with a written explanation of why it is unachievable**, and a replan invitation is recorded naming both the product thinker and facilitator — with no automatic rollback of delivered reality and no machine-authored replan.
-- *Given* an intent whose machine-checkable criteria all read `MET`, *when* the product thinker is invited to verify, *then* a manual-verification step is offered and its sign-off is recorded as a verification receipt distinct from the machine verdict of record.
-- *Given* an intent whose machine-checkable criteria all read `MET` **but** the product thinker judges the criteria themselves were wrong (the why is not delivered despite every criterion passing), *when* manual verification is rejected, *then* the intent routes to the **replan** path (revise the intent's criteria), **not** a synthetic `NOT_MET` that would re-loop the implementation against criteria that already pass.
-- *Given* an intent whose machine-checkable criteria do **not** all read `MET`, *when* the workflow reaches the manual-verification point, *then* the product thinker is **not** asked to verify — the loop (or the replan invitation) runs first.
-- *Given* a fidelity review returns `INCONCLUSIVE` (the fail-closed result of a malformed or unreachable reviewer), *when* the loop processes it, *then* it is recorded as today — `INCONCLUSIVE` does **not** summon the product thinker and does **not** itself trigger replan (it is a "could not run the audit" signal, not a "the intent is impossible" signal).
-- *Given* an intent left at the default `audit_mode: record-only`, *when* a fidelity review returns `NOT_MET`, *then* behaviour is unchanged from today — the verdict is recorded to `## Audit Notes` and no re-work is triggered.
-- *Given* an intent reaches `UNACHIEVABLE` (loop exit) or its manual verification is rejected (wrong-criteria replan), *when* the product thinker takes it up, *then* they use the `/abcd:intent grill` skill to think the replan through, and the recorded `why-unachievable` / rejection justification seeds that grill session.
-- *Given* the on-close lifecycle hook (`intent_lifecycle`), *when* any of these modes is active, *then* the hook remains a pure data function (no subprocess, no oracle dispatch) — the mode logic lives in the drainer/policy layer.
+- **Given** a `build` lane whose fidelity audit returns not-met on any criterion, **when** the verdict is ingested, **then** a fix round starts with a fresh implementer briefed on those criteria, and the audit re-runs after it.
+- **Given** the pace rule's fix-round count is exhausted with a criterion still not met, or the auditor judges a criterion unmeetable as written, **when** the loop reaches that point, **then** the lane stops with the verdict unachievable and starts nothing further.
+- **Given** an unachievable verdict, **when** the loop hands back, **then** the intent is moved to `drafts/` carrying `replan_reason` and its audit notes, the spec stays open, and the run's summary lists it for a replan.
+- **Given** every machine-checkable criterion reads met, **when** the lane reaches its landing, **then** the product thinker is offered a hand verification and the answer is recorded as a grounds entry on the intent in their words; a rejection of the criteria themselves reopens the intent as above.
+- **Given** an inconclusive audit (a malformed or unreachable reviewer), **when** the loop processes it, **then** no fix round starts, nothing counts against the budget, and the run names the inconclusive audit in its summary.
 
 ## Resolved (grill 2026-06-02)
 
@@ -87,12 +91,18 @@ The 2026-06-02 grill (5 questions across Dialectic / Definition / Counterfactual
 - **`UNACHIEVABLE` always stops and summons the product thinker**, with a written `why-unachievable` explanation; no machine auto-replan (the product thinker owns the why). The product thinker uses `/abcd:intent grill` to think the replan through, seeded by that explanation.
 - **`INCONCLUSIVE` stays fail-closed only — no summons, no replan.** It is the result of a malformed/unreachable reviewer (a backend signal), not a "the evidence is contradictory" signal, so it cannot be trusted as a human-summons trigger.
 
+## Decisions
+
+Ruled by the product thinker on 2026-09-21, in the interview that gave this intent its spec:
+
+1. **The loop is `build`'s last stage**, not a per-intent mode; every intent the run ships goes through it.
+2. **An iteration is a fix round** (fresh implementer plus re-audit), bounded by the pace rule's count; exhaustion, or a criterion judged unmeetable, is unachievable.
+3. **Unachievable reopens the intent to drafts** with the reason and its audit notes.
+4. **Hand verification is a grounds entry** in the product thinker's words, not a separate receipt.
+
 ## Open Questions
 
-- **The loop budget for `loop-to-acceptance`.** What consumes an iteration (a full re-review? a re-open + re-implement + re-review cycle?), and what the default budget is. Mirror `MAX_REVIEW_ITERATIONS` or set an intent-grain equivalent.
-- **How the replan invitation surfaces.** Re-open the intent to `drafts/` with a `replan_reason`? A dedicated replan queue/surface the facilitator drains? What state the original delivered reality is left in. (Both replan entry points — `UNACHIEVABLE` and wrong-criteria rejection — share this surface.)
-- **How manual-verification sign-off is recorded.** A verification receipt schema, distinct from the machine verdict of record, with an explicit `rejected` state that carries the wrong-criteria justification into the seeded grill.
-- **Iteration autonomy bound.** `loop-to-acceptance` iterates unattended up to budget; the precise rule for when a budget-exhausted loop flips to `UNACHIEVABLE` vs. is judged unmeetable earlier.
+_None open; decisions 2 to 4 settle the four this record carried._
 
 ## Related
 
@@ -124,3 +134,7 @@ In the predecessor implementation each acceptance criterion above is satisfied a
 | on-close hook stays a pure data function (no subprocess / oracle) | Satisfied | The mode logic rides the spc-43 drainer / policy layer; `intent_lifecycle` is untouched by the loop |
 
 **Open questions (predecessor answers, to re-adjudicate at spec time):** loop budget = one re-open+re-review cycle per iteration, default `3` (spc-52.1 § Decision context); replan surface = no `drafts/` move, a `why-unachievable` + replan block in `## Audit Notes` with the intent kept in `shipped/` (spc-52.2 R4); manual-verification sign-off = the receipt schema `{intent_id, machine_rollup, state, justification?, recorded_by_role, ts}` with the `rejected_wrong_criteria` state carrying the justification to the shared replan surface (spc-52.3 R5).
+
+## Grounds
+
+- pursued: the run audits every intent it ships and today a not-met verdict is a note nobody acts on; we expect the bounded fix round to close most of them without a person; shown wrong if most fix rounds end unachievable
