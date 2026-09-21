@@ -25,6 +25,7 @@ binary.
 | Verb | Bucket | Status |
 |---|---|---|
 | `disposition` | — | shipped |
+| `link` | — | shipped |
 | `list` | — | shipped |
 | `mentions` | — | shipped |
 | `promote` | — | shipped |
@@ -62,6 +63,22 @@ rejected with exit 2 and a message naming the four. These flags are the only
 earned exception to the naming discipline under this surface, and each must
 appear immediately adjacent to `list`. There is no implicit default: bare
 `/abcd:capture` is what renders status.
+
+**`/abcd:capture link`** adds or removes `blocked_by` edges on a record that
+already exists (iss-2609200951237670). The capture-time `--blocked-by` flag can
+name only a record that is already in the ledger, which serves one ordering
+and not the ordinary one: the blocker captured after the blocked record, or in
+another lane. `link <iss-N> --blocked-by <iss-M,...>` appends to the record's
+list and `--unblock <iss-M,...>` removes from it; at least one is required,
+both together apply unblock-then-block, and the subject may sit in any status
+folder and never moves, because a resolved record's edges are history and stay
+editable. The targets go through the ONE validator the capture flag runs — id
+shape, no self-edge, existence in any status folder, duplicates collapsed — so
+the two verbs cannot come to differ about what an edge may name, and the
+refusal for an absent target names where the field is documented, on both
+verbs. An `--unblock` of an edge the record does not hold is refused naming
+the current list. The write is the in-place frontmatter rewrite `promote`
+stamps with, so the derived-priority reader picks the change up unchanged.
 
 **`/abcd:capture mentions`** is the advisory listing (iss-2609100507421759):
 open records whose ids are named by the default branch's commit messages, with
@@ -162,7 +179,7 @@ related_intents: [itd-N, ...]
 related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]
 synthesis_clusters: [<label>, ...]  # optional synthesis grouping
-blocked_by: [iss-N, ...]   # dependency edges; blocked/priority is derived, never stored
+blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by `link`; blocked/priority is derived, never stored
 promoted_to: itd-M         # set when the issue is promoted to an intent
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
@@ -264,6 +281,12 @@ for ad-hoc scribbles.
   is one record, and the action it licenses is a separate admission. The same
   refusal covers a standing `rejected`, `declined` or `held`, since only
   `accepted` licenses an action.
+- **Given** two existing issues in any status folders, **when** the user runs
+  `/abcd:capture link <iss-N> --blocked-by <iss-M>`, **then** `iss-M` is
+  appended to `iss-N`'s `blocked_by` in place, the record stays in its folder,
+  and the next listing derives the block from it; `--unblock <iss-M>` removes
+  the edge again, and an absent target, a self-edge or an unblock of an edge
+  the record does not hold is refused with nothing written.
 - **Given** a ledger of open issues, **when** the user lists them, **then** the
   output carries id, state, severity and slug in derived-priority order:
   unblocked first, then severity, with rows blocked by an open dependency
@@ -276,7 +299,7 @@ for ad-hoc scribbles.
 
 The library primitives and the command flow are the Go package
 `internal/core/capture` (allocator, find, read, build, mutate; capture,
-resolve, wontfix, list, status), a port of predecessor-store primitives.
+link, resolve, wontfix, list, status), a port of predecessor-store primitives.
 `promote` is native (spc-24, itd-119): it mints the draft and stamps both edges
 in one invocation, superseding an earlier command-orchestrated flow that left
 the back-link to be written by hand.

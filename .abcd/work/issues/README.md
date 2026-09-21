@@ -151,6 +151,16 @@ to `resolved/` with a note and a required
 `blocked_by` records a typed dependency edge in one direction only: the
 dependent issue names the issues it waits on. There is no stored priority field.
 
+The edge is written by a verb, never by hand, and at either moment: at capture
+with `abcd capture "<text>" --blocked-by <iss-M,...>`, when the blocker already
+exists, or afterwards with `abcd capture link <iss-N> --blocked-by <iss-M,...>`
+(and `--unblock <iss-M,...>` to remove one), whichever record came first. The
+subject may sit in any status folder. Both verbs run one validator: each target
+must match `iss-N`, must exist in the ledger in some status folder (a resolved
+or wontfix target is legal — whether it still blocks is the projection's
+question, below), may not be the record itself, and duplicates collapse. See the
+capture surface page (`commands/capture.md`, its "Link" section) for the verb.
+
 Priority is a read-time projection computed by `list` and the status board:
 
 1. **Unblocked issues come first.** An issue is *blocked* if any of its

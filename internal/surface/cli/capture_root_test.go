@@ -232,6 +232,20 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 				assertRecordIn(t, repo, "wontfix", ids[1])
 			},
 		},
+		"link": {
+			args: func(ids []string, _ string) []string {
+				return []string{"capture", "link", ids[2], "--blocked-by", ids[0], "--json"}
+			},
+			check: func(t *testing.T, repo string, ids []string, _ string, out []byte, err error) {
+				if err != nil {
+					t.Fatalf("capture link %s from the subdirectory: %v\n%s", ids[2], err, out)
+				}
+				body := recordBody(t, repo, "open", ids[2])
+				if !strings.Contains(body, "blocked_by: ["+ids[0]+"]") {
+					t.Errorf("link from the subdirectory left the checkout's record %s without the edge:\n%s", ids[2], body)
+				}
+			},
+		},
 		"promote": {
 			args: func(ids []string, _ string) []string {
 				return []string{"capture", "promote", ids[2], "--grounds", "pursued: this observation is worth an intent of its own", "--json"}

@@ -617,6 +617,92 @@ func TestCaptureBlockedByWiredAndAnnotated(t *testing.T) {
 	}
 }
 
+// TestCaptureLinkWiredEndToEnd (iss-2609200951237670) proves `capture link`
+// reaches capture.Link from the CLI: --blocked-by appends the edge after
+// capture, --unblock removes it, the JSON carries id/path/blocked_by, the plain
+// render is one line, and the refusal for an absent target names where the
+// field is documented — on link and on the capture flag alike, whose help says
+// so too.
+func TestCaptureLinkWiredEndToEnd(t *testing.T) {
+	_ = captureLedgerRepo(t)
+	var r1, r2 struct {
+		ID   string `json:"id"`
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "the blocker", "--slug", "blocker", "--json"), &r1); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "the dependent", "--slug", "dep", "--json"), &r2); err != nil {
+		t.Fatal(err)
+	}
+
+	out := runCLI(t, "capture", "link", r2.ID, "--blocked-by", r1.ID, "--json")
+	var res struct {
+		ID        string   `json:"id"`
+		Path      string   `json:"path"`
+		BlockedBy []string `json:"blocked_by"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatalf("link output not JSON: %v\n%s", err, out)
+	}
+	if res.ID != r2.ID || res.Path != r2.Path || strings.Join(res.BlockedBy, ",") != r1.ID {
+		t.Fatalf("link result = %+v, want id %s path %s blocked_by [%s]", res, r2.ID, r2.Path, r1.ID)
+	}
+	body, err := os.ReadFile(r2.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "blocked_by: ["+r1.ID+"]") {
+		t.Fatalf("edge not written to %s:\n%s", r2.ID, body)
+	}
+	if list := string(runCLI(t, "capture", "list", "--open")); !strings.Contains(list, "[blocked-by "+r1.ID+"]") {
+		t.Fatalf("derived view did not pick the linked edge up:\n%s", list)
+	}
+
+	// Plain render: one line naming the id and the list after the write.
+	plain := string(runCLI(t, "capture", "link", r2.ID, "--unblock", r1.ID))
+	if n := strings.Count(strings.TrimRight(plain, "\n"), "\n"); n != 0 {
+		t.Fatalf("plain render is not one line:\n%s", plain)
+	}
+	if !strings.Contains(plain, r2.ID) || !strings.Contains(plain, "blocked_by") {
+		t.Fatalf("plain render names neither the id nor the field:\n%s", plain)
+	}
+	if body, _ = os.ReadFile(r2.Path); strings.Contains(string(body), "blocked_by") {
+		t.Fatalf("unblock left the key behind:\n%s", body)
+	}
+
+	// The refusals, on both verbs, name where the field is documented.
+	for _, args := range [][]string{
+		{"capture", "link", r2.ID, "--blocked-by", "iss-999999"},
+		{"capture", "another thing", "--blocked-by", "iss-999999"},
+	} {
+		out, err := runCLIErr(t, args...)
+		if err == nil {
+			t.Fatalf("%v: expected a refusal", args)
+		}
+		msg := err.Error() + string(out)
+		for _, w := range []string{"iss-999999", ".abcd/work/issues/README.md", "commands/capture.md"} {
+			if !strings.Contains(msg, w) {
+				t.Errorf("%v: refusal does not carry %q: %s", args, w, msg)
+			}
+		}
+	}
+	if _, err := runCLIErr(t, "capture", "link", r2.ID); err == nil {
+		t.Fatal("link with neither flag must be refused")
+	}
+
+	// The flag help on both verbs points at the same documentation.
+	for _, args := range [][]string{{"capture", "--help"}, {"capture", "link", "--help"}} {
+		help := string(runCLI(t, args...))
+		if !strings.Contains(help, ".abcd/work/issues/README.md") || !strings.Contains(help, "commands/capture.md") {
+			t.Errorf("%v: --blocked-by help does not name the docs:\n%s", args, help)
+		}
+	}
+	if help := string(runCLI(t, "capture", "link", "--help")); !strings.Contains(help, "unblock") || !strings.Contains(strings.ToLower(help), "then") {
+		t.Errorf("link help must say both flags are applied unblock-then-block:\n%s", help)
+	}
+}
+
 // runCLIErr executes the command tree and returns its stdout/stderr plus the
 // error, so a gate's non-zero exit can be asserted rather than fataled on.
 func runCLIErr(t *testing.T, args ...string) ([]byte, error) {
