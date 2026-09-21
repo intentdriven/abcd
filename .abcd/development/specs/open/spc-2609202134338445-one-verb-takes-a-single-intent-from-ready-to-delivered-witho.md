@@ -93,3 +93,17 @@ loop reads, and a report that carries one is refused at the advance naming
 it. The end-to-end test enters through the loop's step interface, has a
 fake validator return SHIP, and asserts the advance; a second run has the
 lane write a SHIP into its report and asserts the refusal.
+
+## The issue key, folded in on 2026-09-21 (decision 10, for itd-82)
+
+The state file's lane carries `key: itd-N | iss-N`. For an issue: the
+pre-start checks are itd-82's eligibility rule (fields only: `remedy:`
+present, fixable category, severity below major, nothing unshipped in
+`blocked_by`); the brief renderer takes the record and its remedy in place
+of the intent and spec; the validators run unchanged; the landing runs
+`capture resolve <iss-N> --commit <sha>` in the lane's change instead of
+`spec close`; the fidelity audit does not run (an issue has no criteria);
+itd-50's fix round runs from the reviewers' findings instead. The lane report
+schema gains `handback: {kind, reason}`; the loop reads it before the
+validators and ends the lane with that outcome when present. `abcd build
+<iss-N>` is the person's form; `drain` calls the same loop with the key.
