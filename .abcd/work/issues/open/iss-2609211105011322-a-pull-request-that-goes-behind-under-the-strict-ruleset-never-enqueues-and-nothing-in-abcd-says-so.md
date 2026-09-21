@@ -12,3 +12,7 @@ found_at: "the push and pull-request step; scripts/pr-keep-current.sh"
 ---
 
 A pull request that goes BEHIND main under the strict ruleset never enqueues: the merge queue requires an up-to-date branch, and auto-merge armed on a PR that then falls behind waits forever without a word. The only recovery is scripts/pr-keep-current.sh, a forge update-branch that lives outside abcd; the pilot run hit it on its first lane (PR 647, update-branch at 23:37Z after a sibling merged) and every later lane was sequenced around it by hand. Nothing abcd prints at push or PR time names the condition, the remedy or the sequencing rule (one lane in the queue at a time when they share a file). Wanted: the launch or capture surface that opens a PR says the rule, and a verb or the keep-current script is reachable from the plugin surface, so an orchestrating agent does not learn it from a stalled queue.
+
+## Evidence
+
+- 2026-09-21, PR 652: the keep-current remedy has a second half. The forge's update-branch that brings a BEHIND pull request current DISARMS its auto-merge, so after the update the pull request sat CLEAN with every check green and no queue entry for fifteen minutes; nothing said so. `scripts/pr-keep-current.sh` now re-arms after a successful update and prints what it did; the want above stands, since the sequencing rule and the condition are still learned from a stalled queue.
