@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | link <itd-N> <spc-N> | audit [<itd-N>]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -407,7 +407,9 @@ not takes `--impact additive|breaking|fix` on the close, which stamps it before 
 (`internal` is a category error on a press-release-first intent, and is
 refused). The close refuses rather than shipping a record with neither, and it
 refuses a `--impact` that disagrees with one already written down: a close does
-not revise a recorded judgement. `spec close` is CLI-only — there is no
+not revise a recorded judgement. It also refuses when the linked planned
+intent is held (see Hold below), naming the reason and `intent unhold`, with
+nothing closed and nothing moved. `spec close` is CLI-only — there is no
 `/abcd:spec` page.
 Both spec verbs — the close and the bare `abcd spec` status render — resolve the
 repository root first, so they address the checkout's spec store from anywhere in
@@ -435,6 +437,43 @@ invariant is exactly what it exists to catch. It never edits the draft, never
 files the routing, and never runs `plan`; the interview then starts from the
 brief instead of a cold read, and grading into the calibration note still
 happens only when the human confirms the routing.
+
+## Hold
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent hold <itd-N> --reason "<one line: why>" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent unhold <itd-N> --json
+```
+
+A hold is a frontmatter **state**, not prose: `hold` writes `held: "<reason>"`
+onto a record in `drafts/` or `planned/`, and `unhold` removes the line. While
+it stands, every lifecycle move refuses before anything moves, naming the
+reason and `intent unhold` as the remedy: `abcd intent plan <itd-N>` — the
+draft's plan and the planned record's identity-only re-run alike — and
+`abcd spec close <spc-N>` on a spec realising the held record (no spec is
+closed, no intent moves, the key is never stripped). `abcd <itd-N>` reports
+the hold as the first next move. The hold is the mechanism under the "never
+run `plan` unattended" convention: a lane that follows its own brief rather
+than this page meets it.
+
+The reason is required, one line, and redacted through the store's scanner
+before it is written; report `redacted` from the JSON when it is non-zero, the
+way the other write verbs do. A record already held is refused naming the
+standing reason — an updated reason is `unhold` then `hold`, so the lift is a
+visible act. Both verbs refuse a shipped, superseded or discipline record: a
+hold on a record nothing will plan means nothing. `ready` is unchanged by a
+hold — readiness is about the spec and the criteria.
+
+The value is written by the verb, and a hand-typed `held: "<reason>"` is
+byte-identical to that write, so nothing can tell the two apart and both stop
+`plan` and `spec close`. What record-lint's `record_provenance` rule reports
+is a `held` value in a shape the verb never writes — blank, null, a list, a
+map, a block scalar, or a legal value on a record in a bucket the verbs refuse
+— and `plan` refuses those too (fail closed) while `hold` and `unhold` send
+you to the line to repair it by hand. A key spelled by hand in a way the reader
+accepts but the verb never writes (`held : "…"`, a space before the colon) is
+honoured as a hold and refused by `unhold` as a hand repair, never reported as
+a lift that did not happen.
 
 ## Link
 

@@ -1,12 +1,13 @@
 package lint
 
-// The record-provenance family (record_provenance): a record carrying the
-// disclosure pair in a shape no write path produces.
+// The record-provenance family (record_provenance): a record carrying a
+// command-written key in a shape no write path produces — the disclosure pair,
+// and the intent hold.
 //
-// The two keys (`origin`, `production_mode`) are written by commands. This rule
-// is what makes that claim checkable on committed bytes, and it is deliberately
-// narrow: it reports the six states a command could not have written, and
-// nothing else.
+// The two disclosure keys (`origin`, `production_mode`) are written by commands.
+// This rule is what makes that claim checkable on committed bytes, and it is
+// deliberately narrow: it reports the six states a command could not have
+// written, and nothing else.
 //
 //   - a value outside its closed set — every writer validates before it writes;
 //   - one key present without the other — every writer stamps both together;
@@ -31,6 +32,20 @@ package lint
 // NEITHER key is not a finding. Sparseness is information, and an absent stamp is
 // never backfilled — which is also why this rule can ship armed as a blocker over
 // a corpus in which no record is stamped yet.
+//
+// The intent hold (`held`, iss-2609200830076665) is judged on the same footing,
+// by heldFindings below: `abcd intent hold` writes one single-line string on a
+// record in drafts/ or planned/, and `abcd intent unhold` removes the line, so
+// the shapes reported are the ones neither verb produces — a blank value, a
+// null, a flow or block list, a map, a block scalar, or a legal value on a
+// record in a bucket the verbs refuse (which no verb carries one into either:
+// `spec close` refuses a held record before it moves). The residual is the
+// same: a legal
+// single-line string typed by hand is byte-identical to the verb's write and is
+// NOT reported. What the reader does with a reported shape is fail closed —
+// `intent plan` refuses it exactly as it would a real hold — so the forgery
+// this rule cannot see is a LIFTED hold, a deleted line, which is the diff
+// review's to notice.
 
 import (
 	"strings"
@@ -98,8 +113,74 @@ func checkRecordProvenance(repoRoot string, cfg Config, rc RuleConfig) ([]Findin
 	var out []Finding
 	for _, r := range records {
 		out = append(out, provenanceFindings(r, runOf, promotedTo, rc.Severity)...)
+		out = append(out, heldFindings(r, rc.Severity)...)
 	}
 	return out, nil
+}
+
+// heldKey is the intent hold's frontmatter key. The intent store spells it
+// once as intent.HeldKey; it is restated here because this package cannot
+// import the store (the store's own tests import this gate), and the shared
+// half — what a legal value IS — lives in frontmatter.ScalarString, which both
+// sides call. The match is exact and case-sensitive: a `Held:`, `HELD:` or
+// `"held":` key is read by nothing and reported by nothing, because the store
+// declares no closed key list for an unknown key to fall outside of; the
+// hand-spelled `held :` (a space before the colon), which the scanner
+// normalises and every reader honours, is iss-2609210748122003.
+const heldKey = "held"
+
+// heldBuckets are the buckets `abcd intent hold` acts on. A legal hold
+// anywhere else is a state the verb refused to write.
+var heldBuckets = map[string]bool{"drafts": true, "planned": true}
+
+// heldFindings judges ONE intent record's `held:` key: absent is silent, a
+// legal single-line string in a bucket the verb acts on is silent, and every
+// other shape is reported with the rule's honest bound appended.
+func heldFindings(r schemaRecord, severity string) []Finding {
+	if r.store.prefix != "itd" {
+		return nil
+	}
+	f, ok := r.fields[heldKey]
+	if !ok {
+		return nil
+	}
+	finding := func(msg string) []Finding {
+		return []Finding{{
+			File: r.rel, Line: f.line, RuleID: ruleRecordProvenance, Severity: severity,
+			Message: msg + handEditResidual,
+		}}
+	}
+	raw := strings.TrimSpace(f.value)
+	// The same-line scanner reads a block-spelled value — a list on the lines
+	// below, or a block scalar under `|`/`>` — as blank or as the header byte;
+	// the scan's own look-ahead (blocks) is what says which.
+	if block := strings.TrimSpace(r.blocks[heldKey]); block != "" {
+		if blockScalarIndicatorRe.MatchString(raw) {
+			return finding("`" + heldKey + "` is a block scalar; `abcd intent hold` writes one single-line string, so a multi-line value is a state no command produced")
+		}
+		return finding("`" + heldKey + "` is a block list or mapping; `abcd intent hold` writes one single-line string, so a collection is a state no command produced")
+	}
+	reason, ok := frontmatter.ScalarString(raw)
+	if !ok {
+		switch {
+		case frontmatter.EmptinessOf(raw) == frontmatter.NullNode:
+			return finding("`" + heldKey + "` is null; `abcd intent hold` writes a non-empty reason and `abcd intent unhold` removes the line, so a null is a state no command produced")
+		case frontmatter.EmptinessOf(raw) != frontmatter.Populated:
+			return finding("`" + heldKey + "` is empty; `abcd intent hold` refuses an empty reason and `abcd intent unhold` removes the line, so an empty value is a state no command produced")
+		case strings.HasPrefix(raw, "[") || strings.HasPrefix(raw, "{"):
+			return finding("`" + heldKey + "` is a flow list or mapping; `abcd intent hold` writes one single-line string, so a collection is a state no command produced")
+		case blockScalarIndicatorRe.MatchString(raw):
+			return finding("`" + heldKey + "` is a block scalar over no lines; `abcd intent hold` writes one single-line string, so a block header is a state no command produced")
+		}
+		return finding("`" + heldKey + "` is not a single-line string (" + raw + "); `abcd intent hold` writes one, so this shape is a state no command produced")
+	}
+	if strings.TrimSpace(reason) == "" {
+		return finding("`" + heldKey + "` is blank inside its quotes; `abcd intent hold` refuses an empty reason, so a blank value is a state no command produced")
+	}
+	if !heldBuckets[r.bucket] {
+		return finding("`" + heldKey + "` on a record in " + r.bucket + "/; `abcd intent hold` acts on drafts/ and planned/ only, and `spec close` refuses a held record before it moves, so no command wrote this one")
+	}
+	return nil
 }
 
 // provenanceFindings judges ONE record.

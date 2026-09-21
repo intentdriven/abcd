@@ -2576,3 +2576,82 @@ func TestRecordSchemaAdmitsBothADRVintages(t *testing.T) {
 		t.Fatalf("expected no record_schema findings over the two ADR vintages, got %d: %+v", n, fs)
 	}
 }
+
+// TestRecordProvenanceHeldLegalValueIsSilent: a hold is `held: "<reason>"`,
+// written by `abcd intent hold`; a legal single-line string typed by hand is
+// byte-identical to that write and is NOT a finding — the rule catches
+// implausible hand edits, not all of them, exactly as it does for the
+// disclosure pair. A bare (unquoted) single-line string is a single-line string
+// too. Both buckets the verb acts on are silent.
+func TestRecordProvenanceHeldLegalValueIsSilent(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/intents/drafts/itd-1-held.md",
+		"---\nid: itd-1\nkind: null\nspec_id: null\nheld: \"awaiting the reading rethink\"\n---\n# draft\n")
+	writeFile(t, root, "rec/intents/planned/itd-2-held.md",
+		"---\nid: itd-2\nkind: standalone\nspec_id: spc-1\nheld: scope under review\n---\n# planned\n")
+	fs, err := Lint(provenanceConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleRecordProvenance); n != 0 {
+		t.Fatalf("a legal hold is not a finding, got %d: %+v", n, fs)
+	}
+}
+
+// TestRecordProvenanceHeldReportsShapesNoVerbWrites: the verb writes one
+// single-line string and nothing else, so an empty value, a null, a flow list
+// or map, a block list and a block scalar are each a state no command produced
+// — and so is a legal value on a record in a bucket the verb refuses.
+func TestRecordProvenanceHeldReportsShapesNoVerbWrites(t *testing.T) {
+	root := t.TempDir()
+	cases := map[string]string{
+		"itd-1-empty.md":        "held:",
+		"itd-2-quoted-empty.md": "held: \"\"",
+		"itd-3-null.md":         "held: null",
+		"itd-4-flow-list.md":    "held: [a, b]",
+		"itd-5-flow-map.md":     "held: {why: a}",
+		"itd-6-block-list.md":   "held:\n  - one\n  - two",
+		"itd-7-block-scalar.md": "held: |\n  two\n  lines",
+	}
+	for name, line := range cases {
+		writeFile(t, root, "rec/intents/drafts/"+name,
+			"---\nid: "+strings.TrimSuffix(strings.SplitN(name, "-", 3)[0]+"-"+strings.SplitN(name, "-", 3)[1], ".md")+"\nkind: null\nspec_id: null\n"+line+"\n---\n# draft\n")
+	}
+	writeFile(t, root, "rec/intents/shipped/itd-8-terminal.md",
+		"---\nid: itd-8\nkind: standalone\nspec_id: spc-1\nimpact: additive\nheld: \"a hold on a shipped record is meaningless\"\n---\n# shipped\n")
+	fs, err := Lint(provenanceConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleRecordProvenance); n != len(cases)+1 {
+		t.Fatalf("expected one finding per malformed hold plus the terminal-bucket one, got %d: %+v", n, fs)
+	}
+	for name := range cases {
+		if !findingWith(fs, filepath.Join("rec/intents/drafts", name), ruleRecordProvenance, "`held`") {
+			t.Errorf("expected %s reported on its held value: %+v", name, fs)
+		}
+	}
+	if !findingWith(fs, filepath.Join("rec/intents/shipped", "itd-8-terminal.md"), ruleRecordProvenance, "shipped") {
+		t.Errorf("expected the terminal-bucket hold reported naming the bucket: %+v", fs)
+	}
+	for _, f := range fs {
+		if f.RuleID == ruleRecordProvenance && !strings.Contains(f.Message, "implausible hand edits") {
+			t.Errorf("every finding states the rule's honest bound: %+v", f)
+		}
+	}
+	// Each shape is named for what it is, so the reader knows which spelling to
+	// repair rather than only that one is wrong.
+	for name, want := range map[string]string{
+		"itd-1-empty.md":        "is empty",
+		"itd-2-quoted-empty.md": "is empty",
+		"itd-3-null.md":         "is null",
+		"itd-4-flow-list.md":    "flow list or mapping",
+		"itd-5-flow-map.md":     "flow list or mapping",
+		"itd-6-block-list.md":   "block list or mapping",
+		"itd-7-block-scalar.md": "block scalar",
+	} {
+		if !findingWith(fs, filepath.Join("rec/intents/drafts", name), ruleRecordProvenance, want) {
+			t.Errorf("%s: expected the shape named (%q): %+v", name, want, fs)
+		}
+	}
+}
