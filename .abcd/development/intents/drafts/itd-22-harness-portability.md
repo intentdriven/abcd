@@ -11,6 +11,9 @@ severity: major
 
 # abcd Reaches Any Harness Through an Adaptor
 
+> **Widened on 2026-09-22** by the product thinker: "any harness" includes **no harness**. abcd run as the binary alone is a first-class way to manage a repository: it calls whichever harnesses are available for the roles that need one, and where a role's runner is unavailable the fallback is a host the operator configured rather than a host session that happens to be there (itd-2609201916056194). The adaptor ladder below gains that rung; the console that would drive it from outside a harness is reframed as an operator console served by the binary (research note, 2026-09-22) and is not this record.
+
+
 ## Press Release
 
 > **abcd runs wherever the user's harness runs.** abcd's core is a transport-agnostic engine, and each harness reaches it through a thin adaptor built on one shared seam. An adaptor climbs a fixed ladder — the host's own plugin format first, any other native seam second, the MCP floor always — and one parity suite proves every host gets the same conventions, intents, and lifeboats. Adding a harness is one adaptor over an unchanged core, never a second copy of abcd.

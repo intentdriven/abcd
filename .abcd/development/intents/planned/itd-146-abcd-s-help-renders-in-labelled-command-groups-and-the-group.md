@@ -1,8 +1,10 @@
 ---
 id: itd-146
+related_intents: [itd-2609212130136102, itd-2609212113220149, itd-134]
+related_adrs: [adr-2609212115255771]
 slug: abcd-s-help-renders-in-labelled-command-groups-and-the-group
-spec_id: null
-kind: null
+spec_id: spc-2609212139586554
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -11,6 +13,9 @@ impact: additive
 ---
 
 # abcd's help renders in labelled command groups, and the grouping is gated like every other surface claim
+
+> **Widened on 2026-09-21** by the product thinker: the grouped list is the person's, one line above it says `--agent` expands it, and `--help --agent` renders two blocks, people then agents and hosts. The scope invariant below ("no verb hidden") stands for execution: every verb runs the same whichever block lists it. The verb consolidation is its own record (itd-2609212130136102), and the one-sentence explainer per verb another (itd-2609212113220149).
+
 
 ## Press Release
 
@@ -113,15 +118,15 @@ a grouping shipped without one would repeat the defect it was chosen over.
 
 ## Scope Conditions
 
-- Holds for a **CLI whose top level is a set of acts rather than resources**.
+- Holds for a **CLI whose top level is a set of acts rather than resources**. <!-- cond: cond-2609212139580802 -->
   Should abcd grow a genuine resource with several verbs that no existing verb
   owns, the noun-verb question reopens as a real one rather than a tidiness one.
-- Holds for **cobra**. The grouping mechanism is a cobra feature, so a change of
+- Holds for **cobra**. The grouping mechanism is a cobra feature, so a change of <!-- cond: cond-2609212139580635 -->
   command framework re-decides this.
-- Holds while **no third-party author registers verbs**. An extension ecosystem
+- Holds while **no third-party author registers verbs**. An extension ecosystem <!-- cond: cond-2609212139582531 -->
   would break the ungrouped-verb test, because the core cannot assign a group to
   a verb it does not register.
-- The **group titles and membership are a presentation choice**, not a taxonomy
+- The **group titles and membership are a presentation choice**, not a taxonomy <!-- cond: cond-2609212139588587 -->
   claim. They carry no adr-40 bucket meaning and must not be read as one.
 
 ## SOTA
@@ -148,48 +153,29 @@ Heroku-style colon topics; an extension-verb growth valve.
 
 ## Acceptance Criteria
 
-- **Given** the rendered root help, **when** a reader runs `abcd --help`,
-  **then** every listed command appears beneath a group heading and none
-  appears under cobra's "Additional Commands" fallback.
-- **Given** a visible top-level command registered with no group, **when** the
-  test suite runs, **then** a test fails naming that command, and a hidden
-  command does not trigger it.
-- **Given** the committed surface snapshot, **when** it is regenerated, **then**
-  every visible top-level verb carries a group and every sub-command carries
-  none.
-- **Given** a verb whose group changes without the snapshot being regenerated,
-  **when** the snapshot drift test runs, **then** it fails naming that verb.
-- **Given** `abcd rules` and `abcd spec`, **when** a reader runs `abcd --help`,
-  **then** both appear under a group, and both keep their sections in
-  `docs/reference/cli/commands.md`.
-- **Given** a surface snapshot written before this ships, **when** the release
-  guardrail reads it as the baseline, **then** it decodes without error and the
-  cut is not refused.
-- **Given** the change shipping, **when** the release is derived, **then** it
-  derives as additive and the surface diff reports no break.
+- **Given** `abcd --help`, **when** it renders, **then** the person's verbs appear under labelled groups (set-up, records, checks, portability, release), with one line above them saying `--agent` expands the list with the verbs agents and hosts call.
+- **Given** `abcd --help --agent`, **when** it renders, **then** two blocks appear, the person's groups then an agents-and-hosts block, and every visible verb is in exactly one block.
+- **Given** any verb, **when** it runs, **then** it runs the same whichever block lists it; a visible top-level verb registered with no group or block fails a test.
+- **Given** the surface snapshot, **when** a verb's group or block changes without regeneration, **then** the release gate fails naming the verb.
+- **Given** a verb's command page, **when** it is read, **then** it says which block the verb is in, and each line of the agent block names the page an agent reads next.
+- **Given** `abcd rules` and `abcd spec`, **when** `--help` renders, **then** they keep their places; nothing is renamed or nested.
+
+## Decisions
+
+Ruled by the product thinker on 2026-09-21:
+
+1. **Two blocks behind one flag**: the default list is the person's groups with the expanding line above; `--agent` shows both blocks. Nothing is hidden from execution.
+2. **Group titles**: set-up (`ahoy`, `update`), records (`capture`, `intent`, `spec`, `decide`, `build`, `drain`, `memory`), checks (`lint`), portability (`embark`, `disembark`), release (`launch`); the agent block holds `implement`, `reading`, `history`, `statusline`, `changelog`, `guard hook`, `intent audit ingest`, `ideate record`, `mode`.
+3. **The snapshot's schema version bumps** for the block field; `changelog` sits in the agent block.
 
 ## Open Questions
 
-- **The snapshot schema version.** The snapshot declares `SchemaVersion = 1` and
-  hard-fails decode on a mismatch, while the release guardrail reads its
-  baseline from the previous release tag. Bumping the version makes that
-  baseline undecodable; not bumping it means a version-1 baseline decodes with
-  an empty group everywhere. Adding the field as optional at the current
-  version, so an absent group is not a changed group, is the candidate that
-  keeps both branches working, and this needs deciding before planning.
-- **Group titles and membership.** A first cut: set-up and update (`ahoy`,
-  `update`, `version`); records (`intent`, `ideate`, `capture`, `spec`,
-  `memory`, `history`); conformance (`lint`, `docs`, `guard`, `banlist`,
-  `identity`); portability (`disembark`, `embark`); release (`launch`,
-  `changelog`, `site`); operator (`rules`, `help`, `completion`). That is
-  twenty of twenty visible verbs plus the two generated commands. Membership is
-  a maintainer decision at the planning interview.
-- **Whether the path-1 reading above is correct**, given that adoption adds no
-  dependency and the approval gate exists to weigh dependencies.
-- **Whether `changelog` belongs in the release group.** Grouping it beside
-  `launch` gets the legibility benefit that folding it under `launch` was
-  rejected for, with no change to its invocation.
+_None open; decisions 2 and 3 settle the four this record carried._
 
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: the run lands build, drain, implement, reflect and reclassify, and an alphabet of forty verbs is where a newcomer gives up; we expect a person to find their verb in the grouped list and an agent to find the second block from the line above it; shown wrong if the first agent transcripts after it ships still grep the binary for verbs

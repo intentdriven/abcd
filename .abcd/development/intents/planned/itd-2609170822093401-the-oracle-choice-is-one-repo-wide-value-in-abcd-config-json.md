@@ -155,6 +155,14 @@ several routes, each receipt naming the route that governed it.
   the only evidence, and a host that cannot name its model cannot be
   checked, so rows for it are advice with a receipt that says so.
 
+## Decisions
+
+Ruled by the product thinker on 2026-09-22, after the research pass on model routing:
+
+1. **Escalation inside a lane is a rule, not a router.** A lane starts at its role's tier; on a failed fix round the next round runs one tier up, and the switch is recorded as a fact in the state file with the round and the gate output that caused it.
+2. **A route through a provider adapter must be on that provider's allowlist** (adr-2609221009491186); the tier proposes only routes the resolver admits.
+3. **No learned per-request router** (itd-17 superseded by itd-2609221009495079).
+
 ## Acceptance Criteria
 
 - **Given** a machine with no accepted table and a repository with no
@@ -200,6 +208,8 @@ several routes, each receipt naming the route that governed it.
 - **Given** a table carrying a row for a name that is not an agent in the
   roster, **when** the table is read, **then** the orphan row is reported by
   name on stderr and the remaining rows still apply.
+- **Given** a lane whose fix round failed, **when** the next round starts, **then** it runs one tier up from the role's tier and the state file records the round, the gate output and the switch.
+- **Given** a proposed route through a provider adapter, **when** the tier proposes it, **then** it is one the provider's allowlist admits, or the proposal names the refusal instead.
 
 ## Open Questions
 

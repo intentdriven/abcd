@@ -72,20 +72,24 @@ glossary/
 ├── core/
 │   ├── README.md
 │   ├── brief.md
+│   ├── bundle.md
 │   ├── construal.md
 │   ├── disembark.md
 │   ├── intent.md
 │   ├── ledger.md
 │   ├── lifeboat.md
 │   ├── loop.md
+│   ├── milestone.md
 │   ├── oracle.md
 │   ├── persona.md
 │   ├── phase.md
 │   ├── plan.md
 │   ├── reading-position.md
+│   ├── record-families.md
 │   ├── record.md
 │   ├── roadmap.md
 │   ├── spec.md
+│   ├── step.md
 │   ├── surface.md
 │   ├── transport.md
 │   └── voyage.md
@@ -189,20 +193,24 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | Term | Status | Definition |
 |---|---|---|
 | [brief](core/brief.md) | stable | The living root document that holds a project's purpose, constraints, and success criteria — always the project's current state, revised in place as the project moves. |
+| [bundle](core/bundle.md) | stable | Several intents that share one spec because they ship as one change; each member carries kind bundle-member and the bundle's name, and all ship together when the spec closes. |
 | [construal](core/construal.md) | stable | The statement of what the situation is being treated as, in one or two sentences, held at the top of the brief's framing chapter as the frame a widening reading reads against; one of adr-55's three framing surfaces, beside the committed glossary terms and the committed scope. The ledger context's entry governs the term inside the cold-reading experiment. |
 | [disembark](core/disembark.md) | stable | The act of packing a lifeboat — `abcd disembark <source-repo> to <dest>` reads a source repository without writing to it and distils its settled artefacts, decisions, and configuration into a portable lifeboat directory at a destination outside that repository, which a fresh context can later unpack via `/abcd:embark`. |
 | [intent](core/intent.md) | stable | A press-release-shaped description of a feature written before implementation begins, capturing the user problem, proposed solution, and success criteria. |
 | [ledger](core/ledger.md) | stable | An append-or-move store a command writes and a human reads back, the issue ledger under .abcd/work/issues/ when the word stands bare; inside the cold-reading experiment the word means the warm material and its stores, which the read-block keeps from a reading (the ledger context's entries govern that sense). Four further ledgers share the word and are always named in full. |
 | [lifeboat](core/lifeboat.md) | stable | A portable directory artefact packed by `/abcd:disembark` that captures the distilled knowledge and configuration of a source project so it can be unpacked into a fresh context by `/abcd:embark`. It always lands outside the source repository, at an operator-chosen destination. |
 | [loop](core/loop.md) | draft | The record loop — brief to intent to spec to shipped work to audited verdict and back onto the brief — which shipping closes twice, once by grading the acceptance criteria and once by rewriting the brief passage. Two other loops carry the word and are always qualified: the autonomous-run loop and the lifeboat round-trip. |
+| [milestone](core/milestone.md) | superseded | A planned end condition for a stretch of work; retired: the checkpoint is the derived release plus each intent's acceptance criteria. |
 | [oracle](core/oracle.md) | stable | An AI model invoked to review, reason over, or validate a project's artefacts — host-delegated by default, or reached through an opt-in oracle adapter. |
 | [persona](core/persona.md) | stable | A placeholder stakeholder character drawn from the abcd personas registry, used in press releases, intents, and design documents to represent a real user archetype without using real names. |
-| [phase](core/phase.md) | stable | An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. Unqualified it always carries that sense, the brief's own numbered build milestones being plumbing-phases. |
+| [phase](core/phase.md) | superseded | An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. Unqualified it always carries that sense, the brief's own numbered build milestones being plumbing-phases. |
 | [plan](core/plan.md) | stable | The maintainer's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Three further senses share the word — the ordered build plan the phase docs hold, a dated design plan under development/plans/, and a session's planning brief — and each is qualified where it appears. |
 | [reading-position](core/reading-position.md) | stable | One of the four questions a cold reading can be commissioned to answer — widening, entailment, comparative or detection. The position fixes the reading's object, its question and the supply regime its output is validated against; `abcd reading assemble --position` names it. |
+| [record-families](core/record-families.md) | stable | The one page that maps abcd's record families (intent, spec, step, bundle, issue, release, status) and how they relate: what each groups, what groups it, its lifecycle and the verb that moves it. |
 | [record](core/record.md) | stable | One identified, filed document that a command mints and a lint gate reads — an itd-N, spc-N, adr-N, iss-N or rdg-id. "The development record" is the whole durable corpus those records make up, and "a record family" is one lifecycle-bucketed set of them; each of the three is qualified where the other two could be read. |
-| [roadmap](core/roadmap.md) | stable | The sequencing folder .abcd/development/roadmap/, which holds the phase docs and the RFCs. Its README is the roadmap dashboard, a separate sense — a live status render that reads the native spec store and the intent buckets rather than the phase docs. |
+| [roadmap](core/roadmap.md) | superseded | The sequencing folder .abcd/development/roadmap/, which holds the phase docs and the RFCs. Its README is the roadmap dashboard, a separate sense — a live status render that reads the native spec store and the intent buckets rather than the phase docs. |
 | [spec](core/spec.md) | stable | A specced block of work in abcd's native spec store that implements one or more intents, broken into ordered tasks with acceptance criteria. |
+| [step](core/step.md) | stable | One of the ordered, independently landable pieces a spec lists under its Steps section; each step is one lane and one pull request, and a spec with no steps is one step. |
 | [surface](core/surface.md) | stable | A verb's front door — the markdown command file under commands/ plus the transport package under internal/surface/ that reaches the core. "A surface chapter" is the brief's design record for one such front door, and "a rendered surface" is a public text held to the repository's identity block; both are qualified. |
 | [transport](core/transport.md) | stable | The mechanism by which curated context and artefacts are packaged and delivered to an oracle for review or reasoning. |
 | [voyage](core/voyage.md) | stable | The operations namespace at `~/.abcd/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried. |

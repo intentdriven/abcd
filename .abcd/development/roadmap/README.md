@@ -69,6 +69,9 @@ native spec store via the Go CLI; never transcribe it here.
 
 ```sh
 # Live count per lifecycle bucket.
+
+> **Retired on 2026-09-21** (adr-2609212115255771): phases and milestones are no longer units of the record. Sequencing is dependencies plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release. The documents below stay as history and are not maintained.
+
 for b in drafts planned shipped disciplines superseded; do
   printf '%-12s %s\n' "$b" \
     "$(ls .abcd/development/intents/$b/itd-*.md 2>/dev/null | wc -l)"

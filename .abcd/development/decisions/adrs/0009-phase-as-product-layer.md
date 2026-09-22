@@ -1,10 +1,10 @@
 ---
 id: adr-9
 slug: phase-as-product-layer
-status: accepted
+status: superseded
 date: 2026-05-16
 supersedes: null
-superseded_by: null
+superseded_by: adr-2609212115255771
 related_intents: []
 related_rfcs: []
 related_adrs: [adr-1, adr-5, adr-10]

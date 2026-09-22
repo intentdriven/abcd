@@ -36,7 +36,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-14` — Prompt registry + versioning (heavier successor to itd-5)
 - `itd-15` — Self-dogfooded SOTA audit (recurring per-disembark sibling to itd-5)
 - `itd-16` — `/abcd:audit` umbrella + chain substrate (default application: hash-chain over conversation/edit history; reframed as umbrella on 2026-05-08, lifeboat-integrity application extracted to itd-35)
-- `itd-17` — Per-backend per-agent oracle effectiveness tracking
 - `itd-18` — `.claude/settings.local.json` permission templates
 - `itd-19` — ABCDevelopment stage-aware defaults
 - `itd-21` — `/abcd:init-project` empty-repo scaffolding
@@ -89,7 +88,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-142` — The brief-creation interview: staged elicitation into the brief and a ledger (frontier rounds, options at conjectural questions, hold register, two-output rule per adr-50); spec waits on the collaborating prototype's first run
 - `itd-143` — The framing chapter under 01-product/: the macro-why home, with its brief↔lifeboat mapping row; receives itd-142's committed framing products
 - `itd-144` — Every livery mark has a surface: the lifeboat on disembark and mirrored on embark, the duckling as the harness mascot, the flag icon for the website (settles itd-112's deferred forge/web logo question)
-- `itd-146` — abcd's help renders in labelled command groups, gated by a group field in the surface snapshot and an ungrouped-verb test (the reframed survivor of the verb-taxonomy ideate verdict; no verb renamed, moved or hidden)
 - `itd-149` — abcd handles inbound security advisories and issues, and cuts the release, for every managed repo (the 2026-08-27 pilot's loop automated; findings F-A…F-W are the acceptance-criteria source, F-U and F-Q load-bearing; filed after the itd-84 SPLIT, awaiting the planning interview)
 - `itd-163` — Reference-closure and acknowledgements-mirror gate: every citation resolves to the CSL references, the references and acknowledgements mirror both ways, and a committed influence registry backs the Inspirations list (supersedes itd-145; filed from the 2026-08-28 attribution review with the backfill issue iss-2608280824478819)
 - `itd-164` — Licence vetting at source admission: `docs cite refresh` records each source's licence verdict into the committed baseline, and the zero-network gate refuses a new entry without one (builds on itd-163)
@@ -107,7 +105,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-175` — The product thinker writes down how this could be wrong, and what would show it (Phase 8; the defeater list an acceptance rests on)
 - `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
 - `itd-201` — every question abcd's agents put to a human is asked one at a time, in plain language, in the addressee's register, with options that widen
-- `itd-2609061543533170` — one verb sets up a managed repository's release-rendered site end to end: the site composition, the wrangler configuration, the render-then-deploy workflow, the environments it needs, and the worker itself where a credential is held
 - `itd-2609151838312703` — sessions on one machine or one local network leave each other messages in a shared mailbox abcd owns (the built-in basic; nothing leaves the local network)
 - `itd-2609151838327688` — an opt-in adapter to a local message broker brings push delivery and cross-machine reach to the session mailbox (sequenced after the mailbox)
 - `itd-2609151541116052` — every question an interview puts to a human shows the thing being decided before it asks, at every step (refines itd-201)
@@ -119,12 +116,9 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609150819440345` — a claim record beside the machine-scoped worktree store says which session holds which worktree, branch or record, replacing the per-session handshake (promoted from iss-2609100519122086)
 - `itd-2609151138388536` — the decisions log becomes a folder of individually minted decision records with an assembled index, `DECISIONS.md` a symlink to it, in abcd and in every managed repository; the shape retires the decisions-append gate (the rule is adr-2609151138420062; promoted from iss-2609100507439414)
 - `itd-2609151516525843` — a committed declaration lifts the public visibility fence so a fresh public repository can create its committed banned-names layer on day one, and a machine-global private banned-names list in the user-level home bans a name in every repository on the machine; CI never reads the home list and no pattern from it reaches a committed file (`builds_on` itd-74, `refines` adr-56; promoted from iss-2609100506269348)
-- `itd-2609081951381895` — abcd ships an OpenAI-compatible api oracle adapter, the first wired provider a local MLX server with a cloud aggregator as config-only (refines adr-25; filed 2026-09-08)
 - `itd-2609090746410233` — A lifeboat packs from a worktree, a branch, or an abandoned feature test, experiment or implementation, not only from a whole repository (refines itd-88 and adr-35; realises the press release's not-yet-real widening, git-source half)
 - `itd-2609090746414083` — A lifeboat packs from a lab session home, the throwaway experiment's intention, harvest and bundle, with the same coverage honesty as a repository (refines itd-88 and adr-35; the non-git half, sequenced after the lab verb family)
 - `itd-2609180517121254` — every payload a host hands back from a delegated step names the model that produced it and the number of agents that ran, and the ingesting verb refuses one that does not
-- `itd-2609201916056194` — a delegated agent runs through a command-line model runner the operator chose (claude CLI, opencode/openrouter); the opt-in cli oracle rung
-- `itd-2609211913453478` — one glossary page maps the record families (intent, spec, bundle, phase, batch, issue, roadmap, release) and how they relate, and answers whether a phase is still the sequencing layer
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

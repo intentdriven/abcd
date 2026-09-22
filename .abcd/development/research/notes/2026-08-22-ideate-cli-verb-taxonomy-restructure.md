@@ -96,7 +96,7 @@ authorship — the evaluator-outside-the-loop principle applied to ideas.
 
 The idea as posed does not survive, but the reframing recorded above
 does. Any graduation to a draft intent carries the reframing, not the
-original wording. It graduated as [itd-146](../../intents/drafts/itd-146-abcd-s-help-renders-in-labelled-command-groups-and-the-group.md).
+original wording. It graduated as [itd-146](../../intents/planned/itd-146-abcd-s-help-renders-in-labelled-command-groups-and-the-group.md).
 
 ### The reframing, stated
 
