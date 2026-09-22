@@ -1,5 +1,6 @@
 ---
 id: itd-17
+superseded_by: itd-2609221009495079
 slug: model-effectiveness-tracking
 spec_id: null
 kind: standalone
@@ -11,6 +12,9 @@ severity: minor
 ---
 
 # Pick the Right Oracle for the Job, Automatically
+
+> **Superseded by itd-2609221009495079** on 2026-09-22, on the product thinker's ruling after an independent research pass: a learned per-request router for lane models is not adopted (independent leaderboards show commercial routers over-selecting expensive models and drifting toward them; the choice is opaque and attackable, which the record's rule of computed facts with a falsifier cannot carry). Model per role is the tier (itd-2609170822093401); escalation is a rule on a failed fix round; the closed-option judgements go to a decision adapter measured in a lab first.
+
 
 > **This intent is abcd's frontier mapping** — capability-aware dispatch across the configured oracle adapters and the host-delegated default, framed per Dell'Acqua et al. 2023 ("Navigating the Jagged Technological Frontier"). It observes the jagged frontier (which adapter or the host is strong for which task), dispatches capability-aware, and renders the frontier map on demand:
 >
