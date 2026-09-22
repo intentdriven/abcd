@@ -18,7 +18,7 @@ already exist and are read, not built.
 
 1. **The bundle command**: `abcd intent plan itd-A itd-B [itd-C…]` takes
    `--bundle <name>` (asked for by the plugin page, refused absent on the
-   CLI), refuses members scoped to different phases naming both, mints ONE
+   CLI), refuses a member that names another in `blocked_by`, naming the edge, mints ONE
    spec whose frontmatter lists every intent (`intents: [itd-A, itd-B]`
    beside the existing `intent:` key naming the first), stamps
    `kind: bundle-member` and `bundle: <name>` on each, links each `spec_id`,

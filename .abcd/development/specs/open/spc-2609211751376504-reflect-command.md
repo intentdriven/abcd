@@ -9,6 +9,8 @@ production_mode: hand-written
 
 ## Summary
 
+**Re-read on 2026-09-21 (adr-2609212115255771): the unit is the release, not the phase.** Wherever this spec says phase document, read the release tag and the changelog section the cut composed; the seed is the intents whose `shipped_in` names the release, with their audit notes; the nudge is one line at the end of `launch ship`; the open-work warning names intents with `target_release` at that version still unshipped; the output path is `.abcd/development/retrospectives/<tag>/README.md`.
+
 The design record for itd-24, from the product thinker's interview of
 2026-09-21 (decisions 1 to 3 on the intent). One host-run interview,
 `/abcd:reflect <phase-id>`, seeded from what the phase actually shipped,

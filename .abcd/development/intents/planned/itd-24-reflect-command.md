@@ -17,7 +17,7 @@ builds_on: [itd-27]
 impact: additive
 ---
 
-# Completed Phases Get A Retrospective
+# Completed Releases Get A Retrospective
 
 ## Press Release
 
@@ -86,6 +86,7 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 1. **Nudge once.** When a phase's last piece of work closes, abcd says once that a retrospective is owed; it is not repeated and it is not a gate.
 2. **A ranked few on embark.** Predecessor lessons most like the new voyage's brief are shown; the rest are a list opened on request.
 3. **Layout.** The retrospective lives under the durable record tier, `.abcd/development/retrospectives/<phase-id>/README.md`; the paths this record was written against predate the three-tier layout and are read as that.
+4. **The unit is the release** (ruled 2026-09-21, adr-2609212115255771): phases are retired, so `<phase-id>` reads as the release tag (`v0.10.0`), the seed is the release's shipped intents and their audit notes with the derived changelog, the empty case is a release that shipped no intent, the nudge fires once when the cut is written, and criterion 7's warning names intents targeted at the release (`target_release`) still unshipped. Every criterion below is read with "phase" meaning "release".
 
 ## Open Questions
 

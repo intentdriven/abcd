@@ -1925,3 +1925,43 @@ Per hand-run, append:
   batch 0 hunts for among READY intents and cannot reach among specless
   ones; iss-2609211738504433 records the gap. Fourteen records took three
   hours of the human's time at one question per turn.
+
+### Run: the vocabulary rulings and eight new records (2026-09-21, evening, product thinker's interview)
+
+- **Proposal (as received, in turns):** "do we need new intents for what we
+  just decided?"; then CLI discoverability for humans and agents; the help
+  sentence per verb; whether 53 verbs all make sense; the website for any
+  managed repo; the status-line badge; doubles at filing; the abcd labs;
+  never "the maintainer".
+- **Table (as run):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | Retire phase, milestone, roadmap; two axes; issues have no spec; batch is internal | decision | adr-2609212115255771 supersedes adr-9 | reverses (confirmed) |
+  | The map page, the glossary entries, the lint | capability | itd-2609211913453478 (planned) | builds_on itd-34 |
+  | Now / Next / Later status block | capability | new itd-2609212103568351 | builds_on the map, the pick |
+  | Steps below a spec | capability | new itd-2609212103565953 | builds_on the build machinery |
+  | target_release | capability | new itd-2609212103572513 | builds_on the map |
+  | Grouped help, agents block | capability | itd-146 widened and planned | related consolidation, sentence |
+  | One sentence per verb | capability | new itd-2609212113220149 | builds_on itd-146 |
+  | Verb consolidation | capability, breaking | new itd-2609212130136102 | related the four renames |
+  | The badge guarded and reset | capability | new itd-2609212130146198 | builds_on itd-200 |
+  | One verb to a live site | capability | itd-2609061543533170 written and planned | builds_on the status block |
+  | Doubles linked at filing | capability | new itd-2609212137116617 | builds_on itd-84, itd-42 |
+  | Never "the maintainer" | capability + lint | new itd-2609212137129937 (captured for the run, no sweep) | builds_on the badge |
+  | abcd lab | capability | new itd-2609212137128014 from the capstone draft | builds_on itd-22 |
+  | Four lab findings | issues | two captured (guard workdir; short banlist fragment), two already fixed | |
+
+- **Verdict:** SPLIT throughout; one reversal (adr-9) confirmed by the
+  human at the question, not inferred.
+- **Routing survived?** Two moves against the first table: Now/Next/Later
+  was first offered as a roadmap bucket and became a status block on the
+  research pass's own challenge (a second name for the shelves); the badge
+  was first offered as event-derived and the human ruled verb-set,
+  guard-enforced, hook-reset. Steps were offered three ways and named by
+  the human for the loop's word.
+- **Notes:** every ruling was taken one question at a time; where the
+  human answered with a clarification rather than an option, the
+  clarification was taken as the answer and read back. The maintainer
+  sweep is the first record of the day captured explicitly *not* to be
+  fixed in the session that ruled it.

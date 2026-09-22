@@ -142,7 +142,7 @@ None stated.
 
 ## Acceptance Criteria
 
-- **Given** two draft intents, **when** `abcd intent plan itd-A itd-B` runs, **then** it asks for a bundle name, mints one shared spec naming both, writes `kind: bundle-member` and `bundle: <name>` on each, and moves both to `planned/` together; two drafts scoped to different phases are refused naming both phases, and nothing moves.
+- **Given** two draft intents, **when** `abcd intent plan itd-A itd-B` runs, **then** it asks for a bundle name, mints one shared spec naming both, writes `kind: bundle-member` and `bundle: <name>` on each, and moves both to `planned/` together; a draft that names the other in `blocked_by` is refused naming the edge (a bundle cannot contain its own blocker), and nothing moves.
 - **Given** a bundle's shared spec is closed, **when** the close-hook runs, **then** every member with that `bundle:` ships together.
 - **Given** `abcd intent reclassify <itd-N> --kind <standalone|bundle-member>` or `--kind superseded --by <itd-M|adr-N> --reason "…"`, **when** it runs, **then** the record's kind, shelf and links change in one write, with `superseded_by` on the record and `supersedes` on the successor written together; a shipped intent asked to become a discipline is refused and told to file a discipline that supersedes it.
 - **Given** one member of a bundle is superseded, **when** the reclassify completes, **then** the surviving member stays `bundle-member` and its record states that the bundle now has one member.
@@ -163,6 +163,7 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 2. **You name the bundle**; the command asks for a short name.
 3. **A survivor stays.** When one member is superseded the other stays a bundle-member of a bundle of one, and says so.
 4. **A shipped intent never changes kind.** A rule discovered after the fact is filed as a discipline that supersedes it.
+5. **No phase rule** (ruled 2026-09-21, adr-2609212115255771): phases are retired, so the same-phase invariant this record carried is replaced by the blocker check above.
 
 ## Open Questions
 

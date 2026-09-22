@@ -4,16 +4,19 @@ bounded_context: core
 definition: The sequencing folder .abcd/development/roadmap/, which holds the phase docs and the RFCs. Its README is the roadmap dashboard, a separate sense — a live status render that reads the native spec store and the intent buckets rather than the phase docs.
 aliases: ["roadmap folder"]
 forbidden_synonyms: ["backlog", "timeline", "release plan"]
-status: stable
+status: superseded
 introduced_in: adr-9
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/phase
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
 
 # roadmap
+
+> **Superseded on 2026-09-21 (adr-2609212115255771): the rendered Now / Next / Later status block on the `abcd` board and the site's Status page replaces the roadmap document and the word.** See [record-families](record-families.md).
+
 
 The **roadmap** is [`.abcd/development/roadmap/`](../../../roadmap/README.md): two things and
 no others — [`phases/`](../../../roadmap/phases/README.md), the ordered build plan, and
