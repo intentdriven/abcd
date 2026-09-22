@@ -1965,3 +1965,34 @@ Per hand-run, append:
   clarification was taken as the answer and read back. The maintainer
   sweep is the first record of the day captured explicitly *not* to be
   fixed in the session that ruled it.
+
+### Run: Jev, OpenRouter and the allowlist (2026-09-22, product thinker's interview after a research pass)
+
+- **Proposal (as received):** "consider Jev as a new routing model (e.g. via
+  openrouter); SOTA on which tasks Jev could help automate"; then "how to
+  integrate openrouter and ensure only certain models are accessed via it";
+  then classification and library selection as use cases; then the one-time
+  setup at `ahoy` with the key kept out of the harness.
+- **Table (as run):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | Provider adapters serve listed models only, under a vendor denylist | trust rule | adr-2609221009491186 + brief invariant | refines adr-25 |
+  | OpenRouter integration | capability | itd-2609081951381895 written and planned | builds_on the tier |
+  | The decision adapter, shadow as a lab, note as evidence | capability | new itd-2609221009495079 | builds_on the lab, the adapter, the tier; supersedes itd-17 |
+  | Escalation on a failed fix round | rule | a decision on itd-2609170822093401 | |
+  | The one-time setup with three key homes | capability | criteria on itd-2609081951381895 through itd-63's mode | builds_on itd-63 |
+  | Model per role, the pick, consistency | not routing | no record | |
+  | itd-17 (a learned router) | RETIRE | superseded by the decision adapter | |
+
+- **Verdict:** SPLIT; the research pass changed the proposal's own framing
+  (Jev is a typed-decision model, not a router) before any question was
+  asked, and the human's questions widened the adapter's judgement list to
+  the library and the memory store.
+- **Routing survived?** Yes, with one move: the shadow run's evidence was
+  first offered as a run-record rate and the human routed it through the lab
+  verb filed the night before, which made the research note the evidence
+  path rather than a new one.
+- **Notes:** the human corrected the vendor mid-pass ("from typescript"), and
+  the pass resolved it as a near-homophone with a primary source rather than
+  guessing; a wrong vendor would have routed the whole proposal wrongly.

@@ -41,7 +41,7 @@ We expect a managed repository whose site is live to be read by people who never
 - **The credentialled path**: with a hosting credential configured, the same verb creates and routes the host through the provider adapter and reports the live address; without one it stops at the step above and says so.
 - **The provider seam**: one adapter ships (the provider abcd's own site uses); a second is a later intent, not a change to the verb.
 - **The pages**: landing, explorer, record pages, graph, timeline, glossary and status render for every managed repository from its own text; the site configuration switches pages off.
-- **Re-runnable and credential-clean**: a second run changes nothing current and says so; no credential is ever written into the repository.
+- **Re-runnable and credential-clean**: a second run changes nothing current and says so; the hosting credential is resolved by name through the credential store (itd-2609221017023290) and never written into the repository.
 - **Security review** before the lane ships.
 
 ## What's Out of Scope
