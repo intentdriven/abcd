@@ -220,7 +220,9 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 					if *asJSON {
 						return &exitError{Code: 2}
 					}
-					return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+					// The reasons are on stdout already; stderr says so once.
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd launch ship: the composed payload was refused "+
+						"(%d reason(s), listed above) — nothing was written; recompose it against them", len(refused.Reasons))}
 				}
 				if err != nil {
 					return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}

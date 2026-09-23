@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -232,10 +233,14 @@ func TestLaunchShipIngestBijectionExits2(t *testing.T) {
 	if code := exitCodeOf(err); code != 2 {
 		t.Fatalf("exit = %d, want 2\n%s", code, out)
 	}
-	for _, want := range []string{"MISSING", "iss-51", "nothing was written"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err.Error(), want)
+	// The reasons are rendered once, on stdout; the error line points at them.
+	for _, want := range []string{"MISSING", "iss-51"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the render does not mention %q:\n%s", want, out)
 		}
+	}
+	if !strings.Contains(err.Error(), "nothing was written") {
+		t.Errorf("error %q does not say nothing was written", err.Error())
 	}
 	if after := cliTreeDigest(t, r.Root()); after != before {
 		t.Error("a refused ingest changed the working tree")
@@ -590,6 +595,36 @@ func TestLaunchShipPayloadRefusalJSON(t *testing.T) {
 	}
 	if strings.Contains(string(stop), "payload_refusal") {
 		t.Errorf("a structural stop carries payload_refusal, which tells the host to recompose:\n%s", stop)
+	}
+}
+
+// TestLaunchShipPayloadRefusalPrintsReasonsOnce: in human mode a refused
+// payload's reasons are rendered on stdout with the cut; stderr carries one
+// summary line pointing at them, not the same list a second time.
+func TestLaunchShipPayloadRefusalPrintsReasonsOnce(t *testing.T) {
+	r := shipReadyRepo(t)
+	path := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := strings.Replace(string(data), `"What shipped in this release."`, `"# A forged heading"`, 1)
+	if err := os.WriteFile(path, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(r.Root())
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"launch", "ship", "--changelog-json", path}, &stdout, &stderr); code != 2 {
+		t.Fatalf("exit = %d, want 2\nstdout:\n%s\nstderr:\n%s", code, &stdout, &stderr)
+	}
+	if n := strings.Count(stdout.String(), "[heading]"); n != 1 {
+		t.Errorf("stdout names the heading reason %d time(s), want 1:\n%s", n, &stdout)
+	}
+	if strings.Contains(stderr.String(), "[heading]") {
+		t.Errorf("stderr repeats the reasons stdout already rendered:\n%s", &stderr)
+	}
+	if !strings.Contains(stderr.String(), "refused") {
+		t.Errorf("stderr carries no refusal summary:\n%s", &stderr)
 	}
 }
 
