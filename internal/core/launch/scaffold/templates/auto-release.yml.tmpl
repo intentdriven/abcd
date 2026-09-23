@@ -144,19 +144,11 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/plugin-archive"
           mkdir -p "$out"
-          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify
-          # The pin's address derives from plugin.json's repository, which a
-          # rename, a transfer or a fork leaves naming another repository:
-          # --verify passes on it and every install 404s. Bind it to the
-          # repository this workflow releases from. GitHub resolves owner and
-          # repository names case-insensitively, so the comparison is too.
-          name="$(jq -r '.name' .claude-plugin/plugin.json)"
-          url="$(jq -r --arg n "$name" '[.plugins[] | select(.name == $n)][0].source | objects | .url // empty' .claude-plugin/marketplace.json)"
-          prefix="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
-          case "${url,,}" in
-            "${prefix,,}"*) echo "the pin names this repository's ${TAG} release: ${url}" ;;
-            *) echo "the pinned archive address '${url}' is not under ${prefix}: plugin.json's repository does not name the repository this workflow releases from" >&2; exit 1 ;;
-          esac
+          # --repository binds the pin's address to the repository this workflow
+          # releases from: the address derives from plugin.json's repository,
+          # which a rename, a transfer or a fork leaves naming another
+          # repository, and --verify alone passes on a pin every install 404s on.
+          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
 <%- end %>
 
   # Create and push the annotated tag with the GITHUB_TOKEN. This is the ONLY

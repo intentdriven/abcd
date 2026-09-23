@@ -60,7 +60,7 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	// verify: the pin is proved before anything is built, on a real release
 	// only, bound to the tag being released.
 	verify := jobSection(t, wf, "verify")
-	gate := indexOf(t, verify, `go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify`, "verify")
+	gate := indexOf(t, verify, `go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify`+repositoryBinding, "verify")
 	stepStart := strings.LastIndex(verify[:gate], "- name:")
 	if !strings.Contains(verify[stepStart:gate], "if: github.event_name != 'workflow_dispatch'") {
 		t.Error("the verify pin gate must be skipped on the rehearsal path and only there")
@@ -71,22 +71,18 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	// attested and uploaded.
 	rel := jobSection(t, wf, "release")
 	stamp := indexOf(t, rel, "./scripts/check-vcs-stamp.sh", "release")
-	render := indexOf(t, rel, `go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify`, "release")
+	// The same call binds the pinned address to this repository's release, so
+	// it is asserted before the Release is created: the URL derives from
+	// plugin.json's repository, which a rename, transfer or fork leaves pointing
+	// elsewhere, and a pin at another repository's release passes --verify yet
+	// 404s for every install.
+	render := indexOf(t, rel, `go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify`+repositoryBinding, "release")
 	sums := indexOf(t, rel, "sha256sum abcd-* > checksums.txt", "release")
 	attest := indexOf(t, rel, "actions/attest-build-provenance@", "release")
 	create := indexOf(t, rel, `gh release create "${TAG}" bin/abcd-* bin/checksums.txt`, "release")
 	if !(stamp < render && render < sums && sums < attest && attest < create) {
 		t.Errorf("release job order: vcs-stamp %d < archive %d < checksums %d < attest %d < create %d must hold",
 			stamp, render, sums, attest, create)
-	}
-
-	// The pinned address is this repository's release, asserted before the
-	// Release is created: the URL derives from plugin.json's repository, which a
-	// rename, transfer or fork leaves pointing elsewhere, and a pin at another
-	// repository's release passes --verify yet 404s for every install.
-	prefix := indexOf(t, rel, pinPrefixCheck, "release")
-	if !(render < prefix && prefix < create) {
-		t.Errorf("release job order: archive %d < pinned-address check %d < create %d must hold", render, prefix, create)
 	}
 
 	// The release notes state the harness floor the archive source needs (E3).
@@ -107,9 +103,10 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	}
 }
 
-// pinPrefixCheck is the line that binds the pinned download address to the
-// repository the workflow runs in.
-const pinPrefixCheck = `prefix="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"`
+// repositoryBinding is the operand that binds the archive's download address
+// to the repository the workflow runs in. The binary makes the check, so no
+// workflow carries a copy of it in shell.
+const repositoryBinding = ` --repository "${GITHUB_REPOSITORY}"`
 
 // TestAutoReleaseProvesThePinBeforeTheTag is the pre-tag half of the pin gate.
 // release.yml's verify job runs after the tag exists, so a pin the tagged
@@ -127,11 +124,9 @@ func TestAutoReleaseProvesThePinBeforeTheTag(t *testing.T) {
 	detect := jobSection(t, wf, "detect")
 	decide := indexOf(t, detect, "id: detect", "detect")
 	setup := indexOf(t, detect, "actions/setup-go@", "detect")
-	gate := indexOf(t, detect, `go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify`, "detect")
-	prefix := indexOf(t, detect, pinPrefixCheck, "detect")
-	if !(decide < setup && setup < gate && gate < prefix) {
-		t.Errorf("detect job order: decision %d < setup-go %d < archive verify %d < pinned-address check %d must hold",
-			decide, setup, gate, prefix)
+	gate := indexOf(t, detect, `go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify`+repositoryBinding, "detect")
+	if !(decide < setup && setup < gate) {
+		t.Errorf("detect job order: decision %d < setup-go %d < archive verify %d must hold", decide, setup, gate)
 	}
 	// Only a version about to be tagged is proved: between releases main pins
 	// the last release's archive, which its moved-on tree no longer reproduces.
@@ -163,6 +158,24 @@ func TestBareReleaseWorkflowHasNoArchive(t *testing.T) {
 	}
 	if strings.Contains(string(rendered.AutoReleaseYML), "launch archive") {
 		t.Error("the bare auto-release.yml must not prove a plugin archive pin")
+	}
+}
+
+// TestNoWorkflowCarriesTheRepositoryCheckInShell keeps the repository binding
+// in one place: `launch archive --repository` makes it, and a shell copy in a
+// workflow is a second definition that drifts from the first.
+func TestNoWorkflowCarriesTheRepositoryCheckInShell(t *testing.T) {
+	rendered, err := Render(AbcdSubstitutions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, wf := range map[string][]byte{"release.yml": rendered.ReleaseYML, "auto-release.yml": rendered.AutoReleaseYML} {
+		if strings.Contains(string(wf), "/releases/download/${TAG}/") {
+			t.Errorf("%s carries the repository check in shell; call launch archive --repository instead", name)
+		}
+		if n, m := strings.Count(string(wf), "launch archive "), strings.Count(string(wf), repositoryBinding); n != m {
+			t.Errorf("%s: %d launch archive call(s), %d bound to the repository", name, n, m)
+		}
 	}
 }
 

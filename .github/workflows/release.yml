@@ -156,7 +156,7 @@ jobs:
           set -euo pipefail
           out="$RUNNER_TEMP/plugin-archive"
           mkdir -p "$out"
-          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify
+          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
 
       # --- Semantic release gate, armed BEFORE the tag (adr-52, Alternative 1) ---
       # The semantic gate (the LLM passes CI cannot run) refuses HERE, in verify,
@@ -325,26 +325,9 @@ jobs:
         # bin/ AFTER the VCS-stamp check (it is not a binary), so the abcd-* globs
         # below checksum, attest and upload it with the binaries. A refusal
         # removes the archive, so nothing unpinned can be published.
-        run: go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify
-
-      - name: The pinned archive address is this repository's release (fail-closed)
-        # --verify proved the pin names the address plugin.json's repository
-        # derives; this proves that address is where the step below uploads, before
-        # anything is published. TAG arrives through the workflow env.
-        run: |
-          set -euo pipefail
-          # The pin's address derives from plugin.json's repository, which a
-          # rename, a transfer or a fork leaves naming another repository:
-          # --verify passes on it and every install 404s. Bind it to the
-          # repository this workflow releases from. GitHub resolves owner and
-          # repository names case-insensitively, so the comparison is too.
-          name="$(jq -r '.name' .claude-plugin/plugin.json)"
-          url="$(jq -r --arg n "$name" '[.plugins[] | select(.name == $n)][0].source | objects | .url // empty' .claude-plugin/marketplace.json)"
-          prefix="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
-          case "${url,,}" in
-            "${prefix,,}"*) echo "the pin names this repository's ${TAG} release: ${url}" ;;
-            *) echo "the pinned archive address '${url}' is not under ${prefix}: plugin.json's repository does not name the repository this workflow releases from" >&2; exit 1 ;;
-          esac
+        # --repository proves that address is this repository's release, where
+        # the step below uploads, before anything is published.
+        run: go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
 
       - name: Generate checksums.txt over the four binaries and the plugin archive
         # Hash the exact binaries and the archive above into a sha256sum-format

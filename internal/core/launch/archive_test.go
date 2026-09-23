@@ -319,3 +319,49 @@ func TestDeclaresPluginArchive(t *testing.T) {
 	}
 }
 
+// TestCheckArchiveRepository pins the release workflow's repository binding:
+// the archive address derives from plugin.json's repository, which a rename, a
+// transfer or a fork leaves naming another repository, so the gate refuses
+// unless the address sits under the releasing repository's download path for
+// the tag. GitHub resolves owner and repository names case-insensitively.
+func TestCheckArchiveRepository(t *testing.T) {
+	const url = "https://github.com/Example/ABCD/releases/download/v1.2.3/abcd-plugin-v1.2.3.zip"
+	cases := []struct {
+		name, repository, tag string
+		wantErr               error // nil = passes
+		wantText              string
+	}{
+		{name: "this repository", repository: "Example/ABCD", tag: "v1.2.3"},
+		{name: "case-insensitive", repository: "example/abcd", tag: "v1.2.3"},
+		{name: "another repository", repository: "example/fork", tag: "v1.2.3", wantErr: ErrArchiveRepositoryMismatch, wantText: "example/fork"},
+		{name: "a name the address only starts with", repository: "example/abc", tag: "v1.2.3", wantErr: ErrArchiveRepositoryMismatch},
+		{name: "another tag", repository: "example/abcd", tag: "v1.2.4", wantErr: ErrArchiveRepositoryMismatch, wantText: "v1.2.4"},
+		{name: "no slash", repository: "abcd", tag: "v1.2.3", wantText: "owner/name"},
+		{name: "a path", repository: "example/abcd/extra", tag: "v1.2.3", wantText: "owner/name"},
+		{name: "a traversal", repository: "example/..", tag: "v1.2.3", wantText: "owner/name"},
+		{name: "empty", repository: "", tag: "v1.2.3", wantText: "owner/name"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := CheckArchiveRepository(url, tc.repository, tc.tag)
+			if tc.wantErr == nil && tc.wantText == "" {
+				if err != nil {
+					t.Fatalf("CheckArchiveRepository: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("CheckArchiveRepository passed, want a refusal")
+			}
+			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
+				t.Errorf("err = %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr == nil && errors.Is(err, ErrArchiveRepositoryMismatch) {
+				t.Errorf("a malformed operand is a structural fault, not a mismatch: %v", err)
+			}
+			if tc.wantText != "" && !strings.Contains(err.Error(), tc.wantText) {
+				t.Errorf("err = %v, want it to name %q", err, tc.wantText)
+			}
+		})
+	}
+}

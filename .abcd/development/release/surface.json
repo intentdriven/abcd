@@ -1324,6 +1324,13 @@
           "hidden": false
         },
         {
+          "name": "repository",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "tag",
           "shorthand": "",
           "type": "string",

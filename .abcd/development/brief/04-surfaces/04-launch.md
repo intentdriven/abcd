@@ -55,10 +55,11 @@ plugin archive of the release the newest dated CHANGELOG heading names, from the
 checked-out tree, into an existing directory; `--tag` binds it to the tag being
 released, and `--verify` refuses (exit 1) unless the committed catalog pins
 exactly that archive's address and digest, removing the archive so nothing
-unpinned can be published. `auto-release.yml` runs it on the pushed commit
-before the tag is made, and the release workflow runs it again on the tagged
-commit; beside the first and the last run, the workflows refuse a pinned
-address outside the repository's own release downloads.
+unpinned can be published. `--repository <owner/name>` refuses (exit 1) unless
+that address lies under the named repository's release downloads for the tag.
+`auto-release.yml` runs it on the pushed commit before the tag is made, and the
+release workflow runs it again on the tagged commit, each run with
+`--repository "${GITHUB_REPOSITORY}"`.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent. The deterministic emit alone is `abcd
@@ -332,7 +333,9 @@ fingerprinted — not the unversioned working tree.
   first. `auto-release.yml` renders it again from the pushed commit before the
   tag is made, and the release workflow from the tagged commit, in `verify`
   before anything is built and in the publish job on the bytes that ship; none
-  proceeds unless the digests agree. The archive is
+  proceeds unless the digests agree, and each binds the address to the
+  repository it runs in (`--repository`), since `plugin.json`'s `repository`
+  names another one after a rename, a transfer or a fork. The archive is
   reproducible by construction: sorted entries, stored uncompressed, one fixed
   timestamp, modes normalised to 0644 or 0755.
 - **The catalog is left out of the zip.** It is the file that names the zip's
@@ -447,7 +450,9 @@ performed by a human and by CI.
   pin, `launch archive --verify` exits 1, names both digests, and leaves no
   archive behind; **given** an uncommitted payload change, `ship` refuses before
   writing anything. **Given** the contract without the declaration, `ship`
-  leaves the catalog byte-identical and reports it as not pinned.
+  leaves the catalog byte-identical and reports it as not pinned. **Given** a
+  pinned address under another repository, `launch archive --repository` exits 1
+  and leaves no archive behind.
 - **Given** at least one additive intent and no breaking intent, **when** `ship`
   runs, **then** the tier is minor and the launch report names the intents that
   drove it. **Given** any breaking intent, the tier is major and the report names

@@ -306,3 +306,59 @@ func TestLaunchShipRefusesAnUnreadableDeclaration(t *testing.T) {
 	}
 }
 
+// TestLaunchArchiveRepositoryBindsTheAddress is the release workflow's
+// repository gate: the archive address derives from plugin.json's repository,
+// which a rename, a transfer or a fork leaves naming another repository —
+// --verify passes on it and every install 404s. --repository refuses (exit 1,
+// the archive removed) unless the address sits under that repository's
+// download path for the release's tag.
+func TestLaunchArchiveRepositoryBindsTheAddress(t *testing.T) {
+	t.Run("this repository", func(t *testing.T) {
+		r := shipArchiveRepo(t)
+		outDir := t.TempDir()
+		out, err := shipIn(t, r, "launch", "archive", "--out", outDir, "--repository", "Example/ABCD", "--json")
+		if code := exitCodeOf(err); code != 0 {
+			t.Fatalf("exit = %d, want 0\n%s\n%v", code, out, err)
+		}
+		var rep struct {
+			Repository struct {
+				Checked bool `json:"checked"`
+				OK      bool `json:"ok"`
+			} `json:"repository"`
+		}
+		if err := json.Unmarshal(out, &rep); err != nil {
+			t.Fatalf("parse --json: %v\n%s", err, out)
+		}
+		if !rep.Repository.Checked || !rep.Repository.OK {
+			t.Errorf("the repository check must be reported as passed, got %+v", rep.Repository)
+		}
+		if _, err := os.Stat(filepath.Join(outDir, "abcd-plugin-v0.4.0.zip")); err != nil {
+			t.Errorf("the archive must be written: %v", err)
+		}
+	})
+	t.Run("another repository", func(t *testing.T) {
+		r := shipArchiveRepo(t)
+		outDir := t.TempDir()
+		out, err := shipIn(t, r, "launch", "archive", "--out", outDir, "--repository", "example/fork")
+		if code := exitCodeOf(err); code != 1 {
+			t.Fatalf("exit = %d, want 1\n%s\n%v", code, out, err)
+		}
+		if !strings.Contains(string(out), "example/fork") || !strings.Contains(string(out), "MISMATCH") {
+			t.Errorf("the refusal must name the repository it was bound to:\n%s", out)
+		}
+		if entries, _ := os.ReadDir(outDir); len(entries) != 0 {
+			t.Errorf("a refused archive must not be left in --out, found %v", entries)
+		}
+	})
+	t.Run("not owner/name", func(t *testing.T) {
+		r := shipArchiveRepo(t)
+		outDir := t.TempDir()
+		out, err := shipIn(t, r, "launch", "archive", "--out", outDir, "--repository", "https://github.com/example/abcd")
+		if code := exitCodeOf(err); code != 2 {
+			t.Fatalf("exit = %d, want 2\n%s\n%v", code, out, err)
+		}
+		if entries, _ := os.ReadDir(outDir); len(entries) != 0 {
+			t.Errorf("nothing may be written on a malformed operand, found %v", entries)
+		}
+	})
+}

@@ -17,17 +17,19 @@ import (
 )
 
 // archiveReport is what `abcd launch archive` reports: the archive it wrote, the
-// address a release publishes it at, and — with --verify — whether the
-// committed catalog pins exactly this archive.
+// address a release publishes it at, whether — with --verify — the committed
+// catalog pins exactly this archive, and whether — with --repository — that
+// address is the named repository's release.
 type archiveReport struct {
-	Archive launch.PluginArchive `json:"archive"`
-	URL     string               `json:"url"`
-	Pin     archivePinCheck      `json:"pin"`
+	Archive    launch.PluginArchive `json:"archive"`
+	URL        string               `json:"url"`
+	Pin        archiveCheck         `json:"pin"`
+	Repository archiveCheck         `json:"repository"`
 }
 
-// archivePinCheck is the --verify verdict. Checked is false when the caller did
-// not ask, so a render that proved nothing never reads as one that passed.
-type archivePinCheck struct {
+// archiveCheck is one gate's verdict. Checked is false when the caller did not
+// ask, so a render that proved nothing never reads as one that passed.
+type archiveCheck struct {
 	Checked bool   `json:"checked"`
 	OK      bool   `json:"ok"`
 	Detail  string `json:"detail,omitempty"`
@@ -39,23 +41,31 @@ type archivePinCheck struct {
 // It renders the plugin archive of the release the newest dated CHANGELOG
 // heading names — the heading auto-release.yml tags — from the checked-out tree,
 // writes it into --out, and with --verify refuses unless the committed catalog
-// pins exactly that archive's address and digest. The release workflow runs it
-// against the tagged commit twice: in verify, before anything is built, and in
-// the publish job, where the verified archive is the file checksummed, attested
-// and uploaded.
+// pins exactly that archive's address and digest. With --repository <owner/name>
+// it also refuses unless that address sits under the named repository's
+// download path for the release's tag: the address derives from plugin.json's
+// repository, which a rename, a transfer or a fork leaves naming another
+// repository, so --verify alone passes on a pin every install 404s on. The
+// release workflows run it with the repository they release from, against the
+// tagged commit: in auto-release's detect job before the tag, in verify before
+// anything is built, and in the publish job, where the verified archive is the
+// file checksummed, attested and uploaded.
 //
 // Exit codes:
 //
-//	0  the archive was written (and, with --verify, matches the pin).
-//	1  --verify refused: the committed pin names another archive, or none. The
-//	   rendered archive is removed from --out, so no later step can publish it.
-//	2  a structural fault — no dated release, a --tag naming another release, an
-//	   unusable --out, or a render refusal. Nothing is left in --out.
+//	0  the archive was written (and, with --verify and --repository, matches
+//	   the pin and sits under the repository's release).
+//	1  a gate refused: the committed pin names another archive, or none, or the
+//	   address is not the named repository's release. The rendered archive is
+//	   removed from --out, so no later step can publish it.
+//	2  a structural fault — no dated release, a --tag naming another release, a
+//	   --repository that is not owner/name, an unusable --out, or a render
+//	   refusal. Nothing is left in --out.
 func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
-	var outDir, tag string
+	var outDir, tag, repository string
 	var verify bool
 	cmd := &cobra.Command{
-		Use:   "archive --out <dir> [--tag <vX.Y.Z>] [--verify]",
+		Use:   "archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>]",
 		Short: "Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -65,6 +75,13 @@ func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
 			}
 			if outDir == "" {
 				return &exitError{Code: 2, Msg: "abcd launch archive: --out names no directory"}
+			}
+			// A malformed --repository is refused before anything is rendered,
+			// so an operand error never leaves an archive behind.
+			if cmd.Flags().Changed("repository") {
+				if err := launch.ValidateGitHubRepository(repository); err != nil {
+					return &exitError{Code: 2, Msg: "abcd launch archive: " + scrubPaths(err)}
+				}
 			}
 			out, err := filepath.Abs(outDir)
 			if err != nil {
@@ -98,20 +115,37 @@ func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
 					rep.Pin.OK = true
 				case errors.Is(verr, launch.ErrArchivePinMismatch):
 					rep.Pin.Detail = verr.Error()
-					// Fail closed: an archive the catalog does not pin must not
-					// sit where a later upload step's glob would find it.
-					_ = os.Remove(a.Path)
 				default:
 					_ = os.Remove(a.Path)
 					return &exitError{Code: 2, Msg: "abcd launch archive: " + scrubPaths(verr)}
 				}
+			}
+			// Both gates run before either decides, so a refusal names every
+			// gate the release failed rather than only the first.
+			if cmd.Flags().Changed("repository") {
+				rep.Repository.Checked = true
+				rerr := launch.CheckArchiveRepository(rep.URL, repository, "v"+a.Version)
+				switch {
+				case rerr == nil:
+					rep.Repository.OK = true
+				case errors.Is(rerr, launch.ErrArchiveRepositoryMismatch):
+					rep.Repository.Detail = rerr.Error()
+				default:
+					_ = os.Remove(a.Path)
+					return &exitError{Code: 2, Msg: "abcd launch archive: " + scrubPaths(rerr)}
+				}
+			}
+			// Fail closed: an archive a gate refused must not sit where a later
+			// upload step's glob would find it.
+			if rep.refused() {
+				_ = os.Remove(a.Path)
 			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
 				renderArchive(w, rep)
 			}); rerr != nil {
 				return rerr
 			}
-			if rep.Pin.Checked && !rep.Pin.OK {
+			if rep.refused() {
 				return &exitError{Code: 1}
 			}
 			return nil
@@ -120,7 +154,14 @@ func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&outDir, "out", "", "existing directory to write <plugin>-plugin-v<version>.zip into")
 	cmd.Flags().StringVar(&tag, "tag", "", "refuse unless the newest dated CHANGELOG version is this tag")
 	cmd.Flags().BoolVar(&verify, "verify", false, "refuse (exit 1) unless the committed catalog pins this archive's address and digest")
+	cmd.Flags().StringVar(&repository, "repository", "",
+		"refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag")
 	return cmd
+}
+
+// refused reports whether a gate the caller asked for refused the archive.
+func (rep archiveReport) refused() bool {
+	return (rep.Pin.Checked && !rep.Pin.OK) || (rep.Repository.Checked && !rep.Repository.OK)
 }
 
 // archiveRenderRequest assembles the render input for the release the newest
@@ -187,15 +228,25 @@ func renderArchive(w io.Writer, rep archiveReport) {
 	fmt.Fprintf(w, "abcd launch archive — %s (%d file(s), %d bytes)\n", a.Name, a.Files, a.Bytes)
 	fmt.Fprintf(w, "  sha256:  %s\n", a.SHA256)
 	fmt.Fprintf(w, "  url:     %s\n", termsafe.Sanitize(rep.URL))
+	if rep.refused() {
+		fmt.Fprintln(w, "  written: nothing (the archive was removed)")
+	} else {
+		fmt.Fprintf(w, "  written: %s\n", termsafe.Sanitize(a.Path))
+	}
 	switch {
 	case !rep.Pin.Checked:
-		fmt.Fprintf(w, "  written: %s\n", termsafe.Sanitize(a.Path))
 		fmt.Fprintln(w, "  pin:     not checked (pass --verify to prove the committed catalog pins this archive)")
 	case rep.Pin.OK:
-		fmt.Fprintf(w, "  written: %s\n", termsafe.Sanitize(a.Path))
 		fmt.Fprintln(w, "  pin:     matches the committed catalog")
 	default:
-		fmt.Fprintln(w, "  written: nothing (the archive was removed)")
 		fmt.Fprintf(w, "  pin:     MISMATCH — %s\n", termsafe.Sanitize(rep.Pin.Detail))
+	}
+	switch {
+	case !rep.Repository.Checked:
+		fmt.Fprintln(w, "  repo:    not checked (pass --repository to prove the address is that repository's release)")
+	case rep.Repository.OK:
+		fmt.Fprintln(w, "  repo:    the address is the named repository's release")
+	default:
+		fmt.Fprintf(w, "  repo:    MISMATCH — %s\n", termsafe.Sanitize(rep.Repository.Detail))
 	}
 }

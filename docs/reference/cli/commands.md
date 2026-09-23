@@ -1029,14 +1029,15 @@ Preview the public launch bundle and release gates (--dry-run required; read-onl
 
 Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)
 
-**Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [flags]`
+**Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
 
 **Flags:**
 
 ```
-      --out string   existing directory to write <plugin>-plugin-v<version>.zip into
-      --tag string   refuse unless the newest dated CHANGELOG version is this tag
-      --verify       refuse (exit 1) unless the committed catalog pins this archive's address and digest
+      --out string          existing directory to write <plugin>-plugin-v<version>.zip into
+      --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
+      --tag string          refuse unless the newest dated CHANGELOG version is this tag
+      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
 ```
 
 #### `abcd launch scaffold`

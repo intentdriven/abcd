@@ -1,7 +1,7 @@
 ---
 name: launch
 description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog, render and verify the release's pinned plugin archive, and scaffold the changelog-driven release gate into a managed repo. The preview performs zero writes; `ship` writes the dated CHANGELOG heading and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `scaffold` writes the release workflows and never publishes.
-argument-hint: "[--dry-run] | ship [--changelog-json <path>] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] | scaffold"
+argument-hint: "[--dry-run] | ship [--changelog-json <path>] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
 ---
 
 # `/abcd:launch` release preview and release cut
@@ -475,7 +475,7 @@ normalised — so the same commit renders the same bytes on any machine. The
 catalog is left out of it, because the catalog is what names its digest.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" launch archive --out <dir> [--tag vX.Y.Z] [--verify] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" launch archive --out <dir> [--tag vX.Y.Z] [--verify] [--repository <owner/name>] --json
 ```
 
 - `--tag` refuses unless the newest dated CHANGELOG version is that tag.
@@ -484,17 +484,23 @@ catalog is left out of it, because the catalog is what names its digest.
   in `detect`, before the tag is made; the release workflow runs it again on the
   tagged commit in `verify`, before anything is built, and once more in the
   publish job, where the verified archive is the file it checksums, attests and
-  uploads. Beside the first and last of these the workflows check that the
-  pinned address lies under this repository's own
-  `https://github.com/<owner>/<repo>/releases/download/<tag>/`.
+  uploads.
+- `--repository <owner/name>` refuses unless the archive's download address lies
+  under that repository's
+  `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared
+  case-insensitively. The address derives from `plugin.json`'s `repository`,
+  which a rename, a transfer or a fork leaves naming another repository —
+  `--verify` passes on it and every install fails to fetch. Every run in the
+  workflows passes `--repository "${GITHUB_REPOSITORY}"`.
 
-Exit codes: **0** the archive was written (and, with `--verify`, matches the pin);
-**1** `--verify` refused — the report names both digests, and the archive is
-removed so no later step can publish it; **2** a structural fault (no dated
-release, a `--tag` naming another release, an unusable `--out`, a render
-refusal), with nothing left behind.
+Exit codes: **0** the archive was written (and every gate asked for passed);
+**1** `--verify` or `--repository` refused — the report names both digests or
+both addresses, and the archive is removed so no later step can publish it;
+**2** a structural fault (no dated release, a `--tag` naming another release, a
+`--repository` that is not `owner/name`, an unusable `--out`, a render refusal),
+with nothing left behind.
 
-Relay `archive.name`, `archive.sha256`, `url` and `pin`. Between releases, `main`
+Relay `archive.name`, `archive.sha256`, `url`, `pin` and `repository`. Between releases, `main`
 pins the last release's archive, which its moved-on tree no longer reproduces, so
 `--verify` there is expected to refuse: it proves a release commit, not a branch
 tip.

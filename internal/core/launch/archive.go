@@ -65,9 +65,21 @@ var githubRepoRe = regexp.MustCompile(`^https://github\.com/([A-Za-z0-9][A-Za-z0
 // a digest the render does not reproduce. It is the release gate's refusal.
 var ErrArchivePinMismatch = errors.New("the committed marketplace pin does not match the rendered plugin archive")
 
+// ErrArchiveRepositoryMismatch reports that the archive's download address does
+// not sit under the releasing repository's download path for the tag. The
+// address derives from plugin.json's repository, which a rename, a transfer or
+// a fork leaves naming another repository: the pin still matches the render,
+// and every install 404s. It is the release gate's refusal, like
+// ErrArchivePinMismatch.
+var ErrArchiveRepositoryMismatch = errors.New("the plugin archive's address is not the releasing repository's release")
+
 // publishesArchiveKey is the version-location contract's declaration that the
 // repository's release workflow publishes the pinned plugin archive.
 const publishesArchiveKey = "publishes_plugin_archive"
+
+// githubRepositoryRe is a bare GitHub repository name, owner/name, as the
+// forge hands it to a workflow in GITHUB_REPOSITORY.
+var githubRepositoryRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$`)
 
 // PluginArchive is one rendered, packed plugin release archive.
 type PluginArchive struct {
@@ -269,6 +281,33 @@ func DeclaresPluginArchive(repoRoot string) (bool, error) {
 		return false, fmt.Errorf("version-location.json: %s must be true or false", publishesArchiveKey)
 	}
 	return b, nil
+}
+
+// ValidateGitHubRepository refuses a repository that is not a bare GitHub
+// owner/name, the shape a workflow's GITHUB_REPOSITORY carries.
+func ValidateGitHubRepository(repository string) error {
+	if !githubRepositoryRe.MatchString(repository) || strings.HasSuffix(repository, "/.") || strings.HasSuffix(repository, "/..") {
+		return fmt.Errorf("the repository %q is not a GitHub owner/name", repository)
+	}
+	return nil
+}
+
+// CheckArchiveRepository refuses, with ErrArchiveRepositoryMismatch, unless url
+// sits under https://github.com/<repository>/releases/download/<tag>/ — the
+// path the release workflow running in repository uploads tag's assets to.
+// GitHub resolves owner and repository names case-insensitively, so the
+// comparison is too. A repository that is not owner/name is a structural fault,
+// not a mismatch.
+func CheckArchiveRepository(url, repository, tag string) error {
+	if err := ValidateGitHubRepository(repository); err != nil {
+		return err
+	}
+	prefix := "https://github.com/" + repository + "/releases/download/" + tag + "/"
+	if !strings.HasPrefix(strings.ToLower(url), strings.ToLower(prefix)) {
+		return fmt.Errorf("%w: %s is not under %s — plugin.json's repository does not name the repository this release runs in",
+			ErrArchiveRepositoryMismatch, url, prefix)
+	}
+	return nil
 }
 
 // ArchiveReleaseURL is the address the release workflow publishes version's
