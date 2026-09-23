@@ -85,7 +85,8 @@ Run from the repo root.
 
 ```bash
 make preflight      # the pre-push gate: lint-reviews + lint-issues +
-                    # lint-decisions + record-lint + docs-lint + site-render +
+                    # lint-decisions + record-lint + issue-drift + docs-lint +
+                    # site-render +
                     # smoke + evals-cold-reading,
                     # then build + vet +
                     # test + race (internal)
@@ -118,8 +119,8 @@ its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on macOS + Linux — build,
 vet, test and the race-enabled internal tests on both, with the `make
-fmt-check` format gate, the record-lint and docs-lint steps and the site-render
-gate on the Linux leg alone. Separate jobs run the reviews-charter check
+fmt-check` format gate, the record-lint, issue-drift and docs-lint steps and the
+site-render gate on the Linux leg alone. Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
 (RS001–RS005) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
@@ -276,8 +277,9 @@ irreversible; guessing downward costs nothing.**
 
 ## Definition of done
 
-- `make preflight` is clean — the six gates (`lint-reviews`, `lint-issues`,
-  `lint-decisions`, `record-lint`, `docs-lint`, `site-render`), both tagged eval
+- `make preflight` is clean — the seven gates (`lint-reviews`, `lint-issues`,
+  `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`, `site-render`),
+  both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The eval
   lanes are named separately because their files carry a build tag, so

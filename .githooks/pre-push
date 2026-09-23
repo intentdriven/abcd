@@ -9,8 +9,8 @@
 #      a direct push to the protected branch, a deletion of it, and any
 #      non-fast-forward (force) push to any branch.
 #   2. `make preflight` must pass natively before a push leaves this machine —
-#      the five lint gates (lint-reviews, lint-issues, lint-decisions,
-#      record-lint, docs-lint),
+#      the six lint gates (lint-reviews, lint-issues, lint-decisions,
+#      record-lint, issue-drift, docs-lint),
 #      the site-render gate and both tagged eval lanes (smoke,
 #      evals-cold-reading), then build, vet, test and the race-enabled
 #      internal tests. The eval lanes are named because the untagged `go test`

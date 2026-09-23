@@ -4,8 +4,8 @@ name: ci
 # work is covered by the pull_request trigger alone, so a PR push runs the matrix
 # once; the default-branch push keeps the merged tip checked. The check job
 # builds, vets and tests on macOS and Linux, with race-enabled internal tests on
-# both and the `make fmt-check` format gate, record-lint, docs-lint and the
-# site-render gate on the ubuntu leg alone. Separate jobs run full-history
+# both and the `make fmt-check` format gate, record-lint, the issue-drift check,
+# docs-lint and the site-render gate on the ubuntu leg alone. Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
 # gates (RS001-RS003), dependency review, govulncheck, the smoke harness, and the
 # cold-reading evals.
@@ -337,6 +337,15 @@ jobs:
             echo "::warning::record-lint ran unarmed: no base commit for -agent-diff (BASE_SHA='${BASE_SHA:-}'), so agent_contract's unbumped-edit check did not run"
             go run ./cmd/record-lint
           fi
+
+      # Promote-join drift gate (itd-4 AC3): both halves of every promote join
+      # (`related_issues` on the intent, `related_intents` on the ledger record)
+      # agree, no id dangles, a shipped intent's issue reached resolved/, and no
+      # retired `promoted_to` / `promoted_from` key survives. `--strict` turns
+      # the verb's warning into a failure; `make issue-drift` runs the same line.
+      - name: Issue-drift (promote-join gate)
+        if: matrix.os == 'ubuntu-latest'
+        run: go run ./cmd/abcd intent audit --issue-drift --strict
 
       # Docs-currency gate (itd-60): the internal/core/lint engine over docs/ and
       # the repo root, driven via the `abcd docs lint` verb. Blocking — a doc-body

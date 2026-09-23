@@ -271,7 +271,7 @@ package-manager install takes the manager's own upgrade.
 
 ```bash
 make preflight   # the pre-push gate: lint-reviews, lint-issues, lint-decisions,
-                 # record-lint, docs-lint, site-render, smoke and
+                 # record-lint, issue-drift, docs-lint, site-render, smoke and
                  # evals-cold-reading, then build, vet, test and race
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd version    # print the version
