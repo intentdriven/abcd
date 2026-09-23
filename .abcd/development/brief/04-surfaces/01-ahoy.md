@@ -333,6 +333,18 @@ dogfood mode, proceed despite a stale running binary (the default refuses before
 any write and names the rebuild fix), name the directory for the `PATH` entry,
 and opt the repo into the attribution prompt hook.
 
+**The house-style question.** When the install seeds the docs-lint config, it
+asks one more question: whether the em-dash-in-list-item rule, abcd's own house
+style rather than a currency rule, blocks or warns in this repository (the
+product thinker's ruling of 2026-09-23 in the decision log). The chosen severity is written into the seeded config, which is
+where the choice is recorded and where the repository changes it later. Blanket
+approval does not ask and seeds a warning, and says so in the result. A bare
+Enter or end-of-file takes the displayed default, also a warning. An answer that
+names neither choice (the `y` a piped `yes` sends) is not guessed into a gate: it
+seeds the warning and the result says what was heard. The question is asked
+only when the seed is written: a repository that already carries a docs-lint
+config keeps its own severity and is not asked.
+
 Blanket approval does **not** adopt an unmanaged repo or pin an unset git
 identity: those still need their own answer. The identity-pin exclusion is
 stated rather than assumed — the flag's own help names it, the install envelope

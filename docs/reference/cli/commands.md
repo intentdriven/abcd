@@ -164,7 +164,7 @@ Capture issues to the ledger; bare invocation is read-only status
 ```
       --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
-      --found-at string          optional repo-relative path or conceptual location
+      --found-at string          optional repo-relative path, which must exist in this checkout, or a conceptual location in words
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)

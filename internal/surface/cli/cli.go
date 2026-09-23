@@ -430,6 +430,36 @@ func markUsageErrorsExitTwo(c *cobra.Command) {
 type docsLintResult struct {
 	Findings []lint.Finding `json:"findings"`
 	Blockers int            `json:"blockers"`
+	// Checks is how many checks the configuration armed (banned tokens plus
+	// enabled rules). Zero means nothing was checked, and an empty findings list
+	// beside it is not a pass (iss-2609150805167646).
+	Checks int `json:"checks"`
+	// Documents is how many markdown documents the roots held for the
+	// per-document rules to read. Zero means those rules read nothing.
+	Documents int `json:"documents"`
+	// NothingChecked is true when the lint checked nothing: no rule is armed,
+	// or the roots hold no document. The exit status stays 0 there (ruling G2,
+	// 2026-09-23), so this and Warning are how a caller tells it from a pass.
+	NothingChecked bool `json:"nothing_checked"`
+	// Warning says that nothing was checked, and why. Empty otherwise.
+	Warning string `json:"warning,omitempty"`
+}
+
+// docsLintNothingCheckedWarning returns the loud warning for a lint that
+// checked nothing, naming why, or "" when it checked something. ref is the
+// config as the user knows it.
+func docsLintNothingCheckedWarning(checks, documents int, roots []string, ref string) string {
+	const lead = "nothing was checked: "
+	const tail = "; the exit status is 0 because no rule was broken, which is not a pass"
+	switch {
+	case checks == 0:
+		return lead + "no rules are configured in " + ref + tail
+	case len(roots) == 0:
+		return lead + "no roots are configured in " + ref + ", so no document was read" + tail
+	case documents == 0:
+		return lead + "the configured roots (" + strings.Join(roots, ", ") + ") hold no markdown document, so no per-document rule read anything" + tail
+	}
+	return ""
 }
 
 // newDocsCommand builds the `docs` sub-tree. Its `lint` verb is the docs-currency
@@ -519,7 +549,25 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 					blockers++
 				}
 			}
-			res := docsLintResult{Findings: findings, Blockers: blockers}
+			documents, err := lint.DocumentsInRoots(cfg, root)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "docs lint: " + scrubPaths(err)}
+			}
+			ref := filepath.Join(".abcd", "docs-lint.json")
+			if configPath != "" {
+				ref = configPath
+			}
+			res := docsLintResult{Findings: findings, Blockers: blockers, Checks: cfg.ArmedChecks(), Documents: documents}
+			res.Warning = docsLintNothingCheckedWarning(res.Checks, documents, cfg.Roots, ref)
+			res.NothingChecked = res.Warning != ""
+			// A lint that checked nothing is WARNED about loudly, on stderr in
+			// both renders, and still exits 0 (ruling G2, 2026-09-23): the
+			// config was read and no rule it declares was broken, so a nonzero
+			// exit would turn every older prepared repository's CI red, but a
+			// quiet 0 is a green that means nothing (loud-staging).
+			if res.NothingChecked {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd docs lint: WARNING: %s\n", termsafe.Sanitize(res.Warning))
+			}
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				for _, f := range findings {
 					// Every non-numeric field embeds untrusted repo content: File and
@@ -529,6 +577,12 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 					// are sanitised.
 					fmt.Fprintf(w, "%s:%d: [%s %s] %s\n",
 						termsafe.Sanitize(f.File), f.Line, termsafe.Sanitize(strings.ToUpper(f.Severity)), termsafe.Sanitize(f.RuleID), termsafe.Sanitize(f.Message))
+				}
+				// A config that armed nothing ran nothing: "0 finding(s)" would
+				// manufacture a false green (loud-staging, iss-2609150805167646).
+				if res.Checks == 0 {
+					fmt.Fprintf(w, "abcd docs lint — no rules configured in %s: nothing was checked\n", termsafe.Sanitize(ref))
+					return
 				}
 				fmt.Fprintf(w, "abcd docs lint — %d finding(s), %d blocker(s)\n", len(findings), blockers)
 			}); err != nil {
@@ -3294,7 +3348,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
-	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path or conceptual location")
+	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path, which must exist in this checkout, or a conceptual location in words")
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
