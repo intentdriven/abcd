@@ -9,7 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
 // preflight's prerequisite list is a DERIVED value, and every surface that
@@ -325,6 +327,40 @@ func TestIssueResolutionGateScopesToStatusDirs(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("scripts/check-issue-resolution.sh declares STATUS_DIRS=%v, want %v (issueschema.StatusDirs)",
 			got, want)
+	}
+}
+
+// RS005 (itd-2609111003026787) reads the intent store and the spec store from
+// the same shell script, and the shell cannot import Go either — so the script
+// holds the second spelling of three values the stores own: the intent-store
+// root, its bucket list, and the spec-store root. Each is held to its one Go
+// value here. A root that drifts makes every declared intent read as "no record
+// anywhere", and a bucket list that drops one sends a real record to the same
+// verdict, which is a refusal with the wrong diagnosis on every delivery.
+func TestIssueResolutionGateReadsTheIntentAndSpecStores(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	script := readRepoFile(t, root, "scripts/check-issue-resolution.sh")
+
+	for _, pin := range []struct{ name, want string }{
+		{"INTENTS_DIR", intent.IntentsRelDir},
+		{"SPECS_DIR", spec.SpecsRelDir},
+	} {
+		m := regexp.MustCompile(`(?m)^` + pin.name + `="([^"]*)"`).FindStringSubmatch(script)
+		if m == nil {
+			t.Fatalf("scripts/check-issue-resolution.sh declares no %s=\"...\"; RS005 must name the store it reads", pin.name)
+		}
+		if m[1] != pin.want {
+			t.Fatalf("scripts/check-issue-resolution.sh declares %s=%q, want %q", pin.name, m[1], pin.want)
+		}
+	}
+
+	m := regexp.MustCompile(`(?m)^INTENT_BUCKETS=\(([^)]*)\)`).FindStringSubmatch(script)
+	if m == nil {
+		t.Fatalf("scripts/check-issue-resolution.sh declares no INTENT_BUCKETS=(...) array;\n" +
+			"RS005 must scope its intent lookups to the store's buckets, and the array is where it says which")
+	}
+	if got := strings.Fields(m[1]); !slices.Equal(got, intent.Buckets) {
+		t.Fatalf("scripts/check-issue-resolution.sh declares INTENT_BUCKETS=%v, want %v (intent.Buckets)", got, intent.Buckets)
 	}
 }
 

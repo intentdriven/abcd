@@ -57,6 +57,26 @@
 #          reach the history a repository already has, which is what the
 #          read-only `abcd capture mentions` listing reads.
 #
+#   RS005  A `Delivers: itd-N` trailer in the range must be accompanied by that
+#          intent ENTERING .abcd/development/intents/shipped/ in the same range
+#          (itd-2609111003026787) — the intent-store twin of RS001. `abcd spec
+#          close` ships an intent as its close-hook, on the close after which no
+#          open spec names it, and nothing runs that close for anyone: 61 planned
+#          intents sat with their specs open when this was measured, and an
+#          intent whose work is on main with its spec open ships with no
+#          changelog line while the cut exits 0 (iss-2609091642508005). Nothing
+#          here infers that work is live; the author declares it and the rule
+#          holds the declaration, so a change naming no delivery is refused
+#          nothing and the standing backlog is out of reach by design. The
+#          trailer means "this change FINISHES the intent", not "contributes to
+#          it". The refusal names the cause it can prove, in RS001's shape: an
+#          id with no record, a branch that predates the record, an intent
+#          already shipped, a draft or superseded record, a planned intent with
+#          no spec to close, and — the ordinary case — every spec still open
+#          that names it, each with its `abcd spec close`. A `Delivers:` line
+#          the rule cannot read (a spec id, a bare word, the wrong case) is
+#          refused too, since an author who wrote it believes it armed.
+#
 #   RS003  Every resolved_by.commit already in the ledger must still be
 #          reachable. This is the drift detector, and it is not hypothetical:
 #          the repository allows merge, squash AND rebase, the method is a
@@ -65,7 +85,7 @@
 #          this landed; RS003 is what notices the day one is not.
 #
 # Usage:
-#   check-issue-resolution.sh commits <base-ref> <head-ref>   # RS001 + RS002 + RS004
+#   check-issue-resolution.sh commits <base-ref> <head-ref>   # RS001 + RS002 + RS004 + RS005
 #   check-issue-resolution.sh ledger [<ref>]                  # RS003 (default HEAD)
 #   check-issue-resolution.sh pr <title-file> <body-file>     # RS004 on the PR form
 #
@@ -165,6 +185,32 @@ DECLARE_RE='^(Resolves|Refs):[[:space:]]+iss-[0-9]+([[:space:]]*,[[:space:]]*iss
 # is captured and stripped by the second grep rather than matched with a
 # look-behind, which ERE also lacks.
 MENTION_RE='(^|[^A-Za-z0-9])iss-[0-9]+'
+
+# RS005's two stores. The shell cannot import Go, so these are the second
+# spelling of intent.IntentsRelDir, intent.Buckets and spec.SpecsRelDir, pinned
+# to them by TestIssueResolutionGateReadsTheIntentAndSpecStores. The intent
+# lookups are scoped to the buckets for the reason STATUS_DIRS is: the store's
+# root holds a README and other non-record files.
+INTENTS_DIR=".abcd/development/intents"
+INTENT_BUCKETS=(drafts planned shipped disciplines superseded)
+SPECS_DIR=".abcd/development/specs"
+INTENT_PATHSPECS=()
+for bucket in "${INTENT_BUCKETS[@]}"; do
+	INTENT_PATHSPECS+=("$INTENTS_DIR/$bucket")
+done
+
+# The `Delivers:` trailer RS005 judges: the intent id, as a comma-separated list
+# in step with TRAILER_RE. `itd-[0-9]+` covers the sequential ids and the minted
+# timestamp ids alike. It takes the INTENT id, never the spec id: the intent is
+# the thing delivered, and a trailer that could name either store would be
+# ambiguous about which one to look in.
+DELIVERS_RE='^Delivers:[[:space:]]+itd-[0-9]+([[:space:]]*,[[:space:]]*itd-[0-9]+)*[[:space:]]*$'
+# Any line that reads as an attempt at the trailer, whatever its case. A line
+# this matches and DELIVERS_RE does not is refused rather than passed over: the
+# author believes the declaration armed, and a gate that silently skipped it
+# would be the omission the rule exists to close. (Bracket classes, because
+# bash 3.2 has neither ${var,,} nor nocasematch-safe portability here.)
+DELIVERS_LOOSE_RE='^[Dd][Ee][Ll][Ii][Vv][Ee][Rr][Ss]?[[:space:]]*:'
 
 violations=0
 
@@ -269,6 +315,147 @@ check_mentions() {
 	done
 }
 
+# canon_itd prints an intent id in the one spelling the store's filenames use —
+# leading zeros trimmed, textually — or nothing for an id with no number left
+# (the allocator issues no zero id). recordid.CanonCitedID is the Go original;
+# `itd-007` in a trailer or a back-link names the record filed as itd-7.
+canon_itd() {
+	local n="${1#[Ii][Tt][Dd]-}"
+	n="${n#"${n%%[!0]*}"}"
+	[ -n "$n" ] && printf 'itd-%s\n' "$n"
+	return 0
+}
+
+# ids_entering_shipped prints, canonically, every itd-N whose record ENTERS
+# shipped/ across the range: a move out of planned/ (a rename, or an add without
+# rename detection) or a record filed straight into shipped/. The mirror of
+# ids_entering_closed, and as there a record that only leaves planned/ enters
+# nothing.
+ids_entering_shipped() {
+	local base="$1" head="$2"
+	git diff --name-status --find-renames "$base".."$head" -- "${INTENT_PATHSPECS[@]}" |
+		while IFS=$'\t' read -r status path dest; do
+			local landed=""
+			case "$status" in
+			R*) landed="$dest" ;;
+			A) landed="$path" ;;
+			esac
+			case "$landed" in
+			"$INTENTS_DIR/shipped/"*)
+				canon_itd "$(basename "$landed" | grep -oE '^itd-[0-9]+' || true)"
+				;;
+			esac
+		done
+}
+
+# intent_path prints the store path of a canonical itd-N at ref, or nothing. The
+# id is matched as a whole basename prefix, zero padding admitted, so itd-7 never
+# answers for itd-70.
+intent_path() {
+	local ref="$1" id="$2"
+	git ls-tree -r --name-only "$ref" -- "${INTENT_PATHSPECS[@]}" 2>/dev/null |
+		grep -E "/itd-0*${id#itd-}(-[^/]*)?\.md\$" | head -1 || true
+}
+
+# bucket_of prints the lifecycle bucket an intent path sits in.
+bucket_of() {
+	local path="${1#"$INTENTS_DIR"/}"
+	printf '%s\n' "${path%%/*}"
+}
+
+# frontmatter_field prints one scalar from a record's frontmatter at ref,
+# unquoted, reading the frontmatter ONLY — as frontmatter_commit does, and for
+# the same reason: a `intent:` line in a spec's prose is narrative.
+frontmatter_field() {
+	local ref="$1" path="$2" key="$3"
+	git show "$ref:$path" 2>/dev/null |
+		awk -v key="$key" 'NR==1{if($0!="---")exit;next} /^---$/{exit}
+			index($0,key":")==1{v=substr($0,length(key)+2); gsub(/^[ \t"'"'"']+|[ \t"'"'"']+$/,"",v); print v; exit}' || true
+}
+
+# open_specs_for prints every spc-N in the spec store's open/ at ref whose own
+# `intent:` back-link names the canonical itd-N. The back-link, not the intent's
+# scalar spec_id, is the source of truth for which specs realise an intent
+# (adr-2609151513118583): a remainder spec is named by nothing on the intent.
+open_specs_for() {
+	local ref="$1" id="$2" f back
+	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | grep -E '\.md$' |
+		while IFS= read -r f; do
+			back="$(frontmatter_field "$ref" "$f" intent)"
+			[ "$(canon_itd "$back")" = "$id" ] || continue
+			basename "$f" | grep -oE '^spc-[0-9]+' || true
+		done
+}
+
+# check_delivery applies RS005 to one declared, canonical itd-N from commit sha.
+# $shipped is the set of ids entering shipped/ in the range.
+check_delivery() {
+	local sha="$1" id="$2" base="$3" head="$4" shipped="$5" behind="$6"
+	printf '%s\n' "$shipped" | grep -qx "$id" && return 0
+	local says="RS005 commit ${sha:0:12} declares 'Delivers: $id', but"
+	local head_path base_path base_bucket=""
+	head_path="$(intent_path "$head" "$id")"
+	base_path="$(intent_path "$base" "$id")"
+	[ -n "$base_path" ] && base_bucket="$(bucket_of "$base_path")"
+	if [ -z "$head_path" ] && [ -n "$base_path" ]; then
+		fail "$says $id has no record at $head, while $base holds it in $INTENTS_DIR/$base_bucket/ — this branch predates the record. Rebase onto $base, then close its spec in this change (abcd spec close <spc-N>) if it is still planned there, or drop the trailer if it has already shipped."
+		return 0
+	elif [ -z "$head_path" ]; then
+		fail "$says $id has no record at $head or at $base. Check the id — the trailer names the intent this change delivers, never its spec — or drop the trailer."
+		return 0
+	fi
+	if [ "$base_bucket" = shipped ]; then
+		# The stale-branch split RS001 draws, for the same reason: whether a rebase
+		# is the remedy turns on WHEN the record reached shipped/.
+		local placer
+		placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+		if [ -n "$placer" ]; then
+			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the delivery reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+		else
+			fail "$says $id already sat in $INTENTS_DIR/shipped/ before this branch diverged from $base: the trailer names an intent delivered before this commit. Drop the trailer."
+		fi
+		return 0
+	fi
+	local bucket not_entering="$id does not enter $INTENTS_DIR/shipped/ in $base..$head"
+	bucket="$(bucket_of "$head_path")"
+	case "$bucket" in
+	planned)
+		local open_specs
+		open_specs="$(open_specs_for "$head" "$id" | sort -u)"
+		if [ -n "$open_specs" ]; then
+			local list cmds n
+			list="$(printf '%s\n' "$open_specs" | paste -sd, - | sed 's/,/, /g')"
+			cmds="$(printf '%s\n' "$open_specs" | sed 's/^/abcd spec close /' | paste -sd';' - | sed 's/;/; /g')"
+			n="$(printf '%s\n' "$open_specs" | grep -c .)"
+			fail "$says $not_entering, and it sits in $INTENTS_DIR/planned/ with $n spec(s) still open that name it ($list). Close them in this change ($cmds) — the intent ships on the close after which no open spec names it, and the trailer means this change finishes it — or drop the trailer."
+		else
+			local spec_id
+			spec_id="$(frontmatter_field "$head" "$head_path" spec_id)"
+			case "$spec_id" in
+			"" | null | "~")
+				fail "$says $not_entering, and it sits in $INTENTS_DIR/planned/ with no spec to close (spec_id: null, and no open spec names it), so no close can ship it. Give it a spec first, or drop the trailer."
+				;;
+			*)
+				fail "$says $not_entering, and it sits in $INTENTS_DIR/planned/ although no open spec names it (its spec $spec_id is closed) — the shape the release cut refuses as a stale intent. Move it to $INTENTS_DIR/shipped/ in this change, with its impact declared, or drop the trailer."
+				;;
+			esac
+		fi
+		;;
+	drafts)
+		fail "$says $not_entering, and it sits in $INTENTS_DIR/drafts/: it has not been planned, so it has no spec to close. Plan it (abcd intent plan $id) and close its spec in this change, or drop the trailer."
+		;;
+	superseded)
+		fail "$says $not_entering, and it sits in $INTENTS_DIR/superseded/: a superseded intent is replaced, not delivered. Name the intent that replaced it, or drop the trailer."
+		;;
+	disciplines)
+		fail "$says $not_entering, and it sits in $INTENTS_DIR/disciplines/: a discipline is a standing rule with no spec and no shipped state. Drop the trailer."
+		;;
+	*)
+		fail "$says $not_entering. Close its spec in this change (abcd spec close <spc-N>) or drop the trailer."
+		;;
+	esac
+}
+
 check_pr() {
 	local title_file="$1" body_file="$2" title body declared
 	local f
@@ -335,7 +522,10 @@ check_commits() {
 	# (iss-2609012023256534). The refusal stands in that shape: a rebase makes
 	# the range honest, and the merged commits vanish from it. What changes is
 	# that the message now says what the script can prove.
-	local declared=""
+	local shipped
+	shipped="$(ids_entering_shipped "$base" "$head" | sort -u)"
+
+	local declared="" delivered=""
 	local behind
 	behind="$(git rev-list --count "$head".."$base")"
 	local scanned=0
@@ -353,6 +543,29 @@ check_commits() {
 		check_mentions "commit ${sha:0:12}" "$msg" "$(declared_ids "$msg")"
 		scanned=$((scanned + 1))
 		while IFS= read -r line; do
+			# RS005 — a declared delivery must ship the intent. Judged on the same
+			# lines RS001 reads; a line is one trailer or the other, never both.
+			if [[ "$line" =~ $DELIVERS_LOOSE_RE ]]; then
+				local raw canon_ok=1
+				if [[ "$line" =~ $DELIVERS_RE ]]; then
+					for raw in $(printf '%s\n' "$line" | grep -oE 'itd-[0-9]+'); do
+						[ -n "$(canon_itd "$raw")" ] || canon_ok=0
+					done
+				else
+					canon_ok=0
+				fi
+				if [ "$canon_ok" -eq 0 ]; then
+					fail "RS005 commit ${sha:0:12} carries a delivery line RS005 cannot read: '$line'. The trailer is spelled exactly 'Delivers: itd-N' (a comma-separated list of intent ids is allowed) and names the intent this change finishes — never its spec, which is closed with abcd spec close."
+					continue
+				fi
+				for raw in $(printf '%s\n' "$line" | grep -oE 'itd-[0-9]+'); do
+					local cid
+					cid="$(canon_itd "$raw")"
+					delivered="$delivered $cid"
+					check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind"
+				done
+				continue
+			fi
 			[[ "$line" =~ $TRAILER_RE ]] || continue
 			# Every id on the line, not just the first: a `Resolves:` list declares
 			# a resolution for each of them, and an id RS001 did not read would be
@@ -435,6 +648,9 @@ check_commits() {
 
 	if [ -n "${declared// /}" ]; then
 		echo "check-issue-resolution: RS001 checked$declared"
+	fi
+	if [ -n "${delivered// /}" ]; then
+		echo "check-issue-resolution: RS005 checked$delivered"
 	fi
 	echo "check-issue-resolution: RS004 checked $scanned commit message(s) for undeclared record mentions"
 }
