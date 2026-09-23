@@ -1,5 +1,6 @@
 ---
 id: itd-151
+shipped_in: v0.6.8
 slug: five-agent-prompts-read-attacker-influenceable-input-without
 spec_id: spc-44
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 builds_on: []
 severity: minor
 promoted_from: iss-278
+impact: additive
 ---
 
 # Five agent prompts read attacker-influenceable input without the itd-5 contract (ruthless-reviewer, security-reviewer, docs-currency-reviewer, intent-auditor, sota-researcher) and agents/ sits outside both lint roots, so no detector exists for the class; the PQ linter (agents/README.md) is the missing detector
@@ -38,4 +40,5 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-31373784df44 -->
+Fidelity review OWED (receipt rcp-31373784df44).

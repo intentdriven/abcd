@@ -1,5 +1,6 @@
 ---
 id: itd-123
+shipped_in: v0.6.0
 spec_id: spc-28
 kind: standalone
 suggested_kind: null
@@ -82,4 +83,5 @@ at the walk, 2026-08-16._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-12cab97fb543 -->
+Fidelity review OWED (receipt rcp-12cab97fb543).

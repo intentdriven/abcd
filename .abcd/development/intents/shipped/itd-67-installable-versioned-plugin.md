@@ -1,5 +1,6 @@
 ---
 id: itd-67
+shipped_in: v0.4.0
 slug: installable-versioned-plugin
 spec_id: spc-11
 kind: standalone
@@ -24,6 +25,7 @@ warrants_assumed:
 - "plugin.json.version as the sole in-file version is compatible with the doc-fidelity gate (a machine manifest field is not prose)."
 builds_on: [itd-66]
 severity: critical
+impact: additive
 ---
 
 # abcd Is An Installable, Versioned Claude Code Plugin Whose Repo Is Its Own Marketplace And Whose Every Launch Bumps, Tags, And Publishes A New Version
@@ -77,3 +79,8 @@ None stated.
 - How does auto bump-tier detection read "phase completed since last launch" before the `phase:` frontmatter anchor is active (brief §4 notes it falls back to editorial `## Scope` membership until then)?
 - Should `launch ship` refuse to publish if `plugin.json` version would not change (nothing new since last tag), or always allow a forced patch re-snapshot?
 - Does the install-path documentation belong only in the repo README, or also mirrored in `docs/` for the plugin's own help surface?
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-7af1556ce4f7 -->
+Fidelity review OWED (receipt rcp-7af1556ce4f7).
