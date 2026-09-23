@@ -9,6 +9,10 @@ found_during: "peer report from a downstream repo, 2026-09-15"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/banlist_scaffold.go"
+resolution: "docs lint reports 'nothing was checked' (and checks: 0 in --json) when the config arms no rule, and the scaffolded docs-lint config carries abcd's Writing-Guide token families and the links_resolve, harness_leak and stray_root_docs rules armed, with banned names empty and the harness family left to the repository"
+impact: fix
+resolved_by:
+  commit: "5aaf6f2c"
 ---
 
 `abcd docs lint` reports "0 finding(s), 0 blocker(s)" in a scaffolded repository
@@ -122,3 +126,7 @@ scaffold writing something the scaffold's own gate then refuses.
   that implies it was.
 - **Given** a freshly prepared repository, **when** a present-tense violation is
   written inside a configured root, **then** the lint finds it.
+
+## Grounds
+
+- pursued: a freshly prepared repository's docs lint refuses a present-tense violation in docs/ while passing the tree the scaffold wrote, and a zero-rule config never prints a finding count; TestScaffoldedDocsLintRefusesAViolation and TestDocsLintWithNoRulesSaysNothingWasChecked hold it, and a scaffold whose own CLAUDE.md or AGENTS.md is refused would show it wrong
