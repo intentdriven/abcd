@@ -54,7 +54,9 @@ against the exact commit to be tagged:
    the Direction-A semantic half of the iss-35 graduation: the brief's surface
    *prose* (flags, sub-verbs, exit codes, schema fields, counts) vs. the shipped
    binary's actual behaviour. The deterministic Direction-B half is the
-   `surface_coverage` `record-lint` rule and already runs in CI. Its scope and
+   `surface_coverage` `record-lint` rule, a row-level presence check that runs
+   in CI. A chapter's flags and sub-verbs are not prose: they sit in its
+   generated appendix, which a drift test holds to the command tree. Its scope and
    depth are pinned by [`manifest.json`](manifest.json) — see *Pinned inputs and
    tiered depth* below.
 

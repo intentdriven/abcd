@@ -43,8 +43,8 @@ are wiring rather than user-facing surface are listed separately under
 
 ## How much of this table a machine keeps honest
 
-The **Status** column is machine-checked: the `surface_coverage` record-lint rule
-asserts every `shipped` row has a backing surface (`commands/<name>.md` or
+The **Status** column is machine-checked: the `surface_coverage` record-lint rule,
+the row-level presence check over this index, asserts every `shipped` row has a backing surface (`commands/<name>.md` or
 `skills/<name>/`) and every `staged` row has none — and, in reverse, that every
 command file and skill directory has a row here. The bare `/abcd` top-level names
 no sub-verb, so its command file is the rule's configured bare command and is
@@ -70,9 +70,40 @@ The surface-grain `Status` enum stays two-valued: there is no `partial`, because
 the sub-verb rows carry that granularity, so a row may honestly read `shipped`
 while its table shows which sub-verbs are still `staged`.
 
-What none of this checks is prose. The tables pin sub-verbs to the command tree;
-a stale claim in a chapter's body is caught by review and by the release gate,
-never by this rule (iss-246).
+What none of this checks is prose. The tables pin rows and sub-verbs to the
+command tree, and every `surface_coverage` finding opens by naming itself the
+row-level presence check, so a green run is never read as a statement that a
+chapter is correct (iss-246).
+
+## The generated appendix
+
+A chapter's shape — its verbs' flags and sub-verbs — is derived, never
+hand-written ([adr-2609231028044006](../../decisions/adrs/2609231028044006-shape-claims-in-the-record-are-derived-never-hand-authored.md),
+invariant 18 in [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
+Every chapter in this directory ends with a generated appendix between two
+marker comments, composed from the same walk of the command tree that builds the
+compatibility snapshot. This register's **Command** and **File** columns are
+what map a chapter to its commands, so a chapter with no row here, or a row
+naming a chapter that does not exist, stops generation by name. A chapter whose
+command the tree does not register — a staged design target, or a host-delegated
+command with no verb — carries one sentence saying there is no shipped surface,
+so no chapter lacks the block.
+
+Two tests in `internal/surface/cli` hold it, and both run in `go test ./...`,
+so in `make preflight` and in CI. `TestSurfaceAppendicesMatchCommandTree`
+regenerates every appendix and fails naming the chapter and each missing or
+stale line. `TestSurfaceChapterProseStatesNoShape` fails on a flag spelling, a
+sub-verb's command path, or a backticked sub-verb name anywhere above the
+opening marker. Only the `## Sub-verbs` table and its standard note are exempt,
+because the rule above checks them. Exit codes, output fields and what a verb
+refuses stay prose and stay a review-grain claim.
+
+**Adding a surface.** Add its row to the table above and its chapter to this
+directory, end the chapter with the two marker lines (the generator's refusal
+prints them), and run `go generate ./internal/surface/cli`. That regenerates the
+snapshot and every appendix. Keep flags and sub-verb spellings out of the prose:
+say what the surface is for, and let the appendix say how it is spelled.
+
 
 ## Bare invocation
 
