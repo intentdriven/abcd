@@ -9,8 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -102,7 +104,7 @@ func TestLoadDomainStaysQuietOnOrdinaryLoadWords(t *testing.T) {
 // TestLoadDomainIdiomOwnsTheWholeGroup is the experiment behind the rule. A
 // real child spawns two real grandchildren (a uniquely named sleep, so the
 // test burns no CPU and its name probe can match nothing else). Recording the
-// child's pid in a file and killing that pid — the incident's handle — leaves
+// child's pid and killing that pid alone — the incident's handle — leaves
 // both grandchildren running; the prescribed idiom, one job-controlled
 // background job killed as a process group, leaves nothing, and "nothing" is
 // established by the two process queries the rule names, never by a list.
@@ -128,28 +130,38 @@ func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 	if err := os.Symlink(sleep, burner); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = exec.Command("pkill", "-KILL", "-x", name).Run() })
+	t.Cleanup(func() { killBurners(t, name) })
 
 	// waitForBoth is the script's own bounded wait until both grandchildren
 	// exist, so a kill never races the launch.
 	waitForBoth := `i=0; while [ "$(pgrep -x "$N" | wc -l)" -lt 2 ]; do i=$((i+1)); [ "$i" -gt 200 ] && exit 3; sleep 0.05; done`
 	load := `( "$B" 300 & "$B" 300 & wait ) </dev/null >/dev/null 2>&1 &`
+	// ownChild refuses (exit 4) unless the named variable holds a pid above 1
+	// that is this script's own direct child, so no kill below can ever be
+	// aimed at 0, -1, an empty operand, or a process another session owns.
+	ownChild := func(v string) string {
+		return `case "$` + v + `" in ''|*[!0-9]*|0|1) exit 4;; esac; [ "$(ps -o ppid= -p "$` + v + `" | tr -d ' ')" = "$$" ] || exit 4`
+	}
 
-	t.Run("a pid file is not a handle", func(t *testing.T) {
+	t.Run("the child's pid is not a handle", func(t *testing.T) {
+		// The incident's handle: the pid of the process that was started,
+		// killed by pid alone. It is the script's own child ($!), checked
+		// before the kill, never a pid read back from a file.
 		script := strings.Join([]string{
 			load,
-			`echo $! > "$D/pids"`,
+			`p=$!`,
+			ownChild("p"),
 			waitForBoth,
-			`kill $(cat "$D/pids")`,
+			`kill "$p"`,
 		}, "\n")
 		runLoadScript(t, bash, script, burner, name, dir)
-		// The kill landed on the recorded pid; give the signal time to land
+		// The kill landed on the child's pid; give the signal time to land
 		// anywhere it was going to, then show the grandchildren outlived it.
 		time.Sleep(500 * time.Millisecond)
 		if n := len(pgrepPIDs(t, "-x", name)); n != 2 {
-			t.Fatalf("killing the recorded pid should orphan both grandchildren (the incident), found %d running", n)
+			t.Fatalf("killing the child's pid should orphan both grandchildren (the incident), found %d running", n)
 		}
-		_ = exec.Command("pkill", "-KILL", "-x", name).Run()
+		killBurners(t, name)
 		waitGone(t, "-x", name)
 	})
 
@@ -158,14 +170,19 @@ func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 			loadJobControl,
 			load,
 			`pg=$!`,
+			ownChild("pg"),
+			// The group kill is aimed only at a group this script's own
+			// child leads: if job control did not give the child its own
+			// group, the script stops here and kills nothing.
+			`[ "$(ps -o pgid= -p "$pg" | tr -d ' ')" = "$pg" ] || exit 5`,
 			waitForBoth,
 			loadGroupKill,
 			`echo "$pg"`,
 		}, "\n")
 		out := runLoadScript(t, bash, script, burner, name, dir)
 		pg, err := strconv.Atoi(strings.TrimSpace(out))
-		if err != nil {
-			t.Fatalf("the script did not report its process group: %q", out)
+		if err != nil || pg <= 1 || pg == syscall.Getpgrp() {
+			t.Fatalf("the script did not report a process group of its own: %q", out)
 		}
 		// Proof by what is running: both queries the rule names come back
 		// empty. Delivery of the signal is asynchronous, so the proof polls
@@ -184,6 +201,18 @@ func burnerName(t *testing.T) string {
 	// Under the 15-character process-name limit Linux keeps, so pgrep -x
 	// matches the whole name on every host.
 	return "abcdburn" + hex.EncodeToString(b)[:6]
+}
+
+var burnerNameRe = regexp.MustCompile(`^abcdburn[0-9a-f]{6}$`)
+
+// killBurners is the test's safety net: it signals only processes whose name
+// is exactly this test's random burner name, and refuses any other operand.
+func killBurners(t *testing.T, name string) {
+	t.Helper()
+	if !burnerNameRe.MatchString(name) {
+		t.Fatalf("refusing to pkill %q: not this test's burner name", name)
+	}
+	_ = exec.Command("pkill", "-KILL", "-x", name).Run()
 }
 
 func runLoadScript(t *testing.T, bash, script, burner, name, dir string) string {
