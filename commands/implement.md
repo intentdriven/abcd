@@ -103,9 +103,11 @@ first session; a stop condition the second session meets stops only itself.
 One line per event, appended in a single write, so two sessions writing at once
 each land whole lines. The events are `backoff`, `lane_open`, `lane_close`,
 `agent_start`, `agent_end`, `ceiling_wait`, `gate_run`, `review`, `fallback`,
-`stop`, `refusal`, `pr` and `capture`. For the comparison to count them: a
-`lane_close` with `outcome=merged` (or `landed`) is a lane landed, and `backoff`,
-`agent_end` and `ceiling_wait` carry `minutes`. The session, window and claim
+`stop`, `refusal`, `pr`, `capture` and `context`. For the comparison to count
+them: a `lane_close` with `outcome=merged` (or `landed`) is a lane landed;
+`backoff` and `ceiling_wait` carry `minutes`, and `agent_end` carries `minutes`,
+`wall_minutes` or `wall_min`; a `context` line carries `used_pct` (with `role`
+and `note`), the orchestrator's share of its context window in use. The session, window and claim
 events belong to their own sub-verbs and are refused here.
 
 ## Compare the modes
@@ -116,7 +118,8 @@ events belong to their own sub-verbs and are refused here.
 
 Read-only. Per mode: windows, wall clock, lanes opened and landed, the second
 session's lanes landed, collisions, lapsed claims, backoffs and the minutes
-backed off, agent minutes, ceiling wait and refusals, with each session's share.
+backed off, agent minutes, ceiling wait and refusals, with each session's share;
+and, per session across the run, its context lines and the last `used_pct` seen.
 `leader` is the mode with the most lanes landed per wall-clock hour — a figure,
 not a verdict: the run's own report names the mode it would keep and says why.
 Relay any `unparsed` lines; they are counted nowhere.

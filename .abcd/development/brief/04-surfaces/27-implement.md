@@ -111,7 +111,7 @@ keyed on a flag the second session could omit would guard nothing.
 `implement log <event> --field key=value …` appends one of the run's own events
 (`backoff`, `lane_open`, `lane_close`, `agent_start`, `agent_end`,
 `ceiling_wait`, `gate_run`, `review`, `fallback`, `stop`, `refusal`, `pr`,
-`capture`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
+`capture`, `context`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
 the fields; it reaches the file in one `O_APPEND` write through
 `fsutil.AppendLineIn`, so two writers each land whole lines. The session, window
 and claim events are refused here: they are written by their own sub-verbs, so
@@ -120,8 +120,13 @@ the log cannot record a claim the run state does not hold.
 `implement report` derives, per mode, the windows, wall clock, lanes opened and
 landed (a `lane_close` whose outcome is `merged` or `landed`), the second
 session's lanes landed, collisions (`claim_denied`), lapsed claims, backoffs and
-their minutes, agent minutes (`agent_end`), ceiling wait and refusals, with each
-session's share. An event belongs to the window open when it happened. `leader`
+their minutes, agent minutes (`agent_end`'s `minutes`, `wall_minutes` or
+`wall_min`, the key the run's hand-kept lines carry), ceiling wait and refusals,
+with each session's share. An event belongs to the window open when it happened.
+A `context` line is an orchestrator's context measurement (`used_pct`, `role`,
+`note`); the report totals them per session across the whole run, not per mode,
+with the last `used_pct` seen, because a session's context is carried across
+windows. `leader`
 is the mode with the most lanes landed per wall-clock hour — a figure the run's
 report cites when it names the mode it would keep, not a verdict of the verb's.
 Lines that are not a JSON object with `ts`, `session` and `event` are listed as

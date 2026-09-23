@@ -849,7 +849,7 @@ Append one of the run's events to the run log
 Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)
 in a single append, so two sessions writing at once each land whole lines. The line
 carries ts, session and event, then each --field. A value that reads as a number or
-a boolean is written as one. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture.
+a boolean is written as one. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture, context.
 The claim, window and session events are written by their own sub-verbs and are
 refused here, so the log cannot record a claim the run state does not hold.
 
@@ -903,9 +903,10 @@ Derive the comparison of the division modes from the run log (read-only)
 Derive, per division mode, the figures the run's report compares: windows, wall
 clock, lanes opened and landed (a lane_close whose outcome is merged or landed),
 the second session's lanes landed, collisions (claim_denied), lapsed claims,
-backoffs and the minutes backed off, agent minutes (agent_end), ceiling wait and
-refusals, per session within each mode. Each event belongs to the window open when
-it happened. `leader` is the mode with the most lanes landed per wall-clock hour —
+backoffs and the minutes backed off, agent minutes (agent_end's minutes, wall_minutes
+or wall_min), ceiling wait and refusals, per session within each mode. Each event
+belongs to the window open when it happened; each session's context lines are totalled
+across the run, with the last used_pct seen. `leader` is the mode with the most lanes landed per wall-clock hour —
 a figure, not a verdict. Lines the reader cannot use are listed, never dropped
 silently.
 

@@ -49,6 +49,10 @@ const (
 	EventRefusal     = "refusal"
 	EventPR          = "pr"
 	EventCapture     = "capture"
+	// EventContext is an orchestrator's context measurement: used_pct (the share
+	// of its context window in use), role and note. The run measures it because
+	// it is also an experiment in keeping a session alive for days.
+	EventContext = "context"
 )
 
 // verbOwnedEvents are written by join, leave, mode, claim and release alone.
@@ -61,7 +65,7 @@ var verbOwnedEvents = []string{
 var loggableEvents = []string{
 	EventBackoff, EventLaneOpen, EventLaneClose, EventAgentStart, EventAgentEnd,
 	EventCeilingWait, EventGateRun, EventReview, EventFallback, EventStop,
-	EventRefusal, EventPR, EventCapture,
+	EventRefusal, EventPR, EventCapture, EventContext,
 }
 
 // LoggableEvents returns the events `implement log` accepts, for help text and

@@ -10,8 +10,9 @@ import (
 
 // TestCompareDerivesEachModeFromAFixtureLog pins the comparison against a log
 // written the way the run writes it — hand-kept lines with the A/B role labels
-// and a quoted number, verb-shaped claim lines, a line that is not JSON and one
-// missing its timestamp.
+// and a quoted number, an agent_end carrying `wall_min` (the key the live run
+// writes), context lines, verb-shaped claim lines, a line that is not JSON and
+// one missing its timestamp.
 func TestCompareDerivesEachModeFromAFixtureLog(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "run-log.jsonl"))
 	if err != nil {
@@ -20,8 +21,8 @@ func TestCompareDerivesEachModeFromAFixtureLog(t *testing.T) {
 	events, bad := ParseLog("run-log.jsonl", data)
 	rep := Compare(events, bad)
 
-	if rep.Events != 23 {
-		t.Errorf("events = %d, want 23", rep.Events)
+	if rep.Events != 26 {
+		t.Errorf("events = %d, want 26", rep.Events)
 	}
 	if len(rep.Unparsed) != 2 || rep.Unparsed[0].Line != 7 || rep.Unparsed[1].Line != 8 {
 		t.Errorf("unparsed = %+v, want lines 7 and 8", rep.Unparsed)
@@ -29,7 +30,7 @@ func TestCompareDerivesEachModeFromAFixtureLog(t *testing.T) {
 	want := map[string]ModeTally{
 		"single": {Windows: 1, WallMinutes: 60, LanesOpened: 1, LanesLanded: 1, AgentMinutes: 47, LandedPerHour: 1},
 		"claim": {Windows: 1, WallMinutes: 60, LanesOpened: 2, LanesLanded: 2, SecondLanesLanded: 1, Collisions: 1,
-			Backoffs: 2, BackoffMinutes: 6, AgentMinutes: 30, CeilingWaitMinutes: 10, LandedPerHour: 2},
+			Backoffs: 2, BackoffMinutes: 6, AgentMinutes: 42, CeilingWaitMinutes: 10, LandedPerHour: 2},
 		"batch":       {Windows: 1, WallMinutes: 60, LanesOpened: 1},
 		"split-roles": {Windows: 1, WallMinutes: 30, Refusals: 1},
 	}
@@ -60,15 +61,47 @@ func TestCompareDerivesEachModeFromAFixtureLog(t *testing.T) {
 	if b.Role != "second" || b.LanesOpened != 1 || b.LanesLanded != 1 || b.BackoffMinutes != 6 || b.Collisions != 1 || b.AgentMinutes != 30 {
 		t.Errorf("claim window, session B1 = %+v", b)
 	}
+	var a SessionTally
+	for _, s := range claim.Sessions {
+		if s.Session == "A1" {
+			a = s
+		}
+	}
+	if a.AgentMinutes != 12 {
+		t.Errorf("claim window, session A1 agent minutes = %v, want 12 (its agent_end carries wall_min)", a.AgentMinutes)
+	}
 	if rep.Leader != "claim" {
 		t.Errorf("leader = %q, want claim", rep.Leader)
+	}
+	// Context is per session across the run: every context line counted, the
+	// last used_pct seen (a quoted number read as one).
+	wantCtx := []SessionContext{{Session: "A1", Role: "first", Events: 2, LastUsedPct: 31,
+		LastAt: time.Date(2026, 9, 23, 10, 0, 0, 0, time.UTC)}}
+	if !reflect.DeepEqual(rep.Context, wantCtx) {
+		t.Errorf("context = %+v, want %+v", rep.Context, wantCtx)
+	}
+}
+
+// TestAgentMinutesReadEveryKeyTheRunWrites: an agent_end's minutes are read
+// from `minutes`, `wall_minutes` or `wall_min`, the last being the key the live
+// run's hand-kept lines carry.
+func TestAgentMinutesReadEveryKeyTheRunWrites(t *testing.T) {
+	log := `{"ts":"2026-09-23T06:00:00Z","session":"A","event":"window_mode","mode":"single"}
+{"ts":"2026-09-23T06:01:00Z","session":"A","event":"agent_end","minutes":1}
+{"ts":"2026-09-23T06:02:00Z","session":"A","event":"agent_end","wall_minutes":10}
+{"ts":"2026-09-23T06:03:00Z","session":"A","event":"agent_end","wall_min":100}
+`
+	events, bad := ParseLog("x.jsonl", []byte(log))
+	rep := Compare(events, bad)
+	if len(rep.Modes) != 1 || rep.Modes[0].AgentMinutes != 111 {
+		t.Fatalf("modes = %+v, want agent minutes 111", rep.Modes)
 	}
 }
 
 // TestCompareOfAnEmptyLogNamesNoLeader: nothing landed, nothing to lead.
 func TestCompareOfAnEmptyLogNamesNoLeader(t *testing.T) {
 	rep := Compare(nil, nil)
-	if rep.Leader != "" || len(rep.Modes) != 0 || rep.Unparsed == nil {
+	if rep.Leader != "" || len(rep.Modes) != 0 || rep.Unparsed == nil || rep.Context == nil {
 		t.Fatalf("empty report = %+v", rep)
 	}
 }

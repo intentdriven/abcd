@@ -16,10 +16,13 @@ this line is not JSON
 {"ts":"2026-09-23T07:20:00Z","session":"A1","event":"ceiling_wait","lane":"l2","minutes":10,"held_by":"implementer,implementer,reviewer"}
 {"ts":"2026-09-23T07:40:00Z","session":"B1","event":"agent_end","lane":"l3","minutes":30}
 {"ts":"2026-09-23T07:45:00Z","session":"B1","event":"lane_close","lane":"l3","outcome":"merged"}
+{"ts":"2026-09-23T07:50:00Z","session":"A1","event":"agent_end","lane":"l2","role":"reviewer","wall_min":12}
+{"ts":"2026-09-23T07:55:00Z","session":"A1","event":"context","role":"orchestrator","used_pct":16,"note":"measured from here on"}
 {"ts":"2026-09-23T08:00:00Z","session":"A1","event":"lane_close","lane":"l2","outcome":"landed"}
 {"ts":"2026-09-23T09:00:00Z","session":"A1","event":"window_mode","mode":"batch","window":3}
 {"ts":"2026-09-23T09:30:00Z","session":"A1","event":"lane_open","lane":"l4"}
 {"ts":"2026-09-23T10:00:00Z","session":"A1","event":"lane_close","lane":"l4","outcome":"abandoned"}
+{"ts":"2026-09-23T10:00:00Z","session":"A1","event":"context","role":"orchestrator","used_pct":"31"}
 {"ts":"2026-09-23T11:00:00Z","session":"A1","event":"window_mode","mode":"split-roles","window":4}
 {"ts":"2026-09-23T11:05:00Z","session":"B1","event":"refusal","condition":"second_session_release"}
 {"ts":"2026-09-23T11:30:00Z","session":"B1","event":"review","lane":"l5","verdict":"pass"}

@@ -459,9 +459,10 @@ func newImplementReportCommand(asJSON *bool) *cobra.Command {
 		Long: "Derive, per division mode, the figures the run's report compares: windows, wall\n" +
 			"clock, lanes opened and landed (a lane_close whose outcome is merged or landed),\n" +
 			"the second session's lanes landed, collisions (claim_denied), lapsed claims,\n" +
-			"backoffs and the minutes backed off, agent minutes (agent_end), ceiling wait and\n" +
-			"refusals, per session within each mode. Each event belongs to the window open when\n" +
-			"it happened. `leader` is the mode with the most lanes landed per wall-clock hour —\n" +
+			"backoffs and the minutes backed off, agent minutes (agent_end's minutes, wall_minutes\n" +
+			"or wall_min), ceiling wait and refusals, per session within each mode. Each event\n" +
+			"belongs to the window open when it happened; each session's context lines are totalled\n" +
+			"across the run, with the last used_pct seen. `leader` is the mode with the most lanes landed per wall-clock hour —\n" +
 			"a figure, not a verdict. Lines the reader cannot use are listed, never dropped\n" +
 			"silently.\n\n" +
 			"By default the run's whole log is read, every day of it; --date reads one day, and\n" +
@@ -484,6 +485,10 @@ func newImplementReportCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "%-12s %7d %8.1f %6d %6d %6d %10d %9.1f %8.1f %8.1f\n",
 						termsafe.Sanitize(m.Mode), m.Windows, m.WallMinutes, m.LanesOpened, m.LanesLanded,
 						m.SecondLanesLanded, m.Collisions, m.BackoffMinutes, m.AgentMinutes, m.CeilingWaitMinutes)
+				}
+				for _, c := range rep.Context {
+					fmt.Fprintf(w, "context: %s  %d measurement(s), last %.0f%% used at %s\n", termsafe.Sanitize(c.Session),
+						c.Events, c.LastUsedPct, c.LastAt.Format(time.RFC3339))
 				}
 				if rep.Leader != "" {
 					fmt.Fprintf(w, "most lanes landed per wall-clock hour: %s\n", termsafe.Sanitize(rep.Leader))

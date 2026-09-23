@@ -251,3 +251,20 @@ func TestOpenRefusesASymlinkedRunsDirectory(t *testing.T) {
 		t.Fatalf("Open wrote through the symlink: %v", entries)
 	}
 }
+
+// TestContextIsALoggableEvent: an orchestrator logs its context measurement
+// through the verb, and the report reads it back per session.
+func TestContextIsALoggableEvent(t *testing.T) {
+	r, _ := newRun(t)
+	join(t, r, "alpha", RoleFirst)
+	if _, err := r.Log("alpha", EventContext, map[string]string{"used_pct": "16", "role": "orchestrator", "note": "day one"}); err != nil {
+		t.Fatalf("log context: %v", err)
+	}
+	rep, err := r.Compare()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Context) != 1 || rep.Context[0].Session != "alpha" || rep.Context[0].LastUsedPct != 16 || rep.Context[0].Role != "first" {
+		t.Fatalf("context = %+v", rep.Context)
+	}
+}

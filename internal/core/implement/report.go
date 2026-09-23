@@ -20,11 +20,14 @@ import (
 //   - wall clock: per window, the minutes from its window_mode line to the last
 //     event in it;
 //   - collisions: claim_denied lines — two sessions reaching for one record;
-//   - agent minutes: agent_end lines' minutes (or wall_minutes);
+//   - agent minutes: agent_end lines' minutes (or wall_minutes, or wall_min,
+//     the key the run's hand-kept lines carry);
 //   - backed-off minutes: backoff lines' minutes, the agent time spent on work
 //     that was then abandoned (reported beside agent minutes, never folded into
 //     them, since the backed-off agent may or may not have logged an agent_end);
-//   - ceiling wait: ceiling_wait lines' minutes, per session.
+//   - ceiling wait: ceiling_wait lines' minutes, per session;
+//   - context: per session over the whole run, not per mode, the number of
+//     context lines and the last used_pct among them.
 //
 // A session counts as the second when its session_open says role "second" (or
 // "B", the label the run's hand-written lines use).
@@ -66,11 +69,25 @@ type ModeTally struct {
 	Sessions           []SessionTally `json:"sessions"`
 }
 
+// SessionContext is one session's context measurement across the whole run:
+// how many context lines it logged and the last used_pct among them. It is per
+// session rather than per mode because an orchestrator's context is carried
+// across windows, not reset by them.
+type SessionContext struct {
+	Session     string    `json:"session"`
+	Role        string    `json:"role"`
+	Events      int       `json:"events"`
+	LastUsedPct float64   `json:"last_used_pct"`
+	LastAt      time.Time `json:"last_at"`
+}
+
 // Report is the derived comparison.
 type Report struct {
 	Events   int         `json:"events"`
 	Unparsed []Unparsed  `json:"unparsed"`
 	Modes    []ModeTally `json:"modes"`
+	// Context is each session's context measurement, by session id.
+	Context []SessionContext `json:"context"`
 	// Leader is the mode with the most lanes landed per wall-clock hour, "" when
 	// no mode landed a lane or two modes tie. It is a figure, not a verdict: the
 	// run's report names which mode it would keep, and says why.
@@ -126,6 +143,7 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 		sessions[mode][id] = s
 		return s
 	}
+	contexts := map[string]*SessionContext{}
 	var windows []window
 	cur := -1
 	closeWindow := func() {
@@ -184,7 +202,7 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 			t.BackoffMinutes += m
 			s.BackoffMinutes += m
 		case EventAgentEnd:
-			m := minutes("minutes", "wall_minutes")
+			m := minutes("minutes", "wall_minutes", "wall_min")
 			t.AgentMinutes += m
 			s.AgentMinutes += m
 		case EventCeilingWait:
@@ -193,12 +211,26 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 			s.CeilingWaitMinutes += m
 		case EventRefusal:
 			t.Refusals++
+		case EventContext:
+			c, ok := contexts[e.Session]
+			if !ok {
+				c = &SessionContext{Session: e.Session, Role: roles[e.Session]}
+				contexts[e.Session] = c
+			}
+			c.Events++
+			if v, ok := e.Number("used_pct"); ok && !math.IsInf(v, 0) && !math.IsNaN(v) {
+				c.LastUsedPct, c.LastAt = v, e.TS
+			}
 		}
 	}
 	closeWindow()
 
-	rep := Report{Events: len(sorted), Unparsed: unparsed, Modes: []ModeTally{},
+	rep := Report{Events: len(sorted), Unparsed: unparsed, Modes: []ModeTally{}, Context: []SessionContext{},
 		LeaderBasis: "lanes landed per wall-clock hour"}
+	for _, c := range contexts {
+		rep.Context = append(rep.Context, *c)
+	}
+	sort.Slice(rep.Context, func(i, j int) bool { return rep.Context[i].Session < rep.Context[j].Session })
 	if rep.Unparsed == nil {
 		rep.Unparsed = []Unparsed{}
 	}
