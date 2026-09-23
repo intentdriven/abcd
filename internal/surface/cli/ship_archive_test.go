@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -361,4 +362,91 @@ func TestLaunchArchiveRepositoryBindsTheAddress(t *testing.T) {
 			t.Errorf("nothing may be written on a malformed operand, found %v", entries)
 		}
 	})
+}
+
+// TestRollbackCutAfterTheArchivePinRestoresEverything: a cut refused once the
+// archive pin has landed — the last write a ship makes — is undone whole. The
+// CHANGELOG heading, the release page, the archived outgoing page, the catalog's
+// pin and the surface snapshot all return to their pre-ship bytes. The core's
+// undo plan carries the first three and the ship holds the other two itself, so
+// a rollback that applies only one of them leaves a half-cut release behind.
+func TestRollbackCutAfterTheArchivePinRestoresEverything(t *testing.T) {
+	r := shipArchiveRepo(t)
+	r.Write("RELEASE.md", "# Release 0.4.0 (2026-07-01)\n\nThe base. (itd-1)\n")
+	r.Commit("the previous release page")
+
+	watched := []string{
+		"CHANGELOG.md",
+		"RELEASE.md",
+		".abcd/development/releases/0.4.0.md",
+		".claude-plugin/marketplace.json",
+		SurfaceSnapshotPath,
+	}
+	read := func(rel string) (string, bool) {
+		data, err := os.ReadFile(filepath.Join(r.Root(), filepath.FromSlash(rel)))
+		if os.IsNotExist(err) {
+			return "", false
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data), true
+	}
+	type state struct {
+		data    string
+		present bool
+	}
+	pre := map[string]state{}
+	for _, rel := range watched {
+		data, ok := read(rel)
+		pre[rel] = state{data, ok}
+	}
+	before := cliTreeDigest(t, r.Root())
+
+	// What the ship holds before its ingest, exactly as runShipIngest does.
+	var saved []savedFile
+	for _, rel := range []string{".claude-plugin/marketplace.json", SurfaceSnapshotPath} {
+		f, err := saveFile(r.Root(), rel)
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved = append(saved, f)
+	}
+
+	raw, err := os.ReadFile(composedPayload(t, t.TempDir(), "v0.4.1", "itd-73"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 7, 21, 9, 30, 0, 0, time.UTC)
+	ingested, err := ingestCut(r.Root(), raw, at)
+	if err != nil || !ingested.Written {
+		t.Fatalf("ingest: written=%v err=%v", ingested.Written, err)
+	}
+	scratch := t.TempDir()
+	zipDir := filepath.Join(scratch, "archive")
+	if err := os.Mkdir(zipDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := pinReleaseArchive(r.Root(), filepath.Join(scratch, "payload"), zipDir, ingested.Cut, at); err != nil {
+		t.Fatalf("pin: %v", err)
+	}
+	for _, rel := range watched {
+		data, ok := read(rel)
+		if (state{data, ok}) == pre[rel] {
+			t.Fatalf("the cut left %s untouched, so this detector would prove nothing about restoring it", rel)
+		}
+	}
+
+	if got := rollbackCut(r.Root(), "", ingested.Undo, saved...); !strings.Contains(got, "the release record and page were rolled back") {
+		t.Fatalf("rollback report = %q", got)
+	}
+	for _, rel := range watched {
+		data, ok := read(rel)
+		if (state{data, ok}) != pre[rel] {
+			t.Errorf("the rollback did not restore %s (present=%v, want present=%v)", rel, ok, pre[rel].present)
+		}
+	}
+	if after := cliTreeDigest(t, r.Root()); after != before {
+		t.Error("the rollback left the tree different from before the cut")
+	}
 }
