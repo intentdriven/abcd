@@ -21,10 +21,15 @@ const fixtureRepository = "https://github.com/example/abcd"
 
 // shipArchiveRepo is a repository whose ship publishes a pinned archive:
 // shipRenderableRepo, whose plugin manifest names the repository the release
-// download address derives from.
+// download address derives from, plus the version-location contract's positive
+// declaration that its release publishes the archive.
 func shipArchiveRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	return shipRenderableRepo(t)
+	r := shipRenderableRepo(t)
+	r.Write(".abcd/config/version-location.json",
+		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version", "publishes_plugin_archive": true}`+"\n")
+	r.Commit("declare the published plugin archive")
+	return r
 }
 
 // refreshSurface regenerates the committed surface snapshot after a fixture
@@ -229,3 +234,75 @@ func TestLaunchArchiveWithoutVerifyWritesTheArchive(t *testing.T) {
 		t.Errorf("an unverified render must say the pin was not checked:\n%s", out)
 	}
 }
+
+// TestLaunchShipPinsOnlyOnTheDeclaration is the other side of the pin: a
+// repository with the version-location contract but no declaration that its
+// release publishes the archive — the managed repository whose scaffolded
+// workflows upload none — keeps its catalog exactly as it was, and the ship
+// says so in both renderings. A pin there would name an asset nothing uploads.
+func TestLaunchShipPinsOnlyOnTheDeclaration(t *testing.T) {
+	for _, asJSON := range []bool{false, true} {
+		t.Run(map[bool]string{false: "human", true: "json"}[asJSON], func(t *testing.T) {
+			r := shipRenderableRepo(t)
+			payload := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+			market := readFileString(t, filepath.Join(r.Root(), ".claude-plugin/marketplace.json"))
+			snapshot := readFileString(t, filepath.Join(r.Root(), SurfaceSnapshotPath))
+
+			args := []string{"launch", "ship", "--changelog-json", payload}
+			if asJSON {
+				args = append(args, "--json")
+			}
+			out, err := shipIn(t, r, args...)
+			if code := exitCodeOf(err); code != 0 {
+				t.Fatalf("exit = %d, want 0\n%s\n%v", code, out, err)
+			}
+			if got := readFileString(t, filepath.Join(r.Root(), ".claude-plugin/marketplace.json")); got != market {
+				t.Errorf("an undeclared archive was pinned into the catalog:\n%s", got)
+			}
+			if got := readFileString(t, filepath.Join(r.Root(), SurfaceSnapshotPath)); got != snapshot {
+				t.Error("the surface snapshot was rewritten for a catalog that did not change")
+			}
+			if !asJSON {
+				if !strings.Contains(string(out), "not pinned") || !strings.Contains(string(out), "publishes_plugin_archive") {
+					t.Errorf("the ship must say the catalog was left untouched, and why:\n%s", out)
+				}
+				return
+			}
+			var rep map[string]any
+			if err := json.Unmarshal(out, &rep); err != nil {
+				t.Fatalf("parse --json: %v\n%s", err, out)
+			}
+			if _, ok := rep["archive"]; ok {
+				t.Errorf("--json reports an archive that was not pinned: %v", rep["archive"])
+			}
+			note, _ := rep["archive_unpinned"].(string)
+			if !strings.Contains(note, "publishes_plugin_archive") {
+				t.Errorf("--json must say why the catalog was left untouched, got archive_unpinned=%q", note)
+			}
+		})
+	}
+}
+
+// TestLaunchShipRefusesAnUnreadableDeclaration keeps the declaration honest: a
+// publishes_plugin_archive that is not a boolean is neither answer, so the ship
+// refuses before the release record is written rather than guessing.
+func TestLaunchShipRefusesAnUnreadableDeclaration(t *testing.T) {
+	r := shipRenderableRepo(t)
+	r.Write(".abcd/config/version-location.json",
+		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version", "publishes_plugin_archive": "yes"}`+"\n")
+	r.Commit("an unreadable declaration")
+	payload := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+	changelog := readFileString(t, filepath.Join(r.Root(), "CHANGELOG.md"))
+
+	out, err := shipIn(t, r, "launch", "ship", "--changelog-json", payload)
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("exit = %d, want 2\n%s\n%v", code, out, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "publishes_plugin_archive") {
+		t.Errorf("the refusal must name the declaration, got %v", err)
+	}
+	if got := readFileString(t, filepath.Join(r.Root(), "CHANGELOG.md")); got != changelog {
+		t.Error("a refused declaration wrote the release record anyway")
+	}
+}
+

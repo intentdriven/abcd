@@ -65,6 +65,10 @@ var githubRepoRe = regexp.MustCompile(`^https://github\.com/([A-Za-z0-9][A-Za-z0
 // a digest the render does not reproduce. It is the release gate's refusal.
 var ErrArchivePinMismatch = errors.New("the committed marketplace pin does not match the rendered plugin archive")
 
+// publishesArchiveKey is the version-location contract's declaration that the
+// repository's release workflow publishes the pinned plugin archive.
+const publishesArchiveKey = "publishes_plugin_archive"
+
 // PluginArchive is one rendered, packed plugin release archive.
 type PluginArchive struct {
 	// Name is the release asset's file name, <plugin>-plugin-v<version>.zip.
@@ -234,6 +238,37 @@ func (c *countingWriter) Write(p []byte) (int, error) {
 func PrecheckPluginArchive(repoRoot string) error {
 	_, _, err := archiveIdentity(repoRoot)
 	return err
+}
+
+// DeclaresPluginArchive reports whether the repository's release publishes the
+// pinned plugin archive: its version-location contract carries
+// `"publishes_plugin_archive": true`. Nothing else counts. The contract alone
+// says where the version lives, not that a release uploads an archive — a
+// managed repository scaffolds workflows that upload none, and a catalog pinned
+// there names an asset nothing publishes. An absent contract or key is false;
+// a key that is not a boolean is refused rather than read as either answer.
+func DeclaresPluginArchive(repoRoot string) (bool, error) {
+	path := filepath.Join(repoRoot, filepath.FromSlash(versionLocationRelPath))
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	doc, err := loadJSON(path)
+	if err != nil {
+		return false, fmt.Errorf("version-location.json not readable: %w", err)
+	}
+	obj, ok := doc.(map[string]any)
+	if !ok {
+		return false, errors.New("version-location.json is not a JSON object")
+	}
+	raw, present := obj[publishesArchiveKey]
+	if !present {
+		return false, nil
+	}
+	b, ok := raw.(bool)
+	if !ok {
+		return false, fmt.Errorf("version-location.json: %s must be true or false", publishesArchiveKey)
+	}
+	return b, nil
 }
 
 // ArchiveReleaseURL is the address the release workflow publishes version's

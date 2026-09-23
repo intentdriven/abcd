@@ -43,9 +43,10 @@ records that shipped and never the previous release's surface, so the other
 changelog sections are refused by name and each dated section states under its
 heading what the notes list and do not claim (iss-2609011207114761). It then
 writes the dated `CHANGELOG.md` heading that the auto-release workflow turns
-into a tag. In a repository that declares the version-location contract, it
-then pins the release's plugin archive in the catalog (§ 3, *The pinned plugin
-archive*). `--payload-dir` stages the versioned release payload, with the
+into a tag. In a repository whose version-location contract declares
+`"publishes_plugin_archive": true`, it then pins the release's plugin archive in
+the catalog (§ 3, *The pinned plugin archive*); without the declaration it leaves
+the catalog untouched and says so. `--payload-dir` stages the versioned release payload, with the
 derived version stamped into the payload's manifests and lockstep-proved before
 return.
 
@@ -317,6 +318,15 @@ zip and refuses it when the digest differs, so an install or update at the tip o
 `main` receives the latest cut release, stamped with its version and
 fingerprinted — not the unversioned working tree.
 
+- **Pinned only on the declaration.** `ship` pins only when the version-location
+  contract declares `"publishes_plugin_archive": true`, the statement that the
+  repository's release workflow uploads the archive; abcd declares it. The
+  contract alone does not count: the workflows `scaffold` renders for a managed
+  repository upload no archive, so a catalog pinned there would name an asset
+  nothing publishes. Without the declaration the catalog is left untouched and
+  the ship report says so; a declaration that is not a boolean is refused before
+  anything is written.
+
 - **Rendered twice, identically.** `ship` renders the archive from its tree to
   learn the digest it commits, and refuses a payload with uncommitted changes
   first. `auto-release.yml` renders it again from the pushed commit before the
@@ -427,15 +437,17 @@ performed by a human and by CI.
   written into the selected version location in the **release artefact** only,
   the working-tree manifests staying unversioned, plus the canonical marketplace
   manifest.
-- **Given** a repository that declares the version-location contract and a clean
-  payload, **when** `ship` writes the dated heading, **then** the catalog's
+- **Given** a repository whose version-location contract declares
+  `"publishes_plugin_archive": true` and a clean payload, **when** `ship` writes
+  the dated heading, **then** the catalog's
   plugin source becomes the release's pinned archive — its download address and
   the digest of the archive rendered from that tree — the working-tree manifests
   stay version-free, and `launch archive --verify` on the resulting commit
   reproduces the digest and exits 0. **Given** a payload file changed after the
   pin, `launch archive --verify` exits 1, names both digests, and leaves no
   archive behind; **given** an uncommitted payload change, `ship` refuses before
-  writing anything.
+  writing anything. **Given** the contract without the declaration, `ship`
+  leaves the catalog byte-identical and reports it as not pinned.
 - **Given** at least one additive intent and no breaking intent, **when** `ship`
   runs, **then** the tier is minor and the launch report names the intents that
   drove it. **Given** any breaking intent, the tier is major and the report names

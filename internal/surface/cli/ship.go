@@ -49,8 +49,11 @@ type shipResult struct {
 	release.IngestResult
 	Payload *launch.PayloadRenderResult `json:"payload,omitempty"`
 	// Archive is the release's plugin archive, pinned into the catalog, when the
-	// repository publishes a versioned plugin (adr-2609231048308186).
+	// repository declares that its release publishes it (adr-2609231048308186).
 	Archive *shipArchive `json:"archive,omitempty"`
+	// ArchiveUnpinned says why a written ship left the catalog untouched: the
+	// repository does not declare that its release publishes the archive.
+	ArchiveUnpinned string `json:"archive_unpinned,omitempty"`
 }
 
 // shipArchive is the archive half of a ship's report: the archive the release
@@ -153,13 +156,11 @@ func refreshSurfaceSnapshot(repoRoot string) error {
 	return fsutil.WriteFileAtomicPreserveMode(path, data)
 }
 
-// publishesPluginArchive reports whether a ship must pin a plugin archive: the
-// repository declares adr-19's version-location contract, which is its
-// statement that it publishes a versioned plugin.
-func publishesPluginArchive(repoRoot string) bool {
-	_, err := os.Stat(filepath.Join(repoRoot, ".abcd", "config", "version-location.json"))
-	return err == nil
-}
+// archiveUnpinnedReason is what a written ship reports when it leaves the
+// catalog alone: the pin is made only on the positive declaration, so a reader
+// of either rendering learns the catalog was not touched, and why.
+const archiveUnpinnedReason = `the version-location contract does not declare "publishes_plugin_archive": true, ` +
+	`so no release uploads a plugin archive and the catalog was left untouched`
 
 // publishedVersion is the version a launch would publish: the version of the
 // newest dated CHANGELOG heading (adr-37), which is the release auto-release.yml
@@ -340,10 +341,18 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 
 // runShipIngest is the ingest step of `abcd launch ship`: validate the composed
 // prose against the cut, write the dated heading, and — when the repository
-// publishes a versioned plugin — render the release's plugin archive and pin it
-// into the catalog; with --payload-dir, keep the staged payload too.
+// declares that its release publishes the plugin archive — render that archive
+// and pin it into the catalog; with --payload-dir, keep the staged payload too.
+//
+// The pin waits on the positive declaration, not on the version-location
+// contract alone: only a release workflow that uploads the archive makes the
+// pinned address resolve, and a managed repository's scaffolded workflows
+// upload none, so a catalog pinned there would 404 on every install.
 func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, asJSON bool) error {
-	archive := publishesPluginArchive(cwd)
+	archive, err := launch.DeclaresPluginArchive(cwd)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+	}
 	stage := archive || payloadDir != ""
 
 	// Every render refusal that does not need a version is made BEFORE the
@@ -409,6 +418,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 	}
 	res := shipResult{IngestResult: ingested}
+	if ingested.Written && !archive {
+		res.ArchiveUnpinned = archiveUnpinnedReason
+	}
 	// Render only behind a written record: a refused cut has no version to
 	// stamp, and a refused document must leave the filesystem exactly as it
 	// found it.
@@ -550,6 +562,9 @@ func renderIngest(w io.Writer, res shipResult) {
 		fmt.Fprintf(w, "  archive:    %s (%d file(s)), pinned in .claude-plugin/marketplace.json\n", res.Archive.Name, res.Archive.Files)
 		fmt.Fprintf(w, "    url:    %s\n", termsafe.Sanitize(res.Archive.URL))
 		fmt.Fprintf(w, "    sha256: %s\n", res.Archive.SHA256)
+	}
+	if res.ArchiveUnpinned != "" {
+		fmt.Fprintf(w, "  archive:    not pinned — %s\n", res.ArchiveUnpinned)
 	}
 	if res.Payload == nil {
 		return

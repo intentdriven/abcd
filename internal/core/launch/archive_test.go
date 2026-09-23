@@ -272,3 +272,50 @@ func TestPrecheckPluginArchiveRefusesBeforeAnyWrite(t *testing.T) {
 		t.Error("a plugin manifest with no repository must be refused")
 	}
 }
+
+// TestDeclaresPluginArchive pins the positive declaration a ship pins on: only
+// a version-location contract that says `"publishes_plugin_archive": true`
+// publishes the archive the catalog would name. The contract alone is not the
+// statement — a managed repository scaffolds workflows that upload no archive,
+// and a catalog pinned there names an asset every install 404s on.
+func TestDeclaresPluginArchive(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string // "" = no version-location.json at all
+		want    bool
+		wantErr string
+	}{
+		{name: "no contract", body: "", want: false},
+		{name: "the contract alone", body: `{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version"}`, want: false},
+		{name: "declared false", body: `{"manifest_path": "p.json", "json_pointer": "/version", "publishes_plugin_archive": false}`, want: false},
+		{name: "declared true", body: `{"manifest_path": "p.json", "json_pointer": "/version", "publishes_plugin_archive": true}`, want: true},
+		{name: "not a boolean", body: `{"publishes_plugin_archive": "yes"}`, wantErr: "publishes_plugin_archive"},
+		{name: "not an object", body: `[]`, wantErr: "not a JSON object"},
+		{name: "not JSON", body: `{`, wantErr: "version-location.json"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			if tc.body != "" {
+				writeFile(t, root, ".abcd/config/version-location.json", tc.body)
+			}
+			got, err := DeclaresPluginArchive(root)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err = %v, want one naming %q", err, tc.wantErr)
+				}
+				if strings.Contains(err.Error(), root) {
+					t.Errorf("the refusal leaks the absolute path: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DeclaresPluginArchive: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("DeclaresPluginArchive = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+

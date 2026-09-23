@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/launch"
 )
 
 // The release workflow's half of the pinned plugin archive
@@ -161,5 +163,28 @@ func TestBareReleaseWorkflowHasNoArchive(t *testing.T) {
 	}
 	if strings.Contains(string(rendered.AutoReleaseYML), "launch archive") {
 		t.Error("the bare auto-release.yml must not prove a plugin archive pin")
+	}
+}
+
+// TestAbcdDeclaresTheArchiveItsWorkflowsPublish is the lockstep between the
+// ship's pin and the workflows that make it resolve. The ship pins the catalog
+// only on the version-location contract's "publishes_plugin_archive": true, and
+// only the Abcd rendering's workflows upload the archive: abcd declares it, and
+// the bare rendering — what a managed repository scaffolds — uploads none, so a
+// managed repository that copied the declaration would pin an asset nothing
+// publishes.
+func TestAbcdDeclaresTheArchiveItsWorkflowsPublish(t *testing.T) {
+	declared, err := launch.DeclaresPluginArchive(repoRoot(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := Render(AbcdSubstitutions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishes := strings.Contains(string(rendered.ReleaseYML), "launch archive --out bin")
+	if !declared || !publishes {
+		t.Errorf("abcd's version-location contract declares publishes_plugin_archive=%v and its release.yml uploads the archive=%v; both must hold",
+			declared, publishes)
 	}
 }

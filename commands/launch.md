@@ -332,10 +332,10 @@ Write the agent's payload to a file and hand it back to the binary:
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch ship --changelog-json <path> --payload-dir <dir>   # also stage the payload
 ```
 
-In a repository that declares the version-location contract
-(`.abcd/config/version-location.json` — the statement that it publishes a
-versioned plugin), a written heading is followed by the **archive pin**: the
-binary renders the release's plugin archive from the working tree, then rewrites
+In a repository whose version-location contract
+(`.abcd/config/version-location.json`) declares `"publishes_plugin_archive": true`
+— the statement that its release workflow uploads the plugin archive — a written
+heading is followed by the **archive pin**: the binary renders the release's plugin archive from the working tree, then rewrites
 the plugin's `source` in `.claude-plugin/marketplace.json` to
 `{"source": "archive", "url": ".../releases/download/vX.Y.Z/abcd-plugin-vX.Y.Z.zip",
 "sha256": "<digest>"}` and refreshes the committed surface snapshot beside it.
@@ -344,6 +344,14 @@ is written it refuses a payload with uncommitted changes, because the release
 renders the archive again from the tagged commit and publishes nothing unless the
 digests agree. These three files — `CHANGELOG.md`, the catalog and the snapshot —
 are the release-content commit.
+
+Without that declaration the catalog is left untouched, and the report says so
+(`archive: not pinned — …`, or `archive_unpinned` in `--json`). The contract alone
+is not enough: it says where the version lives, not that a release uploads an
+archive, and the workflows `scaffold` writes for a managed repository upload
+none — a catalog pinned there would name an asset every install fails to fetch.
+A declaration that is not `true` or `false` is refused before anything is
+written.
 
 With `--payload-dir` the binary additionally stages the release payload in that
 directory — an empty directory outside the repository — with the derived version
