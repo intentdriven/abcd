@@ -108,6 +108,41 @@ func TestMechanismFlagsIncidentTwo(t *testing.T) {
 	}
 }
 
+// TestStrayRuleSilentBand pins the band in which the check says nothing about
+// busy loops that have run for two days (iss-2609231947544298). On 16 cores, n
+// such loops at the load they cause (n) each hold their fair share, 16/n of a
+// core. At n = 17 that share is 0.94 and the stray trigger fires; from n = 18
+// (0.89) it is under NearFullShare, so no loop is a stray, and the extreme
+// trigger stays quiet until the load is strictly above 64. So 18 to 64 loops,
+// a load between 1.125 and 4 times the cores, raise no trigger. The band is a
+// known limit held open for the product thinker's ruling on the stray
+// definition; a fix turns this test red on purpose, and the issue is resolved
+// with it.
+func TestStrayRuleSilentBand(t *testing.T) {
+	age := 48 * time.Hour
+	cases := []struct {
+		loops int
+		want  []string
+	}{
+		{17, []string{TriggerStray}},
+		{18, nil},
+		{20, nil},
+		{40, nil},
+		{64, nil},
+		{65, []string{TriggerExtreme}},
+	}
+	for _, c := range cases {
+		var procs []Proc
+		for i := 0; i < c.loops; i++ {
+			procs = append(procs, burner(80000+i, 80000, otherUID, "zsh", age, 16.0/float64(c.loops)))
+		}
+		v := Classify(snapshot(float64(c.loops), procs...), DefaultLimits(16), caller)
+		if !slices.Equal(v.Triggers, c.want) {
+			t.Errorf("%d loops at load %d: triggers %v (others %+v), want %v", c.loops, c.loops, v.Triggers, v.Others, c.want)
+		}
+	}
+}
+
 // TestStrayBoundaries: over the limit and at a share of at least 0.9.
 func TestStrayBoundaries(t *testing.T) {
 	cases := []struct {
