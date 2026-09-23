@@ -69,8 +69,8 @@ decision amends adr-19 and adr-20 accordingly.
    uncompressed, one fixed timestamp, modes normalised to 0644 or 0755, and the
    catalog left out (it names the digest, so it cannot be inside what it
    hashes). `release.yml` re-renders it from the tagged commit with
-   `abcd launch archive --tag <tag> --verify` in `verify`, before anything is
-   built, and again in the publish job, and publishes nothing unless the digest
+   `abcd launch archive --tag <tag> --verify --repository <owner/name>` in
+   `verify`, before anything is built, and again in the publish job, and publishes nothing unless the digest
    is the pinned one. The published archive joins `checksums.txt`, the
    build-provenance attestation and the upload, and is downloaded fresh after
    publication, attestation-verified and byte-compared.
@@ -119,8 +119,12 @@ decision amends adr-19 and adr-20 accordingly.
   stand in for it. A refusal there tags nothing; a follow-up pull request that
   re-pins or reverts retries on its push. `verify` repeats the proof after the
   tag, where a refusal consumes the version: that is the only proof a
-  hand-pushed tag gets, and a local `abcd launch archive --verify` on the
-  release branch is what catches it first.
+  hand-pushed tag gets, and a local
+  `abcd launch archive --tag <tag> --verify --repository <owner/name>` on the
+  release branch is what catches it first. The `--repository` is not optional
+  there: without it a pin whose address names another repository (a fork, a
+  rename, a transfer) passes locally and is refused after the tag, consuming the
+  version.
 - **The harness floor** is v2.1.224; older harnesses cannot install the plugin,
   and very old ones fail to load the catalog. The install instructions and the
   release notes state it.

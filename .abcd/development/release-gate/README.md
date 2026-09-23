@@ -44,8 +44,11 @@ digest. A refusal there tags nothing and leaves the version free — land a
 follow-up pull request that re-pins (the refusal names the rendered digest) or
 reverts the payload change, and its push retries. A hand-pushed tag has no such
 proof, so prove it on the release branch first: `go run ./cmd/abcd launch
-archive --out "$(mktemp -d)" --tag vX.Y.Z --verify` exits 0 when the release
-will pass. From the ship's merge
+archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
+naming the repository the tag will be pushed to, exits 0 when the release will
+pass. Without `--repository` a pin whose address names another repository (a
+fork, a rename, a transfer) passes locally and is refused after the tag,
+consuming the version. From the ship's merge
 until the publish job uploads the archive, the catalog on `main` names a zip that
 is not there yet; an install or update in that window fails closed and leaves an
 installed plugin on its previous release, so approve the release deployment

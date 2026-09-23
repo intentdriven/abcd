@@ -156,8 +156,10 @@ Six failures are worth recognising, because each looks like something else.
   before the tag, so this is rare there; a hand-pushed tag has no earlier proof.
   The tag exists, so the version is consumed. Catch it before the merge instead:
   in a source checkout of the release branch,
-  `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify`
-  exits 0 when the release will pass.
+  `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
+  naming the repository the tag will be pushed to, exits 0 when the release
+  will pass. Without `--repository` a pin whose address names another
+  repository passes locally and is refused after the tag, consuming the version.
 - **A new release never starts, and an older run sits `Waiting` forever.**
   Release runs are serialised, so one parked run blocks every later one. Cancel
   the stale run from its page (**Cancel workflow**), and the queued one starts.
