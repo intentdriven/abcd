@@ -132,10 +132,10 @@
         "intent-projection"
       ],
       "window": {
-        "tokens_est": 320000,
-        "measured_tokens_est": 307553,
-        "measured_bytes": 1184081,
-        "measured_at": "39c9beb77a65b4afafae24234c9eae2d2936bfc4"
+        "tokens_est": 330000,
+        "measured_tokens_est": 321062,
+        "measured_bytes": 1236092,
+        "measured_at": "7b7c93c10f60487253393f7558d3712854a658d9"
       }
     },
     "comparative": {
