@@ -26,6 +26,19 @@ this list is the human-readable mirror.
 7. Docs-lint (docs-currency gate)
 8. Reviews-charter discipline (RD001-RD003)
 9. Smoke every command (self-discovering harness)
+10. Plugin archive reproduces the committed pin (fail-closed)
+
+Gate 10 runs on a real release only (a rehearsal has no release tag to bind). It
+re-renders the release's plugin archive from the tagged commit and refuses unless
+its SHA-256 is the one the ship pinned in `.claude-plugin/marketplace.json`
+([adr-2609231048308186](../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md)).
+A refusal here comes after the tag and consumes the version, so prove it on the
+release branch first: `go run ./cmd/abcd launch archive --out "$(mktemp -d)"
+--tag vX.Y.Z --verify` exits 0 when the release will pass. From the ship's merge
+until the publish job uploads the archive, the catalog on `main` names a zip that
+is not there yet; an install or update in that window fails closed and leaves an
+installed plugin on its previous release, so approve the release deployment
+promptly.
 
 This list is machine-checked: the `gate_lockstep` `record-lint` rule blocks if it
 diverges from `release.yml`'s `verify` job steps (setup steps excepted). Edit both

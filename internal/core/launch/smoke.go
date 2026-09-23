@@ -23,10 +23,11 @@ const SmokeTierLight SmokeTier = "light"
 // Finding kinds. They are stable strings because an operator greps them and a
 // gate summary counts them.
 const (
-	findingManifestUnreadable = "manifest-unreadable"
-	findingSourceUnresolved   = "source-unresolved"
-	findingNameMismatch       = "plugin-name-mismatch"
-	findingMissingPath        = "missing-declared-path"
+	findingManifestUnreadable  = "manifest-unreadable"
+	findingSourceUnresolved    = "source-unresolved"
+	findingNameMismatch        = "plugin-name-mismatch"
+	findingMissingPath         = "missing-declared-path"
+	findingArchivePinMalformed = "archive-pin-malformed"
 )
 
 // SmokeFinding is one reason the payload would not install.
@@ -80,6 +81,18 @@ func SmokeLight(tree PayloadTree) SmokeReport {
 			// gate records it and does NOT count it as checked — a Checked total
 			// that included unasserted entries would overstate the assurance.
 			continue
+		case SourceArchive:
+			// The pin's SHAPE is judged here, offline; whether its digest is the
+			// digest of this payload's archive is the release gate's judgement
+			// (VerifyArchivePin), which re-renders the archive to answer it.
+			report.Checked++
+			if err := validatePin(*mp.Pin); err != nil {
+				report.Findings = append(report.Findings, SmokeFinding{
+					Kind:   findingArchivePinMalformed,
+					Path:   mp.Name,
+					Detail: fmt.Sprintf("marketplace plugin %q: %v — the harness would refuse to install it", mp.Name, err),
+				})
+			}
 		}
 		report.Checked++
 		manifest := joinPayloadPath(mp.Root, pluginManifestFile)

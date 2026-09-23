@@ -29,6 +29,7 @@ preview never blocks. Bare `abcd launch` refuses with a hint to pass it.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `archive` | gate | shipped |
 | `scaffold` | — | shipped |
 | `ship` | gate | shipped |
 
@@ -42,9 +43,18 @@ records that shipped and never the previous release's surface, so the other
 changelog sections are refused by name and each dated section states under its
 heading what the notes list and do not claim (iss-2609011207114761). It then
 writes the dated `CHANGELOG.md` heading that the auto-release workflow turns
-into a tag. `--payload-dir` stages the versioned release payload, with the
+into a tag. In a repository that declares the version-location contract, it
+then pins the release's plugin archive in the catalog (§ 3, *The pinned plugin
+archive*). `--payload-dir` stages the versioned release payload, with the
 derived version stamped into the payload's manifests and lockstep-proved before
 return.
+
+**`launch archive` is the release gate's half of the pin.** It renders the
+plugin archive of the release the newest dated CHANGELOG heading names, from the
+checked-out tree, into an existing directory; `--tag` binds it to the tag being
+released, and `--verify` refuses (exit 1) unless the committed catalog pins
+exactly that archive's address and digest, removing the archive so nothing
+unpinned can be published. The release workflow runs it on the tagged commit.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent. The deterministic emit alone is `abcd
@@ -124,7 +134,9 @@ is not the compatibility surface, which records manifest keys and discards
 values; installability is the mirror question, over the values.
 
 The **light tier** ships: both manifests parse, each local marketplace source
-resolves to a manifest whose name matches the listing, and every declared path
+resolves to a manifest whose name matches the listing (a pinned archive source
+resolves to the payload root it is rendered from, and its pin must be an https
+`.zip` URL with a 64-hex digest), and every declared path
 the payload is responsible for is carried. Resolution reads the resolved bundle,
 so a file present in the tree but excluded from the payload fails here.
 `dry-run` reports it; the payload render refuses on it, because the render is
@@ -291,6 +303,43 @@ version-writing refuses and the escalation stands. Concretely, `ship`:
 4. Stamps nothing else. Those two locations are the whole of it, and the render
    names both, so there is no third place for a version to drift out of step.
 
+### The pinned plugin archive
+
+A release publishes its plugin as one zip, `<plugin>-plugin-v<version>.zip`,
+and the committed catalog names it:
+`{"source": "archive", "url": "<repository>/releases/download/v<version>/<name>", "sha256": "<digest>"}`
+([adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md),
+amending adr-19 and adr-20 on the 2026-09-23 ruling). The harness downloads the
+zip and refuses it when the digest differs, so an install or update at the tip of
+`main` receives the latest cut release, stamped with its version and
+fingerprinted — not the unversioned working tree.
+
+- **Rendered twice, identically.** `ship` renders the archive from its tree to
+  learn the digest it commits, and refuses a payload with uncommitted changes
+  first. The release workflow renders it again from the tagged commit, in
+  `verify` before anything is built and in the publish job on the bytes that
+  ship, and publishes nothing unless the digests agree. The archive is
+  reproducible by construction: sorted entries, stored uncompressed, one fixed
+  timestamp, modes normalised to 0644 or 0755.
+- **The catalog is left out of the zip.** It is the file that names the zip's
+  digest. The stamped marketplace version and changelog entry (points 3 and 4
+  above) therefore live in the staged payload, where the lockstep proves them,
+  and not in the published artefact; the published version is the archived
+  `plugin.json`'s.
+- **Published with the binaries.** The archive is checksummed into
+  `checksums.txt`, covered by the build-provenance attestation, uploaded, and
+  after publication downloaded fresh, attestation-verified and byte-compared.
+- **The window.** From the ship's merge, the catalog on `main` names an archive
+  the publish job has not uploaded yet. An install or update in that window fails
+  closed and leaves an installed plugin on its previous release; nothing else can
+  install, because the digest refuses other bytes. It cannot be closed, since the
+  pin must be in the tagged tree, so the release runbook keeps it short.
+- **The harness floor.** An archive source needs Claude Code v2.1.224 or later;
+  older harnesses fail to install it, and very old ones fail to load the
+  marketplace. The install instructions and the release notes state the floor.
+- **Contributors** load the plugin from their own checkout rather than through a
+  second catalog entry (`CONTRIBUTING.md`).
+
 **Anti-drift.** The two manifests in the artefact describe one release, so the
 version at the selected location and the marketplace entry must agree. A
 read-only lockstep checker proves this over the path list adr-20 records, and a
@@ -374,6 +423,15 @@ performed by a human and by CI.
   written into the selected version location in the **release artefact** only,
   the working-tree manifests staying unversioned, plus the canonical marketplace
   manifest.
+- **Given** a repository that declares the version-location contract and a clean
+  payload, **when** `ship` writes the dated heading, **then** the catalog's
+  plugin source becomes the release's pinned archive — its download address and
+  the digest of the archive rendered from that tree — the working-tree manifests
+  stay version-free, and `launch archive --verify` on the resulting commit
+  reproduces the digest and exits 0. **Given** a payload file changed after the
+  pin, `launch archive --verify` exits 1, names both digests, and leaves no
+  archive behind; **given** an uncommitted payload change, `ship` refuses before
+  writing anything.
 - **Given** at least one additive intent and no breaking intent, **when** `ship`
   runs, **then** the tier is minor and the launch report names the intents that
   drove it. **Given** any breaking intent, the tier is major and the report names

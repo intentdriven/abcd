@@ -179,6 +179,28 @@ jobs:
       - name: <% .Name %>
         run: <% .Run %>
 <%- end %>
+<%- if .Abcd %>
+
+      # --- The pinned plugin archive (adr-2609231048308186; ruling E1) --------
+      # The ship committed the release's plugin archive — its download address
+      # and SHA-256 — into .claude-plugin/marketplace.json, and every install or
+      # update follows that pin; the harness refuses a download whose digest
+      # differs. Re-render the archive from THIS commit, reproducibly, and refuse
+      # the release unless it yields exactly the pinned digest: a pin the release
+      # could not reproduce would name a zip nobody can publish, and every install
+      # would fail. Refusing here, in verify, costs the tag but builds and
+      # publishes nothing. Skipped on the rehearsal path: a workflow_dispatch has
+      # no release tag to bind (TAG is the branch name), and main between releases
+      # pins the LAST release's archive, which its own tree no longer reproduces.
+      # TAG reaches the script through the workflow env (injection-safe).
+      - name: Plugin archive reproduces the committed pin (fail-closed)
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/plugin-archive"
+          mkdir -p "$out"
+          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify
+<%- end %>
 <%- if .SemanticGates %>
 
       # --- Semantic release gate, armed BEFORE the tag (adr-52, Alternative 1) ---
@@ -352,17 +374,27 @@ jobs:
         # before anything is checksummed, attested, or published.
         run: ./scripts/check-vcs-stamp.sh
 
-      - name: Generate checksums.txt over the four binaries
-        # Hash the exact binaries built above into a sha256sum-format manifest,
-        # uploaded as a release asset. No rebuild — the bytes hashed here are the
-        # bytes uploaded below.
+      - name: Render the plugin archive and prove it matches the committed pin
+        # The plugin archive (abcd-plugin-<tag>.zip) is rendered HERE, from the
+        # same commit as the binaries, and --verify refuses unless its digest is
+        # the one the ship pinned in .claude-plugin/marketplace.json — the check
+        # verify already made, repeated on the exact bytes that ship. It lands in
+        # bin/ AFTER the VCS-stamp check (it is not a binary), so the abcd-* globs
+        # below checksum, attest and upload it with the binaries. A refusal
+        # removes the archive, so nothing unpinned can be published.
+        run: go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify
+
+      - name: Generate checksums.txt over the four binaries and the plugin archive
+        # Hash the exact binaries and the archive above into a sha256sum-format
+        # manifest, uploaded as a release asset. No rebuild — the bytes hashed here
+        # are the bytes uploaded below.
         run: |
           set -euo pipefail
           cd bin
           sha256sum abcd-* > checksums.txt
           cat checksums.txt
 
-      - name: Attest build provenance for the binaries and checksums.txt
+      - name: Attest build provenance for the binaries, the plugin archive and checksums.txt
         # Signed SLSA build-provenance over the exact files uploaded below. Runs
         # BEFORE the Release so a failed attestation aborts before publishing.
         # Skipped on a user-owned private repo (GitHub gates the feature by repo
@@ -376,14 +408,27 @@ jobs:
             bin/abcd-*
             bin/checksums.txt
 
-      - name: Create the GitHub Release and upload the binaries + checksums.txt
+      - name: Create the GitHub Release and upload the binaries, the plugin archive and checksums.txt
         # --verify-tag: refuse to publish unless the tag already exists remotely —
         # existence only; it does not check what the tag points at (see the contract
         # note at the top of this file). --generate-notes lists the merged PRs since
         # the previous tag; CHANGELOG.md remains the durable, hand-curated record.
-        run: gh release create "${TAG}" bin/abcd-* bin/checksums.txt --verify-tag --title "${TAG}" --generate-notes
+        # --notes is prepended to the generated notes: it states the harness floor
+        # the archive-sourced plugin needs (ruling E3).
+        #
+        # THE WINDOW: the ship's merge to main already names this release's archive
+        # in the catalog, and the archive exists only from this step on — later
+        # still while the release environment's approval waits. An install or update
+        # in between fails closed: the download 404s, the harness refuses, and an
+        # installed plugin stays on its previous release. Nothing wrong can be
+        # installed, because the pinned digest refuses any other bytes. The window
+        # cannot be closed from this side (the pin must be in the tagged tree, so
+        # it lands before the tag), so it is kept short: approve the release
+        # deployment promptly once the ship merges.
+        run: gh release create "${TAG}" bin/abcd-* bin/checksums.txt --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: "The plugin installs from this release's pinned archive and needs Claude Code v2.1.224 or later; the binaries have no harness requirement."
 
       - name: Verify the published attestation against a freshly downloaded binary
         # Post-release gate: prove the attestation is real and retrievable. Download
@@ -402,6 +447,16 @@ jobs:
           gh attestation verify "$DL/abcd-linux-amd64" \
             --repo "${GITHUB_REPOSITORY}" \
             --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+          # The plugin archive too: fresh from the Release, attested by this
+          # workflow, and byte-identical to the archive verified against the pin.
+          gh release download "${TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern "abcd-plugin-${TAG}.zip" \
+            --dir "$DL"
+          gh attestation verify "$DL/abcd-plugin-${TAG}.zip" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+          cmp "$DL/abcd-plugin-${TAG}.zip" "bin/abcd-plugin-${TAG}.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 <%- else %>

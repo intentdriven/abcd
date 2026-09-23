@@ -38,6 +38,9 @@ The `release.yml` `verify` job runs these, in order, on the released commit.
 <%- range $i, $g := .ExtraGates %>
 <% add $i 6 %>. <% $g.Name %>
 <%- end %>
+<%- if .Abcd %>
+<% add (len .ExtraGates) 6 %>. Plugin archive reproduces the committed pin (fail-closed)
+<%- end %>
 
 ## Semantic gates (host-run, before the tag)
 <% if .SemanticGates %>

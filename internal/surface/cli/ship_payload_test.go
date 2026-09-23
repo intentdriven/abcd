@@ -22,7 +22,12 @@ func shipRenderableRepo(t *testing.T) *gittest.Repo {
 		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version"}`+"\n")
 	r.Write(".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "CHANGELOG.md"]}`+"\n")
+	// A repo that declares the version-location contract publishes a pinned
+	// plugin archive at every ship, and the archive's download address derives
+	// from the plugin manifest's repository.
+	r.Write(".claude-plugin/plugin.json", `{"name":"abcd","description":"fixture","repository":"`+fixtureRepository+`"}`+"\n")
 	r.Commit("the release configuration")
+	refreshSurface(t, r)
 	return r
 }
 

@@ -1313,6 +1313,33 @@
       ]
     },
     {
+      "path": "abcd launch archive",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "tag",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "verify",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd launch scaffold",
       "hidden": false,
       "flags": [

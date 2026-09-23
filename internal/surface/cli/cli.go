@@ -332,6 +332,10 @@ func NewRootCommand() *cobra.Command {
 	// BUNDLE, this cuts the RELEASE (version + changelog record set). They hang
 	// off one command because they gate the same event.
 	launchCmd.AddCommand(newLaunchShipCommand(&asJSON))
+	// `archive` is the release gate's half of the pinned plugin archive
+	// (adr-2609231048308186): the ship pins the archive's digest, the release
+	// workflow re-renders it from the tagged commit and refuses a mismatch.
+	launchCmd.AddCommand(newLaunchArchiveCommand(&asJSON))
 	// `scaffold` writes the changelog-driven release machinery (release.yml,
 	// auto-release.yml, runbook) into a managed repo that lacks it (itd-93). It
 	// extends 04-launch because launch already owns how a release is cut and gated.
