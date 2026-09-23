@@ -267,6 +267,27 @@ version --check` reports whether one is available and names the command your
 install shape takes, since a plugin-root binary takes a plugin update and a
 package-manager install takes the manager's own upgrade.
 
+## What adopting a repository commits
+
+`abcd ahoy install` in a repository adopts it: it lays down the `.abcd/`
+layout and the commit gates. By default it writes abcd's name into none of the
+repository's conventions files (`CLAUDE.md`, `AGENTS.md`); the managed block
+that documents the rule loader, and names abcd, goes into one only when you ask
+for it with `--docs-target`.
+
+Outside `.abcd/`, a default adoption names abcd in exactly three committed
+files, and nowhere else:
+
+- `.githooks/pre-commit` and `.githooks/pre-merge-commit`, the name-guard hooks,
+  which run the `abcd` binary on each commit and merge.
+- The fenced block in `.gitignore`, between `# BEGIN ABCD` and `# END ABCD`,
+  whose header asks you not to edit it by hand.
+
+This mention is deliberate. abcd recognises its own hooks and fence by the
+markers they carry, so a hook whose marker is renamed or stripped reads as
+someone else's hook, a fence without its markers reads as drifted, and
+`abcd ahoy` reports either as a gap.
+
 ## Build
 
 ```bash

@@ -98,9 +98,14 @@ then ratified ADRs, then everything else read for understanding only.
   the conventions read as the repo's own, between dated markers so later tooling
   can find and replace them. The paths it states into the `.abcd/` layout are
   the one trace of the tool, and the adopter accepts that namespace by adopting
-  the layout. The install leaves the conventions files nameless as well; the
-  name-guard hooks and the ignore fence it commits are the exception, and carry
-  the name outside that namespace (iss-2609231103413459).
+  the layout. The install leaves the conventions files nameless as well. The
+  one sanctioned mention of abcd outside that namespace is the pair of
+  name-guard hooks and the `.gitignore` fence the install commits: the hooks run
+  the binary, and the fence tells people not to hand-edit the block. Both keep
+  their markers, because detection recognises an adopted repository by them;
+  neither cites abcd's own record ids. That exception to the 2026-09-11 naming
+  ruling (iss-2609110944498549) is the product thinker's, of 2026-09-23, and
+  `work/DECISIONS.md` records it.
 - **Never commit downstream assets.** Anything tooling will later provide
   (persona data, lint-config JSON, content copied from the abcd record) is
   applied, not copied. Only content about the target repository is committed.
@@ -129,11 +134,10 @@ then ratified ADRs, then everything else read for understanding only.
   surface against it.
 - **Given** the adoption completes, **then** nothing from `private-names.txt`
   and no abcd-internal content appears in any committed artefact, with one
-  exception the code does not yet meet: the name-guard hooks
-  (`.githooks/pre-commit`, `.githooks/pre-merge-commit`) and the `.gitignore`
-  fence the install commits still name abcd and cite abcd record ids. That
-  exception is open as iss-2609231103413459, pending the product thinker's
-  ruling on whether the naming ruling covers them.
+  sanctioned exception: the name-guard hooks (`.githooks/pre-commit`,
+  `.githooks/pre-merge-commit`) and the `.gitignore` fence keep their markers
+  and name abcd, as the one allowed mention of it in an adopted repository, and
+  cite none of abcd's record ids (the product thinker's ruling of 2026-09-23).
 
 ## Composition
 
