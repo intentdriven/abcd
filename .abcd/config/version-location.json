@@ -5,5 +5,5 @@
   "json_pointer": "/version",
   "version_property_clause": "claude-code-plugin-manifest.schema.json#/properties/version",
   "marketplace_source_resolution_base": "repo_root",
-  "marketplace_source_to_root": "./"
+  "publishes_plugin_archive": true
 }

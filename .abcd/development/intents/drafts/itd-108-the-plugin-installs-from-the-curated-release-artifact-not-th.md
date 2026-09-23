@@ -116,6 +116,7 @@ commitments, not options.
   signing `release.yml` ALREADY performs — `actions/attest-build-provenance` over
   the binaries and `checksums.txt` — extended to the plugin zip, so both halves of
   the distribution carry the same guarantee instead of one having none.
+  _Overtaken 2026-09-23: the product thinker's ruling E1 chose the pinned archive (address and `sha256`, rewritten by every ship), recorded in [adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md)._
 - **An offline signing key is recorded as a future extension, not adopted now.**
   The attestation proves "built by this workflow in this repo", which defends a
   stolen upload token and not a full repository compromise, because the identity
