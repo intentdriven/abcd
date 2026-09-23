@@ -9,6 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (decide, record-lint)"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: decide --supersedes and a record-lint row for ADR README rows and two-ended supersedes agreement; itd-160 covers only absent targets). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 Superseding an ADR is a five-file hand ritual and nothing checks that the two ends of the link agree.

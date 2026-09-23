@@ -8,9 +8,9 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-07/08; re-filed into abcd 2026-09-10"
 origin: researcher-authored
 production_mode: hand-written
-deferred_after: "v0.8.0"
-deferral_reason: "Runbook steps that navigate a third party's interface cannot be verified by anything abcd runs, and the record's own measurement shows doc-sourced instructions failing where screenshot-sourced ones held. What to do about instructions whose truth abcd cannot check is a question about what a runbook is allowed to claim, not a defect to patch."
 found_at: "conventions (agent runbook guidance for managed repos)"
+deferred_after: "v0.9.0"
+deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M26: adopt both halves (a verification tag on third-party UI guidance, a stated purpose on every redaction rule), recorded in DECISIONS.md; the home in the managed-repository agent conventions or a principle is still to be written). Earlier deferral: Runbook steps that navigate a third party's interface cannot be verified by anything abcd runs, and the record's own measurement shows doc-sourced instructions failing where screenshot-sourced ones held. What to do about instructions whose truth abcd cannot check is a question about what a runbook is allowed to claim, not a defect to patch."
 ---
 
 An agent walking an operator through a third-party hosting dashboard produced four successive sets of instructions, none of which matched the screen in front of them. The task — create a hosting API token, put it in two forge secrets, run a workflow — is mechanically trivial and took roughly ten exchanges, most of them the operator saying the instruction did not match what they could see.

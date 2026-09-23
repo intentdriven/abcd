@@ -9,6 +9,8 @@ found_during: "orchestrator-observation"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: the cp alias is a this-machine fact (memory, per memory-graduates-to-record) or a committed rules line; itd-193 only cites the hazard). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 an interactive cp prompt stalls an agent silently and has now cost three sessions time in one day

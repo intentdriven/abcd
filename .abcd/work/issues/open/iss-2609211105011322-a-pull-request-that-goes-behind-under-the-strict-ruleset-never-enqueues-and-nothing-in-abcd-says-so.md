@@ -9,6 +9,8 @@ found_during: "pilot run 2026-09-20"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "the push and pull-request step; scripts/pr-keep-current.sh"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: surfacing the BEHIND/queue sequencing rule and keep-current from abcd; itd-115 draft). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 A pull request that goes BEHIND main under the strict ruleset never enqueues: the merge queue requires an up-to-date branch, and auto-merge armed on a PR that then falls behind waits forever without a word. The only recovery is scripts/pr-keep-current.sh, a forge update-branch that lives outside abcd; the pilot run hit it on its first lane (PR 647, update-branch at 23:37Z after a sibling merged) and every later lane was sequenced around it by hand. Nothing abcd prints at push or PR time names the condition, the remedy or the sequencing rule (one lane in the queue at a time when they share a file). Wanted: the launch or capture surface that opens a PR says the rule, and a verb or the keep-current script is reachable from the plugin surface, so an orchestrating agent does not learn it from a stalled queue.

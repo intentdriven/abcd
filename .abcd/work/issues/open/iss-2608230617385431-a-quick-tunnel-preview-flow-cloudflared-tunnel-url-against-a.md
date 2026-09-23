@@ -7,6 +7,8 @@ category: "future-work-seed"
 source: "user-observation"
 found_during: "user-observation"
 found_at: "site-src"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed if the need recurs: a quick-tunnel preview protocol stating what may be served). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 a quick-tunnel preview flow (cloudflared tunnel --url against a local site build) covers phone testing when the LAN route is blocked and multiple simultaneous testers during dev work; worth a documented protocol or make target if the need recurs — the URL is public while the tunnel runs, so the protocol must say what may be served through it
