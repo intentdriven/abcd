@@ -16,6 +16,10 @@ import (
 // record has it. A quote on the page is verified against these bytes.
 const irisQuote = `"I stopped typing version numbers," said Iris, a product thinker. "The release tells me."`
 
+// niaQuote is the second persona quote itd-73's press release carries: the
+// source a truncated quote is cut from.
+const niaQuote = `"We never did lose a record," said Nia, a facilitator.`
+
 // pageRepo is a ready cut whose press-release set is known: itd-73 and itd-74
 // (additive, shipped since the tag). Around them sit every record the set must
 // exclude: a fixed issue (iss-51), an internal intent (itd-97), a superseded
@@ -33,7 +37,8 @@ func pageRepo(t *testing.T) *gittest.Repo {
 	r.Remove(shippedDir + "itd-40-superseded.md")
 	r.Write(shippedDir+"itd-73-derived-versioning.md",
 		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\n## Press Release\n\n"+
-			"> The release version is derived from what shipped,\n> not typed by hand.\n>\n> "+irisQuote+"\n\n"+
+			"> The release version is derived from what shipped,\n> not typed by hand.\n>\n> "+
+			strings.Replace(irisQuote, " said", "\n> said", 1)+"\n>\n> "+niaQuote+"\n\n"+
 			"## Why This Matters\n\n\"A sentence outside the press release,\" said Iris, a product thinker.\n")
 	r.Write(shippedDir+"itd-74-release-page.md",
 		"---\nid: itd-74\nimpact: additive\n---\n\n# Every Release Has A Page\n\n## Press Release\n\n> A page per release.\n")
@@ -379,6 +384,13 @@ func TestQuoteMustBeVerbatim(t *testing.T) {
 		{"a sentence from outside the press release", Quote{Record: "itd-73", Text: `"A sentence outside the press release," said Iris, a product thinker.`, Attribution: "Iris, a product thinker"}, ReasonQuoteNotVerbatim},
 		{"a quote from an intent the page only lists", Quote{Record: "itd-74", Text: "A page per release.", Attribution: "A page"}, ReasonQuoteSource},
 		{"a quote that cleaning would alter", Quote{Record: "itd-73", Text: irisQuote + " <!-- x -->", Attribution: "Iris, a product thinker"}, ReasonQuoteNotVerbatim},
+		{"a quote truncated at its opening", Quote{Record: "itd-73", Text: `did lose a record," said Nia, a facilitator.`, Attribution: "Nia, a facilitator"}, ReasonQuoteNotVerbatim},
+		{"a quote cut mid-word", Quote{Record: "itd-73", Text: `"We never did lose a record," said Nia, a facilit`, Attribution: "Nia"}, ReasonQuoteNotVerbatim},
+		{"a quote cut mid-sentence", Quote{Record: "itd-73", Text: `"We never did lose a record," said Nia, a`, Attribution: "Nia"}, ReasonQuoteNotVerbatim},
+		{"a sentence that is not a quote", Quote{Record: "itd-73", Text: "The release version is derived from what shipped, not typed by hand.", Attribution: "The release"}, ReasonQuoteNotVerbatim},
+		{"a one-letter attribution", Quote{Record: "itd-73", Text: irisQuote, Attribution: "a"}, ReasonQuoteNotVerbatim},
+		{"an attribution cut mid-word", Quote{Record: "itd-73", Text: irisQuote, Attribution: "Ir"}, ReasonQuoteNotVerbatim},
+		{"an attribution cut mid-phrase", Quote{Record: "itd-73", Text: irisQuote, Attribution: "Iris, a"}, ReasonQuoteNotVerbatim},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -396,14 +408,45 @@ func TestQuoteMustBeVerbatim(t *testing.T) {
 		})
 	}
 
-	t.Run("a quote wrapped across lines in the source passes", func(t *testing.T) {
-		r := pageRepo(t)
-		p := goodPage()
-		p.Quotes = []Quote{{Record: "itd-73", Text: "The release version is derived from what shipped, not typed by hand.", Attribution: "The release"}}
-		if _, err := Ingest(r.Root(), liveSurface(), marshalPage(t, "v0.4.1", pageEntries(), p), cutAt); err != nil {
-			t.Errorf("Ingest refused a verbatim quote wrapped in the source: %v", err)
-		}
-	})
+	for _, ok := range []struct {
+		name  string
+		quote Quote
+	}{
+		{"a quote wrapped across lines in the source passes", Quote{Record: "itd-73", Text: irisQuote, Attribution: "Iris, a product thinker"}},
+		{"a whole quoted sentence passes", Quote{Record: "itd-73", Text: niaQuote, Attribution: "Nia, a facilitator"}},
+		{"the first sentence of a quote passes", Quote{Record: "itd-73", Text: `"I stopped typing version numbers," said Iris, a product thinker.`, Attribution: "Iris, a product thinker"}},
+		{"an attribution naming the speaker alone passes", Quote{Record: "itd-73", Text: niaQuote, Attribution: "Nia"}},
+	} {
+		t.Run(ok.name, func(t *testing.T) {
+			r := pageRepo(t)
+			p := goodPage()
+			p.Quotes = []Quote{ok.quote}
+			if _, err := Ingest(r.Root(), liveSurface(), marshalPage(t, "v0.4.1", pageEntries(), p), cutAt); err != nil {
+				t.Errorf("Ingest refused a verbatim quote: %v", err)
+			}
+		})
+	}
+}
+
+// TestPageRefusesARepeatedQuote: a quote carried twice would render twice under
+// its headline, so the second is refused as a duplicate citation naming the
+// first, rather than collapsed silently behind the composer's back.
+func TestPageRefusesARepeatedQuote(t *testing.T) {
+	r := pageRepo(t)
+	p := goodPage()
+	p.Quotes = []Quote{p.Quotes[0], {Record: "itd-73", Text: niaQuote, Attribution: "Nia"}, p.Quotes[0]}
+	_, err := Ingest(r.Root(), liveSurface(), marshalPage(t, "v0.4.1", pageEntries(), p), cutAt)
+	reason, ok := reasonWith(refusalOf(t, err), ReasonDuplicateCitation)
+	if !ok {
+		t.Fatalf("codes = %v, want %s", codesOf(refusalOf(t, err)), ReasonDuplicateCitation)
+	}
+	if reason.At != "press_release.quotes[2]" || !strings.Contains(reason.Detail, "press_release.quotes[0]") ||
+		!strings.Contains(reason.Detail, "itd-73") {
+		t.Errorf("reason = %+v, want quotes[2] refused naming itd-73 and quotes[0]", reason)
+	}
+	if n := len(refusalOf(t, err).Reasons); n != 1 {
+		t.Errorf("%d reasons, want 1 (the second, distinct quote is not a duplicate): %v", n, codesOf(refusalOf(t, err)))
+	}
 }
 
 // TestPageRefusesAnUnregisteredPersona: the release page sits at the repository

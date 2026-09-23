@@ -210,6 +210,7 @@ func validatePage(cut Cut, p *PressReleasePayload, rs *reasons) validatedPage {
 	if len(p.Quotes) > maxQuotes {
 		rs.add(ReasonTextOversize, "press_release.quotes", "%d quotes (max %d)", len(p.Quotes), maxQuotes)
 	}
+	firstQuote := map[[2]string]string{}
 	for i, q := range p.Quotes {
 		at := fmt.Sprintf("press_release.quotes[%d]", i)
 		if !checkID(q.Record, at+".record", rs) {
@@ -239,6 +240,14 @@ func validatePage(cut Cut, p *PressReleasePayload, rs *reasons) validatedPage {
 				q.Record, why)
 			continue
 		}
+		// A repeated quote would render twice under its headline. It is refused
+		// rather than collapsed: the composer is told, not silently corrected.
+		key := [2]string{q.Record, collapse(q.Text)}
+		if first, seen := firstQuote[key]; seen {
+			rs.add(ReasonDuplicateCitation, at, "this quote from %s is already carried at %s; each quote appears once", q.Record, first)
+			continue
+		}
+		firstQuote[key] = at
 		out.quotes = append(out.quotes, Quote{Record: q.Record, Text: collapse(q.Text), Attribution: collapse(q.Attribution)})
 	}
 	return out
@@ -339,6 +348,13 @@ func sourceParagraphs(section string) []string {
 
 // verbatim returns "" when the quote is carried word for word from source, or
 // why it is not.
+//
+// A substring is not enough: a quote cut mid-sentence or mid-word can reverse
+// what its speaker said and still be "contained". So the quote is a whole quoted
+// sentence as the press release has it — it opens with a quotation mark, closes
+// on sentence punctuation, and sits between whitespace or paragraph edges in the
+// source — and its attribution is the whole phrase after `said `, ending where
+// the text or its clause does.
 func verbatim(source string, q Quote) string {
 	text := collapse(q.Text)
 	attribution := collapse(q.Attribution)
@@ -347,17 +363,62 @@ func verbatim(source string, q Quote) string {
 		return "the quote is empty"
 	case attribution == "":
 		return "the quote carries no attribution"
-	case !strings.Contains(text, attribution):
-		return "the attribution does not appear in the quote as the source has it"
 	case termsafe.CleanProseLine(q.Text, maxEntryProseBytes) != text:
 		return "the quote carries text the page cannot render as written"
+	case !strings.HasPrefix(text, `"`) && !strings.HasPrefix(text, "\u201c"):
+		return "the quote does not open with a quotation mark; carry the whole quoted sentence"
+	case !endsSentence(text):
+		return "the quote does not close on sentence punctuation; carry the whole quoted sentence"
+	case !attributed(text, attribution):
+		return "the attribution is not the whole phrase after `said ` in the quote as the source has it"
 	}
 	for _, para := range sourceParagraphs(source) {
-		if strings.Contains(para, text) {
+		if containsBounded(para, text) {
 			return ""
 		}
 	}
-	return "no paragraph of the intent's `## Press Release` section contains it"
+	return "no paragraph of the intent's `## Press Release` section contains it as a whole sentence"
+}
+
+// endsSentence reports whether text closes on `.`, `!` or `?`, optionally
+// followed by a closing quotation mark.
+func endsSentence(text string) bool {
+	text = strings.TrimSuffix(strings.TrimSuffix(text, `"`), "\u201d")
+	return strings.HasSuffix(text, ".") || strings.HasSuffix(text, "!") || strings.HasSuffix(text, "?")
+}
+
+// attributed reports whether `said <attribution>` occurs in text with the
+// attribution ending at the text's end or at clause punctuation, so neither a
+// cut word ("Ir") nor a cut phrase ("Iris, a") passes.
+func attributed(text, attribution string) bool {
+	needle := "said " + attribution
+	for from := 0; ; {
+		i := strings.Index(text[from:], needle)
+		if i < 0 {
+			return false
+		}
+		end := from + i + len(needle)
+		if end == len(text) || strings.ContainsRune(".,;:!?", rune(text[end])) {
+			return true
+		}
+		from += i + 1
+	}
+}
+
+// containsBounded reports whether text occurs in para starting at the
+// paragraph's start or after a space, and ending at its end or before a space.
+func containsBounded(para, text string) bool {
+	for from := 0; ; {
+		i := strings.Index(para[from:], text)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(text)
+		if (start == 0 || para[start-1] == ' ') && (end == len(para) || para[end] == ' ') {
+			return true
+		}
+		from = start + 1
+	}
 }
 
 // renderPage renders the page deterministically from a validated payload.

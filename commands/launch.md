@@ -337,12 +337,12 @@ differs for each:
 
 The release page is held to the same rule: every intent marked
 `in_press_release` is told in a headline or listed, once, and nothing else is
-cited. Every quote must match, word for word and with its attribution, a quote in
-the `## Press Release` section of an intent a headline tells. The rendered page
-and the rendered changelog section are both checked against the outbound policy
-(no session URL, no tool attribution footer), and the page against the
-repository's persona registry (`persona_registry`, which record-lint cannot
-reach at the root).
+cited. Every quote must match, word for word and with its attribution after
+`said`, a whole quoted sentence in the `## Press Release` section of an intent a
+headline tells. The rendered page and the rendered changelog section are both
+checked against the outbound policy (no session URL, no tool attribution
+footer), and the page against the repository's persona registry
+(`persona_registry`, which record-lint cannot reach at the root).
 
 On success it writes, in this order, only after every check has passed:
 
@@ -428,7 +428,7 @@ The reason codes:
 | `changelog-internal` | cites an `impact: internal` record in the changelog |
 | `missing` | leaves an intent in the page's set neither told nor listed |
 | `outside-set` | cites on the page an id outside its set (the detail says why: not in this cut, an issue, internal, or removed) |
-| `duplicate-citation` | cites one intent twice on the page |
+| `duplicate-citation` | cites one intent, or carries one quote, twice on the page |
 | `no-headline` | tells no intent on a page that has a set |
 | `page-for-empty-set` | carries a page for a cut that ships fixes alone |
 | `heading` | has a page text opening with `#` |

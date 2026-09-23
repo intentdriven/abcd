@@ -147,11 +147,12 @@ the page; their lines are in the changelog.
   or in `listed`, never both, never twice, and nothing outside the set — the
   binary refuses the whole payload otherwise.
 - **Carry the quote of each intent you tell**, word for word, with its
-  attribution, in `quotes`: `text` is the quote as the press release has it
-  (quotation marks, the "said …" clause and all), and `attribution` is the
-  speaker exactly as the quote names them. The binary checks each quote against
-  the intent's `## Press Release` section and refuses one that differs by a word,
-  one taken from elsewhere in the record, and one from an intent you only listed.
+  attribution, in `quotes`: `text` is a whole quoted sentence as the press
+  release has it (quotation marks, the "said …" clause and all), and
+  `attribution` is the speaker exactly as the quote names them after `said`. The
+  binary checks each quote against the intent's `## Press Release` section and
+  refuses one that differs by a word or is cut short, one taken from elsewhere in
+  the record, one from an intent you only listed, and one carried twice.
   Keep straight and curly quotation marks as the source has them.
 - **Look back only.** Write nothing forward-looking: no date, no "next release",
   no "coming", no planned work, no `target_release`. The page says what this
