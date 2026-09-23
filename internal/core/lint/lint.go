@@ -715,13 +715,14 @@ func checkContextStatusFree(repoRoot string, cfg RuleConfig) ([]Finding, error) 
 }
 
 // SurfaceCoverageLabel opens every surface_coverage finding (itd-147 ac-7). The
-// rule checks that rows exist and agree with the plugin surface and the
-// command-tree snapshot; it reads no chapter prose. A green run once read as a
+// rule checks that rows exist, in the surfaces index and in each chapter's
+// `## Sub-verbs` table, and agree with the plugin surface and the command-tree
+// snapshot; it reads no chapter prose. A green run once read as a
 // chapter-correctness gate while false prose claims sat beside the rows it
 // checked, so each finding says which check it is. What keeps a chapter's
 // flags and sub-verbs true is its generated appendix and the drift test over
 // it (internal/surface/cli), not this rule.
-const SurfaceCoverageLabel = "row-level presence check over the surfaces index (it judges rows, not whether a chapter's prose is correct): "
+const SurfaceCoverageLabel = "row-level presence check over the surfaces index and each chapter's sub-verb table (it judges rows, not whether a chapter's prose is correct): "
 
 // labelSurfaceCoverage prefixes each surface_coverage finding with the label.
 func labelSurfaceCoverage(fs []Finding) []Finding {

@@ -843,8 +843,11 @@ func TestSurfaceCoverage(t *testing.T) {
 			t.Errorf("surface_coverage finding does not carry its row-level label: %q", f.Message)
 		}
 	}
-	if !strings.Contains(SurfaceCoverageLabel, "row-level presence check") || !strings.Contains(SurfaceCoverageLabel, "not whether a chapter's prose is correct") {
-		t.Errorf("SurfaceCoverageLabel = %q; it must name the row-level presence check and disclaim chapter prose", SurfaceCoverageLabel)
+	// The label names both grains the rule checks: the surfaces index rows and
+	// each chapter's `## Sub-verbs` table rows, since the sub-verb findings carry
+	// the same label.
+	if !strings.Contains(SurfaceCoverageLabel, "row-level presence check over the surfaces index and each chapter's sub-verb table") || !strings.Contains(SurfaceCoverageLabel, "not whether a chapter's prose is correct") {
+		t.Errorf("SurfaceCoverageLabel = %q; it must name the row-level presence check over the index and each chapter's sub-verb table, and disclaim chapter prose", SurfaceCoverageLabel)
 	}
 
 	// A well-formed registry over the real surfaces produces zero findings.
