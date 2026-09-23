@@ -88,7 +88,12 @@ as `claim_denied` naming the holder. A granted claim is logged as `claim`; if
 that line cannot be written the claim is removed again, so the directory never
 holds a claim the log does not. `release` removes the holder's own claim and
 logs `claim_released`; only the holder releases. A claim file nobody can parse
-is named in the error, never overwritten.
+(a session killed between the exclusive create and the write leaves an empty
+one) blocks nothing but its own record, and that only for a one-minute grace
+from the file's modification time: the status lists it as unreadable, `leave`
+and every other claim read past it, a claim on its record within the grace is
+contention naming the file's full path, and after the grace the claim logs
+`claim_lapsed` with reason `unparseable` and takes the record.
 
 ## The bounds
 

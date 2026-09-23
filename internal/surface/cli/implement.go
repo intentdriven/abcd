@@ -73,6 +73,11 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  claims:   %d\n", len(st.Claims))
 				for _, c := range st.Claims {
+					if c.Unreadable {
+						fmt.Fprintf(w, "    %s  unreadable claim file, holds the record until %s\n", c.Record,
+							c.ExpiresAt.Format(time.RFC3339))
+						continue
+					}
 					state := "live"
 					if !c.Live {
 						state = "lapsed"

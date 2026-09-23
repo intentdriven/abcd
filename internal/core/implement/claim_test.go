@@ -396,16 +396,52 @@ func TestMalformedClaimsWriteNothing(t *testing.T) {
 	}
 }
 
-// TestAnUnreadableClaimIsNamedNotGuessed: a claim file nobody can parse is not
-// silently overwritten; the error names the file.
-func TestAnUnreadableClaimIsNamedNotGuessed(t *testing.T) {
-	r, _ := newRun(t)
+// TestAnUnreadableClaimLapsesAfterAGrace: a claim file nobody can parse — a
+// session killed between the exclusive create and the write leaves an empty
+// one — blocks nothing else: the status, other claims and leave read past it.
+// Its own record is contention for a short grace after it was written, naming
+// the file's full path, and then lapses: the next claim logs claim_lapsed with
+// reason unparseable and takes it.
+func TestAnUnreadableClaimLapsesAfterAGrace(t *testing.T) {
+	r, c := newRun(t)
 	join(t, r, "alpha", RoleFirst)
-	if err := os.WriteFile(filepath.Join(r.Dir, claimsDirName, "itd-1.json"), nil, 0o600); err != nil {
+	join(t, r, "beta", RoleSecond)
+	path := filepath.Join(r.Dir, claimsDirName, "itd-1.json")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := r.Claim(ClaimRequest{Session: "alpha", Record: "itd-1", Lane: "l"})
-	if err == nil || !strings.Contains(err.Error(), "claims/itd-1.json") {
-		t.Fatalf("claim over an unreadable file = %v; want an error naming it", err)
+	if err := os.Chtimes(path, c.now(), c.now()); err != nil {
+		t.Fatal(err)
+	}
+
+	states, err := r.Claims()
+	if err != nil || len(states) != 1 || !states[0].Unreadable || !states[0].Live || states[0].Record != "itd-1" {
+		t.Fatalf("status over an empty claim = %+v, %v", states, err)
+	}
+	if _, err := r.Claim(ClaimRequest{Session: "beta", Record: "itd-2", Lane: "two"}); err != nil {
+		t.Fatalf("another record's claim over an empty claim file: %v", err)
+	}
+	_, err = r.Claim(ClaimRequest{Session: "alpha", Record: "itd-1", Lane: "one"})
+	if !errors.Is(err, ErrContention) || !strings.Contains(err.Error(), path) {
+		t.Fatalf("claim within the grace = %v; want contention naming %s", err, path)
+	}
+	if _, err := r.Release("alpha", "itd-1"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), path) {
+		t.Fatalf("release of an unreadable claim = %v; want a refusal naming %s", err, path)
+	}
+	if res, err := r.Leave("beta", "window"); err != nil || len(res.Released) != 1 {
+		t.Fatalf("leave over an empty claim file = %+v, %v", res, err)
+	}
+
+	c.advance(UnreadableClaimGrace)
+	res, err := r.Claim(ClaimRequest{Session: "alpha", Record: "itd-1", Lane: "one"})
+	if err != nil || res.Claim.Session != "alpha" {
+		t.Fatalf("claim after the grace = %+v, %v", res, err)
+	}
+	e := lastEvent(t, r, EventClaimLapsed)
+	if e.String("reason") != "unparseable" || e.String("record") != "itd-1" || e.String("path") != "claims/itd-1.json" {
+		t.Fatalf("claim_lapsed = %+v", e.Fields)
+	}
+	if states, err := r.Claims(); err != nil || len(states) != 1 || states[0].Unreadable || states[0].Session != "alpha" {
+		t.Fatalf("claims after the lapse = %+v, %v", states, err)
 	}
 }

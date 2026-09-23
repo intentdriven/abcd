@@ -62,8 +62,10 @@ The second session cannot set the mode.
 One claim file per record, created exclusively: of two sessions reaching for
 one record, exactly one holds it. A claim is a lease (default two hours); a
 session that dies holding one strands nothing, because a lapsed lease is
-claimable again and the lapse is logged. Claiming a record this session already
-holds renews the lease. Release it when the lane is done, and leave when the
+claimable again and the lapse is logged. A claim file nobody can parse (a session
+killed mid-claim) holds its record for one minute from when it was written, then
+lapses the same way, logged with reason `unparseable`. Claiming a record this
+session already holds renews the lease. Release it when the lane is done, and leave when the
 session stops:
 
 ```bash

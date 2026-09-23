@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -47,7 +48,17 @@ type Claim struct {
 type ClaimState struct {
 	Claim
 	Live bool `json:"live"`
+	// Unreadable marks a claim file nobody can parse: it carries only its
+	// record, and its lease is the grace after the file was written.
+	Unreadable bool `json:"unreadable,omitempty"`
 }
+
+// UnreadableClaimGrace is how long a claim file nobody can parse holds its
+// record, counted from the file's modification time. Every claim is written
+// under the run's lock in one create, so an unparseable file is a writer killed
+// between the create and the write; the grace is only long enough that a
+// reader racing that writer backs off rather than taking the record.
+const UnreadableClaimGrace = time.Minute
 
 // ClaimRequest is what a session asks for.
 type ClaimRequest struct {
@@ -162,7 +173,26 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 			if !errors.Is(err, os.ErrExist) || attempt > 0 {
 				return fmt.Errorf("cannot take the claim: %w", err)
 			}
-			held, rerr := readClaim(root, req.Record)
+			held, rerr := r.readClaim(root, req.Record)
+			var bad *UnreadableClaimError
+			if errors.As(rerr, &bad) {
+				// Nobody can say who holds it. Within the grace it is contention;
+				// after it the file has lapsed, and the lapse is logged as one.
+				if now.Before(bad.LapsesAt) {
+					return fmt.Errorf("%w: %v; it lapses at %s, so back off and retry after then",
+						ErrContention, bad, bad.LapsesAt.Format(time.RFC3339))
+				}
+				if _, err := r.append(req.Session, EventClaimLapsed, map[string]any{
+					"record": req.Record, "reason": "unparseable", "path": claimRel(req.Record),
+					"expired_at": bad.LapsesAt.Format(time.RFC3339),
+				}); err != nil {
+					return err
+				}
+				if err := root.Remove(claimRel(req.Record)); err != nil {
+					return fmt.Errorf("cannot remove the unreadable claim %s: %w", bad.Path, err)
+				}
+				continue
+			}
 			if rerr != nil {
 				return rerr
 			}
@@ -178,7 +208,7 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 				return err
 			case !now.Before(held.ExpiresAt):
 				if _, err := r.append(req.Session, EventClaimLapsed, map[string]any{
-					"record": held.Record, "lane": held.Lane, "holder": held.Session,
+					"record": held.Record, "lane": held.Lane, "holder": held.Session, "reason": "expired",
 					"expired_at": held.ExpiresAt.Format(time.RFC3339),
 				}); err != nil {
 					return err
@@ -262,9 +292,14 @@ func (r *Run) Release(session, record string) (Claim, error) {
 			return err
 		}
 		defer root.Close()
-		held, err := readClaim(root, record)
+		held, err := r.readClaim(root, record)
 		if errors.Is(err, os.ErrNotExist) {
 			return refusal("%s is not claimed", record)
+		}
+		var bad *UnreadableClaimError
+		if errors.As(err, &bad) {
+			return refusal("%v; no session holds it to release, and it lapses at %s, when a claim replaces it",
+				bad, bad.LapsesAt.Format(time.RFC3339))
 		}
 		if err != nil {
 			return err
@@ -322,7 +357,15 @@ func (r *Run) listClaims(root *os.Root) ([]ClaimState, error) {
 		if !ok || !recordid.CitedIDRe.MatchString(record) {
 			continue
 		}
-		c, err := readClaim(root, record)
+		c, err := r.readClaim(root, record)
+		var bad *UnreadableClaimError
+		if errors.As(err, &bad) {
+			// Listed, never fatal: one torn file must not stop the status, leave
+			// or another record's claim from reading every other claim.
+			out = append(out, ClaimState{Claim: Claim{Record: record, ExpiresAt: bad.LapsesAt},
+				Live: now.Before(bad.LapsesAt), Unreadable: true})
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -331,17 +374,37 @@ func (r *Run) listClaims(root *os.Root) ([]ClaimState, error) {
 	return out, nil
 }
 
-// readClaim reads one claim file. An unreadable one — a session killed between
-// the create and the write leaves an empty file — is an error naming the file,
-// never a guess at who holds it.
-func readClaim(root *os.Root, record string) (Claim, error) {
-	data, err := fsutil.ReadGuardedInRoot(root, claimRel(record), maxRecordBytes)
+// UnreadableClaimError is a claim file nobody can parse — a session killed
+// between the exclusive create and the write leaves an empty one. It names the
+// file's full path and when it lapses, never a guess at who holds it.
+type UnreadableClaimError struct {
+	Record   string
+	Path     string
+	LapsesAt time.Time
+}
+
+func (e *UnreadableClaimError) Error() string {
+	return fmt.Sprintf("the claim file %s is unreadable; nothing can say who holds %s", e.Path, e.Record)
+}
+
+// readClaim reads one claim file. An unparseable one is an
+// *UnreadableClaimError lapsing UnreadableClaimGrace after the file was last
+// written.
+func (r *Run) readClaim(root *os.Root, record string) (Claim, error) {
+	rel := claimRel(record)
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxRecordBytes)
 	if err != nil {
 		return Claim{}, err
 	}
 	var c Claim
 	if err := json.Unmarshal(data, &c); err != nil || c.Record != record || c.Session == "" || c.ExpiresAt.IsZero() {
-		return Claim{}, fmt.Errorf("the claim on %s is unreadable; nothing can say who holds it, so remove %s by hand", record, claimRel(record))
+		bad := &UnreadableClaimError{Record: record, Path: filepath.Join(r.Dir, filepath.FromSlash(rel))}
+		fi, serr := root.Stat(rel)
+		if serr != nil {
+			return Claim{}, fmt.Errorf("%v, and its age cannot be read: %w", bad, serr)
+		}
+		bad.LapsesAt = fi.ModTime().UTC().Add(UnreadableClaimGrace)
+		return Claim{}, bad
 	}
 	return c, nil
 }
