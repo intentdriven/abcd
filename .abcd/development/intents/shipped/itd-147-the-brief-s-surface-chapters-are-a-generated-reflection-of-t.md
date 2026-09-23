@@ -234,7 +234,6 @@ shape is where the drift is.
 
 ## Audit Notes
 
-
 Filed from `iss-2608231346137587`, whose Routing section carries the four-piece
 decomposition confirmed by the maintainer on 2026-08-23 (verdict SPLIT), graded
 into the dated decomposition-calibration corpus. Capability here; trust rule to

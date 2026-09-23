@@ -259,7 +259,6 @@ for ad-hoc scribbles.
   frontmatter populated and the captured text in the body.
 - **Given** an existing open issue, **when** the user resolves it with an
   impact, and grounds if they are given (impact is required
-
   and never defaulted),
   **then** the file moves to `resolved/` with the resolution recorded.
 - **Given** an existing issue in any status folder, **when** the user runs
@@ -306,7 +305,6 @@ Reading records and dispositions (itd-180, spc-58) have their schemas in
 `internal/core/issueschema`, with one writer and refusing gate in
 `internal/core/capture/reading.go`. The **producer** of a reading item is not
 this surface and it ships: the reading verb's ingest owns the output contract and is
-
 the only caller that writes them (see [`23-reading.md`](23-reading.md)). That
 sequencing is spc-58's own, and it is why the ingest primitive is exported
 rather than made a verb of this surface.

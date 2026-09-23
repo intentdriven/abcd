@@ -234,7 +234,6 @@ latest snapshot; it does not accumulate.
 ├── embark/                                  ← not built yet
 │   ├── provenance.json                      ← source path, manifest hash, timestamp, files written
 │   └── from/<timestamp>/                    ← archive modifier: verbatim copy of input lifeboat (opt-in)
-
 └── disembark/
     └── history.jsonl                        ← append-only manifest log of every disembark
 ```

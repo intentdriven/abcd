@@ -106,7 +106,6 @@ The lifeboat must pack every phase retrospective a voyage produced, so the full
 reflection arc travels between voyages. Because `/abcd:reflect` is not built and
 produces no retrospectives yet, this is a **documented forward requirement on
 what disembark packs**, recorded here and in the itd-24 acceptance so a later
-
 reader treats it as a requirement rather than a shipped capability.
 
 ## Related documentation

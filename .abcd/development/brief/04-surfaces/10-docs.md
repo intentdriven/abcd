@@ -114,7 +114,6 @@ The citation refresh composes with the gate by separation: the gate stays
 deterministic because the fetching happens elsewhere and arrives as a committed
 record a reviewer reads in a diff. The baseline's age surfaces at `abcd ahoy`
 and in the launch preview's preflight, which names what the citation
-
 baseline would stop a release on while a release still cuts.
 
 ## References

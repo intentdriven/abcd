@@ -35,7 +35,6 @@ surface (itd-16's hash-chain fidelity checks, registered in
 conformance lint.
 
 The outbound check is the `gate` bucket rather than `lint`, and the distinction is
-
 the one adr-40 draws: the parent REPORTS on a repository and leaves the decision
 with a human, while this one is wired into CI to make a binary pass/fail decision
 about a single artefact. Its subject differs too — the parent's subject is this

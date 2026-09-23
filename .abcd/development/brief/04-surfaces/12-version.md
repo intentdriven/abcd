@@ -29,7 +29,6 @@ remedy that shape's owner requires (the host's plugin update for a plugin-root
 binary, a fresh ahoy installation for a stranded entry, the package manager's own command
 for a Homebrew install). The classification is the disk-only one `abcd update`
 itself dispatches on, so the online check keeps its single sanctioned fetch
-
 ([`21-update.md`](21-update.md)).
 
 **`staleness` is prose, not a token enum.** The field carries the same words the

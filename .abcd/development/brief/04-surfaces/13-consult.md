@@ -78,7 +78,6 @@ the exit code, not the absence of complaint.
 `.abcd/.work.local/private-names.txt` is abcd's own private banlist layer
 (`banlist.PrivateRelPath`, itd-74 / spc-20), maintained by the banlist verb's
 private-layer add and remove. The two writers coexist on a format
-
 contract: the file's first line must be exactly `# abcd-banlist: keyed`, the
 corpus script refuses a target whose first line is not that declaration, and it
 confines itself to a fenced generated block, so hand-added and verb-added lines

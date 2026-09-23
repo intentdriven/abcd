@@ -18,7 +18,6 @@ machine-checked half of the surface set is the `surface_coverage` rule over
 [`../04-surfaces/README.md`](../04-surfaces/README.md), a row-level presence
 check, together with each chapter's generated appendix of flags and sub-verbs,
 which a drift test holds to the command tree. **An absence from this
-
 table is a gap in the table, never evidence that the capability is ungated.**
 
 | Test | What to check |

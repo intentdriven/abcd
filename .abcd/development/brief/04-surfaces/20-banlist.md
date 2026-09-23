@@ -272,7 +272,6 @@ necessary and not sufficient. A hook sees the commits git asks it about, and tha
 list is explicitly non-exhaustive: a fast-forward `git pull` creates no commit at
 all, git runs no hook for a rebase, a `git am`, a `git revert` or a cherry-pick,
 git's no-verify bypass switches it off, and a merge commit needs the `pre-merge-commit`
-
 half. A reader who stopped at opt-in would believe an opted-in machine is fully
 covered, which is the belief that gets a name committed.
 

@@ -293,7 +293,6 @@ The store is the substrate a later harvest is meant to read: history captures
 raw sessions, and the design is that `memory` distils curated knowledge out of
 them. **Nothing does that yet.** No shipped surface reads the store but
 `history` itself, and the memory store's ingest takes a document or a web address, never a
-
 stored transcript. The store is keyed per repo, so transcripts never leak across
 projects.
 

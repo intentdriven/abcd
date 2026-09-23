@@ -104,7 +104,6 @@ maintainer adopts. Changing the positioning deliberately is an edit to the block
 after which the same proposal flow chases the surfaces.
 
 Initialisation never re-interviews a repo that already has a block — it adopts it. Run
-
 again on an adopted repo with a new title, tagline or pitch, it refuses outright
 rather than overwrite the canon, and names the block to edit instead. Run again
 with only a new location for the block, it writes nothing and reports where the

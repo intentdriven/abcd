@@ -67,7 +67,6 @@ to answer it: the input the answer is read from and the stream the question is
 written to both have to be a terminal, so a hooked or scripted run is never left
 blocking on a read. Under the invocation the plugin command issues, pre-confirmed
 and in JSON, nothing is emitted until the receipt, so there the resolved tag is
-
 first named in the receipt itself.
 
 The transport is pinned: no proxy or CA overrides from the environment (set ones

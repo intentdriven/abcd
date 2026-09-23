@@ -111,12 +111,10 @@ entry and no links.
 ## The gates
 
 The check runs seven independent gates over a rendered tree and reports
-
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
 loop-figure labels. The check's own help text names the same seven, kept beside the
-
 code that runs them.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and

@@ -12,7 +12,6 @@ store, which is a restore rather than a mint.
 
 Given the quoted title as its one operand, the JSON form emits
 `{ "id": "adr-<stamp>", "slug": "<kebab-case>", "title": "<title>",
-
 "date": "YYYY-MM-DD", "path": ".abcd/development/decisions/adrs/<stamp>-<slug>.md" }`
 and writes that one file, laying the store's directories down first where the
 checkout does not already hold them. Nothing else lands on disk. The plain render

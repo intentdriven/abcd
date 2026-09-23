@@ -138,7 +138,6 @@ spec's modification grammar into the store at spec completion.
   unpacking to check that quotation budgets and licences have not drifted.
 - **`/abcd:launch`** does not consume the licence gate at all: the public
   payload excludes `.abcd/**` wholesale as policy, so the launch preview
-
   surfaces no licence verdict (see
   [`04-launch.md § 2`](04-launch.md#2-curated-release-artefact-default-deny)).
 

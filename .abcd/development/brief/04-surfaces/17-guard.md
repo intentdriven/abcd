@@ -154,7 +154,6 @@ expand it to, and warning on every variable would bury the warnings that matter;
 a payload inside a non-shell interpreter such as `python -c`, which is one
 opaque token and today a silent allow; and any dangerous form no entry
 describes. The check's own help text is the fuller statement of the same list,
-
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

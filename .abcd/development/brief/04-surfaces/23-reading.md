@@ -194,7 +194,6 @@ at the widening position. That is designed rather than overlooked: the generativ
 body schema is two fields, so any other key is refused as unknown regardless, and
 the generative licence is the widest of the four, with its constraint falling at
 admission rather than at ingest. The shipped help text for ingest states it
-
 outright, and the consequence to hold is that at one of the four positions this
 gate performs no check of its own.
 

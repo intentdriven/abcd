@@ -41,7 +41,6 @@ sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
 too and writes — the identity verb's initialiser records the repo's identity
 block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
-
 banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.

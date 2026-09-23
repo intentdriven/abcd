@@ -229,7 +229,6 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   a rich-record repo and a git-only repo: the experiment's readout, and the
   evidence the packer's section list is built to (itd-88, adr-35).
 - **Given** the user runs the plan, **when** it completes, **then** the source
-
   inventory runs end to end, the would-be writes are listed as file paths, and
   nothing is written to the source or the destination.
 - **Given** a destination that is neither absent, nor an empty directory, nor
