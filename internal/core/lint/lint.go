@@ -2772,6 +2772,37 @@ func hasMarkdownExt(name string) bool {
 	return strings.EqualFold(filepath.Ext(name), ".md")
 }
 
+// DocumentsInRoots counts the markdown documents a Lint over cfg reads through
+// its roots: the documents every per-document rule (banned tokens, links, the
+// citation family) checks. Zero beside an armed config means those rules read
+// nothing, which a front door must say rather than report a count that implies a
+// check happened (loud-staging; ruling G2, 2026-09-23). The roots are contained
+// exactly as LintAt contains them, and a root that does not resolve is the same
+// configuration error.
+func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
+	n := 0
+	for _, root := range cfg.Roots {
+		if err := containedRepoPath(root); err != nil {
+			return 0, &configError{"roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		rootAbs := filepath.Join(repoRoot, root)
+		if err := resolvedInsideRoot(repoRoot, rootAbs); err != nil {
+			return 0, &configError{"roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		if _, err := os.Stat(rootAbs); err != nil {
+			return 0, err
+		}
+		files, err := markdownFiles(rootAbs)
+		if err != nil {
+			return 0, err
+		}
+		n += len(files)
+	}
+	return n, nil
+}
+
 func markdownFiles(rootAbs string) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(rootAbs, func(path string, d os.DirEntry, err error) error {

@@ -147,6 +147,11 @@ const (
 	SourceExternal SourceKind = "external"
 	// SourceMissing — the entry declares no source at all.
 	SourceMissing SourceKind = "missing"
+	// SourceArchive — a pinned release archive ({"source": "archive", "url",
+	// "sha256"}). The archive is rendered from this payload's root (archive.go),
+	// so offline it resolves to the payload root, exactly like "./"; the digest
+	// it pins is judged by the release gate, which re-renders the archive.
+	SourceArchive SourceKind = "archive"
 )
 
 // MarketplaceEntry is one plugin listing in the marketplace manifest.
@@ -158,6 +163,8 @@ type MarketplaceEntry struct {
 	// empty string is the payload root itself (adr-28: the single repo is its
 	// own marketplace, so the canonical source is "./").
 	Root string `json:"root"`
+	// Pin is the archive a SourceArchive entry names; nil for every other kind.
+	Pin *ArchivePin `json:"pin,omitempty"`
 }
 
 // InstallSurface is everything a payload declares about what installing it
@@ -309,6 +316,14 @@ func resolveMarketplace(market map[string]any) ([]MarketplaceEntry, error) {
 			}
 		case nil:
 			// left as SourceMissing
+		case map[string]any:
+			entry.SourceKind = SourceExternal
+			if src["source"] == archiveSourceKind {
+				pin := ArchivePin{}
+				pin.URL, _ = src["url"].(string)
+				pin.SHA256, _ = src["sha256"].(string)
+				entry.Source, entry.SourceKind, entry.Root, entry.Pin = archiveSourceKind, SourceArchive, "", &pin
+			}
 		default:
 			entry.SourceKind = SourceExternal
 		}

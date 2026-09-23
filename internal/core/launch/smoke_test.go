@@ -103,6 +103,64 @@ func TestSmokeLightFailsAndNamesTheMissingPath(t *testing.T) {
 	}
 }
 
+// TestSmokeLightResolvesAPinnedArchiveToThePayloadRoot covers the catalog shape
+// a release commits (the 2026-09-23 ruling E1): the plugin is sourced from the
+// release's pinned archive, and that archive is rendered from THIS payload's
+// root, so the offline smoke asserts the plugin manifest there exactly as it
+// does for a relative-path source rather than waving the entry through as
+// remote.
+func TestSmokeLightResolvesAPinnedArchiveToThePayloadRoot(t *testing.T) {
+	pin := `{"source": "archive", "url": "https://github.com/example/abcd/releases/download/v1.2.3/abcd-plugin-v1.2.3.zip", "sha256": "` + strings.Repeat("ab", 32) + `"}`
+
+	root := t.TempDir()
+	writeSurfaceFixture(t, root, map[string]string{})
+	writeFile(t, root, ".claude-plugin/marketplace.json", `{"name": "m", "plugins": [{"name": "abcd", "source": `+pin+`}]}`)
+	report := SmokeLight(bundleTreeFor(t, root))
+	if !report.OK {
+		t.Fatalf("a pinned archive of this payload must pass, got %+v", report.Findings)
+	}
+	if mp := report.Surface.Marketplace[0]; mp.SourceKind != SourceArchive || mp.Root != "" {
+		t.Errorf("an archive source resolves to the payload root, got %+v", mp)
+	}
+
+	// One listing is one assertion, whichever source it names: the same
+	// payload listed through a relative path must count exactly as many checks,
+	// or Checked overstates the assurance an archive listing earned.
+	relRoot := t.TempDir()
+	writeSurfaceFixture(t, relRoot, map[string]string{})
+	if rel := SmokeLight(bundleTreeFor(t, relRoot)); report.Checked != rel.Checked {
+		t.Errorf("an archive listing counted %d checks, the same payload through a relative path %d", report.Checked, rel.Checked)
+	}
+
+	// The name check still bites: an archive listed under another name would
+	// not resolve as an install id.
+	writeFile(t, root, ".claude-plugin/marketplace.json", `{"name": "m", "plugins": [{"name": "other", "source": `+pin+`}]}`)
+	if report := SmokeLight(bundleTreeFor(t, root)); report.OK {
+		t.Error("an archive listed under a name the manifest does not carry must fail")
+	}
+
+	for name, bad := range map[string]string{
+		"an http url":      `{"source": "archive", "url": "http://example.com/a.zip", "sha256": "` + strings.Repeat("ab", 32) + `"}`,
+		"no digest":        `{"source": "archive", "url": "https://example.com/a.zip"}`,
+		"a short digest":   `{"source": "archive", "url": "https://example.com/a.zip", "sha256": "abc"}`,
+		"not a zip at all": `{"source": "archive", "url": "https://example.com/a.tar.gz", "sha256": "` + strings.Repeat("ab", 32) + `"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			writeFile(t, root, ".claude-plugin/marketplace.json", `{"name": "m", "plugins": [{"name": "abcd", "source": `+bad+`}]}`)
+			report := SmokeLight(bundleTreeFor(t, root))
+			var named bool
+			for _, f := range report.Findings {
+				if f.Kind == findingArchivePinMalformed {
+					named = true
+				}
+			}
+			if report.OK || !named {
+				t.Errorf("a malformed pin must fail as %q, got %+v", findingArchivePinMalformed, report.Findings)
+			}
+		})
+	}
+}
+
 // TestRenderPayloadRefusesAnUninstallablePayload is the enforcement detector: the
 // render is the only step that materialises a release artefact, so it is where a
 // missing declared path must stop the cut rather than publish.

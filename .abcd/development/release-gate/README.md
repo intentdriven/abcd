@@ -26,6 +26,33 @@ this list is the human-readable mirror.
 7. Docs-lint (docs-currency gate)
 8. Reviews-charter discipline (RD001-RD003)
 9. Smoke every command (self-discovering harness)
+10. Plugin archive reproduces the committed pin (fail-closed)
+
+Gate 10 runs on a real release only (a rehearsal has no release tag to bind). It
+re-renders the release's plugin archive from the tagged commit and refuses unless
+its SHA-256 is the one the ship pinned in `.claude-plugin/marketplace.json`
+([adr-2609231048308186](../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md)).
+A refusal in `verify` comes after the tag and consumes the version, so on the
+normal path the same proof runs first: `auto-release.yml`'s `detect` job renders
+the archive from the pushed commit and verifies the pin before the `tag` job may
+run, together with a check that the pinned address is this repository's own
+release (`plugin.json`'s `repository`, from which the address derives, can name
+another repository after a rename, a transfer or a fork). The pushed commit is
+not always the one the ship rendered: a merge-queue batch carries the ship with
+any other queued pull request, and one that touches the payload renders another
+digest. A refusal there tags nothing and leaves the version free — land a
+follow-up pull request that re-pins (the refusal names the rendered digest) or
+reverts the payload change, and its push retries. A hand-pushed tag has no such
+proof, so prove it on the release branch first: `go run ./cmd/abcd launch
+archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
+naming the repository the tag will be pushed to, exits 0 when the release will
+pass. Without `--repository` a pin whose address names another repository (a
+fork, a rename, a transfer) passes locally and is refused after the tag,
+consuming the version. From the ship's merge
+until the publish job uploads the archive, the catalog on `main` names a zip that
+is not there yet; an install or update in that window fails closed and leaves an
+installed plugin on its previous release, so approve the release deployment
+promptly.
 
 This list is machine-checked: the `gate_lockstep` `record-lint` rule blocks if it
 diverges from `release.yml`'s `verify` job steps (setup steps excepted). Edit both

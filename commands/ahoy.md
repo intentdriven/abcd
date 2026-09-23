@@ -67,11 +67,20 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 ```
 
 **This writes.** It applies the actionable gaps the detection pass found — the
-marker block, the `.abcd/` scaffolding, the owned `PATH` entry. Report the
+marker block (only where `--docs-target` names a conventions file; the
+default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Report the
 returned `status`, what changed, and any `notes` — a note is a refusal, stating
 something abcd deliberately did not do and why. The engine prompts before an
 ambiguous adoption, so surface any prompt to the user rather than answering it
 for them.
+
+A default install writes abcd's name into none of the repository's
+conventions files. The one mention of abcd it commits outside `.abcd/` is
+the pair of name-guard hooks (`.githooks/pre-commit`,
+`.githooks/pre-merge-commit`) and the fenced block in `.gitignore`: the hooks
+run the binary, the fence says not to hand-edit it, and both carry the marker
+that later runs recognise an adopted repository by. That is a deliberate,
+sanctioned exception, so do not offer to rename or strip it.
 
 The `PATH` entry goes to `~/.local/bin` (created when absent), or to an
 abcd-owned entry already on `PATH`, which is adopted exactly where it stands.
@@ -126,6 +135,20 @@ git-identity pin, because the pin records whatever git identity is currently
 configured, and never wires the status line (below), because that rewrites a
 harness-wide setting. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
+
+**The house-style question.** When the install seeds `.abcd/docs-lint.json`,
+it asks `docs_lint.em_dash_in_list_item (blocking/warning) [warning]`: whether an
+em dash inside a list item, abcd's own house style rather than a currency rule,
+blocks the docs lint or only warns. Relay the question to the user and pass on
+their answer; never answer it for them. The answer is written into the seeded
+config as that token's severity (`blocker` or `warn`), where the user can change
+it later. `--yes` does not ask and seeds a warning, and the result's `notes`
+says so. End of input or a bare Enter takes the warning. An answer that is
+neither word (the `y` of `yes |`) also seeds the warning, with a note naming
+what was heard. The question comes after the category approvals and the
+configuration values and before the status-line offer, and is asked only when
+the config is being created: a repository that already has one keeps its own
+severity.
 
 **The status-line offer.** When the harness's user-level settings file exists
 (`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
