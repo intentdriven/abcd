@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/intents/planned"
 deferred_after: "v0.7.1"
 deferral_reason: "Two instances are confirmed and the population is sixty-one, so the question is not whether to close two specs but whether each planned intent's work is already merged, and that is a judgement per record rather than a sweep. Closing spc-44 and spc-14 would ship two more intents into this release and add lines to a changelog composed from the records that reached a terminal folder, which makes it a decision about what this release contains rather than a defect to repair inside it. The maintainer ruled on exactly that: fix the two verbs that write records where nobody will find them, defer this. Deferred rather than left silent because the finding is real, its population is large, and nothing detects it: the record lint reads what records say about each other and the release derivation reads only terminal folders, so the one question that would catch it is asked by no gate. What is owed next cycle is the detector, not another audit by hand."
-promoted_to: itd-2609111003026787
+related_intents: [itd-2609111003026787]
 resolution: "RS005 in scripts/check-issue-resolution.sh is the detector this record said was owed: a change declaring Delivers: itd-N is refused at merge unless the intent enters shipped/ in the same change, naming every spec still open that names it. It fires on a declaration, not on inferred liveness, per the settled remedy of itd-2609111003026787 (promoted from this record). The two confirmed instances (spc-44, spc-14) are closed by the batch clearance filed against iss-2608290808193471, which keeps the standing backlog; this gate does not reach it."
 impact: breaking
 resolved_by:

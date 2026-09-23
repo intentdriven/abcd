@@ -9,9 +9,9 @@ intent: itd-119
 
 Delivers `abcd capture promote <iss-N> [--intent <itd-N>] --json`: the native
 verb for step 2 of the record walk. Default mode mints an intent draft from the
-issue and stamps the issue's `promoted_to` in the same invocation; `--intent`
+issue and stamps the issue's `promoted_to` (historical) in the same invocation; `--intent`
 is the stamp-only mode that links an existing draft instead of minting. Closes
-the `promoted_to` half of iss-245.
+the `promoted_to` (historical) half of iss-245.
 
 ## Scope
 
@@ -40,7 +40,7 @@ LinkIntent string}`. Flow:
 1. `findIssue` (alloc.go:348) locates the issue in **any** status folder —
    promotion is orthogonal to fix-status; the file never moves.
 2. Read via `readWithChecksum`; if the parsed issue already carries
-   `promoted_to`, refuse with an error naming the existing `itd-N` (the CLI
+   `promoted_to` (historical), refuse with an error naming the existing `itd-N` (the CLI
    surfaces it as a normal verb error, mirroring `resolve` conflicts).
 3. **Mint mode** (`LinkIntent == ""`): call the factored intent-create core
    with slug = the issue's slug, title = the issue's first body line, impact
@@ -49,11 +49,11 @@ LinkIntent string}`. Flow:
    the form "Graduated from `iss-N`: <issue first line>. Read that issue
    record for the source observation." — a by-id pointer, **never** a copy of
    the issue body (SSOT). The minted draft's frontmatter gains
-   `promoted_from: iss-N` (string, optional field; the intent reader's
+   `promoted_from: iss-N` (historical) (string, optional field; the intent reader's
    `Intent` struct gains `PromotedFrom` parsed leniently — absent on every
    existing record).
 4. **Stamp** (both modes): under `withLedgerLock` (alloc.go:86), re-find and
-   checksum-re-read the issue, `setScalarField(content, "promoted_to", itdID)`
+   checksum-re-read the issue, `setScalarField(content, "promoted_to", itdID)` (historical)
    (serialize.go:114), and write back **in place** to the same path
    (atomic-rename write like `commitTransition`, minus the move). In link mode
    the `itd-N` is first verified to exist in the intent store (any bucket);
@@ -87,8 +87,8 @@ diagnostic, nothing written).
 
 - *Mint + stamp in one invocation* — steps 3–4; test: promote an open issue,
   assert draft exists under `drafts/` with reused slug, placeholder press
-  release, by-id pointer body, `promoted_from`; issue frontmatter gains
-  `promoted_to` with the minted id.
+  release, by-id pointer body, `promoted_from` (historical); issue frontmatter gains
+  `promoted_to` (historical) with the minted id.
 - *Any status, folder kept* — step 1; tests over `resolved/` and `wontfix/`
   issues assert stamp-in-place, no move.
 - *Already-promoted refuses* — step 2; test asserts the error names the
@@ -99,7 +99,7 @@ diagnostic, nothing written).
   failure (unwritable ledger) and asserts the error carries the draft path and
   remedy; a follow-up `--intent` run completes the link. Test that link mode
   never mints.
-- *Two-sided edge* — `promoted_from` in the draft; parse-back test via the
+- *Two-sided edge* — `promoted_from` (historical) in the draft; parse-back test via the
   intent reader.
 - *`--json` contract* — surface test asserting the result fields.
 - *Docs sweep* — covered by the file list in Scope; `docs-lint` and

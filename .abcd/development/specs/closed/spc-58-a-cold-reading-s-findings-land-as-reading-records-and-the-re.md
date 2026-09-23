@@ -152,8 +152,8 @@ and the admission it refused in one ledger, and a `held` one would settle by
 action exactly what the hold left open. Where the answer needs to change, a
 superseding disposition is what changes it. The standing state is read again
 inside the write's own lock, so a disposition landing between the two cannot
-leave a refusal beside a stamp. On success it stamps `promoted_to` on the reading
-record and `promoted_from` in the minted draft, the forward-and-back join
+leave a refusal beside a stamp. On success it stamps `promoted_to` (historical) on the reading
+record and `promoted_from` (historical) in the minted draft, the forward-and-back join
 itd-180's routing rule requires. Circumventing it is a lapse-log entry, not a
 gate.
 

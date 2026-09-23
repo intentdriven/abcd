@@ -9,7 +9,7 @@ found_during: "sub-agent transcript capture audit"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/cli.go"
-promoted_to: itd-2609090559376002
+related_intents: [itd-2609090559376002]
 resolution: "Sub-agent transcripts are captured through the harness's completion event into the same redact-on-write store the main thread already used, with lineage carried in explicit record fields rather than an overloaded identifier. The history already on disk is recovered into the repository that owns it, under that repository's own redaction configuration, and a session can be emitted as one self-contained artefact with a telemetry file. Applied to this machine: 176 records repaired out of their composite identifiers, 1066 transcripts ingested, the store grown from 267 records to 1104, and 13 transcripts refused by fail-closed redaction over network addresses it could not redact. The work shipped as three intents rather than the one this issue was promoted into."
 impact: additive
 resolved_by:

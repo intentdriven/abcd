@@ -9,7 +9,7 @@ found_during: "manual-capture"
 found_at: "internal/core/ahoy/gitignore.go"
 related_issues: ["iss-169"]
 details: "Second reproduction 2026-08-15 (later session): a fresh /abcd:ahoy install run reported the absent fence as required .gitignore drift and re-applied it on this repo; while present it gitignored /.abcd/ and silently hid seven uncommitted record files (two intent drafts, five ledger entries) from git status. Reverted again by hand. The fence actively fights the committed-record repo until the visibility table gains a committed-record mode."
-promoted_to: itd-159
+related_intents: [itd-159]
 deferred_after: "v0.9.0"
 deferral_reason: "Routed to the product thinker by the 2026-09-23 run (promoted to draft itd-159 (not ready): planning owed for a committed-record declaration that suppresses the public-visibility fence). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---

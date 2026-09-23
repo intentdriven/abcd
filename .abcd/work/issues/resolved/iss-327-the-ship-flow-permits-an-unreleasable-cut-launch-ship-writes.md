@@ -7,7 +7,7 @@ category: "process"
 source: "user-observation"
 found_during: "manual-capture"
 found_at: "internal/surface/cli/ship.go"
-promoted_to: itd-93
+related_intents: [itd-93]
 resolution: "folded into itd-93's scope"
 impact: internal
 ---

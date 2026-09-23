@@ -7,7 +7,7 @@ category: "security"
 source: "user-observation"
 found_during: "manual-capture"
 found_at: "internal/core/ahoy/defaults/pre-commit"
-promoted_to: itd-150
+related_intents: [itd-150]
 resolution: "the committed guard resolves the primary checkout's private store inside a linked worktree and enforces it there, and the CLI renders the same inherited layer"
 impact: fix
 resolved_by:

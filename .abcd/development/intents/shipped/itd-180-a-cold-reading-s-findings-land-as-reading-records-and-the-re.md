@@ -109,7 +109,7 @@ register and the iss-2608220750029991 triage-route seed.
   exit conditions; a hold exits only through a superseding disposition
   that cites it — never by expiry, and never silently.
 - Routing on acceptance: action is a separate admission joined by the
-  item identifier stamped forward on `promoted_to` and back in
+  item identifier stamped forward on `promoted_to` (historical) and back in
   `origin`. Item-to-intent without a disposition is the collapse this
   record family exists to prevent: `capture promote` refuses an item
   identifier that carries no disposition, and a circumvention is a
@@ -131,7 +131,7 @@ register and the iss-2608220750029991 triage-route seed.
   recorded form.
 - **Where an accepted item goes (per the acceptance-routing ruling):** acceptance is one
   record; the action is a separate admission and build, joined by the
-  item identifier (forward on `promoted_to`, back in `origin` with
+  item identifier (forward on `promoted_to` (historical), back in `origin` with
   the run identifier). The landings are enumerated — artefact via the
   intent lifecycle, cross-cutting rule via a discipline, redecision via a
   superseding ADR, the brief's description via the delivering change, the
@@ -248,7 +248,7 @@ Gap audit:
     evidence: internal/core/lint/reading_outstanding_test.go:82 — "func TestOutstandingReportSeverityIsInfoNotBlocker(t *testing.T) {"
   - open holds render on the board with their exit conditions
     evidence: internal/core/lint/reading_outstanding_test.go:107 — "func TestOpenHoldRendersItsExitCondition(t *testing.T) {"
-  - capture promote refuses an item identifier that carries no disposition, and stamps promoted_to / origin on success
+  - capture promote refuses an item identifier that carries no disposition, and stamps promoted_to (historical) / origin on success
     evidence: internal/core/capture/promote.go:412 — "carries no disposition; an item is answered before it is acted on"
     evidence: internal/core/capture/promote_test.go:1 — "TestPromoteRefusesUndispositionedReadingItem / TestPromoteStampsReadingItemPromotedTo"
   - RS001-RS003 and record_schema taught to scope to open/resolved/wontfix and ignore both new families

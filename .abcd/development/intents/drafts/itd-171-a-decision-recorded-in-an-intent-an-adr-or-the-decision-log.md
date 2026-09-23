@@ -7,7 +7,7 @@ suggested_kind: null
 reclassification_history: []
 builds_on: []
 severity: minor
-promoted_from: iss-2608290819228175
+related_issues: [iss-2608290819228175]
 ---
 
 # A decision points back to the conversation where it was reached

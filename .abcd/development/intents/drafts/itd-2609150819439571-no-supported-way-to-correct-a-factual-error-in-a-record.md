@@ -7,7 +7,7 @@ suggested_kind: null
 reclassification_history: []
 builds_on: []
 severity: minor
-promoted_from: iss-2609100505146979
+related_issues: [iss-2609100505146979]
 origin: extracted-from-record
 production_mode: hand-written
 ---

@@ -7,7 +7,7 @@ category: "security"
 source: "user-observation"
 found_during: "manual-capture"
 found_at: "agents/"
-promoted_to: itd-151
+related_intents: [itd-151]
 resolution: "record-lint's agent_contract rule enforces the itd-5 trust contract over agents/: the trust-contract frontmatter, the injection-canary fixture, and a per-agent changelog entry over a diff (itd-151)"
 impact: internal
 resolved_by:

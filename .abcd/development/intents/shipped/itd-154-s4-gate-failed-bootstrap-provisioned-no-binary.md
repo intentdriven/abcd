@@ -8,7 +8,7 @@ suggested_kind: null
 reclassification_history: []
 builds_on: []
 severity: minor
-promoted_from: iss-253
+related_issues: [iss-253]
 impact: fix
 ---
 

@@ -7,7 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "2026-08-15 forward-plans grill: maintainer settled iss-189/190 retirement as supersession into the recorded structural design"
 found_at: "internal/adapter/scanner/scanner.go:scanAllPatterns"
-promoted_to: itd-155
+related_intents: [itd-155]
 resolution: "the galloping (exponential-doubling) trueMatchEnd probe replaces the fixed 512-byte adjacency window, so a match end is never a truncation artefact of the window edge; iss-189 and iss-190 repro shapes land as regression tests with a deterministic cost-class guard, and neither a boundary classifier nor a clipped-so-skip branch was needed"
 impact: fix
 resolved_by:

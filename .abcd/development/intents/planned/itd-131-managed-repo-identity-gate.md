@@ -8,7 +8,7 @@ reclassification_history: []
 builds_on: []
 related_intents: [itd-91]
 severity: major
-promoted_from: iss-62
+related_issues: [iss-62]
 ---
 
 # The managed-repo identity gate: the human is the author of record on every commit, before the first one
