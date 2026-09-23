@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/core/provenance/provenance.go"
 deferred_after: "v0.9.0"
 deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M31: route, not who: correct the KindResearcherAuthored comment in internal/core/provenance to name the route (written directly, not derived); no new kind, no who field, no backfill; a build lane owed, not holding the tag)."
+resolution: "Ruled route, not who (M31): the KindResearcherAuthored comment, the Origin field comment and the capture page's disclosure paragraph now say researcher-authored names the route (text written directly, not derived) and assert nothing about who invoked the command; no new kind, no who field, no backfill."
+impact: fix
+resolved_by:
+  commit: "97788f71"
 ---
 
 `origin: researcher-authored` states that a person invoked the verb. It is
@@ -96,3 +100,7 @@ not sit long: every record filed meanwhile inherits the ambiguity.
   the stamped data agree.
 - **Given** a record captured by an agent, **when** its `origin` is read,
   **then** it does not claim a person invoked the verb.
+
+## Grounds
+
+- pursued: the three statements of what researcher-authored means now agree with the stamped data, since none claims a person invoked the verb; shown wrong if any committed text still reads researcher-authored as a claim about who ran the command
