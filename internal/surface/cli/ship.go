@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -48,6 +50,10 @@ func ingestCut(repoRoot string, raw []byte, at time.Time) (release.IngestResult,
 type shipResult struct {
 	release.IngestResult
 	Payload *launch.PayloadRenderResult `json:"payload,omitempty"`
+	// PayloadRefusal is present exactly when the composed payload was refused:
+	// the host's signal to recompose against its reasons. Exit 2 without it is a
+	// stop.
+	PayloadRefusal *release.PayloadRefusal `json:"payload_refusal,omitempty"`
 	// Archive is the release's plugin archive, pinned into the catalog, when the
 	// repository declares that its release publishes it (adr-2609231048308186).
 	Archive *shipArchive `json:"archive,omitempty"`
@@ -183,25 +189,21 @@ func publishedVersion(repoRoot string) string {
 	return v.String()
 }
 
-// changelogPath names the release record the ingest step writes. The ship verb
-// holds its pre-ingest bytes so a refused render can put them back.
-func changelogPath(repoRoot string) string {
-	return filepath.Join(repoRoot, "CHANGELOG.md")
-}
-
-// rollbackCut undoes a cut whose payload render refused: it restores the
-// pre-ingest release record (and any other file the ship rewrote), and removes
-// the staging directory the precheck proved was empty or absent, so nothing
-// outside the render's own output is touched.
+// rollbackCut undoes a cut whose payload render refused: it applies the core's
+// undo of the cut's writes (the CHANGELOG heading, the release page, the archive
+// move), restores every other file the ship rewrote (the catalog entry and the
+// surface snapshot the archive pin writes), and removes the staging directory
+// the precheck proved was empty or absent, so nothing outside the render's own
+// output is touched.
 //
 // It returns the sentence appended to the refusal rather than an error, because
 // what an operator reading exit 2 most needs to know is whether a durable write
 // survived — and a rollback that itself failed is the one case where they must
 // recover by hand.
-func rollbackCut(repoRoot, dest string, before []byte, others ...savedFile) string {
+func rollbackCut(repoRoot, dest string, undo release.UndoPlan, others ...savedFile) string {
 	var failures []string
-	if err := fsutil.WriteFileAtomicPreserveMode(changelogPath(repoRoot), before); err != nil {
-		failures = append(failures, "CHANGELOG.md: "+scrubPaths(err))
+	for _, f := range undo.Apply(repoRoot) {
+		failures = append(failures, termsafe.Sanitize(scrubPaths(errors.New(f))))
 	}
 	for _, f := range others {
 		if err := f.restore(repoRoot); err != nil {
@@ -216,12 +218,17 @@ func rollbackCut(repoRoot, dest string, before []byte, others ...savedFile) stri
 	if len(failures) > 0 {
 		return "\n  THE ROLLBACK FAILED — recover by hand: " + strings.Join(failures, "; ")
 	}
-	return "\n  the release record was rolled back and nothing was staged"
+	return "\n  the release record and page were rolled back and nothing was staged"
 }
 
 // savedFile is a repository file's pre-ship bytes, held so a refused ship can
 // put it back. present is false for a file that did not exist, which the
 // restore removes again.
+//
+// The restore touches a file only when it differs from what was saved: a fault
+// that stopped the cut before it wrote a file (an unwritable directory, say)
+// would stop the restore's rewrite the same way, and report a rollback failure
+// for a file the cut never changed.
 type savedFile struct {
 	rel     string
 	data    []byte
@@ -242,7 +249,17 @@ func saveFile(repoRoot, rel string) (savedFile, error) {
 
 func (f savedFile) restore(repoRoot string) error {
 	path := filepath.Join(repoRoot, filepath.FromSlash(f.rel))
-	if !f.present {
+	cur, err := os.ReadFile(path)
+	switch {
+	case os.IsNotExist(err):
+		if !f.present {
+			return nil
+		}
+	case err != nil:
+		return err
+	case f.present && bytes.Equal(cur, f.data):
+		return nil
+	case !f.present:
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
@@ -361,7 +378,6 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 	// and every retry is then refused for being in flight. The version-free
 	// half of the render is therefore run first, and it writes nothing.
 	var (
-		before  []byte
 		saved   []savedFile
 		staging = payloadDir
 		zipDir  string
@@ -406,14 +422,27 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				saved = append(saved, f)
 			}
 		}
-		var err error
-		before, err = os.ReadFile(changelogPath(cwd))
-		if err != nil {
-			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
-		}
 	}
 	at := time.Now()
 	ingested, err := ingestCut(cwd, raw, at)
+	var refused *release.PayloadRefusal
+	if errors.As(err, &refused) {
+		// The composer's payload is refused: render the cut and every reason,
+		// and exit 2 WITH payload_refusal — the host's signal to recompose
+		// (commands/launch.md, the retry loop).
+		res := shipResult{IngestResult: ingested, PayloadRefusal: refused}
+		if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+			renderIngest(w, res)
+		}); rerr != nil {
+			return rerr
+		}
+		if asJSON {
+			return &exitError{Code: 2}
+		}
+		// The reasons are on stdout already; stderr says so once.
+		return &exitError{Code: 2, Msg: fmt.Sprintf("abcd launch ship: the composed payload was refused "+
+			"(%d reason(s), listed above) — nothing was written; recompose it against them", len(refused.Reasons))}
+	}
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 	}
@@ -451,7 +480,7 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 			// so it is rolled back rather than left as an untaggable release in
 			// flight.
 			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(rerr) +
-				rollbackCut(cwd, payloadDir, before, saved...)}
+				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
 		}
 	}
 	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
@@ -529,6 +558,7 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	}
 	renderEntries(w, "added", cut.Added)
 	renderEntries(w, "removed", cut.Removed)
+	renderPageSet(w, cut)
 	for _, refusal := range cut.Refusals {
 		fmt.Fprintf(w, "  refused (%s):\n", refusal.Kind)
 		// SanitizeBlock, not Sanitize: a refusal reason IS lines — the surface
@@ -544,6 +574,25 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	}
 }
 
+// renderPageSet lists the intents the release page will be composed from — the
+// entries the core marked in_press_release — or says no page will be written.
+func renderPageSet(w io.Writer, cut release.Cut) {
+	var set []release.Entry
+	for _, e := range cut.Added {
+		if e.InPressRelease {
+			set = append(set, e)
+		}
+	}
+	if len(set) == 0 {
+		fmt.Fprintf(w, "  release page: none (no user-facing intent shipped; %s stays as it is)\n", release.PageFile)
+		return
+	}
+	fmt.Fprintf(w, "  release page: %d intent(s)\n", len(set))
+	for _, e := range set {
+		fmt.Fprintf(w, "    %-8s %s\n", termsafe.Sanitize(e.ID), termsafe.Sanitize(e.Title))
+	}
+}
+
 // renderIngest writes the human rendering of a completed ship: the same cut
 // report the emit step renders, then what landed in the release record.
 //
@@ -552,12 +601,30 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 // is comparing the same lines, not two dialects of the same report.
 func renderIngest(w io.Writer, res shipResult) {
 	renderCut(w, "abcd launch ship", res.Cut)
+	if res.PayloadRefusal != nil {
+		fmt.Fprintf(w, "  payload refused: %d reason(s) — nothing was written; recompose against them\n",
+			len(res.PayloadRefusal.Reasons))
+		for _, r := range res.PayloadRefusal.Reasons {
+			fmt.Fprintf(w, "    [%s] %s: %s\n", r.Code, termsafe.Sanitize(r.At), termsafe.Sanitize(r.Detail))
+		}
+		return
+	}
 	if !res.Written {
 		return
 	}
 	fmt.Fprintf(w, "  wrote:      %s\n", res.Path)
 	fmt.Fprintf(w, "    %s\n", res.Heading)
 	fmt.Fprintf(w, "    %d line(s), citing %s\n", res.Lines, termsafe.Sanitize(strings.Join(res.Cited, ", ")))
+	if res.Page.Written {
+		fmt.Fprintf(w, "  page:       %s\n", res.Page.Path)
+		fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(res.Page.Heading))
+		fmt.Fprintf(w, "    %d headline(s), %d listed, %d quote(s)\n", res.Page.Headlines, res.Page.Listed, res.Page.Quotes)
+		if res.Page.Archived != "" {
+			fmt.Fprintf(w, "    archived the previous page to %s\n", termsafe.Sanitize(res.Page.Archived))
+		}
+	} else {
+		fmt.Fprintf(w, "  page:       %s\n", termsafe.Sanitize(res.Page.Reason))
+	}
 	if res.Archive != nil {
 		fmt.Fprintf(w, "  archive:    %s (%d file(s)), pinned in .claude-plugin/marketplace.json\n", res.Archive.Name, res.Archive.Files)
 		fmt.Fprintf(w, "    url:    %s\n", termsafe.Sanitize(res.Archive.URL))
@@ -623,6 +690,9 @@ func renderEntries(w io.Writer, label string, entries []release.Entry) {
 		note := ""
 		if !e.InChangelog {
 			note = "  (excluded from the changelog)"
+		}
+		if e.InPressRelease {
+			note = "  (on the release page)"
 		}
 		fmt.Fprintf(w, "    [%-9s] %-8s %s%s\n", e.Impact, termsafe.Sanitize(e.ID), termsafe.Sanitize(e.Title), note)
 		// A record that TRIED to say it shipped elsewhere and failed says so here.
