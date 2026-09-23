@@ -1996,3 +1996,28 @@ Per hand-run, append:
 - **Notes:** the human corrected the vendor mid-pass ("from typescript"), and
   the pass resolved it as a near-homophone with a primary source rather than
   guessing; a wrong vendor would have routed the whole proposal wrongly.
+
+### Run: the release press release (2026-09-23, product thinker's planning interview)
+
+- **Proposal (as received):** the product thinker's ruling in the run's interview that each release gets a press
+  release composed at the cut from its shipped intents' press releases, backward-looking, with this release the
+  first; filed by the run as a draft with an advisory table (verdict FILE-AS-IS with flags), then reviewed by two
+  independent adversarial reviewers (design/feasibility, record discipline) before the interview.
+- **Table (as run):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | `RELEASE.md` composed at the cut, the outgoing page archived | capability | itd-2609231013154443, planned | refines adr-2609212115255771 and itd-67 (prose) |
+  | Release pages on the project website | capability | a separate draft, next cycle | builds on this intent |
+  | Report only what shipped, no forecast | stance | already recorded: adr-2609212115255771 | |
+  | Cited records are data, a mismatch refused before writing | trust rule | already recorded: spc-11's bijection, applied to a second document | no new ADR |
+  | Composer prompt, ingest, archive move, rollback | plumbing | spc-2609231435545473 | |
+
+- **Verdict:** SPLIT (the draft proposed FILE-AS-IS); the website half surfaced only when the human answered
+  "where else is it read" with the website, a capability the draft had listed as a construal of an open question.
+- **Routing survived?** Yes, with one change: the draft's three placements were all declined and the human
+  proposed a fourth (latest page at the root, earlier pages in the permanent-record tier), which the table then
+  carried as the capability's own shape rather than a new part.
+- **Notes:** the prerequisite reviews were missing at handover and were run before the interview; one found the
+  draft's premise ("true by construction") contradicted by the record, which became the interview's first
+  question and moved the claim into the Mechanism as a falsifiable expectation.
