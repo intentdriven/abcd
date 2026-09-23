@@ -1,7 +1,7 @@
 ---
 name: implement
-description: Share one autonomous run between two sessions — join it, open a window in a division mode, claim a record before opening its lane, check the second session's bounds, log the run's events, and derive the comparison of the modes — by invoking the abcd binary. The bare form and report are read-only.
-argument-hint: "[join|leave|mode|claim|release|check|log|report] …"
+description: Share one autonomous run between two sessions — join it, open a window in a division mode, claim a record before opening its lane, check the second session's bounds, log the run's events, and derive the comparison of the modes, and check the machine's load before abcd's own tests start — by invoking the abcd binary. The bare form and report are read-only; the load check warns and never refuses.
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load] …"
 ---
 
 # `/abcd:implement` — share a run between sessions
@@ -139,6 +139,38 @@ and, per session across the run, its context lines and the last `used_pct` seen.
 `leader` is the mode with the most lanes landed per wall-clock hour — a figure,
 not a verdict: the run's own report names the mode it would keep and says why.
 Relay any `unparsed` lines; they are counted nowhere.
+
+## Check the machine's load
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --site preflight|eval-harness [--json]
+```
+
+`make preflight` runs this first and the eval harness runs it once at its
+start, so it rarely needs calling by hand. It reads the machine's load and
+process table once and warns about two things: a program outside the running
+work that has held a near-full core for longer than the stray limit (30 minutes
+by default), and a one-minute load average above the extreme limit (four times
+the online core count by default). It never refuses, never waits and never
+stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
+the `reason`) and `unchecked` (a platform other than macOS and
+Linux, or a read that failed, with the `reason`).
+
+Relay a `warning` whole. The person's own strays (`own_strays`) are named with
+pid, process group, age and CPU share, and `remedy` gives, per stray or per
+wholly-stray group, a re-check to run before each kill: `pgrep -g <group>` must
+list only the named pids before `kill -- -<group>`, and `ps -o pid=,comm= -p
+<pid>` must still show the program before `kill <pid>`. Never stop anything
+yourself, and never by pattern (`pkill -f`, `killall`): the choice to stop is
+the person's. Other accounts' strays (`other_strays`) are only a count and a CPU
+total; say nothing more about them. A name the private banned-names layer
+matches reads `[private name]`.
+
+The limits are per machine, in `~/.abcd/load-limits`, which the check reads and
+never creates: `stray-minutes <1 to 10080>` and `extreme-load <load>`, one per
+line, `#` for comments. An unusable file is reported (`limits.malformed`) and
+both defaults are used. Inside an autonomous run, a warning is also written to
+the run log as a `load` event (`run_log`).
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

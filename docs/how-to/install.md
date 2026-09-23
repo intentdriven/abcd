@@ -294,9 +294,10 @@ someone else's hook, a fence without its markers reads as drifted, and
 ## Build
 
 ```bash
-make preflight   # the pre-push gate: lint-reviews, lint-issues, lint-decisions,
-                 # record-lint, docs-lint, site-render, smoke and
-                 # evals-cold-reading, then build, vet, test and race
+make preflight   # the pre-push gate: the load check first (load-check, a
+                 # warning, never a failure), then lint-reviews, lint-issues,
+                 # lint-decisions, record-lint, docs-lint, site-render, smoke
+                 # and evals-cold-reading, then build, vet, test and race
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd version    # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

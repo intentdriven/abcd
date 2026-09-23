@@ -54,12 +54,20 @@ const (
 	// of its context window in use), role and note. The run measures it because
 	// it is also an experiment in keeping a session alive for days.
 	EventContext = "context"
+
+	// EventLoad is the load check's warning (itd-2609231434459890), written by
+	// `implement load` alone and only when it warns inside a live run. The run's
+	// hand-kept load samples share the name and carry no `triggers`, which is how
+	// a reader tells the two apart.
+	EventLoad = "load"
 )
 
-// verbOwnedEvents are written by join, leave, mode, claim and release alone.
+// verbOwnedEvents are written by join, leave, mode, claim, release and load
+// alone.
 var verbOwnedEvents = []string{
 	EventSessionOpen, EventSessionClose, EventWindowMode,
 	EventClaim, EventClaimDenied, EventClaimLapsed, EventClaimReleased,
+	EventLoad,
 }
 
 // loggableEvents are the events `implement log` writes on a session's word.

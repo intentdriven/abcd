@@ -74,6 +74,13 @@ func TestPreflightGateListIsNotRestatedWrongly(t *testing.T) {
 			// subtest passes by skipping. The file list is hand-curated — a
 			// surface that genuinely stops enumerating leaves this list in the
 			// same change.
+			// A restatement edited in place can leave a sentence doubled back
+			// to back, which containment cannot see: every name is still
+			// there, twice. The surfaces are hand-written prose, so a sentence
+			// repeated immediately is always an editing slip.
+			if dup := doubledSentence(prose); dup != "" {
+				t.Errorf("%s states this sentence twice in a row:\n\n%s", rel, dup)
+			}
 			for _, gate := range declared {
 				if !strings.Contains(prose, gate) {
 					t.Errorf("%s enumerates the preflight gates but omits %q.\n\n"+
@@ -85,6 +92,30 @@ func TestPreflightGateListIsNotRestatedWrongly(t *testing.T) {
 			}
 		})
 	}
+}
+
+// sentenceEndRe ends a sentence: a full stop, question or exclamation mark
+// followed by whitespace.
+var sentenceEndRe = regexp.MustCompile(`[.!?]\s+`)
+
+// doubledSentence returns the first sentence of at least forty characters that
+// prose states twice in a row, whitespace-normalised so a repeat that wraps
+// differently still matches, or "" when there is none.
+func doubledSentence(prose string) string {
+	flat := strings.Join(strings.Fields(prose), " ")
+	var sentences []string
+	start := 0
+	for _, loc := range sentenceEndRe.FindAllStringIndex(flat, -1) {
+		sentences = append(sentences, strings.TrimSpace(flat[start:loc[0]+1]))
+		start = loc[1]
+	}
+	sentences = append(sentences, strings.TrimSpace(flat[start:]))
+	for i := 1; i < len(sentences); i++ {
+		if len(sentences[i]) >= 40 && sentences[i] == sentences[i-1] {
+			return sentences[i]
+		}
+	}
+	return ""
 }
 
 // TestPreflightRunsEveryTaggedEvalLane holds the position every tagged eval

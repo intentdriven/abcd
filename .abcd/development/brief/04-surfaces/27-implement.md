@@ -31,6 +31,7 @@ calls.
 | `check` | gate | shipped |
 | `log` | — | shipped |
 | `report` | — | shipped |
+| `load` | — | shipped |
 
 ## Where the run lives
 
@@ -136,9 +137,10 @@ Logging appends one of the run's own events, with its key-value fields
 `ceiling_wait`, `gate_run`, `review`, `fallback`, `stop`, `refusal`, `pr`,
 `capture`, `context`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
 the fields; it reaches the file in one `O_APPEND` write through
-`fsutil.AppendLineIn`, so two writers each land whole lines. The session, window
-and claim events are refused here: they are written by their own sub-verbs, so
-the log cannot record a claim the run state does not hold.
+`fsutil.AppendLineIn`, so two writers each land whole lines. The session, window,
+claim and load events are refused here: they are written by their own sub-verbs,
+so the log cannot record a claim the run state does not hold, or a load warning
+the check did not give.
 
 The report derives, per mode, the windows, wall clock, lanes opened and
 landed (a `lane_close` whose outcome is `merged` or `landed`), the second
@@ -156,9 +158,42 @@ Lines that are not a JSON object with `ts`, `session` and `event` are listed as
 `unparsed`, never dropped silently. The report can read one day, or one log file
 named directly.
 
+## The load check
+
+The load check is what abcd's own test lanes run before they start
+(itd-2609231434459890, spc-2609231542463113): once as the first prerequisite
+of `make preflight`, and once in the eval harness's
+`TestMain`, never once per test package. It reads the machine through
+`internal/core/machineload`, a standard-library-only leaf (macOS: the
+`vm.loadavg` and `hw.activecpu` sysctls and one `/bin/ps` run; Linux: `/proc`
+and `/sys/devices/system/cpu/online`), and warns on two triggers: a process
+outside the check's own parent chain older than the stray limit at a lifetime
+CPU share of at least 0.9, or a one-minute load average strictly above the
+extreme limit. Nothing is exempt by name: abcd's own lanes are exempt by time,
+because everything they start lives for minutes. The caller's own strays are
+named (name, pid, process group, age, share), masked through the private
+banned-names layer's own engine, with commands that re-check each target before
+a kill and never match by pattern; the group form is offered only for a group
+whose every live member is named and which is neither the check's own group nor
+an ancestor's. Other accounts' strays are a count and a CPU total, by type.
+
+The limits live in the caller's machine tier, `~/.abcd/load-limits`
+(`stray-minutes`, default 30; `extreme-load`, default four times the online core
+count), read through the guarded declaration read and never created; an
+unusable file is reported loudly and both defaults are used. On a CI runner
+(`GITHUB_ACTIONS=true`, or a `CI` other than empty, `false` or `0`) nothing is
+read and the line says why; each CI job that starts the harness runs the check
+as a step first, so the reason reaches the job log. On another platform, or when
+a read fails, the check says it could not check. Inside a live run (a run state
+with a joined session) a warning is also written as a load event, attributed
+to the first-role session, carrying the verdict's facts so it renders exactly
+as it was printed; the run's hand-written load samples share the name and carry
+no `triggers`. The check exits 0 on every status: it never refuses, waits or
+signals anything.
+
 ## Exit codes
 
-`0` done; `2` refused (an unrecognised input, a session that has not joined, a
+`0` done, and every status of the load check; `2` refused (an unrecognised input, a session that has not joined, a
 bound the role does not permit, no checkout to key a run on), with nothing
 written for the refused act; `3` contention (the record is claimed by another
 session, or the run state is locked) — back off and take other work. The JSON
@@ -173,7 +208,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement log`, `abcd implement mode`, `abcd implement release`, `abcd implement report`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement release`, `abcd implement report`.
 
 Flags: none.
 
@@ -217,6 +252,14 @@ Sub-verbs: none.
 |---|---|
 | `--reason` | string |
 | `--session` | string |
+
+### `abcd implement load`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--site` | string |
 
 ### `abcd implement log`
 

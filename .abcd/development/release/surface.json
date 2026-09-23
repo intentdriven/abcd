@@ -1121,6 +1121,19 @@
       ]
     },
     {
+      "path": "abcd implement load",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "site",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement log",
       "hidden": false,
       "flags": [
