@@ -69,7 +69,11 @@ func checkFoundAt(repoRoot, value string) error {
 	}
 	if _, err := os.Lstat(filepath.Join(repoRoot, clean)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
-			return fmt.Errorf("capture: found_at %q names %s, which does not exist in this checkout; a finding is filed in the ledger of the repository it is about — correct the path, or give a conceptual location in words (nothing written)", given, rel)
+			names := ""
+			if given != rel {
+				names = " (the path " + rel + ")"
+			}
+			return fmt.Errorf("capture: found_at %q%s does not exist in this checkout; a finding is filed in the ledger of the repository it is about — correct the path, or give a conceptual location in words (nothing written)", given, names)
 		}
 		// The stat error is not echoed: it carries the absolute path, and a
 		// refusal names the repo-relative locator only (iss-81).
