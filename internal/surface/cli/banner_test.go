@@ -90,6 +90,10 @@ func bannerFirstLine(s string) string {
 // board — and the board's bytes are exactly the seam-off output (the AC1
 // byte-level guard: the banner may only ever prepend).
 func TestBannerRendersAboveBoard(t *testing.T) {
+	// Render in a directory of the test's own. The board reads the sibling
+	// worktrees of the checkout it runs in, and a peer session creating one
+	// between the two renders below would change the board's bytes.
+	t.Chdir(t.TempDir())
 	bare := func() string {
 		root := NewRootCommand()
 		var out bytes.Buffer
