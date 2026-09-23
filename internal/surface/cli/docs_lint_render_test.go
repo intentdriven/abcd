@@ -132,3 +132,116 @@ func TestDocsLintCountsTheChecksItRan(t *testing.T) {
 		t.Errorf("--json must count the armed checks (want 2), got %s", stdout.String())
 	}
 }
+
+// docsLintNothingChecked is the --json envelope's nothing-checked half.
+type docsLintNothingChecked struct {
+	Checks         *int   `json:"checks"`
+	Documents      *int   `json:"documents"`
+	NothingChecked *bool  `json:"nothing_checked"`
+	Warning        string `json:"warning"`
+}
+
+// writeDocsLintRepo lays a repository with the given docs-lint config and the
+// given documents, and stands in it.
+func writeDocsLintRepo(t *testing.T, cfg string, files map[string]string) {
+	t.Helper()
+	repo := t.TempDir()
+	t.Chdir(repo)
+	for _, d := range []string{".abcd", "docs"} {
+		if err := os.MkdirAll(filepath.Join(repo, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "docs-lint.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for rel, body := range files {
+		if err := os.WriteFile(filepath.Join(repo, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// assertLoudNothingChecked is ruling G2 (2026-09-23): a docs lint that checked
+// nothing still exits 0, and says so loudly, with the reason, on stderr in both
+// renders and in the --json envelope.
+func assertLoudNothingChecked(t *testing.T, reason string) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"docs", "lint"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("a lint that checked nothing must exit 0, got %d\n%s%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "WARNING") || !strings.Contains(stderr.String(), "nothing was checked") ||
+		!strings.Contains(stderr.String(), reason) {
+		t.Errorf("stderr must carry a loud warning naming %q, got:\n%s", reason, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"docs", "lint", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("--json: a lint that checked nothing must exit 0, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "nothing was checked") {
+		t.Errorf("--json: stderr must carry the warning too, got:\n%s", stderr.String())
+	}
+	var res docsLintNothingChecked
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("--json output does not parse: %v\n%s", err, stdout.String())
+	}
+	if res.NothingChecked == nil || !*res.NothingChecked {
+		t.Errorf("--json must carry nothing_checked: true, got %s", stdout.String())
+	}
+	if !strings.Contains(res.Warning, "nothing was checked") || !strings.Contains(res.Warning, reason) {
+		t.Errorf("--json warning must say nothing was checked and why (%q), got %q", reason, res.Warning)
+	}
+}
+
+// TestDocsLintWarnsLoudlyWhenNoRuleIsConfigured: a config that arms no rule.
+func TestDocsLintWarnsLoudlyWhenNoRuleIsConfigured(t *testing.T) {
+	writeDocsLintRepo(t, `{"roots": ["docs"], "banned_tokens": [], "rules": {}}`,
+		map[string]string{"docs/page.md": "Previously this was different.\n"})
+	assertLoudNothingChecked(t, "no rules are configured")
+}
+
+// TestDocsLintWarnsLoudlyWhenTheRootsHoldNoDocument: rules are armed, but the
+// roots resolve to no markdown document, so no per-document rule read anything.
+// The report's own example: a lint whose roots resolve to nothing.
+func TestDocsLintWarnsLoudlyWhenTheRootsHoldNoDocument(t *testing.T) {
+	writeDocsLintRepo(t, `{"roots": ["docs"], "banned_tokens": [
+	  {"id": "present_tense/previously", "pattern": "(?i)\\bpreviously\\b", "message": "no", "severity": "blocker", "successor": "present tense", "allow_context": ["docs-lint: allow"]}
+	]}`, map[string]string{"docs/notes.txt": "Previously this was different.\n"})
+	assertLoudNothingChecked(t, "no markdown document")
+	var stdout, stderr bytes.Buffer
+	Run([]string{"docs", "lint", "--json"}, &stdout, &stderr)
+	var res docsLintNothingChecked
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Documents == nil || *res.Documents != 0 {
+		t.Errorf("--json must carry documents: 0, got %s", stdout.String())
+	}
+}
+
+// TestDocsLintCheckedSomethingRaisesNoWarning is the ok side: an armed config
+// over a root holding a document raises no warning and counts the document.
+func TestDocsLintCheckedSomethingRaisesNoWarning(t *testing.T) {
+	writeDocsLintRepo(t, `{"roots": ["docs"], "banned_tokens": [
+	  {"id": "present_tense/previously", "pattern": "(?i)\\bpreviously\\b", "message": "no", "severity": "warn", "successor": "present tense", "allow_context": ["docs-lint: allow"]}
+	]}`, map[string]string{"docs/page.md": "The tool reads the tree.\n"})
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"docs", "lint", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if strings.Contains(stderr.String(), "nothing was checked") {
+		t.Errorf("a lint that checked a document warned:\n%s", stderr.String())
+	}
+	var res docsLintNothingChecked
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.NothingChecked == nil || *res.NothingChecked || res.Warning != "" {
+		t.Errorf("--json must carry nothing_checked: false and no warning, got %s", stdout.String())
+	}
+	if res.Documents == nil || *res.Documents != 1 {
+		t.Errorf("--json must count the one document, got %s", stdout.String())
+	}
+}

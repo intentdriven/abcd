@@ -19,9 +19,15 @@ Run:
 
 Then summarise the JSON for the user:
 
+- `nothing_checked` and `warning` — when `nothing_checked` is `true` the lint
+  checked nothing and still exited 0: relay `warning` (it says why), tell the
+  user nothing was checked, never that the docs are clean, and point them at
+  `.abcd/docs-lint.json`. The same warning is printed on stderr.
 - `checks` — how many checks the configuration armed (banned tokens plus enabled
-  rules). When it is `0` the lint ran nothing: tell the user nothing was checked,
-  never that the docs are clean, and point them at `.abcd/docs-lint.json`.
+  rules). `0` means no rule ran.
+- `documents` — how many markdown documents the configured roots hold for the
+  per-document rules. `0` means those rules read nothing: the roots are empty or
+  hold no markdown.
 - `blockers` — how many blocker findings exist; any blocker fails the gate.
 - `findings` — for each, its `File`, `Line`, `RuleID`, `Severity`, and
   `Message`; group them so the user sees what to fix.
@@ -45,7 +51,8 @@ reads committed files only; nothing dials out.
 365-day threshold blocks instead of warning. It is for release machinery only —
 an ordinary commit is never blocked by the calendar.
 
-If `checks` is non-zero and `blockers` is zero, the docs are currency-clean.
+If `nothing_checked` is `false` and `blockers` is zero, the docs are
+currency-clean.
 
 ## `cite refresh` — the one verb that reaches the network
 
