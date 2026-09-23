@@ -60,6 +60,15 @@ against the exact commit to be tagged:
    depth are pinned by [`manifest.json`](manifest.json) — see *Pinned inputs and
    tiered depth* below.
 
+   **Owed at the next release gate: itd-147's ac-6.** The first full-tier run
+   after the generated appendix landed is the outcome check for
+   [itd-147](../intents/shipped/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md):
+   classify its findings, confirm none is a `false-claim` or `stale-count` about
+   a flag or sub-verb the appendix covers, and record the result, with the
+   run's commit, in the intent's `## Audit Notes`. The criterion is not asserted
+   in CI, so a cut that skips this leaves it unverified with nothing to show it.
+   Delete this paragraph in the change that records the result.
+
 ## Recording the semantic verdict
 
 **A receipt names the commit its reviewer READ, and lives in a LATER commit** —

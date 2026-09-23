@@ -35,8 +35,12 @@ on 2026-09-01 settled the seam.
 
 ## Decision
 
-We will derive every shape claim the record makes about the shipped command
-surface, and never write one by hand.
+We will derive every shape claim the brief's surface chapters (the chapters
+under `.abcd/development/brief/04-surfaces/`) make about the shipped command
+surface, and never write one by hand. The enforcement below holds those chapters
+and nothing else: a flag or sub-verb spelt elsewhere in the record — another
+brief section, an intent, a spec, a plugin command page — is not checked by it.
+`docs/reference/cli/commands.md` is generated and drift-tested on its own.
 
 - Each chapter under `.abcd/development/brief/04-surfaces/` ends with one
   generated appendix between two marker comments. The appendix lists each of the
@@ -46,8 +50,12 @@ surface, and never write one by hand.
 - A chapter whose command the tree does not register carries the same markers
   around one sentence saying there is no shipped surface. No chapter lacks the
   block.
-- The prose above the opening marker states no flag spelling, no sub-verb
-  command path and no backticked sub-verb name. The chapter's `## Sub-verbs`
+- The prose above the opening marker states none of abcd's shape: no flag the
+  command tree registers (long or its single-dash shorthand), no sub-verb
+  command path written as an invocation (backticked, fenced, or prefixed with
+  `abcd ` or `/abcd:`), and no backticked name of one of the chapter's own
+  sub-verbs. Another program's flag (git's `--force`) and the same words as
+  plain English ("the intent plan") are prose, not shape. The chapter's `## Sub-verbs`
   table and its standard note are the one exception, because `surface_coverage`
   checks them against the snapshot.
 - The appendix carries flags and sub-verbs only. Exit codes and output fields
@@ -83,7 +91,9 @@ Two tests in `internal/surface/cli` enforce the rule, and both run under
   build, and the failure names the chapter and the line.
 - A lane that adds a surface adds its register row and its chapter, ends the
   chapter with the two markers and runs the generator. A chapter with no row,
-  or a row naming a missing chapter, stops generation by name.
+  a row naming a missing chapter, or a chapter without its markers is refused
+  by name and fails the build; every other chapter is still regenerated and
+  checked, so one unfinished chapter never hides the drift of the rest.
 - Prose refers to a capability in plain words ("the cut", "the probe") and never
   spells how it is invoked. The appendix and the CLI reference hold the
   spelling.

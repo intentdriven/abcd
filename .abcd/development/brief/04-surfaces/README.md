@@ -84,7 +84,9 @@ Every chapter in this directory ends with a generated appendix between two
 marker comments, composed from the same walk of the command tree that builds the
 compatibility snapshot. This register's **Command** and **File** columns are
 what map a chapter to its commands, so a chapter with no row here, or a row
-naming a chapter that does not exist, stops generation by name. A chapter whose
+naming a chapter that does not exist, is refused by name, as is a chapter
+without its markers. The generator still writes every other chapter and then
+exits 1 naming each refusal, and the drift test fails the same way. A chapter whose
 command the tree does not register — a staged design target, or a host-delegated
 command with no verb — carries one sentence saying there is no shipped surface,
 so no chapter lacks the block.
@@ -92,9 +94,12 @@ so no chapter lacks the block.
 Two tests in `internal/surface/cli` hold it, and both run in `go test ./...`,
 so in `make preflight` and in CI. `TestSurfaceAppendicesMatchCommandTree`
 regenerates every appendix and fails naming the chapter and each missing or
-stale line. `TestSurfaceChapterProseStatesNoShape` fails on a flag spelling, a
-sub-verb's command path, or a backticked sub-verb name anywhere above the
-opening marker. Only the `## Sub-verbs` table and its standard note are exempt,
+stale line. `TestSurfaceChapterProseStatesNoShape` fails, anywhere above the opening
+marker, on a flag the command tree registers (long, or its single-dash
+shorthand), on a sub-verb's command path written as an invocation (backticked,
+fenced, or prefixed with `abcd ` or `/abcd:`), and on a backticked name of one
+of the chapter's own sub-verbs. Another program's flag and the same words as
+plain English are prose. Only the `## Sub-verbs` table and its standard note are exempt,
 because the rule above checks them. Exit codes, output fields and what a verb
 refuses stay prose and stay a review-grain claim.
 

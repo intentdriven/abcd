@@ -94,8 +94,9 @@ generator change against a seam that already exists.
   sub-verbs as its whole input. The test asserts a fixture verb carrying an exit
   code and a JSON schema in its metadata emits neither into the block.
 - **ac-5 (prose above the marker states no shape).** A check over every chapter
-  reads the region above the opening marker and fails on a flag spelling or a
-  sub-verb name. The test runs it against a chapter that carries one and against
+  reads the region above the opening marker and fails on a flag the command
+  tree registers or a sub-verb written as an invocation, and passes another
+  program's flag and plain English. The test runs it against a chapter that carries one and against
   one that does not.
 - **ac-6 (no `false-claim` or `stale-count` about a covered claim).** Verified by
   running the full-tier crosscheck after the seam lands and classifying its
