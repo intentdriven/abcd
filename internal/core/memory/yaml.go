@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -63,10 +64,20 @@ func normaliseNewlines(text string) string {
 // was not, the index is the offending line — which is len(lines) when the scan
 // ran off the end. This is the single scan the parsers below share, and the one
 // gate a caller must ask instead of testing the leading bytes of the document.
+//
+// The first line is stripped of a UTF-8 byte-order mark through the canonical
+// frontmatter.TrimBOM before it is tested: U+FEFF is not Unicode White_Space, so
+// strings.TrimSpace keeps it, and a BOM-led page would otherwise have frontmatter
+// to record-lint and none to memory (iss-2608291814565781). Only the first line
+// is stripped — a U+FEFF anywhere else is content, not a byte-order mark.
 func frontmatterOpenIndex(lines []string) (int, bool) {
 	start := 0
 	for start < len(lines) {
-		s := strings.TrimSpace(lines[start])
+		line := lines[start]
+		if start == 0 {
+			line = frontmatter.TrimBOM(line)
+		}
+		s := strings.TrimSpace(line)
 		if s == "---" {
 			return start, true
 		}
