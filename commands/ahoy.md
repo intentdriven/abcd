@@ -136,6 +136,20 @@ configured, and never wires the status line (below), because that rewrites a
 harness-wide setting. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
 
+**The house-style question.** When the install seeds `.abcd/docs-lint.json`,
+it asks `docs_lint.em_dash_in_list_item (blocking/warning) [warning]`: whether an
+em dash inside a list item, abcd's own house style rather than a currency rule,
+blocks the docs lint or only warns. Relay the question to the user and pass on
+their answer; never answer it for them. The answer is written into the seeded
+config as that token's severity (`blocker` or `warn`), where the user can change
+it later. `--yes` does not ask and seeds a warning, and the result's `notes`
+says so. End of input or a bare Enter takes the warning. An answer that is
+neither word (the `y` of `yes |`) also seeds the warning, with a note naming
+what was heard. The question comes after the category approvals and the
+configuration values and before the status-line offer, and is asked only when
+the config is being created: a repository that already has one keeps its own
+severity.
+
 **The status-line offer.** When the harness's user-level settings file exists
 (`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
 `statusLine` is absent or is a command that is not abcd's, the install asks
