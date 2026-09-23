@@ -143,6 +143,13 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   no-accumulation critique of query-time retrieval it answers. The gist
   declares itself "designed to be copy pasted to your own LLM Agent".
   <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>
+- **Leases (Cary G. Gray and David R. Cheriton, 1989)** — the time-bounded
+  grant a holder must renew or lose, which is how `abcd implement claim` makes
+  a record the unit of exclusion between two sessions without a lock manager:
+  the claim is a lease, and a session that dies holding one strands nothing
+  once it has passed (itd-2609221656373558). "Leases: an efficient
+  fault-tolerant mechanism for distributed file cache consistency", SOSP 1989.
+  <https://doi.org/10.1145/74850.74870>
 - **The Linux kernel's coding-assistants policy** — the `Assisted-by:` attribution
   model abcd adopts for AI-assisted commits.
 - **mattpocock/skills (Matt Pocock, MIT)** — four adaptations: the

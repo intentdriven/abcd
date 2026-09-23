@@ -729,6 +729,196 @@ Print the proposed correction for every drifted surface as a unified diff (write
 
 **Usage:** `abcd identity render`
 
+### `abcd implement`
+
+Share one autonomous run between sessions: join, claim a record, check the bounds, log, and compare the division modes
+
+**Usage:** `abcd implement`
+
+The run machinery an autonomous run calls. Every piece lives in the machine-scoped run
+state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions
+in different worktrees of one repository share one run and no repository file.
+
+Bare `abcd implement` is read-only: the sessions that have joined, the claims and
+whether each lease still holds, and the window's division mode. It creates nothing.
+
+A session joins (`join`), which writes its record and a session_open line; nothing
+signals any other session. The first session opens each window with its mode
+(`mode`). A session claims a record before opening its lane (`claim`): one file per
+record, taken by an exclusive create, so of two sessions reaching for one record
+exactly one holds it; the claim is a lease, and a lapsed lease is claimable again.
+The second session is bounded: one lane at a time, never the release, never a lane
+that touches the reading corpus, no lane in a split-roles window (`check` asks before
+a step that is not a claim). `log` appends the run's other events, and `report`
+derives the comparison of the modes from the log.
+
+Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound
+the session's role does not permit), exit 3 on contention (the record is claimed by
+another session, or the run state is locked): back off and take other work.
+
+#### `abcd implement check`
+
+Ask whether this session may take a step; the second session's bounds refuse
+
+**Usage:** `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
+
+Say whether this session may take a step, before it takes it. The first session may
+take every step. The second is refused the release step always, a lane in a
+split-roles window, and a lane whose --path reaches the reading corpus; review,
+audit and land are open to it. A refusal exits 2 and is logged; an allowed step
+writes nothing.
+
+**Flags:**
+
+```
+      --path stringArray   a repository-relative file the step touches (repeatable)
+      --session string     this session's id
+```
+
+#### `abcd implement claim`
+
+Claim a record before opening its lane; exactly one session holds it
+
+**Usage:** `abcd implement claim <record> --session <id> --lane <lane> [flags]`
+
+Take a record for this session: one claim file per record in the run state, created
+exclusively, so of two sessions reaching for one record exactly one holds it. The
+claim is a lease (--lease, default 2h, 1m to 24h). Claiming a record this session
+already holds renews the lease. A claim whose lease has passed is claimable again,
+and the lapse is logged as claim_lapsed. A record another session holds is refused
+at exit 3 and logged as claim_denied naming the holder; the second session also
+logs a backoff.
+
+The second session is refused (exit 2, logged as a refusal) when it already holds
+a live claim, when the window is split-roles, or when a --path it declares is in the
+reading corpus.
+
+**Flags:**
+
+```
+      --lane string        the lane the claim is for
+      --lease duration     how long the claim holds before it lapses (1m to 24h) (default 2h0m0s)
+      --path stringArray   a repository-relative file the lane will touch (repeatable); checked against the reading corpus
+      --session string     this session's id
+```
+
+#### `abcd implement join`
+
+Join the run: record the session and its role, and log its session_open
+
+**Usage:** `abcd implement join --session <id> --role first|second [flags]`
+
+Record this session in the run state with its role and log a session_open line.
+Nothing signals any other session: the first learns of a second only by reading the
+run state. Joining again with the same role is a resume and is logged as one; asking
+for the other role is refused. The role is the session's own statement, recorded
+here and read by every bound — never taken from the environment.
+
+**Flags:**
+
+```
+      --model string     the model this session runs, recorded on the session_open line
+      --reason string    why the session opens (run start, window, resume), recorded on the line
+      --role string      first | second
+      --session string   this session's id (letters, digits, '.', '_', '-')
+```
+
+#### `abcd implement leave`
+
+Leave the run: release every claim the session holds and log its session_close
+
+**Usage:** `abcd implement leave --session <id> [flags]`
+
+Release every claim this session holds (each logged as claim_released), log a
+session_close line with the reason, and remove the session's record. A session
+that stops without leaving strands nothing: its claims lapse with their leases.
+
+**Flags:**
+
+```
+      --reason string    why the session closes (window, stop condition, crash recovery)
+      --session string   this session's id
+```
+
+#### `abcd implement log`
+
+Append one of the run's events to the run log
+
+**Usage:** `abcd implement log <event> --session <id> [--field key=value ...] [flags]`
+
+Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)
+in a single append, so two sessions writing at once each land whole lines. The line
+carries ts, session and event, then each --field. A value that reads as a number or
+a boolean is written as one. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture.
+The claim, window and session events are written by their own sub-verbs and are
+refused here, so the log cannot record a claim the run state does not hold.
+
+**Flags:**
+
+```
+      --field stringArray   an event field as key=value (repeatable)
+      --session string      this session's id
+```
+
+#### `abcd implement mode`
+
+Open a window: log its division mode (the first session's call)
+
+**Usage:** `abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]`
+
+Log a window_mode line naming how this window divides the work: `single` (one
+session), `claim` (a session claims a record before opening its lane), `batch` (the
+run file assigns whole batches per session), or `split-roles` (the first session
+builds; the second reviews, audits and lands). Only the first session sets it. The
+mode in force is the log's last window_mode line, whoever wrote it.
+
+**Flags:**
+
+```
+      --session string   this session's id (a first session)
+      --window int       the window's number, recorded on the line
+```
+
+#### `abcd implement release`
+
+Release this session's claim on a record
+
+**Usage:** `abcd implement release <record> --session <id> [flags]`
+
+Remove this session's claim on a record and log claim_released. Only the holder
+releases a claim; another session's claim lapses with its lease instead.
+
+**Flags:**
+
+```
+      --session string   this session's id
+```
+
+#### `abcd implement report`
+
+Derive the comparison of the division modes from the run log (read-only)
+
+**Usage:** `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
+
+Derive, per division mode, the figures the run's report compares: windows, wall
+clock, lanes opened and landed (a lane_close whose outcome is merged or landed),
+the second session's lanes landed, collisions (claim_denied), lapsed claims,
+backoffs and the minutes backed off, agent minutes (agent_end), ceiling wait and
+refusals, per session within each mode. Each event belongs to the window open when
+it happened. `leader` is the mode with the most lanes landed per wall-clock hour —
+a figure, not a verdict. Lines the reader cannot use are listed, never dropped
+silently.
+
+By default the run's whole log is read, every day of it; --date reads one day, and
+--log reads one log file named directly. Reads only; creates nothing.
+
+**Flags:**
+
+```
+      --date string   read one day's log (YYYY-MM-DD, UTC)
+      --log string    read this log file instead of the run's own
+```
+
 ### `abcd intent`
 
 Intent lifecycle; bare invocation is read-only status, quoted text files a draft
