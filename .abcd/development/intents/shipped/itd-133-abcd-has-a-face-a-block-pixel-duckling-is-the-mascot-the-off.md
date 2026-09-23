@@ -1,5 +1,6 @@
 ---
 id: itd-133
+shipped_in: v0.6.2
 slug: abcd-has-a-face-a-block-pixel-duckling-is-the-mascot-the-off
 spec_id: spc-36
 kind: standalone
@@ -122,4 +123,5 @@ and 6 amended in-interview to keep the forge/web logo unchanged for now.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-5f9fa1fdfedf -->
+Fidelity review OWED (receipt rcp-5f9fa1fdfedf).
