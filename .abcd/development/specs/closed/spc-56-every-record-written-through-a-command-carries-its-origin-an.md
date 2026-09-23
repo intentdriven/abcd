@@ -72,7 +72,8 @@ defaults to the repo's declared default (and to `hand-written` when the pin
 declares none), and is refused outright on any value outside the set. `origin`
 has no flag at all: it is derived from which command ran.
 
-- `researcher-authored`: The default for a verb invoked by a person.
+- `researcher-authored`: The default for text written directly rather than
+  derived. It names the route, not whether a person or an agent ran the command.
 - `extracted-from-record`: Stamped automatically by `capture.Promote`, the one
   shipped path that derives a record from another record.
 - `contributed-by-reading`: Stamped only by the reading-ingest verb, which
