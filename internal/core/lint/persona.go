@@ -17,6 +17,18 @@ import (
 // as silent non-matches.
 var personaAttrRe = regexp.MustCompile(`\bsaid (\p{Lu}[\p{L}\p{M}'’-]*),`)
 
+// PersonaAttribution returns the first persona name text attributes words to
+// in the `said <Name>,` form the persona_registry rule reads, and whether it
+// found one. The release page refuses one in headline prose, where no quote is
+// verified against its source.
+func PersonaAttribution(text string) (string, bool) {
+	m := personaAttrRe.FindStringSubmatch(text)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
 // loadPersonaRoster reads the personas registry and returns the set of
 // registered names. The registry is the single source of truth for persona
 // names (selection is by role; the role's registered name is used).

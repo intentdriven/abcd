@@ -148,8 +148,8 @@ the page; their lines are in the changelog.
   binary refuses the whole payload otherwise.
 - **Carry the quote of each intent you tell**, word for word, with its
   attribution, in `quotes`: `text` is a whole quoted sentence as the press
-  release has it (quotation marks, the "said …" clause and all), and
-  `attribution` is the speaker exactly as the quote names them after `said`. The
+  release has it (quotation marks, the "said …" or "says …" clause and all), and
+  `attribution` is the speaker exactly as the quote names them after that verb. The
   binary checks each quote against the intent's `## Press Release` section and
   refuses one that differs by a word or is cut short, one taken from elsewhere in
   the record, one from an intent you only listed, and one carried twice.
@@ -157,8 +157,8 @@ the page; their lines are in the changelog.
 - **Look back only.** Write nothing forward-looking: no date, no "next release",
   no "coming", no planned work, no `target_release`. The page says what this
   release did. A planned intent is not in the cut, so citing one is refused.
-- **Structure is the binary's.** No text opens with `#`, and none carries a code
-  fence; the heading, the citations, the quote layout and the closing line are
+- **Structure is the binary's.** No text opens with `#` or `>`, none carries a
+  code fence, and no headline attributes words with `said <Name>,`; the heading, the citations, the quote layout and the closing line are
   rendered by the binary.
 - **A release of fixes alone has no page.** When no entry is marked
   `in_press_release`, send `"press_release": null`.
@@ -168,9 +168,10 @@ the page; their lines are in the changelog.
 The binary refuses a payload whole and returns every reason at once: a stable
 `code`, the payload path `at`, and a `detail`. You will be re-invoked with the
 cut, your previous payload and those reasons. Fix every reason named, change
-nothing the reasons do not touch, and emit the whole payload again. There is no
-attempt limit, and each refused attempt is reported to the person running the
-cut, so a fault repeated is a fault they see.
+nothing the reasons do not touch, and emit the whole payload again. For a
+`quote-not-verbatim`, carry the sentence as the source has it, or omit the
+quote. There is no attempt limit, and each refused attempt is reported to the
+person running the cut, so a fault repeated is a fault they see.
 
 ## What you emit
 

@@ -61,8 +61,11 @@ const (
 	ReasonPageForEmptySet   ReasonCode = "page-for-empty-set"
 	ReasonHeading           ReasonCode = "heading"
 	ReasonFence             ReasonCode = "fence"
-	ReasonQuoteSource       ReasonCode = "quote-source"
-	ReasonQuoteNotVerbatim  ReasonCode = "quote-not-verbatim"
+	// ReasonBlockquote: a page text that would pose as a verified quote, by
+	// opening with `>` or by attributing words to a persona in a headline.
+	ReasonBlockquote       ReasonCode = "blockquote"
+	ReasonQuoteSource      ReasonCode = "quote-source"
+	ReasonQuoteNotVerbatim ReasonCode = "quote-not-verbatim"
 
 	// ReasonOutboundPolicy: the rendered page or changelog section carries a
 	// session URL or a tool attribution footer (scanner.CheckOutbound).
@@ -83,7 +86,7 @@ var ReasonCodes = []ReasonCode{
 	ReasonNoEntries, ReasonSection, ReasonSectionNotWritable,
 	ReasonChangelogMissing, ReasonChangelogInvented, ReasonChangelogInternal,
 	ReasonMissing, ReasonOutsideSet, ReasonDuplicateCitation, ReasonNoHeadline, ReasonPageForEmptySet,
-	ReasonHeading, ReasonFence, ReasonQuoteSource, ReasonQuoteNotVerbatim,
+	ReasonHeading, ReasonFence, ReasonBlockquote, ReasonQuoteSource, ReasonQuoteNotVerbatim,
 	ReasonOutboundPolicy, ReasonPersonaRegistry,
 }
 

@@ -338,7 +338,7 @@ differs for each:
 The release page is held to the same rule: every intent marked
 `in_press_release` is told in a headline or listed, once, and nothing else is
 cited. Every quote must match, word for word and with its attribution after
-`said`, a whole quoted sentence in the `## Press Release` section of an intent a
+`said` or `says`, a whole quoted sentence in the `## Press Release` section of an intent a
 headline tells. The rendered page and the rendered changelog section are both
 checked against the outbound policy (no session URL, no tool attribution
 footer), and the page against the repository's persona registry
@@ -433,6 +433,7 @@ The reason codes:
 | `page-for-empty-set` | carries a page for a cut that ships fixes alone |
 | `heading` | has a page text opening with `#` |
 | `fence` | has a page text carrying a code fence |
+| `blockquote` | has a page text opening with `>`, or a headline attributing words with `said <Name>,` |
 | `quote-source` | quotes an intent no headline tells |
 | `quote-not-verbatim` | carries a quote that is not word for word from its intent's press release, with its attribution |
 | `outbound-policy` | would put a session URL or a tool attribution footer in the page or the changelog |

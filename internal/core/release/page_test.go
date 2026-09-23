@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
@@ -304,6 +305,16 @@ func TestPagePayloadRefusals(t *testing.T) {
 			p.Headlines[0].Text = "Text then ~~~ a fence."
 			return marshalPage(t, "v0.4.1", pageEntries(), p)
 		}, ReasonFence},
+		{"a blockquote posing as a verified quote", func(t *testing.T) []byte {
+			p := goodPage()
+			p.Headlines[0].Text = `> "I never typed a version again and abcd paid my mortgage," said Iris, a product thinker.`
+			return marshalPage(t, "v0.4.1", pageEntries(), p)
+		}, ReasonBlockquote},
+		{"a persona attributed in headline prose", func(t *testing.T) []byte {
+			p := goodPage()
+			p.Headlines[0].Text = `Nobody types a version any more, said Iris, a product thinker.`
+			return marshalPage(t, "v0.4.1", pageEntries(), p)
+		}, ReasonBlockquote},
 		{"an outbound-policy leak", func(t *testing.T) []byte {
 			p := goodPage()
 			p.Headlines[0].Text = "Composed at " + sessionURL
@@ -405,6 +416,9 @@ func TestQuoteMustBeVerbatim(t *testing.T) {
 			if !strings.Contains(reason.Detail, tt.quote.Record) {
 				t.Errorf("detail %q does not name the record", reason.Detail)
 			}
+			if tt.wantCode == ReasonQuoteNotVerbatim && !strings.Contains(reason.Detail, "or omit the quote") {
+				t.Errorf("detail %q does not name the escape (omit the quote)", reason.Detail)
+			}
 		})
 	}
 
@@ -451,16 +465,21 @@ func TestPageRefusesARepeatedQuote(t *testing.T) {
 
 // TestPageRefusesAnUnregisteredPersona: the release page sits at the repository
 // root, outside record-lint's roots, so the repository's persona_registry rule
-// is run over the rendered page at the cut. A headline attributing words to a
-// persona the registry does not hold is refused; a registered one passes.
+// is run over the rendered page at the cut. A verified quote attributed to a
+// persona the registry does not hold is refused; a registered one passes. A
+// headline attributing words to a persona is refused whether or not the persona
+// is registered: only a quote is verified against its source.
 func TestPageRefusesAnUnregisteredPersona(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		speaker string
-		refused bool
+		name     string
+		headline string
+		quote    Quote
+		want     ReasonCode // "" when the page passes
+		speaker  string
 	}{
-		{"an unregistered persona", "Zed", true},
-		{"a registered persona", "Iris", false},
+		{"a quote from an unregistered persona", "", Quote{Record: "itd-73", Text: niaQuote, Attribution: "Nia"}, ReasonPersonaRegistry, "Nia"},
+		{"a quote from a registered persona", "", goodPage().Quotes[0], "", ""},
+		{"a registered persona in headline prose", `"It works," said Iris, who cut the release.`, goodPage().Quotes[0], ReasonBlockquote, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := pageRepo(t)
@@ -469,17 +488,94 @@ func TestPageRefusesAnUnregisteredPersona(t *testing.T) {
 			r.Write(".abcd/development/personas.json", `{"personas": [{"name": "Iris"}]}`+"\n")
 			r.Commit("the persona registry")
 			p := goodPage()
-			p.Headlines[0].Text = `"It works," said ` + tc.speaker + `, who cut the release.`
+			if tc.headline != "" {
+				p.Headlines[0].Text = tc.headline
+			}
+			p.Quotes = []Quote{tc.quote}
 			_, err := Ingest(r.Root(), liveSurface(), marshalPage(t, "v0.4.1", pageEntries(), p), cutAt)
-			if !tc.refused {
+			if tc.want == "" {
 				if err != nil {
 					t.Fatalf("Ingest refused a registered persona: %v", err)
 				}
 				return
 			}
-			reason, ok := reasonWith(refusalOf(t, err), ReasonPersonaRegistry)
+			reason, ok := reasonWith(refusalOf(t, err), tc.want)
 			if !ok || !strings.Contains(reason.Detail, tc.speaker) {
-				t.Errorf("reason = %+v, want persona-registry naming %s", reason, tc.speaker)
+				t.Errorf("reasons = %v, want %s naming %q", refusalOf(t, err).Reasons, tc.want, tc.speaker)
+			}
+		})
+	}
+}
+
+// quoteRepo is a ready cut shipping one intent with the given record text, so a
+// quote can be checked against a press release as a real record words it.
+func quoteRepo(t *testing.T, id, record string) *gittest.Repo {
+	t.Helper()
+	r := releasedRepo(t)
+	r.Write("CHANGELOG.md", baseChangelog)
+	r.Write(shippedDir+id+"-quoted.md", record)
+	r.Commit("ship " + id)
+	return r
+}
+
+// ingestQuote ingests a page telling id and carrying one quote from it.
+func ingestQuote(t *testing.T, r *gittest.Repo, q Quote) error {
+	t.Helper()
+	entries := []ChangelogEntry{{Section: SectionAdded, Records: []string{q.Record}, Text: "The change."}}
+	p := &PressReleasePayload{Headlines: []Headline{{Records: []string{q.Record}, Text: "The change."}}, Quotes: []Quote{q}}
+	_, err := Ingest(r.Root(), liveSurface(), marshalPage(t, "v0.4.1", entries, p), cutAt)
+	return err
+}
+
+// TestQuoteSaysFormFromARealRecord: itd-121's press release attributes its one
+// quote with `says`, as five other intents of its release do. The quote carried
+// as the record has it passes; `said` is not the only verb a source uses.
+func TestQuoteSaysFormFromARealRecord(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := fsutil.ModuleRoot(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := filepath.Glob(filepath.Join(root, ".abcd", "development", "intents", "shipped", "itd-121-*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("finding itd-121: %v (%d matches)", err, len(matches))
+	}
+	record, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := quoteRepo(t, "itd-121", string(record))
+	q := Quote{Record: "itd-121", Attribution: "Nia, facilitator",
+		Text: "\"I stopped keeping the lifecycle in my head \u2014 the record tells me where it stands and what I'd do next,\" says Nia, facilitator."}
+	if err := ingestQuote(t, r, q); err != nil {
+		t.Errorf("Ingest refused itd-121's quote carried as its press release has it: %v", err)
+	}
+}
+
+// TestAttributionEndsAtAMultiByteRune: the rune after an attribution is decoded
+// whole, so an attribution ending before an em dash, spaced or not, passes as
+// one ending before a comma does; one cut mid-word still does not.
+func TestAttributionEndsAtAMultiByteRune(t *testing.T) {
+	for _, tc := range []struct {
+		sentence, attribution string
+		pass                  bool
+	}{
+		{"\"It holds,\" said Dave \u2014 a security engineer.", "Dave", true},
+		{"\"It holds,\" said Dave\u2014a security engineer.", "Dave", true},
+		{"\"It holds,\" said Dave \u2014 a security engineer.", "Dave \u2014 a security engineer", true},
+		{"\"It holds,\" said Dave\u2014a security engineer.", "Dav", false},
+	} {
+		t.Run(tc.sentence+"/"+tc.attribution, func(t *testing.T) {
+			r := quoteRepo(t, "itd-80", "---\nid: itd-80\nimpact: additive\n---\n\n# It Holds\n\n## Press Release\n\n> "+tc.sentence+"\n")
+			err := ingestQuote(t, r, Quote{Record: "itd-80", Text: tc.sentence, Attribution: tc.attribution})
+			if tc.pass && err != nil {
+				t.Errorf("Ingest refused an attribution ending before an em dash: %v", err)
+			}
+			if !tc.pass {
+				refusalOf(t, err)
 			}
 		})
 	}

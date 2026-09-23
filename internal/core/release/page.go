@@ -17,7 +17,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -194,6 +196,10 @@ func validatePage(cut Cut, p *PressReleasePayload, rs *reasons) validatedPage {
 		if ok && text == "" {
 			rs.add(ReasonEmptyProse, at+".text", "the headline citing %s has no prose", strings.Join(ids, ", "))
 		}
+		if name, found := lint.PersonaAttribution(h.Text); ok && found {
+			rs.add(ReasonBlockquote, at+".text", "the headline attributes words to %q (`said <Name>,`), which only a verified quote may do; "+
+				"carry the quote in quotes, or drop the attribution", termsafe.Sanitize(name))
+		}
 		out.headlines = append(out.headlines, Headline{Records: ids, Text: text})
 	}
 	for i, id := range p.Listed {
@@ -236,8 +242,8 @@ func validatePage(cut Cut, p *PressReleasePayload, rs *reasons) validatedPage {
 			continue
 		}
 		if why := verbatim(inSet[q.Record].pressRelease, q); why != "" {
-			rs.add(ReasonQuoteNotVerbatim, at, "the quote attributed to %s is not carried word for word from its press release: %s",
-				q.Record, why)
+			rs.add(ReasonQuoteNotVerbatim, at, "the quote attributed to %s is not carried word for word from its press release: %s; "+
+				"carry the sentence as the source has it, or omit the quote", q.Record, why)
 			continue
 		}
 		// A repeated quote would render twice under its headline. It is refused
@@ -281,11 +287,16 @@ func checkProse(raw, at string, rs *reasons) (string, bool) {
 }
 
 // structureSafe refuses a text that would break the page: one whose first
-// non-space rune is `#` (a heading) or that carries a code fence.
+// non-space rune is `#` (a heading) or `>` (a blockquote, the frame the page
+// reserves for verified quotes), or that carries a code fence.
 func structureSafe(raw, at string, rs *reasons) bool {
 	ok := true
 	if strings.HasPrefix(strings.TrimSpace(raw), "#") {
 		rs.add(ReasonHeading, at, "the text opens with `#`, which would render as a heading; the page carries one heading, the binary's")
+		ok = false
+	}
+	if strings.HasPrefix(strings.TrimSpace(raw), ">") {
+		rs.add(ReasonBlockquote, at, "the text opens with `>`, which would render as a blockquote, the frame reserved for verified quotes")
 		ok = false
 	}
 	if fenceRe.MatchString(raw) {
@@ -353,8 +364,8 @@ func sourceParagraphs(section string) []string {
 // what its speaker said and still be "contained". So the quote is a whole quoted
 // sentence as the press release has it — it opens with a quotation mark, closes
 // on sentence punctuation, and sits between whitespace or paragraph edges in the
-// source — and its attribution is the whole phrase after `said `, ending where
-// the text or its clause does.
+// source — and its attribution is the whole phrase after `said ` or `says `,
+// ending where the text or its clause does.
 func verbatim(source string, q Quote) string {
 	text := collapse(q.Text)
 	attribution := collapse(q.Attribution)
@@ -370,7 +381,7 @@ func verbatim(source string, q Quote) string {
 	case !endsSentence(text):
 		return "the quote does not close on sentence punctuation; carry the whole quoted sentence"
 	case !attributed(text, attribution):
-		return "the attribution is not the whole phrase after `said ` in the quote as the source has it"
+		return "the attribution is not the whole phrase after `said ` or `says ` in the quote as the source has it"
 	}
 	for _, para := range sourceParagraphs(source) {
 		if containsBounded(para, text) {
@@ -387,22 +398,34 @@ func endsSentence(text string) bool {
 	return strings.HasSuffix(text, ".") || strings.HasSuffix(text, "!") || strings.HasSuffix(text, "?")
 }
 
-// attributed reports whether `said <attribution>` occurs in text with the
-// attribution ending at the text's end or at clause punctuation, so neither a
-// cut word ("Ir") nor a cut phrase ("Iris, a") passes.
+// attributed reports whether `said <attribution>` or `says <attribution>`
+// occurs in text with the attribution ending at the text's end or at clause
+// punctuation, so neither a cut word ("Ir") nor a cut phrase ("Iris, a") passes.
+// A dash opens a clause as a comma does, spaced or not ("Dave — a security
+// engineer"), so the rune after the attribution is decoded whole.
 func attributed(text, attribution string) bool {
-	needle := "said " + attribution
-	for from := 0; ; {
-		i := strings.Index(text[from:], needle)
-		if i < 0 {
-			return false
+	for _, verb := range []string{"said ", "says "} {
+		needle := verb + attribution
+		for from := 0; ; {
+			i := strings.Index(text[from:], needle)
+			if i < 0 {
+				break
+			}
+			end := from + i + len(needle)
+			if end == len(text) {
+				return true
+			}
+			rest := text[end:]
+			if strings.HasPrefix(rest, " \u2014") || strings.HasPrefix(rest, " \u2013") {
+				rest = rest[1:]
+			}
+			if next, _ := utf8.DecodeRuneInString(rest); strings.ContainsRune(".,;:!?\u2014\u2013", next) {
+				return true
+			}
+			from += i + 1
 		}
-		end := from + i + len(needle)
-		if end == len(text) || strings.ContainsRune(".,;:!?", rune(text[end])) {
-			return true
-		}
-		from += i + 1
 	}
+	return false
 }
 
 // containsBounded reports whether text occurs in para starting at the
