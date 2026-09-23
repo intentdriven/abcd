@@ -286,8 +286,6 @@ irreversible; guessing downward costs nothing.**
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:
-  it exits 0 whatever it finds. The load
-  check runs first (`load-check`, a warning, never a failure) and is not a gate:
   it exits 0 whatever it finds. The eval
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each costs about five seconds.
