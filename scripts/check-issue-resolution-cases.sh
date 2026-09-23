@@ -1026,6 +1026,19 @@ for i in "${!prose_bodies[@]}"; do
 	expect pass "$d" "RS005 passes a prose line that starts with the word (body $i)" -- commits main HEAD
 done
 
+# An empty spec store's open/: the lookup for open specs naming the intent finds
+# no file at all, and must answer "none" rather than end the run. Closing spc-7
+# leaves open/ with nothing in it, and the declared itd-8 is planned with no spec.
+d="$(newrepo_intents rs005-open-empty)"
+echo "touched" >>"$d/README.md"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-8"
+expect_refusal_naming "$d" "RS005 with an empty open/ still diagnoses the planned intent" \
+	"itd-8 .*no spec to close" -- commits main HEAD
+
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary
 # case (a trailer whose record stays where it was); each refusal is normalised by

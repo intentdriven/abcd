@@ -393,9 +393,14 @@ frontmatter_field() {
 # `intent:` back-link names the canonical itd-N. The back-link, not the intent's
 # scalar spec_id, is the source of truth for which specs realise an intent
 # (adr-2609151513118583): a remainder spec is named by nothing on the intent.
+# An open/ holding no spec at all is an answer (none), not an error: grep's
+# no-match exit (1) is accepted, or pipefail would carry it out through the
+# caller's assignment and errexit would end the run with no message. Only that
+# status: a git failure, or grep's own (2), still fails the pipeline, because a
+# swallowed git error reads exactly like an empty store.
 open_specs_for() {
 	local ref="$1" id="$2" f back
-	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | grep -E '\.md$' |
+	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | { grep -E '\.md$' || [ "$?" -eq 1 ]; } |
 		while IFS= read -r f; do
 			back="$(frontmatter_field "$ref" "$f" intent)"
 			[ "$(canon_itd "$back")" = "$id" ] || continue
