@@ -38,7 +38,11 @@ type Kind string
 // what the frontmatter carries — so renaming a constant is safe and changing a
 // value is a record migration.
 const (
-	// KindResearcherAuthored is the default for a verb a person invoked.
+	// KindResearcherAuthored names the ROUTE, not who took it: the record's text
+	// was written directly — quoted text handed to a create verb — rather than
+	// derived from another record or from a reading item. It is the default for
+	// every command that derives nothing, and it asserts nothing about whether a
+	// person or an agent session invoked that command.
 	KindResearcherAuthored Kind = "researcher-authored"
 	// KindExtractedFromRecord is stamped by capture.Promote, the one shipped path
 	// that derives a record from another record.

@@ -138,8 +138,8 @@ func TestPromoteReadingItemRefusesARunMismatch(t *testing.T) {
 // TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone — criterion 2,
 // and framework 7.1: an origin is stamped at mint and never rewritten. Link mode
 // writes the back-edge on the draft and the forward stamp on the item, and
-// touches neither disclosure key — so a hand-filed draft linked to a reading item
-// stays researcher-authored and says so.
+// touches neither disclosure key — so a draft filed from quoted text and linked
+// to a reading item stays researcher-authored and says so.
 func TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone(t *testing.T) {
 	repo, ir, item := dispositionedReadingFixture(t)
 	draft, err := intent.CreateDraft(repo, intent.DraftOptions{

@@ -29,7 +29,13 @@ import (
 // these fragments, and TestLoadDomainCarriesTheThreeRules pins that the rule
 // text still names them, so the advice and its proof cannot drift apart.
 const (
-	loadJobControl = "set -m"
+	// loadWrapper is the launch itself: the whole load inside ONE subshell
+	// job. A loop of separate `&` jobs under `set -m` gives each job its own
+	// group, so the group kill reaches only the last of them (the incident's
+	// exact failure); the wrapper is what makes the group the whole load.
+	loadWrapper    = "set -m; ( burner & burner & wait ) & pg=$!"
+	loadLeaderPGID = `ps -o pgid= -p "$pg"`
+	loadLeaderComm = `ps -o comm= -p "$pg"`
 	loadGroupKill  = `kill -- -"$pg"`
 	loadGroupProbe = `pgrep -g "$pg"`
 	loadNameProbe  = "pgrep -x"
@@ -51,8 +57,15 @@ func TestLoadDomainCarriesTheThreeRules(t *testing.T) {
 	for _, want := range []struct{ what, text string }{
 		{"rule 1: one owned process group", "process group"},
 		{"rule 1: never nohup with a pid file as the only handle", "nohup"},
-		{"rule 1: the job-control fragment", loadJobControl},
+		{"rule 1: the one-job wrapper", loadWrapper},
+		{"rule 1: the handle lives in a file the session owns", "a file the session owns"},
+		{"rule 1: the handle is re-checked before use", "re-checked before use"},
+		{"rule 1: the leader still leads its group", loadLeaderPGID},
+		{"rule 1: the leader is the expected command", loadLeaderComm},
 		{"rule 1: the group kill", loadGroupKill},
+		{"rule 1: never a pattern kill", "kill by pattern"},
+		{"rule 1: never pkill -f", "`pkill -f`"},
+		{"rule 1: never killall", "`killall`"},
 		{"rule 2: proof by what is running", "actually running"},
 		{"rule 2: the group probe", loadGroupProbe},
 		{"rule 2: the name probe", loadNameProbe},
@@ -76,6 +89,15 @@ func TestLoadDomainRecallsLoadExperimentPrompts(t *testing.T) {
 		"start a busy loop on every core",
 		"check the load average first",
 		"set up a load test for the queue",
+		"peg the CPU while the tests run",
+		"pegging the cpu for ten minutes",
+		"spin up yes on every core",
+		"spin up four workers on all cores",
+		"saturate all cores and rerun the suite",
+		"saturate the CPU before the gate starts",
+		"max out the CPU during the run",
+		"stress-test the machine with a CPU hog",
+		"run a CPU stress test before the release",
 	} {
 		if !has(rs.Match(prompt), "LOAD") {
 			t.Errorf("load-experiment prompt %q did not recall LOAD, got %v", prompt, names(rs.Match(prompt)))
@@ -94,6 +116,16 @@ func TestLoadDomainStaysQuietOnOrdinaryLoadWords(t *testing.T) {
 		"load the config file before the hook runs",
 		"download the release archive",
 		"the page loads slowly",
+		// "orphan" is ordinary vocabulary here: orphaned stages, drafts,
+		// fences and transcripts, none of them a process.
+		"the orphan sweep rolls back the stage",
+		"a failed stamp leaves an orphan draft",
+		"an orphaned BEGIN fence breaks the marker block",
+		// "stress-test" alone is ordinary review vocabulary: a design or
+		// an argument is stress-tested, not a machine.
+		"stress-test the plan before we build it",
+		"stress test this argument",
+		"the stress on the second syllable",
 	} {
 		if has(rs.Match(prompt), "LOAD") {
 			t.Errorf("ordinary prompt %q recalled LOAD", prompt)
@@ -105,9 +137,12 @@ func TestLoadDomainStaysQuietOnOrdinaryLoadWords(t *testing.T) {
 // real child spawns two real grandchildren (a uniquely named sleep, so the
 // test burns no CPU and its name probe can match nothing else). Recording the
 // child's pid and killing that pid alone — the incident's handle — leaves
-// both grandchildren running; the prescribed idiom, one job-controlled
-// background job killed as a process group, leaves nothing, and "nothing" is
-// established by the two process queries the rule names, never by a list.
+// both grandchildren running. The prescribed idiom runs the rule's own launch
+// text verbatim, keeps the group's handle in a file, and stops the load from
+// a SECOND shell, as an agent does, since its shell state does not survive
+// between tool calls: that shell re-checks the handle before the group kill,
+// and afterwards "nothing" is established by the two process queries the rule
+// names, never by a list.
 func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {
@@ -123,24 +158,35 @@ func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 
 	dir := t.TempDir()
 	name := burnerName(t)
-	burner := filepath.Join(dir, name)
+	burnerPath := filepath.Join(dir, name)
 	// A symlink, not a copy: a copied platform binary is refused by the
 	// macOS kernel, while an exec through a symlink takes the link's name as
 	// the process name that pgrep -x matches.
-	if err := os.Symlink(sleep, burner); err != nil {
+	if err := os.Symlink(sleep, burnerPath); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { killBurners(t, name) })
 
+	// burner is the name the rule's launch text calls: each one execs the
+	// uniquely named sleep, detached from the script's output so the script
+	// returns while the load runs on.
+	burner := `burner() { exec "$B" 300 </dev/null >/dev/null 2>&1; }`
+	// detach points a launching script's own descriptors away from the
+	// test's pipes before the launch line runs, so the subshell the load
+	// lives in holds none of them and the call returns while the load runs
+	// on. A launching script reports by exit status and by the handle file.
+	detach := `exec </dev/null >/dev/null 2>&1`
 	// waitForBoth is the script's own bounded wait until both grandchildren
 	// exist, so a kill never races the launch.
 	waitForBoth := `i=0; while [ "$(pgrep -x "$N" | wc -l)" -lt 2 ]; do i=$((i+1)); [ "$i" -gt 200 ] && exit 3; sleep 0.05; done`
-	load := `( "$B" 300 & "$B" 300 & wait ) </dev/null >/dev/null 2>&1 &`
-	// ownChild refuses (exit 4) unless the named variable holds a pid above 1
-	// that is this script's own direct child, so no kill below can ever be
-	// aimed at 0, -1, an empty operand, or a process another session owns.
+	// isPID refuses (exit 4) an operand that is empty, not a number, 0 or 1,
+	// so no kill below can ever be aimed at 0, -1 or an empty operand.
+	isPID := func(v string) string {
+		return `case "$` + v + `" in ''|*[!0-9]*|0|1) exit 4;; esac`
+	}
+	// ownChild adds that the pid is this script's own direct child.
 	ownChild := func(v string) string {
-		return `case "$` + v + `" in ''|*[!0-9]*|0|1) exit 4;; esac; [ "$(ps -o ppid= -p "$` + v + `" | tr -d ' ')" = "$$" ] || exit 4`
+		return isPID(v) + `; [ "$(ps -o ppid= -p "$` + v + `" | tr -d ' ')" = "$$" ] || exit 4`
 	}
 
 	t.Run("the child's pid is not a handle", func(t *testing.T) {
@@ -148,13 +194,14 @@ func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 		// killed by pid alone. It is the script's own child ($!), checked
 		// before the kill, never a pid read back from a file.
 		script := strings.Join([]string{
-			load,
-			`p=$!`,
+			detach,
+			burner,
+			`( burner & burner & wait ) & p=$!`,
 			ownChild("p"),
 			waitForBoth,
 			`kill "$p"`,
 		}, "\n")
-		runLoadScript(t, bash, script, burner, name, dir)
+		runLoadScript(t, bash, script, burnerPath, name, dir)
 		// The kill landed on the child's pid; give the signal time to land
 		// anywhere it was going to, then show the grandchildren outlived it.
 		time.Sleep(500 * time.Millisecond)
@@ -166,23 +213,41 @@ func TestLoadDomainIdiomOwnsTheWholeGroup(t *testing.T) {
 	})
 
 	t.Run("the owned group dies together", func(t *testing.T) {
-		script := strings.Join([]string{
-			loadJobControl,
-			load,
-			`pg=$!`,
+		handle := filepath.Join(dir, "load.pg")
+		// The first tool call: the rule's launch text verbatim, and the
+		// handle written to a file the session owns before the call ends.
+		start := strings.Join([]string{
+			detach,
+			burner,
+			loadWrapper,
 			ownChild("pg"),
-			// The group kill is aimed only at a group this script's own
-			// child leads: if job control did not give the child its own
-			// group, the script stops here and kills nothing.
-			`[ "$(ps -o pgid= -p "$pg" | tr -d ' ')" = "$pg" ] || exit 5`,
 			waitForBoth,
+			`printf '%s\n' "$pg" > "$D/load.pg"`,
+		}, "\n")
+		runLoadScript(t, bash, start, burnerPath, name, dir)
+
+		// The second tool call: a fresh shell holding nothing but the file.
+		// It re-checks the handle before the kill: the pid still leads its
+		// own group, the leader is still the shell that launched the load,
+		// and the group holds exactly this test's two burners. Any failed
+		// check stops the script before the kill, so a stale or reused pid
+		// is never signalled.
+		stop := strings.Join([]string{
+			`pg=$(cat "$D/load.pg")`,
+			isPID("pg"),
+			`[ "$(` + loadLeaderPGID + ` | tr -d ' ')" = "$pg" ] || exit 5`,
+			`[ "$(basename "$(` + loadLeaderComm + `)")" = bash ] || exit 6`,
+			`[ "$(pgrep -g "$pg" -x "$N" | wc -l)" -eq 2 ] || exit 7`,
 			loadGroupKill,
 			`echo "$pg"`,
 		}, "\n")
-		out := runLoadScript(t, bash, script, burner, name, dir)
+		out := runLoadScript(t, bash, stop, burnerPath, name, dir)
 		pg, err := strconv.Atoi(strings.TrimSpace(out))
 		if err != nil || pg <= 1 || pg == syscall.Getpgrp() {
 			t.Fatalf("the script did not report a process group of its own: %q", out)
+		}
+		if b, err := os.ReadFile(handle); err != nil || strings.TrimSpace(string(b)) != strconv.Itoa(pg) {
+			t.Fatalf("the handle file does not hold the group the stop call killed: %q, %v", b, err)
 		}
 		// Proof by what is running: both queries the rule names come back
 		// empty. Delivery of the signal is asynchronous, so the proof polls

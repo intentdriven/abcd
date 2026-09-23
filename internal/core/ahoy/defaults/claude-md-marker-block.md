@@ -52,8 +52,9 @@ A prompt that matches no domain injects nothing (zero added tokens).
 abcd binary; a repo overrides them per-field via `.abcd/rules.json`. `OPINIONS`
 points at the canonical conventions under `.abcd/development/principles/` rather
 than copying them. `LOAD` carries the trust rule for load experiments: one owned
-process group killed together, clean proven by what is running, and explicit
-consent with a cap below the core count on a live development machine.
+process group killed together through a re-checked handle and never by pattern,
+clean proven by what is running, and explicit consent with a cap below the core
+count on a live development machine.
 
 ### Reset triggers
 
