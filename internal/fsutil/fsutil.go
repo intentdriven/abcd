@@ -15,6 +15,10 @@
 // the transcript store all call them rather than each carrying the sequence
 // (iss-2609091128479544).
 //
+// An append-only log has its own primitive, AppendLineIn: one line, one
+// O_APPEND write, so concurrent writers land whole lines (the lifeboat voyage
+// ledger and the implement run log both write through it).
+//
 // Each read/write primitive comes in two forms. The plain form takes a path and
 // guards the LEAF only; the …InRoot form takes an *os.Root and resolves every
 // component inside it, which is what contains a path whose ANCESTOR is a symlink
@@ -564,4 +568,62 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 		_ = d.Close()
 	}
 	return nil
+}
+
+// ErrNotOneLine is AppendLineIn's refusal: the payload is empty or carries a line
+// break, so one call would not append exactly one record.
+var ErrNotOneLine = errors.New("fsutil: payload is not exactly one line")
+
+// AppendLineIn appends line, plus a terminating newline, to rel INSIDE root. It
+// is the canonical append-only log write: the file is opened O_APPEND|O_CREATE
+// and the record reaches it in ONE write call, so the kernel positions every
+// write at the end of the file and two writers — two goroutines or two
+// processes — each land whole lines rather than interleaving within one. That
+// is the whole contract a JSON-lines log needs, and it is why this is neither
+// WriteFileAtomic (which replaces) nor CreateExclusiveIn (which refuses an
+// existing file).
+//
+// line must be one line: empty, or carrying '\n' or '\r', is ErrNotOneLine and
+// nothing is opened. The newline is added here, so a caller cannot forget it and
+// run two records together. rel is resolved inside root, so a symlinked ancestor
+// is refused rather than followed; a new file is created at perm, and an existing
+// one keeps its mode. A short write is reported as io.ErrShortWrite.
+func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) error {
+	if len(line) == 0 || strings.ContainsAny(string(line), "\n\r") {
+		return ErrNotOneLine
+	}
+	f, err := openAppendIn(root, rel, perm)
+	if err != nil {
+		return err
+	}
+	buf := make([]byte, 0, len(line)+1)
+	buf = append(append(buf, line...), '\n')
+	n, err := f.Write(buf)
+	if err == nil && n != len(buf) {
+		err = io.ErrShortWrite
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// openAppendIn opens rel for appending, creating it at perm when absent, without
+// ever asking the kernel for a NON-exclusive create relative to the root's
+// directory descriptor. That single call — openat(dirfd, O_CREAT|O_APPEND) — was
+// observed on darwin to fail with ENOENT for some of several writers racing to
+// create the same file, which would drop the first records of a shared log. The
+// sequence below uses only the two opens that behave under the race: a plain
+// open of an existing file, and an exclusive create that exactly one racer wins
+// while the others see ErrExist and fall back to the plain open.
+func openAppendIn(root *os.Root, rel string, perm os.FileMode) (*os.File, error) {
+	f, err := root.OpenFile(rel, os.O_APPEND|os.O_WRONLY, 0)
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return f, err
+	}
+	f, err = root.OpenFile(rel, os.O_APPEND|os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err == nil || !errors.Is(err, os.ErrExist) {
+		return f, err
+	}
+	return root.OpenFile(rel, os.O_APPEND|os.O_WRONLY, 0)
 }
