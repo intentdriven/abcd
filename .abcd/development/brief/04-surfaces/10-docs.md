@@ -35,7 +35,9 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   ("nothing was checked") in place of a finding count, because "0 finding(s)"
   over a lint that ran no rule is a green that means nothing
   (iss-2609150805167646). The exit code is still 0 there: the configuration was
-  read, and no rule it declares was broken.
+  read, and no rule it declares was broken. A rule name the lint does not run
+  (a misspelling such as `links_reslove`) is refused when the configuration
+  loads, enabled or not, so `checks` never counts a rule that checks nothing.
 - **`docs cite refresh`** fetches every cited URL once and rewrites the
   committed citation baseline. Each URL gets exactly one bounded attempt with no
   retries, and no response body is read: liveness is judged from the status
