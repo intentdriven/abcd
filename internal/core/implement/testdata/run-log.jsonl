@@ -1,0 +1,28 @@
+{"ts":"2026-09-23T05:48:40Z","session":"A1","event":"session_open","role":"A","window":1,"reason":"run start","model":"example-model"}
+{"ts":"2026-09-23T05:48:40Z","session":"A1","event":"window_mode","mode":"single"}
+{"ts":"2026-09-23T05:52:45Z","session":"A1","event":"lane_open","lane":"l1","record":"itd-1","branch":"feat/one","base":"fff6ce0d"}
+{"ts":"2026-09-23T05:52:45Z","session":"A1","event":"agent_start","lane":"l1","role":"implementer","model":"opus"}
+{"ts":"2026-09-23T06:40:00Z","session":"A1","event":"agent_end","lane":"l1","role":"implementer","wall_minutes":47}
+{"ts":"2026-09-23T06:48:40Z","session":"A1","event":"lane_close","lane":"l1","outcome":"merged"}
+this line is not JSON
+{"session":"A1","event":"stop"}
+{"ts":"2026-09-23T07:00:00Z","session":"A1","event":"window_mode","mode":"claim","window":2}
+{"ts":"2026-09-23T07:01:00Z","session":"B1","event":"session_open","role":"second"}
+{"ts":"2026-09-23T07:02:00Z","session":"A1","event":"lane_open","lane":"l2"}
+{"ts":"2026-09-23T07:02:30Z","session":"B1","event":"claim_denied","record":"itd-2","lane":"l2b","holder":"A1"}
+{"ts":"2026-09-23T07:02:30Z","session":"B1","event":"backoff","on":"claim","reason":"record claimed by session A1","minutes":0}
+{"ts":"2026-09-23T07:03:00Z","session":"B1","event":"lane_open","lane":"l3"}
+{"ts":"2026-09-23T07:10:00Z","session":"B1","event":"backoff","on":"queue","reason":"queue busy","minutes":"6"}
+{"ts":"2026-09-23T07:20:00Z","session":"A1","event":"ceiling_wait","lane":"l2","minutes":10,"held_by":"implementer,implementer,reviewer"}
+{"ts":"2026-09-23T07:40:00Z","session":"B1","event":"agent_end","lane":"l3","minutes":30}
+{"ts":"2026-09-23T07:45:00Z","session":"B1","event":"lane_close","lane":"l3","outcome":"merged"}
+{"ts":"2026-09-23T07:50:00Z","session":"A1","event":"agent_end","lane":"l2","role":"reviewer","wall_min":12}
+{"ts":"2026-09-23T07:55:00Z","session":"A1","event":"context","role":"orchestrator","used_pct":16,"note":"measured from here on"}
+{"ts":"2026-09-23T08:00:00Z","session":"A1","event":"lane_close","lane":"l2","outcome":"landed"}
+{"ts":"2026-09-23T09:00:00Z","session":"A1","event":"window_mode","mode":"batch","window":3}
+{"ts":"2026-09-23T09:30:00Z","session":"A1","event":"lane_open","lane":"l4"}
+{"ts":"2026-09-23T10:00:00Z","session":"A1","event":"lane_close","lane":"l4","outcome":"abandoned"}
+{"ts":"2026-09-23T10:00:00Z","session":"A1","event":"context","role":"orchestrator","used_pct":"31"}
+{"ts":"2026-09-23T11:00:00Z","session":"A1","event":"window_mode","mode":"split-roles","window":4}
+{"ts":"2026-09-23T11:05:00Z","session":"B1","event":"refusal","condition":"second_session_release"}
+{"ts":"2026-09-23T11:30:00Z","session":"B1","event":"review","lane":"l5","verdict":"pass"}
