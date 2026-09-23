@@ -10,6 +10,7 @@ severity: major
 origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-2609091416304128, itd-2609091014076309, itd-148, itd-2609150819440345, itd-2609201916151817]
+impact: additive
 ---
 
 # A session sees the records its peers hold before it mints or fixes one
@@ -98,8 +99,102 @@ We expect a read-only view of what peers hold to stop the local collisions on re
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: INGESTED receipt=rcp-a5f2f1052770 -->
+Fidelity review — receipt rcp-a5f2f1052770 (verifier intent-auditor claude-fable-5-1).
 
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:79c4c254f138aa0015a9eb00e07f5d1cfbb656bf88a89265f57fde8c478d4c82
+Input attestations: diff:8486c141..cf1247d4 (PR #666, merged 20cc37eb; tree read at cede78b8)@-;
+
+Acceptance rollup: MET 13 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the core test captures under a sibling worktree, reads, and asserts the row plus byte-identical porcelain in both trees; the surface test asserts the branch, the home-redacted path, the id and title in text and --json
+  evidence: internal/core/peers/peers_test.go:122 — "func TestACaptureOnASiblingDiskIsARowUnderThatPeer"
+  evidence: internal/core/peers/peers_test.go:129 — "if porcelain(f, f.here()) != beforeHere || porcelain(f, a) != beforeA {"
+  evidence: internal/surface/cli/peers_surface_test.go:91 — "for _, want := range []string{"feat/a", "~/wt/a", "iss-100", "open there, absent here", "A finding the peer captured"} {"
+- ac-2 — MET: the diff computes an open-here/terminal-there row carrying the peer's folder, and the test names the folder
+  evidence: internal/core/peers/peers.go:62 — "KindTerminalThere Kind = "terminal-there""
+  evidence: internal/core/peers/peers.go:77 — "Folder string `json:"folder"`"
+  evidence: internal/core/peers/peers_test.go:154 — "func TestARecordOpenHereAndTerminalThereNamesTheFolder"
+- ac-3 — MET: every local branch no worktree has checked out is read from the common dir with ls-tree as a branch peer, test-held
+  evidence: internal/core/peers/read.go:142 — "rep.Peers = append(rep.Peers, readBranch(root, b))"
+  evidence: internal/core/peers/read.go:430 — "args := []string{"ls-tree", "-r", "-z", "--full-tree", ref, "--"}"
+  evidence: internal/core/peers/peers_test.go:182 — "func TestABranchCheckedOutNowhereIsAPeer"
+- ac-4 — MET: a draft in a peer's drafts/ absent here is a draft-there row, test-held
+  evidence: internal/core/peers/peers.go:67 — "KindDraftThere Kind = "draft-there""
+  evidence: internal/core/peers/peers_test.go:204 — "func TestAPeerDraftAbsentHereIsADraftRow"
+- ac-5 — MET: all three verbs route their not-found error through peerHeldRefusal, which names each holder's branch, redacted path and folder, and the surface test runs all three and asserts 'not found' is gone
+  evidence: internal/surface/cli/cli.go:221 — "return peerHeldRefusal(cwd, "", args[0], err)"
+  evidence: internal/surface/cli/cli.go:2247 — "return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],"
+  evidence: internal/surface/cli/cli.go:3409 — "return peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)"
+  evidence: internal/surface/cli/peers.go:236 — "holders = append(holders, h+" holds it in "+l.Folder+"/")"
+  evidence: internal/surface/cli/peers_surface_test.go:167 — "func TestNotFoundPathsNameThePeerThatHoldsTheRecord"
+- ac-6 — MET: a gone directory and a branch merged by ancestry (with clean record folders) are returned as Skipped with a reason, rendered in a skipped count on the header line, and test-held; a merged worktree with uncommitted records deliberately stays live
+  evidence: internal/core/peers/read.go:158 — "return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipGone}, true"
+  evidence: internal/core/peers/read.go:186 — "return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipMerged}, false"
+  evidence: internal/surface/cli/peers.go:157 — "return fmt.Sprintf("; %d skipped (%s)", len(sk), strings.Join(parts, ", "))"
+  evidence: internal/core/peers/peers_test.go:225 — "func TestSpentPeersAreSkippedAndCounted"
+- ac-7 — MET: judgeHoldings marks a peer holding one id in two folders with the ids and the remedy and no rows, and the test asserts the healthy sibling still renders
+  evidence: internal/core/peers/read.go:240 — "return "its ledger holds one id in two places (" + strings.Join(split, "; ") +"
+  evidence: internal/core/peers/peers_test.go:300 — "func TestASplitLedgerPeerIsMarkedAndOthersRender"
+- ac-8 — MET: the candidate's own --git-common-dir is compared to this checkout's, and a refusal or a mismatch sets NotRead with the reason, test-held for both
+  evidence: internal/core/peers/read.go:168 — "p.NotRead = "git refused to answer for it: " + firstLine(err.Error())"
+  evidence: internal/core/peers/read.go:172 — "p.NotRead = "its own common dir is not this checkout's, so it belongs to another repository""
+  evidence: internal/core/peers/peers_test.go:329 — "func TestAForeignOrRefusedWorktreeIsNamedNotRead"
+- ac-9 — MET: with no peers the command prints 'no peers' and the board carries no line in text or --json, test-held on the surface and the core
+  evidence: internal/surface/cli/peers.go:96 — "fmt.Fprintln(w, "abcd peers — no peers")"
+  evidence: internal/surface/cli/peers_surface_test.go:135 — "if out := string(runCLI(t, "peers")); !strings.Contains(out, "no peers") {"
+  evidence: internal/core/peers/peers_test.go:356 — "func TestACheckoutWithNoPeersReportsNone"
+- ac-10 — MET: the board's peers line is built only when the id count is non-zero and carries the live-peer and id counts, asserted present with one peer and absent with none
+  evidence: internal/surface/cli/peers.go:187 — "if rep.IDCount() == 0 {"
+  evidence: internal/surface/cli/peers.go:190 — "return &boardPeersLine{Live: rep.Live(), IDs: rep.IDCount()}"
+  evidence: internal/surface/cli/peers_surface_test.go:132 — "func TestTheBoardCarriesAPeersLineOnlyWhenPeersHoldSomething"
+- ac-11 — MET: the --json payload is built from the same Report with every peer and skipped path and NotRead reason passed through RedactHome, and the surface test asserts no home path in the raw JSON
+  evidence: internal/surface/cli/peers.go:80 — "p.Path = fsutil.RedactHome(p.Path)"
+  evidence: internal/surface/cli/peers.go:85 — "s.Path = fsutil.RedactHome(s.Path)"
+  evidence: internal/surface/cli/peers_surface_test.go:99 — "noHomePath(t, home, string(raw))"
+- ac-12 — MET: a title read that fails returns the empty string and the id is listed anyway; the test covers a malformed and a mode-0 file with the read succeeding
+  evidence: internal/core/peers/read.go:321 — "if err != nil {"
+  evidence: internal/core/peers/peers.go:79 — "malformed; the id is listed either way."
+  evidence: internal/core/peers/peers_test.go:369 — "func TestAnUnreadableOrMalformedRecordListsTheIDAlone"
+- ac-13 — MET: the scan-before-mutating step in AGENTS.md names `abcd peers` beside the harness's session listing, and a test reads that step and asserts both
+  evidence: AGENTS.md:209 — "also run `go run ./cmd/abcd peers` (`--json` for a machine reader): it lists"
+  evidence: internal/surface/cli/peers_surface_test.go:262 — "func TestTheScanBeforeMutatingConventionNamesThePeerListing"
+
+Gap audit:
+- honoured:
+  - one reader, two sources, nothing written
+    evidence: internal/core/peers/peers.go:53 — "var Sources = []Source{SourceWorktree, SourceBranch}"
+    evidence: internal/core/peers/peers.go:9 — "It opens no file for writing, runs only read-only git commands"
+  - the three not-found paths name the peer
+    evidence: internal/surface/cli/peers_surface_test.go:167 — "func TestNotFoundPathsNameThePeerThatHoldsTheRecord"
+  - the register source is a declared empty slot, and a Report says so
+    evidence: internal/core/peers/peers.go:45 — "SourceRegister is the slot the register intent (itd-2609150819440345)"
+  - a peer's branch and path are sanitised before they reach a stream
+    evidence: internal/surface/cli/peers_surface_test.go:221 — "func TestThePeerHeldRefusalSanitisesThePeersBranchAndPath"
+  - a gone or refused worktree's unmerged branch is still read from the store
+    evidence: internal/core/peers/peers_test.go:260 — "func TestAGoneOrRefusedWorktreesUnmergedBranchIsReadFromTheStore"
+- diverged:
+  - the not-found paths look up drafts/ only: Locate spans every intent bucket, so intent audit names a peer's shipped/ copy too (a widening, not a loss)
+    evidence: internal/surface/cli/peers_surface_test.go:184 — "{"intent audit", []string{"intent", "audit", "itd-77"}, []string{"side", "shipped/"}},"
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609202056488592 — survived: a listed directory whose own common dir is not this checkout's is named and not read, and the sources are the two local ones with the register slot empty
+  evidence: internal/core/peers/read.go:171 — "if realPath(theirs) != realPath(common) {"
+  evidence: internal/core/peers/peers.go:53 — "var Sources = []Source{SourceWorktree, SourceBranch}"
+- cond-2609202056489916 — survived: holdings are read off a worktree's disk or from a branch's tree with ls-tree; nothing reads a stash or a buffer
+  evidence: internal/core/peers/read.go:378 — "func scanDisk(root string) (holdings, bool, error) {"
+  evidence: internal/core/peers/read.go:429 — "func scanTree(root, ref string) (holdings, bool, error) {"
+- cond-2609202056486227 — untested: no test or artefact in the delivered diff exercises the reader at thirty worktrees or a few hundred branches, nor on a network filesystem
+- cond-2609202056485097 — survived: a worktree git refuses to answer for is named with the refusal and not read, test-held with a dangling gitdir pointer
+  evidence: internal/core/peers/read.go:166 — "theirs, err := commonDir(wt.path)"
+  evidence: internal/core/peers/peers_test.go:329 — "func TestAForeignOrRefusedWorktreeIsNamedNotRead"
+- cond-2609202056483851 — survived: the tests run on the ubuntu and macos legs of the CI matrix and the porcelain parser is tested for both path forms git emits; Windows is not in the matrix, as the condition states
+  evidence: .github/workflows/ci.yml:230 — "os: [ubuntu-latest, macos-latest]"
+  evidence: internal/gitutil/worktree_test.go:14 — "func TestParseWorktreeListReadsBothPorcelainForms"
+- cond-2609202056489557 — survived: a peer holding no records at the committed layout is marked NotRead with that reason and contributes no rows
+  evidence: internal/core/peers/read.go:224 — "return "it holds no records at the committed layout (" + capture.LedgerRelPath + "/, " +"
 ## Grounds
 
 - pursued: the pilot and the big run put four to seven lanes on one checkout this week, and every collision on record was a failure of visibility, not of will; we expect a read-only view of what peers hold, delivered in the verbs' own refusals, to stop them; shown wrong if a lane that was shown a peer's holding still duplicates or re-fixes it, or if the next collision comes from a peer this reader cannot see

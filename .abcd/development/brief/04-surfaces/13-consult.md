@@ -76,8 +76,8 @@ the exit code, not the absence of complaint.
 
 **That file has two writers, and abcd is the other one.**
 `.abcd/.work.local/private-names.txt` is abcd's own private banlist layer
-(`banlist.PrivateRelPath`, itd-74 / spc-20), maintained by `abcd banlist add
---private` and `remove --private`. The two writers coexist on a format
+(`banlist.PrivateRelPath`, itd-74 / spc-20), maintained by the banlist verb's
+private-layer add and remove. The two writers coexist on a format
 contract: the file's first line must be exactly `# abcd-banlist: keyed`, the
 corpus script refuses a target whose first line is not that declaration, and it
 confines itself to a fenced generated block, so hand-added and verb-added lines
@@ -138,3 +138,9 @@ share the corpus and its ledger.
   [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md), brief invariant 9
   ([`../02-constraints/03-invariants.md`](../02-constraints/03-invariants.md))
 - Consuming intent: [itd-76](../../intents/planned/itd-76-source-provenance-ledger.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+There is no shipped surface: the command tree registers no `abcd consult` verb, so there are no flags and no sub-verbs to list.
+
+<!-- surface-appendix:end -->

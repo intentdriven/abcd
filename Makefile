@@ -171,7 +171,9 @@ record-lint:
 # exists to forget. RS002/RS003: a resolved_by.commit sha must name a commit
 # that is actually reachable — `--commit` is shape-checked only, and the repo
 # allows squash and rebase merges, either of which rewrites a cited branch sha
-# out of existence. The cases run first: a gate nobody has watched fail is an
+# out of existence. RS005: a `Delivers: itd-N` trailer must be accompanied by
+# that intent entering intents/shipped/ in the same change — the intent-store
+# twin of RS001 (itd-2609111003026787). The cases run first: a gate nobody has watched fail is an
 # enforcement claim with no evidence behind it. Needs full git history, like
 # lint-reviews: on a shallow checkout the scripts refuse (exit 2) rather than
 # report unfetched commits as ledger violations.

@@ -22,7 +22,7 @@ inbound = outbound statement is the whole of it.
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
   Linux leg alone adds the `make fmt-check` format gate, the record-lint and
   docs-lint steps, and the site-render gate; separate jobs run the
-  reviews-charter and issue-resolution checks (RS001–RS003), `gitleaks`,
+  reviews-charter and issue-resolution checks (RS001–RS005), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
   cold-reading evals (`make evals-cold-reading`, which runs on every event).
 - **Merge queue.** Merging goes through the queue ("Merge when ready"): the
@@ -63,6 +63,12 @@ inbound = outbound statement is the whole of it.
 - A user-facing change **resolves its issue or ships its intent in the same diff**;
   the CHANGELOG is derived at release from those record transitions, and
   `## [Unreleased]` stays empty (a hand-written entry blocks the next cut).
+  Say which in a trailer: `Resolves: iss-N` for an issue the change fixes, and
+  `Delivers: itd-N` for an intent the change **finishes** — not one it
+  contributes to, since an intent that arrives across several pull requests is
+  delivered by the last of them. The merge gate refuses either trailer when its
+  record does not reach a terminal folder in the same change: for an intent,
+  that means `abcd spec close <spc-N>` on every spec still open that names it.
 - **Docs** are Diátaxis (one type per page, present tense); the design record lives
   under `.abcd/`, never in `docs/`. Prose follows the canonical
   [writing style guide](docs/reference/writing-style.md).

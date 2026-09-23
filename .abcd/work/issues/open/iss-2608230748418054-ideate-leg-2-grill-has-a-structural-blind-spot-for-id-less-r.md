@@ -7,6 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "ideate run abcd-research-verb"
 found_at: "commands/ideate.md"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: pick the root among three options (id family for research notes, placement rule, grill-side sweep)). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 Ideate leg-2 grill has a structural blind spot for id-less records: the 2026-08-23 abcd-research-verb run's grill failed to surface the same-day research note (2026-08-22-sota-research-protocol.md) that answers the submitted idea by name, because research notes carry no citable record id and the grill's output is id-cited hits. The nearest-citable-record note-field rule exists but nothing prompts a sweep of research/notes/ or DECISIONS.md, so a standing verdict recorded outside the id-bearing record families is invisible to the leg that exists to prevent re-litigation. The leg-3 evaluator caught it only by doing its own sweep.

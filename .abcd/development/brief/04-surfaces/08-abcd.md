@@ -16,8 +16,8 @@ Two read-only forms, and no third.
 
 **Bare `abcd`** renders a four-field snapshot of the current directory: the
 directory itself, whether it is a git repo, whether an abcd record is present,
-and which of the `.abcd/` work tiers exist. The plugin command invokes it as
-`abcd --json`.
+and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
+form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
@@ -31,7 +31,9 @@ Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 refused that way, and `abcd help` prints the framework's usage text and exits 0.
 A shape-matching record id found in no store is a structural fault: the command
 exits non-zero with a diagnostic naming the store it searched, never a silent
-fall-through to the snapshot.
+fall-through to the snapshot. When the id is in no store here but a peer holds
+it (below), the diagnostic names that peer's branch, path and folder instead of
+answering not found.
 
 Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per
@@ -39,14 +41,13 @@ is the front door today; an MCP server follows later, per
 does: `consult` and `ingest` run entirely as host-side markdown over the
 sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
-too and writes — `abcd identity init` records the repo's identity block and
-registers the surfaces held to it, and `abcd ahoy install` lays the hooks, the
+too and writes — the identity verb's initialiser records the repo's identity
+block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
 banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
 
-**The presence line** (itd-200, spc-70) is the one addition the shipped board
-has taken since: in a repository abcd manages, the text render carries a
+**The presence line** (itd-200, spc-70) adds to the four fields: in a repository abcd manages, the text render carries a
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd`, `waiting:
 facilitator`, `waiting: product thinker`), then the repository, the branch and
@@ -56,6 +57,30 @@ unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
 the user-level setting has switched the status line off, and it never runs the
 previous status command that `abcd statusline` falls back to.
+
+**The peers line and `/abcd:peers`** (itd-2609091416295622,
+spc-2609202056480020). A peer is a linked worktree sharing this checkout's git
+common dir, read off its disk so an uncommitted capture is seen, or a local
+branch no worktree has checked out, read from the object store; one read-only
+reader (`internal/core/peers`) serves both, and the register
+(itd-2609150819440345) is the third source it leaves empty. Per live peer it
+lists three kinds of row by filename: an issue open there and absent here, an
+issue open here and resolved or won't-fixed there, an intent drafted there and
+absent here, each with its title where the file reads. A peer whose worktree is
+gone, or whose branch is merged into the default branch as last fetched (a
+worktree only when its record folders are also clean, because a branch cut at
+the default tip is merged by ancestry while an uncommitted capture sits in it),
+is skipped and counted. A peer git refuses to answer for, one whose common dir
+is another repository's, one whose ledger holds an id in two status folders,
+and one with no records at the committed layout is named with the reason and
+not read; when the worktree is gone or git refuses it, its branch is read from
+the object store instead, so a dead worktree never hides an unmerged commit. The board carries one `peers:` line (JSON `peers`: `live`, `ids`)
+only when some peer holds a record that differs here; `abcd peers` prints the
+whole picture, as text or in its JSON form, with every home path redacted to
+`~`. The same reader answers the not-found paths of `abcd <record-id>`, of
+resolving a capture and of the intent audit, consulted only after the local
+lookup fails. It writes nothing,
+takes no lock and fetches nothing.
 
 ## The board itself is not built
 
@@ -139,3 +164,30 @@ forbidden. Nothing routes them today.
 - Intent: [`itd-20`](../../intents/superseded/itd-20-top-level-abcd-dispatcher.md)
 - The command surface this board sits at the head of: [`README.md`](README.md)
 - The per-verb bare renders it complements: [`05-intent.md`](05-intent.md), [`01-ahoy.md`](01-ahoy.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd`
+
+| Flag | Type |
+|---|---|
+| `--json` | bool |
+| `--no-color` | bool |
+
+### `abcd mode`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd peers`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

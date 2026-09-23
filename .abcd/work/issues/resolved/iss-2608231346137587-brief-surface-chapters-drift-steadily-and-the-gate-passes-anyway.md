@@ -7,6 +7,10 @@ category: "process"
 source: "user-observation"
 found_during: "v0.6.2 release-gate crosscheck 2026-08-23"
 found_at: ".abcd/development/brief/04-surfaces"
+resolution: "The brief's surface chapters carry a generated appendix of flags and sub-verbs derived from the command tree, drift-tested, with the hand-written shape prose retired and a check keeping it out (itd-147, spc-2609020906356450)."
+impact: internal
+resolved_by:
+  commit: "86a440d55fe11d407221c1865ad6d1c4469e6f61"
 ---
 
 A full-tier `iss35-brief-surface-crosscheck` at content commit `7a4ee00`
@@ -96,3 +100,7 @@ Verdict: SPLIT, confirmed. Open questions the corpus should answer first: did th
 brief change land in the same commit (the hypothesis that locates the seam);
 which chapters drift fastest normalised by surface churn; and how many releases
 each false claim survived.
+
+## Grounds
+
+- pursued: a shape claim nobody writes by hand cannot drift; a false-claim or stale-count finding about a flag or sub-verb a generated appendix covers, in the next full-tier crosscheck, would show it wrong
