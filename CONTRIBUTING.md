@@ -20,8 +20,8 @@ inbound = outbound statement is the whole of it.
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
-  Linux leg alone adds the `make fmt-check` format gate, the record-lint and
-  docs-lint steps, and the site-render gate; separate jobs run the
+  Linux leg alone adds the `make fmt-check` format gate, the record-lint,
+  issue-drift and docs-lint steps, and the site-render gate; separate jobs run the
   reviews-charter and issue-resolution checks (RS001–RS005), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
   cold-reading evals (`make evals-cold-reading`, which runs on every event).
@@ -49,7 +49,7 @@ inbound = outbound statement is the whole of it.
   time — review attention is the scarce resource this protects.
 - **Local gates.** `make preflight` runs the same build, vet, test and race
   steps locally, together with the lint-reviews, lint-issues, lint-decisions,
-  record-lint,
+  record-lint, issue-drift,
   docs-lint and site-render gates and both tagged eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles
   neither) — but not the format gate, so run `make fmt-check` before pushing
