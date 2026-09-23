@@ -95,8 +95,10 @@ rests on a single class of source and one where a page mixes classes without
 saying how it weighs them against each other (`MS001`, `MS002`); a missing
 licence on an external source (`ML001`); and secret or identity residue in
 stored text (`MR001`). `MR001` is the read side of the write-time redactor, run
-over every page, the source registry and each stored original: it names the kind
-and the line, never the span, and the lint never rewrites the store.
+over every page, the source registry and each stored original, and over every
+page name, which it judges as the write side judges a filename: split into its
+parts and held to the hard-fail bar alone. It names the kind and the line, never
+the span, and the lint never rewrites the store.
 
 Four of the seven can stop the run. `MR001` is the sharpest: residue in the
 store is a fault, never advice. `ML001` and `MS002` join it, because a source
