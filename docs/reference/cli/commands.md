@@ -856,8 +856,8 @@ outside the running work has held a near-full core (a lifetime CPU share of 0.9 
 more) for longer than the stray limit, or when the one-minute load average is above
 the extreme limit. `make preflight` runs it first, and the eval harness runs it once
 at its start; it never runs once per test package. It never refuses, never waits and
-never stops anything, and it exits 0 on every status: ok, warning, skipped (a CI
-runner, where the line says why) and unchecked (a platform other than macOS and
+never stops anything, and it exits 0 on every status: ok, warning, skipped (in CI,
+where the line says why) and unchecked (a platform other than macOS and
 Linux, or a read that failed).
 
 Your own strays are named with their pid, process group, age and CPU share, with

@@ -36,8 +36,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"more) for longer than the stray limit, or when the one-minute load average is above\n" +
 			"the extreme limit. `make preflight` runs it first, and the eval harness runs it once\n" +
 			"at its start; it never runs once per test package. It never refuses, never waits and\n" +
-			"never stops anything, and it exits 0 on every status: ok, warning, skipped (a CI\n" +
-			"runner, where the line says why) and unchecked (a platform other than macOS and\n" +
+			"never stops anything, and it exits 0 on every status: ok, warning, skipped (in CI,\n" +
+			"where the line says why) and unchecked (a platform other than macOS and\n" +
 			"Linux, or a read that failed).\n\n" +
 			"Your own strays are named with their pid, process group, age and CPU share, with\n" +
 			"commands to stop them that re-check each target first and never match by pattern;\n" +

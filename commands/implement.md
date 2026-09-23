@@ -152,8 +152,8 @@ process table once and warns about two things: a program outside the running
 work that has held a near-full core for longer than the stray limit (30 minutes
 by default), and a one-minute load average above the extreme limit (four times
 the online core count by default). It never refuses, never waits and never
-stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (a CI
-runner, with the `reason`) and `unchecked` (a platform other than macOS and
+stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
+the `reason`) and `unchecked` (a platform other than macOS and
 Linux, or a read that failed, with the `reason`).
 
 Relay a `warning` whole. The person's own strays (`own_strays`) are named with
