@@ -119,6 +119,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609090746410233` — A lifeboat packs from a worktree, a branch, or an abandoned feature test, experiment or implementation, not only from a whole repository (refines itd-88 and adr-35; realises the press release's not-yet-real widening, git-source half)
 - `itd-2609090746414083` — A lifeboat packs from a lab session home, the throwaway experiment's intention, harvest and bundle, with the same coverage honesty as a repository (refines itd-88 and adr-35; the non-git half, sequenced after the lab verb family)
 - `itd-2609180517121254` — every payload a host hands back from a delegated step names the model that produced it and the number of agents that ran, and the ingesting verb refuses one that does not
+- `itd-2609231013154443` — each release carries a press release composed at the cut from its shipped intents' press releases, written beside the changelog, backward-looking with no forecast (the successor adr-2609212115255771 names to the phase Expectation; `builds_on` itd-67 and itd-73; awaiting its planning interview)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
