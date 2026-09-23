@@ -76,8 +76,10 @@ commands that mint them, and no flag carries either as free text. Records of
 other families — a disposition, for one — carry neither.
 
 `origin` is **derived from which command ran** and has no flag at all:
-`researcher-authored` for a verb a person invoked, `extracted-from-record` for
-`capture promote <iss-N>` — an issue is something a person noticed — and
+`researcher-authored` for text written directly rather than derived (it names
+the route, not whether a person or an agent ran the command),
+`extracted-from-record` for `capture promote <iss-N>` — an issue is something a
+person noticed — and
 `contributed-by-reading <rdg-N>/<rdi-N>`, which `capture promote <rdi-N>` mints
 when it derives a draft from an accepted reading item, naming the item's run and
 id. It is stamped when the record is minted and never rewritten: where a record
