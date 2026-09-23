@@ -138,8 +138,9 @@ issue's timeline; the ledger does not duplicate it.
 `abcd capture "<text>"` appends a new issue to `open/`, minting a fresh
 timestamp-numeric `iss-N` (never "the next" one — the mint reads no maximum).
 Flags refine the frontmatter — `--severity`, `--category`, `--source`,
-`--slug`, `--found-during`, `--found-at`, `--lapsed-at` (required with
-`--category lapse`, and never defaulted), and `--blocked-by` (a comma-separated
+`--slug`, `--found-during`, `--found-at`, `--lapsed-at` (for `--category
+lapse`, and never defaulted; its refusal when omitted is parked by
+iss-2609091009111294), and `--blocked-by` (a comma-separated
 list of `iss-N` ids). Bare `abcd capture` renders a read-only status board;
 `abcd capture list` filters by state; `abcd capture resolve` moves an open issue
 to `resolved/` with a note and a required

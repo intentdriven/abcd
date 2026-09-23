@@ -63,10 +63,14 @@ hold is the mechanical sign of a finding filed in the wrong place
 lone path token, and an absent value are written as given. The check is made
 at capture only, so a record keeps the path it named when the tree later moves.
 
-One flag is conditionally required: the RFC 3339 instant a recorded discipline
-gave way must be given with the `lapse` category, and omitting it exits 2 and
-writes nothing. The only available default would be the write-up time, which is
-precisely the value a lapse entry exists to distinguish itself from.
+One flag belongs to one category: `--lapsed-at` carries the RFC 3339 instant a
+recorded discipline gave way, for the `lapse` category, and it has no default.
+The only available default would be the write-up time, which is precisely the
+value a lapse entry exists to distinguish itself from, so a lapse capture that
+omits the flag records no instant rather than an invented one. The refusal of an
+omitted instant is parked (iss-2609091009111294) until the rethink of the
+reading work settles what a lapse record must carry; a value that is given must
+be an RFC 3339 instant.
 
 **`/abcd:capture list`** queries the ledger, and one of `--open`,
 `--resolved`, `--wontfix` or `--all` is required. The unfiltered form is
