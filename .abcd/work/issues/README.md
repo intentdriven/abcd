@@ -92,11 +92,15 @@ Optional:
 - `lapsed_at` — the RFC 3339 instant, in UTC, at which a recorded discipline gave
   way: the lapse itself, not its write-up. The record id is timestamp-numeric and
   therefore already carries write-up time, which is the value this property
-  distinguishes itself from. **Required when `category` is `lapse`**, and refused
-  when it is not an RFC 3339 instant: a lapse entry with no lapse time is
-  reconstruction rather than evidence, so the reader and the record-lint blocker
-  `record_schema` both refuse it. The point in the process at which the discipline
-  gave way is `found_during`, which every record already carries. Where the
+  distinguishes itself from. Optional on every category, `lapse` included, and
+  refused whenever it is present and not an RFC 3339 instant: the reader and the
+  record-lint blocker `record_schema` both refuse a malformed value. A lapse
+  entry with no lapse time is reconstruction rather than evidence, and spc-60
+  made the property required on a lapse; that refusal is parked
+  (iss-2609091009111294) until the rethink of the reading work settles what a
+  lapse record must carry, so neither the reader nor `record_schema` refuses a
+  lapse that omits it. The point in the process at which the discipline gave way
+  is `found_during`, which every record already carries. Where the
   source a stamp is transcribed from names only a day, the record is stamped at
   midnight UTC of that day: the day is what the source asserts, and midnight is
   the convention that makes it an instant without inventing an hour the source
