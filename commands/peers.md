@@ -38,7 +38,9 @@ and, when the file could be read, a `title`:
 A peer with `not_read` set was named and not read, with the reason: git refused
 to answer for it, its common dir is another repository's, its ledger holds one
 id in two status folders (the reason names the id and the remedy), or it holds
-no records at the committed layout. `skipped` lists the spent peers — a worktree
+no records at the committed layout. A worktree whose directory is gone or that
+git will not read leaves its branch in the object store, so that branch is read
+there as a `branch` peer. `skipped` lists the spent peers — a worktree
 whose directory is `gone`, or a branch `merged` into the default branch (a
 worktree counts as merged only when its record folders are also clean) — which
 contribute no rows.

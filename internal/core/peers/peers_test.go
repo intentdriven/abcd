@@ -235,8 +235,12 @@ func TestSpentPeersAreSkippedAndCounted(t *testing.T) {
 	f.git(f.here(), "branch", "old") // a branch at main's tip, checked out nowhere
 
 	rep := f.read()
-	if len(rep.Peers) != 0 {
-		t.Fatalf("spent peers were read: %+v", rep.Peers)
+	// The gone worktree's own branch carries an unmerged commit, so it is read
+	// through the branch source; nothing is read through a spent worktree.
+	for _, p := range rep.Peers {
+		if p.Source == peers.SourceWorktree || p.Branch != "feat/gone" {
+			t.Fatalf("a spent peer was read: %+v", p)
+		}
 	}
 	reasons := map[string]string{}
 	for _, s := range rep.Skipped {
@@ -246,6 +250,35 @@ func TestSpentPeersAreSkippedAndCounted(t *testing.T) {
 	for br, r := range want {
 		if reasons[br] != r {
 			t.Errorf("skipped[%s] = %q, want %q (all: %+v)", br, reasons[br], r, rep.Skipped)
+		}
+	}
+}
+
+// A worktree whose directory is gone, or which git will not read, still leaves
+// its branch in this repository's object store: an unmerged commit on it is
+// read through the branch source rather than hidden with the worktree.
+func TestAGoneOrRefusedWorktreesUnmergedBranchIsReadFromTheStore(t *testing.T) {
+	f := newFixture(t)
+	gone := f.worktree("gone", "feat/gone")
+	f.write(gone, ".abcd/work/issues/open/iss-400-kept-in-the-store.md", issue("iss-400", "Kept in the store"))
+	f.git(gone, "add", "-A")
+	f.git(gone, "commit", "-q", "-m", "a capture on a worktree about to vanish")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	refused := f.worktree("refused", "feat/refused")
+	f.write(refused, ".abcd/work/issues/open/iss-401-committed-before-the-refusal.md", issue("iss-401", "Committed before the refusal"))
+	f.git(refused, "add", "-A")
+	f.git(refused, "commit", "-q", "-m", "a capture before the worktree broke")
+	if err := os.WriteFile(filepath.Join(refused, ".git"), []byte("gitdir: "+filepath.Join(f.home, "nowhere")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := f.read()
+	for id, branch := range map[string]string{"iss-400": "feat/gone", "iss-401": "feat/refused"} {
+		locs := rep.Locate(id)
+		if len(locs) != 1 || locs[0].Source != peers.SourceBranch || locs[0].Branch != branch {
+			t.Errorf("Locate(%s) = %+v, want %s read through the branch source", id, locs, branch)
 		}
 	}
 }
@@ -388,5 +421,25 @@ func TestLocateNamesThePeerThatHoldsAnID(t *testing.T) {
 	}
 	if !rep.HeldHere("iss-1") || rep.HeldHere("iss-100") {
 		t.Fatal("HeldHere must answer from this tree's own folders")
+	}
+}
+
+// Scan is Read with no record file opened: the same rows and locations, no
+// titles, for the callers that only count or locate.
+func TestScanIsReadWithoutTitles(t *testing.T) {
+	f := newFixture(t)
+	a := f.worktree("a", "feat/a")
+	f.write(a, ".abcd/work/issues/open/iss-100-a-peer-finding.md", issue("iss-100", "A peer finding"))
+	rep, err := peers.Scan(f.here())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, ok := findPeer(rep, "feat/a")
+	want := peers.Row{ID: "iss-100", Kind: peers.KindOpenThere, Folder: "open"}
+	if !ok || len(p.Rows) != 1 || p.Rows[0] != want {
+		t.Fatalf("Scan rows = %+v, want [%+v]", p.Rows, want)
+	}
+	if locs := rep.Locate("iss-100"); len(locs) != 1 || rep.IDCount() != 1 {
+		t.Fatalf("Scan locations = %+v, ids = %d", locs, rep.IDCount())
 	}
 }

@@ -48,7 +48,8 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"merged into the default branch (a worktree only when its record folders are\n" +
 			"also clean), is skipped and counted. A peer git refuses to answer for, one\n" +
 			"whose common dir is another repository's, or one whose ledger holds an id in\n" +
-			"two status folders is named with the reason and not read.\n\n" +
+			"two status folders is named with the reason and not read; a gone or refused\n" +
+			"worktree's branch is then read from the object store instead.\n\n" +
 			"Strictly read-only: it writes nothing, takes no lock, and fetches nothing.\n" +
 			"Home paths are redacted to ~ on every stream. Exit 0 whatever the peers\n" +
 			"hold; exit 2 outside a git checkout.",
@@ -194,7 +195,7 @@ func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
 	if err != nil {
 		return nil
 	}
-	rep, err := peers.Read(root)
+	rep, err := peers.Scan(root)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(redactHomePath(err.Error())))
 		return nil
@@ -225,7 +226,7 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 	if rerr != nil {
 		return err
 	}
-	rep, rerr := peers.Read(root)
+	rep, rerr := peers.Scan(root)
 	if rerr != nil || rep.HeldHere(id) {
 		return err
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -25,7 +26,7 @@ var families = []struct {
 	rel     string
 	folders []string
 }{
-	{"iss", capture.LedgerRelPath, []string{"open", "resolved", "wontfix"}},
+	{"iss", capture.LedgerRelPath, issueschema.StatusDirs},
 	{"itd", intent.IntentsRelDir, intent.Buckets},
 }
 
@@ -75,7 +76,14 @@ type worktree struct {
 // It fails only when this checkout itself cannot be read: git will not name its
 // common dir, or its own record folders cannot be listed. Every fault in a PEER
 // is that peer's NotRead, so one bad sibling never hides the others.
-func Read(root string) (Report, error) {
+func Read(root string) (Report, error) { return read(root, true) }
+
+// Scan is Read without the titles: the same peers, rows and locations, with
+// no record file opened. It is for a caller that needs counts or a location —
+// the board line, a not-found refusal — and should not pay a read per row.
+func Scan(root string) (Report, error) { return read(root, false) }
+
+func read(root string, titles bool) (Report, error) {
 	rep := Report{Sources: append([]Source(nil), Sources...), Peers: []Peer{}, Skipped: []Skipped{}, root: root}
 	common, err := commonDir(root)
 	if err != nil {
@@ -97,13 +105,20 @@ func Read(root string) (Report, error) {
 	checkedOut := map[string]bool{}
 	self := realPath(root)
 	for _, wt := range wts {
-		if wt.branch != "" {
-			checkedOut[wt.branch] = true
-		}
 		if wt.bare || realPath(wt.path) == self {
+			if wt.branch != "" {
+				checkedOut[wt.branch] = true
+			}
 			continue
 		}
-		if p, skip := readWorktree(root, common, wt, merged, defaultRef); skip != nil {
+		p, skip, viaBranch := readWorktree(root, common, wt, merged, defaultRef)
+		// A worktree that is gone, or that git will not read, still leaves its
+		// branch in this repository's object store; the branch source reads it
+		// there rather than letting the dead worktree hide an unmerged commit.
+		if wt.branch != "" && !viaBranch {
+			checkedOut[wt.branch] = true
+		}
+		if skip != nil {
 			rep.Skipped = append(rep.Skipped, *skip)
 		} else {
 			rep.Peers = append(rep.Peers, p)
@@ -126,20 +141,22 @@ func Read(root string) (Report, error) {
 	}
 
 	for i := range rep.Peers {
-		rep.Peers[i].Rows = rep.diff(rep.Peers[i])
+		rep.Peers[i].Rows = rep.diff(rep.Peers[i], titles)
 	}
 	return rep, nil
 }
 
-// readWorktree reads one linked worktree, or says why it is spent.
-func readWorktree(root, common string, wt worktree, merged map[string]bool, defaultRef string) (Peer, *Skipped) {
+// readWorktree reads one linked worktree, or says why it is spent. viaBranch
+// reports that its disk could not be read at all (gone, or refused by git), so
+// its branch, if any, is left to the branch source.
+func readWorktree(root, common string, wt worktree, merged map[string]bool, defaultRef string) (_ Peer, _ *Skipped, viaBranch bool) {
 	p := Peer{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Rows: []Row{}}
 	if _, err := os.Lstat(wt.path); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipGone}
+			return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipGone}, true
 		}
 		p.NotRead = "its directory cannot be read: " + err.Error()
-		return p, nil
+		return p, nil, true
 	}
 	// The candidate's OWN answer, not this checkout's: a directory git lists can
 	// have been replaced by another repository, and reading it would report that
@@ -147,11 +164,11 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	theirs, err := commonDir(wt.path)
 	if err != nil {
 		p.NotRead = "git refused to answer for it: " + firstLine(err.Error())
-		return p, nil
+		return p, nil, true
 	}
 	if realPath(theirs) != realPath(common) {
 		p.NotRead = "its own common dir is not this checkout's, so it belongs to another repository"
-		return p, nil
+		return p, nil, true
 	}
 	spentByAncestry := false
 	switch {
@@ -164,18 +181,18 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	// an uncommitted capture in it is exactly what this reader exists to show; so
 	// a worktree is spent only when its record folders are clean as well.
 	if spentByAncestry && recordsClean(wt.path) {
-		return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipMerged}
+		return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipMerged}, false
 	}
 	h, present, err := scanDisk(wt.path)
 	if err != nil {
 		p.NotRead = "its record folders cannot be read: " + err.Error()
-		return p, nil
+		return p, nil, false
 	}
 	p.NotRead = judgeHoldings(h, present)
 	if p.NotRead == "" {
 		p.holdings = h
 	}
-	return p, nil
+	return p, nil, false
 }
 
 // readBranch reads one local branch from the common dir.
@@ -223,7 +240,7 @@ func judgeHoldings(h holdings, present bool) string {
 }
 
 // diff computes one peer's rows against this checkout's holdings.
-func (r Report) diff(p Peer) []Row {
+func (r Report) diff(p Peer, titles bool) []Row {
 	rows := []Row{}
 	if p.NotRead != "" {
 		return rows
@@ -241,7 +258,11 @@ func (r Report) diff(p Peer) []Row {
 		default:
 			continue
 		}
-		rows = append(rows, Row{ID: id, Kind: kind, Folder: h.folder, Title: r.title(p, id, h)})
+		row := Row{ID: id, Kind: kind, Folder: h.folder}
+		if titles {
+			row.Title = r.title(p, id, h)
+		}
+		rows = append(rows, row)
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return kindRank(rows[i].Kind) < kindRank(rows[j].Kind) })
 	return rows

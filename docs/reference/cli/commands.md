@@ -973,7 +973,8 @@ absent here. A peer whose worktree directory is gone, or whose branch is
 merged into the default branch (a worktree only when its record folders are
 also clean), is skipped and counted. A peer git refuses to answer for, one
 whose common dir is another repository's, or one whose ledger holds an id in
-two status folders is named with the reason and not read.
+two status folders is named with the reason and not read; a gone or refused
+worktree's branch is then read from the object store instead.
 
 Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
 Home paths are redacted to ~ on every stream. Exit 0 whatever the peers

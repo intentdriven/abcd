@@ -73,7 +73,8 @@ the default tip is merged by ancestry while an uncommitted capture sits in it),
 is skipped and counted. A peer git refuses to answer for, one whose common dir
 is another repository's, one whose ledger holds an id in two status folders,
 and one with no records at the committed layout is named with the reason and
-not read. The board carries one `peers:` line (JSON `peers`: `live`, `ids`)
+not read; when the worktree is gone or git refuses it, its branch is read from
+the object store instead, so a dead worktree never hides an unmerged commit. The board carries one `peers:` line (JSON `peers`: `live`, `ids`)
 only when some peer holds a record that differs here; `abcd peers` prints the
 whole picture, text or `--json`, with every home path redacted to `~`. The same
 reader answers the not-found paths of `abcd <record-id>`, `capture resolve` and
