@@ -53,6 +53,16 @@
         "The change that lands a planned intent's work closes its spec in the same change (abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
       ]
     },
+    "LOAD": {
+      "state": "active",
+      "recall": ["burner", "stress", "nohup", "pgrep", "orphan"],
+      "aliases": ["under load", "load test", "load experiment", "background load", "busy loop", "spin loop", "load average", "cpu load", "process group"],
+      "rules": [
+        "Background load (burners, busy loops, stress runs) starts as ONE owned process group and is killed as a group, so a failed bookkeeping step cannot orphan it: in bash (zsh refuses job control without a terminal) run `set -m`, launch the whole load as one background job, keep `pg=$!`, and stop it with `kill -- -\"$pg\"`. Never `nohup` with pids in a file as the only handle: orphaned burners have starved a development machine into a kernel panic.",
+        "Clean is proven by checking what is actually running, never by having read the list of what was started: `pgrep -g \"$pg\"` and `pgrep -x <burner name>` both return nothing before the machine is called clean.",
+        "A load experiment on a live development machine needs the user's explicit consent first and a hard cap below the core count (`getconf _NPROCESSORS_ONLN`), leaving cores free for the operating system's own daemons."
+      ]
+    },
     "LIFEBOAT": {
       "state": "active",
       "recall": ["lifeboat", "disembark", "embark", "handoff", "handover"],
