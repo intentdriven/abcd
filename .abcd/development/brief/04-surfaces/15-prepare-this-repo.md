@@ -123,7 +123,12 @@ then ratified ADRs, then everything else read for understanding only.
   interviewed only where it did not, and `abcd identity` reports every rendered
   surface against it.
 - **Given** the adoption completes, **then** nothing from `private-names.txt`
-  and no abcd-internal content appears in any committed artefact.
+  and no abcd-internal content appears in any committed artefact, with one
+  exception the code does not yet meet: the name-guard hooks
+  (`.githooks/pre-commit`, `.githooks/pre-merge-commit`) and the `.gitignore`
+  fence the install commits still name abcd and cite abcd record ids. That
+  exception is open as iss-2609231103413459, pending the product thinker's
+  ruling on whether the naming ruling covers them.
 
 ## Composition
 
