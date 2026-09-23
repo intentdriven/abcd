@@ -121,7 +121,7 @@ vet, test and the race-enabled internal tests on both, with the `make
 fmt-check` format gate, the record-lint and docs-lint steps and the site-render
 gate on the Linux leg alone. Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
-(RS001–RS003) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
+(RS001–RS005) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
 (`make smoke`). A
 fail-closed classifier stands the macOS leg, the race lane and the `zizmor`,
@@ -304,9 +304,17 @@ irreversible; guessing downward costs nothing.**
 - **A change that delivers a planned intent closes its spec in the same
   change**: `go run ./cmd/abcd spec close <spc-N>` moves the spec to `closed/`
   and, as its close-hook, the intent from `planned/` to `shipped/`. Nothing
-  runs it for you, and the omission is silent: `launch ship` composes the
-  changelog from terminal folders only, so an intent whose code is on `main`
-  with its spec still open ships with no changelog line and the cut exits 0.
+  runs it for you, and without a declaration the omission is silent: `launch
+  ship` composes the changelog from terminal folders only, so an intent whose
+  code is on `main` with its spec still open ships with no changelog line and
+  the cut exits 0. So the change says so with a `Delivers: itd-N` trailer, and
+  `lint-issues` (RS005) refuses a trailer whose intent does not enter
+  `.abcd/development/intents/shipped/` in the same diff, naming every spec
+  still open that names it. The trailer means the change FINISHES the intent;
+  a change that delivers part of one carries no trailer (a spec closed with
+  `--remainder` leaves the intent planned). A change that declares no delivery
+  is refused nothing, so the planned intents already sitting with open specs
+  are out of the gate's reach; clearing them is a separate act.
   The intent's `impact` decides the derived version, so `shipped/` requires one
   and there is no default: a record that does not already declare it takes
   `--impact additive|breaking|fix` on the close, and a close with neither is
