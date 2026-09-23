@@ -161,8 +161,9 @@ func TestGuardHookMissingWorkdirIsNotAFailedCd(t *testing.T) {
 // themselves): the workdir is written by the model, so a value that names no
 // directory the host could run in is refused with the host's blocking status and
 // the reason, never resolved into a guess and never allowed to drop the whole
-// payload into the fail-open path — a non-string workdir used to make the
-// payload unreadable JSON, which ran the command UNGUARDED.
+// payload into the fail-open path. Before the field was read, any workdir was
+// ignored and the command was checked as if it ran in the session directory; the
+// refusal is new behaviour, not a repair of an unguarded path.
 func TestGuardHookRefusesAMalformedWorkdir(t *testing.T) {
 	cases := []struct {
 		name    string
