@@ -25,7 +25,12 @@ var (
 )
 
 const (
-	docsTargetDefault    = "both"
+	// docsTargetDefault is skip: the managed block names abcd and documents its
+	// internals, so a default adoption writes it into none of the repository's
+	// committed conventions files (iss-2609110944498549). A project that wants
+	// it chooses a target; the repo still classifies as managed on its registry
+	// entry, the other strong signal.
+	docsTargetDefault    = "skip"
 	oracleBackendDefault = "host-delegated"
 	scanDeepDefault      = "false"
 )

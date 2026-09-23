@@ -22,7 +22,7 @@
 # in .abcd/docs-lint.json for names a repo may state out loud, and `abcd banlist`
 # to maintain both.
 #
-# STORE FORMAT (itd-74 / spc-20). The banlist declares its own format on its FIRST
+# STORE FORMAT. The banlist declares its own format on its FIRST
 # line, and that one line decides the whole file:
 #
 #   * FIRST LINE exactly `# abcd-banlist: keyed`  ->  KEYED store. Every
@@ -156,7 +156,7 @@ if [ -z "$toplevel" ]; then
 fi
 cd "$toplevel"
 
-# --- itd-74 private name guard ----------------------------------------------
+# --- private name guard -----------------------------------------------------
 
 banlist=".abcd/.work.local/private-names.txt"
 banlist_dir=".abcd/.work.local"
@@ -173,12 +173,12 @@ example_marker="# abcd-banlist-example"
 tab=$'\t'
 bom=$'\xef\xbb\xbf'
 
-# --- itd-150: the linked-worktree fallback ----------------------------------
+# --- the linked-worktree fallback -------------------------------------------
 # The local tier is PER-WORKTREE and gitignored, so a checkout made with
 # `git worktree add` starts with no private store at all: every commit from an
 # isolated agent worktree ran with the banlist absent — warned, per design, but
 # unprotected, which turned the isolated-worktree pattern into a systematic bypass
-# of a protection the main checkout has (iss-370).
+# of a protection the main checkout has.
 #
 # git tells the two shapes apart. In a LINKED worktree `--git-dir` resolves to
 # <primary>/.git/worktrees/<name> while `--git-common-dir` resolves to
@@ -328,8 +328,8 @@ refuse_tier_path() {
 # shape tests on a mistake, NOT a net against someone determined: a copy with the
 # declaration stripped, altered by a byte, or pushed below a preamble, and a legacy
 # store renamed, all pass. What they catch is the accident that actually happens —
-# `cp`, a `.bak`, a stray editor duplicate — and the reach is stated rather than
-# implied (see .abcd/development/brief/04-surfaces/20-banlist.md).
+# `cp`, a `.bak`, a stray editor duplicate — and the reach is stated here rather
+# than implied.
 #
 # Exempt when the blob's SECOND line is the example marker. Content scanning is not
 # affected: an exempt blob is still matched against every entry.

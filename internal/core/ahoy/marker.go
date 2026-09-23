@@ -321,8 +321,10 @@ func markerTargets(docsTarget string) []string {
 	case "both":
 		return []string{"CLAUDE.md", "AGENTS.md"}
 	default:
-		// Absent/malformed during detection: provisionally check both.
-		return []string{"CLAUDE.md", "AGENTS.md"}
+		// Unset or unrecognised: the default target. A value nobody chose never
+		// names a file, so detection previews exactly what an install with that
+		// config would plant — which, at the skip default, is nothing.
+		return markerTargets(docsTargetDefault)
 	}
 }
 

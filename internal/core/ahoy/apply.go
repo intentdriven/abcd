@@ -314,7 +314,7 @@ type applyCtx struct {
 	binTarget   string   // the resolved PATH entry this run installs (never re-derived)
 
 	visibilityForced bool     // an explicit --visibility override overwrote a valid value
-	docsTargetForced bool     // an explicit --docs-target override overwrote a valid value
+	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
 	markerRetract    []string // marker files a narrowed docs-target override de-selected
 	configMalformed  bool     // config.json could not be parsed; the refusal note was given once
 }
@@ -489,6 +489,12 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		if !inSet(ic.DocsTarget, docsTargetChoices) {
 			return nil // no valid docs target => partial (never persist a typo)
 		}
+		// Choosing the target is the approval to plant into it. At the skip
+		// default detection previews no marker gap, so the plugin-owned category
+		// is never offered, and a first install that names a target would persist
+		// it and plant nothing (iss-2609110944498549). rollbackForced clears this
+		// when the config write does not land.
+		a.docsTargetForced = true
 	}
 	if ic.OracleBackend == "" {
 		ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
