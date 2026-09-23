@@ -11,15 +11,15 @@ package lint
 //
 //   - a value outside its closed set — every writer validates before it writes;
 //   - one key present without the other — every writer stamps both together;
-//   - origin: extracted-from-record on a record with no promoted_from back-edge —
+//   - origin: extracted-from-record on a record with no related_issues back-edge —
 //     promote writes the back-edge and the origin in one act;
 //   - origin: contributed-by-reading whose run and item identifiers resolve to no
 //     reading record;
-//   - origin: contributed-by-reading beside no promoted_from back-edge, or one
-//     naming a different item — promote writes the origin and the back-edge in
+//   - origin: contributed-by-reading beside no related_issues back-edge, or one
+//     not naming the item — promote writes the origin and the back-edge in
 //     one act, and the two are one join written twice;
-//   - origin: contributed-by-reading naming an item whose own promoted_to names
-//     some other record, which is the same join read from the item's end.
+//   - origin: contributed-by-reading naming an item whose own related_intents
+//     names some other record, which is the same join read from the item's end.
 //
 // THE RESIDUAL, stated rather than hidden: a hand edit that types a LEGAL value
 // in a LEGAL combination is byte-identical to a command's write, and no lint over
@@ -99,20 +99,20 @@ func checkRecordProvenance(repoRoot string, cfg Config, rc RuleConfig) ([]Findin
 	// produced and the record names the item — so the gate can check it from both
 	// ends rather than from the draft's side alone.
 	runOf := map[string]string{}
-	promotedTo := map[string]string{}
+	forwardOf := map[string][]string{}
 	for _, r := range records {
 		if r.store.prefix != issueschema.ReadingItemFamily {
 			continue
 		}
 		runOf[r.handle()] = r.bucket
-		if v, _, ok := provenanceValue(r, "promoted_to"); ok {
-			promotedTo[r.handle()] = v
+		if v, _, ok := provenanceValue(r, "related_intents"); ok {
+			forwardOf[r.handle()] = frontmatter.StringList(v)
 		}
 	}
 
 	var out []Finding
 	for _, r := range records {
-		out = append(out, provenanceFindings(r, runOf, promotedTo, rc.Severity)...)
+		out = append(out, provenanceFindings(r, runOf, forwardOf, rc.Severity)...)
 		out = append(out, heldFindings(r, rc.Severity)...)
 	}
 	return out, nil
@@ -184,7 +184,7 @@ func heldFindings(r schemaRecord, severity string) []Finding {
 }
 
 // provenanceFindings judges ONE record.
-func provenanceFindings(r schemaRecord, runOf, promotedTo map[string]string, severity string) []Finding {
+func provenanceFindings(r schemaRecord, runOf map[string]string, forwardOf map[string][]string, severity string) []Finding {
 	origin, originLine, hasOrigin := provenanceValue(r, provenance.KeyOrigin)
 	mode, modeLine, hasMode := provenanceValue(r, provenance.KeyProductionMode)
 	if !hasOrigin && !hasMode {
@@ -225,10 +225,10 @@ func provenanceFindings(r schemaRecord, runOf, promotedTo map[string]string, sev
 	}
 	switch o.Kind {
 	case provenance.KindExtractedFromRecord:
-		if _, _, ok := provenanceValue(r, "promoted_from"); !ok {
+		if len(relatedIssues(r)) == 0 {
 			out = append(out, finding(originLine,
 				"`"+provenance.KeyOrigin+": "+string(provenance.KindExtractedFromRecord)+
-					"` on a record carrying no `promoted_from` back-edge; promote writes the back-edge and the origin in one act, so no promote could have written this"))
+					"` on a record carrying no `related_issues` back-edge; promote writes the back-edge and the origin in one act, so no promote could have written this"))
 		}
 	case provenance.KindContributedByReading:
 		if run, ok := runOf[o.Item]; !ok {
@@ -244,29 +244,49 @@ func provenanceFindings(r schemaRecord, runOf, promotedTo map[string]string, sev
 		// record carrying the origin alone — or the two naming different items — is
 		// a state no promote produced, on the same footing as an
 		// extracted-from-record with no back-edge.
-		back, _, hasBack := provenanceValue(r, "promoted_from")
+		back := relatedIssues(r)
 		switch {
-		case !hasBack:
+		case len(back) == 0:
 			out = append(out, finding(originLine,
 				"`"+provenance.KeyOrigin+": "+string(provenance.KindContributedByReading)+
-					"` on a record carrying no `promoted_from` back-edge; promote writes the back-edge and the origin in one act, so no promote could have written this"))
-		case back != o.Item:
+					"` on a record carrying no `related_issues` back-edge; promote writes the back-edge and the origin in one act, so no promote could have written this"))
+		case !containsID(back, o.Item):
 			out = append(out, finding(originLine,
-				"`"+provenance.KeyOrigin+"` names reading item "+o.Item+" while `promoted_from` names "+back+
+				"`"+provenance.KeyOrigin+"` names reading item "+o.Item+" while `related_issues` names "+strings.Join(back, ", ")+
 					"; the two are one join written twice, so no command wrote them apart"))
 		}
 		// And from the item's end: the item this origin names points forward at
 		// some OTHER record. Reported once, here on the record whose origin makes
 		// the claim. The reverse direction is deliberately silent — an item whose
-		// `promoted_to` names a researcher-authored draft is link mode working as
-		// designed, and so is a draft promoted from one of several items.
-		if forward, ok := promotedTo[o.Item]; ok && forward != r.handle() {
+		// `related_intents` names a researcher-authored draft is link mode working
+		// as designed, and so is a draft promoted from one of several items.
+		if forward := forwardOf[o.Item]; len(forward) > 0 && !containsID(forward, r.handle()) {
 			out = append(out, finding(originLine,
-				"`"+provenance.KeyOrigin+"` names reading item "+o.Item+", whose `promoted_to` names "+forward+
+				"`"+provenance.KeyOrigin+"` names reading item "+o.Item+", whose `related_intents` names "+strings.Join(forward, ", ")+
 					" rather than "+r.handle()+"; the item and the record it occasioned name each other"))
 		}
 	}
 	return out
+}
+
+// relatedIssues reads the record's `related_issues` back-edge list (itd-4 AC3),
+// empty when the key is absent or null.
+func relatedIssues(r schemaRecord) []string {
+	v, _, ok := provenanceValue(r, "related_issues")
+	if !ok {
+		return nil
+	}
+	return frontmatter.StringList(v)
+}
+
+// containsID reports whether list carries id.
+func containsID(list []string, id string) bool {
+	for _, have := range list {
+		if have == id {
+			return true
+		}
+	}
+	return false
 }
 
 // provenanceValue reads one frontmatter scalar as the record's readers see it:

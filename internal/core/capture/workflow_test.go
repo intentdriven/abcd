@@ -163,7 +163,7 @@ func issueEqual(a, b Issue) bool {
 	return a.SchemaVersion == b.SchemaVersion && a.ID == b.ID && a.Slug == b.Slug &&
 		a.Severity == b.Severity && a.Category == b.Category && a.Source == b.Source &&
 		a.FoundDuring == b.FoundDuring && a.FoundAt == b.FoundAt &&
-		a.PromotedTo == b.PromotedTo && a.Resolution == b.Resolution &&
+		a.Resolution == b.Resolution &&
 		a.WontfixReason == b.WontfixReason && a.Status == b.Status && a.Body == b.Body &&
 		strings.Join(a.RelatedIntents, ",") == strings.Join(b.RelatedIntents, ",") &&
 		strings.Join(a.RelatedSpecs, ",") == strings.Join(b.RelatedSpecs, ",") &&

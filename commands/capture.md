@@ -1,7 +1,7 @@
 ---
 name: capture
-description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/link/list/promote/resolve/wontfix act on the ledger.
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held>"
+description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/link/list/promote/resolve/wontfix act on the ledger, and migrate rewrites retired back-links.
+argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
 ---
 
 # `/abcd:capture` — issue ledger
@@ -102,9 +102,9 @@ nothing backfills it.
 
 The `record_provenance` record-lint rule reports a record carrying the pair in a
 shape no write path produces: a value outside its set, one key without the
-other, `extracted-from-record` with no `promoted_from` back-edge, a reading
-pointer that resolves to no reading record, or a reading pointer whose item and
-`promoted_from` back-edge name different records — the two are one join written
+other, `extracted-from-record` with no `related_issues` back-edge, a reading
+pointer that resolves to no reading record, or a reading pointer whose item the
+`related_issues` back-edge does not name — the two are one join written
 twice, and the rule reads it from both ends. A hand edit that types a legal value
 in a legal combination is byte-identical to a command's write, so the rule
 catches implausible hand edits, not all of them.
@@ -399,13 +399,17 @@ retyping:
 One invocation mints a new intent draft under
 `.abcd/development/intents/drafts/` — slug reused from the issue, body carrying
 a by-id pointer ("Graduated from `iss-N`"), never a copy of the issue body —
-and stamps the issue's `promoted_to` with the minted `itd-N`. The draft's
-frontmatter records `promoted_from: iss-N`, so the edge is two-sided, and its
-`origin` reads `extracted-from-record` — the one arrival path a command derives
-from what it did. The issue
-keeps its status folder: promotion is orthogonal to fix-status and is not
-resolution. An issue already carrying `promoted_to` is refused with the
-existing `itd-N`.
+and appends the minted `itd-N` to the issue's `related_intents`. The draft's
+frontmatter records `related_issues: [iss-N]`, so the join reads from both ends,
+and its `origin` reads `extracted-from-record` — the one arrival path a command
+derives from what it did. The issue keeps its status folder: promotion is
+orthogonal to fix-status and is not resolution.
+
+"Promoted" is the pair, not either half: an issue may already name an intent it
+is only related to (a `related_intents` entry that intent does not name back),
+and that relation is kept and does not block the promotion. An issue already
+promoted — one naming an intent that names it back — is refused with that
+`itd-N`.
 
 A reading item (`rdi-N`) graduates the same way, with one refusal in front: only
 an item whose **standing disposition is `accepted`** may be promoted. Acceptance
@@ -420,7 +424,7 @@ change, supersede it: `capture disposition <rdi-N> --state accepted --grounds
 
 The draft a reading item mints carries `origin: contributed-by-reading
 <rdg-N>/<rdi-N>`, naming the run the item sits in and the item itself, beside the
-`promoted_from: rdi-N` back-edge — so the join reads from both ends, and the
+`related_issues: [rdi-N]` back-edge — so the join reads from both ends, and the
 record shows what a reading caused as well as whether a reading occasioned an
 intent. Its Press Release seed names no item ("Seeded by promotion from a reading
 item"): that section is projected to a later reading, and no reading sees
@@ -430,21 +434,42 @@ For a reading item the JSON's `issue_status` carries the **standing
 disposition's state** (`accepted`), not a status folder: that family's status
 signal is the keyed disposition, and it has no folder to name.
 
-`--intent <itd-N>` is the stamp-only mode: it links an *existing* draft instead
-of minting — the repair path when a stamp failed after the mint (the error
+`--intent <itd-N>` is the link mode: it links an *existing* draft instead of
+minting, writing both halves — the record into the draft's `related_issues`, the
+draft into the record's `related_intents` — the repair path when a stamp failed after the mint (the error
 names the orphan draft and this exact remedy, the promotion's own `--grounds`
 included, so it runs as printed), and the path for "I already
 filed the intent by hand; link them". Report the `issue_id`, the minted (or
 linked) `intent_id`, and both paths from the JSON.
 
-On the reading route `--intent` writes both edges: `promoted_from` on the draft
-and `promoted_to` on the item. It never touches the draft's `origin`, which was
-stamped at mint — a draft filed by hand stays `researcher-authored` and says so.
-A draft whose `promoted_from` already names another record keeps it: an intent
-occasioned by several items is promoted from one and joined to the rest by their
-own `promoted_to`, so the item is still stamped forward and the result reports
-`back_edge_kept` (`back_edge: kept <rdi-N>` in the plain rendering). Report that
+Link mode never touches the draft's `origin`, which was stamped at mint — a
+draft filed by hand stays `researcher-authored` and says so. A draft whose
+`related_issues` already names another record keeps it first: an intent
+occasioned by several records is promoted from one and joined to the rest, so
+the linked record is appended beside it, stamped forward, and the result reports
+`back_edge_kept` (`back_edge: kept <id>` in the plain rendering). Report that
 line when it is present.
+
+## Migrate the retired back-links
+
+`promoted_to: itd-M` on a ledger record and `promoted_from: <id>` on an intent
+are the retired names of the promote join, which an older abcd wrote. No reader
+reads them: the ledger reader refuses and skips an issue still carrying the
+retired key, and the record gate names the remedy. Rewrite them once:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture migrate --json          # report only: what would change
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture migrate --apply --json  # rewrite the records
+```
+
+Each retired key becomes the successor list (`related_intents` on a ledger
+record, `related_issues` on an intent, the promoted-from record first), and a
+join an older abcd wrote from one end only is completed from the other, because
+"promoted" is now the pair. A loose relation is kept and a record joined to
+nothing is left byte-identical. The run is idempotent. Report the `changes`
+count and each `notes` entry — a note names a join whose other end the tree does
+not hold. Then run `/abcd:intent audit --issue-drift` to confirm the join reads
+the same from both ends.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

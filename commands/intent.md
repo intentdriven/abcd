@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -118,7 +118,7 @@ mints from an accepted reading item is `contributed-by-reading <rdg-N>/<rdi-N>`,
 naming the item's run and id, because a reading item is something an instrument
 returned rather than something a person noticed. It is stamped at mint and never
 rewritten — linking an existing draft with `capture promote --intent` writes the
-`promoted_from` back-edge and leaves the `origin` where it was.
+`related_issues` back-edge and leaves the `origin` where it was.
 
 `production_mode` is the closed choice `--production-mode` carries:
 `hand-written`, `dictated-and-formatted`, or `scribe-transcribed`. Any other
@@ -527,6 +527,27 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+## Issue drift: does every promote join read from both ends?
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --issue-drift            # warnings on stderr, exit 0
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --issue-drift --strict   # exit 1 on any finding (CI)
+```
+
+An intent promoted from a ledger record names it in `related_issues`, and the
+record names the intent back in `related_intents` (`/abcd:capture promote`
+writes both). The drift check walks the intent store and the ledger, readings
+included, and reports each join that does not hold: `one_sided` (an intent names
+a record that does not name it back; from a reading item's end, the reverse —
+an issue's one-way `related_intents` is a loose relation and is not reported),
+`dangling` (either end names a record the tree does not hold),
+`shipped_unresolved` (a shipped intent names an issue that is not in
+`resolved/`), and `retired_field` (a record still carrying a retired back-link
+key — `/abcd:capture migrate --apply` rewrites it). Report the finding count,
+each finding's kind and records, and the receipt path the run left under
+`.abcd/.work.local/logs/audit/`. It writes to neither store. `--strict` without
+`--issue-drift` is refused.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

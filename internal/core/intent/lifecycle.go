@@ -74,13 +74,15 @@ func loadBucket(repoRoot, bucket string) ([]Intent, error) {
 func parseIntent(relPath, content, bucket string) (Intent, error) {
 	fields := frontmatter.Fields(strings.Split(content, "\n"))
 	it := Intent{
-		ID:           fields["id"].Value,
-		Slug:         fields["slug"].Value,
-		Kind:         fields["kind"].Value,
-		SpecID:       fields["spec_id"].Value,
-		Bucket:       bucket,
-		Path:         relPath,
-		PromotedFrom: fields["promoted_from"].Value,
+		ID:     fields["id"].Value,
+		Slug:   fields["slug"].Value,
+		Kind:   fields["kind"].Value,
+		SpecID: fields["spec_id"].Value,
+		Bucket: bucket,
+		Path:   relPath,
+	}
+	if f, ok := fields[RelatedIssuesKey]; ok && !frontmatter.IsNull(f.Value) {
+		it.RelatedIssues = frontmatter.StringList(f.Value)
 	}
 	// The hold is read leniently: a `held:` key in a shape the verb never
 	// writes marks the record MALFORMED rather than failing the corpus, because
@@ -509,34 +511,41 @@ func Link(repoRoot, intentID, specID string) (LinkResult, error) {
 	return LinkResult{Intent: it, Spec: sp}, nil
 }
 
-// ErrBackEdgeTaken reports a draft whose `promoted_from` already names a
-// DIFFERENT record. It is a typed error rather than a plain refusal because the
-// reading route does not treat it as one: an intent occasioned by several items
-// is promoted from ONE, and the others are joined by their own `promoted_to`
-// (itd-2609020625400169, first scope condition).
-var ErrBackEdgeTaken = fmt.Errorf("intent: the promote back-edge is already taken")
+// RelatedIssuesKey is the frontmatter key of the intent half of the promote
+// join (itd-4 AC3): the ledger records the intent graduated from.
+const RelatedIssuesKey = "related_issues"
 
-// SetPromotedFrom writes the `promoted_from` back-edge on an existing intent, in
-// any bucket. It is the draft half of link mode: `capture promote <rdi-N>
-// --intent <itd-N>` stamps the item's `promoted_to` and this writes the edge
-// pointing back, so the join reads from both ends.
+// RetiredRelatedIssuesKey is the key the promote back-edge was written under
+// before itd-4 AC3 renamed it. Nothing writes it and the reader does not read
+// it: a record still carrying it is migrated by `abcd capture migrate --apply`,
+// and a write that meets it refuses rather than leaving both spellings of one
+// join on a record.
+const RetiredRelatedIssuesKey = "promoted_from"
+
+// ErrRetiredField reports a record that still carries a retired back-link key,
+// so a write would leave both spellings of one join side by side.
+var ErrRetiredField = fmt.Errorf("intent: the record carries a retired back-link field")
+
+// AddRelatedIssue appends source to an existing intent's `related_issues`, in
+// any bucket. It is the intent half of link mode: `capture promote <iss-N|rdi-N>
+// --intent <itd-N>` stamps the source's `related_intents` and this writes the
+// edge pointing back, so the join reads from both ends.
 //
 // It writes that one key and NOTHING else. It never reads or rewrites `origin`
 // or `production_mode`, which is what "the origin is unchanged" rests on: an
 // origin is stamped at mint and never rewritten, so a hand-filed draft linked to
 // a reading item stays researcher-authored and says so.
 //
-// A back-edge already naming this source is a no-op that reports the record
-// unchanged; one naming a different record returns ErrBackEdgeTaken, naming the
-// record already there, and writes nothing. The intent it returns beside that
-// error carries the edge it kept, so a caller that treats the case as a report
-// rather than a refusal does not have to re-read the record to say which.
-func SetPromotedFrom(repoRoot, intentID, source string) (Intent, error) {
+// A list already naming source is a no-op that leaves the record byte-identical.
+// A list naming OTHER records keeps them, in order, and appends source: an intent
+// occasioned by several items is promoted from the first and joined to the rest
+// (itd-2609020625400169, first scope condition), so nothing is overwritten.
+func AddRelatedIssue(repoRoot, intentID, source string) (Intent, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return Intent{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
 	}
-	if !promotedFromRe.MatchString(source) {
-		return Intent{}, fmt.Errorf("intent: promoted_from %q must match ^(iss|rdi)-[0-9]+$", source)
+	if !relatedIssueRe.MatchString(source) {
+		return Intent{}, fmt.Errorf("intent: related issue %q must match ^(iss|rdi)-[0-9]+$", source)
 	}
 	corpus, err := Load(repoRoot)
 	if err != nil {
@@ -546,27 +555,30 @@ func SetPromotedFrom(repoRoot, intentID, source string) (Intent, error) {
 	if !ok {
 		return Intent{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
 	}
-	switch existing := it.PromotedFrom; {
-	case existing == source:
-		return it, nil // already joined; the write would change no byte
-	case existing != "":
-		return it, fmt.Errorf("%w: %s is promoted from %s, not %s", ErrBackEdgeTaken, intentID, existing, source)
-	}
-
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
 	data, err := readRepoFile(abs, rel)
 	if err != nil {
 		return Intent{}, err
 	}
-	updated, err := setFrontmatterFields(string(data), map[string]string{"promoted_from": source})
+	if _, retired := frontmatter.Fields(strings.Split(string(data), "\n"))[RetiredRelatedIssuesKey]; retired {
+		return Intent{}, fmt.Errorf("%w: %s carries `%s`, renamed to `%s`; run `abcd capture migrate --apply` first, nothing written",
+			ErrRetiredField, intentID, RetiredRelatedIssuesKey, RelatedIssuesKey)
+	}
+	for _, have := range it.RelatedIssues {
+		if have == source {
+			return it, nil // already joined; the write would change no byte
+		}
+	}
+	list := append(append([]string{}, it.RelatedIssues...), source)
+	updated, err := setFrontmatterFields(string(data), map[string]string{RelatedIssuesKey: "[" + strings.Join(list, ", ") + "]"})
 	if err != nil {
 		return Intent{}, err
 	}
 	if err := writeIntentFile(abs, rel, updated); err != nil {
 		return Intent{}, err
 	}
-	it.PromotedFrom = source
+	it.RelatedIssues = list
 	return it, nil
 }
 

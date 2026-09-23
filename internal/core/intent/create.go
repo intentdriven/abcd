@@ -163,8 +163,8 @@ func deriveTitle(text string) string {
 
 // DraftOptions parameterises CreateDraft: the explicit slug and title, the
 // prose that seeds the two narrative sections, an optional impact judgement,
-// and — on the promote path (spc-24) — the iss-N the draft graduated from,
-// written as the promoted_from back-edge (an iss-N, or the rdi-N of a
+// and — on the promote path (spc-24) — the record the draft graduated from,
+// written as the related_issues back-edge (an iss-N, or the rdi-N of a
 // dispositioned reading item).
 //
 // The two prose members are per-section, and each is optional on its own:
@@ -179,7 +179,7 @@ type DraftOptions struct {
 	PressRelease string
 	SeedBody     string
 	Impact       string
-	PromotedFrom string
+	RelatedIssue string
 	// Origin is the draft's arrival path (itd-178), PARSED rather than named: a
 	// caller declaring the reading kind hands over the run and the item in the
 	// same field, so the pointer cannot be forgotten at a call site. It is DERIVED
@@ -194,13 +194,13 @@ type DraftOptions struct {
 	ProductionMode string
 }
 
-// promotedFromRe constrains the promote back-edge to a captured id before it is
+// relatedIssueRe constrains the promote back-edge to a captured id before it is
 // written into frontmatter. Two families graduate into an intent: an issue
 // somebody noticed (iss-N) and a reading item an instrument returned and a
 // researcher dispositioned (rdi-N). Both are one act — an observation earning an
 // admission — so both write the same back edge, and the forward stamp on the
 // source record is what closes the join.
-var promotedFromRe = regexp.MustCompile(`^(iss|rdi)-[0-9]+$`)
+var relatedIssueRe = regexp.MustCompile(`^(iss|rdi)-[0-9]+$`)
 
 // CreateDraft is the one canonical draft-mint primitive: both the quoted-text
 // create (CreateFromText) and the capture-promote path (capture.Promote, which
@@ -219,8 +219,8 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	if strings.TrimSpace(opts.SeedBody) == "" && strings.TrimSpace(opts.PressRelease) == "" {
 		return Intent{}, fmt.Errorf("intent: refusing to create a draft with neither a press release nor a seed body")
 	}
-	if opts.PromotedFrom != "" && !promotedFromRe.MatchString(opts.PromotedFrom) {
-		return Intent{}, fmt.Errorf("intent: promoted_from %q must match ^(iss|rdi)-[0-9]+$", opts.PromotedFrom)
+	if opts.RelatedIssue != "" && !relatedIssueRe.MatchString(opts.RelatedIssue) {
+		return Intent{}, fmt.Errorf("intent: related issue %q must match ^(iss|rdi)-[0-9]+$", opts.RelatedIssue)
 	}
 	// impact is optional on a draft (intent_impact_valid gates the move into
 	// shipped/, not the seed), but when set it must be a legal, non-internal
@@ -292,13 +292,15 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 			return err
 		}
 		created = Intent{
-			ID:           id,
-			Slug:         opts.Slug,
-			Kind:         "null",
-			SpecID:       "null",
-			Bucket:       BucketDrafts,
-			Path:         rel,
-			PromotedFrom: opts.PromotedFrom,
+			ID:     id,
+			Slug:   opts.Slug,
+			Kind:   "null",
+			SpecID: "null",
+			Bucket: BucketDrafts,
+			Path:   rel,
+		}
+		if opts.RelatedIssue != "" {
+			created.RelatedIssues = []string{opts.RelatedIssue}
 		}
 		return nil
 	})
@@ -314,7 +316,7 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 //
 // The reading kind has one extra bar, and it is here rather than in the
 // provenance leaf because only this primitive holds both halves of the join: the
-// origin's item and the promoted_from back-edge are ONE join written twice, so a
+// origin's item and the related_issues back-edge are ONE join written twice, so a
 // draft carrying them in disagreement is a state no command produced. It is
 // refused before anything is written rather than reconciled by picking one.
 func draftStamp(opts DraftOptions) (provenance.Stamp, error) {
@@ -322,10 +324,10 @@ func draftStamp(opts DraftOptions) (provenance.Stamp, error) {
 	case "":
 		return provenance.NewStamp(provenance.KindResearcherAuthored, opts.ProductionMode)
 	case provenance.KindContributedByReading:
-		if opts.PromotedFrom != opts.Origin.Item {
+		if opts.RelatedIssue != opts.Origin.Item {
 			return provenance.Stamp{}, fmt.Errorf(
 				"a reading origin names item %s but the back-edge names %q; the two are one join",
-				opts.Origin.Item, opts.PromotedFrom)
+				opts.Origin.Item, opts.RelatedIssue)
 		}
 		return provenance.NewReadingStamp(opts.Origin.Run, opts.Origin.Item, opts.ProductionMode)
 	default:
@@ -401,7 +403,7 @@ var intentFileNumRe = recordid.FilenameNumRe(intentFamily)
 // seedDraft renders the canonical draft skeleton: the full draft frontmatter set
 // (id, slug, spec_id: null, kind: null, suggested_kind: null,
 // reclassification_history: [], builds_on: [], severity: minor, plus the
-// promoted_from back-edge when the draft graduated from an issue, plus the
+// related_issues back-edge when the draft graduated from an issue, plus the
 // origin/production_mode disclosure pair) and an honest, minimal body: the
 // Press Release prose or the route's seed note, the Why This Matters seed body
 // or its prompt, and the itd-1 discipline's Acceptance Criteria section left as
@@ -417,11 +419,12 @@ func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp) string {
 	b.WriteString("reclassification_history: []\n")
 	b.WriteString("builds_on: []\n")
 	b.WriteString("severity: minor\n")
-	// The promote back-edge (spc-24): bare, like every id field in this store.
+	// The promote back-edge (spc-24, renamed by itd-4 AC3): an inline list of bare
+	// ids, like every id list in this store.
 	// Absent on a quoted-text draft — the field exists only when the draft
 	// graduated from an issue.
-	if opts.PromotedFrom != "" {
-		b.WriteString("promoted_from: " + opts.PromotedFrom + "\n")
+	if opts.RelatedIssue != "" {
+		b.WriteString(RelatedIssuesKey + ": [" + opts.RelatedIssue + "]\n")
 	}
 	// impact is written only when the caller declared one (validated in
 	// CreateDraft). It is bare — the machine-read enum the shipped-intent gate
@@ -525,7 +528,7 @@ const (
 	// draft is admitted at the entailment position — so an rdi-N here would put a
 	// prior reading's output inside the object of the next one, which the readings
 	// companion forbids (companion 8.3). The join lives in `origin` and
-	// `promoted_from`, two frontmatter keys no projection names.
+	// `related_issues`, two frontmatter keys no projection names.
 	readingSeedSource = "a reading item"
 )
 
@@ -563,8 +566,8 @@ func seedNote(opts DraftOptions) string {
 	if opts.Origin.Kind == provenance.KindContributedByReading {
 		return "_" + promotionSeedOpening + readingSeedSource + ". " + seedNoteTail + "_"
 	}
-	if opts.PromotedFrom != "" {
-		return "_" + promotionSeedOpening + opts.PromotedFrom + ". " + seedNoteTail + "_"
+	if opts.RelatedIssue != "" {
+		return "_" + promotionSeedOpening + opts.RelatedIssue + ". " + seedNoteTail + "_"
 	}
 	return "_" + CaptureSeedNote + "_"
 }

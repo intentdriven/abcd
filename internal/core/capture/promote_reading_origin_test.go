@@ -88,8 +88,8 @@ func TestPromoteReadingItemStampsContributedByReading(t *testing.T) {
 	if got := fields[provenance.KeyProductionMode].Value; got != string(provenance.DefaultMode) {
 		t.Errorf("promoted draft production_mode = %q, want the default %q", got, provenance.DefaultMode)
 	}
-	if got := fields["promoted_from"].Value; got != item {
-		t.Errorf("promoted draft promoted_from = %q, want %q", got, item)
+	if got := fields["related_issues"].Value; got != "["+item+"]" {
+		t.Errorf("promoted draft related_issues = %q, want [%s]", got, item)
 	}
 
 	// The value the lint reads must resolve: the run is the directory the item
@@ -162,11 +162,11 @@ func TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone(t *testing.T)
 	}
 
 	after := draftFields(t, repo, draft.Path)
-	if got := after["promoted_from"].Value; got != item {
-		t.Fatalf("the linked draft's promoted_from = %q, want %q", got, item)
+	if got := after["related_issues"].Value; got != "["+item+"]" {
+		t.Fatalf("the linked draft's related_issues = %q, want [%s]", got, item)
 	}
-	if got := readingPromotedTo(t, ir, item); got != draft.ID {
-		t.Fatalf("the item's promoted_to = %q, want %q", got, draft.ID)
+	if got := readingForwardStamp(t, ir, item); got != draft.ID {
+		t.Fatalf("the item's related_intents = %q, want %q", got, draft.ID)
 	}
 	// The two disclosure lines are byte-identical before and after.
 	for _, key := range []string{provenance.KeyOrigin, provenance.KeyProductionMode} {
@@ -182,14 +182,15 @@ func TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone(t *testing.T)
 
 // TestPromoteReadingItemLinkKeepsAnExistingBackEdge — the first scope condition:
 // an intent occasioned by several items is promoted from ONE. A draft already
-// naming another source keeps it, the second item's forward stamp is still
+// naming another source keeps it first, the second item joins it in the list,
+// the second item's forward stamp is still
 // written, and the operator is told which record stayed.
 func TestPromoteReadingItemLinkKeepsAnExistingBackEdge(t *testing.T) {
 	repo, ir, item := dispositionedReadingFixture(t)
 	const firstItem = "rdi-2608300000000042"
 	draft, err := intent.CreateDraft(repo, intent.DraftOptions{
 		Slug: "occasioned-by-two-items", Title: "Occasioned by two items",
-		SeedBody: "graduated from the first item", PromotedFrom: firstItem,
+		SeedBody: "graduated from the first item", RelatedIssue: firstItem,
 	})
 	if err != nil {
 		t.Fatalf("CreateDraft: %v", err)
@@ -203,11 +204,11 @@ func TestPromoteReadingItemLinkKeepsAnExistingBackEdge(t *testing.T) {
 		t.Errorf("the result reports back_edge kept %q, want %q", res.BackEdgeKept, firstItem)
 	}
 	fields := draftFields(t, repo, draft.Path)
-	if got := fields["promoted_from"].Value; got != firstItem {
-		t.Errorf("the draft's one back-edge moved to %q; it must stay at %q", got, firstItem)
+	if got, want := fields["related_issues"].Value, "["+firstItem+", "+item+"]"; got != want {
+		t.Errorf("the draft's back-edges = %q, want %q: the first kept first, the second beside it", got, want)
 	}
-	if got := readingPromotedTo(t, ir, item); got != draft.ID {
-		t.Errorf("the second item's promoted_to = %q, want %q; it still points forward", got, draft.ID)
+	if got := readingForwardStamp(t, ir, item); got != draft.ID {
+		t.Errorf("the second item's related_intents = %q, want %q; it still points forward", got, draft.ID)
 	}
 }
 
@@ -232,10 +233,10 @@ func TestPromoteReadingItemLinkCompletesOnRerunAfterAStampFailure(t *testing.T) 
 	if _, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: item, LinkIntent: draft.ID}); err == nil {
 		t.Fatal("the forced stamp failure must surface")
 	}
-	if got := draftFields(t, repo, draft.Path)["promoted_from"].Value; got != item {
+	if got := draftFields(t, repo, draft.Path)["related_issues"].Value; got != "["+item+"]" {
 		t.Fatalf("the draft write runs before the stamp, so the back-edge must be present; got %q", got)
 	}
-	if got := readingPromotedTo(t, ir, item); got != "" {
+	if got := readingForwardStamp(t, ir, item); got != "" {
 		t.Fatalf("the item was stamped despite the forced failure: %q", got)
 	}
 
@@ -247,13 +248,14 @@ func TestPromoteReadingItemLinkCompletesOnRerunAfterAStampFailure(t *testing.T) 
 	if res.BackEdgeKept != "" {
 		t.Errorf("the re-run's back-edge names the same item, which is a no-op, not a kept edge: %q", res.BackEdgeKept)
 	}
-	if got := readingPromotedTo(t, ir, item); got != draft.ID {
-		t.Fatalf("the item's promoted_to = %q, want %q", got, draft.ID)
+	if got := readingForwardStamp(t, ir, item); got != draft.ID {
+		t.Fatalf("the item's related_intents = %q, want %q", got, draft.ID)
 	}
 }
 
-// readingPromotedTo reads one reading item's forward stamp.
-func readingPromotedTo(t *testing.T, ir, item string) string {
+// readingForwardStamp reads one reading item's forward stamp: the last entry of
+// its related_intents, or "" when it carries none.
+func readingForwardStamp(t *testing.T, ir, item string) string {
 	t.Helper()
 	path, err := findReadingItem(ir, item)
 	if err != nil {
@@ -267,5 +269,9 @@ func readingPromotedTo(t *testing.T, ir, item string) string {
 	if err != nil {
 		t.Fatalf("parse reading record: %v", err)
 	}
-	return asString(fm["promoted_to"])
+	list := asStrList(fm["related_intents"])
+	if len(list) == 0 {
+		return ""
+	}
+	return list[len(list)-1]
 }

@@ -35,6 +35,10 @@ func validateStrict(fm map[string]any) error {
 	}
 
 	for k := range fm {
+		if successor, retired := issueschema.Retired[k]; retired {
+			return fmt.Errorf("%w: retired property %q (renamed to %q); %s",
+				ErrMalformedFrontmatter, k, successor, issueschema.MigrateHint)
+		}
 		if !knownFields[k] {
 			return fmt.Errorf("%w: unknown property %q", ErrMalformedFrontmatter, k)
 		}
@@ -108,7 +112,7 @@ func validateStrict(fm map[string]any) error {
 	}
 
 	// Optional scalar strings.
-	for _, opt := range []string{"found_at", "lapsed_at", "details", "suggested_fix", "wontfix_reason", "resolution", "promoted_to"} {
+	for _, opt := range []string{"found_at", "lapsed_at", "details", "suggested_fix", "wontfix_reason", "resolution"} {
 		if v, present := fm[opt]; present {
 			if _, isStr := v.(string); !isStr {
 				return fmt.Errorf("%w: %q must be a string", ErrMalformedFrontmatter, opt)
@@ -126,12 +130,6 @@ func validateStrict(fm map[string]any) error {
 	if lapsedAt != "" && !issueschema.ValidLapsedAt(lapsedAt) {
 		return fmt.Errorf("%w: lapsed_at %q is not an RFC 3339 instant (want 2026-08-28T00:00:00Z)",
 			ErrMalformedFrontmatter, lapsedAt)
-	}
-
-	if v, present := fm["promoted_to"]; present {
-		if !reItdID.MatchString(v.(string)) {
-			return fmt.Errorf("%w: promoted_to %q does not match ^itd-[0-9]+$", ErrMalformedFrontmatter, v)
-		}
 	}
 
 	// Optional id-list fields.
@@ -293,7 +291,6 @@ func issueFromFrontmatter(fm map[string]any, status State, path, body string) Is
 		FoundDuring:   asString(fm["found_during"]),
 		FoundAt:       asString(fm["found_at"]),
 		LapsedAt:      asString(fm["lapsed_at"]),
-		PromotedTo:    asString(fm["promoted_to"]),
 		Grounds:       groundsEntries(body),
 		Resolution:    asString(fm["resolution"]),
 		WontfixReason: asString(fm["wontfix_reason"]),

@@ -255,7 +255,7 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 					t.Fatalf("capture promote %s from the subdirectory: %v\n%s", ids[2], err, out)
 				}
 				body := recordBody(t, repo, "open", ids[2])
-				if !strings.Contains(body, "promoted_to") {
+				if !strings.Contains(body, "related_intents") {
 					t.Errorf("promote from the subdirectory left the checkout's record %s unstamped:\n%s", ids[2], body)
 				}
 			},

@@ -231,9 +231,21 @@ List open issues named by default-branch history with no resolution behind them 
       --ref string   history to walk (default: the repository's default branch)
 ```
 
+#### `abcd capture migrate`
+
+Rewrite retired promote back-links (promoted_to / promoted_from) to related_intents / related_issues (reports; writes only with --apply)
+
+**Usage:** `abcd capture migrate [--apply] [flags]`
+
+**Flags:**
+
+```
+      --apply   write the rewritten records (default: report only)
+```
+
 #### `abcd capture promote`
 
-Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)
+Graduate an issue or a dispositioned reading item into an intent draft (mints + links both ways: related_issues / related_intents)
 
 **Usage:** `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
 
@@ -241,7 +253,7 @@ Graduate an issue or a dispositioned reading item into an intent draft (mints + 
 
 ```
       --grounds string           optional; recorded when given — the conjecture being acted on, not the route taken: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
-      --intent string            stamp-only mode: link this existing itd-N instead of minting a draft
+      --intent string            link mode: link this existing itd-N instead of minting a draft (writes both halves of the join)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
@@ -942,9 +954,16 @@ Intent lifecycle; bare invocation is read-only status, quoted text files a draft
 
 #### `abcd intent audit`
 
-Intent audit (promise vs delivered): re-emit a shipped intent's request, or ingest a verdict
+Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)
 
-**Usage:** `abcd intent audit [<itd-N>]`
+**Usage:** `abcd intent audit [<itd-N>] | audit --issue-drift [--strict] [flags]`
+
+**Flags:**
+
+```
+      --issue-drift   walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
+      --strict        with --issue-drift: exit 1 when any finding is reported (the CI mode)
+```
 
 ##### `abcd intent audit ingest`
 
