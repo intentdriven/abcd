@@ -79,7 +79,7 @@ chapter is correct (iss-246).
 ## The generated appendix
 
 A chapter's shape — its verbs' flags and sub-verbs — is derived, never
-hand-written ([adr-2609231028044006](../../decisions/adrs/2609231028044006-shape-claims-in-the-record-are-derived-never-hand-authored.md),
+hand-written ([adr-2609231028044006](../../decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived-never-hand-authored.md),
 invariant 18 in [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
 Every chapter in this directory ends with a generated appendix between two
 marker comments, composed from the same walk of the command tree that builds the

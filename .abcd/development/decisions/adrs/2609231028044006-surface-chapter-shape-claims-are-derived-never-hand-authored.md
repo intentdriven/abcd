@@ -1,16 +1,16 @@
 ---
 id: adr-2609231028044006
-slug: shape-claims-in-the-record-are-derived-never-hand-authored
+slug: surface-chapter-shape-claims-are-derived-never-hand-authored
 status: accepted
 date: 2026-09-23
 supersedes: null
 superseded_by: null
 related_intents: [itd-147]
 related_rfcs: []
-related_adrs: [adr-40]
+related_adrs: [adr-30, adr-40]
 ---
 
-# ADR-2609231028044006: Shape claims in the record are derived, never hand-authored
+# ADR-2609231028044006: Shape claims in the brief's surface chapters are derived, never hand-authored
 
 ## Context
 
@@ -35,11 +35,13 @@ on 2026-09-01 settled the seam.
 
 ## Decision
 
-We will derive every shape claim the brief's surface chapters (the chapters
-under `.abcd/development/brief/04-surfaces/`) make about the shipped command
-surface, and never write one by hand. The enforcement below holds those chapters
-and nothing else: a flag or sub-verb spelt elsewhere in the record — another
-brief section, an intent, a spec, a plugin command page — is not checked by it.
+Every shape claim the brief's surface chapters (the chapters under
+`.abcd/development/brief/04-surfaces/`) make about the shipped command surface
+is derived, or hand-written in the chapter's `## Sub-verbs` table and checked
+against the command-tree snapshot in both directions. No other shape claim in a
+chapter is written by hand. The enforcement below holds those chapters and
+nothing else: a flag or sub-verb spelt elsewhere in the record — another brief
+section, an intent, a spec, a plugin command page — is not checked by it.
 `docs/reference/cli/commands.md` is generated and drift-tested on its own.
 
 - Each chapter under `.abcd/development/brief/04-surfaces/` ends with one
@@ -61,8 +63,8 @@ brief section, an intent, a spec, a plugin command page — is not checked by it
 - The appendix carries flags and sub-verbs only. Exit codes and output fields
   stay prose until the binary records them somewhere a generator can read.
 - `surface_coverage` stays as it is and labels every finding as the row-level
-  presence check over the surfaces index. It claims nothing about chapter
-  prose.
+  presence check over the surfaces index and each chapter's sub-verb table. It
+  claims nothing about chapter prose.
 
 Two tests in `internal/surface/cli` enforce the rule, and both run under
 `go test ./...`, which puts them in `make preflight` and in CI:
@@ -87,12 +89,12 @@ Two tests in `internal/surface/cli` enforce the rule, and both run under
 
 ## Consequences
 
-- A flag or sub-verb added, removed or renamed without regenerating fails the
-  build, and the failure names the chapter and the line.
+- A flag or sub-verb added, removed or renamed without regenerating fails
+  `go test`, and the failure names the chapter and the line.
 - A lane that adds a surface adds its register row and its chapter, ends the
   chapter with the two markers and runs the generator. A chapter with no row,
   a row naming a missing chapter, or a chapter without its markers is refused
-  by name and fails the build; every other chapter is still regenerated and
+  by name and fails `go test`; every other chapter is still regenerated and
   checked, so one unfinished chapter never hides the drift of the rest.
 - Prose refers to a capability in plain words ("the cut", "the probe") and never
   spells how it is invoked. The appendix and the CLI reference hold the
