@@ -33,13 +33,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -56,7 +59,11 @@ const changelogFile = "CHANGELOG.md"
 // independently of every other abcd artifact (mirroring the synthesis schemas) so
 // a future breaking change to the shape is detectable rather than silently
 // misread by a composer written against the old one.
-const ChangelogSchemaVersion = 1
+//
+// Schema 2 adds the release page (press_release). A schema 1 payload is refused
+// as unsupported: the prompt and the binary ship together in the plugin, so no
+// composer is left writing the old shape.
+const ChangelogSchemaVersion = 2
 
 // MaxPayloadBytes caps the untrusted composed-changelog payload, mirroring the
 // synthesis cap. It is exported so a front door can bound its READ at the same
@@ -183,6 +190,9 @@ type ChangelogPayload struct {
 	// Entries are the composed lines, in the order they should appear within
 	// their section.
 	Entries []ChangelogEntry `json:"entries"`
+	// PressRelease is the release page, null or absent exactly when the cut's
+	// press-release set is empty (a fixes-only release has no page).
+	PressRelease *PressReleasePayload `json:"press_release,omitempty"`
 }
 
 // IncompleteError is the completeness bijection's refusal: the composed document
@@ -229,6 +239,24 @@ func (e *IncompleteError) Error() string {
 	return b.String()
 }
 
+// addReasons reports the bijection's groups as payload reasons, one per group,
+// each naming its ids, so the retry loop reads one shape.
+func (e *IncompleteError) addReasons(rs *reasons) {
+	if len(e.Missing) > 0 {
+		rs.add(ReasonChangelogMissing, "entries",
+			"MISSING (shipped, but no line cites it — the release record would lie by omission): %s", strings.Join(e.Missing, ", "))
+	}
+	if len(e.Invented) > 0 {
+		rs.add(ReasonChangelogInvented, "entries",
+			"INVENTED (cited, but not in this cut — a line about something that did not ship): %s", strings.Join(e.Invented, ", "))
+	}
+	if len(e.Internal) > 0 {
+		rs.add(ReasonChangelogInternal, "entries",
+			"INVENTED (cited, but declared `impact: internal` — internal records earn no changelog line): %s",
+			strings.Join(e.Internal, ", "))
+	}
+}
+
 // IngestResult is the write step's transport-agnostic outcome. It carries the
 // whole Cut so a front door can render the same report the emit step renders —
 // a refused cut reaches here as a RESULT, not an error, and must still be shown.
@@ -249,29 +277,42 @@ type IngestResult struct {
 	// Cited is the required record-id set, sorted: the bijection's proof, so a
 	// reviewer can check the release record against it without re-running a cut.
 	Cited []string `json:"cited"`
+	// Page reports the release page: written (and what moved to the archive), or
+	// why no page was written.
+	Page PageResult `json:"page"`
+	// Undo reverses the cut's writes. The ship verb applies it when a step after
+	// the ingest refuses, so a refused ship leaves nothing behind.
+	Undo UndoPlan `json:"-"`
 }
 
-// Ingest validates the host-composed changelog against the deterministic cut and
-// writes the dated section into CHANGELOG.md.
+// Ingest validates the host-composed payload against the deterministic cut and
+// writes the release: the archive move, the release page, and the dated section
+// of CHANGELOG.md, in that order, rolling back on failure (write.go).
 //
 // current is the caller's view of the command surface, passed in for the reason
 // Emit states: internal/core must not walk a cobra tree. at is the clock, passed
 // in rather than read, so the date in a durable release heading is an input a
 // test can pin instead of a wall-clock read buried in a writer.
 //
-// The three outcomes are distinguishable on purpose:
+// The outcomes are distinguishable on purpose:
 //
-//	(result, nil) with Written        — the section landed.
+//	(result, nil) with Written        — the release landed.
 //	(result, nil) without Written     — the CUT refuses (result.Cut.Refusals says
 //	                                    why). A refusal is a result to render, and
 //	                                    the front door maps it to exit 1.
-//	(result, error)                   — the DOCUMENT is unusable (a payload fault
-//	                                    or a failed bijection). Exit 2; the file
-//	                                    is byte-identical to what it was.
-//
-// Every refusal path returns before the single atomic write, so a half-composed
-// changelog can never land.
+//	(result, *PayloadRefusal)         — the PAYLOAD is refused, with every reason:
+//	                                    recompose it. Nothing was written.
+//	(result, other error)             — the repository cannot take the cut (an
+//	                                    unreadable file, a missing anchor, an
+//	                                    archive collision, a failed write that was
+//	                                    rolled back): stop.
 func Ingest(root string, current surface.Snapshot, raw []byte, at time.Time) (IngestResult, error) {
+	return ingest(root, current, raw, at, osOps{root: root})
+}
+
+// ingest is Ingest with the writer seam exposed, so a test can observe the
+// order of the writes and fail any one of them.
+func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops fileOps) (IngestResult, error) {
 	cut, err := Emit(root, current)
 	if err != nil {
 		return IngestResult{}, err
@@ -281,33 +322,79 @@ func Ingest(root string, current surface.Snapshot, raw []byte, at time.Time) (In
 		return res, nil
 	}
 
-	payload, err := decodeChangelogPayload(raw)
-	if err != nil {
-		return res, err
+	payload, perr := decodeChangelogPayload(raw)
+	if perr != nil {
+		return res, perr
 	}
 	if payload.NextTag != cut.NextTag {
-		return res, fmt.Errorf("the payload was composed against %q but this cut derives %q — "+
+		return res, refusal(ReasonStaleCut, "next_tag", "the payload was composed against %q but this cut derives %q — "+
 			"the record set moved under the composer; re-run the emit step and compose again",
 			termsafe.Sanitize(payload.NextTag), cut.NextTag)
 	}
 
-	entries, cited, err := validateEntries(payload.Entries)
+	// Every fault after decoding is collected in one pass, so the composer sees
+	// the whole list at once.
+	var rs reasons
+	entries, cited, entriesOK := validateEntries(payload.Entries, &rs)
+	var required []string
+	var incomplete *IncompleteError
+	if entriesOK {
+		// Skipped when an entry is malformed: its ids may be uncounted, and the
+		// bijection would then blame a missing record instead of the real fault.
+		required, incomplete = checkBijection(cut, cited)
+		if incomplete != nil {
+			incomplete.addReasons(&rs)
+		}
+	}
+	page := validatePage(cut, payload.PressRelease, &rs)
+	set, _ := pageSet(cut)
+	hasPage := len(set) > 0
+
+	// The repository's own preconditions are checked before the payload's
+	// verdict is returned: a fault here is a stop, and recomposing against it
+	// would loop for nothing.
+	heading := datedHeading(cut.NextTag, at)
+	section := renderSection(heading, entries)
+	content, before, err := insertSection(root, section)
 	if err != nil {
 		return res, err
 	}
-	required, err := checkBijection(cut, cited)
-	if err != nil {
-		return res, err
+	plan := cutPlan{changelog: []byte(content), undo: UndoPlan{changelogBefore: before}}
+	var pageText, pageHead string
+	if hasPage {
+		if err := planPage(root, &plan); err != nil {
+			return res, err
+		}
+		pageHead = pageHeading(cut.NextTag, at)
+		pageText = renderPage(pageHead, page)
+		if v, _, ok := parsePageHeading(pageText); !ok || v != strings.TrimPrefix(cut.NextTag, "v") {
+			return res, fmt.Errorf("refusing to write %s: its heading does not name this cut's version %s", PageFile, cut.NextTag)
+		}
 	}
 
-	heading := datedHeading(cut.NextTag, at)
-	content, err := insertSection(root, renderSection(heading, entries))
-	if err != nil {
+	// The outbound policy over what would be written, both documents: a session
+	// URL or a tool footer is refused here, where the composer can drop it,
+	// rather than found later in a public release record.
+	if err := checkOutbound(root, strings.Join(section, "\n"), "changelog section", "entries", &rs); err != nil {
 		return res, err
 	}
-	// One atomic replace, preserving the record's existing mode: a crash mid-write
-	// must leave the previous CHANGELOG intact, never a truncated one.
-	if err := fsutil.WriteFileAtomicPreserveMode(filepath.Join(root, changelogFile), []byte(content)); err != nil {
+	if hasPage {
+		if err := checkOutbound(root, pageText, "release page", "press_release", &rs); err != nil {
+			return res, err
+		}
+		if err := checkPersonas(root, pageText, &rs); err != nil {
+			return res, err
+		}
+	}
+	if len(rs) > 0 {
+		return res, &PayloadRefusal{Reasons: rs, incomplete: incomplete}
+	}
+
+	if hasPage {
+		plan.page = []byte(pageText)
+	}
+	undo, err := execute(ops, root, plan)
+	if err != nil {
 		return res, err
 	}
 
@@ -316,7 +403,65 @@ func Ingest(root string, current surface.Snapshot, raw []byte, at time.Time) (In
 	res.Heading = heading
 	res.Lines = len(entries)
 	res.Cited = required
+	res.Undo = undo
+	if hasPage {
+		res.Page = PageResult{
+			Written:   true,
+			Path:      PageFile,
+			Heading:   pageHead,
+			Archived:  undo.archived,
+			Headlines: len(page.headlines),
+			Listed:    len(page.listed),
+			Quotes:    len(page.quotes),
+		}
+	} else {
+		res.Page = PageResult{Reason: noPageReason(root)}
+	}
 	return res, nil
+}
+
+// recordLintConfig is the repository's record-lint configuration, whose
+// persona_registry rule the release page is held to.
+const recordLintConfig = ".abcd/record-lint.json"
+
+// checkPersonas runs the repository's persona_registry rule over the rendered
+// page. The page sits at the repository root, outside record-lint's roots, so
+// the cut is where the rule reaches it; the archive, inside the roots, is read
+// by record-lint itself. A repository with no record-lint config, or with the
+// rule unarmed, is not checked. A config or roster that cannot be read is a stop.
+func checkPersonas(root, page string, rs *reasons) error {
+	cfg, err := lint.LoadConfig(filepath.Join(root, filepath.FromSlash(recordLintConfig)))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("reading %s for the release page's persona check: %w", recordLintConfig, err)
+	}
+	findings, err := lint.PersonaFindingsInText(cfg, root, PageFile, page)
+	if err != nil {
+		return err
+	}
+	for _, f := range findings {
+		rs.add(ReasonPersonaRegistry, "press_release", "line %d of the rendered page: %s", f.Line, termsafe.Sanitize(f.Message))
+	}
+	return nil
+}
+
+// checkOutbound runs the outbound policy over one rendered document, adding a
+// reason per finding. A scanner that cannot judge (a degraded config) is a stop,
+// returned as an error.
+func checkOutbound(root, text, label, at string, rs *reasons) error {
+	findings, err := scanner.CheckOutbound(root, text, label)
+	if err != nil && len(findings) == 0 {
+		return err
+	}
+	for _, f := range findings {
+		// The detail names the kind and the line, never the matched text: echoing
+		// a session URL into a report would carry it one step further.
+		rs.add(ReasonOutboundPolicy, at, "the rendered %s carries a %s on line %d; remove it (%s)",
+			label, f.Kind, f.Line, "no session URL and no tool attribution footer in public text")
+	}
+	return nil
 }
 
 // decodeChangelogPayload reads the untrusted document behind the synthesis
@@ -324,34 +469,39 @@ func Ingest(root string, current surface.Snapshot, raw []byte, at time.Time) (In
 // composer and this core disagree about the contract), the schema gate, and the
 // prompt_version stamp. Every fault here is structural — the document is
 // unusable, so nothing is written.
-func decodeChangelogPayload(raw []byte) (ChangelogPayload, error) {
+func decodeChangelogPayload(raw []byte) (ChangelogPayload, *PayloadRefusal) {
 	if len(raw) > MaxPayloadBytes {
-		return ChangelogPayload{}, fmt.Errorf("changelog payload exceeds the %d-byte cap", MaxPayloadBytes)
+		return ChangelogPayload{}, refusal(ReasonPayloadOversize, "", "changelog payload exceeds the %d-byte cap", MaxPayloadBytes)
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var p ChangelogPayload
 	if err := dec.Decode(&p); err != nil {
-		return ChangelogPayload{}, fmt.Errorf("malformed changelog JSON: %v", err)
+		msg := termsafe.Sanitize(err.Error())
+		if strings.HasPrefix(err.Error(), "json: unknown field") {
+			return ChangelogPayload{}, refusal(ReasonUnknownField, "", "the payload carries a key this contract does not have: %s", msg)
+		}
+		return ChangelogPayload{}, refusal(ReasonMalformedJSON, "", "malformed changelog JSON: %s", msg)
 	}
 	// Decode stops at the first complete value. Anything after it means the host
 	// emitted something other than the one document this contract describes, and
 	// the posture beside DisallowUnknownFields is uniform: a surprise in the
 	// document refuses the document.
 	if dec.More() {
-		return ChangelogPayload{}, errors.New("the changelog payload carries trailing data after the JSON document")
+		return ChangelogPayload{}, refusal(ReasonTrailingData, "", "the changelog payload carries trailing data after the JSON document")
 	}
 	switch {
 	case p.SchemaVersion == 0:
-		return ChangelogPayload{}, errors.New("changelog payload is missing schema_version")
+		return ChangelogPayload{}, refusal(ReasonSchemaVersion, "schema_version", "changelog payload is missing schema_version")
 	case p.SchemaVersion > ChangelogSchemaVersion:
-		return ChangelogPayload{}, update.TooNew("changelog",
-			p.SchemaVersion, ChangelogSchemaVersion)
+		return ChangelogPayload{}, refusal(ReasonSchemaVersion, "schema_version", "%s",
+			update.TooNew("changelog", p.SchemaVersion, ChangelogSchemaVersion).Error())
 	case p.SchemaVersion != ChangelogSchemaVersion:
-		return ChangelogPayload{}, fmt.Errorf("unsupported changelog schema_version %d", p.SchemaVersion)
+		return ChangelogPayload{}, refusal(ReasonSchemaVersion, "schema_version",
+			"unsupported changelog schema_version %d (want %d, which carries the release page)", p.SchemaVersion, ChangelogSchemaVersion)
 	}
 	if !promptVersionRe.MatchString(p.PromptVersion) {
-		return ChangelogPayload{}, errors.New("changelog payload is missing a semver prompt_version")
+		return ChangelogPayload{}, refusal(ReasonPromptVersion, "prompt_version", "changelog payload is missing a semver prompt_version")
 	}
 	return p, nil
 }
@@ -363,48 +513,55 @@ func decodeChangelogPayload(raw []byte) (ChangelogPayload, error) {
 // cite-or-be-dropped that this seam turns on: dropping a malformed line would
 // leave its record uncited, and the bijection would then refuse anyway — with a
 // misleading "missing record" instead of the real fault.
-func validateEntries(entries []ChangelogEntry) ([]ChangelogEntry, map[string]bool, error) {
+func validateEntries(entries []ChangelogEntry, rs *reasons) ([]ChangelogEntry, map[string]bool, bool) {
 	if len(entries) == 0 {
-		return nil, nil, errors.New("the changelog payload carries no entries, but the cut has records to report")
+		rs.add(ReasonNoEntries, "entries", "the changelog payload carries no entries, but the cut has records to report")
+		return nil, nil, false
 	}
 	if len(entries) > maxChangelogEntries {
-		return nil, nil, fmt.Errorf("too many changelog entries (%d > %d)", len(entries), maxChangelogEntries)
+		rs.add(ReasonTextOversize, "entries", "too many changelog entries (%d > %d)", len(entries), maxChangelogEntries)
+		return nil, nil, false
 	}
 
+	start := len(*rs)
 	out := make([]ChangelogEntry, 0, len(entries))
 	cited := map[string]bool{}
 	for i, in := range entries {
-		at := i + 1
-		if !registeredSection[in.Section] {
-			return nil, nil, fmt.Errorf("entry %d names section %q; a changelog section must be one of %s",
-				at, termsafe.Sanitize(string(in.Section)), sectionList())
-		}
-		if !writableSection[in.Section] {
+		n := i + 1
+		at := fmt.Sprintf("entries[%d]", i)
+		switch {
+		case !registeredSection[in.Section]:
+			rs.add(ReasonSection, at+".section", "entry %d names section %q; a changelog section must be one of %s",
+				n, termsafe.Sanitize(string(in.Section)), sectionList())
+		case !writableSection[in.Section]:
 			// Registered, so the shape is right; refused because the claim is one
 			// the composer cannot check. Named apart from the structural refusal so
 			// the operator is told the rule, not just the list.
-			return nil, nil, fmt.Errorf("entry %d names section %s; the composer cannot see the previous release, "+
+			rs.add(ReasonSectionNotWritable, at+".section", "entry %d names section %s; the composer cannot see the previous release, "+
 				"so a composed changelog carries only %s until it can (iss-2609011207114761) — "+
 				"restate the line under one of those and say in the line what changed",
-				at, in.Section, strings.Join(sectionNames(writableSections), "|"))
+				n, in.Section, strings.Join(sectionNames(writableSections), "|"))
 		}
 		if len(in.Records) == 0 {
-			return nil, nil, fmt.Errorf("entry %d cites no record; every changelog line cites the record it reports", at)
+			rs.add(ReasonNoCitation, at+".records", "entry %d cites no record; every changelog line cites the record it reports", n)
 		}
 		if len(in.Records) > maxRecordsPerEntry {
-			return nil, nil, fmt.Errorf("entry %d cites %d records (max %d)", at, len(in.Records), maxRecordsPerEntry)
+			rs.add(ReasonTextOversize, at+".records", "entry %d cites %d records (max %d)", n, len(in.Records), maxRecordsPerEntry)
 		}
 		ids := make([]string, 0, len(in.Records))
 		seen := map[string]bool{}
-		for _, id := range in.Records {
+		for j, id := range in.Records {
+			idAt := fmt.Sprintf("%s.records[%d]", at, j)
 			// Bounded BEFORE the id is matched or quoted, so an over-long one is
 			// described rather than echoed.
 			if len(id) > maxRecordIDBytes {
-				return nil, nil, fmt.Errorf("entry %d cites a %d-byte record id (max %d)", at, len(id), maxRecordIDBytes)
+				rs.add(ReasonMalformedID, idAt, "entry %d cites a %d-byte record id (max %d)", n, len(id), maxRecordIDBytes)
+				continue
 			}
 			if !payloadRecordIDRe.MatchString(id) {
-				return nil, nil, fmt.Errorf("entry %d cites %q, which is not a record id (want itd-N or iss-N)",
-					at, termsafe.Sanitize(id))
+				rs.add(ReasonMalformedID, idAt, "entry %d cites %q, which is not a record id (want itd-N or iss-N)",
+					n, termsafe.Sanitize(id))
+				continue
 			}
 			if seen[id] {
 				continue
@@ -415,11 +572,11 @@ func validateEntries(entries []ChangelogEntry) ([]ChangelogEntry, map[string]boo
 		}
 		text := cleanChangelogProse(in.Text)
 		if text == "" {
-			return nil, nil, fmt.Errorf("entry %d (%s) has empty prose", at, strings.Join(ids, ", "))
+			rs.add(ReasonEmptyProse, at+".text", "entry %d (%s) has empty prose", n, strings.Join(ids, ", "))
 		}
 		out = append(out, ChangelogEntry{Section: in.Section, Records: ids, Text: text})
 	}
-	return out, cited, nil
+	return out, cited, len(*rs) == start
 }
 
 // checkBijection is the heart of this phase: the set of cited ids must equal the
@@ -431,7 +588,7 @@ func validateEntries(entries []ChangelogEntry) ([]ChangelogEntry, map[string]boo
 // it go uncited would be the same omission as dropping an addition.
 //
 // It returns the required set, sorted, so the caller can record what was proved.
-func checkBijection(cut Cut, cited map[string]bool) ([]string, error) {
+func checkBijection(cut Cut, cited map[string]bool) ([]string, *IncompleteError) {
 	inCut := map[string]bool{}
 	requiredSet := map[string]bool{}
 	for _, e := range append(append([]Entry{}, cut.Added...), cut.Removed...) {
@@ -532,10 +689,10 @@ func renderSection(heading string, entries []ChangelogEntry) []string {
 // guarantee — a CHANGELOG whose anchor sits below an older section satisfies both
 // preconditions above — so the finished content is checked for that ordering
 // before it is returned, rather than assumed from where the anchor was found.
-func insertSection(root string, section []string) (string, error) {
+func insertSection(root string, section []string) (string, []byte, error) {
 	data, err := fsutil.ReadGuarded(filepath.Join(root, changelogFile), changelog.MaxChangelogBytes)
 	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", changelogFile, err)
+		return "", nil, fmt.Errorf("reading %s: %w", changelogFile, err)
 	}
 	lines := strings.Split(string(data), "\n")
 
@@ -547,7 +704,7 @@ func insertSection(root string, section []string) (string, error) {
 		}
 	}
 	if anchor < 0 {
-		return "", fmt.Errorf("%s has no `## [Unreleased]` heading — that heading is where a derived "+
+		return "", nil, fmt.Errorf("%s has no `## [Unreleased]` heading — that heading is where a derived "+
 			"section is inserted, and this writer will not guess where a release belongs", changelogFile)
 	}
 
@@ -560,7 +717,7 @@ func insertSection(root string, section []string) (string, error) {
 	}
 	for _, line := range lines[anchor+1 : end] {
 		if strings.TrimSpace(line) != "" {
-			return "", fmt.Errorf("the `## [Unreleased]` section of %s is not empty — a derived cut never folds "+
+			return "", nil, fmt.Errorf("the `## [Unreleased]` section of %s is not empty — a derived cut never folds "+
 				"hand-written prose into a generated section; roll the existing entries into a dated heading "+
 				"once, by hand, and every cut after that is fully derived", changelogFile)
 		}
@@ -569,7 +726,7 @@ func insertSection(root string, section []string) (string, error) {
 	// turns into a git tag, so assert the ONE line that matters is the one this
 	// built — read back through the same predicate the derivation reads it with.
 	if !changelog.IsDatedHeading(section[0]) {
-		return "", fmt.Errorf("refusing to write %q: it is not a dated release heading", termsafe.Sanitize(section[0]))
+		return "", nil, fmt.Errorf("refusing to write %q: it is not a dated release heading", termsafe.Sanitize(section[0]))
 	}
 
 	out := append([]string{}, lines[:anchor+1]...)
@@ -591,13 +748,13 @@ func insertSection(root string, section []string) (string, error) {
 			continue
 		}
 		if line != section[0] {
-			return "", fmt.Errorf("refusing to write %s: its newest release heading would still be %q, not the "+
+			return "", nil, fmt.Errorf("refusing to write %s: its newest release heading would still be %q, not the "+
 				"derived one — the `## [Unreleased]` anchor does not sit above every dated heading, so the "+
 				"tagging workflow would re-tag a past release", changelogFile, termsafe.Sanitize(line))
 		}
 		break
 	}
-	return content, nil
+	return content, data, nil
 }
 
 // cleanChangelogProse sanitises one untrusted composed line through termsafe's

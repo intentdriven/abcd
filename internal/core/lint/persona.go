@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // personaAttrRe matches a press-release quote attribution: `said <Name>,`.
@@ -15,6 +16,18 @@ import (
 // compound and non-ASCII names (O'Brien, Anne-Marie, Zoë) cannot slip past
 // as silent non-matches.
 var personaAttrRe = regexp.MustCompile(`\bsaid (\p{Lu}[\p{L}\p{M}'’-]*),`)
+
+// PersonaAttribution returns the first persona name text attributes words to
+// in the `said <Name>,` form the persona_registry rule reads, and whether it
+// found one. The release page refuses one in headline prose, where no quote is
+// verified against its source.
+func PersonaAttribution(text string) (string, bool) {
+	m := personaAttrRe.FindStringSubmatch(text)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
 
 // loadPersonaRoster reads the personas registry and returns the set of
 // registered names. The registry is the single source of truth for persona
@@ -68,4 +81,24 @@ func checkPersonaRegistry(rel string, lines []string, mask []bool, roster map[st
 		}
 	}
 	return out
+}
+
+// PersonaFindingsInText runs the persona_registry rule, exactly as cfg arms it,
+// over one text that sits outside cfg.Roots. The release page is the case: it is
+// written to RELEASE.md at the repository root, which record-lint's roots do not
+// reach (the root cannot be listed there, because a configured root that does
+// not exist is a refusal and the page arrives with the first feature cut). The
+// cut runs this over the rendered page before writing it. A rule that is not
+// armed returns nothing; a roster that cannot be read is an error.
+func PersonaFindingsInText(cfg Config, repoRoot, rel, text string) ([]Finding, error) {
+	rc, on := cfg.Rules["persona_registry"]
+	if !on || !rc.Enabled {
+		return nil, nil
+	}
+	roster, err := loadPersonaRoster(repoRoot, rc.Registry)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(text, "\n")
+	return checkPersonaRegistry(rel, lines, fenceMask(lines), roster, rc), nil
 }

@@ -1,6 +1,6 @@
 ---
 name: launch
-description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog, render and verify the release's pinned plugin archive, and scaffold the changelog-driven release gate into a managed repo. The preview performs zero writes; `ship` writes the dated CHANGELOG heading and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `scaffold` writes the release workflows and never publishes.
+description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, render and verify the release's pinned plugin archive, and scaffold the changelog-driven release gate into a managed repo. The preview performs zero writes; `ship` writes the dated CHANGELOG heading, the RELEASE.md page and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `scaffold` writes the release workflows and never publishes.
 argument-hint: "[--dry-run] | ship [--changelog-json <path>] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
 ---
 
@@ -10,10 +10,12 @@ Two flows over the abcd binary, kept apart on purpose:
 
 - **preview** (`dry-run`) — the bundle, the scan, and the gates. **Zero writes.**
 - **ship** — the release cut: derive the version from what shipped, compose the
-  changelog prose, write the dated heading. It writes `CHANGELOG.md` and, in a
-  repository that publishes a versioned plugin, pins the release's plugin
-  archive in `.claude-plugin/marketplace.json` (refreshing the surface snapshot
-  beside it). It **never publishes**.
+  changelog prose and the release page, write them. It writes the dated section
+  of `CHANGELOG.md`, the release page `RELEASE.md`, and the outgoing page's copy
+  under `.abcd/development/releases/`; in a repository that publishes a versioned
+  plugin it also pins the release's plugin archive in
+  `.claude-plugin/marketplace.json` (refreshing the surface snapshot beside it).
+  It **never publishes**.
 
 Neither flow publishes. Tagging is `.github/workflows/auto-release.yml`'s job, and
 it reads the dated heading `ship` writes. A third verb, **archive**, is the release
@@ -219,8 +221,12 @@ find out: the tag is already created by then, and the workflow never moves a tag
 The binary derives everything the release is allowed to be: the base tag, the
 `next_tag`, the deciding `impact`, the record set (`added` and `removed`), the
 surface guardrail's verdict (`guard`), and the unfixed-findings guardrail's
-verdict (`findings`). Read-only preview of the same thing: `abcd changelog
---json`.
+verdict (`findings`). Each entry carries `in_changelog` and `in_press_release`:
+the second marks the intents the release page must cite (the user-facing intents
+that entered `shipped/` since the base tag; never an issue, an `impact: internal`
+intent, a removed intent or anything still planned). The human render lists them
+under `release page:`, or says `release page: none` for a cut that ships fixes
+alone. Read-only preview of the same thing: `abcd changelog --json`.
 
 Exit codes gate the flow:
 
@@ -300,8 +306,15 @@ around a refusal.
 
 Run the **`release-changelog-composer`** agent
 (`agents/release-changelog-composer.md`) over the emitted cut and the records it
-names. It returns the changelog payload: `schema_version`, `prompt_version`,
-`next_tag` echoed verbatim, and `entries[{section, records, text}]`. The agent owns
+names. It returns one payload (`schema_version` 2) carrying both documents:
+`prompt_version`, `next_tag` echoed verbatim, `entries[{section, records, text}]`
+for the changelog, and `press_release` for the release page —
+`headlines[{records, text}]` (the intents told as prose), `listed[]` (every other
+intent in the set, by id; the binary renders each as its title) and
+`quotes[{record, text, attribution}]` (persona quotes carried word for word from
+the press release of a told intent). `press_release` is `null` exactly when no
+intent is marked `in_press_release`. The page looks back only: no date, no
+future release, nothing planned. The agent owns
 the **wording** and the choice between the two writable **Keep a Changelog
 sections**, `Added` and `Fixed`; the version, the date, the heading, the section
 order, the inclusion set and the writable set stay the binary's. `Changed`,
@@ -320,12 +333,12 @@ No fallback exists and none may be improvised:
 - Do **not** write a partial section, and do **not** invoke the ingest step with a
   payload covering some of the records "for now". The bijection would refuse it
   anyway; a partial cut is not a smaller release, it is a false one.
-- Do **not** edit `CHANGELOG.md` by hand to unblock the release.
+- Do **not** edit `CHANGELOG.md` or `RELEASE.md` by hand to unblock the release.
 
 Say plainly that the composer is unreachable, that **nothing was written**, and
 that the cut from step 1 is still valid and can be shipped once it is reachable.
 
-### 3. Ingest the prose and write the heading
+### 3. Ingest the payload and write the release
 
 Write the agent's payload to a file and hand it back to the binary:
 
@@ -380,16 +393,109 @@ differs for each:
 - **INTERNAL** — a cited id that *is* in the cut but declares `impact: internal`;
   those records earn no changelog line.
 
-On success it splices the dated section directly beneath `## [Unreleased]` — the
-insertion anchor, which must **exist** and be **empty** (a derived cut never folds
-hand-written prose into a generated section) — in one atomic write.
+The release page is held to the same rule: every intent marked
+`in_press_release` is told in a headline or listed, once, and nothing else is
+cited. Every quote must match, word for word and with its attribution after
+`said` or `says`, a whole quoted sentence in the `## Press Release` section of an intent a
+headline tells. The rendered page and the rendered changelog section are both
+checked against the outbound policy (no session URL, no tool attribution
+footer), and the page against the repository's persona registry
+(`persona_registry`, which record-lint cannot reach at the root).
+
+On success it writes, in this order, only after every check has passed:
+
+1. **the archive** — the outgoing `RELEASE.md` moves to
+   `.abcd/development/releases/<its version>.md`, the version read from its own
+   heading. It never overwrites: an archive page already standing there stops
+   the cut.
+2. **the page** — the new `RELEASE.md`, whose heading `# Release X.Y.Z
+   (YYYY-MM-DD)` names the release it describes.
+3. **the changelog** — the dated section, spliced directly beneath
+   `## [Unreleased]`, the insertion anchor, which must **exist** and be **empty**
+   (a derived cut never folds hand-written prose into a generated section). It is
+   written last, so the file the tagging workflow reads lands only after the page
+   did.
+
+If a later write fails, the earlier ones are rolled back, and the report says so
+— or says `THE ROLLBACK FAILED — recover by hand` and names each file. On the
+**first** cut no `RELEASE.md` exists, so nothing is archived and a rollback
+removes the new page. A cut that ships **fixes alone** writes the changelog
+section only: `RELEASE.md` and the archive stay as they are, and the report says
+`No release page written: no user-facing intent shipped in this cut; RELEASE.md
+stays on <version>`.
 
 Exit codes, same shape as step 1:
 
-- **0** — written. Report `heading`, `path`, `lines`, and `cited` (the proof set).
+- **0** — written. Report `heading`, `path`, `lines`, `cited` (the proof set) and
+  `page` (the page's path, heading and counts, and `archived` when a page moved;
+  or its `reason` when none was written).
 - **1** — the **cut** refuses. Nothing was written, whatever the payload said.
-- **2** — the payload is unusable, including a failed bijection. Relay the report;
-  the file is byte-identical to what it was.
+- **2 with `payload_refusal`** — the **payload** is refused: nothing was written,
+  and the composer must rewrite it. See *The retry loop* below.
+- **2 without `payload_refusal`** — a **stop**: the repository cannot take the
+  cut (unreadable, a degraded scanner config, an outgoing `RELEASE.md` without a
+  release heading, an archive collision, a missing or non-empty
+  `## [Unreleased]`, or a failed write that was rolled back). No rewrite of the
+  payload can fix it. Relay the report and stop.
+
+### The retry loop: a refused payload is recomposed
+
+A refused payload is rewritten automatically, with **no attempt limit**. With
+`--json` the refusal reads:
+
+```json
+{"cut": {}, "written": false, "payload_refusal": {"reasons": [{"code": "quote-not-verbatim", "at": "press_release.quotes[0]", "detail": "..."}]}}
+```
+
+Loop until the ingest exits 0 or stops:
+
+1. **Tell the user at once** that attempt N was refused, and list every reason
+   (`code`, `at`, `detail`). The loop runs in the open, so an autonomous run shows
+   it as it happens.
+2. On `stale-cut`, re-run step 1 first: the record set moved under the composer.
+3. Re-invoke the composer with the cut, its previous payload and the reasons, and
+   ingest the new payload.
+
+In the final cut report, **report every refused attempt** and its reasons before
+the written result. The loop stops only on success, on a stop (exit 2 without
+`payload_refusal`, or exit 1), or when a person stops it — a composer that keeps
+making the same fault loops until someone does, and the per-attempt report is
+what makes that visible. If the composer cannot run at all, the LOUD STAGE above
+applies: nothing is hand-written.
+
+The reason codes:
+
+| Code | The payload |
+| --- | --- |
+| `payload-oversize` | is over the 1 MiB cap |
+| `malformed-json` | is not one JSON document |
+| `unknown-field` | carries a key the contract does not have |
+| `trailing-data` | carries data after the document |
+| `schema-version` | is not `schema_version` 2 |
+| `prompt-version` | carries no semver `prompt_version` |
+| `stale-cut` | echoes a `next_tag` this cut no longer derives |
+| `text-oversize` | carries a text over 4096 bytes, or too many entries, headlines, quotes or records on one line |
+| `malformed-id` | cites something that is not `itd-N` or `iss-N` |
+| `no-citation` | has a line or headline citing nothing |
+| `empty-prose` | has a line or headline with no prose |
+| `no-entries` | carries no changelog lines |
+| `section` | names a section Keep a Changelog does not register |
+| `section-not-writable` | names `Changed`, `Deprecated`, `Removed` or `Security` |
+| `changelog-missing` | leaves a required record uncited in the changelog |
+| `changelog-invented` | cites a record not in this cut in the changelog |
+| `changelog-internal` | cites an `impact: internal` record in the changelog |
+| `missing` | leaves an intent in the page's set neither told nor listed |
+| `outside-set` | cites on the page an id outside its set (the detail says why: not in this cut, an issue, internal, or removed) |
+| `duplicate-citation` | cites one intent, or carries one quote, twice on the page |
+| `no-headline` | tells no intent on a page that has a set |
+| `page-for-empty-set` | carries a page for a cut that ships fixes alone |
+| `heading` | has a page text opening with `#` |
+| `fence` | has a page text carrying a code fence |
+| `blockquote` | has a page text opening with `>`, or a headline attributing words with `said <Name>,` |
+| `quote-source` | quotes an intent no headline tells |
+| `quote-not-verbatim` | carries a quote that is not word for word from its intent's press release, with its attribution |
+| `outbound-policy` | would put a session URL or a tool attribution footer in the page or the changelog |
+| `persona-registry` | would put on the page words attributed to a persona the registry does not hold |
 
 Then show the user the written heading and the diff, so a human reviews the release
 record before it is committed. This command never commits, tags, or publishes.
@@ -407,7 +513,8 @@ reviewer read and must live in a LATER commit — it can never sit in the tree o
 the commit it names, because adding it would change that commit's sha. So:
 
 1. **The CHANGELOG roll** — the release-content commit, written by the three
-   steps above. This is what the reviewers read.
+   steps above: the dated section, and on a feature cut the release page and its
+   archive move. This is what the reviewers read.
 2. **The receipts** — a commit recording the semantic verdicts that name commit 1.
 
 On merge, `release.yml` derives the content commit as `<merge>^2^` and finds its

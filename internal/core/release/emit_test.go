@@ -523,3 +523,30 @@ func TestEmitRefusesACutThatDeletesItsFindingsRecord(t *testing.T) {
 		t.Fatalf("the cut is still refused after the record was restored and resolved: %+v", cut.Refusals)
 	}
 }
+
+// TestEmitMarksInPressRelease: each entry says whether the release page must
+// cite it, so the host never re-derives the rule. Only added, user-facing
+// intents are marked; an issue, an internal intent and a removed intent are not.
+func TestEmitMarksInPressRelease(t *testing.T) {
+	cut := emit(t, pageRepo(t))
+	got := map[string]bool{}
+	for _, e := range append(append([]Entry{}, cut.Added...), cut.Removed...) {
+		got[e.ID] = e.InPressRelease
+	}
+	want := map[string]bool{"itd-73": true, "itd-74": true, "itd-97": false, "iss-51": false, "itd-40": false}
+	for id, w := range want {
+		if got[id] != w {
+			t.Errorf("%s in_press_release = %v, want %v", id, got[id], w)
+		}
+	}
+	data, err := json.Marshal(cut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"in_press_release":true`) {
+		t.Errorf("the cut JSON does not carry in_press_release: %s", data)
+	}
+	if strings.Contains(string(data), "stopped typing") {
+		t.Error("the press-release source text leaked into the cut JSON")
+	}
+}
