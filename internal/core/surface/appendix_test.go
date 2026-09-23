@@ -263,6 +263,49 @@ func TestProseShapeClaims(t *testing.T) {
 	}
 }
 
+// ac-5, the other side: a check that fires on things that are not abcd's shape
+// forces true prose out of the record. Another program's flag, a flag abcd does
+// not register, and a plain-English phrase that happens to spell a sub-verb path
+// are prose; a registered flag (long or its single-dash shorthand) and a
+// sub-verb path that is backticked or prefixed as an invocation are shape.
+func TestProseShapeClaimsFiresOnlyOnAbcdShape(t *testing.T) {
+	tree := fixtureTree()
+	prose := "# Guard\n\n" +
+		"Ask git with `git merge-base --is-ancestor <sha> origin/main` first.\n" + // 3: git's flag, unregistered
+		"A force push spelled `git pus? --force` blocks, and --no-edit is git's too.\n" + // 4: git's flags
+		"The capture list and the docs cite refresh are plain words here.\n" + // 5: plain-English paths
+		"A `-C` for git and a `-x` for anything are not abcd's.\n" + // 6: unregistered shorthands
+		"Pass `--commit` with the sha.\n" + // 7: a registered flag
+		"Or its shorthand `-c`, or bare -c.\n" + // 8: a registered shorthand, twice
+		"Then run `capture list` to read it.\n" + // 9: a backticked path
+		"Or abcd capture resolve, or /abcd:docs cite refresh.\n" // 10: prefixed paths
+	got := ProseShapeClaims(prose, []string{"abcd guard"}, tree)
+	type key struct {
+		line     int
+		spelling string
+	}
+	want := map[key]bool{
+		{7, "--commit"}: true, {8, "-c"}: true, {9, "capture list"}: true,
+		{10, "capture resolve"}: true, {10, "docs cite refresh"}: true,
+	}
+	counts := map[key]int{}
+	for _, c := range got {
+		k := key{c.Line, c.Spelling}
+		if !want[k] {
+			t.Errorf("line %d: %q reported as abcd shape; it is prose", c.Line, c.Spelling)
+		}
+		counts[k]++
+	}
+	for k := range want {
+		if counts[k] == 0 {
+			t.Errorf("line %d: %q not reported; got %+v", k.line, k.spelling, got)
+		}
+	}
+	if counts[key{8, "-c"}] != 2 {
+		t.Errorf("line 8: want both spellings of the shorthand reported, got %d", counts[key{8, "-c"}])
+	}
+}
+
 func TestParseRegisterAndChapters(t *testing.T) {
 	register := "# Surfaces\n\n| # | Command | Status | Purpose | File |\n|---|---|---|---|---|\n" +
 		"| 1 | `/abcd:capture` | shipped | x | [`06-capture.md`](06-capture.md) |\n" +
@@ -309,3 +352,4 @@ func TestRegeneratedChapterDriftNamesChapterAndClaim(t *testing.T) {
 		t.Errorf("an agreeing chapter reports drift: %q", rc.Drift())
 	}
 }
+

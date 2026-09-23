@@ -285,18 +285,23 @@ type ShapeClaim struct {
 }
 
 var (
-	flagSpelling     = regexp.MustCompile(`(^|[^\w-])(--[a-z][a-z0-9-]*)`)
-	subVerbHeadingRe = regexp.MustCompile(`^##\s+Sub-verbs\s*$`)
-	headingRe        = regexp.MustCompile(`^#{1,6}\s`)
+	flagSpelling      = regexp.MustCompile(`(^|[^\w-])(--[a-z][a-z0-9-]*)`)
+	shorthandSpelling = regexp.MustCompile(`(^|[^\w-])(-[A-Za-z0-9])([^\w-]|$)`)
+	subVerbHeadingRe  = regexp.MustCompile(`^##\s+Sub-verbs\s*$`)
+	headingRe         = regexp.MustCompile(`^#{1,6}\s`)
 )
 
-// ProseShapeClaims reports every flag and sub-verb the prose states. own is the
-// chapter's command paths. Three spellings count as a claim:
+// ProseShapeClaims reports every flag and sub-verb of abcd's that the prose
+// states. own is the chapter's command paths. Three spellings count as a claim:
 //
-//   - a flag spelling (`--name`), anywhere, fenced examples included;
-//   - a sub-verb's command path below its top-level verb (`capture list`, with
-//     or without an `abcd ` or `/abcd:` prefix), for every sub-verb the tree
-//     registers;
+//   - a flag the command tree registers, spelt long (`--name`) or as its
+//     single-dash shorthand (`-n`), anywhere, fenced examples included. A flag
+//     the tree does not register is another program's (git's `--force`) or no
+//     program's, and is prose;
+//   - a sub-verb's command path below its top-level verb (`capture list`), for
+//     every sub-verb the tree registers, when it is written as an invocation:
+//     inside a code span or fence, or prefixed with `abcd ` or `/abcd:`. The same
+//     words as plain English ("the intent plan", "the docs lint") are prose;
 //   - a backticked sub-verb name below one of the chapter's own verbs
 //     (“ `list` “ in the capture chapter).
 //
@@ -310,10 +315,18 @@ var (
 // behaviour.
 func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	var paths []string // sub-verb command paths without the root word
+	longs := map[string]bool{}
+	shorts := map[string]bool{}
 	for _, c := range tree {
 		words := strings.Fields(c.Path)
 		if len(words) >= 3 {
 			paths = append(paths, strings.Join(words[1:], " "))
+		}
+		for _, f := range c.Flags {
+			longs["--"+f.Name] = true
+			if f.Shorthand != "" {
+				shorts["-"+f.Shorthand] = true
+			}
 		}
 	}
 	// Longest first, so a nested path is reported before the prefix it contains.
@@ -347,24 +360,35 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	}
 	text := strings.Join(lines, "\n")
 	lineOf := func(offset int) int { return strings.Count(text[:offset], "\n") + 1 }
+	code := codeRegions(text)
 
 	var out []ShapeClaim
 	for _, m := range flagSpelling.FindAllStringSubmatchIndex(text, -1) {
-		out = append(out, ShapeClaim{Line: lineOf(m[4]), Spelling: text[m[4]:m[5]]})
+		if s := text[m[4]:m[5]]; longs[s] {
+			out = append(out, ShapeClaim{Line: lineOf(m[4]), Spelling: s})
+		}
+	}
+	for _, m := range shorthandSpelling.FindAllStringSubmatchIndex(text, -1) {
+		if s := text[m[4]:m[5]]; shorts[s] {
+			out = append(out, ShapeClaim{Line: lineOf(m[4]), Spelling: s})
+		}
 	}
 	// A command path is matched across a soft line wrap: markdown prose wraps
 	// wherever the line fills, so `capture` ending one line and `resolve`
-	// opening the next is still the spelling.
+	// opening the next is still the spelling. Every match is blanked once read,
+	// claim or not, so a shorter path inside it is not read a second time.
 	masked := text
 	for _, p := range paths {
-		re := regexp.MustCompile(`(^|[^\w-])(` + strings.ReplaceAll(regexp.QuoteMeta(p), " ", `\s+`) + `)([^\w-]|$)`)
+		re := regexp.MustCompile(`(^|[^\w-])((?:abcd\s+|/abcd:)?)(` + strings.ReplaceAll(regexp.QuoteMeta(p), " ", `\s+`) + `)([^\w-]|$)`)
 		for {
 			m := re.FindStringSubmatchIndex(masked)
 			if m == nil {
 				break
 			}
-			out = append(out, ShapeClaim{Line: lineOf(m[4]), Spelling: p})
-			masked = masked[:m[4]] + blankKeepingNewlines(masked[m[4]:m[5]]) + masked[m[5]:]
+			if m[5] > m[4] || code[m[6]] {
+				out = append(out, ShapeClaim{Line: lineOf(m[6]), Spelling: p})
+			}
+			masked = masked[:m[6]] + blankKeepingNewlines(masked[m[6]:m[7]]) + masked[m[7]:]
 		}
 	}
 	for _, b := range bare {
@@ -375,6 +399,50 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Line < out[j].Line })
 	return out
+}
+
+// codeRegions marks every byte of s that sits inside a code span or a fenced
+// block. A run of n backticks opens a region that the next run of exactly n
+// closes, which is CommonMark's code-span rule and, because a fence is a run of
+// three, also covers a backtick fence. An unclosed run is literal text.
+func codeRegions(s string) []bool {
+	in := make([]bool, len(s)+1)
+	run := func(i int) int {
+		n := 0
+		for i+n < len(s) && s[i+n] == '`' {
+			n++
+		}
+		return n
+	}
+	for i := 0; i < len(s); {
+		if s[i] != '`' {
+			i++
+			continue
+		}
+		n := run(i)
+		closeAt := -1
+		for j := i + n; j < len(s); {
+			if s[j] != '`' {
+				j++
+				continue
+			}
+			if m := run(j); m == n {
+				closeAt = j
+				break
+			} else {
+				j += m
+			}
+		}
+		if closeAt < 0 {
+			i += n
+			continue
+		}
+		for k := i + n; k < closeAt; k++ {
+			in[k] = true
+		}
+		i = closeAt + n
+	}
+	return in
 }
 
 // blankKeepingNewlines replaces every byte of s but a newline with a space, so
