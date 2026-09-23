@@ -94,5 +94,63 @@ and folded into the criteria, 2026-08-16._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-1e7e37b98414 -->
-Fidelity review OWED (receipt rcp-1e7e37b98414).
+<!-- abcd-review: INGESTED receipt=rcp-1e7e37b98414 -->
+Fidelity review — receipt rcp-1e7e37b98414 (verifier abcd:intent-auditor claude-fable-5-1).
+
+Provenance: abcd:intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:708063e97662066d79a5984ff11edbbe2675de36fb27723003d684c4e05a742c
+Input attestations: diff:tree at da7b7cf409b41758b3502d3873687dc8b817d8c4 (worktree HEAD; the host supplied no commit range, so the whole tree at that commit is the delivered reality)@-;
+
+Acceptance rollup: MET 7 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Mint mode reuses the issue slug, seeds a by-id pointer plus the first body line (never the body), writes promoted_from, then stamps promoted_to in the same call; the test asserts every one of those facts on the minted draft and the stamped issue.
+  evidence: internal/core/capture/promote.go:198 — "slug := asString(fm["slug"])"
+  evidence: internal/core/capture/promote.go:200 — "seed := "Graduated from `" + req.ID + "`: " + title +"
+  evidence: internal/core/capture/promote.go:243 — "newContent, err := setScalarField(content, "promoted_to", rawScalar(itdID))"
+  evidence: internal/core/capture/promote_test.go:107 — "if !strings.Contains(draft, "## Press Release") {"
+  evidence: internal/core/capture/promote_test.go:120 — "if iss.PromotedTo != res.IntentID {"
+- ac-2 — MET: The stamp is an in-place atomic write to the file's current status directory and a dedicated test graduates issues from resolved and wontfix without moving them.
+  evidence: internal/core/capture/promote.go:263 — "// In place, atomic — the file keeps its status directory (promotion is"
+  evidence: internal/core/capture/promote_test.go:129 — "func TestPromoteWorksInAnyStatusAndKeepsFolder(t *testing.T) {"
+- ac-3 — MET: A promoted_to already present refuses before the mint and again under the lock, naming the existing intent id; the test and the CLI surface test both exercise the second run.
+  evidence: internal/core/capture/promote.go:157 — "return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing)"
+  evidence: internal/core/capture/promote_test.go:166 — "func TestPromoteRefusesAlreadyPromoted(t *testing.T) {"
+  evidence: internal/surface/cli/capture_surface_test.go:303 — "// Second promote refuses (exit non-zero) and names the existing intent."
+- ac-4 — MET: findIssue refuses a malformed id by shape and an unknown id by absence before anything is minted; the test proves zero drafts after each bad id and no stamp after a bad link target.
+  evidence: internal/core/capture/alloc.go:410 — "return "", "", fmt.Errorf("invalid iss-N identifier: %q", issID)"
+  evidence: internal/core/capture/promote_test.go:186 — "func TestPromoteUnknownOrMalformedIDWritesNothing(t *testing.T) {"
+  evidence: internal/core/capture/promote_test.go:193 — "t.Fatalf("Promote(%q) minted a draft on a structural fault", bad)"
+- ac-5 — MET: Mint precedes the stamp; a stamp failure returns the orphan draft path with the stamp-only remedy, --intent links an existing draft after verifying it exists, and the stamp runs inside withLedgerLock with a serialisation test.
+  evidence: internal/core/capture/promote.go:284 — ""%w — the minted draft %s (%s) is orphaned; complete the link with `abcd capture promote %s --intent %s --grounds %s`","
+  evidence: internal/core/capture/promote.go:189 — "rel, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)"
+  evidence: internal/core/capture/promote.go:227 — "stampErr := withLedgerLock(repoRoot, issuesRoot, func() error {"
+  evidence: internal/core/capture/promote_test.go:210 — "func TestPromoteStampFailureReportsOrphanAndLinkRepairs(t *testing.T) {"
+  evidence: internal/core/capture/promote_test.go:276 — "func TestPromoteSerializesOnLedgerLock(t *testing.T) {"
+- ac-6 — MET: The draft skeleton writes a bare promoted_from line when the draft graduated from a record, the intent reader parses it, and the mint test asserts the line on the minted draft.
+  evidence: internal/core/intent/create.go:424 — "b.WriteString("promoted_from: " + opts.PromotedFrom + "\n")"
+  evidence: internal/core/intent/intent.go:80 — "PromotedFrom string `json:"promoted_from,omitempty"`"
+  evidence: internal/core/capture/promote_test.go:113 — "if !strings.Contains(draft, "promoted_from: "+issID) {"
+- ac-7 — MET: PromoteResult carries issue id, intent id and both repo-relative paths under json tags, the CLI renders it through the shared marshaller under --json, and the surface test decodes the envelope and stats both reported paths.
+  evidence: internal/core/capture/promote.go:44 — "IssueID string `json:"issue_id"`"
+  evidence: internal/core/capture/promote.go:293 — "IssuePath: fsutil.RepoRel(repoRoot, stamped.path),"
+  evidence: internal/surface/cli/capture_surface_test.go:296 — "t.Fatalf("promote paths must be repo-relative and non-empty: %+v", r)"
+- ac-8 — MET_WITH_CONCERNS: The plugin page documents the native verb with no retyping paragraph and the capture surface's sub-verb table lists promote as shipped; concern: the naming register no longer carries a capture promote row at all (the only promote row left is the predecessor promote-check mode), so the design-target marker is gone by removal of the row rather than by editing it.
+  evidence: commands/capture.md:384 — "## Promote an issue into an intent"
+  evidence: commands/capture.md:394 — "One invocation mints a new intent draft under"
+  evidence: .abcd/development/brief/04-surfaces/06-capture.md:31 — "| `promote` | — | shipped |"
+  evidence: .abcd/development/brief/02-constraints/04-naming.md:186 — "| `promote-check mode` | **(predecessor vocabulary; superseded by the native spec store"
+
+Gap audit:
+- honoured:
+  - one invocation mints the draft and stamps the issue, with the trail in both directions
+    evidence: internal/core/capture/promote.go:84 — "// Promote graduates an issue into an intent without retyping"
+    evidence: internal/core/capture/promote_test.go:76 — "func TestPromoteMintsDraftAndStampsIssue(t *testing.T) {"
+  - the promote moment stays one cheap command; the press release is a placeholder filled at planning
+    evidence: internal/core/intent/create.go:447 — "b.WriteString("> " + seedNote(opts) + "\n\n")"
+  - a post-mint failure names the orphan and the stamp-only remedy
+    evidence: internal/core/capture/promote.go:283 — "return PromoteResult{}, fmt.Errorf("
+- diverged:
+  - the naming register drops the design-target marker on capture promote
+    evidence: .abcd/development/brief/02-constraints/04-naming.md:186 — "| `promote-check mode` |"
+    evidence: .abcd/development/brief/02-constraints/04-naming.md:154 — "Where the machinery a row describes is a design target rather than shipped behaviour, the row says **(staged)**"
+- missing: (none)

@@ -9,6 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (intent audit request, spec close receipt)"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: record the closing commit on the receipt at spec close or sanction tree audits; itd-2609201916151817 carries a range only for build lanes). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 The fidelity-review request names its delivered side as "the diff/commit range that realised spc-N (host supplies the range)", and there is no mechanism by which the host can supply it.

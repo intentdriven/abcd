@@ -19,7 +19,7 @@ severity: major
 
 ## Why This Matters
 
-Today `abcd ahoy` reports abcd's own install-plumbing gaps (config, rules, marker block, history store) and is silent on the *convention* gaps `prepare-this-repo` exists to fix — a missing committed `.abcd/work/` tier, an absent `AGENTS.md` router, decisions leaking into the gitignored layer, docs drift, privacy hygiene. The onboarding audit is performed by an agent reading prose, not by the binary, so onboarding is glue rather than engine (captured as `iss-86`). `abcd audit` is the read-only surface that closes that gap: the binary checks the conventions, and `prepare-this-repo` consumes its result instead of hand-auditing. The same verb gates a repo's own CI via its exit code.
+Today `abcd ahoy` reports abcd's own install-plumbing gaps (config, rules, marker block, history store) and is silent on the *convention* gaps `prepare-this-repo` exists to fix — a missing committed `.abcd/work/` tier, an absent `AGENTS.md` router, decisions leaking into the gitignored layer, docs drift, privacy hygiene. The onboarding audit is performed by an agent reading prose, not by the binary, so onboarding is glue rather than engine (captured as `iss-86`). `abcd audit` is the read-only surface that closes that gap: the binary checks the conventions, and `prepare-this-repo` consumes its result instead of hand-auditing. Its tri-state exit code lets a repository wire it into CI, though abcd's own CI does not run its conformance check; making a narrow, high-precision subset of its findings merge-blocking is ruled (2026-09-23, iss-2608231000561060) and not yet built.
 
 ## What's In Scope
 

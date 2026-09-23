@@ -7,6 +7,8 @@ category: "future-work-seed"
 source: "user-observation"
 found_during: "manual-capture"
 found_at: ".abcd/development/principles/adversarial-review-scales-with-blast-radius.md"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: adversarial-review receipts that intent ready reports and plan refuses without; no planned intent). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 The adversarial-review principle has no armed detector: adversarial-review-scales-with-blast-radius requires two independent reviews before an intent moves drafts/ to planned/ (and one before an ADR is accepted), but nothing refuses the move without them. The enforceable rung: intent ready (and the record checks) refuse the transition unless review receipts exist in the .abcd/work/reviews/ VSA shape for the draft at its reviewed content hash
