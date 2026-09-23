@@ -198,9 +198,73 @@ voluntary declaration cannot reach someone who declines to declare.
 
 _None yet: the intent has not shipped._
 
-<!-- abcd-review: OWED receipt=rcp-600cc27b0c43 -->
-Fidelity review OWED (receipt rcp-600cc27b0c43).
+<!-- abcd-review: INGESTED receipt=rcp-600cc27b0c43 -->
+Fidelity review — receipt rcp-600cc27b0c43 (verifier intent-auditor claude-fable-5-1).
 
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:eb995a6229933334408bd589e5d78f4bf0f3a96f316cc1a0d3bee7ad482e769d
+Input attestations: diff:8486c141..97e8ce1a (PR #667, merged 0c0ca52d; tree read at cede78b8)@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: a Delivers: id absent from the set entering shipped/ is a refusal, and the planned-with-open-spec branch names `abcd spec close <spc-N>` for each open spec; the cases script asserts the refusal text down to the close command
+  evidence: scripts/check-issue-resolution.sh:415 — "printf '%s\n' "$shipped" | grep -qx "$id" && return 0"
+  evidence: scripts/check-issue-resolution.sh:451 — "Close them in this change ($cmds)"
+  evidence: scripts/check-issue-resolution-cases.sh:792 — "expect_refusal_naming "$d" "RS005 trailer, intent left in planned/ with its spec open""
+- ac-2 — MET: every id on every Delivers: line is judged by check_delivery in turn, and the cases assert three unshipped intents across two trailer lines are each named and counted as their own violation
+  evidence: scripts/check-issue-resolution.sh:586 — "check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind""
+  evidence: scripts/check-issue-resolution-cases.sh:826 — "Delivers: itd-7, itd-8"
+  evidence: scripts/check-issue-resolution-cases.sh:834 — "expect_refusal_naming "$d" "RS005 counts every unshipped intent as its own violation""
+- ac-3 — MET: the rule is keyed on the trailer, and a case commits an edit to a planned record with open specs all around and no trailer, expecting a pass
+  evidence: scripts/check-issue-resolution.sh:216 — "change that declares no delivery is refused nothing (the intent's criterion"
+  evidence: scripts/check-issue-resolution-cases.sh:844 — "expect pass "$d" "RS005 no trailer, planned intents with open specs are not refused""
+- ac-4 — MET: an id with no record at head or base, one already in shipped/ before the branch, and one shipped on the base side after divergence are three distinct refusals, each case-held and each asserted not to prescribe the wrong remedy
+  evidence: scripts/check-issue-resolution.sh:425 — "fail "$says $id has no record at $head or at $base."
+  evidence: scripts/check-issue-resolution.sh:436 — "the trailer names an intent delivered before this commit. Drop the trailer.""
+  evidence: scripts/check-issue-resolution-cases.sh:853 — "expect_refusal_naming "$d" "RS005 on an id with no record anywhere says so""
+  evidence: scripts/check-issue-resolution-cases.sh:864 — "expect_refusal_naming "$d" "RS005 on an intent already shipped before the branch says to drop the trailer""
+- ac-5 — MET: RS005 reuses RS001's fail helper and exit path, and the cases script normalises one RS001 and one RS005 refusal through a single pattern and requires them byte-identical, exit code included
+  evidence: scripts/check-issue-resolution.sh:224 — "fail() {"
+  evidence: scripts/check-issue-resolution-cases.sh:1042 — "# Criterion 5: the intent rule's refusal has the issue rule's shape and exit"
+  evidence: scripts/check-issue-resolution-cases.sh:1068 — "if [ "$shape_iss" != "$shape_itd" ]; then"
+  evidence: scripts/check-issue-resolution-cases.sh:1071 — "grep -qx 'exit=1'"
+- ac-6 — MET: the gate is armed in CI and preflight over the PR range, fires only on a trailer, and the record states in both the intent and the spec that clearing the standing backlog is a separate act handed to its own issue
+  evidence: .github/workflows/ci.yml:473 — "bash scripts/check-issue-resolution.sh commits "$BASE_SHA" HEAD"
+  evidence: Makefile:183 — "@bash scripts/check-issue-resolution.sh commits origin/main HEAD"
+  evidence: scripts/check-issue-resolution-cases.sh:837 — "# Criterion 3 and 6: no trailer, no refusal — even with planned intents whose"
+  evidence: .abcd/development/specs/closed/spc-2609120450289528-a-gate-catches-the-intent-whose-work-is-live-while-its-spec.md:29 — "Clearing the standing 61, which this gate"
+
+Gap audit:
+- honoured:
+  - one trailer, one rule, beside RS001 at merge time
+    evidence: scripts/check-issue-resolution.sh:208 — "DELIVERS_RE='^Delivers:[[:space:]]+itd-[0-9]+([[:space:]]*,[[:space:]]*itd-[0-9]+)*[[:space:]]*$'"
+    evidence: .github/workflows/ci.yml:465 — "Declared resolutions and deliveries move the record, mentions declare themselves (RS001/RS002/RS004/RS005)"
+  - a planned intent with spec_id: null is told it has no spec to close rather than a command that cannot run
+    evidence: scripts/check-issue-resolution.sh:457 — "with no spec to close (spec_id: null, and no open spec names it), so no close can ship it"
+  - the trailer means the change finishes the intent, and the contributor guide says so
+    evidence: CONTRIBUTING.md:67 — "`Delivers: itd-N` for an intent the change **finishes** — not one it"
+  - the gate reads the intent and spec stores from declared paths
+    evidence: internal/core/lint/preflightgates_test.go:340 — "func TestIssueResolutionGateReadsTheIntentAndSpecStores"
+- diverged:
+  - the trailer is matched exactly as RS001 matches its own: delivered wider, refusing a near-miss spelling that carries an id-shaped token rather than passing it over
+    evidence: scripts/check-issue-resolution.sh:579 — "carries a delivery line RS005 cannot read"
+    evidence: scripts/check-issue-resolution-cases.sh:994 — "for spelling in "Delivers: spc-7" "delivers: itd-7" "Delivers: itd-7 and itd-8"; do"
+  - the ordinary refusal names the intent's spec_id: delivered as every open spec whose back-link names the intent, per the 1:n rule
+    evidence: scripts/check-issue-resolution.sh:451 — "with $n spec(s) still open that name it ($list)"
+    evidence: scripts/check-issue-resolution-cases.sh:946 — "expect_refusal_naming "$d" "RS005 names the remainder spec still open""
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609120450285738 — untested: whether authors write the trailer or omit it to dodge the gate is what the cycle after arming measures; nothing in the delivered diff exercises it
+- cond-2609120450285806 — survived: the rule runs in the record-lint job on the pull request's base sha and on the merge-queue entry, and in preflight against origin/main, so the refusal reaches the author before the merge
+  evidence: .github/workflows/ci.yml:467 — "BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
+  evidence: Makefile:183 — "@bash scripts/check-issue-resolution.sh commits origin/main HEAD"
+- cond-2609120450285032 — survived: the trailer is defined as the finishing change's, the guide tells a multi-PR author to write it on the last one, and the gate judges the whole range so a close in a later commit of the same change passes
+  evidence: CONTRIBUTING.md:68 — "contributes to, since an intent that arrives across several pull requests is"
+  evidence: scripts/check-issue-resolution-cases.sh:815 — "expect pass "$d" "RS005 trailer with the close in a later commit of the range""
+- cond-2609120450283625 — survived: closing a spec is still one command with no sign-off, and the refusal names exactly that command
+  evidence: commands/intent.md:378 — "spec close < spc-N> --json # open/ -> closed/, and planned/ -> shipped/ when it was the last open spec"
+  evidence: scripts/check-issue-resolution.sh:475 — "Close its spec in this change (abcd spec close < spc-N>) or drop the trailer."
 ## Grounds
 
 - pursued: we expect the gate to measure what people actually get wrong, and that measurement is what decides whether the retirement verbs are worth building at all — which is why it was chosen ahead of them rather than beside them. What would show this wrong is a cycle of refusals that cluster on something neither the gate nor a verb addresses, meaning the forgotten close was a symptom and we treated it as the disease.
