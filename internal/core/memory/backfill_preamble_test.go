@@ -36,6 +36,8 @@ func TestBackfillLegacyAsksTheParserNotTheBytePrefix(t *testing.T) {
 		{"comment_led_frontmatter", "note_finance_q3-revenue.md", commentLed},
 		{"indented_opening_delimiter", "note_finance_q3-margin.md", indentedOpen},
 		{"comment_led_unterminated", "note_finance_q3-costs.md", commentLedUnterminated},
+		// iss-2608291814565781: a byte-order mark ahead of the delimiter.
+		{"bom_led_frontmatter", "note_finance_q3-tax.md", "\ufeff" + indentedOpen[1:]},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
