@@ -123,6 +123,15 @@ func TestSmokeLightResolvesAPinnedArchiveToThePayloadRoot(t *testing.T) {
 		t.Errorf("an archive source resolves to the payload root, got %+v", mp)
 	}
 
+	// One listing is one assertion, whichever source it names: the same
+	// payload listed through a relative path must count exactly as many checks,
+	// or Checked overstates the assurance an archive listing earned.
+	relRoot := t.TempDir()
+	writeSurfaceFixture(t, relRoot, map[string]string{})
+	if rel := SmokeLight(bundleTreeFor(t, relRoot)); report.Checked != rel.Checked {
+		t.Errorf("an archive listing counted %d checks, the same payload through a relative path %d", report.Checked, rel.Checked)
+	}
+
 	// The name check still bites: an archive listed under another name would
 	// not resolve as an install id.
 	writeFile(t, root, ".claude-plugin/marketplace.json", `{"name": "m", "plugins": [{"name": "other", "source": `+pin+`}]}`)

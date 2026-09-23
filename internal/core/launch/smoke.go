@@ -85,7 +85,7 @@ func SmokeLight(tree PayloadTree) SmokeReport {
 			// The pin's SHAPE is judged here, offline; whether its digest is the
 			// digest of this payload's archive is the release gate's judgement
 			// (VerifyArchivePin), which re-renders the archive to answer it.
-			report.Checked++
+			// The listing is counted once, below, with its manifest check.
 			if err := validatePin(*mp.Pin); err != nil {
 				report.Findings = append(report.Findings, SmokeFinding{
 					Kind:   findingArchivePinMalformed,
