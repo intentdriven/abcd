@@ -52,6 +52,40 @@ func summarise(blob string, id string) (title, summary string) {
 	return title, firstParagraph(body)
 }
 
+// pressReleaseHeadingRe matches the `## Press Release` section heading, in
+// either capitalisation the record carries.
+var pressReleaseHeadingRe = regexp.MustCompile(`(?i)^##\s+press\s+release\s*$`)
+
+// pressReleaseSection returns the body of the record's `## Press Release`
+// section: every line after its heading up to the next heading of level one or
+// two, trimmed of surrounding blank lines. It returns "" when the record has no
+// such section. The text is returned as written (blockquote markers and line
+// breaks kept), because it is the source a quote is verified against and the
+// verifier owns the normalisation.
+func pressReleaseSection(blob string) string {
+	lines := strings.Split(blob, "\n")
+	body := lines[bodyStart(lines):]
+	start := -1
+	for i, raw := range body {
+		if pressReleaseHeadingRe.MatchString(strings.TrimRight(raw, "\r ")) {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	var out []string
+	for _, raw := range body[start:] {
+		line := strings.TrimRight(raw, "\r")
+		if strings.HasPrefix(line, "# ") || strings.HasPrefix(line, "## ") {
+			break
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
 // bodyStart returns the index of the first line after the frontmatter block, or
 // 0 when the document has none. The block is delimited by the first TWO `---`
 // lines, exactly as internal/core/frontmatter reads it, so the two never

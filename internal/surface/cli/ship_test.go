@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -130,11 +131,27 @@ func composedPayload(t *testing.T, dir, nextTag string, ids ...string) string {
 			"text":    "**Something shipped.** " + id + " landed.",
 		})
 	}
+	// The release page tells every intent the payload cites, in one headline.
+	var intents []string
+	for _, id := range ids {
+		if strings.HasPrefix(id, "itd-") {
+			intents = append(intents, id)
+		}
+	}
+	var page any
+	if len(intents) > 0 {
+		page = map[string]any{
+			"headlines": []map[string]any{{"records": intents, "text": "What shipped in this release."}},
+			"listed":    []string{},
+			"quotes":    []any{},
+		}
+	}
 	data, err := json.Marshal(map[string]any{
-		"schema_version": 1,
+		"schema_version": 2,
 		"prompt_version": "1.0.0",
 		"next_tag":       nextTag,
 		"entries":        entries,
+		"press_release":  page,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -216,10 +233,14 @@ func TestLaunchShipIngestBijectionExits2(t *testing.T) {
 	if code := exitCodeOf(err); code != 2 {
 		t.Fatalf("exit = %d, want 2\n%s", code, out)
 	}
-	for _, want := range []string{"MISSING", "iss-51", "nothing was written"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %q", err.Error(), want)
+	// The reasons are rendered once, on stdout; the error line points at them.
+	for _, want := range []string{"MISSING", "iss-51"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the render does not mention %q:\n%s", want, out)
 		}
+	}
+	if !strings.Contains(err.Error(), "nothing was written") {
+		t.Errorf("error %q does not say nothing was written", err.Error())
 	}
 	if after := cliTreeDigest(t, r.Root()); after != before {
 		t.Error("a refused ingest changed the working tree")
@@ -252,6 +273,9 @@ func TestLaunchShipIngestOnARefusedCutExits1(t *testing.T) {
 func TestChangelogPreviewWritesNothing(t *testing.T) {
 	r := shipFixture(t)
 	r.Write(".abcd/development/intents/shipped/itd-73-x.md", "---\nid: itd-73\nimpact: additive\n---\n# x\n")
+	// A standing release page, so the digest proves the preview neither
+	// rewrites it nor archives it.
+	r.Write("RELEASE.md", "# Release 0.4.0 (2026-07-01)\n\nThe base. (itd-1)\n")
 	r.Commit("ship an intent")
 
 	before := cliTreeDigest(t, r.Root())
@@ -429,5 +453,198 @@ func TestRenderEntriesShowsAnUnreadableShippedIn(t *testing.T) {
 	if strings.Count(got, "still in this cut") != 1 {
 		t.Errorf("exactly one entry has a fault; got %d annotations.\n%s",
 			strings.Count(got, "still in this cut"), got)
+	}
+}
+
+// TestChangelogPreviewListsThePageSet: the read-only preview names the intents
+// the release page will be composed from, and marks them in the entry list.
+func TestChangelogPreviewListsThePageSet(t *testing.T) {
+	r := shipFixture(t)
+	r.Write(".abcd/development/intents/shipped/itd-73-x.md",
+		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n")
+	r.Write(".abcd/development/intents/shipped/itd-97-y.md", "---\nid: itd-97\nimpact: internal\n---\n# Plumbing\n")
+	r.Write(".abcd/work/issues/resolved/iss-51-crash.md", "---\nid: iss-51\nimpact: fix\n---\n# x\n")
+	r.Commit("ship a mixed cut")
+
+	out, err := shipIn(t, r, "changelog")
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code, out)
+	}
+	got := string(out)
+	if !strings.Contains(got, "release page: 1 intent(s)") {
+		t.Errorf("the preview does not count the page set:\n%s", got)
+	}
+	_, block, _ := strings.Cut(got, "release page:")
+	if !strings.Contains(block, "itd-73") || strings.Contains(block, "itd-97") || strings.Contains(block, "iss-51") {
+		t.Errorf("the page block lists the wrong records:\n%s", block)
+	}
+	if !strings.Contains(got, "A Version Is A Fact  (on the release page)") {
+		t.Errorf("the entry list does not mark the page's intent:\n%s", got)
+	}
+
+	jsonOut, err := shipIn(t, r, "changelog", "--json")
+	if exitCodeOf(err) != 0 || !strings.Contains(string(jsonOut), `"in_press_release": true`) {
+		t.Errorf("changelog --json does not carry in_press_release:\n%s", jsonOut)
+	}
+}
+
+// TestChangelogPreviewSaysNoPageForAFixesOnlyCut: with no user-facing intent the
+// preview says no page will be written, and why.
+func TestChangelogPreviewSaysNoPageForAFixesOnlyCut(t *testing.T) {
+	r := shipFixture(t)
+	r.Write(".abcd/work/issues/resolved/iss-51-crash.md", "---\nid: iss-51\nimpact: fix\n---\n# x\n")
+	r.Commit("a fix alone")
+
+	out, err := shipIn(t, r, "changelog")
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s", code, out)
+	}
+	if !strings.Contains(string(out), "release page: none (no user-facing intent shipped; RELEASE.md stays as it is)") {
+		t.Errorf("the preview does not say no page will be written:\n%s", out)
+	}
+}
+
+// TestLaunchShipFixesOnlyReportsNoPage: a fixes-only ship writes the changelog,
+// leaves RELEASE.md alone, and says why in the report.
+func TestLaunchShipFixesOnlyReportsNoPage(t *testing.T) {
+	r := shipFixture(t)
+	r.Write("RELEASE.md", "# Release 0.4.0 (2026-07-01)\n\nThe base. (itd-1)\n")
+	r.Write(".abcd/work/issues/resolved/iss-51-crash.md", "---\nid: iss-51\nimpact: fix\n---\n# x\n")
+	r.Commit("a fix alone")
+	payload := composedPayload(t, t.TempDir(), "v0.4.1", "iss-51")
+
+	out, err := shipIn(t, r, "launch", "ship", "--changelog-json", payload)
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s\n%v", code, out, err)
+	}
+	if !strings.Contains(string(out), "No release page written: no user-facing intent shipped in this cut; RELEASE.md stays on 0.4.0") {
+		t.Errorf("the report does not say why no page was written:\n%s", out)
+	}
+	data, err := os.ReadFile(filepath.Join(r.Root(), "RELEASE.md"))
+	if err != nil || string(data) != "# Release 0.4.0 (2026-07-01)\n\nThe base. (itd-1)\n" {
+		t.Errorf("RELEASE.md changed on a fixes-only ship: %q (%v)", data, err)
+	}
+}
+
+// TestLaunchShipWritesTheReleasePage: a feature ship reports the page it wrote.
+func TestLaunchShipWritesTheReleasePage(t *testing.T) {
+	r := shipReadyRepo(t)
+	payload := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+
+	out, err := shipIn(t, r, "launch", "ship", "--changelog-json", payload)
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("exit = %d, want 0\n%s\n%v", code, out, err)
+	}
+	for _, want := range []string{"page:", "RELEASE.md", "# Release 0.4.1 (", "1 headline(s), 0 listed, 0 quote(s)"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the report does not mention %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestLaunchShipPayloadRefusalJSON pins the retry loop's machine seam: a refused
+// payload exits 2 WITH a payload_refusal carrying stable codes (recompose), and
+// the tree is untouched.
+func TestLaunchShipPayloadRefusalJSON(t *testing.T) {
+	r := shipReadyRepo(t)
+	path := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := strings.Replace(string(data), `"What shipped in this release."`, `"# A forged heading"`, 1)
+	if err := os.WriteFile(path, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	before := cliTreeDigest(t, r.Root())
+	out, err := shipIn(t, r, "launch", "ship", "--changelog-json", path, "--json")
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("exit = %d, want 2\n%s", code, out)
+	}
+	var got struct {
+		Written        bool `json:"written"`
+		PayloadRefusal *struct {
+			Reasons []struct {
+				Code   string `json:"code"`
+				At     string `json:"at"`
+				Detail string `json:"detail"`
+			} `json:"reasons"`
+		} `json:"payload_refusal"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("the refusal is not JSON: %v\n%s", err, out)
+	}
+	if got.Written || got.PayloadRefusal == nil || len(got.PayloadRefusal.Reasons) == 0 {
+		t.Fatalf("written=%v refusal=%+v, want an unwritten payload_refusal", got.Written, got.PayloadRefusal)
+	}
+	if r0 := got.PayloadRefusal.Reasons[0]; r0.Code != "heading" || r0.At == "" || r0.Detail == "" {
+		t.Errorf("reason = %+v, want a heading reason with a path and a detail", r0)
+	}
+	if after := cliTreeDigest(t, r.Root()); after != before {
+		t.Error("a refused payload changed the working tree")
+	}
+
+	// A STOP carries no payload_refusal: the repository, not the composer, is at
+	// fault, and no rewrite can fix it.
+	r.Write("RELEASE.md", "a hand-written page\n")
+	r.Commit("a release page with no heading")
+	stop, err := shipIn(t, r, "launch", "ship", "--changelog-json", composedPayload(t, t.TempDir(), "v0.4.1", "itd-73"), "--json")
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("exit = %d, want 2\n%s", code, stop)
+	}
+	if strings.Contains(string(stop), "payload_refusal") {
+		t.Errorf("a structural stop carries payload_refusal, which tells the host to recompose:\n%s", stop)
+	}
+}
+
+// TestLaunchShipPayloadRefusalPrintsReasonsOnce: in human mode a refused
+// payload's reasons are rendered on stdout with the cut; stderr carries one
+// summary line pointing at them, not the same list a second time.
+func TestLaunchShipPayloadRefusalPrintsReasonsOnce(t *testing.T) {
+	r := shipReadyRepo(t)
+	path := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	broken := strings.Replace(string(data), `"What shipped in this release."`, `"# A forged heading"`, 1)
+	if err := os.WriteFile(path, []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(r.Root())
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"launch", "ship", "--changelog-json", path}, &stdout, &stderr); code != 2 {
+		t.Fatalf("exit = %d, want 2\nstdout:\n%s\nstderr:\n%s", code, &stdout, &stderr)
+	}
+	if n := strings.Count(stdout.String(), "[heading]"); n != 1 {
+		t.Errorf("stdout names the heading reason %d time(s), want 1:\n%s", n, &stdout)
+	}
+	if strings.Contains(stderr.String(), "[heading]") {
+		t.Errorf("stderr repeats the reasons stdout already rendered:\n%s", &stderr)
+	}
+	if !strings.Contains(stderr.String(), "refused") {
+		t.Errorf("stderr carries no refusal summary:\n%s", &stderr)
+	}
+}
+
+// TestLaunchPageNamesEveryRefusalCode pins the command page to the binary: the
+// retry loop it documents names every reason code the ingest can return, has no
+// attempt limit, and reports every refused attempt.
+func TestLaunchPageNamesEveryRefusalCode(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "commands", "launch.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(data)
+	for _, code := range release.ReasonCodes {
+		if !strings.Contains(page, "`"+string(code)+"`") {
+			t.Errorf("commands/launch.md does not name the refusal code `%s`", code)
+		}
+	}
+	for _, want := range []string{"no attempt limit", "report every refused attempt", "payload_refusal"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("commands/launch.md does not say %q", want)
+		}
 	}
 }

@@ -67,6 +67,14 @@ type Entry struct {
 	// direction already holds: the record stays, so the worst outcome is a
 	// redundant changelog line rather than a missing one.
 	ShippedInErr string `json:"shipped_in_err,omitempty"`
+	// InPressRelease reports whether the release page must cite this record:
+	// changelog.RecordSet.PressReleaseRequired, carried per entry for the reason
+	// InChangelog is — the host must never re-derive the rule.
+	InPressRelease bool `json:"in_press_release"`
+	// pressRelease is the record's `## Press Release` section, the source a
+	// page quote is verified against. Unexported, so it never enters the cut
+	// JSON: the composer reads the record at its path, as it always has.
+	pressRelease string
 }
 
 // RefusalKind classifies why a cut cannot proceed. The string values are the
@@ -183,8 +191,8 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 		Bumped:    derivation.Bumped,
 		Impact:    derivation.Bump,
 		DecidedBy: decidedBy(derivation),
-		Added:     entriesOf(derivation.Records.Added),
-		Removed:   entriesOf(derivation.Records.Removed),
+		Added:     entriesOf(derivation.Records.Added, derivation.Records.PressReleaseRequired()),
+		Removed:   entriesOf(derivation.Records.Removed, nil),
 	}
 	if derivation.Refused {
 		cut.Refusals = []Refusal{derivationRefusal(derivation)}
@@ -427,8 +435,13 @@ func decidedBy(d changelog.Derivation) []string {
 	return out
 }
 
-// entriesOf projects records into the composer's view of them.
-func entriesOf(records []changelog.Record) []Entry {
+// entriesOf projects records into the composer's view of them, marking the
+// ones the release page must cite.
+func entriesOf(records []changelog.Record, pageSet []changelog.Record) []Entry {
+	onPage := make(map[string]bool, len(pageSet))
+	for _, rec := range pageSet {
+		onPage[rec.Path] = true
+	}
 	out := make([]Entry, 0, len(records))
 	for _, rec := range records {
 		out = append(out, Entry{
@@ -439,6 +452,9 @@ func entriesOf(records []changelog.Record) []Entry {
 			Summary:      rec.Summary,
 			InChangelog:  rec.InChangelog(),
 			ShippedInErr: rec.ShippedInErr,
+
+			InPressRelease: onPage[rec.Path],
+			pressRelease:   rec.PressRelease,
 		})
 	}
 	return out

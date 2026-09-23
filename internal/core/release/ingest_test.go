@@ -45,13 +45,32 @@ func goodEntries() []ChangelogEntry {
 	}
 }
 
+// marshalPayload builds a payload from changelog entries, with the release page
+// every intent those entries cite would need: one headline telling them all. A
+// test whose cut carries an intent the page must NOT cite builds its page with
+// marshalPage instead.
 func marshalPayload(t *testing.T, nextTag string, entries []ChangelogEntry) []byte {
 	t.Helper()
+	var intents []string
+	seen := map[string]bool{}
+	for _, e := range entries {
+		for _, id := range e.Records {
+			if strings.HasPrefix(id, "itd-") && !seen[id] {
+				seen[id] = true
+				intents = append(intents, id)
+			}
+		}
+	}
+	var page *PressReleasePayload
+	if len(intents) > 0 {
+		page = &PressReleasePayload{Headlines: []Headline{{Records: intents, Text: "What shipped."}}}
+	}
 	data, err := json.Marshal(ChangelogPayload{
 		SchemaVersion: ChangelogSchemaVersion,
 		PromptVersion: "1.0.0",
 		NextTag:       nextTag,
 		Entries:       entries,
+		PressRelease:  page,
 	})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
@@ -290,7 +309,10 @@ func TestIngestRequiresAnUnlabelledRemovedRecord(t *testing.T) {
 	// Removed is a claim about the previous release's surface, which the composer
 	// cannot see (iss-2609011207114761).
 	cited := append(omitted, ChangelogEntry{Section: SectionAdded, Records: []string{"itd-40"}, Text: "superseded by the derived cut."})
-	res, err = Ingest(r.Root(), liveSurface(), marshalPayload(t, "v0.4.1", cited), cutAt)
+	// The removed intent is cited by the changelog and not by the page: a
+	// removed intent is not announced.
+	page := &PressReleasePayload{Headlines: []Headline{{Records: []string{"itd-73"}, Text: "Derived versions."}}}
+	res, err = Ingest(r.Root(), liveSurface(), marshalPage(t, "v0.4.1", cited, page), cutAt)
 	if err != nil {
 		t.Fatalf("Ingest refused an honest payload that cites the unlabelled removed record: %v", err)
 	}
@@ -344,7 +366,7 @@ func TestIngestPayloadGuards(t *testing.T) {
 		},
 		{
 			name: "an unknown field — the agent invented a key",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1","surprise":true,` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1","surprise":true,` +
 				`"entries":[{"section":"Added","records":["itd-73"],"text":"x"}]}`,
 			wantSaid: "surprise",
 		},
@@ -360,47 +382,47 @@ func TestIngestPayloadGuards(t *testing.T) {
 		},
 		{
 			name:     "no prompt_version",
-			raw:      `{"schema_version":1,"next_tag":"v0.4.1","entries":[]}`,
+			raw:      `{"schema_version":2,"next_tag":"v0.4.1","entries":[]}`,
 			wantSaid: "prompt_version",
 		},
 		{
 			name:     "composed against a different version",
-			raw:      `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v9.9.9","entries":[]}`,
+			raw:      `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v9.9.9","entries":[]}`,
 			wantSaid: "v0.4.1",
 		},
 		{
 			name: "an unregistered Keep-a-Changelog section",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Miscellaneous","records":["itd-73"],"text":"x"}]}`,
 			wantSaid: "Miscellaneous",
 		},
 		{
 			name: "a malformed record id",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Added","records":["../../etc/passwd"],"text":"x"}]}`,
 			wantSaid: "record id",
 		},
 		{
 			name: "a second JSON document tacked on the end",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Added","records":["itd-73"],"text":"x"}]} {"evil":true}`,
 			wantSaid: "trailing data",
 		},
 		{
 			name: "an unbounded record id, legal under the grammar",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Added","records":["itd-` + strings.Repeat("0", 5000) + `73"],"text":"x"}]}`,
 			wantSaid: "record id (max",
 		},
 		{
 			name: "an entry citing nothing",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Added","records":[],"text":"x"}]}`,
 			wantSaid: "cites no record",
 		},
 		{
 			name: "an entry with no prose",
-			raw: `{"schema_version":1,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
+			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Added","records":["itd-73"],"text":"   "}]}`,
 			wantSaid: "empty",
 		},
@@ -562,7 +584,7 @@ func TestIngestResultJSONShape(t *testing.T) {
 	if err := json.Unmarshal(data, &generic); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	for _, key := range []string{"cut", "written", "path", "heading", "lines", "cited"} {
+	for _, key := range []string{"cut", "written", "path", "heading", "lines", "cited", "page"} {
 		if _, ok := generic[key]; !ok {
 			t.Errorf("ingest JSON has no %q key: %s", key, data)
 		}

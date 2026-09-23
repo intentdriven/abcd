@@ -141,7 +141,7 @@ jobs:
           is_inert_path() {
             case "$1" in
               docs/*|.abcd/development/*|.abcd/work/*) return 0 ;;
-              README.md|CHANGELOG.md|CONTRIBUTING.md|SECURITY.md|ACKNOWLEDGEMENTS.md|LICENSE|LICENSE.md) return 0 ;;
+              README.md|CHANGELOG.md|RELEASE.md|CONTRIBUTING.md|SECURITY.md|ACKNOWLEDGEMENTS.md|LICENSE|LICENSE.md) return 0 ;;
               *) return 1 ;;
             esac
           }
