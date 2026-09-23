@@ -498,3 +498,22 @@ func TestAnOlderGitStillListsAndReadsThePeers(t *testing.T) {
 		t.Fatalf("rows = %+v, want iss-100", p.Rows)
 	}
 }
+
+// A worktree that is gone and whose branch is also merged is one spent peer,
+// not two: it is counted once, as gone, and its branch adds no second
+// "merged" entry for the same checkout.
+func TestAGoneWorktreeOnAMergedBranchIsCountedOnce(t *testing.T) {
+	f := newFixture(t)
+	gone := f.worktree("gone", "feat/gone") // at main's tip, so merged
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	rep := f.read()
+	if len(rep.Peers) != 0 {
+		t.Fatalf("a spent peer was read: %+v", rep.Peers)
+	}
+	if len(rep.Skipped) != 1 || rep.Skipped[0].Branch != "feat/gone" || rep.Skipped[0].Reason != peers.SkipGone {
+		t.Fatalf("skipped = %+v, want feat/gone once, as gone", rep.Skipped)
+	}
+}

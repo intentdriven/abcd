@@ -115,7 +115,9 @@ func read(root string, titles bool) (Report, error) {
 		// A worktree that is gone, or that git will not read, still leaves its
 		// branch in this repository's object store; the branch source reads it
 		// there rather than letting the dead worktree hide an unmerged commit.
-		if wt.branch != "" && !viaBranch {
+		// A merged branch has nothing that could hide, and the worktree is
+		// already counted, so it is not counted a second time as a branch.
+		if wt.branch != "" && (!viaBranch || merged[wt.branch]) {
 			checkedOut[wt.branch] = true
 		}
 		if skip != nil {
