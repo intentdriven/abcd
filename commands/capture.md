@@ -441,7 +441,8 @@ linked) `intent_id`, and both paths from the JSON.
 
 On the reading route `--intent` writes both edges: `promoted_from` on the draft
 and `promoted_to` on the item. It never touches the draft's `origin`, which was
-stamped at mint — a draft filed by hand stays `researcher-authored` and says so.
+stamped at mint — a draft filed from quoted text stays `researcher-authored` and
+says so.
 A draft whose `promoted_from` already names another record keeps it: an intent
 occasioned by several items is promoted from one and joined to the rest by their
 own `promoted_to`, so the item is still stamped forward and the result reports
