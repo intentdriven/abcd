@@ -3,10 +3,10 @@
 Know, before anyone else reads them, whether this repo's docs still describe
 the present: no prose narrating a change, no link that has stopped resolving,
 no markdown stranded at the repo root, and no cited source that nobody has
-checked in six months. `abcd docs lint` answers that in one read-only pass, so
+checked in six months. The currency lint answers that in one read-only pass, so
 it can run on every commit at no cost and gate a release without a network.
 
-The `cite` sub-tree is the writing half, and it is the only place abcd reaches
+The citation sub-tree is the writing half, and it is the only place abcd reaches
 the network on behalf of documentation. It runs when a maintainer asks, never
 in a gate, which is what keeps the lint itself deterministic and offline.
 
@@ -28,14 +28,14 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 | `lint` | lint | shipped |
 
 
-- **`docs lint`** reports the findings and writes nothing. The plugin command
-  invokes it with `--json` and summarises the result.
-- **`docs cite refresh`** fetches every cited URL once and rewrites the
+- **The lint** reports the findings and writes nothing. The plugin command
+  invokes its JSON form and summarises the result.
+- **The citation refresh** fetches every cited URL once and rewrites the
   committed citation baseline. Each URL gets exactly one bounded attempt with no
   retries, and no response body is read: liveness is judged from the status
   line. Sources that refuse automated fetchers are printed as a manual checklist
   rather than recorded as broken.
-- **`docs cite confirm`** records that a human verified a citation the fetcher
+- **The citation confirmation** records that a human verified a citation the fetcher
   could not read, either from named URLs or from a receipt file. Today the
   maintainer clears the printed checklist and names the URLs on the command line;
   the receipt form ships against a producer that does not exist yet, a generated
@@ -47,17 +47,17 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 Bare `abcd docs` prints command usage rather than a status board; the
 [surfaces index](README.md) carries the one enumeration of where the
 bare-status convention holds, and `docs` is not on it. The working verbs accept
-`--config` (the `docs-lint.json` to load) and `--root` (the repo to work over);
-the bare `cite` parent only routes and takes neither. That is what makes the
-refresh fetch exactly the set the gate demands receipts for.
+the `docs-lint.json` to load and the repo to work over; the bare citation parent
+only routes and takes neither. That is what makes the refresh fetch exactly the
+set the gate demands receipts for.
 
-**`docs lint --release-gate` promotes an overdue citation from a warning to a
+**The lint's release-gate mode promotes an overdue citation from a warning to a
 blocker, and arming it from a release is a design target.** The flag, not the
 committed config, is the trust root: a repo must not be able to defang its own
 release by editing `.abcd/docs-lint.json`, and an ordinary commit is never
 blocked by the calendar. Nothing in the release machinery passes it. The release
-workflow's docs-currency step, CI's, and the `docs-lint` make target each run a
-bare `abcd docs lint`, the scaffolded release template names the verb nowhere,
+workflow's docs-currency step, CI's, and the `docs-lint` make target each run
+the lint in its plain mode, the scaffolded release template names the verb nowhere,
 and `launch` computes its own citation preflight rather than shelling out. The
 promotion is reachable only by a human typing the flag.
 
@@ -81,7 +81,7 @@ promotion is reachable only by a human typing the flag.
   `.abcd/citations-baseline.json` (no cited URL without a receipt, none recorded
   broken, none whose recorded final address has drifted from what the page
   cites, and a staleness warning past 180 days). All of it reads committed
-  files; the fetching lives in `cite refresh`.
+  files; the fetching lives in the citation refresh.
 - **Host-agnostic prose.** User-facing docs must not name a specific agent
   harness or bundled tool. This repo's config defines a family of `harness/*`
   banned tokens, each a blocker, so the published surface stays host-agnostic;
@@ -98,22 +98,22 @@ promotion is reachable only by a human typing the flag.
 
 ## Output
 
-The `--json` payload carries `blockers` (a count) and `findings` (each with
+The JSON payload carries `blockers` (a count) and `findings` (each with
 `File`, `Line`, `RuleID`, `Severity`, `Message`). A `blockers` value of zero
 means the docs are currency-clean. The command exits non-zero when a blocker is
 present, so it composes directly into CI and the release gate.
 
 ## Composition
 
-`docs lint` is the deterministic, fast, always-runnable currency check. The
+The currency lint is the deterministic, fast, always-runnable currency check. The
 `docs-currency-reviewer` agent is its semantic complement: it verifies that
 every user-facing claim still matches the code, which a structural lint cannot.
 The release gate runs both.
 
-`cite refresh` composes with the gate by separation: the gate stays
+The citation refresh composes with the gate by separation: the gate stays
 deterministic because the fetching happens elsewhere and arrives as a committed
 record a reviewer reads in a diff. The baseline's age surfaces at `abcd ahoy`
-and in the `abcd launch --dry-run` preflight, which names what the citation
+and in the launch preview's preflight, which names what the citation
 baseline would stop a release on while a release still cuts.
 
 ## References
@@ -121,3 +121,52 @@ baseline would stop a release on while a release still cuts.
 - Plugin command: [`commands/docs.md`](../../../../commands/docs.md)
 - Lint engine: `internal/core/lint`
 - The documentation invariants it enforces: [`../02-constraints`](../02-constraints)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd docs`
+
+Sub-verbs: `abcd docs cite`, `abcd docs lint`.
+
+Flags: none.
+
+### `abcd docs cite`
+
+Sub-verbs: `abcd docs cite confirm`, `abcd docs cite refresh`.
+
+Flags: none.
+
+### `abcd docs cite confirm`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--receipt` | string |
+| `--root` | string |
+
+### `abcd docs cite refresh`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--root` | string |
+
+### `abcd docs lint`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--release-gate` | bool |
+| `--root` | string |
+
+<!-- surface-appendix:end -->

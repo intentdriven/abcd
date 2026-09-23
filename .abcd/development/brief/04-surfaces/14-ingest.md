@@ -12,9 +12,10 @@ the read side and the provenance recorder.
 
 It is a **host-delegated command**: a markdown workflow that runs in the host
 agent, with **no Go verb** behind it. There is no top-level `abcd ingest` verb,
-no bare-status render, and no CLI flags of its own. The `reading ingest`,
-`memory ingest` and `intent audit ingest` sub-verbs belong to other verbs and
-validate other inputs, never this corpus.
+no bare-status render, and no CLI flags of its own. The ingest sub-verbs of the
+reading and memory verbs, and the intent audit's own ingest path, belong to other
+verbs and validate other inputs, never this corpus.
+
 
 **Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
 on an unknown command, and because a command page of that name exists, the binary
@@ -88,3 +89,9 @@ corpus contract. The plugin page said otherwise until v0.8.0 and now says this.
 - Plugin command: [`commands/ingest.md`](../../../../commands/ingest.md)
 - Read side of the same corpus: [`13-consult.md`](13-consult.md)
 - Corpus contract: `~/.abcd/sources/README.md`
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+There is no shipped surface: the command tree registers no `abcd ingest` verb, so there are no flags and no sub-verbs to list.
+
+<!-- surface-appendix:end -->
