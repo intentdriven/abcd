@@ -2,13 +2,13 @@
 
 Cut a release without deciding anything by hand that the record already
 decides. `launch` reads what shipped since the last tag, derives the version
-from those records' declared impact, composes the changelog section from them,
-and refuses the cut outright when the record and the tree disagree. The version
+from those records' declared impact, composes the changelog section and the
+release page from them, and refuses the cut outright when the record and the tree disagree. The version
 is never typed, the changelog is never hand-written, and a release that would
 publish a compatibility lie does not happen.
 
 Two things bound what it will do. It publishes nothing: the shipped verb writes
-a dated changelog heading and stops, and CI and a human take it from there.
+a dated changelog heading and the release page and stops, and CI and a human take it from there.
 And it never ships the design record: the payload is default-deny with the whole
 `.abcd/` namespace excluded structurally, so no include line can put it back.
 
@@ -46,13 +46,32 @@ into a tag. Given a payload directory, it stages the versioned release payload, 
 derived version stamped into the payload's manifests and lockstep-proved before
 return.
 
+**A feature release arrives with a release page.** The same cut writes
+`RELEASE.md` at the repository root: a short press release for the release,
+composed by the same agent in the same payload from the press releases of the
+user-facing intents that entered `shipped/` since the last tag. The headline
+intents are told as prose, every other intent in that set is listed by its
+title, and each told intent's persona quote is carried word for word. The binary
+holds the page to the changelog's rule: every intent in the set cited exactly
+once and nothing outside it (never an issue, an internal intent, a removed
+intent or anything still planned), every quote matched against the press release
+it came from, the page checked against the outbound policy and the persona
+registry, and its heading naming the version it describes. The page it replaces
+moves first to `.abcd/development/releases/<version>.md`, then the new page is
+written, then the changelog heading, last; a later failure rolls the earlier
+writes back. A release of fixes alone writes no page and says why, so the page
+at the root is always the latest feature release. A refused payload is not a
+dead end: it comes back with every reason as data, and the host re-invokes the
+composer until the payload is valid, with no attempt limit and every refused
+attempt reported (itd-2609231013154443).
+
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
-`release-changelog-composer` agent. The deterministic emit alone is `abcd
+`release-changelog-composer` agent, including that retry loop. The deterministic emit alone is `abcd
 changelog`, read-only and prose-free.
 
 **Commit, tag and publish stay a design target** (itd-65's gate suite, itd-72's
 publishing). The verb neither commits, tags, nor publishes, so every step past
-the changelog heading is performed by a human and by CI. The dirty-tree and
+the changelog heading and the release page is performed by a human and by CI. The dirty-tree and
 documentation-warning overrides belong to that design and are not on the shipped
 verb. There is no version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).

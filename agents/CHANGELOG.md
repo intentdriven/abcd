@@ -124,6 +124,28 @@ reserved name refuses only as a key of the reader's own output. The reader's
 licence and every other instruction are unchanged; what changes is what the
 gate does with the output, and the definition now says so truthfully.
 
+## 0.4.0 — 2026-09-23 (itd-2609231013154443 — the release page)
+
+### release-changelog-composer 0.4.0
+
+MINOR, and a schema break: the payload moves to `schema_version` 2 and gains
+`press_release`, the release page the cut writes to `RELEASE.md`. The composer
+writes both documents in one pass, so one payload carries them and the binary
+validates both before anything is written. A new section tells the composer how
+to build the page from the entries marked `in_press_release`: the headline
+intents told as the user moment in their own press release's words, every other
+intent listed by id, each told intent's persona quote carried word for word with
+its attribution, and nothing forward-looking. A second new section describes the
+refusal loop: a refused payload returns every reason, the composer is re-invoked
+with them, and there is no attempt limit. The untrusted-data paragraph extends
+to the press releases the page quotes. Two fixtures join the canary:
+`injection-canary-press-release.json` (hostile text inside a press release) and
+`no-forecast.json` (a cut beside a planned intent carrying `target_release`),
+and `injection-canary.json` moves to schema 2; a test ingests each fixture's
+expected payload. It stays in the `0.x` band: the fixtures prove the expected
+output is valid and clean, not that a given model produces it. Unmeasured, as
+before.
+
 ## 0.3.0 — 2026-09-01 (iss-2609011207114761 — only Added and Fixed)
 
 ### release-changelog-composer 0.3.0
