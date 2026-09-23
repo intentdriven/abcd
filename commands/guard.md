@@ -50,14 +50,22 @@ On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
 `warn`, the command may run; surface the warning first so the user can stop it.
 
+The check reads the registry of the directory it runs in, and only that one.
+Run it from the directory the command will run in: a command headed for another
+repository can meet hazards that repository's `.abcd/guard.json` adds, and the
+check run from here does not see them. The hook, given a per-call working
+directory, reads both registries, so for such a command the two can answer
+differently.
+
 ## `hook` — the host adapter
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" guard hook
 ```
 
-Reads a host pre-tool-use hook payload on stdin and applies the same decision
-before a shell command executes. It is invoked by the plugin's hook manifest,
+Reads a host pre-tool-use hook payload on stdin and applies the check's
+decision before a shell command executes, adding the registry of a per-call
+working directory's repository when the host names one (below). It is invoked by the plugin's hook manifest,
 not by hand; a blocker returns the host's blocking status with the successor and
 the why as the message, and a warn or an allow lets the command run.
 
