@@ -53,7 +53,7 @@ Per-criterion verdicts:
   evidence: internal/core/site/check.go:1401 — "c.fail(CheckBaseline, where, "","
   evidence: internal/core/site/check_test.go:660 — "func TestCheckRefusesANewSupersedesDangle"
   evidence: internal/core/site/check_test.go:708 — "func TestSupersedesToAPrunedRecordStillCounts"
-- ac-2 — MET: a spec_id graph-field dangle reaches Health.Unresolved through the same walk and fails through the same c.fail; TestCheckRefusesADanglingSpecTarget writes an intent whose spec_id names spc-404 and asserts the CheckBaseline finding
+- ac-2 — MET: a spec_id graph-field dangle reaches Health.Unresolved through the same walk and fails through the same c.fail; TestCheckRefusesADanglingSpecTarget writes an intent whose spec_id names a spec no file answers to and asserts the CheckBaseline finding on that id
   evidence: internal/core/site/check_test.go:674 — "func TestCheckRefusesADanglingSpecTarget"
   evidence: internal/core/site/recordjson.go:425 — "for _, e := range graph.Dangling {"
   evidence: internal/core/site/check.go:1401 — "c.fail(CheckBaseline, where, "","
