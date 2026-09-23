@@ -67,11 +67,20 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 ```
 
 **This writes.** It applies the actionable gaps the detection pass found — the
-marker block, the `.abcd/` scaffolding, the owned `PATH` entry. Report the
+marker block (only where `--docs-target` names a conventions file; the
+default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Report the
 returned `status`, what changed, and any `notes` — a note is a refusal, stating
 something abcd deliberately did not do and why. The engine prompts before an
 ambiguous adoption, so surface any prompt to the user rather than answering it
 for them.
+
+A default install writes abcd's name into none of the repository's
+conventions files. The one mention of abcd it commits outside `.abcd/` is
+the pair of name-guard hooks (`.githooks/pre-commit`,
+`.githooks/pre-merge-commit`) and the fenced block in `.gitignore`: the hooks
+run the binary, the fence says not to hand-edit it, and both carry the marker
+that later runs recognise an adopted repository by. That is a deliberate,
+sanctioned exception, so do not offer to rename or strip it.
 
 The `PATH` entry goes to `~/.local/bin` (created when absent), or to an
 abcd-owned entry already on `PATH`, which is adopted exactly where it stands.

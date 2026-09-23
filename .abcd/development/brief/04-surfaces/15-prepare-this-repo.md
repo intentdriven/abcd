@@ -47,16 +47,18 @@ the binary does not make. The identity verb's initialiser records the identity b
 markdown itself, which stays the source of truth, plus `.abcd/positioning.json`,
 the pointer recording where that block lives and which surfaces render from it.
 The ahoy installer is the adopt phase's workhorse, and it does more than write
-the commit gates. In one run it plants abcd's own managed block in the repo's
-`CLAUDE.md` and `AGENTS.md` (both by default, and the target is choosable down to
-neither), writes the repo's settings file with its visibility, oracle backend and
-scan depth, writes its rule-loader overrides file, installs a copy of the binary
-on `PATH`, records the repo in the machine's own store, and offers to pin the git
-commit identity. It runs a second time, with the installer's attribution flag,
-where the user opts in: that run installs the committed `prepare-commit-msg`
-prompt asking every commit to declare whether a tool assisted it, and the choice
-is recorded, so a later install without the flag keeps the hook. The flag's
-spelling is ahoy's shape, so it lives in the generated appendix of
+the commit gates. In one run it writes the repo's settings file with its
+visibility, oracle backend and scan depth, writes its rule-loader overrides file,
+installs a copy of the binary on `PATH`, records the repo in the machine's own
+store, and offers to pin the git commit identity. It leaves `CLAUDE.md` and
+`AGENTS.md` as the repo wrote them: abcd's own managed rule-loader block names
+the tool, so it lands in either file, or both, only where the project chooses a
+docs target, and the repo classifies as managed on its registry entry without
+it. It runs a second time, with the installer's attribution flag, where the user
+opts in: that run installs the committed `prepare-commit-msg` prompt asking every
+commit to declare whether a tool assisted it, and the choice is recorded, so a
+later install without the flag keeps the hook. The flag's spelling, like the docs
+target's, is ahoy's shape, so it lives in the generated appendix of
 [`01-ahoy.md`](01-ahoy.md#appendix-the-shipped-surface) and is not repeated here.
 
 The identity verb's render is the follow-on surface and writes nothing: it proposes
@@ -91,12 +93,16 @@ then ratified ADRs, then everything else read for understanding only.
 
 ## Boundaries
 
-- **Self-contained output.** The working-conventions block written into
-  `AGENTS.md` reads as the repo's own: it names neither this command nor any
-  private repository, and it sits between dated markers so later tooling can find
-  and replace it. It is no longer strictly nameless, because the three-tier layout
-  it prescribes lives under `.abcd/`, so the tool's name is in every path it
-  states.
+- **Nameless, self-contained output.** The working-conventions block written
+  into `AGENTS.md` never mentions abcd, this command, or any private repository:
+  the conventions read as the repo's own, between dated markers so later tooling
+  can find and replace them. The paths it states into the `.abcd/` layout are
+  the one trace of the tool, and the adopter accepts that namespace by adopting
+  the layout. The install leaves the conventions files nameless as well. The
+  name-guard hooks and the `.gitignore` fence it commits are the one sanctioned
+  mention outside that namespace: the hooks run the binary, the fence warns
+  against hand-editing, and both keep the markers detection finds an adopted
+  repository by (the product thinker's ruling of 2026-09-23).
 - **Never commit downstream assets.** Anything tooling will later provide
   (persona data, lint-config JSON, content copied from the abcd record) is
   applied, not copied. Only content about the target repository is committed.
@@ -124,12 +130,10 @@ then ratified ADRs, then everything else read for understanding only.
   interviewed only where it did not, and `abcd identity` reports every rendered
   surface against it.
 - **Given** the adoption completes, **then** nothing from `private-names.txt`
-  appears in any committed artefact, and the working-conventions block carries no
-  content lifted from abcd's own record. One abcd-authored block is committed by
-  design: the managed rule-loader section the install plants in `CLAUDE.md` and
-  `AGENTS.md`, which names abcd because it has to tell a later reader what
-  maintains it and how to override it. Which of those two files carries it, or
-  neither, is the install's own choice to make.
+  and no abcd-internal content appears in any committed artefact, with one
+  sanctioned exception (ruled 2026-09-23): the name-guard hooks
+  (`.githooks/pre-commit`, `.githooks/pre-merge-commit`) and the `.gitignore`
+  fence name abcd, and cite none of its record ids.
 
 ## Composition
 
