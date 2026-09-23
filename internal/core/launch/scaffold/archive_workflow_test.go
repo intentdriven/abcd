@@ -23,7 +23,7 @@ func jobSection(t *testing.T, wf, job string) string {
 	t.Helper()
 	start := strings.Index(wf, "\n  "+job+":\n")
 	if start < 0 {
-		t.Fatalf("release.yml has no %q job", job)
+		t.Fatalf("the workflow has no %q job", job)
 	}
 	rest := wf[start+1:]
 	lines := strings.Split(rest, "\n")
@@ -78,6 +78,15 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 			stamp, render, sums, attest, create)
 	}
 
+	// The pinned address is this repository's release, asserted before the
+	// Release is created: the URL derives from plugin.json's repository, which a
+	// rename, transfer or fork leaves pointing elsewhere, and a pin at another
+	// repository's release passes --verify yet 404s for every install.
+	prefix := indexOf(t, rel, pinPrefixCheck, "release")
+	if !(render < prefix && prefix < create) {
+		t.Errorf("release job order: archive %d < pinned-address check %d < create %d must hold", render, prefix, create)
+	}
+
 	// The release notes state the harness floor the archive source needs (E3).
 	if !strings.Contains(rel, `--notes "${RELEASE_NOTES}"`) || !strings.Contains(rel, "v2.1.224") {
 		t.Error("the release notes must state the v2.1.224 harness floor for the archive-sourced plugin")
@@ -96,6 +105,50 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	}
 }
 
+// pinPrefixCheck is the line that binds the pinned download address to the
+// repository the workflow runs in.
+const pinPrefixCheck = `prefix="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"`
+
+// TestAutoReleaseProvesThePinBeforeTheTag is the pre-tag half of the pin gate.
+// release.yml's verify job runs after the tag exists, so a pin the tagged
+// commit cannot reproduce — a merge-queue batch that carried the ship with a
+// payload-touching change re-renders to another digest — refused there only
+// after the immutable tag had consumed the version. auto-release's detect job
+// makes the same proof on the pushed commit before the tag job may run.
+func TestAutoReleaseProvesThePinBeforeTheTag(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(AutoReleaseYMLPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(data)
+
+	detect := jobSection(t, wf, "detect")
+	decide := indexOf(t, detect, "id: detect", "detect")
+	setup := indexOf(t, detect, "actions/setup-go@", "detect")
+	gate := indexOf(t, detect, `go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify`, "detect")
+	prefix := indexOf(t, detect, pinPrefixCheck, "detect")
+	if !(decide < setup && setup < gate && gate < prefix) {
+		t.Errorf("detect job order: decision %d < setup-go %d < archive verify %d < pinned-address check %d must hold",
+			decide, setup, gate, prefix)
+	}
+	// Only a version about to be tagged is proved: between releases main pins
+	// the last release's archive, which its moved-on tree no longer reproduces.
+	for _, at := range []int{setup, gate} {
+		stepStart := strings.LastIndex(detect[:at], "- name:")
+		if !strings.Contains(detect[stepStart:at], "if: steps.detect.outputs.need_tag == 'true'") {
+			t.Errorf("the pre-tag pin step at %d must run only when a tag is about to be made", at)
+		}
+	}
+	if !strings.Contains(detect, "TAG: v${{ steps.detect.outputs.version }}") {
+		t.Error("the pre-tag pin gate must be bound to the version the tag job will tag")
+	}
+
+	// The tag job waits on detect, so a refusal there leaves no tag behind.
+	if tag := jobSection(t, wf, "tag"); !strings.Contains(tag, "needs: detect\n") {
+		t.Error("the tag job must need detect, so a pre-tag refusal blocks the tag")
+	}
+}
+
 // TestBareReleaseWorkflowHasNoArchive keeps the archive abcd-only: a managed
 // repo's scaffolded workflow has no abcd binary to render with.
 func TestBareReleaseWorkflowHasNoArchive(t *testing.T) {
@@ -105,5 +158,8 @@ func TestBareReleaseWorkflowHasNoArchive(t *testing.T) {
 	}
 	if strings.Contains(string(rendered.ReleaseYML), "launch archive") {
 		t.Error("the bare release.yml must not render the plugin archive")
+	}
+	if strings.Contains(string(rendered.AutoReleaseYML), "launch archive") {
+		t.Error("the bare auto-release.yml must not prove a plugin archive pin")
 	}
 }

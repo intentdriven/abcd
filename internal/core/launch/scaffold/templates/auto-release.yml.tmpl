@@ -38,7 +38,12 @@ jobs:
   # read: no writes, no pushes, contents: read only.
   detect:
     runs-on: ubuntu-latest
+<%- if .Abcd %>
+    # Room for the pre-tag archive proof below, which compiles the binary.
+    timeout-minutes: 15
+<%- else %>
     timeout-minutes: 5
+<%- end %>
     permissions:
       contents: read
     outputs:
@@ -108,6 +113,51 @@ jobs:
             echo "need_tag=true" >> "$GITHUB_OUTPUT"
             echo "need_release=true" >> "$GITHUB_OUTPUT"
           fi
+<%- if .Abcd %>
+
+      # --- The pinned plugin archive, proved BEFORE the tag -------------------
+      # release.yml's verify job proves the committed pin reproduces, but only
+      # once the tag exists, and a tag is never moved: a refusal there consumes
+      # the version. The pushed commit is not always the one the ship rendered —
+      # a merge-queue batch carries the ship together with any other queued pull
+      # request, and one that touches the payload re-renders to another digest.
+      # So the same proof runs here, on the exact commit the tag job would tag,
+      # and a refusal fails detect, which the tag job needs: nothing is tagged,
+      # the version stays free, and the next push to the default branch retries.
+      # Only a version about to be tagged is proved — between releases the
+      # default branch pins the last release's archive, which its moved-on tree
+      # no longer reproduces. TAG arrives through env (injection-safe).
+      - name: Set up Go
+        if: steps.detect.outputs.need_tag == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # cache: false — module caching in a release-triggering workflow is a
+          # cache-poisoning vector (zizmor).
+          cache: false
+
+      - name: Plugin archive reproduces the committed pin, before the tag (fail-closed)
+        if: steps.detect.outputs.need_tag == 'true'
+        env:
+          TAG: v${{ steps.detect.outputs.version }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/plugin-archive"
+          mkdir -p "$out"
+          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify
+          # The pin's address derives from plugin.json's repository, which a
+          # rename, a transfer or a fork leaves naming another repository:
+          # --verify passes on it and every install 404s. Bind it to the
+          # repository this workflow releases from. GitHub resolves owner and
+          # repository names case-insensitively, so the comparison is too.
+          name="$(jq -r '.name' .claude-plugin/plugin.json)"
+          url="$(jq -r --arg n "$name" '[.plugins[] | select(.name == $n)][0].source | objects | .url // empty' .claude-plugin/marketplace.json)"
+          prefix="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/"
+          case "${url,,}" in
+            "${prefix,,}"*) echo "the pin names this repository's ${TAG} release: ${url}" ;;
+            *) echo "the pinned archive address '${url}' is not under ${prefix}: plugin.json's repository does not name the repository this workflow releases from" >&2; exit 1 ;;
+          esac
+<%- end %>
 
   # Create and push the annotated tag with the GITHUB_TOKEN. This is the ONLY
   # push this automation makes, and it targets a NEW tag ref only — never a

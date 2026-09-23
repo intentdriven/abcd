@@ -54,7 +54,10 @@ plugin archive of the release the newest dated CHANGELOG heading names, from the
 checked-out tree, into an existing directory; `--tag` binds it to the tag being
 released, and `--verify` refuses (exit 1) unless the committed catalog pins
 exactly that archive's address and digest, removing the archive so nothing
-unpinned can be published. The release workflow runs it on the tagged commit.
+unpinned can be published. `auto-release.yml` runs it on the pushed commit
+before the tag is made, and the release workflow runs it again on the tagged
+commit; beside the first and the last run, the workflows refuse a pinned
+address outside the repository's own release downloads.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent. The deterministic emit alone is `abcd
@@ -316,9 +319,10 @@ fingerprinted — not the unversioned working tree.
 
 - **Rendered twice, identically.** `ship` renders the archive from its tree to
   learn the digest it commits, and refuses a payload with uncommitted changes
-  first. The release workflow renders it again from the tagged commit, in
-  `verify` before anything is built and in the publish job on the bytes that
-  ship, and publishes nothing unless the digests agree. The archive is
+  first. `auto-release.yml` renders it again from the pushed commit before the
+  tag is made, and the release workflow from the tagged commit, in `verify`
+  before anything is built and in the publish job on the bytes that ship; none
+  proceeds unless the digests agree. The archive is
   reproducible by construction: sorted entries, stored uncompressed, one fixed
   timestamp, modes normalised to 0644 or 0755.
 - **The catalog is left out of the zip.** It is the file that names the zip's

@@ -101,9 +101,17 @@ decision amends adr-19 and adr-20 accordingly.
   It cannot be closed from the release side (the pin must be in the tagged tree),
   so it is documented in `release.yml` and the release-day guide and kept short
   by approving the release deployment promptly.
-- **A pin the release cannot reproduce consumes the version**: `verify` refuses
-  after the tag exists. The ship's dirty-tree refusal and a local
-  `abcd launch archive --verify` on the release branch are what catch it first.
+- **A pin the release cannot reproduce is refused before the tag** on the
+  auto-release path: `auto-release.yml`'s `detect` job renders the archive from
+  the pushed commit and verifies the pin, and that the pinned address is the
+  repository's own release, before its `tag` job may run. The pushed commit is
+  not always the one the ship rendered — a merge-queue batch carries the ship
+  with any other queued pull request — so the ship's dirty-tree refusal cannot
+  stand in for it. A refusal there tags nothing; a follow-up pull request that
+  re-pins or reverts retries on its push. `verify` repeats the proof after the
+  tag, where a refusal consumes the version: that is the only proof a
+  hand-pushed tag gets, and a local `abcd launch archive --verify` on the
+  release branch is what catches it first.
 - **The harness floor** is v2.1.224; older harnesses cannot install the plugin,
   and very old ones fail to load the catalog. The install instructions and the
   release notes state it.

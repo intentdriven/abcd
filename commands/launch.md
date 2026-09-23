@@ -114,7 +114,7 @@ binary is already in place, so it needs the plugin update to fetch a new one.
 
 ### When it goes wrong
 
-Four failures are worth recognising, because each looks like something else.
+Six failures are worth recognising, because each looks like something else.
 
 - **The run says `Waiting` for a long time and nothing happens.** That is the
   approval gate, not a hang. Approve it.
@@ -137,12 +137,26 @@ Four failures are worth recognising, because each looks like something else.
   match the commit the workflow derived. The tag exists by then and the workflow
   never moves a tag, so the version is consumed: it needs the tag deleted and the
   release re-cut. Step 2 exists to catch this before the merge — run it.
-- **`verify` fails on `Plugin archive reproduces the committed pin`.** The tagged
-  tree renders a different archive from the one the ship pinned — a payload file
-  (`commands/`, `agents/`, `hooks/`, `scripts/`, `docs/`, the README or the plugin
-  manifest) changed between the ship and the merge. The tag exists, so the
-  version is consumed. Catch it before the merge instead: in a source checkout
-  of the release branch, `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify`
+- **`auto-release` fails in `detect`, on `Plugin archive reproduces the committed
+  pin, before the tag`, and no tag appears.** The merged commit renders a
+  different archive from the one the ship pinned — a payload file (`commands/`,
+  `agents/`, `hooks/`, `scripts/`, `docs/`, the README or the plugin manifest)
+  changed between the ship and the merge, most often because the merge queue
+  batched the release pull request with another one — or the pinned address is
+  not this repository's release, because `plugin.json`'s `repository` names
+  another one. Nothing was tagged, so the version is still free. Land a
+  follow-up pull request that fixes `main`: set the pin's `sha256` in
+  `.claude-plugin/marketplace.json` to the rendered digest the refusal names (or
+  revert the payload change), or correct `repository`. Its merge re-runs
+  `detect`, which tags once the proof passes. Until then the catalog on `main`
+  names an archive that does not exist, so installs and updates fail closed, as
+  in the approval window.
+- **`verify` fails on `Plugin archive reproduces the committed pin`.** The same
+  proof, made again on the tagged commit. On the `auto-release` path it passed
+  before the tag, so this is rare there; a hand-pushed tag has no earlier proof.
+  The tag exists, so the version is consumed. Catch it before the merge instead:
+  in a source checkout of the release branch,
+  `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify`
   exits 0 when the release will pass.
 - **A new release never starts, and an older run sits `Waiting` forever.**
   Release runs are serialised, so one parked run blocks every later one. Cancel
@@ -458,9 +472,13 @@ catalog is left out of it, because the catalog is what names its digest.
 
 - `--tag` refuses unless the newest dated CHANGELOG version is that tag.
 - `--verify` refuses unless the committed catalog pins exactly this archive's
-  download address and digest. The release workflow runs it on the tagged commit
-  in `verify`, before anything is built, and again in the publish job, where the
-  verified archive is the file it checksums, attests and uploads.
+  download address and digest. `auto-release.yml` runs it on the pushed commit
+  in `detect`, before the tag is made; the release workflow runs it again on the
+  tagged commit in `verify`, before anything is built, and once more in the
+  publish job, where the verified archive is the file it checksums, attests and
+  uploads. Beside the first and last of these the workflows check that the
+  pinned address lies under this repository's own
+  `https://github.com/<owner>/<repo>/releases/download/<tag>/`.
 
 Exit codes: **0** the archive was written (and, with `--verify`, matches the pin);
 **1** `--verify` refused — the report names both digests, and the archive is
