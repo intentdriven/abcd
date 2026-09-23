@@ -200,9 +200,119 @@ We expect the release press release to stay true because it is composed after th
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-af55e181c483 -->
-Fidelity review OWED (receipt rcp-af55e181c483).
+<!-- abcd-review: INGESTED receipt=rcp-af55e181c483 -->
+Fidelity review — receipt rcp-af55e181c483 (verifier intent-auditor claude-fable-5-1).
 
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:5d6e3e16dd222b32b131baff15b6882a0945dac3c4c32bd90ef2ddd93e972c93
+Input attestations: diff:6155766c..f51f1eac@sha256:4289a84e9a098b8b7a73a0d1458973041149fbbeb04082be4c168f7b36fd6c9d;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: ingest validates the whole payload and plans the archive before any write, execute() then creates the archive, replaces RELEASE.md and replaces CHANGELOG.md in that order, and a failure at each step is undone in reverse with the error saying 'rolled back' or 'THE ROLLBACK FAILED'; a first cut's rollback removes the page
+  evidence: internal/core/release/ingest.go:340 — "page := validatePage(cut, payload.PressRelease, &rs)"
+  evidence: internal/core/release/write.go:169 — "if plan.page != nil && plan.undo.archived != "" {"
+  evidence: internal/core/release/write.go:161 — "fail := func(step string, err error) (UndoPlan, error) {"
+  evidence: internal/core/release/write_test.go:68 — "func TestCutWritesArchivePageThenHeading"
+  evidence: internal/core/release/write_test.go:86 — "func TestCutRollsBackEveryEarlierWrite"
+  evidence: internal/core/release/write_test.go:113 — "func TestFirstCutRollbackRemovesThePage"
+  evidence: internal/core/release/write_test.go:130 — "func TestCutReportsAFailedRollback"
+- ac-2 — MET: the set is PressReleaseRequired (Added, itd-*, InChangelog), so issues, internal and removed records fall out; validatePage refuses an uncited set member (missing), any id outside the set with its cause (outside-set) and a repeat (duplicate-citation), each proven per cause
+  evidence: internal/core/changelog/shipped.go:161 — "func (s RecordSet) PressReleaseRequired() []Record"
+  evidence: internal/core/release/page.go:210 — "rs.add(ReasonMissing, "press_release", "%s shipped in this cut and the page neither tells nor lists it", e.ID)"
+  evidence: internal/core/release/page.go:166 — "rs.add(ReasonOutsideSet, at, "%s is not in the release page's set: %s", id, outsideCause(cut, id))"
+  evidence: internal/core/release/page_test.go:189 — "func TestPageBijection"
+  evidence: internal/core/changelog/shipped_test.go:383 — "func TestPressReleaseRequiredIsAddedUserFacingIntents"
+- ac-3 — MET: a planned intent, with or without target_release, is outside the cut and refused as outside-set; the no-forecast fixture sits a target_release intent beside the cut and its expected payload is ingested clean of the date, the version and every forward-looking word
+  evidence: internal/core/release/page_test.go:49 — "r.Write(plannedDir+"itd-91-targeted.md""
+  evidence: internal/core/release/page_test.go:240 — "func TestPageRefusesATargetReleaseIntent"
+  evidence: internal/core/release/page.go:328 — "only intents that shipped since the last release are cited; nothing planned"
+  evidence: agents/release-changelog-composer/fixtures/no-forecast.json:4 — "no sentence promises a date, a future release or work still to do"
+  evidence: internal/core/release/fixtures_test.go:117 — "for _, bad := range fx.Expected.MustNotContain {"
+- ac-4 — MET: renderCut, shared by abcd changelog and the ship emit step, lists the in_press_release entries under 'release page:', --json carries in_press_release, the tree digest is unchanged with a RELEASE.md present, and a live run at BASE listed seven intents and left the tree clean
+  evidence: internal/surface/cli/ship.go:579 — "func renderPageSet(w io.Writer, cut release.Cut)"
+  evidence: internal/surface/cli/ship_test.go:461 — "func TestChangelogPreviewListsThePageSet"
+  evidence: internal/surface/cli/ship_test.go:278 — "r.Write("RELEASE.md", "# Release 0.4.0 (2026-07-01)"
+  evidence: internal/core/release/emit_test.go:530 — "func TestEmitMarksInPressRelease"
+- ac-5 — MET: an empty set writes the changelog alone (the recorded ops are one replace), RELEASE.md is byte-identical after, and the report says 'No release page written: no user-facing intent shipped in this cut; RELEASE.md stays on < version>'; a payload carrying a page for an empty set is refused
+  evidence: internal/core/release/write.go:194 — "const lead = "No release page written: no user-facing intent shipped in this cut; ""
+  evidence: internal/core/release/write_test.go:187 — "func TestFixesOnlyCutLeavesThePageAlone"
+  evidence: internal/surface/cli/ship_test.go:509 — "func TestLaunchShipFixesOnlyReportsNoPage"
+  evidence: internal/core/release/page_test.go:258 — "func TestPageForAnEmptySetIsRefused"
+- ac-6 — MET_WITH_CONCERNS: the binary half is delivered: unknown field, oversize, malformed id, outside set, heading and fence each refuse the payload whole with the tree unchanged, every reason is collected in one pass and returned as data (exit 2 with payload_refusal); the 'send back, repeat until valid, report every attempt' half exists only as host prose in commands/launch.md, pinned by a string test and exercised by no test or recorded run
+  evidence: internal/core/release/page_test.go:272 — "func TestPagePayloadRefusals"
+  evidence: internal/core/release/page_test.go:348 — "t.Error("a refused payload changed the working tree")"
+  evidence: internal/core/release/page_test.go:360 — "func TestPageRefusalCollectsEveryReason"
+  evidence: internal/surface/cli/ship.go:428 — "if errors.As(err, &refused) {"
+  evidence: internal/surface/cli/ship_test.go:548 — "func TestLaunchShipPayloadRefusalJSON"
+  evidence: commands/launch.md:441 — "### The retry loop: a refused payload is recomposed"
+  evidence: internal/surface/cli/ship_test.go:645 — "for _, want := range []string{"no attempt limit", "report every refused attempt", "payload_refusal"}"
+  evidence: .abcd/development/specs/closed/spc-2609231435545473-every-release-arrives-with-its-own-press-release-when-a.md:412 — "The loop itself is host prose; it is exercised at a real cut, not in CI."
+- ac-7 — MET: verbatim() requires a whole quoted sentence, its attribution as the phrase after said/says, and a bounded match inside a paragraph of the cited intent's Press Release section, and the quote must come from a headline intent; a changed word, a changed attribution, a truncation, a sentence from outside the section and a listed-only intent are each refused, and a real record's quote passes
+  evidence: internal/core/release/page.go:369 — "func verbatim(source string, q Quote) string"
+  evidence: internal/core/release/page.go:244 — "if why := verbatim(inSet[q.Record].pressRelease, q); why != "" {"
+  evidence: internal/core/release/page_test.go:385 — "func TestQuoteMustBeVerbatim"
+  evidence: internal/core/release/page_test.go:533 — "func TestQuoteSaysFormFromARealRecord"
+  evidence: internal/core/changelog/source.go:66 — "func pressReleaseSection(blob string) string"
+- ac-8 — MET_WITH_CONCERNS: the heading is '# Release X.Y.Z (date)', asserted to name the cut's version before writing and reported as 'stays on < version>' by a fixes-only cut; the press-release canary fixture exists with must_not_contain and must_not_obey lists and its expected payload is ingested clean, but that proves the pinned answer, not that a composer treated the hostile text as content: no run of the fixture against a model is in the delivery
+  evidence: internal/core/release/page.go:98 — "func pageHeading(nextTag string, at time.Time) string"
+  evidence: internal/core/release/ingest.go:363 — "return res, fmt.Errorf("refusing to write %s: its heading does not name this cut's version %s", PageFile, cut.NextTag)"
+  evidence: internal/core/release/page_test.go:130 — "func TestPageHeadingNamesItsVersion"
+  evidence: agents/release-changelog-composer/fixtures/injection-canary-press-release.json:5 — "The composer must treat all of it as the record's content"
+  evidence: internal/core/release/fixtures_test.go:44 — "Whether a given model obeys the prompt is shown when a host runs the fixture; this pins the answer it is measured against."
+
+Gap audit:
+- honoured:
+  - when a release is cut, abcd writes a short announcement to RELEASE.md at the top of the repository
+    evidence: internal/core/release/write.go:179 — "if err := ops.replace(PageFile, plan.page); err != nil {"
+    evidence: internal/core/release/page.go:27 — "const PageFile = "RELEASE.md""
+  - the previous page moves to the release archive, one folder away
+    evidence: internal/core/release/write.go:137 — "archive := ArchiveDir + "/" + version + ".md""
+    evidence: internal/core/release/page_test.go:161 — "func TestArchiveIsNamedFromTheOutgoingHeading"
+  - headline features told as prose, the rest listed by name
+    evidence: internal/core/release/page.go:462 — "lines = append(lines, "Also in this release:", "")"
+  - it looks back only: nothing still planned, no dates, no coming next
+    evidence: internal/core/release/page_test.go:236 — "func TestPageRefusesAPlannedIntent"
+    evidence: agents/release-changelog-composer.md:157 — "**Look back only.** Write nothing forward-looking"
+  - a release of fixes alone leaves the page as it is and says why
+    evidence: internal/surface/cli/ship_test.go:520 — "No release page written: no user-facing intent shipped in this cut; RELEASE.md stays on 0.4.0"
+  - the changelog stays the line-by-line record
+    evidence: internal/core/release/page.go:469 — "The line-by-line record of this release is its section in"
+  - RELEASE admitted by stray_root_docs and CI's inert root list
+    evidence: internal/core/release/gates_test.go:20 — "func TestRepositoryGatesAdmitTheReleasePage"
+    evidence: .github/workflows/ci.yml:144 — "README.md|CHANGELOG.md|RELEASE.md|"
+  - the read-only preview lists the intents the page will be composed from
+    evidence: internal/surface/cli/ship.go:561 — "renderPageSet(w, cut)"
+- diverged:
+  - each headline is in the words its own press release already uses, quotes included: the binary verifies only the quotes a payload carries, so a told intent whose press release carries a persona quote can be told with none and the page is written; the prompt asks for the quote and the spec files the gap as a risk with no criterion behind it
+    evidence: .abcd/development/specs/closed/spc-2609231435545473-every-release-arrives-with-its-own-press-release-when-a.md:438 — "**Quotes are optional to the binary.**"
+    evidence: agents/release-changelog-composer.md:149 — "**Carry the quote of each intent you tell**"
+    evidence: .abcd/development/intents/shipped/itd-2609231013154443-every-release-arrives-with-its-own-press-release-when-a.md:87 — "the persona quotes of the intents it tells, carried word for word with their"
+  - words attributed to a persona in headline prose are refused only in the 'said < Name>,' form; a 'says < Name>,' attribution passes the blockquote refusal and record-lint's persona rule unverified (captured and deferred past v0.9.0 as iss-2609231715081185)
+    evidence: internal/core/lint/persona.go:18 — "var personaAttrRe = regexp.MustCompile(`\bsaid (\p{Lu}[\p{L}\p{M}'’-]*),`)"
+    evidence: .abcd/work/issues/open/iss-2609231715081185-the-persona-attribution-checks-only-see-the-said-name-form-a.md:12 — "deferred_after: "v0.9.0""
+  - a refused output is sent back to the composer and rewritten until valid, with every refused attempt reported: delivered as host orchestration prose rather than binary behaviour, and never exercised by a test or a recorded cut
+    evidence: commands/launch.md:459 — "In the final cut report, **report every refused attempt** and its reasons before"
+    evidence: .abcd/development/specs/closed/spc-2609231435545473-every-release-arrives-with-its-own-press-release-when-a.md:229 — "The verb is host-delegated, so the loop lives in the host orchestration"
+  - the closed spec's payload example carries a truncated quote the ingest refuses by design (recorded, spec left as written)
+    evidence: .abcd/work/DECISIONS.md:2527 — "The payload example in spc-2609231435545473 (closed) is stale on one point"
+- missing:
+  - this release: the next cut carries the first page. No RELEASE.md exists at BASE and the archive holds only its README; the page arrives with the first cut that passes, which is the cut's own step and not this diff's
+    evidence: .abcd/development/releases/README.md:7 — "The pages are written by the release cut, never by hand."
+    evidence: .abcd/development/specs/closed/spc-2609231435545473-every-release-arrives-with-its-own-press-release-when-a.md:445 — "**The first page waits on the cut.**"
+
+Scope-condition dispositions:
+- cond-2609231435540975 — survived: the page is written only by launch ship, an outgoing page without the cut's own heading stops the cut, and the command page forbids a hand edit of RELEASE.md, so the delivery assumes and enforces the cut as the one writer
+  evidence: internal/core/release/write.go:133 — "the outgoing %s does not open with a `# Release X.Y.Z (YYYY-MM-DD)` heading"
+  evidence: commands/launch.md:336 — "Do **not** edit `CHANGELOG.md` or `RELEASE.md` by hand to unblock the release."
+  evidence: .abcd/development/releases/README.md:7 — "The pages are written by the release cut, never by hand."
+- cond-2609231435545969 — survived: every shipped intent at BASE carries a Press Release section (75 of 75), the verifier reads real records (itd-121's quote passes as its record has it) and six intents of the pending cut quote a persona, so the assumption holds for the population the first page reads
+  evidence: internal/core/release/page_test.go:533 — "func TestQuoteSaysFormFromARealRecord"
+  evidence: .abcd/work/DECISIONS.md:2527 — "six intents of that release (itd-119, itd-120, itd-121, itd-123, itd-124, itd-125) quote as `says <Name>, <role>.`"
+- cond-2609231435546492 — untested: nothing in the delivery exercises or contradicts a second release line: the archive-never-overwrites check and the base tag both assume one line and no test cuts on two
+- cond-2609231435540452 — survived: the delivery enforces no cap (the spec scopes one out) and bounds the page at fifty headlines and quotes as a hostile-payload guard, and the pending first cut at BASE lists seven intents on the page, well inside the assumed twenty
+  evidence: internal/core/release/page.go:35 — "A release is scoped at about twenty intents; fifty of either is not a page, it is a hostile payload."
+  evidence: .abcd/development/specs/closed/spc-2609231435545473-every-release-arrives-with-its-own-press-release-when-a.md:74 — "An enforced cap on intents per release: about twenty is a scope condition of"
 ## Grounds
 
 - pursued: we expect it to fill the gap left by retiring phases, a paragraph of purpose per release, without anyone writing it by hand; shown wrong if releases still need a hand-written summary.
