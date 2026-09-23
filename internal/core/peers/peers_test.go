@@ -443,3 +443,58 @@ func TestScanIsReadWithoutTitles(t *testing.T) {
 		t.Fatalf("Scan locations = %+v, ids = %d", locs, rep.IDCount())
 	}
 }
+
+// oldGit puts a git on PATH that behaves as a git older than 2.36 does on the
+// two calls the reader makes of a newer one: `worktree list --porcelain -z` is
+// refused as an unknown switch (-z arrived in 2.36; Ubuntu 22.04 ships 2.34),
+// and `rev-parse --path-format=absolute` (2.31) is echoed to stdout, exit 0,
+// with the path then answered in its relative form.
+func oldGit(t *testing.T) {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	script := "#!/bin/sh\nREAL_GIT=" + real + `
+case "$*" in
+*"worktree list --porcelain -z"*)
+	echo "error: unknown switch 'z'" >&2
+	exit 129;;
+*rev-parse*--path-format=*)
+	echo "--path-format=absolute"
+	for a do
+		shift
+		case "$a" in --path-format=*) ;; *) set -- "$@" "$a";; esac
+	done;;
+esac
+exec "$REAL_GIT" "$@"
+`
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// A git older than 2.36 has no -z on `worktree list`, and one older than 2.31
+// no --path-format: the reader falls back to the forms every supported git
+// answers, so the peer is still found and read rather than the whole listing
+// failing (and the board line and the not-found hints with it).
+func TestAnOlderGitStillListsAndReadsThePeers(t *testing.T) {
+	f := newFixture(t)
+	a := f.worktree("a", "feat/a")
+	f.write(a, ".abcd/work/issues/open/iss-100-a-peer-finding.md", issue("iss-100", "A finding the peer captured"))
+	oldGit(t)
+
+	rep := f.read()
+	p, ok := findPeer(rep, "feat/a")
+	if !ok {
+		t.Fatalf("an older git lost the worktree peer: %+v", rep)
+	}
+	if p.NotRead != "" || !samePath(t, p.Path, a) {
+		t.Fatalf("peer = %+v, want feat/a read at %s", p, a)
+	}
+	if len(p.Rows) != 1 || p.Rows[0].ID != "iss-100" {
+		t.Fatalf("rows = %+v, want iss-100", p.Rows)
+	}
+}

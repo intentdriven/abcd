@@ -62,7 +62,7 @@ type Location struct {
 	Folder string `json:"folder"`
 }
 
-// worktree is one entry of `git worktree list --porcelain -z`.
+// worktree is one entry of `git worktree list --porcelain`.
 type worktree struct {
 	path   string
 	head   string
@@ -481,14 +481,26 @@ func fileID(prefix, name string) string {
 	return recordid.CanonCitedID(prefix + "-" + m[1])
 }
 
-// commonDir is git's absolute common dir for the tree at dir.
+// commonDir is git's common dir for the working tree whose top is dir, made
+// absolute against dir.
+//
+// It asks without --path-format=absolute, which arrived in git 2.31: an older
+// rev-parse echoes an option it does not know to stdout and exits 0, so the
+// answer would be the flag's text and a path on two lines, and every peer would
+// compare unequal to this checkout. The plain form answers relative to the
+// directory it is run in (".git" at a main working tree's top) or absolute (a
+// linked worktree's), and anything but one line is refused rather than
+// compared.
 func commonDir(dir string) (string, error) {
-	out, err := gitutil.Run(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	out, err := gitutil.Run(dir, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return "", err
 	}
-	if out == "" {
-		return "", errors.New("git named no common dir")
+	if out == "" || strings.ContainsAny(out, "\r\n") {
+		return "", fmt.Errorf("git named no single common dir (%q)", firstLine(out))
+	}
+	if !filepath.IsAbs(out) {
+		out = filepath.Join(dir, out)
 	}
 	return out, nil
 }
@@ -505,33 +517,17 @@ func recordsClean(dir string) bool {
 	return err == nil && out == ""
 }
 
-// listWorktrees parses `git worktree list --porcelain -z`.
+// listWorktrees is this repository's working trees, git's canonical listing
+// (gitutil.ListWorktrees, which falls back to the newline form on a git older
+// than 2.36) with each branch in its short name.
 func listWorktrees(root string) ([]worktree, error) {
-	out, err := gitutil.RunCapped(root, maxListing, "worktree", "list", "--porcelain", "-z")
+	listed, err := gitutil.ListWorktrees(root, maxListing)
 	if err != nil {
 		return nil, err
 	}
-	var wts []worktree
-	var cur *worktree
-	for _, field := range strings.Split(out, "\x00") {
-		key, val, _ := strings.Cut(field, " ")
-		switch key {
-		case "worktree":
-			wts = append(wts, worktree{path: val})
-			cur = &wts[len(wts)-1]
-		case "HEAD":
-			if cur != nil {
-				cur.head = val
-			}
-		case "branch":
-			if cur != nil {
-				cur.branch = strings.TrimPrefix(val, "refs/heads/")
-			}
-		case "bare":
-			if cur != nil {
-				cur.bare = true
-			}
-		}
+	wts := make([]worktree, 0, len(listed))
+	for _, w := range listed {
+		wts = append(wts, worktree{path: w.Path, head: w.Head, branch: strings.TrimPrefix(w.Branch, "refs/heads/"), bare: w.Bare})
 	}
 	return wts, nil
 }
