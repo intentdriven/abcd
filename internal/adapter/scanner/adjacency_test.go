@@ -5,7 +5,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestConcatenatedSecretsBothDetected is the repro for iss-185: a
@@ -257,13 +256,20 @@ func TestGoogleAPIKeyDashJunctionNotDoubleCounted(t *testing.T) {
 // handle. Pre-PR adversarial security review measured this at 14+ seconds on
 // a 200KB line; anchoring the probe (adjacencyProbe) restores it to a single
 // O(1) attempt per candidate.
+//
+// The matches are a fixed prefix and only the trailing filler grows, so the
+// probes' work must not move at all when the filler quadruples: a probe that
+// re-reads the filler once per candidate match end is the class this refuses.
+// The anchor is no longer the only bound on it: maxAdjacencyProbeWindow hands
+// every attempt at most one window, so an unanchored probe inside that window
+// costs one window too. What this refuses is a probe handed the remainder of the
+// line, which is the shape the unanchored probe had when this guard was written.
 func TestAdjacencyProbeStaysLinearOnLongLines(t *testing.T) {
-	line := strings.Repeat("10.0.0.1 ", 300) + strings.Repeat("x", 200000) // abcd-audit:allow — adversarial perf fixture; the quad is stress input, not an identifier
-	start := time.Now()
-	scanLine(line)
-	if elapsed := time.Since(start); elapsed > 15*time.Second {
-		t.Errorf("scan of a 200KB line took %v, want well under 15s (unanchored-probe regression)", elapsed)
+	build := func(tail int) string {
+		return strings.Repeat("10.0.0.1 ", 300) + strings.Repeat("x", tail) // abcd-audit:allow — adversarial perf fixture; the quad is stress input, not an identifier
 	}
+	assertCostGrowth(t, build, 25000, flatCostBar,
+		"the probe re-reads the remainder of the line for every candidate match end (unanchored-probe regression)")
 }
 
 // TestAdjacencyProbeWindowIsBounded is the regression guard for a SECOND,
@@ -280,19 +286,16 @@ func TestAdjacencyProbeStaysLinearOnLongLines(t *testing.T) {
 func TestAdjacencyProbeWindowIsBounded(t *testing.T) {
 	r := strings.Repeat
 	cases := []struct {
-		name string
-		line string
+		name  string
+		build func(m int) string
 	}{
-		{"aws_keys_back_to_back", r("AKIA"+r("Q", 16), 2000)},
-		{"google_keys_back_to_back", r("AIza"+r("Z", 35), 2000)},
+		{"aws_keys_back_to_back", func(m int) string { return r("AKIA"+r("Q", 16), m) }},
+		{"google_keys_back_to_back", func(m int) string { return r("AIza"+r("Z", 35), m) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			start := time.Now()
-			scanLine(c.line)
-			if elapsed := time.Since(start); elapsed > 15*time.Second {
-				t.Errorf("scan of %d back-to-back fixed-length tokens (%d bytes) took %v, want well under 15s (unbounded-probe-window regression)", 2000, len(c.line), elapsed)
-			}
+			assertCostGrowth(t, c.build, 250, linearCostBar,
+				"one anchored attempt is handed the rest of the line at every junction (unbounded-probe-window regression)")
 		})
 	}
 }
@@ -306,30 +309,30 @@ func TestAdjacencyProbeWindowIsBounded(t *testing.T) {
 // resource-exhaustion cliff, trading one security bug for another. The search
 // is instead capped at maxAdjacencyBacktrack behind the end regardless of how
 // long the match is, and each candidate cut comes from one linear pass rather
-// than a per-byte probe. Every case here is a single line of tens to hundreds
-// of kilobytes, the shape that used to time out.
+// than a per-byte probe. Every case here is one long line, the shape that used
+// to time out, built at a base size and at four times it.
 func TestJunctionBacktrackIsBounded(t *testing.T) {
 	r := strings.Repeat
-	n := scaleAdversarial
 	cases := []struct {
-		name string
-		line string
+		name  string
+		base  int
+		build func(m int) string
 	}{
 		// One open-ended match spanning the whole line: the backward window
 		// must not scale with it.
-		{"one_very_long_open_ended_match", "ghp_" + r("a", n(200000))},
-		{"one_very_long_jwt", "eyJ" + r("a", 20) + "." + r("b", 20) + "." + r("c", n(100000))},
+		{"one_very_long_open_ended_match", 12000, func(m int) string { return "ghp_" + r("a", m) }},
+		{"one_very_long_jwt", 12000, func(m int) string { return "eyJ" + r("a", 20) + "." + r("b", 20) + "." + r("c", m) }},
 		// Many open-ended matches, each of which backtracks.
-		{"open_ended_tokens_back_to_back", r("ghp_"+r("a", 36), n(1000))},
-		{"stripe_tokens_back_to_back", r("sk_live_"+r("a", 20), n(1000))},
+		{"open_ended_tokens_back_to_back", 250, func(m int) string { return r("ghp_"+r("a", 36), m) }},
+		{"stripe_tokens_back_to_back", 250, func(m int) string { return r("sk_live_"+r("a", 20), m) }},
 		// One huge match densely seeded with candidate junctions, so the
 		// backward search finds work at nearly every offset it looks at. This
 		// is the case an unbounded backtrack blows up on: it measured 40s
 		// against 0.3s bounded.
-		{"dense_candidate_junctions", "ghp_" + r("AKIA", n(50000))},
-		{"open_ended_chain_inside_open_ended", "xoxb-" + r("ghp_"+r("a", 36), n(1500))},
+		{"dense_candidate_junctions", 5000, func(m int) string { return "ghp_" + r("AKIA", m) }},
+		{"open_ended_chain_inside_open_ended", 250, func(m int) string { return "xoxb-" + r("ghp_"+r("a", 36), m) }},
 		// Dense short matches whose pattern is itself shrinkable.
-		{"dense_dotted_quads", r("1.2.3.4", n(10000))}, // abcd-audit:allow — single-digit octets maximise match density; a reserved quad would weaken the stress
+		{"dense_dotted_quads", 800, func(m int) string { return r("1.2.3.4", m) }}, // abcd-audit:allow — single-digit octets maximise match density; a reserved quad would weaken the stress
 		// The worst case for resuming one byte past a REJECTED candidate rather
 		// than past its whole span (see stolenJunctions): every match's backtrack
 		// window is packed with junction-probe hits that ALL fail validation, so
@@ -340,20 +343,15 @@ func TestJunctionBacktrackIsBounded(t *testing.T) {
 		// segment is filled with `AKI` — the densest junction-probe hit spacing
 		// the bundled set admits inside an alnum run, ~one candidate every three
 		// bytes. Cost per match stays capped by the window, so the whole scan
-		// stays linear in line length: doubling the line doubles the time, it does
-		// not square it (measured 2.3s / 4.6s / 9.2s at 247KB / 494KB / 989KB).
-		// The 15s bar is deliberately loose — it separates the unbounded-search
-		// cliff (tens of seconds on inputs this size) from bounded work (~1s
-		// here) without tracking machine speed.
-		{"dense_rejected_candidates_in_backtrack_window", r("eyJ"+r("a", 10)+"."+r("AKI", 400)+"."+r("c", 20)+" ", n(100))},
+		// stays linear in line length.
+		{"dense_rejected_candidates_in_backtrack_window", 10, func(m int) string {
+			return r("eyJ"+r("a", 10)+"."+r("AKI", 400)+"."+r("c", 20)+" ", m)
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			start := time.Now()
-			scanLine(c.line)
-			if elapsed := time.Since(start); elapsed > 15*time.Second {
-				t.Errorf("scan of a %d-byte line took %v, want well under 15s (unbounded-backtrack regression)", len(c.line), elapsed)
-			}
+			assertCostGrowth(t, c.build, c.base, linearCostBar,
+				"the backward junction search walks the whole match rather than a bounded window (unbounded-backtrack regression)")
 		})
 	}
 }
@@ -373,26 +371,6 @@ var raceDetector = func() bool {
 	}
 	return false
 }()
-
-// scaleAdversarial shrinks the adversarial cost-guard inputs when the race
-// detector is on. The detector instruments every memory access the regexp
-// engine makes and costs this package well over an order of magnitude in wall
-// clock, which a fixed second-count budget cannot absorb. Shrinking the input
-// is the right lever rather than loosening the budget: what each case tests is
-// its SHAPE — one huge match, or many, densely seeded with candidate junctions
-// — and every case's cost is linear in the input, so the shape survives a
-// smaller multiplier. A budget stretched far enough to cover an instrumented
-// 200KB line would stop discriminating a bounded search from an unbounded one
-// on the uninstrumented run, which is where the guard has to bite.
-func scaleAdversarial(n int) int {
-	if !raceDetector {
-		return n
-	}
-	if n < 8 {
-		return 1
-	}
-	return n / 8
-}
 
 // TestAdjacencyProbeWindowEdgeIsNotAWordBoundary is the repro for iss-189: the
 // probe's own trailing `\b` used to be satisfied by the ARTIFICIAL end of the
@@ -557,114 +535,139 @@ func TestGallopingProbeCostClass(t *testing.T) {
 	})
 }
 
-// TestGallopingProbeStaysBoundedOnLongLines is the wall-clock half of the cost
+// TestGallopingProbeStaysBoundedOnLongLines is the whole-line half of the cost
 // guard, in the idiom of the three above: the shapes that make the galloping
-// probe grow as far as it ever can, on lines of hundreds of kilobytes. A match
-// only grows the window while it is still running into its edge, so the cost of
-// growing it is a constant multiple of the match's own length — but the shapes
-// below stack that: an open-ended match whose whole backtrack window is packed
-// with junction candidates, each of which starts a hit running to the far end of
-// the line, is the worst case the structural fix can produce. The 15s bar is the
-// same loose one the sibling guards use, separating a cost-class regression from
-// bounded work.
+// probe grow as far as it ever can. A match only grows the window while it is
+// still running into its edge, so the cost of growing it is a constant multiple
+// of the match's own length — but the shapes below stack that: an open-ended
+// match whose whole backtrack window is packed with junction candidates, each of
+// which starts a hit running to the far end of the line, is the worst case the
+// structural fix can produce.
 func TestGallopingProbeStaysBoundedOnLongLines(t *testing.T) {
 	r := strings.Repeat
-	n := scaleAdversarial
 	cases := []struct {
-		name string
-		line string
+		name  string
+		base  int
+		build func(m int) string
 	}{
 		// Every offset in the dotted run starts a LAN-hostname hit that runs to
 		// the ".local" at the far end, so every junction candidate inside the
 		// leading match gallops the whole way there.
-		{"junction_hits_run_to_the_far_end", "ghp_" + r("a", 600) + r("ab.", n(70000)) + "local"},
+		{"junction_hits_run_to_the_far_end", 4000, func(m int) string { return "ghp_" + r("a", 600) + r("ab.", m) + "local" }},
 		// The same, with the leading match's backtrack window packed with
 		// candidates that are all rejected, so the walk runs its full length.
-		{"rejected_candidates_each_gallop", "ghp_" + r("AKIA", 150) + r("ab.", n(70000)) + "local"},
+		{"rejected_candidates_each_gallop", 4000, func(m int) string { return "ghp_" + r("AKIA", 150) + r("ab.", m) + "local" }},
 		// A run of tokens each longer than the first window, so the forward
 		// probe doubles at every junction in a long chain.
-		{"window_length_tokens_back_to_back", r("ghp_"+r("a", 4*maxAdjacencyProbeWindow), n(200))},
+		{"window_length_tokens_back_to_back", 24, func(m int) string { return r("ghp_"+r("a", 4*maxAdjacencyProbeWindow), m) }},
 		// The iss-189 shape repeated: every junction's probe runs into its edge
 		// and has to grow before the boundary can be judged.
-		{"window_edge_boundaries_back_to_back", r("AKIA"+r("Q", 16)+r("b", maxAdjacencyProbeWindow-6)+".local"+"zzz ", n(400))},
+		{"window_edge_boundaries_back_to_back", 60, func(m int) string {
+			return r("AKIA"+r("Q", 16)+r("b", maxAdjacencyProbeWindow-6)+".local"+"zzz ", m)
+		}},
 		// The shape an adversarial review found the FIRST galloping pass
-		// quadratic on, and the reason gallopBudget exists: every fixed-length
-		// google_api match ends inside a continuous open-ended anthropic_key
-		// class run, so each of the line's Theta(n) junctions starts a probe
-		// match that reaches the far end — and each such match is then
-		// re-validated up to maxAdjacencyBacktrack times at its own length.
-		// Unbudgeted it measured 1.3s / 5.0s / 19.1s at 14KB / 29KB / 59KB,
-		// where the fixed window had been 0.6s / 1.3s / 2.5s.
-		// This shape costs an order of magnitude more per unit than its
-		// siblings above — every junction starts a match that reaches the far
-		// end, and each is then re-validated up to maxAdjacencyBacktrack times
-		// at its own length — so it carries a smaller multiplier to sit inside
-		// the same bar. Shrinking the input rather than loosening the budget is
-		// the lever scaleAdversarial documents: the shape is what the case
-		// tests, and the shape survives a smaller multiplier.
-		{"long_matches_at_every_junction", r("AIza"+r("a", 35)+"sk-ant-", n(500))},
+		// quadratic on — every fixed-length google_api match ending inside a
+		// continuous open-ended anthropic_key run — is the reason gallopBudget
+		// exists, and it has its own test below
+		// (TestGallopingProbeCostIsLinearInLineLength) at the size that
+		// separates the two classes, rather than a second entry here.
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			start := time.Now()
-			scanLine(c.line)
-			if elapsed := time.Since(start); elapsed > 15*time.Second {
-				t.Errorf("scan of a %d-byte line took %v, want well under 15s (galloping-probe cost regression)", len(c.line), elapsed)
-			}
+			assertCostGrowth(t, c.build, c.base, linearCostBar,
+				"a probe that keeps growing turns Theta(n) junctions into Theta(n) full-line matches (galloping-probe cost regression)")
 		})
 	}
 }
 
-// TestGallopingProbeCostIsLinearInLineLength is the cost-CLASS guard the
-// wall-clock budgets above cannot be: it quadruples the input and asserts the
-// probes' work grows like the input rather than like its square. A wall-clock
-// ceiling only catches a regression once it is slow enough on the machine that
-// happens to run it; a growth ratio catches the class itself, which is what the
-// first pass at this fix got wrong (linear before, quadratic after, both
-// comfortably under any fixed bar at the sizes the other guards use).
+// TestGallopingProbeCostIsLinearInLineLength is the cost-CLASS guard the whole
+// set turns on: it quadruples the input and asserts the probes' work grows like
+// the input rather than like its square. It is the shape that broke — every
+// junction on the line starts a match that reaches the far end — and the first
+// pass at the galloping fix was linear before and quadratic after, both
+// comfortably under any fixed ceiling at the sizes the other guards use, so only
+// a growth assertion could see it.
 //
-// The work is COUNTED, not timed: every probe and the junction search are handed
-// a tallyMatcher, and the measure is the total number of bytes the scan hands
-// them. Go's regexp engine is linear in the length of the string it is run
-// against, so that total bounds the probes' cost from above, and it is the
-// quantity the regression squared — a galloping window grown to the far end of
-// the line at each of Theta(n) junctions, and each such match re-validated at
-// its own length. A count is the same on an idle machine and a loaded one, so
-// the guard cannot refuse a release on runner load (iss-2608292246210181), and
-// its bar can sit far closer to linear than a timing ratio's could.
-//
-// The shape is the one that broke: every junction on the line starts a match
-// that reaches the far end. Four times the input is ~4x linear work and ~16x
-// quadratic.
+// The size is fixed at 320 units: below a few hundred units the budget's
+// constant term still dominates, so neither class has settled into its
+// asymptote yet. At this size the budgeted scan measures 4.1x and the
+// unbudgeted gallop the guard exists for measures 10.7x; the bar sits between
+// the two.
 func TestGallopingProbeCostIsLinearInLineLength(t *testing.T) {
 	r := strings.Repeat
 	unit := "AIza" + r("a", 35) + "sk-ant-"
-	patterns := DefaultPatterns()
+	assertCostGrowth(t, func(m int) string { return r(unit, m) }, 320, linearCostBar,
+		"every junction starts a match that reaches the far end (the scan is no longer linear in line length)")
+}
+
+// The two growth bars every cost guard in this file is written against.
+//
+// linearCostBar holds a shape whose matches grow with the input: quadrupling it
+// must at most quadruple the work, and quadratic work would multiply it by
+// sixteen. The bar sits between the two classes with room for the constant terms
+// a small input carries.
+//
+// flatCostBar holds a shape whose matches do NOT grow with the input — only the
+// filler after them does — so the work must not move at all. That is the class
+// of cost that tracks what FOLLOWS a match.
+const (
+	linearCostBar = 6.0
+	flatCostBar   = 1.5
+)
+
+// assertCostGrowth is the shape every cost guard in this file takes in place of
+// a stopwatch: it builds the shape at base and at 4*base, counts the bytes the
+// scan hands its probes at each size (probeWork), and fails when the growth
+// exceeds bar. A wall-clock bar measures the machine running the test — the
+// same tree passed these guards at 11s locally and failed them at 22.5s on CI
+// and at 29s on a loaded gate run (iss-2608290810037763) — while what each guard
+// protects is a cost CLASS, and a class is a count. The count is the same on an
+// idle machine and a loaded one.
+//
+// The guards skip under -race: the count is deterministic, so the instrumented
+// run would assert the same numbers at well over ten times the cost, and the
+// scan is one goroutine over an immutable string, with nothing for the detector
+// to watch. The uninstrumented lane asserts them on every run.
+func assertCostGrowth(t *testing.T, build func(int) string, base int, bar float64, why string) {
+	t.Helper()
 	if raceDetector {
-		// The count is deterministic, so the instrumented run would assert the
-		// same numbers at well over ten times the cost, and the test has no
-		// concurrency for the detector to watch. The uninstrumented lane asserts it.
 		t.Skip("a deterministic count gains nothing under -race; the uninstrumented run asserts it")
 	}
-	work := func(m int) int {
-		var n int
-		probes := make([]matcher, len(patterns))
-		for i, cp := range patterns {
-			probes[i] = tallyMatcher{adjacencyProbe(cp.Re), &n}
-		}
-		scanAllPatterns(patterns, probes, tallyMatcher{junctionProbe(patterns), &n}, r(unit, m))
-		return n
+	small, large := build(base), build(4*base)
+	if len(large) < 3*len(small) {
+		t.Fatalf("the shape does not scale with its parameter: %d bytes at base, %d at four times it", len(small), len(large))
 	}
-	// The size is fixed rather than shrunk under load or instrumentation: a
-	// count needs neither, and below a few hundred units the budget's constant
-	// term still dominates, so neither class has settled into its asymptote yet.
-	// At this size the budgeted scan measures 4.1x and the unbudgeted gallop the
-	// guard exists for measures 10.7x; the bar sits between the two.
-	const base = 320
-	small, large := work(base), work(4*base)
-	if ratio := float64(large) / float64(small); ratio > 6 {
-		t.Errorf("quadrupling the line multiplied the bytes handed to the probes by %.2fx (%d -> %d), want about 4x: the scan is no longer linear in line length", ratio, small, large)
+	lo, hi := probeWork(small), probeWork(large)
+	if lo == 0 {
+		t.Fatalf("the %d-byte shape handed no probe any bytes; it pins nothing", len(small))
 	}
+	growth := float64(hi) / float64(lo)
+	t.Logf("%d -> %d bytes of line; %d -> %d bytes probed; growth %.2fx (bar %.1fx)", len(small), len(large), lo, hi, growth, bar)
+	if growth > bar {
+		t.Errorf("quadrupling the input multiplied the bytes handed to the probes by %.2fx (%d -> %d over a %d -> %d byte line), want at most %.1fx: %s",
+			growth, lo, hi, len(small), len(large), bar, why)
+	}
+}
+
+// probeWork runs the adjacency machinery — every pattern's probe, the combined
+// junction probe, the backward search and its re-validations — over line with
+// every matcher wrapped in a tallyMatcher, and returns the total bytes the scan
+// handed them. Go's regexp engine is linear in the length of the string it is
+// run against, so that total bounds the probes' cost from above, and it is the
+// quantity each regression these guards exist for multiplied.
+//
+// It calls scanAllPatterns rather than scanLine on purpose: that function is the
+// unit every cost guard here was written for, and the rest of the scan (the
+// identity matchers, the percent-decode pre-pass) is bounded separately.
+func probeWork(line string) int {
+	var n int
+	patterns := DefaultPatterns()
+	probes := make([]matcher, len(patterns))
+	for i, cp := range patterns {
+		probes[i] = tallyMatcher{adjacencyProbe(cp.Re), &n}
+	}
+	scanAllPatterns(patterns, probes, tallyMatcher{junctionProbe(patterns), &n}, line)
+	return n
 }
 
 // tallyMatcher wraps a compiled probe and adds the length of every string it is
