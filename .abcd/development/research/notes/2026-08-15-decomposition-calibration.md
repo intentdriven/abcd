@@ -1996,3 +1996,27 @@ Per hand-run, append:
 - **Notes:** the human corrected the vendor mid-pass ("from typescript"), and
   the pass resolved it as a near-homophone with a primary source rather than
   guessing; a wrong vendor would have routed the whole proposal wrongly.
+
+### Run: the load check before abcd's own tests (2026-09-23, product thinker's planning interview)
+
+- **Proposal (as received):** the fourth condition of the product thinker's 2026-09-23 ruling on the load-experiment
+  crash, "abcd's own test lanes check machine load before they start and refuse when it is too high, naming what is
+  running", filed by the run as a seed draft with no table, then reviewed by two independent adversarial reviewers
+  (design/feasibility, record discipline) before the interview; the record review drafted a SPLIT table with an ADR.
+- **Table (as run):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | A warning before abcd's own tests start, own strays named, others counted, run-log event | capability | itd-2609231434459890, planned | refines the ruling's fourth condition (prose) |
+  | Owned process group, clean by what runs, consent and cap, never kill by pattern | rules | already shipped: the bundled `LOAD` rule domain | |
+  | abcd never starts its tests under foreign load | trust rule | not recorded: the human ruled warn-only | (the proposed ADR row dropped) |
+  | What a warning may say about other accounts | stance | carried by criteria and scope conditions | |
+  | Settings file, platform reads, wiring | plumbing | spc-2609231542463113 | |
+
+- **Verdict:** FILE-AS-IS (the review proposed SPLIT with an ADR).
+- **Routing survived?** No, in one row: the ADR the review proposed depended on a refusal, and the human's answer to
+  the override question ("warn only", confirmed on a re-ask as a change to their own earlier ruling) removed the
+  invariant the ADR would have recorded.
+- **Notes:** the design review showed the load average cannot separate the incident from the run's normal state
+  (one preflight near 7, eight near 42, the incident near 8 to 12 on 16 cores); that finding opened the interview and
+  reframed the signal before any threshold was asked.
