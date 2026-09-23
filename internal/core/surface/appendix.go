@@ -46,7 +46,7 @@ const (
 // one shipped command.
 const (
 	appendixHeading  = "## Appendix: the shipped surface"
-	appendixPreamble = "_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. " +
+	appendixPreamble = "_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. " +
 		"It lists flags and sub-verbs only. What each flag means is in the " +
 		"[CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._"
 )
