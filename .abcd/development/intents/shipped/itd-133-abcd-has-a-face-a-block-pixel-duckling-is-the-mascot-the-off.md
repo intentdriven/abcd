@@ -123,5 +123,53 @@ and 6 amended in-interview to keep the forge/web logo unchanged for now.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-5f9fa1fdfedf -->
-Fidelity review OWED (receipt rcp-5f9fa1fdfedf).
+<!-- abcd-review: INGESTED receipt=rcp-5f9fa1fdfedf -->
+Fidelity review — receipt rcp-5f9fa1fdfedf (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:e2548bbe0e21d1d8fa893fef46326e6848b60155d02c12758dbc3d3ab7f8b2ac
+Input attestations: diff:tree at de3ba5fa (spc-36 delivered; main after PR #661)@sha256:4e7430d38ef6b7b6bc533fdf0b8b32a6e08a3e2449d0566027d43316036b8178;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the seven grids live only in internal/livery/grids.go, Assets() hands out copies, the gen program renders the SVGs from them, and the in-sync test proves the committed SVGs derive from the grids and nothing else sits in the assets directory
+  evidence: internal/livery/grids.go:9 — "'y': "#f0c052", // yellow — duckling body, delta flag"
+  evidence: internal/livery/livery.go:33 — "func Assets() []Asset {"
+  evidence: internal/livery/gen/main.go:1 — "Command gen writes the committed SVG identity assets"
+  evidence: internal/livery/livery_test.go:202 — "func TestSVGAssetsInSync"
+- ac-2 — MET: TestSVGAssetsInSync renders every asset in all four variants and compares byte-for-byte with docs/assets/img/livery/, failing on drift or on a stray file; it runs under go test ./... on both CI legs
+  evidence: internal/livery/livery_test.go:202 — "func TestSVGAssetsInSync"
+  evidence: internal/livery/livery_test.go:205 — "want[a.Name+".svg"] = RenderSVG(a, true)"
+  evidence: .github/workflows/ci.yml:282 — "run: go test ./..."
+- ac-3 — MET_WITH_CONCERNS: panel variants render a dark rounded panel behind the art and the transparent variants carry a < desc> stating 'for dark surfaces only', with the forge logo.png untouched; the concern is that legibility on a light background is a visual claim no test or gate measures — the evidence is the labelling and the panel, not a rendered check
+  evidence: internal/livery/svg.go:16 — "PanelColor is the dark panel behind the panel variants."
+  evidence: internal/livery/svg.go:101 — "parts = append(parts, "Transparent variant: for dark surfaces only.")"
+  evidence: docs/assets/img/logo.png:0 — "forge/web logo unchanged"
+- ac-4 — MET: TestFlagGeometry checks the strip and the 2x2 icon: alfa white hoist / blue fly with a swallowtail, bravo all red with a swallowtail, charlie five stripes b-w-r-w-b, delta three bands y-b-b-b-y, and asserts the compact variant is declared ApproximateGeometry while full and icon are not
+  evidence: internal/livery/livery_test.go:131 — "func TestFlagGeometry"
+  evidence: internal/livery/livery_test.go:145 — "if !compact.ApproximateGeometry {"
+  evidence: internal/livery/livery_test.go:183 — "for i, want := range []rune{'b', 'w', 'r', 'w', 'b'} {"
+  evidence: internal/livery/grids.go:80 — "ApproximateGeometry: true,"
+- ac-5 — MET_WITH_CONCERNS: the role assignment is recorded in the decision log's 2026-08-21 entry (duckling mascot, signal-flag hoist as the terminal logo, lifeboat for the lifeboat verbs, forge logo kept); the concern is that the intent refers to 'the decision log' in prose only — there is no link to the entry, so discovery is by date
+  evidence: .abcd/work/DECISIONS.md:1663 — "2026-08-21 — Visual identity roles (itd-133, maintainer-ruled at the planning"
+  evidence: .abcd/development/intents/shipped/itd-133-abcd-has-a-face-a-block-pixel-duckling-is-the-mascot-the-off.md:55 — "place (maintainer-ruled 2026-08-21, recorded in the decision log)."
+- ac-6 — MET: the launch payload config includes docs/, so the 28 SVGs under docs/assets/img/livery/ ship as assets; no committed file references them from a user-facing page or references the local scratch prototypes (the only scratch mention in the tree is an unrelated test fixture path)
+  evidence: .abcd/config/launch-payload.json:8 — ""docs","
+  evidence: docs/assets/img/livery/duckling.svg:1 — "< svg xmlns"
+  evidence: internal/core/site/manifest_test.go:154 — ".abcd/.work.local/scratch/identity.md"
+
+Gap audit:
+- honoured:
+  - one canonical pixel-grid definition of all seven assets in the Go tree
+    evidence: internal/livery/livery.go:33 — "func Assets() []Asset {"
+  - a Go generator deriving the committed SVGs, no other toolchain
+    evidence: internal/livery/gen/main.go:1 — "Command gen writes the committed SVG identity assets"
+  - a CI drift gate on byte-identical regeneration
+    evidence: internal/livery/livery_test.go:202 — "TestSVGAssetsInSync"
+    evidence: .github/workflows/ci.yml:282 — "run: go test ./..."
+  - the role-assignment decision recorded in the decision log
+    evidence: .abcd/work/DECISIONS.md:1663 — "Visual identity roles (itd-133"
+- diverged:
+  - the decision is linked from this intent — referenced in prose, not linked
+    evidence: .abcd/development/intents/shipped/itd-133-abcd-has-a-face-a-block-pixel-duckling-is-the-mascot-the-off.md:55 — "recorded in the decision log"
+- missing: (none)
