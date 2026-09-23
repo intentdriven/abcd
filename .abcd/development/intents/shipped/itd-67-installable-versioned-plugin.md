@@ -82,5 +82,82 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-7af1556ce4f7 -->
-Fidelity review OWED (receipt rcp-7af1556ce4f7).
+<!-- abcd-review: INGESTED receipt=rcp-7af1556ce4f7 -->
+Fidelity review — receipt rcp-7af1556ce4f7 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:5c2255f4a1fe91bd174e3569f9aa39f48753cc8121b7cc595d5948c949815ac0
+Input attestations: diff:tree at de3ba5fa (spc-11 delivered; main after PR #661)@sha256:4e7430d38ef6b7b6bc533fdf0b8b32a6e08a3e2449d0566027d43316036b8178;
+
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 3 · NOT_MET 2 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: marketplace.json names abcd-marketplace with one plugin abcd at source ./ and the light smoke resolves it over the committed payload; the criterion's REPPL/abcd slug is stale (README documents [redacted-user]/abcd, marketplace owner url still points at REPPL) and the host-side add cannot be exercised in-tree
+  evidence: .claude-plugin/marketplace.json:3 — ""name": "abcd-marketplace""
+  evidence: .claude-plugin/marketplace.json:11 — ""source": "./""
+  evidence: internal/core/launch/smoke_test.go:13 — "func TestSmokeLightPassesOnCommittedPayload"
+  evidence: README.md:83 — "/plugin marketplace add [redacted-user]/abcd"
+  evidence: .claude-plugin/marketplace.json:6 — ""url": "https://github.com/REPPL""
+- ac-2 — MET_WITH_CONCERNS: the light smoke asserts every declared command/agent/skill/hook path exists in the resolved bundle and passes over the committed payload; it asserts path presence only, not that the surface registers in a session (itd-66's deep tier is deferred by spc-11)
+  evidence: internal/core/launch/smoke.go:110 — "for _, e := range surface.Entries {"
+  evidence: internal/core/launch/smoke.go:118 — "declared %s %q is not in the payload"
+  evidence: internal/core/launch/smoke_test.go:13 — "func TestSmokeLightPassesOnCommittedPayload"
+  evidence: internal/core/launch/smoke.go:6 — "The light tier asserts the three things itd-67 names"
+- ac-3 — NOT_MET: promised: a ship bumps plugin.json.version, updates marketplace.json, tags, and /plugin update pulls the new version; delivered: the version is stamped only into a payload staged outside the repo when --payload-dir is passed, the committed manifests carry no version at all, release.yml uploads binaries and checksums only, and the marketplace source ./ is the git tree — so /plugin update abcd never pulls a plugin.json.version; only the tag half arrives, via auto-release.yml
+  evidence: internal/surface/cli/ship.go:224 — "if payloadDir != "" && ingested.Written {"
+  evidence: internal/core/launch/render.go:365 — "func stampMarketplace(dest string, req PayloadRenderRequest) error {"
+  evidence: .claude-plugin/plugin.json:3 — ""name": "abcd","
+  evidence: internal/core/launch/render_test.go:94 — "func TestRenderPayloadLeavesSourceTreeUnversioned"
+  evidence: .github/workflows/release.yml:327 — "gh release create "${TAG}" bin/abcd-* bin/checksums.txt"
+  evidence: .github/workflows/auto-release.yml:3 — "tag-and-release the NEWEST dated"
+- ac-4 — NOT_MET: promised: phase completion drives a minor bump named in the report, patch otherwise, major only via explicit --version; delivered: the tier derives from record impact (pre-1.0 additive is a patch, breaking a minor, 1.0.0 never derivable), the report names the deciding impact and record and no phase, and the ship verb carries no --version flag at all — spc-11 records the supersession but the criterion was never amended
+  evidence: internal/core/changelog/version.go:38 — "func DeriveNext(prev launch.Semver, bump Impact) (launch.Semver, bool) {"
+  evidence: internal/core/changelog/version.go:29 — "NO input can derive 1.0.0 from a 0.x base"
+  evidence: internal/surface/cli/ship.go:143 — "return string(cut.Impact) + ": " + strings.Join(cut.DecidedBy, ", ")"
+  evidence: internal/surface/cli/ship.go:262 — "cmd.Flags().StringVar(&changelogJSON, "changelog-json""
+  evidence: .abcd/development/specs/closed/spc-11-installable-versioned-plugin.md:107 — "Bump-tier selection."
+- ac-5 — MET: SmokeLight parses both manifests, resolves the marketplace source to a plugin manifest of the same name and asserts every declared path; a missing path is a finding that fails the smoke and blocks the ship, with one negative test case per failure kind
+  evidence: internal/core/launch/smoke.go:56 — "func SmokeLight(tree PayloadTree) SmokeReport {"
+  evidence: internal/core/launch/smoke.go:127 — "report.OK = len(report.Findings) == 0"
+  evidence: internal/core/launch/smoke_test.go:26 — "func TestSmokeLightFailsAndNamesTheMissingPath"
+  evidence: internal/core/launch/smoke_test.go:109 — "func TestRenderPayloadRefusesAnUninstallablePayload"
+  evidence: internal/core/launch/ship.go:68 — "report.Smoke = SmokeLight(NewBundleTree(bundle))"
+- ac-6 — MET_WITH_CONCERNS: no version is duplicated across doc bodies: the committed plugin.json carries none, the [redacted-user]-polarity lockstep test asserts the keys absent, and git tags are the release points; the concern is that the in-tree carrier is the CHANGELOG dated heading rather than plugin.json (adr-19/adr-37), so the version does not live in plugin.json + tags as the criterion says
+  evidence: internal/core/launch/lockstep_repo_test.go:18 — "func TestCommittedTreeSatisfiesDevPolarity"
+  evidence: internal/core/launch/lockstep.go:45 — "[redacted-user]: those keys must all be ABSENT"
+  evidence: internal/surface/cli/ship.go:99 — "func publishedVersion(repoRoot string) string {"
+  evidence: .github/workflows/auto-release.yml:81 — "tag="v$version""
+
+Gap audit:
+- honoured:
+  - the repo carries marketplace.json (abcd-marketplace, plugin abcd, source ./) and plugin.json
+    evidence: .claude-plugin/marketplace.json:11 — ""source": "./""
+    evidence: .claude-plugin/plugin.json:3 — ""name": "abcd","
+  - a light installability smoke that fails on a missing declared path
+    evidence: internal/core/launch/smoke.go:56 — "func SmokeLight"
+    evidence: internal/core/launch/smoke_test.go:26 — "TestSmokeLightFailsAndNamesTheMissingPath"
+  - install and update path documented in the README
+    evidence: README.md:89 — "/plugin install abcd@abcd-marketplace"
+    evidence: README.md:98 — "/plugin update abcd"
+  - an auto-recorded changelog derived from records, never hand-curated
+    evidence: internal/surface/cli/ship.go:176 — "derive the version and the record set from what shipped"
+    evidence: internal/surface/cli/ship.go:284 — "Preview the next release cut"
+  - the version is not scattered across files
+    evidence: internal/core/launch/lockstep_repo_test.go:18 — "TestCommittedTreeSatisfiesDevPolarity"
+- diverged:
+  - bump tier auto-selected per brief phase completion — delivered from record impact, with a pre-1.0 row that maps additive to patch
+    evidence: internal/core/changelog/version.go:21 — "prev is 0.x breaking -> minor++"
+  - launch ship tags the repo — delivered as auto-release.yml tagging the newest CHANGELOG heading on merge
+    evidence: .github/workflows/auto-release.yml:3 — "tag-and-release the NEWEST dated"
+  - the version lives in plugin.json — delivered as the CHANGELOG dated heading in-tree and a stamped payload manifest out-of-tree
+    evidence: internal/surface/cli/ship.go:99 — "func publishedVersion(repoRoot string) string {"
+    evidence: internal/core/launch/render.go:365 — "func stampMarketplace"
+  - marketplace add REPPL/abcd — the README documents [redacted-user]/abcd
+    evidence: README.md:83 — "/plugin marketplace add [redacted-user]/abcd"
+- missing:
+  - a bumped plugin.json.version and updated marketplace.json that /plugin update actually pulls — the stamped payload is staged only with --payload-dir and no workflow publishes it; the marketplace source is the unversioned git tree
+    evidence: internal/surface/cli/ship.go:224 — "if payloadDir != "" && ingested.Written {"
+    evidence: .github/workflows/release.yml:327 — "gh release create "${TAG}" bin/abcd-* bin/checksums.txt"
+  - an explicit --version < x.0.0> override on the ship verb
+    evidence: internal/surface/cli/ship.go:262 — "cmd.Flags().StringVar(&changelogJSON, "changelog-json""
+  - a launch report naming the completed phase
+    evidence: internal/surface/cli/ship.go:143 — "return string(cut.Impact) + ": " + strings.Join(cut.DecidedBy, ", ")"
