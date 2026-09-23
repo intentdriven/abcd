@@ -189,7 +189,7 @@ func TestInboxListsShowsAndPromotes(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Replace(string(data), "finding", "find\u202eing", 1)), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	readable, unreadable := 0, 0
+	readable, unreadable, promotable := 0, 0, ""
 	for _, id := range []string{first, second} {
 		show := string(runCLI(t, "inbox", "show", id))
 		if strings.Contains(show, "\u202e") {
@@ -200,6 +200,7 @@ func TestInboxListsShowsAndPromotes(t *testing.T) {
 			unreadable++
 		case strings.Contains(show, "It went wrong.") && strings.Contains(show, name):
 			readable++
+			promotable = id
 		default:
 			t.Errorf("show = %q", show)
 		}
@@ -208,6 +209,9 @@ func TestInboxListsShowsAndPromotes(t *testing.T) {
 		t.Errorf("show: %d readable, %d unreadable; want one of each", readable, unreadable)
 	}
 
+	// The readable one is promoted; which of the two was planted is the
+	// directory order's choice.
+	first = promotable
 	out := string(runCLI(t, "inbox", "promote", first))
 	if !strings.Contains(out, "promoted "+first+" to iss-") {
 		t.Fatalf("promote = %q", out)
