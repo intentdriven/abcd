@@ -1,5 +1,6 @@
 ---
 id: itd-95
+shipped_in: v0.4.0
 slug: disembark-grounds-a-lifeboat-s-open-questions-on-a-repo-s-to
 spec_id: spc-12
 kind: standalone
@@ -88,4 +89,5 @@ None stated.
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-272bfa8a4561 -->
+Fidelity review OWED (receipt rcp-272bfa8a4561).

@@ -1,11 +1,13 @@
 ---
 id: itd-73
+shipped_in: v0.4.0
 slug: derived-versioning
 spec_id: spc-10
 kind: standalone
 suggested_kind: null
 reclassification_history: []
 severity: minor
+impact: additive
 ---
 
 # abcd Cuts the Version — You Never Type One
@@ -58,4 +60,8 @@ None stated.
 
 ## Audit Notes
 
+
 _None yet — this intent has not been reviewed._
+
+<!-- abcd-review: OWED receipt=rcp-0d18ea2d4682 -->
+Fidelity review OWED (receipt rcp-0d18ea2d4682).

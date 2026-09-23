@@ -1,5 +1,6 @@
 ---
 id: itd-96
+shipped_in: v0.4.0
 slug: disembark-reads-a-repo-s-naming-and-internals-conventions-in
 spec_id: spc-13
 kind: standalone
@@ -93,4 +94,5 @@ None stated.
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-b6cd3962cc41 -->
+Fidelity review OWED (receipt rcp-b6cd3962cc41).
