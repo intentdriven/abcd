@@ -46,24 +46,17 @@ into a tag. Given a payload directory, it stages the versioned release payload, 
 derived version stamped into the payload's manifests and lockstep-proved before
 return.
 
-**A feature release arrives with a release page.** The same cut writes
-`RELEASE.md` at the repository root: a short press release for the release,
-composed by the same agent in the same payload from the press releases of the
-user-facing intents that entered `shipped/` since the last tag. The headline
-intents are told as prose, every other intent in that set is listed by its
-title, and each told intent's persona quote is carried word for word. The binary
-holds the page to the changelog's rule: every intent in the set cited exactly
-once and nothing outside it (never an issue, an internal intent, a removed
-intent or anything still planned), every quote matched against the press release
-it came from, the page checked against the outbound policy and the persona
-registry, and its heading naming the version it describes. The page it replaces
-moves first to `.abcd/development/releases/<version>.md`, then the new page is
-written, then the changelog heading, last; a later failure rolls the earlier
-writes back. A release of fixes alone writes no page and says why, so the page
-at the root is always the latest feature release. A refused payload is not a
-dead end: it comes back with every reason as data, and the host re-invokes the
-composer until the payload is valid, with no attempt limit and every refused
-attempt reported (itd-2609231013154443).
+**A feature release arrives with a release page.** The same payload carries
+`RELEASE.md`, composed from the press releases of the user-facing intents shipped
+since the last tag: headline intents told as prose, the rest listed by title,
+persona quotes carried word for word. The binary holds it to the changelog's
+rule (every intent in that set cited once, nothing else, nothing planned),
+checks each quote against its source, and runs the outbound policy and the
+persona registry over it. The outgoing page moves to
+`.abcd/development/releases/<version>.md`, then the page is written, then the
+changelog heading; a failure rolls the earlier writes back. A fixes-only cut
+writes no page. A refused payload returns every reason as data, and the host
+recomposes until it is valid, reporting each attempt (itd-2609231013154443).
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent, including that retry loop. The deterministic emit alone is `abcd
