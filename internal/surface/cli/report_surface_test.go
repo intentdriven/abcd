@@ -342,7 +342,14 @@ func TestInboxPromoteOutsideAbcdIsARefusal(t *testing.T) {
 // nothing written, and no home path in the message.
 func TestInboxPromoteCaptureRefusalExitsTwo(t *testing.T) {
 	repo, _ := gitRepoNoStore(t)
-	t.Setenv("HOME", filepath.Dir(repo)) // the repository sits under home, as a real one does
+	// The repository sits under home, as a real one does. Home is spelt resolved,
+	// as a real one is, because the ledger names the directory it refused in its
+	// resolved form (a temporary directory may sit behind a symlink).
+	home, err := filepath.EvalSymlinks(filepath.Dir(repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
 	t.Chdir(repo)
 	t.Cleanup(report.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
 	id := fileOneReport(t, "a finding about abcd")
@@ -353,7 +360,7 @@ func TestInboxPromoteCaptureRefusalExitsTwo(t *testing.T) {
 	if err := os.Symlink(elsewhere, filepath.Join(repo, ".abcd", "work", "issues")); err != nil {
 		t.Fatal(err)
 	}
-	_, err := runCLIErr(t, "inbox", "promote", id)
+	_, err = runCLIErr(t, "inbox", "promote", id)
 	var coded interface{ ExitCode() int }
 	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
 		t.Fatalf("err = %v, want exit 2", err)
@@ -361,7 +368,7 @@ func TestInboxPromoteCaptureRefusalExitsTwo(t *testing.T) {
 	if !strings.Contains(err.Error(), "nothing written") {
 		t.Errorf("refusal = %q, want nothing written", err)
 	}
-	if strings.Contains(err.Error(), filepath.Dir(repo)) {
+	if strings.Contains(err.Error(), home) {
 		t.Errorf("refusal = %q, which prints the home directory", err)
 	}
 	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
