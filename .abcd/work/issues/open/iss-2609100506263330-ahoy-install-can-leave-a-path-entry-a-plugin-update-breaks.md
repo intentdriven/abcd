@@ -2,7 +2,7 @@
 schema_version: 1
 id: "iss-2609100506263330"
 slug: "ahoy-install-can-leave-a-path-entry-a-plugin-update-breaks"
-severity: "minor"
+severity: "major"
 category: "bug"
 source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-07/08; re-filed into abcd 2026-09-10"
@@ -39,3 +39,15 @@ they survive the close:
   `symlink.legacy` gap fires only once a verified cache is available.
 - **Provision the cache during install**, so the owned copy is written first
   time — this record's first "Needed" option.
+
+**Severity raised to major (2026-09-23).** This record was filed minor;
+iss-2609120447482506, closed as its duplicate, was major. The close folded that
+record's unanswered half in here (a pin into the current root on a cold cache
+raises no gap, and install does not provision the cache), so its severity comes
+with it: closing a major as a duplicate of a minor would drop the finding below
+the release-cut guard without anyone ruling it minor.
+The release-cut guard still does not see it: the guard reads the records that
+entered `open/` since the anchor, and this record sat in `open/` at v0.9.0, so
+it counts as standing backlog, while iss-2609120447482506 entered after that
+anchor. The raised severity keeps the grade honest; it does not put the finding
+back in front of this cut's guard.
