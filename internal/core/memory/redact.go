@@ -325,6 +325,20 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 // The underscore SUFFIXES are judged for the same reason carried one step
 // further — see filenameJudgeTexts.
 func (r *storeRedactor) judgeFilename(filename string) error {
+	kinds := r.filenameHardFailKinds(filename)
+	if len(kinds) == 0 {
+		return nil
+	}
+	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", filename, len(kinds), strings.Join(kinds, ", "))
+}
+
+// filenameHardFailKinds is the page-name verdict itself: the distinct hard_fail
+// kinds any of filenameJudgeTexts carries, in first-seen order. judgeFilename
+// refuses on it at the write boundary, and the read-side MR001 lint reports on
+// it for a name already in the store (iss-2609090642035097) — one splitting and
+// one bar for both sides, so a name the write side would refuse is exactly a
+// name the lint reports.
+func (r *storeRedactor) filenameHardFailKinds(filename string) []string {
 	seen := map[string]bool{}
 	var kinds []string
 	for _, text := range filenameJudgeTexts(filename) {
@@ -336,10 +350,7 @@ func (r *storeRedactor) judgeFilename(filename string) error {
 			kinds = append(kinds, f.Kind)
 		}
 	}
-	if len(kinds) == 0 {
-		return nil
-	}
-	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", filename, len(kinds), strings.Join(kinds, ", "))
+	return kinds
 }
 
 // filenameJudgeTexts is the set of strings judgeFilename scans for one page
