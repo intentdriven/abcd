@@ -29,8 +29,11 @@ and `evidence` pointers — with the prose below it.
 
 Write the account in the prose, and keep every block value on one line.
 Evidence pointers are record ids, commit SHAs and URLs; **never put a path on
-this machine anywhere in the report**, because a field naming an absolute,
-home-relative or `..` path is refused. Keep it short (under 32 KiB): a run's
+this machine anywhere in the report**. A field naming an absolute,
+home-relative, `$HOME` or `..` path is refused; that check reads the fields
+only and is best effort, so keep paths out of the prose too. Invisible or
+direction-changing characters (zero-width spaces, bidi controls) are refused
+wherever they appear. Keep it short (under 32 KiB): a run's
 whole account belongs in a document the report points at.
 
 File it through stdin, so no file is left in either repository:

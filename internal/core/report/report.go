@@ -40,6 +40,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // SchemaVersion is the template version this abcd writes and reads. A report
@@ -65,6 +66,9 @@ const (
 	maxEvidence   = 20
 	maxPointer    = 300
 	maxVersion    = 64
+	// maxKey clips a key name a refusal echoes: an unknown key is the
+	// reporter's text, and the inbox lists the refusal as a reason.
+	maxKey = 64
 )
 
 // Kinds is the closed vocabulary of what a report asks for.
@@ -231,7 +235,7 @@ func parse(data []byte, filed bool) (Report, error) {
 	}
 	text := frontmatter.TrimBOM(string(data))
 	for i, r := range text {
-		if (r < 0x20 && r != '\n' && r != '\t' && r != '\r') || r == 0x7f {
+		if (r < 0x20 && r != '\n' && r != '\t' && r != '\r') || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
 			return Report{}, fieldErr("report", "carries control byte %#02x at offset %d; a report is plain text", r, i)
 		}
 	}
@@ -272,7 +276,7 @@ func parse(data []byte, filed bool) (Report, error) {
 			return Report{}, fieldErr("block", "line %d is not a `key: value` line", i+1)
 		}
 		if _, dup := block[key]; dup {
-			return Report{}, fieldErr(key, "appears twice")
+			return Report{}, fieldErr(oneLine(key, maxKey), "appears twice")
 		}
 		block[key] = &blockLine{value: value}
 		order = append(order, key)
@@ -309,7 +313,7 @@ func parse(data []byte, filed bool) (Report, error) {
 				return Report{}, fieldErr(k, "is abcd's to write when the report is filed; remove it")
 			}
 		default:
-			return Report{}, fieldErr(k, "is not a field of template version %d", SchemaVersion)
+			return Report{}, fieldErr(oneLine(k, maxKey), "is not a field of template version %d", SchemaVersion)
 		}
 	}
 
@@ -334,6 +338,9 @@ func parse(data []byte, filed bool) (Report, error) {
 		}
 		if len(v) > max {
 			return "", fieldErr(key, "is %d bytes; at most %d", len(v), max)
+		}
+		if err := refuseHidden(key, v); err != nil {
+			return "", err
 		}
 		if err := refusePath(key, v); err != nil {
 			return "", err
@@ -396,6 +403,9 @@ func parse(data []byte, filed bool) (Report, error) {
 	if len(strings.TrimSpace(htmlCommentRe.ReplaceAllString(prose, ""))) == 0 {
 		return Report{}, fieldErr("prose", "is empty; write the account below the block")
 	}
+	if err := refuseHidden("prose", prose); err != nil {
+		return Report{}, err
+	}
 	r.Prose = strings.TrimSpace(prose)
 	return r, nil
 }
@@ -448,6 +458,9 @@ func evidence(bl *blockLine) ([]string, error) {
 		if len(v) > maxPointer {
 			return nil, fieldErr(keyEvidence, "an item is %d bytes; at most %d", len(v), maxPointer)
 		}
+		if err := refuseHidden(keyEvidence, v); err != nil {
+			return nil, err
+		}
 		if err := refusePath(keyEvidence, v); err != nil {
 			return nil, err
 		}
@@ -460,17 +473,39 @@ func evidence(bl *blockLine) ([]string, error) {
 }
 
 // pathRe matches a value that names a location on a filesystem: an absolute
-// path, a home-relative one, a Windows drive or UNC path, a file URL, or a
-// traversal segment. A slash between words, a tilde before a number and an
-// http(s) URL are words, not locations. A report is read on a machine that is not the one it
-// describes, so none of these points anywhere a reader can follow; and a report
-// that could name a location is one step from a report that chooses where
-// something is read or written. Pointers are record ids, commit SHAs, URLs and
-// repository-relative locations.
+// path, a UNC path in either slash, a home-relative one, the environment's home
+// ($HOME, %USERPROFILE%), a Windows drive, a path after a colon, a file URL, or
+// a traversal segment. A slash between words, a tilde before a number, a clock
+// time and an http(s) URL are words, not locations.
+//
+// It is a hygiene check over the block's fields, best effort, and not a
+// refusal boundary: the prose is never matched against it, and a determined
+// reporter can spell a location it does not recognise. Nothing depends on it
+// being complete, because no consumer opens any field or any prose: every value
+// is rendered or quoted, never read as a path, fetched or executed. What it
+// buys is a report that stays about records, commits and URLs, since a report
+// is read on a machine that is not the one it describes.
 var pathRe = regexp.MustCompile(`(?i)` +
-	`(^|[\s(\[<"'=,])(/[^\s/]|~[a-z0-9._-]*/|\\\\|[a-z]:[\\/])` + // absolute, home-relative, UNC, drive
+	`(^|[\s(\[<"'=,])(//?[^\s/]|~[a-z0-9._-]*/|\\\\|[a-z]:[\\/])` + // absolute, UNC, home-relative, drive
+	`|:/[^\s/]` + // a path after a colon; a URL's "://" is not one
+	`|\$\{?home\b|%(userprofile|homepath|homedrive|appdata|localappdata)%` + // the environment's home
 	`|file:` + // a file URL
 	`|(^|[\\/\s])\.\.([\\/]|$)`) // a traversal segment
+
+// refuseHidden refuses a value carrying a bidirectional control or a
+// zero-width rune, judged by termsafe's own predicate: such a value displays
+// differently from its bytes, so a reader of the report, or of the capture it
+// becomes, would see something the report does not say. The byte-order mark
+// that opens a file is trimmed before any field is read, so only one inside
+// the text reaches this check.
+func refuseHidden(key, v string) error {
+	for i, r := range v {
+		if termsafe.IsHidden(r) {
+			return fieldErr(key, "carries the invisible or direction-changing character U+%04X at byte %d; a report is plain text", r, i)
+		}
+	}
+	return nil
+}
 
 func refusePath(key, v string) error {
 	if pathRe.MatchString(v) {

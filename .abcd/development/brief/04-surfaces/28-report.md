@@ -43,17 +43,24 @@ comment and does not count. The issued skeleton, unchanged, is refused.
 A report arrives from another repository, so it is untrusted input, and the
 validator refuses it, naming the field, when:
 
-- it is over 32 KiB, or not UTF-8, or carries a control byte other than a tab
-  or a line break;
+- it is over 32 KiB, or not UTF-8, or carries a control byte (C0, DEL or C1)
+  other than a tab or a line break;
+- a field or the prose carries a bidirectional control or a zero-width
+  character (a byte-order mark opening the file excepted), judged by the
+  terminal sanitiser's own predicate: such text displays differently from its
+  bytes;
 - a field is missing, empty where it is required, outside its closed
   vocabulary, over its length bound, duplicated, or not a field of the
   template;
 - it carries `received_at`, `sender_key` or `sender_name`, which are abcd's to
   write;
-- a field names a filesystem location: an absolute or home-relative path, a
-  Windows drive or UNC path, a `file:` URL, or a `..` segment. A report points
-  at records, commits and URLs, never at a location on a machine, and nothing in
-  it is ever opened.
+- a field names a filesystem location: an absolute or home-relative path,
+  `$HOME` or `%USERPROFILE%`, a Windows drive or a UNC path in either slash, a
+  path after a colon, a `file:` URL, or a `..` segment. A report points at
+  records, commits and URLs, never at a location on a machine. This check covers
+  the block's fields only and is best effort, not a boundary: the prose is not
+  matched, and a location spelt some other way passes. Nothing rests on it being
+  complete, because nothing in a report is ever opened, fetched or executed.
 
 A report written to a template version this abcd does not know is refused at
 filing with the version named, and listed as unreadable in the inbox.

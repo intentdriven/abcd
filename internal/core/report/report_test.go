@@ -151,3 +151,58 @@ func TestPathRefusalLeavesOrdinaryWordsAlone(t *testing.T) {
 		}
 	}
 }
+
+// TestHiddenRunesAreRefusedNamingTheField: a bidi override or a zero-width rune
+// makes a value display differently from its bytes, so a report carrying one in
+// any field is refused, naming that field. The runes are written numerically so
+// this file carries none of them.
+func TestHiddenRunesAreRefusedNamingTheField(t *testing.T) {
+	hidden := []rune{0x202A, 0x202E, 0x2066, 0x2069, 0x200B, 0x200E, 0x200F, 0xFEFF, 0x061C}
+	fields := []struct{ field, from string }{
+		{"title", "capture refuses a slug"},
+		{"surface", `surface: "abcd capture"`},
+		{"remedy", "accept a leading digit"},
+		{"evidence", "https://example.com/run/1"},
+		{"prose", "Running capture with"},
+	}
+	for _, r := range hidden {
+		for _, f := range fields {
+			in := filled(t)
+			if !strings.Contains(in, f.from) {
+				t.Fatalf("fixture lacks %q", f.from)
+			}
+			at := len(f.from) - 3
+			in = strings.Replace(in, f.from, f.from[:at]+string(r)+f.from[at:], 1)
+			_, err := Parse([]byte(in))
+			var fe *FieldError
+			if !errors.As(err, &fe) || fe.Field != f.field {
+				t.Errorf("U+%04X in %s: Parse = %v, want a refusal naming %q", r, f.field, err, f.field)
+			}
+		}
+	}
+	// A leading byte-order mark is an encoding marker, not text, and still reads.
+	if _, err := Parse([]byte(string(rune(0xFEFF)) + filled(t))); err != nil {
+		t.Errorf("a leading BOM: Parse = %v, want it accepted", err)
+	}
+	// A C1 control is a control byte like ESC: U+009B acts as ESC[ on an 8-bit terminal.
+	c1 := strings.Replace(filled(t), "was refused.", "was refused."+string(rune(0x9B))+"31m", 1)
+	if _, err := Parse([]byte(c1)); !errors.Is(err, ErrRefused) {
+		t.Errorf("C1 control: Parse = %v, want a refusal", err)
+	}
+}
+
+// TestPathRefusalCatchesTheCheapForms: the environment's home, a UNC path in
+// its forward-slash spelling and a path after a colon are locations too, while
+// a URL's scheme separator and a clock time are not.
+func TestPathRefusalCatchesTheCheapForms(t *testing.T) {
+	for _, v := range []string{"$HOME/notes", "${HOME}/notes", "see $HOME", "//host/share", "path:/etc/passwd", "found at:/tmp/x", "%USERPROFILE%\\x"} {
+		if err := refusePath("title", v); err == nil {
+			t.Errorf("refusePath(%q) accepted a location", v)
+		}
+	}
+	for _, v := range []string{"https://example.com/a", "at 10:30 today", "iss-1: done", "HOMEWORK", "$HOMER"} {
+		if err := refusePath("title", v); err != nil {
+			t.Errorf("refusePath(%q) = %v, want it accepted", v, err)
+		}
+	}
+}

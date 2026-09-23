@@ -98,3 +98,17 @@ func TestSanitizeAll(t *testing.T) {
 		t.Errorf("SanitizeAll = %v", got)
 	}
 }
+
+// TestIsHiddenIsWhatSanitizeMasks: the exported predicate is the set Sanitize
+// masks outside the control ranges, so a parser refusing by it and a render
+// masking by Sanitize never disagree.
+func TestIsHiddenIsWhatSanitizeMasks(t *testing.T) {
+	for r := rune(0xA0); r < 0x10000; r++ {
+		if r >= 0xD800 && r <= 0xDFFF {
+			continue
+		}
+		if masked := Sanitize(string(r)) == "?"; masked != IsHidden(r) {
+			t.Errorf("U+%04X: Sanitize masks it = %v, IsHidden = %v", r, masked, IsHidden(r))
+		}
+	}
+}
