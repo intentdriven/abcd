@@ -24,16 +24,19 @@ Once the marketplace is added:
 
 `abcd-marketplace` is the marketplace name declared in
 [`.claude-plugin/`](https://github.com/intentdriven/abcd/tree/main/.claude-plugin/); `abcd` is the single plugin it lists,
-sourced from the repository root. Pull the current state of the marketplace with:
+sourced from the latest release's plugin archive. Take a newer release with:
 
 ```text
 /plugin update abcd
 ```
 
-The marketplace is served from the repository itself, so an install tracks the
-repository rather than a versioned artefact: the manifests here carry no version
-key, and a release publishes the `abcd` binaries and their checksums, alongside
-the source archives GitHub attaches for the tagged tree.
+The listing names that release's `abcd-plugin-vX.Y.Z.zip` by its download
+address and its SHA-256, so an install or update receives exactly the cut
+release, with its version stamped in, and the harness refuses any download whose
+digest differs. The archive is published with the release's binaries, in its
+`checksums.txt` and its build-provenance attestation.
+
+The plugin needs Claude Code v2.1.224 or later, the first version that installs a plugin from an archive. <!-- docs-lint: allow -->
 
 The plugin provisions its own binary; this repository commits none. The
 verified artefact is kept once in the plugin's persistent per-plugin download

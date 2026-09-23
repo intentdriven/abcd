@@ -22,7 +22,13 @@ func shipRenderableRepo(t *testing.T) *gittest.Repo {
 		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version"}`+"\n")
 	r.Write(".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "CHANGELOG.md"]}`+"\n")
+	// The plugin manifest names the repository a pinned archive's download
+	// address would derive from. The contract above does NOT declare that the
+	// release publishes that archive, so a ship here leaves the catalog alone;
+	// shipArchiveRepo adds the declaration.
+	r.Write(".claude-plugin/plugin.json", `{"name":"abcd","description":"fixture","repository":"`+fixtureRepository+`"}`+"\n")
 	r.Commit("the release configuration")
+	refreshSurface(t, r)
 	return r
 }
 
