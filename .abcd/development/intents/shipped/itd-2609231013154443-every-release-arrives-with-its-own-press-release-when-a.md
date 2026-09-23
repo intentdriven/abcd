@@ -200,7 +200,8 @@ We expect the release press release to stay true because it is composed after th
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-af55e181c483 -->
+Fidelity review OWED (receipt rcp-af55e181c483).
 
 ## Grounds
 
