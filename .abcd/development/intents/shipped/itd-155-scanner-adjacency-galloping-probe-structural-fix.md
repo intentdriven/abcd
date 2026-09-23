@@ -40,5 +40,46 @@ _None recorded yet._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-f317a716a8e4 -->
-Fidelity review OWED (receipt rcp-f317a716a8e4).
+<!-- abcd-review: INGESTED receipt=rcp-f317a716a8e4 -->
+Fidelity review — receipt rcp-f317a716a8e4 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:3a57d743083c8f2f18760747e08a2430559e49e4bd0cc334bb055e983c625285
+Input attestations: diff:328a6755^1..328a6755 (PR #555), judged against the tree at bad1c73e@-;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: gallopingFind doubles the window while the match runs into its edge and a 4096-byte recovered token is captured whole in the test; concern: a per-line growth budget (4*len(line)+4096) exists, and once it is spent the probe keeps the fixed window it has, so a truncation artefact remains possible on a line engineered to grow the window at many junctions — a single long token always fits
+  evidence: internal/adapter/scanner/scanner.go:572 — "func gallopingFind(re matcher, line string, at, base int, budget *int) []int {"
+  evidence: internal/adapter/scanner/scanner.go:584 — "keeps the fixed window it already has. See gallopBudget."
+  evidence: internal/adapter/scanner/scanner.go:611 — "return 4*len(line) + 8*maxAdjacencyProbeWindow"
+  evidence: internal/adapter/scanner/adjacency_test.go:458 — "func TestAdjacencyRecoveryCapturesALongTokenWhole"
+- ac-2 — MET: the first attempt uses exactly the old 512-byte window, so a match ending before it returns on the first probe with the same result and cost; the pre-existing short-match and linearity tests pass at BASE
+  evidence: internal/adapter/scanner/scanner.go:573 — "for w := maxAdjacencyProbeWindow; ; w *= 2 {"
+  evidence: internal/adapter/scanner/scanner.go:524 — "const maxAdjacencyProbeWindow = 512"
+  evidence: internal/adapter/scanner/adjacency_test.go:18 — "func TestConcatenatedSecretsBothDetected"
+  evidence: internal/adapter/scanner/adjacency_test.go:260 — "func TestAdjacencyProbeStaysLinearOnLongLines"
+- ac-3 — MET: the iss-189 repro places `.local` exactly at the old window edge with the token continuing, and asserts no LAN-host finding; the stop conditions evaluate the boundary against the real line end and no classifier symbol exists in the package
+  evidence: internal/adapter/scanner/adjacency_test.go:405 — "func TestAdjacencyProbeWindowEdgeIsNotAWordBoundary"
+  evidence: internal/adapter/scanner/scanner.go:578 — "if hi == len(line) || loc == nil || at+loc[1] < hi {"
+- ac-4 — MET: the iss-190 repro (three abutting PATs with a 600-byte middle) asserts all three are found and redacted; stolenJunctions' forward reach is the same galloping probe with no clipped-so-skip branch
+  evidence: internal/adapter/scanner/adjacency_test.go:425 — "func TestAdjacencyRecoveryChainSurvivesALongToken"
+  evidence: internal/adapter/scanner/scanner.go:725 — "loc := gallopingFind(junctions, line, off, m.end, budget)"
+- ac-5 — MET: the loop doubles only when the match reaches the edge with line remaining, a failing attempt never grows, and the cost test asserts the schedule is logarithmic in match length and the scan linear in line length
+  evidence: internal/adapter/scanner/scanner.go:562 — "a FAILING attempt is what two bundled patterns'"
+  evidence: internal/adapter/scanner/adjacency_test.go:532 — "t.Run("long_match_doubles_logarithmically", func(t *testing.T) {"
+  evidence: internal/adapter/scanner/adjacency_test.go:631 — "func TestGallopingProbeCostIsLinearInLineLength"
+
+Gap audit:
+- honoured:
+  - one mechanism replaces the fixed window in both probeAt and stolenJunctions; no boundary classifier and no clipped-so-skip branch were introduced
+    evidence: internal/adapter/scanner/scanner.go:652 — "m := gallopingFind(probes[j], line, at, at, &budget)"
+    evidence: internal/adapter/scanner/scanner.go:725 — "loc := gallopingFind(junctions, line, off, m.end, budget)"
+  - the round-6 cost regression is guarded by tests that assert the doubling schedule and linearity directly
+    evidence: internal/adapter/scanner/adjacency_test.go:503 — "func TestGallopingProbeCostClass"
+    evidence: internal/adapter/scanner/adjacency_test.go:570 — "func TestGallopingProbeStaysBoundedOnLongLines"
+- diverged:
+  - the promise 'a match end is never a truncation artefact' holds under a per-line growth budget; when it is exhausted the probe reverts to the fixed 512-byte window, so on an adversarial many-junction line the old truncation shape can recur (a deliberate resource-exhaustion trade-off recorded in code, not in the intent)
+    evidence: internal/adapter/scanner/scanner.go:606 — "reverts to exactly the fixed-window behaviour, which is bounded and was never"
+    evidence: internal/adapter/scanner/scanner.go:583 — "if *budget < hi-at {"
+- missing: (none)

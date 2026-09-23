@@ -39,5 +39,41 @@ _None recorded yet._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-d43ef5189c11 -->
-Fidelity review OWED (receipt rcp-d43ef5189c11).
+<!-- abcd-review: INGESTED receipt=rcp-d43ef5189c11 -->
+Fidelity review — receipt rcp-d43ef5189c11 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:6e04539356aa74de0d8aada73ec5e5e55e9729aea165c4fe0120befc2de9585e
+Input attestations: diff:328a6755^1..328a6755 (PR #555), judged against the tree at bad1c73e@-;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: a structural unquoted `{` that braceExpansionAt identifies as a group marks the segment, Check folds that into a VerdictBlock signal, and the tests assert Block on the reported shape and that the refusal is fail-closed on the hook path
+  evidence: internal/core/guard/tokenize.go:452 — "case c == '{' && braceExpansionAt(line, i, &braceBudget):"
+  evidence: internal/core/guard/guard.go:395 — "if s.braceGroup {"
+  evidence: internal/core/guard/brace_test.go:16 — "func TestUnquotedBraceGroupIsRefused"
+  evidence: internal/core/guard/brace_test.go:73 — "func TestBraceRefusalIsFailClosed"
+- ac-2 — MET: quoted bytes never reach the structural switch case, and the shape table asserts `'{--force,}'` and `"{--force,}"` are allowed
+  evidence: internal/core/guard/tokenize.go:588 — "braceExpansionAt reports whether the `{` at line[i] — reached as a structural,"
+  evidence: internal/core/guard/brace_test.go:110 — "{`git push '{--force,}' origin main`, VerdictAllow},"
+- ac-3 — MET: an unescaped `$` immediately before the brace exempts it as parameter expansion, and `${HOME}`, `${x:-a,b}` and `${MSG}` are asserted to keep their allow verdict
+  evidence: internal/core/guard/tokenize.go:615 — "if i > 0 && line[i-1] == '$' && !escapedAt(line, i-1) {"
+  evidence: internal/core/guard/brace_test.go:114 — "{`echo ${HOME}`, VerdictAllow},"
+- ac-4 — MET: a lone `{`, `{a}`, `{}`, `awk {print}`, ordinary commands and a reserved-word `{ …; }` group all keep their prior verdicts in the shape table, and the brace bytes stay in the word so nothing else about tokenisation changes
+  evidence: internal/core/guard/brace_test.go:103 — "func TestBraceHandlingLeavesEveryOtherShapeAlone"
+  evidence: internal/core/guard/brace_test.go:136 — "{`{ git push --force origin main; }`, VerdictBlock},"
+  evidence: internal/core/guard/tokenize.go:473 — "cur = append(cur, c)"
+
+Gap audit:
+- honoured:
+  - refuse rather than expand: the block rides on the segment so the pre-tool-use hook blocks instead of failing open on a tokenize error
+    evidence: internal/core/guard/tokenize.go:467 — "The refusal rides on the segment rather than returning"
+    evidence: internal/core/guard/tokenize.go:576 — "func braceExpansionBlockSignal() payloadSignal {"
+  - the look-ahead is budgeted so the scan stays linear however many braces a line holds
+    evidence: internal/core/guard/tokenize.go:568 — "braceScanBudget = 1 << 16"
+    evidence: internal/core/guard/brace_test.go:182 — "func TestBraceScanStaysLinear"
+  - variants beyond the reported shape are covered: ranges, nested groups, escaped `$`, substitutions inside an alternative, an inner `}` in the first alternative
+    evidence: internal/core/guard/brace_test.go:26 — "`rm -rf dir{1..9}`,"
+    evidence: internal/core/guard/brace_test.go:44 — "`git push \${--force,} origin main`,"
+- diverged: (none)
+- missing: (none)

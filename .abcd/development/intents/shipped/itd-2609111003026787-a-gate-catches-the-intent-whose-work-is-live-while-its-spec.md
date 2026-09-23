@@ -195,7 +195,11 @@ voluntary declaration cannot reach someone who declines to declare.
 
 ## Audit Notes
 
+
 _None yet: the intent has not shipped._
+
+<!-- abcd-review: OWED receipt=rcp-600cc27b0c43 -->
+Fidelity review OWED (receipt rcp-600cc27b0c43).
 
 ## Grounds
 

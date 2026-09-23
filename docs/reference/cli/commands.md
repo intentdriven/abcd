@@ -1153,6 +1153,30 @@ all. With --json the notice is a field. Both forms make no network request.
 Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
 and nothing is written on any of them.
 
+### `abcd peers`
+
+List the records this checkout's sibling worktrees and local branches hold that it does not (read-only)
+
+**Usage:** `abcd peers`
+
+List what this checkout's peers hold that it does not, before capturing, fixing or
+filing anything. A peer is a linked worktree sharing this repository's git
+common dir, read off its disk so an uncommitted capture is seen, or a local
+branch no worktree has checked out, read from the object store.
+
+Per peer, three kinds of row: an issue open there and absent here; an issue
+open here and resolved or won't-fixed there; an intent drafted there and
+absent here. A peer whose worktree directory is gone, or whose branch is
+merged into the default branch (a worktree only when its record folders are
+also clean), is skipped and counted. A peer git refuses to answer for, one
+whose common dir is another repository's, or one whose ledger holds an id in
+two status folders is named with the reason and not read; a gone or refused
+worktree's branch is then read from the object store instead.
+
+Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
+Home paths are redacted to ~ on every stream. Exit 0 whatever the peers
+hold; exit 2 outside a git checkout.
+
 ### `abcd reading`
 
 Cold-reading input assembler: what a reading sees, and the manifest proving it

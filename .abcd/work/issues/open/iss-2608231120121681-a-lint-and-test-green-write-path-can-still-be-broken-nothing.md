@@ -10,6 +10,8 @@ found_at: "CLAUDE.md"
 details: "The definition of done requires make preflight clean, gofmt clean, and a test watched fail then pass. On 2026-08-23 a change to the issue-ledger write path satisfied all three and still broke the verb outright: abcd capture refused every issue whose text contained a home path. It was found by running the built binary against a real capture, which nothing in the definition of done asks for."
 suggested_fix: "Add a functional check against a built binary to the definition of done for changes to a user-invocable write path: build, run the verb, assert on what lands on disk. Script-first — a documented step before any harness. The narrower lesson is that a unit test constructing a request by hand does not exercise the surface that constructs it in production."
 related_issues: ["iss-2608231025198888", "iss-2608230847432286", "iss-2608230957104179"]
+deferred_after: "v0.9.0"
+deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M11: automate it: extend the smoke lane to exercise write-path verbs against a scratch repository and assert what lands on disk, with no hand step added to the definition of done; a build lane owed, not holding the tag)."
 ---
 
 a lint-and-test-green write path can still be broken; nothing requires running the built binary

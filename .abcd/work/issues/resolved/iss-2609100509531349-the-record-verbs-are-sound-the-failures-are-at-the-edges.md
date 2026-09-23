@@ -11,6 +11,10 @@ production_mode: hand-written
 deferred_after: "v0.8.0"
 deferral_reason: "This is a synthesis rather than a defect: the observation that the record verbs are sound and the failures are at the edges, where the tool knows something and does not say it. It cannot be fixed because it is not broken; it is a claim about where to look, and its value is as a lens over the individual findings that evidence it. Several of those are fixed in this cut, which is the only sense in which this record advances. It stays open deliberately, as the place the pattern is recorded."
 found_at: "internal/surface (refusal paths across verbs)"
+resolution: "Promoted to a principle (product thinker, 2026-09-23 run A interview, M29): principles/at-every-refusal-emit-what-the-tool-knows.md holds the rule, and the five open instances are recorded there as its breaches, each still open on its own."
+impact: internal
+resolved_by:
+  commit: "7bed788f"
 ---
 
 The record verbs are sound; the failures were all at the edges, where the tool knows something and does not say it.
@@ -44,3 +48,7 @@ iss-2609100505140261 (the provenance hashes one half of a verb requires and the
 other half never emits), iss-2609100505142469 (the redaction it performed and
 reports only as a count). The positive control is iss-2609100508570803: the
 centre, exercised hardest, produced one wording defect and no failures.
+
+## Grounds
+
+- pursued: the failures of the record verbs sit at their refusals, where the tool withholds what it knows; it would be shown wrong by the next run's findings landing somewhere other than the edges

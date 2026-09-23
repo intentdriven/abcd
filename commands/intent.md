@@ -398,7 +398,21 @@ issue is resolved in the change that fixes it. The reason is the release cut:
 folders, and a planned intent is not a refusal, it is simply not seen. An
 intent whose code is on `main` but whose spec is still open ships with no
 changelog line and exits 0 doing so; two intents delivering a breaking CLI
-change were caught that way only by a reviewer. The close that ships needs the
+change were caught that way only by a reviewer. So the change declares the
+delivery in a commit trailer, the way it declares an issue it resolves:
+
+```text
+Delivers: itd-N
+```
+
+The merge gate (RS005, beside RS001 in `scripts/check-issue-resolution.sh`)
+refuses a change whose `Delivers:` intent does not enter `shipped/` in that
+same change, and names every spec still open that names it, each with its
+`abcd spec close`. The trailer takes the intent id, never the spec id, and it
+means the change FINISHES the intent: a partial delivery closed with
+`--remainder` leaves the intent planned and carries no trailer. A change that
+declares no delivery is refused nothing, so a planned intent nobody claims to
+have built stays the ordinary state of the backlog. The close that ships needs the
 intent's `impact` — `shipped/` is the bucket `intent_impact_valid` requires one in, and
 there is no default, because the judgement decides the derived version. A
 record that already declares it — at create time, or where the interview
@@ -490,6 +504,10 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit <itd-N> --json                       # re-emit a shipped intent's review request
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
 ```
+
+An intent this checkout does not hold is refused; when a peer holds it (a
+sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
+peer's branch, path and bucket instead of answering not found.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
 or `noop`) and, for `dead_letter`, the reason.
