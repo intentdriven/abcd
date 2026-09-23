@@ -7,6 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-179-round-5-builder"
 found_at: ".abcd/development/specs/open"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (errata convention owed (draft itd-2609150819439571): spc-57 is closed and its Tests section still omits the grounds-floor tests). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 spc-57's Tests section lists none of the grounds floor tests added in rounds three to five

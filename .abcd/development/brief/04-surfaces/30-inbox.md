@@ -1,7 +1,7 @@
 # `/abcd:inbox` — Read and Promote Reports
 
 `/abcd:inbox` reads the reports repositories abcd manages filed with
-[`/abcd:report`](28-report.md), and files one as a capture when a person or a
+[`/abcd:report`](29-report.md), and files one as a capture when a person or a
 session decides to (itd-2609221656361680, spc-2609221657168936). Nothing in the
 inbox files itself.
 

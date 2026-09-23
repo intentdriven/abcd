@@ -9,6 +9,8 @@ found_during: "itd-179-fidelity-audit"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/cli.go"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (design ruling owed: one --grounds flag name carrying two contracts (token plus floor vs free-text disposition_grounds)). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 the grounds flag carries two incompatible grammars on one verb family with a floor on three routes and free text on the fourth

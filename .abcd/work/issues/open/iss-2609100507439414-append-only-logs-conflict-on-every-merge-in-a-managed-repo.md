@@ -8,10 +8,10 @@ source: "user-observation"
 found_during: "autonomous-run field experiment in a managed repository, 2026-09-09/10"
 origin: researcher-authored
 production_mode: hand-written
-deferred_after: "v0.8.0"
-deferral_reason: "abcd answered both halves of this for its own repository, with a merge attribute for the append-only decision log and a derived changelog rather than a hand-edited one, and neither answer travels to a repository it manages. Whether adoption should write those answers into a managed repo, and which of them, is a decision about how opinionated adoption is allowed to be. Scaffolding a merge attribute into somebody's repository unasked is exactly the kind of act this project's own principle about the user's directory tells it to think twice about."
 found_at: ".abcd/work/DECISIONS.md, CHANGELOG.md (in a managed repo)"
 promoted_to: itd-2609151138388536
+deferred_after: "v0.9.0"
+deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M28: plan next cycle as its own intent (itd-2609151138388536); the interview settles managed-repository migration (convert, offer, or new-only) and the naming and index shape). Earlier deferral: abcd answered both halves of this for its own repository, with a merge attribute for the append-only decision log and a derived changelog rather than a hand-edited one, and neither answer travels to a repository it manages. Whether adoption should write those answers into a managed repo, and which of them, is a decision about how opinionated adoption is allowed to be. Scaffolding a merge attribute into somebody's repository unasked is exactly the kind of act this project's own principle about the user's directory tells it to think twice about."
 ---
 
 A managed repository's shared append-only files conflict on nearly every merge, and abcd propagates neither of the two remedies it has already adopted for itself.

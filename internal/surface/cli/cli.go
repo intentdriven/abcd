@@ -216,7 +216,9 @@ func NewRootCommand() *cobra.Command {
 			if len(args) == 1 {
 				d, err := record.Describe(cwd, args[0])
 				if err != nil {
-					return err
+					// Not here is not "not found" when a peer holds it
+					// (itd-2609091416295622): the consult runs only now.
+					return peerHeldRefusal(cwd, "", args[0], err)
 				}
 				return render(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
 					// Title and link values come from record files a hostile
@@ -241,7 +243,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Inbox: boardInbox()}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox()}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -249,6 +251,10 @@ func NewRootCommand() *cobra.Command {
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
 				if board.Statusline != nil {
 					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
+				}
+				if board.Peers != nil {
+					fmt.Fprintf(w, "  peers:      %s differing here across %s — abcd peers\n",
+						countOf(board.Peers.IDs, "record"), countOf(board.Peers.Live, "live peer"))
 				}
 				if board.Inbox != nil {
 					fmt.Fprintf(w, "  inbox:      %s — `abcd inbox`\n", inboxTallyText(*board.Inbox))
@@ -269,6 +275,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newVersionCommand(&asJSON))
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
+	root.AddCommand(newPeersCommand(&asJSON))
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
@@ -2250,7 +2257,8 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := intent.ReEmitAudit(repoRoot, args[0])
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
+				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
+					&exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()})
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n  request: %s\n",
@@ -3410,6 +3418,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ShippedIn: resolveShippedIn, Grounds: resolveGrounds,
 				ProductionMode: resolveModeRestamp,
 			})
+			if errors.Is(err, capture.ErrUnknownIssueID) {
+				return peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)
+			}
 			if err != nil {
 				return groundsUsageError("resolve", err)
 			}

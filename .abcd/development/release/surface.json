@@ -1456,6 +1456,11 @@
       "flags": []
     },
     {
+      "path": "abcd peers",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd reading",
       "hidden": false,
       "flags": []

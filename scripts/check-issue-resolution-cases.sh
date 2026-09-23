@@ -725,6 +725,356 @@ printf '%s' "chore: tidy the parser" >"$d/title.txt"
 printf '%s\n' "No record is named here." >"$d/body.md"
 expect pass "$d" "RS004 a pull-request form naming no record" -- pr title.txt body.md
 
+# --- RS005: a declared delivery must ship the intent --------------------------
+#
+# The intent-store twin of RS001 (itd-2609111003026787). A change that delivers
+# an intent says so with `Delivers: itd-N`, and the named intent must ENTER
+# .abcd/development/intents/shipped/ in the same range — which `abcd spec close`
+# does as its close-hook, on the close after which no open spec names it. No
+# trailer, no assertion: a planned intent nobody claims to have built is the
+# ordinary state of the backlog, and the standing population of planned intents
+# with open specs is deliberately out of this rule's reach.
+
+INT_DIR=".abcd/development/intents"
+SPC_DIR=".abcd/development/specs"
+
+# newrepo_intents is newrepo plus a small intent store on main: itd-7 planned
+# with spc-7 open, itd-8 planned with no spec (spec_id: null), itd-6 shipped
+# with spc-6 closed, itd-9 a draft, itd-5 superseded.
+newrepo_intents() {
+	local d
+	d="$(newrepo "$1")"
+	git -C "$d" checkout -q main
+	mkdir -p "$d/$INT_DIR/drafts" "$d/$INT_DIR/planned" "$d/$INT_DIR/shipped" \
+		"$d/$INT_DIR/disciplines" "$d/$INT_DIR/superseded" "$d/$SPC_DIR/open" "$d/$SPC_DIR/closed"
+	intent_fixture "$d" planned 7 spc-7
+	intent_fixture "$d" planned 8 null
+	intent_fixture "$d" shipped 6 spc-6
+	intent_fixture "$d" drafts 9 null
+	intent_fixture "$d" superseded 5 null
+	spec_fixture "$d" open 7 itd-7
+	spec_fixture "$d" closed 6 itd-6
+	touch "$d/$INT_DIR/disciplines/.gitkeep"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "baseline intents"
+	git -C "$d" checkout -q -B work main
+	echo "$d"
+}
+
+intent_fixture() {
+	local d="$1" bucket="$2" n="$3" spec="$4"
+	printf -- '---\nid: itd-%s\nslug: fixture-%s\nspec_id: %s\n---\n\n# Fixture intent %s\n' \
+		"$n" "$n" "$spec" "$n" >"$d/$INT_DIR/$bucket/itd-$n-fixture-$n.md"
+}
+
+spec_fixture() {
+	local d="$1" status="$2" n="$3" intent="$4"
+	printf -- '---\nid: spc-%s\nslug: fixture-%s\nintent: %s\n---\n\n# Fixture spec %s\n' \
+		"$n" "$n" "$intent" "$n" >"$d/$SPC_DIR/$status/spc-$n-fixture-$n.md"
+}
+
+# ship_intent stages what `abcd spec close spc-N` does to the tree: the spec
+# moves open/ -> closed/, and the intent planned/ -> shipped/.
+ship_intent() {
+	local d="$1" n="$2" spec="${3:-$2}"
+	git -C "$d" mv "$SPC_DIR/open/spc-$spec-fixture-$spec.md" "$SPC_DIR/closed/spc-$spec-fixture-$spec.md"
+	git -C "$d" mv "$INT_DIR/planned/itd-$n-fixture-$n.md" "$INT_DIR/shipped/itd-$n-fixture-$n.md"
+}
+
+# Criterion 1: a declared delivery whose intent stays planned is refused, and the
+# refusal names the command that closes its spec.
+d="$(newrepo_intents rs005-left-planned)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 trailer, intent left in planned/ with its spec open" \
+	"RS005 commit [0-9a-f]{12} declares 'Delivers: itd-7', but itd-7 does not enter $INT_DIR/shipped/ in main\\.\\.HEAD.*abcd spec close spc-7" -- commits main HEAD
+
+d="$(newrepo_intents rs005-good)"
+echo "touched" >>"$d/README.md"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect pass "$d" "RS005 trailer with the spec closed and the intent shipped" -- commits main HEAD
+
+# The close may land in a later commit of the same change than the trailer: the
+# rule reads the range, as RS001 does.
+d="$(newrepo_intents rs005-close-in-later-commit)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: close spc-7"
+expect pass "$d" "RS005 trailer with the close in a later commit of the range" -- commits main HEAD
+
+# Criterion 2: several declared, every unshipped one is named in the one run —
+# whether they share a comma-separated line or stand on lines of their own.
+d="$(newrepo_intents rs005-several)"
+intent_fixture "$d" planned 4 spc-4
+spec_fixture "$d" open 4 itd-4
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build three things
+
+Delivers: itd-7, itd-8
+Delivers: itd-4"
+expect_refusal_naming "$d" "RS005 names the first of several unshipped intents" \
+	"declares 'Delivers: itd-7'" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 names the second of several unshipped intents" \
+	"declares 'Delivers: itd-8'" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 names an unshipped intent on its own trailer line" \
+	"declares 'Delivers: itd-4'" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 counts every unshipped intent as its own violation" \
+	"FAILED — 3 violation\\(s\\)" -- commits main HEAD
+
+# Criterion 3 and 6: no trailer, no refusal — even with planned intents whose
+# specs are open all around, and even when the change touches one of them.
+d="$(newrepo_intents rs005-no-claim)"
+echo "touched" >>"$d/README.md"
+echo "An edit to the planned record." >>"$d/$INT_DIR/planned/itd-7-fixture-7.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: part of the thing"
+expect pass "$d" "RS005 no trailer, planned intents with open specs are not refused" -- commits main HEAD
+
+# Criterion 4: a bad id says which.
+d="$(newrepo_intents rs005-absent-everywhere)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-404"
+expect_refusal_naming "$d" "RS005 on an id with no record anywhere says so" \
+	"itd-404 has no record at HEAD or at main" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 on an id with no record anywhere does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+d="$(newrepo_intents rs005-already-shipped)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing again
+
+Delivers: itd-6"
+expect_refusal_naming "$d" "RS005 on an intent already shipped before the branch says to drop the trailer" \
+	"itd-6 already sat in $INT_DIR/shipped/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 on an intent already shipped before the branch does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+# The stale-branch shape: the branch shipped the intent honestly, the work was
+# squash-merged so main holds the shipped record too, and the branch was never
+# rebased. Both trees hold it in shipped/, so it enters nothing in the range.
+d="$(newrepo_intents rs005-stale-branch)"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+git -C "$d" checkout -q main
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing (squash of work)"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS005 on a stale branch names the base-side ship and a rebase" \
+	"itd-7 already sits in $INT_DIR/shipped/ at main .*squash of work.*[Rr]ebase onto main" -- commits main HEAD
+
+d="$(newrepo_intents rs005-absent-here)"
+git -C "$d" checkout -q main
+intent_fixture "$d" planned 3 spc-3
+spec_fixture "$d" open 3 itd-3
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: plan itd-3 on main"
+git -C "$d" checkout -q work
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-3"
+expect_refusal_naming "$d" "RS005 on an intent absent from the head names the base's copy and a rebase" \
+	"itd-3 has no record at HEAD, while main holds it in $INT_DIR/planned/.*[Rr]ebase onto main" -- commits main HEAD
+
+# The spec table's last row: an intent planned with no spec has none to close,
+# and a refusal naming `abcd spec close` would name a command with no argument.
+d="$(newrepo_intents rs005-no-spec)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-8"
+expect_refusal_naming "$d" "RS005 on a planned intent with no spec says it has none to close" \
+	"itd-8 .*no spec to close" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 on a planned intent with no spec names no spec close" \
+	"abcd spec close" -- commits main HEAD
+
+# A draft and a superseded record are not delivered by closing anything.
+d="$(newrepo_intents rs005-draft)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-9"
+expect_refusal_naming "$d" "RS005 on a draft says it is unplanned" \
+	"itd-9 .*$INT_DIR/drafts/.*not been planned" -- commits main HEAD
+
+d="$(newrepo_intents rs005-superseded)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-5"
+expect_refusal_naming "$d" "RS005 on a superseded intent says so" \
+	"itd-5 .*$INT_DIR/superseded/" -- commits main HEAD
+
+# 1:n specs (adr-2609151513118583): an intent ships on the close after which no
+# open spec names it. Closing one spec while a remainder stays open leaves the
+# intent planned, so the refusal names the spec still open — found by the spec's
+# own `intent:` back-link, not by the intent's scalar spec_id.
+d="$(newrepo_intents rs005-remainder-open)"
+spec_fixture "$d" open 70 itd-7
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: a remainder spec for itd-7"
+git -C "$d" mv "$SPC_DIR/open/spc-7-fixture-7.md" "$SPC_DIR/closed/spc-7-fixture-7.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: part of the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 names the remainder spec still open" \
+	"itd-7 .*abcd spec close spc-70" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 does not name a spec already closed" \
+	"spec close spc-7[^0-9]" -- commits main HEAD
+
+# Ids are compared canonically (recordid.SameID): a zero-padded trailer or
+# back-link names the same record as the unpadded filename.
+d="$(newrepo_intents rs005-padded)"
+echo "touched" >>"$d/README.md"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-007"
+expect pass "$d" "RS005 a zero-padded trailer names the same intent" -- commits main HEAD
+
+d="$(newrepo_intents rs005-padded-backlink)"
+spec_fixture "$d" open 71 itd-007
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: a remainder spec with a padded back-link"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 finds an open spec through a zero-padded back-link" \
+	"abcd spec close spc-71" -- commits main HEAD
+
+# The fail-closed half of the canonical comparison (recordid.SameID): a
+# back-link that is not an intent id at all — a bare number, or `null` — names
+# no intent, so it is never offered as the spec to close.
+d="$(newrepo_intents rs005-bare-backlink)"
+spec_fixture "$d" open 72 7
+spec_fixture "$d" open 73 null
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: specs whose back-links name no intent"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_not_naming "$d" "RS005 does not follow a back-link that is not an intent id" \
+	"spc-7[23]" -- commits main HEAD
+
+# A `Delivers:` line the rule cannot read is refused rather than passed over: the
+# spec id, or the trailer in the wrong case, would otherwise be a declaration the
+# author believes armed and the gate never sees. What makes a line such an
+# attempt is an id-shaped token in its value; a line without one is prose.
+for spelling in "Delivers: spc-7" "delivers: itd-7" "Delivers: itd-7 and itd-8"; do
+	d="$(newrepo_intents "rs005-malformed-$(printf '%s' "$spelling" | tr -c 'a-z0-9' '-')")"
+	echo "touched" >>"$d/README.md"
+	ship_intent "$d" 7
+	git -C "$d" add -A
+	git -C "$d" commit -qm "feat: build the thing
+
+$spelling"
+	expect_refusal_naming "$d" "RS005 refuses the unreadable trailer '$spelling'" \
+		"RS005 commit [0-9a-f]{12} carries a delivery line RS005 cannot read.*Delivers: itd-N" -- commits main HEAD
+done
+
+# Criterion 3: a change that declares no delivery is refused nothing — and a body
+# line that merely begins with the word is not a declaration. The second message
+# is main's own 182474f5, whose wrapped prose puts `deliver:` at a line start;
+# RS005 refused it until a near-miss had to carry an id-shaped token.
+prose_bodies=(
+	"feat: build the thing
+
+Delivers: the thing"
+	"fix: name the update verb from version --check and the schema-too-new refusals
+
+itd-130 shipped \`abcd update\` and promised two things its surfaces did not
+deliver: that \`version --check\` would follow \"update available\" with the
+next line to type, and that the eight schema-too-new refusals would name a
+verb instead of the verbless \"upgrade abcd\"."
+)
+for i in "${!prose_bodies[@]}"; do
+	d="$(newrepo_intents "rs005-prose-$i")"
+	echo "touched" >>"$d/README.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "${prose_bodies[$i]}"
+	expect pass "$d" "RS005 passes a prose line that starts with the word (body $i)" -- commits main HEAD
+done
+
+# An empty spec store's open/: the lookup for open specs naming the intent finds
+# no file at all, and must answer "none" rather than end the run. Closing spc-7
+# leaves open/ with nothing in it, and the declared itd-8 is planned with no spec.
+d="$(newrepo_intents rs005-open-empty)"
+echo "touched" >>"$d/README.md"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-8"
+expect_refusal_naming "$d" "RS005 with an empty open/ still diagnoses the planned intent" \
+	"itd-8 .*no spec to close" -- commits main HEAD
+
+# Criterion 5: the intent rule's refusal has the issue rule's shape and exit
+# code — compared here, not judged by a reviewer. Both fixtures are the ordinary
+# case (a trailer whose record stays where it was); each refusal is normalised by
+# ONE pattern that fixes the shape, and the two must agree byte for byte after it,
+# exit code included.
+shape_of() {
+	local repo="$1" out rc=0
+	out="$(cd "$repo" && bash "$GATE" commits main HEAD 2>&1 >/dev/null)" || rc=$?
+	printf 'exit=%d\n' "$rc"
+	printf '%s\n' "$out" | sed -E \
+		"s/^check-issue-resolution: RS[0-9]{3} commit [0-9a-f]{12} declares '[A-Z][a-z]+: [a-z]{3}-[0-9]+', but [a-z]{3}-[0-9]+ does not enter [^ ]+( or [^ ]+)? in main\\.\\.HEAD[.,] .* or drop the trailer\\.\$/check-issue-resolution: <RULE> commit <SHA> declares '<TRAILER>: <ID>', but <ID> does not enter <DEST> in <RANGE>. <REMEDY> or drop the trailer./"
+}
+d_iss="$(newrepo rs005-shape-issue)"
+echo "touched" >>"$d_iss/README.md"
+git -C "$d_iss" add -A
+git -C "$d_iss" commit -qm "fix: something
+
+Resolves: iss-999"
+d_itd="$(newrepo_intents rs005-shape-intent)"
+echo "touched" >>"$d_itd/README.md"
+git -C "$d_itd" add -A
+git -C "$d_itd" commit -qm "feat: something
+
+Delivers: itd-7"
+shape_iss="$(shape_of "$d_iss")"
+shape_itd="$(shape_of "$d_itd")"
+if [ "$shape_iss" != "$shape_itd" ]; then
+	printf 'cases: FAIL RS005 refusal shape differs from RS001'"'"'s:\n--- RS001\n%s\n--- RS005\n%s\n' "$shape_iss" "$shape_itd" >&2
+	failures=$((failures + 1))
+elif ! printf '%s\n' "$shape_itd" | grep -q '<RULE> commit <SHA>' || ! printf '%s\n' "$shape_itd" | grep -qx 'exit=1'; then
+	printf 'cases: FAIL RS005 refusal shape — the normaliser matched neither refusal, so the comparison proves nothing:\n%s\n' "$shape_itd" >&2
+	failures=$((failures + 1))
+else
+	printf 'cases: ok   RS005 refusal has RS001'"'"'s message shape and exit code\n'
+fi
+
 if [ "$failures" -gt 0 ]; then
 	printf 'cases: FAILED — %d case(s) did not behave\n' "$failures" >&2
 	exit 1

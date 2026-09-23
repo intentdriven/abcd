@@ -5,7 +5,7 @@ or proposes an enhancement. It files a written account against an abcd-issued
 template into an inbox in the user account's machine store, where abcd finds it
 by itself; nothing is written into the reporting repository or into abcd's
 (itd-2609221656361680, spc-2609221657168936). The reading and filing half is
-[`/abcd:inbox`](29-inbox.md).
+[`/abcd:inbox`](30-inbox.md).
 
 ## Behaviour
 

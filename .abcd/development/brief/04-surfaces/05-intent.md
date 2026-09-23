@@ -218,8 +218,11 @@ its own condition rather than one still waiting on it.
      ship today; plan schedules a single standalone intent.
 
 3. Spec marked done in the native spec store   (standalone + bundle: work complete)
-   ├─ a MANUAL step, run in the same change that lands the work: `abcd spec close <spc-N>` (CLI-only; no hook or
-   │  gate runs it, and a planned intent whose code is on main is invisible to `launch ship`, which composes
+   ├─ a MANUAL step, run in the same change that lands the work: `abcd spec close <spc-N>` (CLI-only; no hook
+   │  runs it; a change that declares `Delivers: itd-N` is refused at merge by RS005 in
+   │  scripts/check-issue-resolution.sh until the intent enters shipped/ in that change, naming every open
+   │  spec that names it; a change declaring nothing is refused nothing, and a planned intent whose code is
+   │  on main is invisible to `launch ship`, which composes
    │  only from terminal folders — the cut exits 0 without it; the intent's `impact` is required, supplied by the
    │  record or by `--impact additive|breaking|fix` on the close, and a close with neither is refused; the verb
    │  resolves the checkout root before it reads the store, so it addresses the checkout's spec store from any

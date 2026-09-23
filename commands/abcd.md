@@ -29,6 +29,11 @@ state is not `managed`: it says whose answer the loop is waiting on. The field
 is omitted in a repository abcd does not manage. The board reads the state and
 never changes it; `/abcd:mode` is the writer.
 
+When a sibling worktree or a local branch of this checkout holds a record that
+differs here, the board also carries a `peers` object (`live`, `ids`), rendered
+as a `peers:` line. Relay it, and point at `/abcd:peers` for the whole picture.
+It is omitted when no peer holds anything that differs.
+
 The row itself is produced by `abcd statusline`, the verb the harness runs on
 every status refresh with its JSON payload on stdin. In a managed repository it
 prints abcd's row; anywhere else it runs the status command that was recorded
@@ -56,7 +61,9 @@ present), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
 read). A shape-matching id found in no store exits non-zero naming the stores
-searched. Any other positional is refused as an unknown command (exit 2) —
+searched — unless a peer holds it (a sibling worktree or a local branch, see
+`/abcd:peers`), in which case the refusal names that peer's branch, path and
+folder instead; relay it, and do not recreate the record here. Any other positional is refused as an unknown command (exit 2) —
 there is no `status` alias.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

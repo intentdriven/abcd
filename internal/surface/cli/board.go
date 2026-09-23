@@ -25,6 +25,9 @@ type boardOutput struct {
 	// Inbox is the count of reports waiting in the inbox (itd-2609221656361680),
 	// omitted when none wait.
 	Inbox *report.Tally `json:"inbox,omitempty"`
+	// Peers is present only when a live peer holds a record that differs here
+	// (itd-2609091416295622); omitted, not null, otherwise.
+	Peers *boardPeersLine `json:"peers,omitempty"`
 }
 
 // boardStatusline is the board's view of the row: the state the badge
