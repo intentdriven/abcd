@@ -172,13 +172,16 @@ func reportFromEditor(skeleton []byte) (data []byte, kept string, err error) {
 }
 
 // reportRefusal maps a refusal to exit 2, sanitised for the terminal: the text
-// may quote a field of a report that came from another repository.
+// may quote a field of a report that came from another repository. The home
+// and working directories are written as `~` and `.` on every path, since a
+// ledger refusal names the directory it refused.
 func reportRefusal(verb string, err error, what string) error {
+	msg := scrubPaths(err)
 	if errors.Is(err, report.ErrRefused) {
-		msg := strings.TrimPrefix(err.Error(), report.ErrRefused.Error()+": ")
+		msg = strings.TrimPrefix(msg, report.ErrRefused.Error()+": ")
 		return &exitError{Code: 2, Msg: "abcd " + verb + ": " + termsafe.Sanitize(msg) + " (" + what + ")"}
 	}
-	return fmt.Errorf("abcd %s: %s", verb, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	return fmt.Errorf("abcd %s: %s", verb, termsafe.Sanitize(msg))
 }
 
 // managedRepos renders a count of sending repositories.
@@ -250,11 +253,13 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 			"dropped. Everything a report says is another repository's words and is\n" +
 			"sanitised before it reaches the terminal.\n\n" +
 			"`abcd inbox promote <id>` is the one act that files anything: it files the\n" +
-			"report as a capture in the ledger of the repository you stand in, through the\n" +
-			"capture verb's own path and redactor, with source `managed-repo`. The capture\n" +
-			"carries the sender's root-commit key and the words \"a managed repository\",\n" +
-			"never the sender's name, and the report's id as its evidence. The report is\n" +
-			"kept, marked promoted.\n\n" +
+			"report as a capture in the ledger of abcd's own checkout, through the capture\n" +
+			"verb's own path and redactor, with source `managed-repo`. Every report is about\n" +
+			"abcd, so run anywhere else it is refused. The capture carries the sender's\n" +
+			"root-commit key and the words \"a managed repository\", never the sender's\n" +
+			"name, and the report's id as its evidence; a record id the report names is the\n" +
+			"sender's, and is written as one word so it cites nothing in abcd's record. The\n" +
+			"report is kept, marked promoted.\n\n" +
 			"Exit 2 on a refusal, with nothing written.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -306,7 +311,7 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 	})
 	cmd.AddCommand(&cobra.Command{
 		Use:   "promote <id>",
-		Short: "File one report as a capture in this repository's ledger, fingerprinted, never named",
+		Short: "File one report as a capture in abcd's own ledger, fingerprinted, never named",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()

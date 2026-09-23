@@ -943,17 +943,19 @@ dropped. Everything a report says is another repository's words and is
 sanitised before it reaches the terminal.
 
 `abcd inbox promote <id>` is the one act that files anything: it files the
-report as a capture in the ledger of the repository you stand in, through the
-capture verb's own path and redactor, with source `managed-repo`. The capture
-carries the sender's root-commit key and the words "a managed repository",
-never the sender's name, and the report's id as its evidence. The report is
-kept, marked promoted.
+report as a capture in the ledger of abcd's own checkout, through the capture
+verb's own path and redactor, with source `managed-repo`. Every report is about
+abcd, so run anywhere else it is refused. The capture carries the sender's
+root-commit key and the words "a managed repository", never the sender's
+name, and the report's id as its evidence; a record id the report names is the
+sender's, and is written as one word so it cites nothing in abcd's record. The
+report is kept, marked promoted.
 
 Exit 2 on a refusal, with nothing written.
 
 #### `abcd inbox promote`
 
-File one report as a capture in this repository's ledger, fingerprinted, never named
+File one report as a capture in abcd's own ledger, fingerprinted, never named
 
 **Usage:** `abcd inbox promote <id>`
 

@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // sandbox points HOME at a fresh directory, so the inbox the test sees is its
@@ -36,6 +38,15 @@ func committedRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	r := gittest.NewRepo(t)
 	r.Git("-c", "user.name=abcd test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "root")
+	return r
+}
+
+// abcdCheckout is a throwaway repository standing in for abcd's own checkout:
+// the root commit Promote requires is pinned to this repository's for the test.
+func abcdCheckout(t *testing.T) *gittest.Repo {
+	t.Helper()
+	r := committedRepo(t)
+	t.Cleanup(SetAbcdRootCommitForTest(gitutil.RootCommit(r.Root())))
 	return r
 }
 
@@ -172,7 +183,7 @@ func TestUnknownVersionIsListedUnreadable(t *testing.T) {
 	if tally, _ := Count(); tally.Reports != 1 {
 		t.Errorf("Count = %+v, want the unreadable report counted", tally)
 	}
-	if _, err := Promote(t.TempDir(), list[0].ID); !errors.Is(err, ErrRefused) {
+	if _, err := Promote(abcdCheckout(t).Root(), list[0].ID); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "unreadable") {
 		t.Errorf("Promote(unreadable) = %v, want a refusal", err)
 	}
 }
@@ -197,7 +208,7 @@ func TestShowRefusesWhatIsNotAReportID(t *testing.T) {
 // file abcd writes into the repository.
 func TestPromoteFingerprintsAndNeverNamesTheSender(t *testing.T) {
 	sandbox(t, time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC))
-	ledger := committedRepo(t)
+	ledger := abcdCheckout(t)
 	const name = "Zanzibar-Quartz"
 	sender := Sender{Key: strings.Repeat("d", 40), Name: name}
 	in := strings.Replace(filled(t), "was refused.", "was refused while working in zanzibar-quartz.", 1)
@@ -266,9 +277,9 @@ func TestPromoteFingerprintsAndNeverNamesTheSender(t *testing.T) {
 // wherever it stands as a word, in any case, and a word that merely contains
 // it is left alone.
 func TestNameScrubberReplacesTheNameAsAWord(t *testing.T) {
-	scrub := nameScrubber("cap")
-	got := scrub("CAP broke capture in cap-v2 and (cap).")
-	want := GenericSender + " broke capture in " + GenericSender + "-v2 and (" + GenericSender + ")."
+	scrub := nameScrubber("capo")
+	got := scrub("CAPO broke capotes in capo-v2 and (capo).")
+	want := GenericSender + " broke capotes in " + GenericSender + "-v2 and (" + GenericSender + ")."
 	if got != want {
 		t.Errorf("scrub = %q, want %q", got, want)
 	}
@@ -327,7 +338,7 @@ func TestNameScrubberCatchesSpellingVariants(t *testing.T) {
 // the move and names that capture, and never files a second one.
 func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 	home := sandbox(t, time.Date(2026, 9, 23, 14, 0, 0, 0, time.UTC))
-	ledger := committedRepo(t)
+	ledger := abcdCheckout(t)
 	f, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("c", 40), Name: "retry"})
 	if err != nil {
 		t.Fatal(err)
@@ -368,5 +379,165 @@ func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 	}
 	if _, err := Promote(ledger.Root(), f.ID); !errors.Is(err, ErrRefused) {
 		t.Errorf("a third promote = %v, want a refusal", err)
+	}
+}
+
+// TestAbcdRootCommitIsThisCheckouts pins the constant to the repository that
+// holds this test: the root commit is abcd's identity, and a constant that
+// drifted from it would refuse every promotion in abcd's own checkout.
+func TestAbcdRootCommitIsThisCheckouts(t *testing.T) {
+	root := gitutil.RootCommit(".")
+	if root == "" {
+		t.Skip("not run from a git checkout (an archive copy); nothing to pin against")
+	}
+	if root != AbcdRootCommit {
+		t.Fatalf("AbcdRootCommit = %s, but this checkout's root commit is %s", AbcdRootCommit, root)
+	}
+}
+
+// TestPromoteRefusesOutsideAbcdsOwnCheckout: every report is about abcd, so a
+// promotion from any other repository would plant an abcd defect in that
+// repository's ledger. It is refused, naming where to run it, and nothing is
+// written: not the capture, not the promoted log, not the move. The same report
+// promotes from abcd's own checkout.
+func TestPromoteRefusesOutsideAbcdsOwnCheckout(t *testing.T) {
+	home := sandbox(t, time.Date(2026, 9, 23, 15, 0, 0, 0, time.UTC))
+	other := committedRepo(t)
+	f, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("a", 40), Name: "elsewhere"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Promote(other.Root(), f.ID)
+	if !errors.Is(err, ErrRefused) {
+		t.Fatalf("Promote(unrelated repository) = %v, want a refusal", err)
+	}
+	for _, want := range []string{AbcdRootCommit, "abcd's own checkout"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
+	}
+	if st := other.Git("status", "--porcelain", "--untracked-files=all"); st != "" {
+		t.Errorf("a refused promotion wrote into the repository:\n%s", st)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox", promotedLogName)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused promotion recorded itself (%v)", err)
+	}
+	if tally, _ := Count(); tally.Reports != 1 {
+		t.Errorf("Count = %+v, want the report still waiting", tally)
+	}
+
+	abcd := abcdCheckout(t)
+	if p, err := Promote(abcd.Root(), f.ID); err != nil || !strings.HasPrefix(p.Capture, "iss-") {
+		t.Fatalf("Promote(abcd's checkout) = %+v, %v", p, err)
+	}
+}
+
+// citedRe is the record-lint's cited-id grammar, without its boundary checks:
+// anything it finds in a promoted capture is a candidate citation.
+var citedRe = regexp.MustCompile(`(?i)\b(?:adr|itd|iss|spc)-[0-9]+`)
+
+// TestPromotedCaptureCitesNothingOfTheSenders: a report names record ids from
+// its sender's own ledger. Copied as written, a long one fails abcd's
+// record-lint (prose_citation_resolves) and a short one silently cites abcd's
+// own record of that number. Every id-shaped token the report carries, in any
+// field, reaches the capture in a form that cites nothing, the record passes
+// the lint, and the number survives for a reader to ask the sender about.
+func TestPromotedCaptureCitesNothingOfTheSenders(t *testing.T) {
+	sandbox(t, time.Date(2026, 9, 23, 16, 0, 0, 0, time.UTC))
+	ledger := abcdCheckout(t)
+	in := filled(t)
+	in = strings.Replace(in, `title: "capture refuses`, `title: "iss-1: capture refuses`, 1)
+	in = strings.Replace(in, `surface: "abcd capture"`, `surface: "abcd capture (see ITD-3)"`, 1)
+	in = strings.Replace(in, `remedy: "accept a leading digit"`, `remedy: "undo adr-0007 as spc-12 did"`, 1)
+	in = strings.Replace(in, "  - iss-2609221656361680", "  - iss-2601010101010101\n  - https://example.com/t/iss-1", 1)
+	in = strings.Replace(in, "was refused.", "was refused; our iss-1 and iss-2601010101010101 say why.", 1)
+	f, err := File(mustParse(t, in), Sender{Key: strings.Repeat("b", 40), Name: "citer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Promote(ledger.Root(), f.ID)
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(ledger.Root(), filepath.FromSlash(p.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range citedRe.FindAllString(string(body), -1) {
+		if id != p.Capture {
+			t.Errorf("the capture cites %s, a record id of the sender's:\n%s", id, body)
+		}
+	}
+	if !strings.Contains(string(body), "2601010101010101") {
+		t.Errorf("the sender's record number is lost:\n%s", body)
+	}
+	cfg := lint.Config{Rules: map[string]lint.RuleConfig{
+		"prose_citation_resolves": {Enabled: true, Severity: "blocker", RecordStores: map[string]string{"iss": ".abcd/work/issues"}},
+	}}
+	findings, err := lint.Lint(cfg, ledger.Root())
+	if err != nil {
+		t.Fatalf("lint: %v", err)
+	}
+	for _, fd := range findings {
+		t.Errorf("record-lint on the promoted capture: %s:%d %s %s", fd.File, fd.Line, fd.RuleID, fd.Message)
+	}
+}
+
+// TestACaptureRefusalIsARefusal: a ledger capture refuses to write through (a
+// symlinked issue ledger) is the promotion's refusal too: ErrRefused, the
+// report still waiting, nothing written.
+func TestACaptureRefusalIsARefusal(t *testing.T) {
+	home := sandbox(t, time.Date(2026, 9, 23, 17, 0, 0, 0, time.UTC))
+	ledger := abcdCheckout(t)
+	elsewhere := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ledger.Root(), ".abcd", "work"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(ledger.Root(), ".abcd", "work", "issues")); err != nil {
+		t.Fatal(err)
+	}
+	f, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Promote(ledger.Root(), f.ID); !errors.Is(err, ErrRefused) {
+		t.Fatalf("Promote(symlinked ledger) = %v, want a refusal", err)
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("the refused capture wrote through the link: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox", promotedLogName)); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused promotion recorded itself (%v)", err)
+	}
+	if tally, _ := Count(); tally.Reports != 1 {
+		t.Errorf("Count = %+v, want the report still waiting", tally)
+	}
+}
+
+// TestACommonWordNameIsNotScrubbedAsAWord: a sender named for a common word
+// (`cli`, `api`, `go`, the fallback `unnamed`, abcd's own name) would have that
+// word rewritten wherever the prose uses it, turning the report into nonsense
+// while protecting nothing, since the word identifies no one. Such a name is
+// left alone as a word; its forge address, which does identify the owner, is
+// still scrubbed. A distinctive name is scrubbed as before.
+func TestACommonWordNameIsNotScrubbedAsAWord(t *testing.T) {
+	for _, tc := range []struct{ name, in string }{
+		{"cli", "the cli flag parser rejects it"},
+		{"api", "the API call returns 500"},
+		{"go", "go vet passes; go test fails"},
+		{"unnamed", "an unnamed branch"},
+		{"abcd", "abcd capture refuses the slug"},
+		{"docs", "the docs say otherwise"},
+	} {
+		if got := nameScrubber(tc.name)(tc.in); got != tc.in {
+			t.Errorf("nameScrubber(%q)(%q) = %q; a common word was rewritten", tc.name, tc.in, got)
+		}
+		addr := "cloned github.com/acme/" + tc.name + " today"
+		if got := nameScrubber(tc.name)(addr); strings.Contains(got, "acme") || !strings.Contains(got, GenericSender) {
+			t.Errorf("nameScrubber(%q)(%q) = %q; the forge address survives", tc.name, addr, got)
+		}
+	}
+	if got := nameScrubber("zanzibar")("zanzibar broke"); got != GenericSender+" broke" {
+		t.Errorf("a distinctive name is no longer scrubbed: %q", got)
 	}
 }

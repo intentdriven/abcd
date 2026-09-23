@@ -48,6 +48,34 @@ const idFamily = "rpt"
 // fingerprint in the record).
 const GenericSender = "a managed repository"
 
+// AbcdRootCommit is abcd's own identity as git records it: the root commit of
+// its repository. Every report is about abcd, so a report is promoted only in a
+// checkout whose root commit is this one; anywhere else the capture would plant
+// an abcd defect in an unrelated repository's ledger.
+//
+// It is a pinned constant rather than something derived at run time. A root
+// commit cannot change without rewriting every commit after it, so the value is
+// as fixed as the module path, and a constant fails closed: a shallow clone, a
+// rewritten history or an archive copy is refused rather than guessed at. The
+// derivations on offer are weaker. The binary's embedded build revision is
+// absent from a dirty or checkout-less build, and proves only that the checkout
+// holds that one commit; the module path is text any repository can declare.
+// TestAbcdRootCommitIsThisCheckouts holds the constant to the checkout the tests
+// run in, so it cannot drift silently. A fork shares abcd's root commit and is
+// abcd's code, so it promotes.
+const AbcdRootCommit = "488a0aa96ac5de805348635b27036addf15cddc2"
+
+// abcdRootCommit is the root commit Promote requires; tests repoint it.
+var abcdRootCommit = AbcdRootCommit
+
+// SetAbcdRootCommitForTest repoints the root commit Promote accepts, so a test
+// can promote into a throwaway repository, and returns the restore.
+func SetAbcdRootCommitForTest(sha string) (restore func()) {
+	prev := abcdRootCommit
+	abcdRootCommit = sha
+	return func() { abcdRootCommit = prev }
+}
+
 // The states an inbox entry can be in.
 const (
 	// StateWaiting is a report nobody has acted on.
@@ -490,6 +518,14 @@ func Promote(ledgerRoot, id string) (Promoted, error) {
 	if m == nil {
 		return Promoted{}, fmt.Errorf("%w: %q is not a report id (rpt- and sixteen digits)", ErrRefused, id)
 	}
+	if root := gitutil.RootCommit(ledgerRoot); root != abcdRootCommit {
+		here := "has no root commit"
+		if root != "" {
+			here = "has root commit " + root
+		}
+		return Promoted{}, fmt.Errorf("%w: a report is about abcd and is promoted only in abcd's own checkout "+
+			"(root commit %s); this repository %s. Run it from a checkout of abcd", ErrRefused, abcdRootCommit, here)
+	}
 	dir, err := peekInbox()
 	if err != nil {
 		return Promoted{}, err
@@ -541,7 +577,10 @@ func Promote(ledgerRoot, id string) (Promoted, error) {
 		req := captureRequest(ledgerRoot, id, *e.Report)
 		res, err := capture.Capture(req)
 		if err != nil {
-			return fmt.Errorf("the capture was refused, and the report still waits: %w", err)
+			// Capture writes transactionally and sweeps its reservation on any
+			// failure, so nothing is filed: the report still waits, and the
+			// promotion is refused (exit 2) whatever the ledger's reason.
+			return fmt.Errorf("%w: the capture was refused, and the report still waits: %w", ErrRefused, err)
 		}
 		out = Promoted{Report: id, Capture: res.ID, Path: res.Path, Redacted: res.Redacted, Degraded: res.Degraded}
 		line, err := json.Marshal(promotion{Report: id, Capture: res.ID, Path: res.Path, At: now().UTC().Format(time.RFC3339)})
@@ -562,9 +601,17 @@ func Promote(ledgerRoot, id string) (Promoted, error) {
 
 // captureRequest composes the capture a report becomes. Every free-text value
 // has the sender's name replaced by GenericSender, whatever its case, so the
-// name reaches no file abcd writes into a repository (criterion 7).
+// name reaches no file abcd writes into a repository (criterion 7), and every
+// record id the sender wrote is made one word (senderIDs), so the capture cites
+// nothing of this repository's.
 func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
-	scrub := nameScrubber(r.SenderName)
+	named := nameScrubber(r.SenderName)
+	rewrote := false
+	scrub := func(s string) string {
+		out, n := senderIDs(named(s))
+		rewrote = rewrote || n > 0
+		return out
+	}
 	var b strings.Builder
 	b.WriteString(scrub(r.Title))
 	b.WriteString("\n\n")
@@ -579,6 +626,11 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 	for _, e := range r.Evidence {
 		fmt.Fprintf(&b, "- %s\n", scrub(e))
 	}
+	foundAt := scrub(r.Surface)
+	if rewrote {
+		b.WriteString("\nEvery record id the report names is its sender's own, not this repository's, " +
+			"so each is written as one word, family and number together, and cites nothing here.\n")
+	}
 	return capture.CaptureRequest{
 		RepoRoot:    ledgerRoot,
 		Text:        b.String(),
@@ -586,8 +638,32 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 		Category:    capture.Category(r.Category),
 		Source:      capture.Source(Source),
 		FoundDuring: fmt.Sprintf("abcd inbox report %s from %s (root commit %s)", id, GenericSender, r.SenderKey),
-		FoundAt:     scrub(r.Surface),
+		FoundAt:     foundAt,
 	}
+}
+
+// senderIDRe is a record family abcd resolves (recordid.CitedIDRe: adr, itd,
+// iss, spc) that starts a word and is followed by a number, whatever run of
+// separators stands between them.
+var senderIDRe = regexp.MustCompile(`(?i)(^|[^a-z0-9])(adr|itd|iss|spc)[^a-z0-9]+([0-9])`)
+
+// senderIDs writes every record id in s as one word, family and number
+// together (the sender's iss-12 becomes iss12), and returns how many it
+// rewrote. A report's ids name records in its sender's ledger. Copied into a
+// capture as written, a long one fails record-lint's prose_citation_resolves
+// and a short one silently cites this repository's own record of that number.
+// The one-word form is outside the cited grammar, and stays so when capture
+// derives the record's slug from the text: the slug joins words with hyphens,
+// which is why any separator is taken out, not only the hyphen. The number
+// survives, so a reader can still ask the sender about it.
+func senderIDs(s string) (string, int) {
+	n := 0
+	out := senderIDRe.ReplaceAllStringFunc(s, func(m string) string {
+		n++
+		sm := senderIDRe.FindStringSubmatch(m)
+		return sm[1] + sm[2] + sm[3]
+	})
+	return out, n
 }
 
 // nameScrubber returns a function replacing every occurrence of name that
@@ -604,6 +680,12 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 // words that happen to contain it ("cap" inside "capture"): the match may not
 // run on into a letter, nor into a digit where the name's own edge is a digit.
 // A letter-to-digit change is a boundary, so `acme-secret2` is caught.
+//
+// A name that is a common word (commonName) is replaced only as the last
+// segment of a forge address, never as a word: rewriting every `cli` or `go`
+// in the prose would turn the account into nonsense and protect nothing, since
+// the word identifies no one, while the owner segment beside it in an address
+// does.
 func nameScrubber(name string) func(string) string {
 	parts := nameParts(name)
 	if len(parts) == 0 {
@@ -613,9 +695,11 @@ func nameScrubber(name string) func(string) string {
 	for i, p := range parts {
 		quoted[i] = regexp.QuoteMeta(p)
 	}
-	re := regexp.MustCompile(`(?i)` +
-		`(?:([a-z0-9-]+(?:\.[a-z0-9-]+)+[/:])[a-z0-9._-]+/)?` + // a forge address's host, then its owner
-		`(` + strings.Join(quoted, `[-_.\s]?`) + `)`)
+	forge := `(?:([a-z0-9-]+(?:\.[a-z0-9-]+)+[/:])[a-z0-9._-]+/)` // a forge address's host, then its owner
+	if !commonName(parts) {
+		forge += `?`
+	}
+	re := regexp.MustCompile(`(?i)` + forge + `(` + strings.Join(quoted, `[-_.\s]?`) + `)`)
 	return func(s string) string {
 		var b strings.Builder
 		last := 0
@@ -635,6 +719,31 @@ func nameScrubber(name string) func(string) string {
 		b.WriteString(s[last:])
 		return b.String()
 	}
+}
+
+// commonNames are single words a repository directory is often named that
+// prose also uses as words: what a repository holds or is for, the fallback
+// name repoName gives a directory it cannot use, and abcd's own name, which
+// every report mentions. The list is short on purpose; a name of three letters
+// or fewer is common whatever it spells.
+var commonNames = map[string]bool{
+	"unnamed": true, "abcd": true,
+	"app": true, "apps": true, "backend": true, "blog": true, "build": true, "client": true, "code": true,
+	"config": true, "core": true, "data": true, "demo": true, "deploy": true, "docs": true, "dotfiles": true,
+	"example": true, "examples": true, "frontend": true, "home": true, "infra": true, "main": true,
+	"notes": true, "plugin": true, "plugins": true, "project": true, "repo": true, "sandbox": true,
+	"scratch": true, "scripts": true, "server": true, "service": true, "site": true, "temp": true,
+	"template": true, "test": true, "tests": true, "tools": true, "utils": true, "website": true, "work": true,
+}
+
+// commonName reports whether a name spelt from parts is a common word: one
+// part that is three letters or fewer, or one of commonNames.
+func commonName(parts []string) bool {
+	if len(parts) != 1 {
+		return false
+	}
+	w := strings.ToLower(parts[0])
+	return len(w) <= 3 || commonNames[w]
 }
 
 // nameParts splits a directory name into the words it is spelt from.

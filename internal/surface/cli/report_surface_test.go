@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // fillTemplate fills the issued skeleton the way a reporter does.
@@ -210,7 +211,9 @@ func TestInboxListsShowsAndPromotes(t *testing.T) {
 	}
 
 	// The readable one is promoted; which of the two was planted is the
-	// directory order's choice.
+	// directory order's choice. The repository stands in for abcd's own
+	// checkout, the only place a promotion files.
+	t.Cleanup(report.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
 	first = promotable
 	out := string(runCLI(t, "inbox", "promote", first))
 	if !strings.Contains(out, "promoted "+first+" to iss-") {
@@ -306,5 +309,62 @@ func TestInboxListAndShowFrameReportsAsData(t *testing.T) {
 	var entry report.Entry
 	if err := json.Unmarshal(runCLI(t, "inbox", "show", id, "--json"), &entry); err != nil || entry.ID != id || entry.Report == nil {
 		t.Errorf("show --json lost the entry's own fields: %+v, %v", entry, err)
+	}
+}
+
+// TestInboxPromoteOutsideAbcdIsARefusal: a report is about abcd, so promote
+// run in any other repository exits 2 naming where to run it, and writes
+// nothing: no capture in the repository, and the report still waits.
+func TestInboxPromoteOutsideAbcdIsARefusal(t *testing.T) {
+	repo, _ := gitRepoNoStore(t)
+	t.Chdir(repo)
+	id := fileOneReport(t, "a finding about abcd")
+	_, err := runCLIErr(t, "inbox", "promote", id)
+	var coded interface{ ExitCode() int }
+	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
+		t.Fatalf("err = %v, want exit 2", err)
+	}
+	for _, want := range []string{report.AbcdRootCommit, "abcd's own checkout", "nothing written"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
+	}
+	if st := porcelain(t, repo); st != "" {
+		t.Errorf("a refused promotion wrote into the repository:\n%s", st)
+	}
+	if list := string(runCLI(t, "inbox")); !strings.Contains(list, id) {
+		t.Errorf("the refused report no longer waits:\n%s", list)
+	}
+}
+
+// TestInboxPromoteCaptureRefusalExitsTwo: a ledger the capture refuses to write
+// through (a symlinked issue ledger) is a refusal of the promotion: exit 2,
+// nothing written, and no home path in the message.
+func TestInboxPromoteCaptureRefusalExitsTwo(t *testing.T) {
+	repo, _ := gitRepoNoStore(t)
+	t.Setenv("HOME", filepath.Dir(repo)) // the repository sits under home, as a real one does
+	t.Chdir(repo)
+	t.Cleanup(report.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
+	id := fileOneReport(t, "a finding about abcd")
+	elsewhere := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "work"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(repo, ".abcd", "work", "issues")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runCLIErr(t, "inbox", "promote", id)
+	var coded interface{ ExitCode() int }
+	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
+		t.Fatalf("err = %v, want exit 2", err)
+	}
+	if !strings.Contains(err.Error(), "nothing written") {
+		t.Errorf("refusal = %q, want nothing written", err)
+	}
+	if strings.Contains(err.Error(), filepath.Dir(repo)) {
+		t.Errorf("refusal = %q, which prints the home directory", err)
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("the refused capture wrote through the link: %v", entries)
 	}
 }
