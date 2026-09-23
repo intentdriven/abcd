@@ -1,5 +1,6 @@
 ---
 id: itd-43
+shipped_in: v0.2.0
 slug: epic-to-spec-terminology
 spec_id: spc-8
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 related_adrs: [adr-26]
 prd_path: null
 severity: minor
+impact: additive
 ---
 
 # abcd Speaks One Word for a Specced Block of Work, and That Word Is "Spec"
@@ -28,7 +30,7 @@ Scope* below is what this intent carries.
 
 ## Why This Matters
 
-abcd's [terminology discipline](../../brief/glossary/) exists to kill exactly one failure: the same concept named two ways, drifting until two readers mean different things. Right now abcd commits that failure about its own core noun. The schema and the intent corpus say `spec_id`; the glossary half is delivered — `brief/glossary/core/spec.md` carries `term: spec` with `epic` in `forbidden_synonyms` (spc-8) — but the reviews subsystem still classifies `epic-review`. A framework that enforces ubiquitous language cannot itself be bilingual about its central term.
+abcd's [terminology discipline](../../brief/glossary/) exists to kill exactly one failure: the same concept named two ways, drifting until two readers mean different things. Right now abcd commits that failure about its own core noun. The schema and the intent corpus say `spec_id`; the glossary half is delivered — `brief/glossary/core/spec.md` carries `term: spec` with `epic` in `forbidden_synonyms` (spc-8), and GL002 keeps the live prose on the one word. A framework that enforces ubiquitous language cannot itself be bilingual about its central term.
 
 The `epic_id`→`spec_id` field rename was done separately and first, on purpose — it had to be atomic (schema + data + code, or intent-lint validation fails). What remains does **not** break anything: it is inconsistency, not breakage, which is why it is its own intent rather than an emergency fix. But unaddressed it erodes the glossary's authority and confuses every new contributor.
 
@@ -37,7 +39,7 @@ The reviews subsystem, the schemas, and the spec store are all abcd-owned — th
 ## What's In Scope
 
 - **Rename the canonical term file** — delivered with spc-8: the term file lives at `brief/glossary/core/spec.md` with `term: spec` and `epic` in `forbidden_synonyms`, and the `GL002` lint catches regressions.
-- **Reviews subsystem rename** — the review-index, review-postprocess, and review-verify surfaces: `epic_id` parameters → `spec_id`, the `--epic` CLI flag, the `## Epic:` rendered heading, the `epic_id` JSON field, and the `epic-review`/`epic` review-type tokens. All of it is abcd-owned, so the review-type token becomes `spec-review` throughout with no external token to accommodate.
+- **Reviews subsystem rename** — the review-index, review-postprocess, and review-verify surfaces: `epic_id` parameters → `spec_id`, the `--epic` CLI flag, the `## Epic:` rendered heading, the `epic_id` JSON field, and the `epic-review`/`epic` review-type tokens. All of it is abcd-owned, so the review-type token becomes `spec-review` throughout with no external token to accommodate. Moot (product thinker, 2026-09-23): the Go tree has no reviews subsystem that classifies reviews by kind, so none of these surfaces exists to rename.
 - **`issue.schema.json`** — moot in the Go rebuild (spc-8): no `*.schema.json` exists in the tree, and the native validator already uses `related_specs` exclusively.
 - **`grill-report.schema.json`** — moot in the Go rebuild (spc-8): the file does not exist.
 - **Prose sweep** — `intents/README.md`, the brief (`04-surfaces/`, `02-constraints/`, etc.), `docs/reference/{commands,facilitator,review-schema}.md`, `commands/intent.md`, the grill `SKILL.md` boundary message, project READMEs: `epic` as a noun → `spec`.
@@ -58,9 +60,10 @@ None stated.
 
 - **Given** the rename is complete, **when** a contributor greps abcd-owned files for `"epic"` as a standalone noun, **then** no live reference remains — only historical git-tracked records.
 - **Given** the glossary, **when** a contributor looks up the concept, **then** it resolves to `brief/glossary/core/spec.md` with `term: spec`, and `epic` appears there only as a `forbidden_synonyms` entry.
-- **Given** the reviews subsystem is renamed, **when** a review is classified, **then** classification succeeds against the `spec-review` type the native reviews surface emits — one internal token, no desync.
 - **Given** the issue ledger, **when** an issue links to a spec, **then** it uses `related_specs` — met by the Go rebuild's validator (spc-8); no `*.schema.json` remains to update.
 - **Given** the prose sweep is complete, **when** `internal/core/lint` runs, **then** no forbidden-synonym (`GL002`) violation for `epic` is raised by any abcd-owned intent or doc.
+
+A criterion that the reviews subsystem classifies against a `spec-review` type is dropped as moot (product thinker, 2026-09-23): itd-28 was re-scoped to pin plus staleness on 2026-09-21, nothing classifies reviews by kind, and so there is no `epic-review` token to rename and no `spec-review` emitter to build.
 
 ## Open Questions
 
@@ -69,7 +72,8 @@ None stated.
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-3a24ef30ac16 -->
+Fidelity review OWED (receipt rcp-3a24ef30ac16).
 
 ## References
 
