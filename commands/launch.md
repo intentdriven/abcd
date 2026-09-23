@@ -1,7 +1,7 @@
 ---
 name: launch
-description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, and scaffold the changelog-driven release gate into a managed repo. The preview performs zero writes; `ship` writes the dated CHANGELOG heading and the RELEASE.md page and never publishes; `scaffold` writes the release workflows and never publishes.
-argument-hint: "[--dry-run] | ship [--changelog-json <path>] | scaffold"
+description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, render and verify the release's pinned plugin archive, and scaffold the changelog-driven release gate into a managed repo. The preview performs zero writes; `ship` writes the dated CHANGELOG heading, the RELEASE.md page and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `scaffold` writes the release workflows and never publishes.
+argument-hint: "[--dry-run] | ship [--changelog-json <path>] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
 ---
 
 # `/abcd:launch` release preview and release cut
@@ -10,13 +10,17 @@ Two flows over the abcd binary, kept apart on purpose:
 
 - **preview** (`dry-run`) — the bundle, the scan, and the gates. **Zero writes.**
 - **ship** — the release cut: derive the version from what shipped, compose the
-  changelog prose and the release page, write them. It writes at most **three**
-  files — the dated section of `CHANGELOG.md`, the release page `RELEASE.md`, and
-  the outgoing page's copy under `.abcd/development/releases/` — and **never
-  publishes**.
+  changelog prose and the release page, write them. It writes the dated section
+  of `CHANGELOG.md`, the release page `RELEASE.md`, and the outgoing page's copy
+  under `.abcd/development/releases/`; in a repository that publishes a versioned
+  plugin it also pins the release's plugin archive in
+  `.claude-plugin/marketplace.json` (refreshing the surface snapshot beside it).
+  It **never publishes**.
 
 Neither flow publishes. Tagging is `.github/workflows/auto-release.yml`'s job, and
-it reads the dated heading `ship` writes.
+it reads the dated heading `ship` writes. A third verb, **archive**, is the release
+workflow's half of the pin: it renders the plugin archive from a commit and proves
+the committed pin names exactly that archive.
 
 ## Release day: what a human actually does
 
@@ -74,9 +78,10 @@ Click it, tick the **release** environment, optionally leave a comment, and clic
 **Approve and deploy**.
 
 What you are approving: building four platform binaries stamped with the tag,
-checksumming exactly those bytes, signing a provenance attestation, publishing a
-GitHub Release with the binaries attached, and deploying the website from the
-tag. That is why it is gated — it is the step that puts bytes in front of the
+rendering the plugin archive (`abcd-plugin-vX.Y.Z.zip`) and proving it is the one
+the catalog pins, checksumming exactly those bytes, signing a provenance
+attestation, publishing a GitHub Release with the binaries and the archive
+attached, and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
 public. The reviewer requirement itself lives in the repository's environment
 settings rather than in a workflow file, and the scaffold-parity test fails any
 edit that drops the `environment:` binding from the job.
@@ -85,11 +90,20 @@ edit that drops the `environment:` binding from the job.
 checks before it (`verify`) take a few minutes: they build, test and lint the
 tagged commit. Wait for `verify` to go green.
 
+**Approve promptly.** From the moment the release PR merges, the catalog on `main`
+names this release's archive, and the archive exists only once this job uploads
+it. A plugin install or update in between fails closed — the download is not
+there yet, so the harness refuses and an installed plugin stays on its previous
+release — and nothing else can be installed in its place, because the pinned
+digest refuses any other bytes. The window cannot be closed (the pin has to be in
+the tagged tree, so it lands before the tag), so it is kept short.
+
 ### Step 7 — afterwards, check what you actually got
 
 Publishing does not change the copy of abcd on your machine. Take a plugin
 update in your agent harness (in Claude Code: `/plugin`, then update the abcd
-plugin), then start a new session and check:
+plugin — the update downloads the pinned archive of the release you just cut,
+which needs Claude Code v2.1.224 or later), then start a new session and check:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" version
@@ -102,7 +116,7 @@ binary is already in place, so it needs the plugin update to fetch a new one.
 
 ### When it goes wrong
 
-Four failures are worth recognising, because each looks like something else.
+Six failures are worth recognising, because each looks like something else.
 
 - **The run says `Waiting` for a long time and nothing happens.** That is the
   approval gate, not a hang. Approve it.
@@ -125,6 +139,29 @@ Four failures are worth recognising, because each looks like something else.
   match the commit the workflow derived. The tag exists by then and the workflow
   never moves a tag, so the version is consumed: it needs the tag deleted and the
   release re-cut. Step 2 exists to catch this before the merge — run it.
+- **`auto-release` fails in `detect`, on `Plugin archive reproduces the committed
+  pin, before the tag`, and no tag appears.** The merged commit renders a
+  different archive from the one the ship pinned — a payload file (`commands/`,
+  `agents/`, `hooks/`, `scripts/`, `docs/`, the README or the plugin manifest)
+  changed between the ship and the merge, most often because the merge queue
+  batched the release pull request with another one — or the pinned address is
+  not this repository's release, because `plugin.json`'s `repository` names
+  another one. Nothing was tagged, so the version is still free. Land a
+  follow-up pull request that fixes `main`: set the pin's `sha256` in
+  `.claude-plugin/marketplace.json` to the rendered digest the refusal names (or
+  revert the payload change), or correct `repository`. Its merge re-runs
+  `detect`, which tags once the proof passes. Until then the catalog on `main`
+  names an archive that does not exist, so installs and updates fail closed, as
+  in the approval window.
+- **`verify` fails on `Plugin archive reproduces the committed pin`.** The same
+  proof, made again on the tagged commit. On the `auto-release` path it passed
+  before the tag, so this is rare there; a hand-pushed tag has no earlier proof.
+  The tag exists, so the version is consumed. Catch it before the merge instead:
+  in a source checkout of the release branch,
+  `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
+  naming the repository the tag will be pushed to, exits 0 when the release
+  will pass. Without `--repository` a pin whose address names another
+  repository passes locally and is refused after the tag, consuming the version.
 - **A new release never starts, and an older run sits `Waiting` forever.**
   Release runs are serialised, so one parked run blocks every later one. Cancel
   the stale run from its page (**Cancel workflow**), and the queued one starts.
@@ -309,6 +346,27 @@ Write the agent's payload to a file and hand it back to the binary:
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch ship --changelog-json <path>   # or - for stdin
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch ship --changelog-json <path> --payload-dir <dir>   # also stage the payload
 ```
+
+In a repository whose version-location contract
+(`.abcd/config/version-location.json`) declares `"publishes_plugin_archive": true`
+— the statement that its release workflow uploads the plugin archive — a written
+heading is followed by the **archive pin**: the binary renders the release's plugin archive from the working tree, then rewrites
+the plugin's `source` in `.claude-plugin/marketplace.json` to
+`{"source": "archive", "url": ".../releases/download/vX.Y.Z/abcd-plugin-vX.Y.Z.zip",
+"sha256": "<digest>"}` and refreshes the committed surface snapshot beside it.
+The download address derives from `plugin.json`'s `repository`. Before anything
+is written it refuses a payload with uncommitted changes, because the release
+renders the archive again from the tagged commit and publishes nothing unless the
+digests agree. These three files — `CHANGELOG.md`, the catalog and the snapshot —
+are the release-content commit.
+
+Without that declaration the catalog is left untouched, and the report says so
+(`archive: not pinned — …`, or `archive_unpinned` in `--json`). The contract alone
+is not enough: it says where the version lives, not that a release uploads an
+archive, and the workflows `scaffold` writes for a managed repository upload
+none — a catalog pinned there would name an asset every install fails to fetch.
+A declaration that is not `true` or `false` is refused before anything is
+written.
 
 With `--payload-dir` the binary additionally stages the release payload in that
 directory — an empty directory outside the repository — with the derived version
@@ -515,6 +573,46 @@ go run ./cmd/record-lint --release-gate <content-commit-sha> \
 
 **Exit 0 means the release will pass the gate.** A non-zero exit names what is
 missing, and costs nothing to fix, because no tag exists yet.
+
+## Archive — the release's pinned plugin archive
+
+`archive` renders the plugin archive of the release the newest dated CHANGELOG
+heading names, from the checked-out tree, and writes
+`<plugin>-plugin-vX.Y.Z.zip` into an existing directory. The archive is
+reproducible — sorted entries, stored uncompressed, one fixed timestamp, modes
+normalised — so the same commit renders the same bytes on any machine. The
+catalog is left out of it, because the catalog is what names its digest.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" launch archive --out <dir> [--tag vX.Y.Z] [--verify] [--repository <owner/name>] --json
+```
+
+- `--tag` refuses unless the newest dated CHANGELOG version is that tag.
+- `--verify` refuses unless the committed catalog pins exactly this archive's
+  download address and digest. `auto-release.yml` runs it on the pushed commit
+  in `detect`, before the tag is made; the release workflow runs it again on the
+  tagged commit in `verify`, before anything is built, and once more in the
+  publish job, where the verified archive is the file it checksums, attests and
+  uploads.
+- `--repository <owner/name>` refuses unless the archive's download address lies
+  under that repository's
+  `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared
+  case-insensitively. The address derives from `plugin.json`'s `repository`,
+  which a rename, a transfer or a fork leaves naming another repository —
+  `--verify` passes on it and every install fails to fetch. Every run in the
+  workflows passes `--repository "${GITHUB_REPOSITORY}"`.
+
+Exit codes: **0** the archive was written (and every gate asked for passed);
+**1** `--verify` or `--repository` refused — the report names both digests or
+both addresses, and the archive is removed so no later step can publish it;
+**2** a structural fault (no dated release, a `--tag` naming another release, a
+`--repository` that is not `owner/name`, an unusable `--out`, a render refusal),
+with nothing left behind.
+
+Relay `archive.name`, `archive.sha256`, `url`, `pin` and `repository`. Between releases, `main`
+pins the last release's archive, which its moved-on tree no longer reproduces, so
+`--verify` there is expected to refuse: it proves a release commit, not a branch
+tip.
 
 ## Scaffold — the release-gate scaffolder
 

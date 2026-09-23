@@ -131,7 +131,8 @@ user-scope directory for machine-local state.
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
-  CLAUDE.md                      marker block (stands alone)
+  CLAUDE.md                      marker block (stands alone), only where a docs target
+                                 names it
 ```
 
 The same inventory is stated as a table under *The two `.abcd/` scopes* in
@@ -333,6 +334,18 @@ dogfood mode, proceed despite a stale running binary (the default refuses before
 any write and names the rebuild fix), name the directory for the `PATH` entry,
 and opt the repo into the attribution prompt hook.
 
+**The house-style question.** When the install seeds the docs-lint config, it
+asks one more question: whether the em-dash-in-list-item rule, abcd's own house
+style rather than a currency rule, blocks or warns in this repository (the
+product thinker's ruling of 2026-09-23 in the decision log). The chosen severity is written into the seeded config, which is
+where the choice is recorded and where the repository changes it later. Blanket
+approval does not ask and seeds a warning, and says so in the result. A bare
+Enter or end-of-file takes the displayed default, also a warning. An answer that
+names neither choice (the `y` a piped `yes` sends) is not guessed into a gate: it
+seeds the warning and the result says what was heard. The question is asked
+only when the seed is written: a repository that already carries a docs-lint
+config keeps its own severity and is not asked.
+
 Blanket approval does **not** adopt an unmanaged repo or pin an unset git
 identity: those still need their own answer. The identity-pin exclusion is
 stated rather than assumed — the flag's own help names it, the install envelope
@@ -344,8 +357,14 @@ way to apply it (iss-166).
 The marker block and the guard hooks come from canonical files under
 `internal/core/ahoy/defaults/`, never from inline prose in this chapter, which
 is what makes drift detection meaningful: the block has one canonical source. If
-a template is stale, the template file is what to edit. Every name-guard write
-is create-if-absent **and** contained: paths resolve through an `os.Root` opened
+a template is stale, the template file is what to edit. The block names abcd and
+documents its rule loader, so the docs target defaults to `skip`: a default
+install writes it into none of the repository's committed conventions files
+(iss-2609110944498549), and a project that wants it names `claude_md`,
+`agents_md` or `both`, which is the approval to plant it there. The name-guard
+hooks and the ignore fence are the one sanctioned mention of abcd outside
+`.abcd/` (ruled 2026-09-23; see prepare-this-repo). Every name-guard
+write is create-if-absent **and** contained: paths resolve through an `os.Root` opened
 at the repo, so a symlink committed at the hooks directory or at the local tier
 cannot land an artefact outside it. The private stub is written only where git
 reports the path as ignored. A clone arms the hooks once by pointing git at the
@@ -436,7 +455,8 @@ byte-identical to a fresh install save for the setup date.
   completion, **then** the repo carve-out is written, the identity pin is
   recorded where the git-identity gate is adopted, the visibility-driven ignore
   entries are present, the registry entry exists, the marker block from the
-  canonical template is installed, and the hook-manifest check runs verify-only
+  canonical template is installed in the files a chosen docs target names and in
+  none at the default, and the hook-manifest check runs verify-only
   with a missing or malformed manifest surfacing as a non-resolvable diagnostic.
 - **Given** a repo with the install already run and no state changes, **when**
   the install runs again, **then** detection reports zero actionable gaps, the

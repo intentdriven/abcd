@@ -131,6 +131,16 @@ func TestCaptureAppendAndReadBack(t *testing.T) {
 				Entropy: bytes.NewReader([]byte{0x03, 0x15}), // suffix 0789
 			})
 			tc.req.RepoRoot, tc.req.IssuesRoot = repo, ir
+			// A found_at path must resolve in the checkout (iss-2609120511058115).
+			if tc.req.FoundAt != "" {
+				p := filepath.Join(repo, filepath.FromSlash(tc.req.FoundAt))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte("x\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			res, err := Capture(tc.req)
 			if err != nil {
 				t.Fatalf("Capture: %v", err)

@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -105,5 +106,46 @@ func TestLoadConfigAcceptsBothLiveSeverities(t *testing.T) {
 	}`)
 	if _, err := LoadConfig(path); err != nil {
 		t.Fatalf("LoadConfig refused the live severity vocabulary: %v", err)
+	}
+}
+
+// TestLoadConfigRefusesUnknownRuleName is the rule-name half of the misspelt-key
+// refusal above. A rule keyed "links_reslove" decodes cleanly, reads as armed, and
+// is counted by ArmedChecks, yet no check runs under that name: the lint reports
+// its findings over a tree it never looked at, the false green a checks count
+// exists to remove. The loader refuses the name and says which it is, whether the
+// entry is enabled or not, because a disabled misspelling is still a rule the
+// author believes they can switch on.
+func TestLoadConfigRefusesUnknownRuleName(t *testing.T) {
+	for _, enabled := range []string{"true", "false"} {
+		path := writeConfig(t, `{
+	  "roots": ["rec"],
+	  "rules": {"links_reslove": {"enabled": `+enabled+`, "severity": "blocker"}}
+	}`)
+		_, err := LoadConfig(path)
+		if err == nil {
+			t.Fatalf("LoadConfig accepted the unknown rule name \"links_reslove\" (enabled=%s); want rejection", enabled)
+		}
+		if !strings.Contains(err.Error(), "links_reslove") || !strings.Contains(err.Error(), "links_resolve") {
+			t.Fatalf("rejection must name the unknown rule and list the known ones, got: %v", err)
+		}
+	}
+}
+
+// TestKnownRulesCoverTheCommittedConfigs holds the known-rule set to the two
+// configurations this repository runs, so a rule the gates rely on can never be
+// refused as unknown: both committed configs load, and every rule they name is
+// known.
+func TestKnownRulesCoverTheCommittedConfigs(t *testing.T) {
+	for _, rel := range []string{".abcd/record-lint.json", ".abcd/docs-lint.json"} {
+		cfg, err := LoadConfig(filepath.Join("..", "..", "..", filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("%s does not load: %v", rel, err)
+		}
+		for name := range cfg.Rules {
+			if !knownRules[name] {
+				t.Errorf("%s names rule %s, which knownRules does not carry", rel, name)
+			}
+		}
 	}
 }

@@ -95,7 +95,7 @@ Restart the session afterwards so the hooks load, then check what you got:
 /abcd:version
 ```
 
-Later, `/plugin update abcd` pulls the marketplace's current state.
+Later, `/plugin update abcd` takes the latest cut release: the marketplace names that release's plugin archive by its SHA-256, and the harness refuses any other bytes. The plugin route needs Claude Code v2.1.224 or later. <!-- docs-lint: allow -->
 
 
 ### As a CLI

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/release"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -51,29 +53,47 @@ type shipResult struct {
 	// the host's signal to recompose against its reasons. Exit 2 without it is a
 	// stop.
 	PayloadRefusal *release.PayloadRefusal `json:"payload_refusal,omitempty"`
+	// Archive is the release's plugin archive, pinned into the catalog, when the
+	// repository declares that its release publishes it (adr-2609231048308186).
+	Archive *shipArchive `json:"archive,omitempty"`
+	// ArchiveUnpinned says why a written ship left the catalog untouched: the
+	// repository does not declare that its release publishes the archive.
+	ArchiveUnpinned string `json:"archive_unpinned,omitempty"`
 }
 
-// renderReleasePayload stages the versioned release payload for a completed cut.
+// shipArchive is the archive half of a ship's report: the archive the release
+// will publish and the address the catalog now pins it at. The archive itself
+// is not kept — the release workflow renders it again from the tagged commit and
+// refuses to publish unless its digest is this one.
+type shipArchive struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	SHA256  string `json:"sha256"`
+	URL     string `json:"url"`
+	Files   int    `json:"files"`
+}
+
+// releaseRenderRequest assembles the render input for a completed cut.
 //
 // It is the one place the derived version crosses from the cut into a manifest.
 // Everything the core needs is assembled HERE — the version from the cut, the
 // tier from the version delta, the date from the same clock the heading was
 // dated with, the source commit from git — because internal/core/launch must not
 // read a clock or shell out to decide what a durable artefact says.
-func renderReleasePayload(repoRoot, dest string, cut release.Cut, at time.Time) (launch.PayloadRenderResult, error) {
+func releaseRenderRequest(repoRoot, dest string, cut release.Cut, at time.Time) (launch.PayloadRenderRequest, error) {
 	next, err := launch.ParseSemver(strings.TrimPrefix(cut.NextTag, "v"))
 	if err != nil {
-		return launch.PayloadRenderResult{}, err
+		return launch.PayloadRenderRequest{}, err
 	}
 	prev, err := launch.ParseSemver(strings.TrimPrefix(cut.BaseTag, "v"))
 	if err != nil {
-		return launch.PayloadRenderResult{}, err
+		return launch.PayloadRenderRequest{}, err
 	}
 	sha, err := gitutil.Run(repoRoot, "rev-parse", "HEAD")
 	if err != nil {
-		return launch.PayloadRenderResult{}, err
+		return launch.PayloadRenderRequest{}, err
 	}
-	return launch.RenderPayload(launch.PayloadRenderRequest{
+	return launch.PayloadRenderRequest{
 		RepoRoot: repoRoot,
 		Dest:     dest,
 		Version:  next.String(),
@@ -83,8 +103,69 @@ func renderReleasePayload(repoRoot, dest string, cut release.Cut, at time.Time) 
 			Date:      at,
 			SourceSHA: sha,
 		},
-	})
+	}, nil
 }
+
+// renderReleasePayload stages the versioned release payload for a completed cut.
+func renderReleasePayload(repoRoot, dest string, cut release.Cut, at time.Time) (launch.PayloadRenderResult, error) {
+	req, err := releaseRenderRequest(repoRoot, dest, cut, at)
+	if err != nil {
+		return launch.PayloadRenderResult{}, err
+	}
+	return launch.RenderPayload(req)
+}
+
+// pinReleaseArchive renders the cut's plugin archive from the working tree —
+// staging the payload at dest, packing the zip under zipDir — and pins its
+// release address and digest into the working tree's catalog. It returns the
+// archive, and the staged render for a caller that asked to keep it.
+func pinReleaseArchive(repoRoot, dest, zipDir string, cut release.Cut, at time.Time) (shipArchive, launch.PayloadRenderResult, error) {
+	req, err := releaseRenderRequest(repoRoot, dest, cut, at)
+	if err != nil {
+		return shipArchive{}, launch.PayloadRenderResult{}, err
+	}
+	a, staged, err := launch.RenderPluginArchive(req, zipDir)
+	if err != nil {
+		return shipArchive{}, staged, err
+	}
+	url, err := launch.ArchiveReleaseURL(repoRoot, a.Version)
+	if err != nil {
+		return shipArchive{}, staged, err
+	}
+	if err := launch.WriteArchivePin(repoRoot, launch.ArchivePin{URL: url, SHA256: a.SHA256}); err != nil {
+		return shipArchive{}, staged, err
+	}
+	// The catalog's shape is part of the committed surface snapshot, so the
+	// snapshot is regenerated beside it: the ship's commit must carry a snapshot
+	// that matches its own tree, or the next cut's guardrail refuses.
+	if err := refreshSurfaceSnapshot(repoRoot); err != nil {
+		return shipArchive{}, staged, err
+	}
+	return shipArchive{Name: a.Name, Version: a.Version, SHA256: a.SHA256, URL: url, Files: a.Files}, staged, nil
+}
+
+// refreshSurfaceSnapshot rewrites the committed surface snapshot from the live
+// tree, when the repository keeps one.
+func refreshSurfaceSnapshot(repoRoot string) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(SurfaceSnapshotPath))
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	data, err := GenerateSurface(repoRoot)
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomicPreserveMode(path, data)
+}
+
+// archiveUnpinnedReason is what a written ship reports when it leaves the
+// catalog alone: the pin is made only on the positive declaration, so a reader
+// of either rendering learns the catalog was not touched, and why.
+const archiveUnpinnedReason = `the version-location contract does not declare "publishes_plugin_archive": true, ` +
+	`so no release uploads a plugin archive and the catalog was left untouched`
 
 // publishedVersion is the version a launch would publish: the version of the
 // newest dated CHANGELOG heading (adr-37), which is the release auto-release.yml
@@ -109,25 +190,66 @@ func publishedVersion(repoRoot string) string {
 
 // rollbackCut undoes a cut whose payload render refused: it applies the core's
 // undo of the cut's writes (the CHANGELOG heading, the release page, the archive
-// move) and removes the staging directory the precheck proved was empty or
-// absent, so nothing outside the render's own output is touched.
+// move), restores every other file the ship rewrote (the catalog entry and the
+// surface snapshot the archive pin writes), and removes the staging directory
+// the precheck proved was empty or absent, so nothing outside the render's own
+// output is touched.
 //
 // It returns the sentence appended to the refusal rather than an error, because
 // what an operator reading exit 2 most needs to know is whether a durable write
 // survived — and a rollback that itself failed is the one case where they must
 // recover by hand.
-func rollbackCut(repoRoot, dest string, undo release.UndoPlan) string {
+func rollbackCut(repoRoot, dest string, undo release.UndoPlan, others ...savedFile) string {
 	var failures []string
 	for _, f := range undo.Apply(repoRoot) {
 		failures = append(failures, termsafe.Sanitize(scrubPaths(errors.New(f))))
 	}
-	if err := os.RemoveAll(dest); err != nil {
-		failures = append(failures, "the payload destination: "+scrubPaths(err))
+	for _, f := range others {
+		if err := f.restore(repoRoot); err != nil {
+			failures = append(failures, f.rel+": "+scrubPaths(err))
+		}
+	}
+	if dest != "" {
+		if err := os.RemoveAll(dest); err != nil {
+			failures = append(failures, "the payload destination: "+scrubPaths(err))
+		}
 	}
 	if len(failures) > 0 {
 		return "\n  THE ROLLBACK FAILED — recover by hand: " + strings.Join(failures, "; ")
 	}
 	return "\n  the release record and page were rolled back and nothing was staged"
+}
+
+// savedFile is a repository file's pre-ship bytes, held so a refused ship can
+// put it back. present is false for a file that did not exist, which the
+// restore removes again.
+type savedFile struct {
+	rel     string
+	data    []byte
+	present bool
+}
+
+// saveFile reads rel's current bytes.
+func saveFile(repoRoot, rel string) (savedFile, error) {
+	data, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(rel)))
+	if os.IsNotExist(err) {
+		return savedFile{rel: rel}, nil
+	}
+	if err != nil {
+		return savedFile{}, err
+	}
+	return savedFile{rel: rel, data: data, present: true}, nil
+}
+
+func (f savedFile) restore(repoRoot string) error {
+	path := filepath.Join(repoRoot, filepath.FromSlash(f.rel))
+	if !f.present {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	return fsutil.WriteFileAtomicPreserveMode(path, f.data)
 }
 
 // bumpReason is the human sentence adr-20's changelog entry records: the impact
@@ -193,65 +315,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				// Every render refusal that does not need a version is made
-				// BEFORE the ingest step writes the dated heading. That heading
-				// is a durable release record: a render that refuses after it
-				// lands leaves a release in flight, and every retry is then
-				// refused for being in flight. The version-free half of the
-				// render is therefore run first, and it writes nothing.
-				if payloadDir != "" {
-					if _, perr := launch.PrecheckPayload(cwd, payloadDir); perr != nil {
-						return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(perr)}
-					}
-				}
-				at := time.Now()
-				ingested, err := ingestCut(cwd, raw, at)
-				var refused *release.PayloadRefusal
-				if errors.As(err, &refused) {
-					// The composer's payload is refused: render the cut and every
-					// reason, and exit 2 WITH payload_refusal — the host's signal to
-					// recompose (commands/launch.md, the retry loop).
-					res := shipResult{IngestResult: ingested, PayloadRefusal: refused}
-					if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-						renderIngest(w, res)
-					}); rerr != nil {
-						return rerr
-					}
-					if *asJSON {
-						return &exitError{Code: 2}
-					}
-					// The reasons are on stdout already; stderr says so once.
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd launch ship: the composed payload was refused "+
-						"(%d reason(s), listed above) — nothing was written; recompose it against them", len(refused.Reasons))}
-				}
-				if err != nil {
-					return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
-				}
-				res := shipResult{IngestResult: ingested}
-				// Stage only behind a written record: a refused cut has no
-				// version to stamp, and a refused document must leave the
-				// filesystem exactly as it found it.
-				if payloadDir != "" && ingested.Written {
-					staged, rerr := renderReleasePayload(cwd, payloadDir, ingested.Cut, at)
-					if rerr != nil {
-						// The precheck cleared everything version-free, so a
-						// refusal here is version-shaped and rare — but the
-						// record is already on disk, so it is rolled back rather
-						// than left as an untaggable release in flight.
-						return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(rerr) +
-							rollbackCut(cwd, payloadDir, ingested.Undo)}
-					}
-					res.Payload = &staged
-				}
-				if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-					renderIngest(w, res)
-				}); rerr != nil {
-					return rerr
-				}
-				if !res.Cut.Ready {
-					return &exitError{Code: 1}
-				}
-				return nil
+				return runShipIngest(cmd, cwd, raw, payloadDir, *asJSON)
 			}
 
 			cut, err := emitCut(cwd)
@@ -274,6 +338,144 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&payloadDir, "payload-dir", "",
 		"stage the versioned release payload in this directory (must be empty and outside the repository)")
 	return cmd
+}
+
+// runShipIngest is the ingest step of `abcd launch ship`: validate the composed
+// prose against the cut, write the dated heading, and — when the repository
+// declares that its release publishes the plugin archive — render that archive
+// and pin it into the catalog; with --payload-dir, keep the staged payload too.
+//
+// The pin waits on the positive declaration, not on the version-location
+// contract alone: only a release workflow that uploads the archive makes the
+// pinned address resolve, and a managed repository's scaffolded workflows
+// upload none, so a catalog pinned there would 404 on every install.
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, asJSON bool) error {
+	archive, err := launch.DeclaresPluginArchive(cwd)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+	}
+	stage := archive || payloadDir != ""
+
+	// Every render refusal that does not need a version is made BEFORE the
+	// ingest step writes the dated heading. That heading is a durable release
+	// record: a render that refuses after it lands leaves a release in flight,
+	// and every retry is then refused for being in flight. The version-free
+	// half of the render is therefore run first, and it writes nothing.
+	var (
+		saved   []savedFile
+		staging = payloadDir
+		zipDir  string
+	)
+	if stage {
+		if archive {
+			scratch, err := os.MkdirTemp("", "abcd-ship-")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
+			defer func() { _ = os.RemoveAll(scratch) }()
+			zipDir = filepath.Join(scratch, "archive")
+			if err := os.Mkdir(zipDir, 0o700); err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
+			if staging == "" {
+				staging = filepath.Join(scratch, "payload")
+			}
+		}
+		pre, perr := launch.PrecheckPayload(cwd, staging)
+		if perr != nil {
+			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(perr)}
+		}
+		if archive {
+			if err := launch.PrecheckPluginArchive(cwd); err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
+			dirty, err := launch.DirtyPayloadFiles(cwd, pre.Bundle)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
+			if len(dirty) > 0 {
+				return &exitError{Code: 2, Msg: "abcd launch ship: the payload carries uncommitted changes (" +
+					termsafe.Sanitize(strings.Join(dirty, ", ")) + ") — the archive pinned from this tree would not be " +
+					"the archive the release renders from the commit; commit or discard them first"}
+			}
+			for _, rel := range []string{".claude-plugin/marketplace.json", SurfaceSnapshotPath} {
+				f, err := saveFile(cwd, rel)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+				}
+				saved = append(saved, f)
+			}
+		}
+	}
+	at := time.Now()
+	ingested, err := ingestCut(cwd, raw, at)
+	var refused *release.PayloadRefusal
+	if errors.As(err, &refused) {
+		// The composer's payload is refused: render the cut and every reason,
+		// and exit 2 WITH payload_refusal — the host's signal to recompose
+		// (commands/launch.md, the retry loop).
+		res := shipResult{IngestResult: ingested, PayloadRefusal: refused}
+		if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+			renderIngest(w, res)
+		}); rerr != nil {
+			return rerr
+		}
+		if asJSON {
+			return &exitError{Code: 2}
+		}
+		// The reasons are on stdout already; stderr says so once.
+		return &exitError{Code: 2, Msg: fmt.Sprintf("abcd launch ship: the composed payload was refused "+
+			"(%d reason(s), listed above) — nothing was written; recompose it against them", len(refused.Reasons))}
+	}
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+	}
+	res := shipResult{IngestResult: ingested}
+	if ingested.Written && !archive {
+		res.ArchiveUnpinned = archiveUnpinnedReason
+	}
+	// Render only behind a written record: a refused cut has no version to
+	// stamp, and a refused document must leave the filesystem exactly as it
+	// found it.
+	if stage && ingested.Written {
+		// The staging directory is removed on a refusal only when the operator
+		// named it; the scratch one goes with the deferred cleanup regardless.
+		var rerr error
+		if archive {
+			var a shipArchive
+			var staged launch.PayloadRenderResult
+			a, staged, rerr = pinReleaseArchive(cwd, staging, zipDir, ingested.Cut, at)
+			if rerr == nil {
+				res.Archive = &a
+				if payloadDir != "" {
+					res.Payload = &staged
+				}
+			}
+		} else {
+			var staged launch.PayloadRenderResult
+			staged, rerr = renderReleasePayload(cwd, payloadDir, ingested.Cut, at)
+			if rerr == nil {
+				res.Payload = &staged
+			}
+		}
+		if rerr != nil {
+			// The precheck cleared everything version-free, so a refusal here
+			// is version-shaped and rare — but the record is already on disk,
+			// so it is rolled back rather than left as an untaggable release in
+			// flight.
+			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(rerr) +
+				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
+		}
+	}
+	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+		renderIngest(w, res)
+	}); rerr != nil {
+		return rerr
+	}
+	if !res.Cut.Ready {
+		return &exitError{Code: 1}
+	}
+	return nil
 }
 
 // newChangelogCommand builds `abcd changelog`, the DETERMINISTIC-ONLY preview of
@@ -406,6 +608,14 @@ func renderIngest(w io.Writer, res shipResult) {
 		}
 	} else {
 		fmt.Fprintf(w, "  page:       %s\n", termsafe.Sanitize(res.Page.Reason))
+	}
+	if res.Archive != nil {
+		fmt.Fprintf(w, "  archive:    %s (%d file(s)), pinned in .claude-plugin/marketplace.json\n", res.Archive.Name, res.Archive.Files)
+		fmt.Fprintf(w, "    url:    %s\n", termsafe.Sanitize(res.Archive.URL))
+		fmt.Fprintf(w, "    sha256: %s\n", res.Archive.SHA256)
+	}
+	if res.ArchiveUnpinned != "" {
+		fmt.Fprintf(w, "  archive:    not pinned — %s\n", res.ArchiveUnpinned)
 	}
 	if res.Payload == nil {
 		return

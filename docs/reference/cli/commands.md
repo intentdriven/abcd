@@ -68,7 +68,7 @@ Install or update abcd in this repo (idempotent)
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
-      --docs-target string      marker target: claude_md | agents_md | both | skip
+      --docs-target string      which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -164,7 +164,7 @@ Capture issues to the ledger; bare invocation is read-only status
 ```
       --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
-      --found-at string          optional repo-relative path or conceptual location
+      --found-at string          optional repo-relative path, which must exist in this checkout, or a conceptual location in words
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
@@ -1023,6 +1023,21 @@ Preview the public launch bundle and release gates (--dry-run required; read-onl
 
 ```
       --dry-run   preview the launch bundle and gates without publishing
+```
+
+#### `abcd launch archive`
+
+Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)
+
+**Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
+
+**Flags:**
+
+```
+      --out string          existing directory to write <plugin>-plugin-v<version>.zip into
+      --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
+      --tag string          refuse unless the newest dated CHANGELOG version is this tag
+      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
 ```
 
 #### `abcd launch scaffold`
