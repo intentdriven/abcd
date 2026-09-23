@@ -141,8 +141,8 @@ Four failures are worth recognising, because each looks like something else.
   tree renders a different archive from the one the ship pinned — a payload file
   (`commands/`, `agents/`, `hooks/`, `scripts/`, `docs/`, the README or the plugin
   manifest) changed between the ship and the merge. The tag exists, so the
-  version is consumed. Catch it before the merge instead: on the release branch,
-  `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify`
+  version is consumed. Catch it before the merge instead: in a source checkout
+  of the release branch, `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify`
   exits 0 when the release will pass.
 - **A new release never starts, and an older run sits `Waiting` forever.**
   Release runs are serialised, so one parked run blocks every later one. Cancel
