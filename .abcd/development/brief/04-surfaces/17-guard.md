@@ -131,6 +131,57 @@ restricted shell — with this guard in front of it to teach, never in place of 
 A missing wrapper name is a real defect in a mistake filter; it is not a silent
 failure of a trust boundary, because there is no trust boundary here to fail.
 
+## Where the command runs
+
+Some hosts give their shell tool a per-call working directory. The model sets
+it beside the command, and the host runs the command there instead of in the
+session directory. A guard that read only the command string would then decide
+a command whose meaning had partly moved out of the string: lab 2 watched a
+model rewrite `cd scratch && rm -rf *` into a workdir of `scratch` and a bare
+`rm -rf *` (iss-2609212142557657, iss-2609012040019014). The hook adapter reads
+that directory from `tool_input.workdir` and resolves the command against it.
+
+How it resolves comes from a probe of the host, not from its documentation.
+opencode 1.18.31 is the one host with the field. Its bash tool was driven
+directly, with no model in the loop, on 2026-09-23:
+
+| Workdir sent | What the host did |
+|---|---|
+| relative, present | ran in it, resolved against the session directory |
+| empty | ran in the session directory |
+| absent from disk | failed the call (`NotFound`); nothing ran |
+| a regular file | failed the call (`ENOTDIR`); nothing ran |
+
+The guard follows those observations:
+
+- **A relative workdir is resolved against the session directory.** So the
+  same value names different directories from different sessions.
+- **A workdir is never read as a `cd`.** The cd-chain entry exists because a
+  failed `cd` leaves the delete running wherever the shell already was. A
+  missing workdir fails the whole call instead, so that hazard is absent.
+  Treating the workdir as `cd <workdir> &&` would block every recursive delete
+  run in a workdir, for a hazard the host does not have. A `cd` written in the
+  command still blocks, with or without a workdir.
+- **A workdir in another repository brings that repository's registry.** The
+  command is checked against the session's registry and against the registry of
+  the repository the workdir resolves into, and the stricter verdict wins.
+  `make release` can be a blocker in one repository and ordinary work in
+  another. The session's answer is the floor: the model chose the workdir, so a
+  `guard.json` there, disabled or re-tiered or broken, can add a hazard and
+  never remove one. A workdir that is not an existing directory brings no
+  registry, because the host runs nothing there.
+- **A malformed workdir is refused.** A value that is not a string, holds a NUL
+  byte, a control character or invalid UTF-8, or is over 4,096 bytes names no
+  directory the host could run in. The hook refuses it with the blocking status
+  and the reason, and does not fail open, because the registry is armed and the
+  command is readable. The model can resend the call plain.
+
+A host adapter for a host that *does* fall back to the session directory must
+not use the field. It folds the directory into the command as a `cd` instead,
+which the guard already reads as the failed-cd hazard it then is. The shipped
+hook manifest serves a host whose shell tool has no working-directory input, so
+there the field is simply absent.
+
 ## What an allow means
 
 An allow means **no registry entry matched**, never that a command is safe.

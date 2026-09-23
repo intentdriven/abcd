@@ -69,6 +69,17 @@ would run is never in that set: a trailing backslash and an unterminated
 here-document are decided, not failed open on, and a here-document body is read
 as data however it is quoted, even when the line that opened it ends in `&&`.
 
+A host whose shell tool takes a per-call working directory passes it beside the
+command as `tool_input.workdir`. The adapter resolves it against the session
+directory. When it names an existing directory in another repository, the
+command is checked against that repository's registry as well as the session's,
+and the stricter verdict wins. So a workdir can add a hazard and can never take
+one away. A workdir is not a `cd`: the one host that has the field fails the
+call when the directory is missing, so no failed-cd hazard exists. A workdir that
+no directory could be named by is refused with the blocking status and the
+reason: a value that is not a string, holds a NUL byte, a control character or
+invalid UTF-8, or is over 4096 bytes.
+
 ## Registry and overrides
 
 The bundled hazards ship inside the binary. A repo overrides them in one file in

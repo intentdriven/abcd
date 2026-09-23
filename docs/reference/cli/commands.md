@@ -569,6 +569,17 @@ document text and is not one. A trailing backslash and a here-document with
 no delimiter line are grammar a shell does run, so each gets a verdict —
 the backslash is read as bash reads it, the unterminated document blocks.
 
+A host whose shell tool takes a per-call working directory passes it as
+tool_input.workdir. It is resolved against the session directory, and a
+command whose workdir is an existing directory in another repository is
+checked against that repository's registry as well as the session's; the
+stricter verdict wins, so the workdir's registry can add a hazard and never
+remove one. The workdir is never read as a cd: the one host that has the
+field fails the call when the directory is missing, so no failed-cd hazard
+exists. A workdir that is not a string, or holds a NUL byte, a control
+character or invalid UTF-8, or is over 4096 bytes, is refused with the
+blocking status and the reason.
+
 ### `abcd history`
 
 Manage the native session-transcript store
