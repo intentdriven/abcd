@@ -218,14 +218,18 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 	if len(locs) == 0 {
 		return err
 	}
+	// A peer's branch name and path are another checkout's bytes, and git admits
+	// a C1 control or a bidi override in either; this refusal reaches stderr and
+	// the --json envelope through scrubPaths alone, so it is sanitised here. The
+	// folder needs nothing: the scan admits only its own fixed folder names.
 	var holders []string
 	for _, l := range locs {
-		h := "branch " + l.Branch
+		h := "branch " + termsafe.Sanitize(l.Branch)
 		if l.Branch == "" {
 			h = "a detached worktree"
 		}
 		if l.Path != "" {
-			h += " at " + fsutil.RedactHome(l.Path)
+			h += " at " + termsafe.Sanitize(fsutil.RedactHome(l.Path))
 		} else {
 			h += " (checked out nowhere)"
 		}

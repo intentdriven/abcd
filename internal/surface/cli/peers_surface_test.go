@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -209,6 +210,50 @@ func TestNotFoundPathsNameThePeerThatHoldsTheRecord(t *testing.T) {
 	if m, _ := filepath.Glob(filepath.Join(repo, ".abcd/work/issues/*/iss-100-*")); len(m) != 0 {
 		t.Fatalf("the refused resolve wrote the peer's record here: %v", m)
 	}
+}
+
+// A peer's branch name and worktree path are another checkout's bytes, and the
+// not-found refusal interpolates both into the one line cli.Run writes to stderr
+// and into the --json error envelope. Git accepts a UTF-8 C1 control (U+009B,
+// the 8-bit CSI) and a bidi override (U+202E) in a refname and a directory name,
+// so either would reach the terminal raw unless the refusal sanitises them. The
+// runes are written numerically so this file carries none of them.
+func TestThePeerHeldRefusalSanitisesThePeersBranchAndPath(t *testing.T) {
+	home, repo := peerCheckout(t)
+	hostile := "evil" + string(rune(0x9b)) + "31m" + string(rune(0x202e)) + "x"
+	dir := filepath.Join(home, "wt", hostile)
+	gitCmd(t, repo, "worktree", "add", "-q", "-b", "feat/"+hostile, dir, "main")
+	writeRel(t, dir, ".abcd/work/issues/open/iss-100-a-peer-finding.md", peerIssue("iss-100", "a-peer-finding", "A finding the peer captured"))
+
+	bad := []string{string(rune(0x9b)), string(rune(0x202e))}
+	check := func(surface, s string) {
+		t.Helper()
+		if !strings.Contains(s, "a peer holds it") {
+			t.Fatalf("%s is not the peer-held refusal:\n%q", surface, s)
+		}
+		for _, r := range bad {
+			if strings.Contains(s, r) {
+				t.Errorf("%s carries the raw rune %U from the peer's branch or path:\n%q", surface, []rune(r)[0], s)
+			}
+		}
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"iss-100"}, &stdout, &stderr); code == 0 {
+		t.Fatalf("the dispatcher succeeded for a record this checkout lacks:\n%s", stdout.String())
+	}
+	check("the stderr refusal", stderr.String())
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"capture", "resolve", "iss-100", "fixed", "--impact", "fix", "--json"}, &stdout, &stderr); code == 0 {
+		t.Fatalf("the resolve succeeded for a record this checkout lacks:\n%s", stdout.String())
+	}
+	var env errorEnvelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("the --json refusal is not an envelope: %v\n%s", err, stdout.String())
+	}
+	check("the --json error envelope", env.Error)
 }
 
 // Criterion 13: AGENTS.md's scan-before-mutating step names the peer listing
