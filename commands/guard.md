@@ -50,14 +50,22 @@ On a `block`, do not run the command. Tell the user the `why`, then run the
 `successor` instead — the refusal is the lesson, so pass it on in full. On a
 `warn`, the command may run; surface the warning first so the user can stop it.
 
+The check reads the registry of the directory it runs in, and only that one.
+Run it from the directory the command will run in: a command headed for another
+repository can meet hazards that repository's `.abcd/guard.json` adds, and the
+check run from here does not see them. The hook, given a per-call working
+directory, reads both registries, so for such a command the two can answer
+differently.
+
 ## `hook` — the host adapter
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" guard hook
 ```
 
-Reads a host pre-tool-use hook payload on stdin and applies the same decision
-before a shell command executes. It is invoked by the plugin's hook manifest,
+Reads a host pre-tool-use hook payload on stdin and applies the check's
+decision before a shell command executes, adding the registry of a per-call
+working directory's repository when the host names one (below). It is invoked by the plugin's hook manifest,
 not by hand; a blocker returns the host's blocking status with the successor and
 the why as the message, and a warn or an allow lets the command run.
 
@@ -68,6 +76,17 @@ never stops a session, and is never silently absent. A command line a shell
 would run is never in that set: a trailing backslash and an unterminated
 here-document are decided, not failed open on, and a here-document body is read
 as data however it is quoted, even when the line that opened it ends in `&&`.
+
+A host whose shell tool takes a per-call working directory passes it beside the
+command as `tool_input.workdir`. The adapter resolves it against the session
+directory. When it names an existing directory in another repository, the
+command is checked against that repository's registry as well as the session's,
+and the stricter verdict wins. So a workdir can add a hazard and can never take
+one away. A workdir is not a `cd`: the one host that has the field fails the
+call when the directory is missing, so no failed-cd hazard exists. A workdir that
+no directory could be named by is refused with the blocking status and the
+reason: a value that is not a string, holds a NUL byte, a control character or
+invalid UTF-8, or is over 4096 bytes.
 
 ## Registry and overrides
 

@@ -165,7 +165,17 @@ func newGuardHookCommand() *cobra.Command {
 			"which no shell runs either — a quote inside a here-document body is\n" +
 			"document text and is not one. A trailing backslash and a here-document with\n" +
 			"no delimiter line are grammar a shell does run, so each gets a verdict —\n" +
-			"the backslash is read as bash reads it, the unterminated document blocks.",
+			"the backslash is read as bash reads it, the unterminated document blocks.\n\n" +
+			"A host whose shell tool takes a per-call working directory passes it as\n" +
+			"tool_input.workdir. It is resolved against the session directory, and a\n" +
+			"command whose workdir is an existing directory in another repository is\n" +
+			"checked against that repository's registry as well as the session's; the\n" +
+			"stricter verdict wins, so the workdir's registry can add a hazard and never\n" +
+			"remove one. The workdir is never read as a cd: the one host that has the\n" +
+			"field fails the call when the directory is missing, so no failed-cd hazard\n" +
+			"exists. A workdir that is not a string, or holds a NUL byte, a control\n" +
+			"character or invalid UTF-8, or is over 4096 bytes, is refused with the\n" +
+			"blocking status and the reason.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// failOpen is the single exit for every non-decision path, so the
@@ -213,7 +223,8 @@ func newGuardHookCommand() *cobra.Command {
 					cwd = wd
 				}
 			}
-			reg, err := guard.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
+			sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
+			reg, err := guard.Load(sessionRoot)
 			// A repo-layer error is fail-SAFE, not fail-open: guard.Load returns the
 			// bundled defaults alongside the error, so the built-in hazards stay
 			// armed even though the repo's own overrides were dropped. We check
@@ -240,9 +251,43 @@ func newGuardHookCommand() *cobra.Command {
 			if reg.Disabled {
 				return failOpen("the hazard registry is switched off in %s", guard.RepoRelPath)
 			}
+			// The host's per-call working directory, when it sent one. A value no
+			// directory could be named by is REFUSED, not failed open: the
+			// registry is armed and the command is readable, so the guard can
+			// answer — what it cannot tell is where the command would run, and
+			// the model that wrote the value can resend it plain.
+			wd, err := hookWorkdir(in.ToolInput.Workdir, cwd)
+			if err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"Blocked by the abcd guard (tool_input.workdir): the working directory this call names is refused — %s. The guard cannot tell where the command would run. Run instead: the same command with workdir omitted, or set to a plain directory path.\n",
+					termsafe.Sanitize(scrubPaths(err)))
+				return &exitError{Code: 2}
+			}
 			dec, err := reg.Check(candidate)
 			if err != nil {
 				return failOpen("the command line could not be parsed (%s)", scrubPaths(err))
+			}
+			// The command runs in the workdir, so the registry of the repository
+			// it runs in names its hazards too. Only an existing directory has
+			// one: the probed host fails a call whose workdir it cannot enter.
+			// The session's decision is the floor (guard.Strictest), so a
+			// registry the model chose by choosing the workdir can add a hazard
+			// and never subtract one.
+			if wd.Exists {
+				if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
+					wreg, werr := guard.Load(root)
+					if werr != nil && len(wreg.Entries) > 0 {
+						repoDropped = true
+						fmt.Fprintf(cmd.ErrOrStderr(),
+							"abcd guard: the working directory's %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
+							guard.RepoRelPath, scrubPaths(werr))
+					}
+					if !wreg.Disabled && len(wreg.Entries) > 0 {
+						if wdec, cerr := wreg.Check(candidate); cerr == nil {
+							dec = guard.Strictest(dec, wdec)
+						}
+					}
+				}
 			}
 
 			switch dec.Verdict {
@@ -283,7 +328,28 @@ type guardHookInput struct {
 	ToolName  string `json:"tool_name"`
 	ToolInput struct {
 		Command string `json:"command"`
+		// Workdir is the per-call working directory a host's shell tool may
+		// carry beside the command (opencode's bash tool names it `workdir`).
+		// It is kept raw so a value of the wrong JSON type is refused as a
+		// malformed workdir rather than failing the whole payload open, which
+		// would run the command unchecked.
+		Workdir json.RawMessage `json:"workdir"`
 	} `json:"tool_input"`
+}
+
+// hookWorkdir decodes and resolves the payload's per-call working directory
+// against the session directory. Absent and null are no workdir; any other
+// non-string value, and any string guard.ResolveWorkdir refuses, is an error the
+// hook turns into a refusal.
+func hookWorkdir(raw json.RawMessage, sessionDir string) (guard.Workdir, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return guard.Workdir{}, nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err != nil {
+		return guard.Workdir{}, fmt.Errorf("%w: it is not a string", guard.ErrMalformedWorkdir)
+	}
+	return guard.ResolveWorkdir(sessionDir, s)
 }
 
 // guardCandidate resolves the command to check: the flag when given, otherwise
