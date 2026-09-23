@@ -9,6 +9,10 @@ found_during: "peer report of nine misfiled installer records, 2026-09-12"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/validate.go"
+resolution: "capture refuses a --found-at that names a repo-relative path not present in the checkout (or leaving it), before the ledger is touched; conceptual locations and an absent value are written as given"
+impact: fix
+resolved_by:
+  commit: "6479a330"
 ---
 
 Nine findings about abcd's own installer are sitting in a teaching-materials
@@ -85,3 +89,7 @@ failing to hold a caller to something it knows.
 - **Given** a capture whose `--found-at` is absent, or names a conceptual
   location rather than a path, **when** the verb runs, **then** it is written as
   it is today.
+
+## Grounds
+
+- pursued: a capture whose found_at names a path absent from the checkout is refused with nothing written, while conceptual locations still file; TestCaptureFoundAtMustResolveInTheTree holds both sides, and a real path refused or a conceptual phrase refused would show it wrong
