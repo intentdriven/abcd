@@ -26,12 +26,13 @@ what a person is taught and what an agent is stopped by cannot drift apart.
 | `check` | gate | shipped |
 | `hook` | — | shipped |
 
-The check takes the candidate as an argument or on stdin, and stdin is the one to
-prefer for a command line you did not type: the shell expands a double-quoted
-argument before the guard starts, so a command substitution inside
-it runs at check time, the one moment the check exists to prevent. The hook
-adapter reads a host hook payload and maps the same decision onto the host's block/allow
-protocol; it is wired from `hooks/hooks.json` rather than typed.
+The check takes the candidate as the value of its command flag or on stdin, and
+stdin is the one to prefer for a command line you did not type: the shell
+expands a double-quoted flag value before the guard starts, so a command
+substitution inside it runs at check time, the one moment the check exists to
+prevent. It takes no positional argument. The hook adapter reads a host hook
+payload and maps the same decision onto the host's block/allow protocol; it is
+wired from `hooks/hooks.json` rather than typed.
 
 Bare `abcd guard` prints usage. Guard health lives where every other
 install-state question is answered, on `abcd ahoy`.
@@ -140,7 +141,7 @@ hazard behind a launcher it does not recognise is a **warn** naming the entry it
 matched rather than an allow, because the guard cannot tell whether that program
 runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
-spelled with a glob in its verb (`git pus?`) and the force option blocks. A command string handed to a shell is opened
+spelled `git pus? --force` blocks. A command string handed to a shell is opened
 and read. A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. Where the reading is a
 guess, over-blocking is the direction the guard takes.

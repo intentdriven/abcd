@@ -52,8 +52,12 @@ the commit gates. In one run it plants abcd's own managed block in the repo's
 neither), writes the repo's settings file with its visibility, oracle backend and
 scan depth, writes its rule-loader overrides file, installs a copy of the binary
 on `PATH`, records the repo in the machine's own store, and offers to pin the git
-commit identity. It runs a second time, installing the attribution gate, where
-the user opts in.
+commit identity. It runs a second time, with the installer's attribution flag,
+where the user opts in: that run installs the committed `prepare-commit-msg`
+prompt asking every commit to declare whether a tool assisted it, and the choice
+is recorded, so a later install without the flag keeps the hook. The flag's
+spelling is ahoy's shape, so it lives in the generated appendix of
+[`01-ahoy.md`](01-ahoy.md#appendix-the-shipped-surface) and is not repeated here.
 
 The identity verb's render is the follow-on surface and writes nothing: it proposes
 a correction as a diff, and adopting it is always the maintainer's move.

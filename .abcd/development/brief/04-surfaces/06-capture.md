@@ -48,7 +48,7 @@ context each carry a default, so the fast path stays fast; the location, slug
 and dependency flags have none. The `origin` field is derived from the verb that
 ran and is carried by no flag at all (itd-178), and a production-mode flag records
 how the text was produced. That last flag is not the fast path's alone:
-promotion stamps the draft it mints with it, and resolving and declining each
+promotion stamps the draft it mints with it, and resolving and marking wontfix each
 take it to restamp the record they are closing, which is refused on a record
 written before the disclosure existed.
 
@@ -61,7 +61,7 @@ precisely the value a lapse entry exists to distinguish itself from.
 or all of them — is required. The unfiltered form is rejected with exit 2 and a
 message naming the four. These filters are the only earned exception to the
 naming discipline under this surface, and each must appear immediately adjacent
-to the listing sub-verb. There is no implicit default: bare `/abcd:capture` is
+to the list sub-verb's name. There is no implicit default: bare `/abcd:capture` is
 what renders status.
 
 **Linking** adds or removes `blocked_by` edges on a record that
@@ -128,7 +128,7 @@ it: an intent, a spec, or a commit sha. A fourth, the shipped-in release, is mig
 use only: it names the release that already carried the work, so the record
 stays out of the current cut.
 
-**Declining** records an explicit non-action decision and moves
+**Marking an issue wontfix** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
 text only: the token stays `declined`, because a wontfix **is** that non-action.
 
@@ -206,8 +206,11 @@ without inventing an hour nobody recorded.
 
 **Verify a commit stamp is reachable before writing it.** The flag is
 shape-checked and nothing more, so a stamp that points at nothing reads exactly
-like a good one. The check belongs at write time: ask git's merge-base whether
-the sha is an ancestor of `origin/main`.
+like a good one. The check belongs at write time:
+
+```sh
+git merge-base --is-ancestor <sha> origin/main
+```
 
 Whether a branch's own shas survive a merge depends on the merge method, and
 that is a repository setting which can change without announcement. A habit
@@ -221,7 +224,7 @@ land.
 
 ### `## Grounds` is tool-owned and append-only
 
-Promotion, resolving and declining write the conjecture they were given into an
+Promotion, resolving and marking wontfix write the conjecture they were given into an
 append-only `## Grounds` section in the record body, one top-level bullet per
 entry in the form `- <token>: <text>`. A wontfix that was given no grounds at
 all still gets a bullet, because a wontfix is the non-action the `declined`

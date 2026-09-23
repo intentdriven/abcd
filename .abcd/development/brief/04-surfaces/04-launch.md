@@ -72,8 +72,9 @@ It is idempotent and fail-safe: a re-run on current machinery is a no-op
 (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless
 the caller confirms, and a structural fault exits 2.
 
-**The preview is a flag, not a sub-verb.** The binary registers no preview
-subcommand, and `commands/launch.md` names it as a flag. Its report is
+**The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
+binary registers no `dry-run` subcommand under launch, and `commands/launch.md`
+names it as a flag. Its report is
 preview-only and always exits 0. It is **not** "ship minus publish": running the
 full gate suite and hard-failing on a finding is the full cut's design.
 

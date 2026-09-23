@@ -226,7 +226,7 @@ which puts the secret into more code paths to protect it in fewer.
 
 The escape is published because the tests are shape tests: a repo that
 legitimately commits a store-shaped file — a fixture corpus, a document quoting
-the declaration — needs a way to say so, and git's no-verify bypass is an off switch for
+the declaration — needs a way to say so, and `--no-verify` is an off switch for
 the whole guard rather than a per-file escape. A blob whose **second line** reads
 `# abcd-banlist-example` is exempt from the first-line and basename tests, and
 from nothing else. The exempt blob is still scanned against every entry, so it
@@ -271,7 +271,7 @@ The sentence names the second limit too, because "machines that have opted in" i
 necessary and not sufficient. A hook sees the commits git asks it about, and that
 list is explicitly non-exhaustive: a fast-forward `git pull` creates no commit at
 all, git runs no hook for a rebase, a `git am`, a `git revert` or a cherry-pick,
-git's no-verify bypass switches it off, and a merge commit needs the `pre-merge-commit`
+`--no-verify` switches it off, and a merge commit needs the `pre-merge-commit`
 half. A reader who stopped at opt-in would believe an opted-in machine is fully
 covered, which is the belief that gets a name committed.
 

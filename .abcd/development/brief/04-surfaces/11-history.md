@@ -77,7 +77,7 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   `adopted_project`. Setting `on_orphan` to `prompt` makes the CLI ask —
   core never prompts. Ingesting the same material twice adds nothing.
 - **Migrating** — repair the records filed under the pre-lineage
-  composite session id (the truncated parent, then the agent marker and the agent). The full parent
+  composite session id (`<truncated-parent>--agent-<agent>`). The full parent
   session id is recovered from the record's **own body**, which still carries it
   on every transcript line, and the stored prefix is only the check: a body that
   disagrees leaves the record untouched and is reported. `source_sha256` and the
