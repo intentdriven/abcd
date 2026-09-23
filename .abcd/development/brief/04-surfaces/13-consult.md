@@ -138,3 +138,9 @@ share the corpus and its ledger.
   [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md), brief invariant 9
   ([`../02-constraints/03-invariants.md`](../02-constraints/03-invariants.md))
 - Consuming intent: [itd-76](../../intents/planned/itd-76-source-provenance-ledger.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+There is no shipped surface: the command tree registers no `abcd consult` verb, so there are no flags and no sub-verbs to list.
+
+<!-- surface-appendix:end -->

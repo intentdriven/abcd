@@ -305,3 +305,90 @@ projects.
   repo's store so a freshly installed machine has one on disk; the transcript
   corpus itself is `internal/core/history`'s to create, on first use, from any
   verb (iss-95)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd history`
+
+Sub-verbs: `abcd history capture`, `abcd history discard`, `abcd history drain`, `abcd history ingest`, `abcd history list`, `abcd history migrate`, `abcd history reconstruct`, `abcd history show`, `abcd history staged`.
+
+Flags: none.
+
+### `abcd history capture`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--kind` | string |
+| `--session` | string |
+
+### `abcd history discard`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--yes` | bool |
+
+### `abcd history drain`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd history ingest`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--adopt` | stringArray |
+| `--into` | string |
+
+### `abcd history list`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--session` | string |
+
+### `abcd history migrate`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--apply` | bool |
+| `--sidecar-root` | stringArray |
+
+### `abcd history reconstruct`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--max-block-bytes` | int |
+| `--mode` | string |
+| `--out` | string |
+
+### `abcd history show`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd history staged`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--all-repos` | bool |
+
+<!-- surface-appendix:end -->

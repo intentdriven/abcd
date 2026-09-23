@@ -113,3 +113,9 @@ reader treats it as a requirement rather than a shipped capability.
 - Intent: `itd-24` (`../../intents/planned/itd-24-reflect-command.md`)
 - Naming registration: [`../02-constraints/04-naming.md`](../02-constraints/04-naming.md)
 - The agent catalogue a composer would join: [`../05-internals/01-agents.md`](../05-internals/01-agents.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+There is no shipped surface: the command tree registers no `abcd reflect` verb, so there are no flags and no sub-verbs to list.
+
+<!-- surface-appendix:end -->

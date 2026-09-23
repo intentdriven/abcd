@@ -151,3 +151,25 @@ the same advisory lock the ledger allocators use.
 - Intent: [`itd-104`](../../intents/shipped/itd-104-abcd-gates-a-new-idea-before-it-becomes-a-record-entry-resea.md)
 - Spec: [`spc-18`](../../specs/closed/spc-18-abcd-gates-a-new-idea-before-it-becomes-a-record-entry-resea.md)
 - Routing-help neighbours: [`05-intent.md`](05-intent.md), [`06-capture.md`](06-capture.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd ideate`
+
+Sub-verbs: `abcd ideate record`.
+
+Flags: none.
+
+### `abcd ideate record`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--verdict-json` | string |
+
+<!-- surface-appendix:end -->

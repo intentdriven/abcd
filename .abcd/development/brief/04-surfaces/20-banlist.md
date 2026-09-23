@@ -288,3 +288,46 @@ pattern, and a guard is only ever asked about what git asks it about.
 - The corpus writer that shares the private store: [`13-consult.md`](13-consult.md)
 - The visibility fence and its tracked-tier narrowing:
   [`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd banlist`
+
+Sub-verbs: `abcd banlist add`, `abcd banlist list`, `abcd banlist remove`.
+
+Flags: none.
+
+### `abcd banlist add`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--private` | bool |
+| `--public` | bool |
+| `--severity` | string |
+| `--successor` | string |
+
+### `abcd banlist list`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--private` | bool |
+| `--public` | bool |
+
+### `abcd banlist remove`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--private` | bool |
+| `--public` | bool |
+
+<!-- surface-appendix:end -->

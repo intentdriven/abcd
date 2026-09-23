@@ -321,3 +321,102 @@ proposal, an occasioned-by pointer naming no record, and either family filed in
 the other's store are each a blocker. The command-side write is a later
 iteration, and the sequencing is the reading families' own: no reading has run,
 so there is nothing to write yet.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd capture`
+
+Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
+
+| Flag | Type |
+|---|---|
+| `--blocked-by` | string |
+| `--category` | string |
+| `--found-at` | string |
+| `--found-during` | string |
+| `--lapsed-at` | string |
+| `--production-mode` | string |
+| `--severity` | string |
+| `--slug` | string |
+| `--source` | string |
+
+### `abcd capture disposition`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--exit-condition` | string |
+| `--grounds` | string |
+| `--hold-frame-location` | string |
+| `--hold-moscow` | string |
+| `--recurs` | string |
+| `--state` | string |
+| `--supersedes` | string |
+
+### `abcd capture link`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--blocked-by` | string |
+| `--unblock` | string |
+
+### `abcd capture list`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--all` | bool |
+| `--open` | bool |
+| `--resolved` | bool |
+| `--wontfix` | bool |
+
+### `abcd capture mentions`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--ref` | string |
+
+### `abcd capture promote`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--grounds` | string |
+| `--intent` | string |
+| `--production-mode` | string |
+
+### `abcd capture resolve`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--commit` | string |
+| `--grounds` | string |
+| `--impact` | string |
+| `--intent` | string |
+| `--production-mode` | string |
+| `--shipped-in` | string |
+| `--spec` | string |
+
+### `abcd capture wontfix`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--grounds` | string |
+| `--production-mode` | string |
+
+<!-- surface-appendix:end -->

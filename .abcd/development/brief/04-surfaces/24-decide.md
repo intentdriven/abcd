@@ -100,3 +100,17 @@ checks in both directions, and declaring one is an act of judgement.
 - The record-id scheme the mint belongs to: invariant 11 in
   [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md).
 - The plugin surface: `commands/decide.md`.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd decide`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

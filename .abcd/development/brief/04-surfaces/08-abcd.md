@@ -139,3 +139,24 @@ forbidden. Nothing routes them today.
 - Intent: [`itd-20`](../../intents/superseded/itd-20-top-level-abcd-dispatcher.md)
 - The command surface this board sits at the head of: [`README.md`](README.md)
 - The per-verb bare renders it complements: [`05-intent.md`](05-intent.md), [`01-ahoy.md`](01-ahoy.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd`
+
+| Flag | Type |
+|---|---|
+| `--json` | bool |
+| `--no-color` | bool |
+
+### `abcd mode`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

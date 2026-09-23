@@ -121,3 +121,52 @@ baseline would stop a release on while a release still cuts.
 - Plugin command: [`commands/docs.md`](../../../../commands/docs.md)
 - Lint engine: `internal/core/lint`
 - The documentation invariants it enforces: [`../02-constraints`](../02-constraints)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd docs`
+
+Sub-verbs: `abcd docs cite`, `abcd docs lint`.
+
+Flags: none.
+
+### `abcd docs cite`
+
+Sub-verbs: `abcd docs cite confirm`, `abcd docs cite refresh`.
+
+Flags: none.
+
+### `abcd docs cite confirm`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--receipt` | string |
+| `--root` | string |
+
+### `abcd docs cite refresh`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--root` | string |
+
+### `abcd docs lint`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--release-gate` | bool |
+| `--root` | string |
+
+<!-- surface-appendix:end -->

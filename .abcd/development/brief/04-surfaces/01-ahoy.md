@@ -475,3 +475,75 @@ byte-identical to a fresh install save for the setup date.
   `doctor` runs, **then** detection notices the stale registered path and
   `install` refreshes it: the root SHA is unchanged, so the entry is updated
   rather than duplicated.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd ahoy`
+
+Sub-verbs: `abcd ahoy doctor`, `abcd ahoy dry-run`, `abcd ahoy identity-check`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+
+Flags: none.
+
+### `abcd ahoy doctor`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd ahoy dry-run`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd ahoy identity-check`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd ahoy install`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--adopt` | bool |
+| `--allow-stale-binary` | bool |
+| `--attribution` | bool |
+| `--bin-dir` | string |
+| `--dev` | bool |
+| `--docs-target` | string |
+| `--oracle-backend` | string |
+| `--refuse-adopt` | bool |
+| `--scan-deep` | string |
+| `--visibility` | string |
+| `--yes` | bool |
+
+### `abcd ahoy remote`
+
+Sub-verbs: `abcd ahoy remote apply`.
+
+Flags: none.
+
+### `abcd ahoy remote apply`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--yes` | bool |
+
+### `abcd ahoy uninstall`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--bin-dir` | string |
+
+<!-- surface-appendix:end -->

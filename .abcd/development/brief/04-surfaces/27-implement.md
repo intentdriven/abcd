@@ -163,3 +163,93 @@ bound the role does not permit, no checkout to key a run on), with nothing
 written for the refused act; `3` contention (the record is claimed by another
 session, or the run state is locked) — back off and take other work. `--json`
 holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd implement`
+
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement log`, `abcd implement mode`, `abcd implement release`, `abcd implement report`.
+
+Flags: none.
+
+### `abcd implement check`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--path` | stringArray |
+| `--session` | string |
+
+### `abcd implement claim`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--lane` | string |
+| `--lease` | duration |
+| `--path` | stringArray |
+| `--session` | string |
+
+### `abcd implement join`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--ceiling` | int |
+| `--model` | string |
+| `--reason` | string |
+| `--role` | string |
+| `--session` | string |
+
+### `abcd implement leave`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--reason` | string |
+| `--session` | string |
+
+### `abcd implement log`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--field` | stringArray |
+| `--session` | string |
+
+### `abcd implement mode`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--session` | string |
+| `--window` | int |
+
+### `abcd implement release`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--session` | string |
+
+### `abcd implement report`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--date` | string |
+| `--log` | string |
+
+<!-- surface-appendix:end -->

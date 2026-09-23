@@ -584,3 +584,78 @@ The later-phase review/audit verbs write their per-run receipts under the local 
 - `/abcd:audit lifeboat <path>` → `audit/lifeboat-<ts>/` (lifeboat-artefact integrity per itd-35 — a later phase)
 
 `chain` and `lifeboat` are later-phase sub-verbs of the reserved `/abcd:audit` (their backing intents itd-16 and itd-35 sit in `intents/drafts/`); the read-only working-conventions conformance check is `abcd lint`. `audit` is a shipped sub-verb of `/abcd:intent`; `consistency` and `shape` are later phases. Bare `/abcd:intent` is status+help per the common (not universal) bare-command-as-help convention.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd intent`
+
+Sub-verbs: `abcd intent audit`, `abcd intent hold`, `abcd intent link`, `abcd intent new`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
+
+| Flag | Type |
+|---|---|
+| `--impact` | string |
+| `--production-mode` | string |
+| `--title` | string |
+
+### `abcd intent audit`
+
+Sub-verbs: `abcd intent audit ingest`.
+
+Flags: none.
+
+### `abcd intent audit ingest`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--verdict-json` | string |
+
+### `abcd intent hold`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--reason` | string |
+
+### `abcd intent link`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd intent new`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd intent plan`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--impact` | string |
+| `--production-mode` | string |
+
+### `abcd intent ready`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--grounds` | string |
+
+### `abcd intent unhold`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

@@ -268,3 +268,29 @@ Manifests are small (a file list and hashes, not contents), so the log answers
 "what did this repo's lifeboat look like at point T?" without keeping stale
 snapshots around. Acceptance for the disembark-side write lives in
 [`02-disembark.md § 7`](02-disembark.md#7-acceptance).
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd embark`
+
+Sub-verbs: `abcd embark from`, `abcd embark probe`.
+
+Flags: none.
+
+### `abcd embark from`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd embark probe`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

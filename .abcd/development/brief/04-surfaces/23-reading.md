@@ -262,3 +262,36 @@ include bound and the glossary discipline carry it, and it is disclosed as resid
 - The construal's admissibility:
   [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md)
 - Invariants 14 and 15: [`03-invariants.md`](../02-constraints/03-invariants.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd reading`
+
+Sub-verbs: `abcd reading assemble`, `abcd reading ingest`.
+
+Flags: none.
+
+### `abcd reading assemble`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
+| `--out` | string |
+| `--position` | string |
+| `--target` | string |
+
+### `abcd reading ingest`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--reading-json` | string |
+
+<!-- surface-appendix:end -->

@@ -152,3 +152,42 @@ meaningful.
 - [`05-internals/09-provenance-substrate.md`](../05-internals/09-provenance-substrate.md): provenance and licence subsystem
 - [`../../intents/shipped/itd-36-memory-unification.md`](../../intents/shipped/itd-36-memory-unification.md): the full intent spec with acceptance criteria
 - [`research/related-work.md § Karpathy LLM Wiki`](../../research/related-work.md#karpathy-llm-wiki--pattern-source-for-abcdmemory): pattern source
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd memory`
+
+Sub-verbs: `abcd memory ask`, `abcd memory ingest`, `abcd memory lint`.
+
+Flags: none.
+
+### `abcd memory ask`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--file-back` | bool |
+| `--page-json` | string |
+| `--top-n` | int |
+
+### `abcd memory ingest`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--keep-original` | bool |
+| `--pages-json` | string |
+
+### `abcd memory lint`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

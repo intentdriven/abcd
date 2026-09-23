@@ -128,3 +128,35 @@ the recorded three-variant tagline drift this check exists to catch.
 - Intent: [`itd-102`](../../intents/shipped/itd-102-your-repo-says-the-same-thing-about-itself-everywhere-becaus.md)
 - Onboarding consumer: [`15-prepare-this-repo.md`](15-prepare-this-repo.md)
 - Conformance surface: [`16-lint.md`](16-lint.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd identity`
+
+Sub-verbs: `abcd identity init`, `abcd identity render`.
+
+Flags: none.
+
+### `abcd identity init`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--file` | string |
+| `--heading` | string |
+| `--pitch` | string |
+| `--tagline` | string |
+| `--title` | string |
+
+### `abcd identity render`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

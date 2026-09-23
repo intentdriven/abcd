@@ -139,3 +139,28 @@ new dependency.
 - Design record: [`plans/2026-07-13-abcd-audit-verb.md`](../../plans/2026-07-13-abcd-audit-verb.md)
 - Intent: [`itd-85`](../../intents/drafts/itd-85-audit-verb.md)
 - Onboarding consumer: [`15-prepare-this-repo.md`](15-prepare-this-repo.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd lint`
+
+Sub-verbs: `abcd lint outbound`.
+
+| Flag | Type |
+|---|---|
+| `--root` | string |
+
+### `abcd lint outbound`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--label` | string |
+| `--root` | string |
+
+<!-- surface-appendix:end -->

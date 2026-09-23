@@ -412,3 +412,36 @@ performed by a human and by CI.
   `--allow-doc-warnings`, **then** the user is shown the warnings and asked
   transparently whether to proceed. *(Both the auditor gate and the flag are
   itd-65's.)*
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd launch`
+
+Sub-verbs: `abcd launch scaffold`, `abcd launch ship`.
+
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
+
+### `abcd launch scaffold`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--confirm` | bool |
+
+### `abcd launch ship`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--changelog-json` | string |
+| `--payload-dir` | string |
+
+<!-- surface-appendix:end -->

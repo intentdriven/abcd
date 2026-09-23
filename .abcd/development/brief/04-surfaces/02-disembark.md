@@ -249,3 +249,79 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   snapshot is replaced and its manifest remains in the voyage log. There is
   never a versioned pair of snapshot directories: history is preserved in the
   manifest log, not in stale copies.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails the build when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd disembark`
+
+Sub-verbs: `abcd disembark coverage`, `abcd disembark graveyard`, `abcd disembark pack`, `abcd disembark plan`, `abcd disembark press-release`, `abcd disembark principles`, `abcd disembark probe`, `abcd disembark review`.
+
+Flags: none.
+
+### `abcd disembark coverage`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd disembark graveyard`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--lessons-json` | string |
+
+### `abcd disembark pack`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--include-ignored` | bool |
+
+### `abcd disembark plan`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--include-ignored` | bool |
+
+### `abcd disembark press-release`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--press-release-json` | string |
+
+### `abcd disembark principles`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--principles-json` | string |
+
+### `abcd disembark probe`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--include-ignored` | bool |
+
+### `abcd disembark review`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--review-json` | string |
+
+<!-- surface-appendix:end -->
