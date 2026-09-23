@@ -102,4 +102,5 @@ compatibility claim traces to the pinned schema pointer, not to prose.
   latest release's pinned archive instead of the tree, so the version reaches an
   install through that published archive. The working tree still carries no
   version key, and the `./` source this ADR's Context records holds only until
-  the first pinned ship.
+  the first pinned ship. The contract carries no `marketplace_source_to_root`
+  key: nothing read it, and the pin would have made it false.
