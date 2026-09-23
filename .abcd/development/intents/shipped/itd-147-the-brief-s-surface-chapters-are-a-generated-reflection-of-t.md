@@ -234,6 +234,7 @@ shape is where the drift is.
 
 ## Audit Notes
 
+
 Filed from `iss-2608231346137587`, whose Routing section carries the four-piece
 decomposition confirmed by the maintainer on 2026-08-23 (verdict SPLIT), graded
 into the dated decomposition-calibration corpus. Capability here; trust rule to
@@ -247,6 +248,9 @@ and 3 are a controlled comparison — the brief is byte-identical between their
 commits, so the detector's whole subject was held constant and it still returned
 17% more findings. Which chapters are implicated is broadly stable; how many and
 of what class is not.
+
+<!-- abcd-review: OWED receipt=rcp-2769c7a59830 -->
+Fidelity review OWED (receipt rcp-2769c7a59830).
 
 ## Grounds
 
