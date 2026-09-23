@@ -83,8 +83,8 @@ Per-criterion verdicts:
   evidence: internal/core/capture/promote.go:439 — "Kind: provenance.KindContributedByReading, Run: run, Item: req.ID,"
   evidence: internal/core/capture/promote_reading_origin_test.go:84 — "want := "contributed-by-reading " + readingFixtureRun + "/" + item"
   evidence: internal/core/capture/promote_reading_origin_test.go:97 — "if fs := provenanceLintFindings(t, repo); len(fs) != 0 {"
-- ac-2 — MET_WITH_CONCERNS: link mode writes promoted_from through SetPromotedFrom, which sets that one key and never reads or rewrites origin/production_mode, and the item's promoted_to is stamped under the ledger lock; the passing test asserts the two disclosure lines byte-identical before and after. CONCERN, disclosed by the implementer and confirmed here: SetPromotedFrom returns a POPULATED Intent beside a non-nil ErrBackEdgeTaken, against Go's zero-value-on-error convention, and the promote path depends on that value (backEdgeKept = it.PromotedFrom) while the primitive's own test discards the return, so the contract is asserted only indirectly through capture (historical)
-  evidence: internal/core/intent/lifecycle.go:465 — "setFrontmatterFields(string(data), map[string]string{"promoted_from": source})" (historical)
+- ac-2 — MET_WITH_CONCERNS: link mode writes promoted_from through SetPromotedFrom, which sets that one key and never reads or rewrites origin/production_mode, and the item's promoted_to is stamped under the ledger lock; the passing test asserts the two disclosure lines byte-identical before and after. CONCERN, disclosed by the implementer and confirmed here: SetPromotedFrom returns a POPULATED Intent beside a non-nil ErrBackEdgeTaken, against Go's zero-value-on-error convention, and the promote path depends on that value (backEdgeKept = it.PromotedFrom) while the primitive's own test discards the return, so the contract is asserted only indirectly through capture
+  evidence: internal/core/intent/lifecycle.go:465 — "setFrontmatterFields(string(data), map[string]string{"promoted_from": source})"
   evidence: internal/core/capture/promote_reading_origin_test.go:143 — "func TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone(t *testing.T) {"
   evidence: internal/core/intent/lifecycle.go:456 — "return it, fmt.Errorf("%w: %s is promoted from %s, not %s", ErrBackEdgeTaken, intentID, existing, source)"
   evidence: internal/core/capture/promote.go:411 — "switch it, err := intent.SetPromotedFrom(repoRoot, req.LinkIntent, req.ID); {"
@@ -110,7 +110,7 @@ Gap audit:
     evidence: evals/coldreading_fixture_test.go:85 — "const promotedFixtureItem = "rdi-2609020000000009""
   - the issue promote path is unchanged and keeps extracted-from-record
     evidence: internal/core/capture/promote.go:209 — "Origin: provenance.Origin{Kind: provenance.KindExtractedFromRecord},"
-  - the lint reads the join from both ends — a reading origin with no back-edge, one naming a different item, and an item whose promoted_to (historical) names some other record
+  - the lint reads the join from both ends — a reading origin with no back-edge, one naming a different item, and an item whose promoted_to names some other record
     evidence: internal/core/lint/provenance.go:168 — "case !hasBack:"
     evidence: internal/core/lint/provenance.go:182 — "if forward, ok := promotedTo[o.Item]; ok && forward != r.handle() {"
   - the two plugin pages say which path writes which value
@@ -133,7 +133,7 @@ Gap audit:
     evidence: internal/core/capture/promote_reading_origin_test.go:203 — "if res.BackEdgeKept != firstItem {"
 
 Scope-condition dispositions:
-- cond-2609020727241828 — survived: the several-items case is delivered exactly as assumed: a taken back-edge is kept, the second item's promoted_to (historical) is still stamped, and the kept record is reported in the result and both renderings
+- cond-2609020727241828 — survived: the several-items case is delivered exactly as assumed: a taken back-edge is kept, the second item's promoted_to is still stamped, and the kept record is reported in the result and both renderings
   evidence: internal/core/capture/promote.go:411 — "switch it, err := intent.SetPromotedFrom(repoRoot, req.LinkIntent, req.ID); {"
   evidence: internal/core/capture/promote_reading_origin_test.go:187 — "func TestPromoteReadingItemLinkKeepsAnExistingBackEdge(t *testing.T) {"
 - cond-2609020626045842 — untested: nothing in the delivered diff exercises or contradicts the widening position's disposition gate; the promote fixture sits at the detection position and the commit says outright that the gate is the comparative and admission specs'

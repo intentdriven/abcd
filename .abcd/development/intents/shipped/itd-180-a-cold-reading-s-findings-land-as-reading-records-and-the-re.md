@@ -248,7 +248,7 @@ Gap audit:
     evidence: internal/core/lint/reading_outstanding_test.go:82 — "func TestOutstandingReportSeverityIsInfoNotBlocker(t *testing.T) {"
   - open holds render on the board with their exit conditions
     evidence: internal/core/lint/reading_outstanding_test.go:107 — "func TestOpenHoldRendersItsExitCondition(t *testing.T) {"
-  - capture promote refuses an item identifier that carries no disposition, and stamps promoted_to (historical) / origin on success
+  - capture promote refuses an item identifier that carries no disposition, and stamps promoted_to / origin on success
     evidence: internal/core/capture/promote.go:412 — "carries no disposition; an item is answered before it is acted on"
     evidence: internal/core/capture/promote_test.go:1 — "TestPromoteRefusesUndispositionedReadingItem / TestPromoteStampsReadingItemPromotedTo"
   - RS001-RS003 and record_schema taught to scope to open/resolved/wontfix and ignore both new families
