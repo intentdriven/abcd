@@ -186,8 +186,8 @@ intent not found in any bucket and a source failing `promotedFromRe`; a draft
 already naming this source is a no-op that reports the record unchanged. It
 writes `promoted_from` and nothing else. It never reads or rewrites `origin` or
 `production_mode`, which is what "origin unchanged" rests on: An origin is
-stamped at mint and never rewritten, so a hand-filed draft linked to a reading
-item stays `researcher-authored` and says so.
+stamped at mint and never rewritten, so a draft filed from quoted text and linked
+to a reading item stays `researcher-authored` and says so.
 
 A draft whose `promoted_from` already names a different record is the case the
 intent's first scope condition describes: An intent occasioned by several
