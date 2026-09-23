@@ -1,5 +1,6 @@
 ---
 id: itd-150
+shipped_in: v0.6.8
 slug: agent-worktrees-commit-without-the-private-name-guard-abcd-w
 spec_id: spc-43
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 builds_on: []
 severity: minor
 promoted_from: iss-370
+impact: fix
 ---
 
 # Agent worktrees commit without the private name-guard: .abcd/.work.local/ is per-worktree, so every isolated-worktree agent commit runs with the banlist layer absent — loudly warned, per design, but the isolated-agent pattern now systematically bypasses a protection the main checkout has. Candidate remedies: the worktree-creation path seeds a pointer to the primary checkout's store, or the hook falls back to reading the primary worktree's local tier
@@ -37,4 +39,5 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-4b7ee348ffdd -->
+Fidelity review OWED (receipt rcp-4b7ee348ffdd).

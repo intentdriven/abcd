@@ -1,5 +1,6 @@
 ---
 id: itd-161
+shipped_in: v0.6.8
 slug: record-lint-cannot-see-a-decision-shaped-document-filed-outs
 spec_id: spc-53
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 builds_on: []
 severity: minor
 promoted_from: iss-2608230752354926
+impact: additive
 ---
 
 # record-lint cannot see a decision-shaped document filed outside the record stores
@@ -37,4 +39,5 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-4c60ae841084 -->
+Fidelity review OWED (receipt rcp-4c60ae841084).

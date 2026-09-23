@@ -1,5 +1,6 @@
 ---
 id: itd-124
+shipped_in: v0.6.0
 spec_id: spc-29
 kind: standalone
 suggested_kind: null
@@ -84,4 +85,5 @@ _None gating. The engine-consolidation question is captured as iss-251._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-76175a58e4f7 -->
+Fidelity review OWED (receipt rcp-76175a58e4f7).

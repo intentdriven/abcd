@@ -1,5 +1,6 @@
 ---
 id: itd-156
+shipped_in: v0.6.8
 slug: the-guard-tokenizer-does-not-perform-brace-expansion-so-a-fl
 spec_id: spc-49
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 builds_on: []
 severity: minor
 promoted_from: iss-2608221457227161
+impact: fix
 ---
 
 # The guard tokenizer does not perform brace expansion, so a flag wrapped in a single-element brace group with an empty alternative (git push {--force,} origin main) expands in bash to byte-identical argv --force yet the guard reads the literal token {--force,} and allows it — a Tier-1 blocker miss of the same mutate-the-flag-token shape as the round-6 redirection fix. Distinct from the $'...' quoting gap (this is expansion, not quoting, and breaks no written invariant); recorded for a scoped follow-up because a correct bounded brace-expander is larger than this round's scope.
@@ -37,4 +39,5 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-d43ef5189c11 -->
+Fidelity review OWED (receipt rcp-d43ef5189c11).

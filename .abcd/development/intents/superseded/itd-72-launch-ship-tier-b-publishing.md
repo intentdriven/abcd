@@ -29,7 +29,7 @@ builds_on: [itd-65, itd-66]
 
 > _Retroactive intent record for spc-80. spc-80 builds the Tier B (publishing)
 > half of the itd-67 consolidated PRD — see
-> [itd-67](../planned/itd-67-installable-versioned-plugin.md), whose grilled PRD defines
+> [itd-67](../shipped/itd-67-installable-versioned-plugin.md), whose grilled PRD defines
 > both tiers. This record exists so the spec resolves to an intent under
 > `planned/`/`shipped/`; the two-key grandfather marks that it did not pass
 > through its own grill (the grilled provenance lives on itd-67)._
