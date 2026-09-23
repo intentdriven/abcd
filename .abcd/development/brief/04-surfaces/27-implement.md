@@ -46,7 +46,9 @@ worktrees of one repository share one directory and write no repository file.
 Every level is created one directory at a time and proved real, never through a
 symlink; outside a checkout, or in a repository with no commit, every sub-verb
 refuses and nothing is created. Bare `abcd implement` and `report` create
-nothing at all.
+nothing at all. Only `join` brings a run into existence: every other writer acts
+for a session that has joined, and one invoked for a session no run holds is
+refused before anything is created — no directory, no lock, no log line.
 
 ## Joining
 

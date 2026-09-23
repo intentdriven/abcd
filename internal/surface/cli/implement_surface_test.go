@@ -192,7 +192,23 @@ func TestImplementWritersRefuseMalformedInvocations(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a refused invocation created ~/.abcd: %v", err)
 	}
-	// Unjoined: the store may be created to look, but no session and no claim.
+	// Unjoined: a session no run knows is refused before anything is created —
+	// no run directory, no lock, no log.
+	for _, args := range [][]string{
+		{"implement", "log", "stop", "--session", "ghost", "--json"},
+		{"implement", "claim", "itd-1", "--session", "ghost", "--lane", "l", "--json"},
+		{"implement", "release", "itd-1", "--session", "ghost", "--json"},
+		{"implement", "check", "lane", "--session", "ghost", "--json"},
+		{"implement", "mode", "claim", "--session", "ghost", "--json"},
+		{"implement", "leave", "--session", "ghost", "--json"},
+	} {
+		refusalEnvelope(t, 2, args...)
+		if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("abcd %s created ~/.abcd: %v", strings.Join(args, " "), err)
+		}
+	}
+	// In a run that exists, the ghost still writes nothing.
+	mustImplement(t, "implement", "join", "--session", "alpha", "--role", "first", "--json")
 	refusalEnvelope(t, 2, "implement", "claim", "itd-1", "--session", "ghost", "--lane", "l", "--json")
 	out := mustImplement(t, "implement", "--json")
 	if strings.Contains(out, "itd-1") || strings.Contains(out, "ghost") {

@@ -291,3 +291,22 @@ func TestTypedValueKeepsWhatWouldNotRoundTrip(t *testing.T) {
 		t.Fatalf("sha written as %s, want the string \"0123456\"", got.Fields["sha"])
 	}
 }
+
+// TestOpenJoinedCreatesNothingForARunNobodyStarted: every writer but join opens
+// the run through OpenJoined, which refuses an absent run without creating it.
+func TestOpenJoinedCreatesNothingForARunNobodyStarted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := OpenJoined(testSHA, "ghost"); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "ghost") {
+		t.Fatalf("OpenJoined on no run = %v; want a refusal naming the session", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("OpenJoined created ~/.abcd: %v", err)
+	}
+	if _, err := Open(testSHA); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := OpenJoined(testSHA, "ghost"); err != nil || r == nil {
+		t.Fatalf("OpenJoined on an existing run = %v", err)
+	}
+}

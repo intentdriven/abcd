@@ -130,6 +130,25 @@ func Open(rootSHA string) (*Run, error) {
 	return &Run{Dir: dir, RootSHA: rootSHA, exists: true}, nil
 }
 
+// OpenJoined returns the run for rootSHA on behalf of a session that must
+// already have joined it: every writer but join. A run directory that does not
+// exist holds no session, so the caller is refused before anything is created —
+// no directory, no lock, no log line. An existing run is opened as Open opens
+// it, and the verb itself refuses a session it does not hold.
+func OpenJoined(rootSHA, session string) (*Run, error) {
+	if err := validName("session", session); err != nil {
+		return nil, err
+	}
+	peek, err := Peek(rootSHA)
+	if err != nil {
+		return nil, err
+	}
+	if !peek.exists {
+		return nil, refusal("session %s has not joined this run (run `abcd implement join` first)", session)
+	}
+	return Open(rootSHA)
+}
+
 // Peek returns the run for rootSHA without creating anything. A run directory
 // that does not exist reads as an empty run: no sessions, no claims, no log.
 func Peek(rootSHA string) (*Run, error) {

@@ -51,7 +51,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 			"another session, or the run state is locked): back off and take other work.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			run, err := implementRun(false)
+			run, err := implementRun(runPeek, "")
 			if err != nil {
 				return implementRefusal("", err)
 			}
@@ -124,10 +124,24 @@ func implementStatus(run *implement.Run) (implementStatusOutput, error) {
 	return out, nil
 }
 
+// runAccess is how a sub-verb opens the run.
+type runAccess int
+
+const (
+	// runPeek opens the run without creating anything (the read-only renders).
+	runPeek runAccess = iota
+	// runJoin opens it creating what is missing: join is the one writer that may
+	// bring a run into existence.
+	runJoin
+	// runJoined opens an existing run for a session that has joined it, and
+	// refuses before creating anything when there is no run.
+	runJoined
+)
+
 // implementRun resolves the run for the checkout the caller stands in: the
-// checkout root, its root commit, and the run keyed on it. write=false opens it
-// without creating anything.
-func implementRun(write bool) (*implement.Run, error) {
+// checkout root, its root commit, and the run keyed on it, opened as access
+// says. session is the acting session, for runJoined.
+func implementRun(access runAccess, session string) (*implement.Run, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -137,8 +151,11 @@ func implementRun(write bool) (*implement.Run, error) {
 		return nil, err
 	}
 	sha := gitutil.RootCommit(root)
-	if write {
+	switch access {
+	case runJoin:
 		return implement.Open(sha)
+	case runJoined:
+		return implement.OpenJoined(sha, session)
 	}
 	return implement.Peek(sha)
 }
@@ -172,12 +189,19 @@ func needSession(sub, session string) error {
 	return nil
 }
 
-// withRun runs fn against the writable run, mapping its error.
+// withRun runs fn against the writable run, mapping its error. Only join may
+// create the run: every other writer acts for a session that has joined, so a
+// refused writer (an unjoined session, a run nobody has started) creates
+// nothing — no run directory, no lock, no log.
 func withRun(sub, session string, fn func(*implement.Run) error) error {
 	if err := needSession(sub, session); err != nil {
 		return err
 	}
-	run, err := implementRun(true)
+	access := runJoined
+	if sub == "join" {
+		access = runJoin
+	}
+	run, err := implementRun(access, session)
 	if err != nil {
 		return implementRefusal(sub, err)
 	}
@@ -520,7 +544,7 @@ func implementReport(date, logPath string) (implement.Report, error) {
 		events, bad := implement.ParseLog(fsutil.RedactHome(logPath), data)
 		return implement.Compare(events, bad), nil
 	}
-	run, err := implementRun(false)
+	run, err := implementRun(runPeek, "")
 	if err != nil {
 		return implement.Report{}, err
 	}
