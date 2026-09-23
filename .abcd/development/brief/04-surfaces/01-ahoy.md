@@ -350,12 +350,8 @@ documents its rule loader, so the docs target defaults to `skip`: a default
 install writes it into none of the repository's committed conventions files
 (iss-2609110944498549), and a project that wants it names `claude_md`,
 `agents_md` or `both`, which is the approval to plant it there. The name-guard
-hooks and the ignore fence are the one mention of abcd a default install commits
-outside `.abcd/`: a sanctioned exception, ruled by the product thinker on
-2026-09-23, to the rule that an install never writes abcd by name into a
-repository it adopts. The hooks run the binary and the fence warns against
-hand-editing; both keep the markers detection classifies an adopted repository
-by, and the hook templates cite none of abcd's own record ids. Every name-guard
+hooks and the ignore fence are the one sanctioned mention of abcd outside
+`.abcd/` (ruled 2026-09-23; see prepare-this-repo). Every name-guard
 write is create-if-absent **and** contained: paths resolve through an `os.Root` opened
 at the repo, so a symlink committed at the hooks directory or at the local tier
 cannot land an artefact outside it. The private stub is written only where git

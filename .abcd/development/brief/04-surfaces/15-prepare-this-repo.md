@@ -99,13 +99,10 @@ then ratified ADRs, then everything else read for understanding only.
   can find and replace them. The paths it states into the `.abcd/` layout are
   the one trace of the tool, and the adopter accepts that namespace by adopting
   the layout. The install leaves the conventions files nameless as well. The
-  one sanctioned mention of abcd outside that namespace is the pair of
-  name-guard hooks and the `.gitignore` fence the install commits: the hooks run
-  the binary, and the fence tells people not to hand-edit the block. Both keep
-  their markers, because detection recognises an adopted repository by them;
-  neither cites abcd's own record ids. That exception to the 2026-09-11 naming
-  ruling (iss-2609110944498549) is the product thinker's, of 2026-09-23, and
-  `work/DECISIONS.md` records it.
+  name-guard hooks and the `.gitignore` fence it commits are the one sanctioned
+  mention outside that namespace: the hooks run the binary, the fence warns
+  against hand-editing, and both keep the markers detection finds an adopted
+  repository by (the product thinker's ruling of 2026-09-23).
 - **Never commit downstream assets.** Anything tooling will later provide
   (persona data, lint-config JSON, content copied from the abcd record) is
   applied, not copied. Only content about the target repository is committed.
@@ -134,10 +131,9 @@ then ratified ADRs, then everything else read for understanding only.
   surface against it.
 - **Given** the adoption completes, **then** nothing from `private-names.txt`
   and no abcd-internal content appears in any committed artefact, with one
-  sanctioned exception: the name-guard hooks (`.githooks/pre-commit`,
-  `.githooks/pre-merge-commit`) and the `.gitignore` fence keep their markers
-  and name abcd, as the one allowed mention of it in an adopted repository, and
-  cite none of abcd's record ids (the product thinker's ruling of 2026-09-23).
+  sanctioned exception (ruled 2026-09-23): the name-guard hooks
+  (`.githooks/pre-commit`, `.githooks/pre-merge-commit`) and the `.gitignore`
+  fence name abcd, and cite none of its record ids.
 
 ## Composition
 
