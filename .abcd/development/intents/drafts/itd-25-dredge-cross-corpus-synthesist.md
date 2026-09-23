@@ -20,7 +20,7 @@ severity: minor
 
 ## Why This Matters
 
-[itd-4](../shipped/itd-4-issue-capture.md) ships `/abcd:capture` and the structured `.abcd/work/issues/` ledger. That's the *capture* half of the original combined intent. The synthesis half — `/abcd:dredge` plus the `issue-synthesist` agent — was deliberately split out because **its value is empty until the ledger has accumulated meaningful data**. Shipping a synthesist with no ledger to synthesise produces a tool that everyone tries once and nobody returns to.
+[itd-4](../planned/itd-4-issue-capture.md) ships `/abcd:capture` and the structured `.abcd/work/issues/` ledger. That's the *capture* half of the original combined intent. The synthesis half — `/abcd:dredge` plus the `issue-synthesist` agent — was deliberately split out because **its value is empty until the ledger has accumulated meaningful data**. Shipping a synthesist with no ledger to synthesise produces a tool that everyone tries once and nobody returns to.
 
 Once the ledger has months of usage across the corpus repos, the synthesist has something to chew on. The pattern echoes the broader abcd philosophy: ship the capture surface that earns its keep on day one; defer the synthesis surface until there's enough data for synthesis to be more than empty ceremony.
 

@@ -1,13 +1,11 @@
 ---
 id: itd-4
-shipped_in: v0.6.0
 slug: issue-capture
 spec_id: spc-6
 kind: standalone
 suggested_kind: null
 reclassification_history: []
 severity: major
-impact: additive
 ---
 
 # Nothing You Notice Gets Lost
@@ -93,5 +91,4 @@ Acceptance Criteria and carries the open AC3 (promote) gap. Historical index:
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-2662745d5344 -->
-Fidelity review OWED (receipt rcp-2662745d5344).
+_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
