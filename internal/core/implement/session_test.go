@@ -268,3 +268,26 @@ func TestContextIsALoggableEvent(t *testing.T) {
 		t.Fatalf("context = %+v", rep.Context)
 	}
 }
+
+// TestTypedValueKeepsWhatWouldNotRoundTrip: a value becomes a JSON number or
+// boolean only when writing it back gives the same text, so a short sha with a
+// leading zero stays the string it was.
+func TestTypedValueKeepsWhatWouldNotRoundTrip(t *testing.T) {
+	for in, want := range map[string]any{
+		"12": int64(12), "-3": int64(-3), "0": int64(0), "0.5": 0.5, "12.25": 12.25, "true": true, "false": false,
+		"0123456": "0123456", "00": "00", "-0": "-0", "+5": "+5", "1.50": "1.50", "1e3": "1e3", "007.5": "007.5",
+		"Inf": "Inf", "NaN": "NaN", "0x1F": "0x1F", "1_000": "1_000", "abc": "abc", "": "",
+	} {
+		if got := typedValue(in); got != want {
+			t.Errorf("typedValue(%q) = %#v, want %#v", in, got, want)
+		}
+	}
+	r, _ := newRun(t)
+	join(t, r, "alpha", RoleFirst)
+	if _, err := r.Log("alpha", EventPR, map[string]string{"sha": "0123456"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := lastEvent(t, r, EventPR); string(got.Fields["sha"]) != `"0123456"` {
+		t.Fatalf("sha written as %s, want the string \"0123456\"", got.Fields["sha"])
+	}
+}

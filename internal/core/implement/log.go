@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"slices"
@@ -212,7 +213,7 @@ func logFileName(ts time.Time) string { return ts.UTC().Format(time.DateOnly) + 
 // refused, because a hand-written claim the claims directory does not hold is a
 // log that lies — and fields are key=value pairs under the limits above. A value
 // that parses as an integer, a decimal or a boolean is written as a JSON number
-// or boolean; anything else as a string.
+// or boolean when it round-trips to the same text; anything else as a string.
 func (r *Run) Log(session, event string, fields map[string]string) (Event, error) {
 	if slices.Contains(verbOwnedEvents, event) {
 		return Event{}, refusal("%s is written by the implement verbs themselves, never by hand", event)
@@ -248,7 +249,11 @@ func (r *Run) Log(session, event string, fields map[string]string) (Event, error
 	return out, err
 }
 
-// typedValue reads a hand-given value as the JSON type it spells.
+// typedValue reads a hand-given value as the JSON type it spells, and only when
+// writing that value back gives the same text: `0123456` (a short sha), `-0`,
+// `+5`, `1.50` and `1e3` stay the strings they were, because a number would
+// lose what the caller wrote. The report's readers accept a quoted number, so a
+// figure kept as a string is still counted.
 func typedValue(v string) any {
 	switch v {
 	case "true":
@@ -256,10 +261,13 @@ func typedValue(v string) any {
 	case "false":
 		return false
 	}
-	if i, err := strconv.ParseInt(v, 10, 64); err == nil {
+	if i, err := strconv.ParseInt(v, 10, 64); err == nil && strconv.FormatInt(i, 10) == v {
 		return i
 	}
-	if f, err := strconv.ParseFloat(v, 64); err == nil && !bytes.ContainsAny([]byte(v), "xXpPiInN_") {
+	// NaN and the infinities have no JSON spelling, and a negative zero reads
+	// back as zero.
+	if f, err := strconv.ParseFloat(v, 64); err == nil && !math.IsNaN(f) && !math.IsInf(f, 0) &&
+		!(f == 0 && math.Signbit(f)) && strconv.FormatFloat(f, 'f', -1, 64) == v {
 		return f
 	}
 	return v

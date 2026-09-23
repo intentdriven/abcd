@@ -849,7 +849,8 @@ Append one of the run's events to the run log
 Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)
 in a single append, so two sessions writing at once each land whole lines. The line
 carries ts, session and event, then each --field. A value that reads as a number or
-a boolean is written as one. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture, context.
+a boolean is written as one when it reads back as the same text, so `sha=0123456`
+stays a string. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture, context.
 The claim, window and session events are written by their own sub-verbs and are
 refused here, so the log cannot record a claim the run state does not hold.
 

@@ -419,7 +419,8 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 		Long: "Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)\n" +
 			"in a single append, so two sessions writing at once each land whole lines. The line\n" +
 			"carries ts, session and event, then each --field. A value that reads as a number or\n" +
-			"a boolean is written as one. The events: " + strings.Join(implement.LoggableEvents(), ", ") + ".\n" +
+			"a boolean is written as one when it reads back as the same text, so `sha=0123456`\n" +
+			"stays a string. The events: " + strings.Join(implement.LoggableEvents(), ", ") + ".\n" +
 			"The claim, window and session events are written by their own sub-verbs and are\n" +
 			"refused here, so the log cannot record a claim the run state does not hold.",
 		Args: cobra.ExactArgs(1),
