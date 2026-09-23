@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -217,6 +218,15 @@ func RootCommit(root string) string {
 	}
 	return fields[0]
 }
+
+// fullSHARe is a full object name: forty hex digits under SHA-1, sixty-four
+// under SHA-256, lower case as git prints them.
+var fullSHARe = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
+
+// IsFullSHA reports whether s is a full object name as RootCommit returns one.
+// The machine-scoped stores key a directory on the root commit, so the check is
+// what keeps a value that arrived any other way from becoming a path segment.
+func IsFullSHA(s string) bool { return fullSHARe.MatchString(s) }
 
 // RepoShaped reports whether root sits anywhere inside a tree carrying a .git
 // entry — a directory, or the file a worktree or submodule leaves. It is
