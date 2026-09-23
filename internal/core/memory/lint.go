@@ -300,6 +300,12 @@ func storedBackLinks(raw []byte) []backLink {
 // it. Only a name ParsePageFilename accepts is masked — its charset is bounded
 // by pageNameRe, so the quoted form is its exact JSON encoding — and a
 // hand-edited back-link that is not a page name stays in the text scan. The
+// match is registry-wide: any quoted string byte-equal to a well-formed
+// back-link is masked wherever it sits, not only inside consumers.*.pages. The
+// only findings that can be hidden that way are warn-level identity and network
+// kinds on bytes the write side accepts as a page name, since a hard-fail span
+// in those bytes is still reported by pageNameResidue on the identical name; a
+// free-text value that differs from every back-link is still scanned. The
 // mask is spaces of the same length, so every other finding keeps its line.
 func maskBackLinks(text string, links []backLink) string {
 	for _, bl := range links {

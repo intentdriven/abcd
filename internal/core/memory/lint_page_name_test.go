@@ -167,8 +167,12 @@ func TestLintOrdinaryBackLinkIsNotHostnameResidue(t *testing.T) {
 	}
 }
 
-// The mask covers the back-link list and nothing else: the same span planted in
-// a free-text registry field is still residue.
+// The mask covers only quoted strings byte-equal to a well-formed back-link,
+// wherever they sit in the registry; the only findings it can hide are
+// warn-level identity and network kinds on bytes the write side accepts as a
+// page name, because pageNameResidue still reports a hard-fail span on the
+// identical name. A free-text registry value that differs from every back-link,
+// as the span planted here does, is still residue.
 func TestLintStillScansTheRegistryTextBesideTheBackLinks(t *testing.T) {
 	repo := t.TempDir()
 	token, _ := x46mSpans(t)
