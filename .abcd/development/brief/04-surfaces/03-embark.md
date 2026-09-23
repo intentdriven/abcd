@@ -13,10 +13,10 @@ would write and the target already holds with different bytes is a conflict, and
 report names every conflicting path so you can resolve them and re-run. A file
 whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 
-> **What ships is `from` and `probe`, and `from` takes no flags** (only the
-> global `--json`). The richer surface this chapter designs — a `scan` discovery
-> sub-verb, and the `from` modifiers `--force`, `--archive` and
-> `--refresh-audit` — is **not built yet**; [§ The design-target
+> **What ships is the unpack and the probe, and the unpack takes no modifiers of
+> its own.** The richer surface this chapter designs — a `scan` discovery
+> sub-verb, and force, archive and refresh-audit modifiers on the unpack — is
+> **not built yet**; [§ The design-target
 > surface](#the-design-target-surface) holds it, and nothing outside that
 > section describes it as present.
 
@@ -42,13 +42,13 @@ whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 
 Bare `/abcd:embark` prints dispatcher help and mutates nothing.
 
-- **`embark from <lifeboat-dir> [target-dir]`** unpacks into the target, which
+- **The unpack** takes the lifeboat directory and an optional target, which
   defaults to the working directory. The lifeboat path is required and is always
   an explicit path to a destination a disembark wrote: there is no in-tree
   lifeboat home to expand a shorthand to. The round-trip and self-test case is
-  ordinary, not special-cased: `disembark pack <repo> <dest>` followed by
-  `embark from <dest>`.
-- **`embark probe <lifeboat-dir> [target-dir]`** answers the same question
+  ordinary, not special-cased: a disembark that packs to a destination, followed by
+  an unpack from that destination.
+- **The probe** takes the same two paths and answers the same question
   read-only: what would land where, does the lifeboat verify against its
   manifest, is its schema version one this build understands. It writes nothing
   and runs no product audit.
@@ -102,8 +102,8 @@ scaffolder and no model sit in the write path.
 4. **Report**, blanks first: any pass the lifeboat declares exempt, then the
    coverage blanks a human must answer, then what was embarked into where, the
    written and unchanged counts with the per-family breakdown, and the marker
-   action. The report-only files that informed the run are tallied by `probe`
-   alone. They ride on the `from` result and are reachable through `--json`, but
+   action. The report-only files that informed the run are tallied by the probe
+   alone. They ride on the unpack's result and are reachable through its JSON form, but
    the rendered report omits them, because a human reading the outcome of a
    write wants what landed, and the probe is where a human asks what a lifeboat
    holds.
@@ -112,7 +112,7 @@ scaffolder and no model sit in the write path.
 
 The core returns the conflict set and the surface renders it as a **single bulk
 report**: one line per conflicting target path with its conflict kind, never a
-per-file barrage and never a file written by the core. The shipped `from` writes
+per-file barrage and never a file written by the core. The shipped unpack writes
 nothing on any conflict and exits non-zero.
 
 ```
@@ -132,7 +132,7 @@ disk, the surface writes it; the core does not.
 
 ## 5. The coverage handoff
 
-Both `probe` and `from` open on what a human still owes the record, before any
+Both the probe and the unpack open on what a human still owes the record, before any
 write summary. Two things print there, in this order.
 
 **A declared pass exemption.** The lifeboat's provenance carries an optional
@@ -159,23 +159,23 @@ there is nothing to answer.
 
 - **Given** any abcd-aware terminal, **when** the user runs bare
   `/abcd:embark`, **then** the dispatcher prints help listing the shipped
-  sub-verbs and the global `--json` flag, and mutates nothing.
-- **Given** a lifeboat and a conflict-free target, **when** `embark from` runs
+  sub-verbs and the global flags, and mutates nothing.
+- **Given** a lifeboat and a conflict-free target, **when** the unpack runs
   (the target defaulting to the working directory), **then** the four record
   families land at their canonical locations under the target, the current abcd
   marker block is re-injected into the target `CLAUDE.md`, and everything else
   in the lifeboat informs the report but is never written.
-- **Given** a repo disembarked to a destination, **when** `embark from` runs on
+- **Given** a repo disembarked to a destination, **when** the unpack runs on
   it in an empty target, **then** the round-trip completes with no shorthand and
   no special case: the destination is an ordinary explicit path.
 - **Given** a target holding a file that conflicts with a planned write,
-  **when** `embark from` runs, **then** the command refuses, the core returns
+  **when** the unpack runs, **then** the command refuses, the core returns
   the conflict list **without writing any file**, and the surface renders it as
   one bulk report. A target that merely holds unrelated files is not a conflict.
-- **Given** the user runs `embark probe`, **when** it completes, **then** the
+- **Given** the user runs the probe, **when** it completes, **then** the
   lifeboat is inspected against the target (file tree, schema validation,
   would-be writes), no target mutation occurs, and the user sees a report ready
-  to inform the decision to run `embark from`.
+  to inform the decision to run the unpack.
 
 ## The design-target surface
 
@@ -185,8 +185,8 @@ and the acceptance criteria that name it are gated on it shipping.
 - **`embark scan`** would list lifeboat destinations: directories carrying a
   parseable `_provenance.json`, the same marker the destination safety gate keys
   on — ranked by modification time and presented as candidates, with no
-  unpacking, and `--deep` for a wider walk. It is what a user reaches for before
-  `embark from` when they are not sure where lifeboats live.
+  unpacking, and a deep mode for a wider walk. It is what a user reaches for before
+  the unpack when they are not sure where lifeboats live.
 
   > **Open question (adr-35):** where `scan` searches. Walking the parent
   > directory made sense when a lifeboat lived inside its producing repo, so
@@ -195,19 +195,19 @@ and the acceptance criteria that name it are gated on it shipping.
   > Either the sibling walk is kept as a cheap heuristic, or scan is given
   > explicit roots (an argument, a configured search path, or the voyage
   > records). adr-35 does not settle this, and it must be decided before `scan`
-  > is specified; the depth semantics of `--deep` fall out of whatever that
+  > is specified; the semantics of the deep mode fall out of whatever that
   > decides. The same note is carried in
   > [`02-constraints/01-platform.md § Embark sources`](../02-constraints/01-platform.md#embark-sources).
 
-- **`from --force`** would turn the bulk conflict report into a single
+- **A force modifier on the unpack** would turn the bulk conflict report into a single
   resolution prompt (keep target, replace target, merge where possible, or
   abort) and apply the chosen resolution uniformly: one decision, shown its full
   scope before it is asked.
-- **`from --archive`** would copy the input lifeboat verbatim into the voyage
+- **An archive modifier on the unpack** would copy the input lifeboat verbatim into the voyage
   store before unpacking, for the case where the source repo will disappear. Off
   by default, because the source path and hash are enough while the source
   repo persists.
-- **`from --refresh-audit`** would re-run the oracle product audit against the
+- **A refresh-audit modifier on the unpack** would re-run the oracle product audit against the
   current lifeboat content and report the drift against the disembark-time
   audit.
 - **Voyage provenance on embark**: an `embark/provenance.json` under the voyage
@@ -233,7 +233,7 @@ latest snapshot; it does not accumulate.
 ~/.abcd/voyage/<source-root-sha>/            ← operator level, keyed like the history store; never committed
 ├── embark/                                  ← not built yet
 │   ├── provenance.json                      ← source path, manifest hash, timestamp, files written
-│   └── from/<timestamp>/                    ← --archive: verbatim copy of input lifeboat (opt-in)
+│   └── from/<timestamp>/                    ← archive modifier: verbatim copy of input lifeboat (opt-in)
 └── disembark/
     └── history.jsonl                        ← append-only manifest log of every disembark
 ```
@@ -268,3 +268,29 @@ Manifests are small (a file list and hashes, not contents), so the log answers
 "what did this repo's lifeboat look like at point T?" without keeping stale
 snapshots around. Acceptance for the disembark-side write lives in
 [`02-disembark.md § 7`](02-disembark.md#7-acceptance).
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd embark`
+
+Sub-verbs: `abcd embark from`, `abcd embark probe`.
+
+Flags: none.
+
+### `abcd embark from`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd embark probe`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

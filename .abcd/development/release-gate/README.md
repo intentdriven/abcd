@@ -78,9 +78,20 @@ against the exact commit to be tagged:
    the Direction-A semantic half of the iss-35 graduation: the brief's surface
    *prose* (flags, sub-verbs, exit codes, schema fields, counts) vs. the shipped
    binary's actual behaviour. The deterministic Direction-B half is the
-   `surface_coverage` `record-lint` rule and already runs in CI. Its scope and
+   `surface_coverage` `record-lint` rule, a row-level presence check that runs
+   in CI. A chapter's flags and sub-verbs are not prose: they sit in its
+   generated appendix, which a drift test holds to the command tree. Its scope and
    depth are pinned by [`manifest.json`](manifest.json) — see *Pinned inputs and
    tiered depth* below.
+
+   **Owed at the next release gate: itd-147's ac-6.** The first full-tier run
+   after the generated appendix landed is the outcome check for
+   [itd-147](../intents/shipped/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md):
+   classify its findings, confirm none is a `false-claim` or `stale-count` about
+   a flag or sub-verb the appendix covers, and record the result, with the
+   run's commit, in the intent's `## Audit Notes`. The criterion is not asserted
+   in CI, so a cut that skips this leaves it unverified with nothing to show it.
+   Delete this paragraph in the change that records the result.
 
 ## Recording the semantic verdict
 

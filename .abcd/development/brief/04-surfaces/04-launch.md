@@ -12,8 +12,8 @@ a dated changelog heading and stops, and CI and a human take it from there.
 And it never ships the design record: the payload is default-deny with the whole
 `.abcd/` namespace excluded structurally, so no include line can put it back.
 
-`abcd launch --dry-run` is the read-only preview and always exits 0, because a
-preview never blocks. Bare `abcd launch` refuses with a hint to pass it.
+The preview is read-only and always exits 0, because a preview never blocks.
+Bare `abcd launch` refuses with a hint to ask for it.
 
 > **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The full pre-flight gate suite and the remaining release automation are separately scheduled intents (itd-65 gate suite, itd-66 render parity, itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
 
@@ -34,9 +34,9 @@ preview never blocks. Bare `abcd launch` refuses with a hint to pass it.
 | `ship` | gate | shipped |
 
 
-**`launch ship` cuts the release, and that is where it stops.** It derives the
+**The cut makes the release, and that is where it stops.** It derives the
 version and the record set from what shipped since the newest tag, runs the
-surface guardrail, and with `--changelog-json` validates the host-composed prose
+surface guardrail, and, handed the host-composed prose, validates it
 against that record set — a completeness bijection, so the notes and the records
 name the same things. It admits only additions and fixes: the composer sees the
 records that shipped and never the previous release's surface, so the other
@@ -46,20 +46,20 @@ writes the dated `CHANGELOG.md` heading that the auto-release workflow turns
 into a tag. In a repository whose version-location contract declares
 `"publishes_plugin_archive": true`, it then pins the release's plugin archive in
 the catalog (§ 3, *The pinned plugin archive*); without the declaration it leaves
-the catalog untouched and says so. `--payload-dir` stages the versioned release payload, with the
+the catalog untouched and says so. Given a payload directory, it stages the
+versioned release payload, with the
 derived version stamped into the payload's manifests and lockstep-proved before
 return.
 
-**`launch archive` is the release gate's half of the pin.** It renders the
+**The archive render is the release gate's half of the pin.** It renders the
 plugin archive of the release the newest dated CHANGELOG heading names, from the
-checked-out tree, into an existing directory; `--tag` binds it to the tag being
-released, and `--verify` refuses (exit 1) unless the committed catalog pins
-exactly that archive's address and digest, removing the archive so nothing
-unpinned can be published. `--repository <owner/name>` refuses (exit 1) unless
-that address lies under the named repository's release downloads for the tag.
-`auto-release.yml` runs it on the pushed commit before the tag is made, and the
-release workflow runs it again on the tagged commit, each run with
-`--repository "${GITHUB_REPOSITORY}"`.
+checked-out tree, into an existing directory. Bound to the tag being released,
+it refuses (exit 1) unless the committed catalog pins exactly that archive's
+address and digest, and unless that address lies under the releasing
+repository's own release downloads for the tag — removing the archive on either
+refusal, so nothing unpinned can be published. `auto-release.yml` runs it on the
+pushed commit before the tag is made, and the release workflow runs it again on
+the tagged commit, each run bound to the repository the workflow runs in.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent. The deterministic emit alone is `abcd
@@ -67,12 +67,12 @@ changelog`, read-only and prose-free.
 
 **Commit, tag and publish stay a design target** (itd-65's gate suite, itd-72's
 publishing). The verb neither commits, tags, nor publishes, so every step past
-the changelog heading is performed by a human and by CI. The flags `--allow-dirty`
-and `--allow-doc-warnings` belong to that design and are not on the shipped
+the changelog heading is performed by a human and by CI. The dirty-tree and
+documentation-warning overrides belong to that design and are not on the shipped
 verb. There is no version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
 
-**`launch scaffold` writes the release machinery into a managed repo that lacks
+**The scaffold writes the release machinery into a managed repo that lacks
 it**: the two release workflows and the adr-37 release runbook, wired to the
 repo's own default branch and Go version, token-scoped and injection-safe. The
 workflows ship from a single embedded template that abcd's own release workflows
@@ -85,16 +85,17 @@ generic build.
 
 It is idempotent and fail-safe: a re-run on current machinery is a no-op
 (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless
-`--confirm` is passed, and a structural fault exits 2.
+the caller confirms, and a structural fault exits 2.
 
-**`launch dry-run` is a flag, not a sub-verb.** The binary registers no
-`dry-run` subcommand, and `commands/launch.md` names it as a flag. Its report is
+**The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
+binary registers no `dry-run` subcommand under launch, and `commands/launch.md`
+names it as a flag. Its report is
 preview-only and always exits 0. It is **not** "ship minus publish": running the
-full gate suite and hard-failing on a finding is the full `ship` verb's design.
+full gate suite and hard-failing on a finding is the full cut's design.
 
 ## 1. Pre-flight gates
 
-Six gates report in `--dry-run --json` today, and the honest summary is that
+Six gates report in the preview's JSON form today, and the honest summary is that
 four run and two do not.
 
 The **secret and PII scan** runs for real in report-only mode over the resolved
@@ -108,7 +109,7 @@ once let a one-commit release branch reach a tag and fail-close there
 (iss-2608231226342272). The **marker-block** and **documentation-auditor** rows
 report `not_implemented`, deferred to itd-65.
 
-The plain-text `--dry-run` render omits the gate list entirely: it prints the
+The plain-text preview omits the gate list entirely: it prints the
 version, the file count bundled, scan hard-fails, citations, receipts and
 whether it would publish, plus a would-refuse-on line when there is a finding.
 The JSON carries the gate detail.
@@ -150,7 +151,7 @@ deferred) would, over the same resolved list, import every shipped entrypoint
 and render each command's help in an isolated subprocess rooted at the rendered
 payload.
 
-The pre-flight report file under a per-timestamp launch directory is full-`ship`
+The pre-flight report file under a per-timestamp launch directory is full-cut
 behaviour (itd-65); `dry-run` renders its gate result inline and writes no
 report. The scan gate is side-effect-free with respect to the repo: its only
 writes are to a private temporary tree it removes.
@@ -213,7 +214,7 @@ tier and its reason are recorded so every published version is traceable to
 | **Patch** | Only `impact: fix` intents, or a release with no intent-tied change. |
 
 Every intent carries an impact, set when the intent is shaped and enforced by
-the record lint (adr-31). At release, `ship` gathers the intents shipped since
+the record lint (adr-31). At release, the cut gathers the intents shipped since
 the previous release and takes the highest-severity impact. A change not tied to
 any intent falls back to conventional-commit derivation.
 
@@ -240,12 +241,12 @@ would be wrong. There are eight, and an operator sees them as
 window, because it fires on any tree whose changelog has been rolled and not yet
 tagged.
 
-**Surface-diff guardrail.** `ship` snapshots the command, flag and manifest
+**Surface-diff guardrail.** The cut snapshots the command, flag and manifest
 surface and compares it to the previous release. A removed or altered surface
 with no breaking intent in the release fails the launch under `surface-guard`: a
 mislabelled impact cannot ship a compatibility lie.
 
-**Unfixed-findings guardrail.** `ship` and the read-only `changelog` preview
+**Unfixed-findings guardrail.** The cut and the read-only `changelog` preview
 both ask one further question of the cut: of the findings **this cycle**
 produced, is any of them consequential, still open, and unanswered? A cut that
 carries one is refused, and a refused cut carries no derived version at all.
@@ -269,8 +270,9 @@ than a design target.
   single-use: the anchor moves at the next release and every waiver written
   against the old one lapses, so a deferred finding is re-asked rather than
   forgotten. Half a waiver does not stand.
-- **What the render shows.** Every render of `abcd changelog` and `abcd launch
-  ship` carries a findings line (the verdict, the count of unfixed findings and
+- **What the render shows.** Every render of `abcd changelog` and of the launch
+  cut carries a findings line
+ (the verdict, the count of unfixed findings and
   the anchor they were measured from, and the count deferred), then one line per
   waiver naming the record, its severity and its stated reason. A deferral an
   operator cannot see in the report they actually read is indistinguishable from
@@ -278,7 +280,7 @@ than a design target.
   opposite of. The whole verdict is on the cut's JSON.
 - **The four routes out**, in the order the refusal states them: fix the defect
   and resolve its record inside the cut; record the decision not to fix it with
-  `abcd capture wontfix`, which clears the gate with no special case because a
+  the capture verb's wontfix, which clears the gate with no special case because a
   wontfix carries a reason and is the cited non-action the rule asks for; defer
   it out loud with the waiver pair; or re-grade the record honestly when the
   severity was wrong in the first place. The gate asks only whether the record is
@@ -287,13 +289,13 @@ than a design target.
 
 ### Where the version is written
 
-`ship` writes the version into **the selected version location**, never a
+The cut writes the version into **the selected version location**, never a
 hard-coded manifest. The location is read from the decision artefact
 `.abcd/config/version-location.json` as a manifest path plus a JSON pointer (see
 [adr-19](../../decisions/adrs/0019-plugin-json-version-carve-out.md)). The
 shipped lockstep checker fails closed when that artefact is missing or
 malformed, and a blocked decision has no schema-valid location, so
-version-writing refuses and the escalation stands. Concretely, `ship`:
+version-writing refuses and the escalation stands. Concretely, the cut:
 
 1. Stamps the bumped version into the **release artefact** at the selected
    location. The manifest renderer reads the decision artefact and never parses
@@ -319,23 +321,22 @@ zip and refuses it when the digest differs, so an install or update at the tip o
 `main` receives the latest cut release, stamped with its version and
 fingerprinted — not the unversioned working tree.
 
-- **Pinned only on the declaration.** `ship` pins only when the version-location
-  contract declares `"publishes_plugin_archive": true`, the statement that the
-  repository's release workflow uploads the archive; abcd declares it. The
-  contract alone does not count: the workflows `scaffold` renders for a managed
-  repository upload no archive, so a catalog pinned there would name an asset
-  nothing publishes. Without the declaration the catalog is left untouched and
-  the ship report says so; a declaration that is not a boolean is refused before
-  anything is written.
-
-- **Rendered twice, identically.** `ship` renders the archive from its tree to
+- **Pinned only on the declaration.** The cut pins only when the
+  version-location contract declares `"publishes_plugin_archive": true`, the
+  statement that the repository's release workflow uploads the archive; abcd
+  declares it. The contract alone does not count: the workflows the scaffolder
+  renders for a managed repository upload no archive, so a catalog pinned there
+  would name an asset nothing publishes. Without the declaration the catalog is
+  left untouched and the cut's report says so; a declaration that is not a
+  boolean is refused before anything is written.
+- **Rendered twice, identically.** The cut renders the archive from its tree to
   learn the digest it commits, and refuses a payload with uncommitted changes
   first. `auto-release.yml` renders it again from the pushed commit before the
   tag is made, and the release workflow from the tagged commit, in `verify`
   before anything is built and in the publish job on the bytes that ship; none
   proceeds unless the digests agree, and each binds the address to the
-  repository it runs in (`--repository`), since `plugin.json`'s `repository`
-  names another one after a rename, a transfer or a fork. The archive is
+  repository it runs in, since `plugin.json`'s `repository` names another one
+  after a rename, a transfer or a fork. The archive is
   reproducible by construction: sorted entries, stored uncompressed, one fixed
   timestamp, modes normalised to 0644 or 0755.
 - **The catalog is left out of the zip.** It is the file that names the zip's
@@ -360,20 +361,20 @@ fingerprinted — not the unversioned working tree.
 **Anti-drift.** The two manifests in the artefact describe one release, so the
 version at the selected location and the marketplace entry must agree. A
 read-only lockstep checker proves this over the path list adr-20 records, and a
-half-state is drift. `ship`'s bump step runs it against the staged artefact at
+half-state is drift. The cut's bump step runs it against the staged artefact at
 the **public** polarity and refuses to publish on drift; the **dev** polarity
 runs in `dry-run` over the working tree, asserting the committed manifests carry
 no version key. The checker has no bypass flag, and adr-20 records that
-`--allow-dirty` must not bypass manifest consistency.
+a dirty-tree override must not bypass manifest consistency.
 
 The release commit message format — carrying the bump tier and its reason — is
-**full-`ship` design target** (itd-65 plus itd-72). The shipped `ship` never
+**full-cut design target** (itd-65 plus itd-72). The shipped cut never
 commits, and no shipped path produces that format; the release cuts made so far
 use hand-written prose.
 
 ### Release cut and retention
 
-Every `launch ship` is designed to cut one released snapshot: the release
+Every cut is designed to make one released snapshot: the release
 commit, the `v<version>` tag on it, the marketplace changelog entry, and, on the
 tag, a published GitHub Release with SLSA provenance attached to the artefact
 (adr-28). The version lives only on the tag and in the cut artefact.
@@ -389,9 +390,9 @@ history. The launch report is the durable record of every launch including
 pruned ones, so deleting a release tag never deletes the evidence a launch
 happened.
 
-A prune is a destructive, outward-visible act, so the design has `ship` report
+A prune is a destructive, outward-visible act, so the design has the cut report
 exactly which release it removed, or why it refused. **Removal itself is a
-full-`ship` design target** (itd-65). What ships today computes the decision and
+full-cut design target** (itd-65). What ships today computes the decision and
 renders it — which releases a line keeps, which the plan would prune, and the
 reason a refusal stands — and stops there: no shipped path deletes a tag, a
 release or an asset, so the plan is a statement of intent a person still carries
@@ -399,7 +400,7 @@ out.
 
 ## 4. Reports
 
-A launch report under a per-timestamp launch directory is **full-`ship`
+A launch report under a per-timestamp launch directory is **full-cut
 behaviour** (itd-65): no shipped path writes it yet. When it lands it goes to
 the gitignored `.abcd/.work.local/logs/` tier, per the iss-36 and iss-56
 adjudication resolved as iss-73, and a detector fails the build if any non-test
@@ -416,7 +417,7 @@ Its release-day runbook walks the two semantic passes, the local gate proof, the
 release pull request and its merge, the automatic tag, the
 build-checksum-attest-publish step behind an approval gate, the site deploy that
 approval releases with it, and the post-release check. What stays a design
-target is abcd's own publishing **automation** (itd-72): the shipped `ship` verb
+target is abcd's own publishing **automation** (itd-72): the shipped cut
 neither commits, tags, nor publishes, so every step past the changelog heading is
 performed by a human and by CI.
 
@@ -425,51 +426,51 @@ performed by a human and by CI.
 - **Given** any abcd-aware terminal, **when** the user runs bare `/abcd:launch`,
   **then** the dispatcher shows current launch readiness, the available
   sub-verbs, and suggested next actions, and mutates nothing. **Not built:** the
-  shipped bare `abcd launch` refuses with exit 1 and a hint to pass `--dry-run`,
+  shipped bare `abcd launch` refuses with exit 1 and a hint to ask for the preview,
   and the shipped plugin command runs the dry-run preview directly.
 - **Given** a clean tree with a deliberate PII fixture inside the resolved
-  artefact, **when** `--dry-run` runs, **then** the report-only gate prints that
+  artefact, **when** the preview runs, **then** the report-only gate prints that
   it *would* refuse on that finding, naming the offending file and line, still
   exits 0, and writes no artefact. The hard-fail on that finding is the full
-  `ship` verb's behaviour (itd-65).
-- **Given** a clean tree, **when** `--dry-run` runs, **then** the report lists
+  cut's behaviour (itd-65).
+- **Given** a clean tree, **when** the preview runs, **then** the report lists
   exactly the include and exclude manifest of [§ 2](#2-curated-release-artefact-default-deny)
   with no surprises, and no artefact is written.
 - **Given** only fix-impact intents shipped since the last release, **when**
-  `ship` runs, **then** the bump tier is patch and the next patch version is
+  the cut runs, **then** the bump tier is patch and the next patch version is
   written into the selected version location in the **release artefact** only,
   the working-tree manifests staying unversioned, plus the canonical marketplace
   manifest.
 - **Given** a repository whose version-location contract declares
-  `"publishes_plugin_archive": true` and a clean payload, **when** `ship` writes
-  the dated heading, **then** the catalog's
-  plugin source becomes the release's pinned archive — its download address and
-  the digest of the archive rendered from that tree — the working-tree manifests
-  stay version-free, and `launch archive --verify` on the resulting commit
-  reproduces the digest and exits 0. **Given** a payload file changed after the
-  pin, `launch archive --verify` exits 1, names both digests, and leaves no
-  archive behind; **given** an uncommitted payload change, `ship` refuses before
-  writing anything. **Given** the contract without the declaration, `ship`
-  leaves the catalog byte-identical and reports it as not pinned. **Given** a
-  pinned address under another repository, `launch archive --repository` exits 1
-  and leaves no archive behind.
-- **Given** at least one additive intent and no breaking intent, **when** `ship`
+  `"publishes_plugin_archive": true` and a clean payload, **when** the cut writes
+  the dated heading, **then** the catalog's plugin source becomes the release's
+  pinned archive — its download address and the digest of the archive rendered
+  from that tree — the working-tree manifests stay version-free, and the archive
+  gate on the resulting commit reproduces the digest and exits 0. **Given** a
+  payload file changed after the pin, the archive gate exits 1, names both
+  digests, and leaves no archive behind; **given** an uncommitted payload
+  change, the cut refuses before writing anything. **Given** the contract
+  without the declaration, the cut leaves the catalog byte-identical and reports
+  it as not pinned. **Given** a pinned address under another repository than the
+  one the gate is bound to, the archive gate exits 1 and leaves no archive
+  behind.
+- **Given** at least one additive intent and no breaking intent, **when** the cut
   runs, **then** the tier is minor and the launch report names the intents that
   drove it. **Given** any breaking intent, the tier is major and the report names
   it.
 - **Given** a command, flag or manifest surface removed or altered since the
-  previous release with no breaking intent in the release, **when** `ship` runs,
+  previous release with no breaking intent in the release, **when** the cut runs,
   **then** the surface guardrail fails the launch, the mislabel is reported, and
   nothing is published.
 - **Given** an issue record captured since the anchor tag, graded major or
   critical (or carrying no readable grade), still open and carrying no standing
-  waiver, **when** `ship` or `changelog` runs, **then** the cut is refused under
+  waiver, **when** the cut or `changelog` runs, **then** the cut is refused under
   `unfixed-finding`, the refusal names every such record with its grade and path,
   no version is derived, and the findings line says how many were counted and
   from which anchor.
 - **Given** an issue record the anchor tag held in `open/`, graded major or
   critical (or carrying no readable grade), and present in no status directory at
-  HEAD, **when** `ship` or `changelog` runs, **then** the cut is refused under
+  HEAD, **when** the cut or `changelog` runs, **then** the cut is refused under
   `deleted-finding`, the refusal names the record with the grade and path the
   anchor held and says it is in no status directory, and the three dispositions —
   a move to `resolved/`, a move to `wontfix/`, a re-slug inside `open/` — each go
@@ -479,7 +480,7 @@ performed by a human and by CI.
   and the render carries a deferred line naming the record, its severity and its
   reason — and the same record blocks again at the next release, because the
   anchor has moved and the waiver has lapsed.
-- **Given** a prior release of the same line exists, **when** `ship` publishes
+- **Given** a prior release of the same line exists, **when** the cut publishes
   the next one, **then** the superseded release's tag and Release assets are
   removed, the removal is named in the launch report, and the last release of
   every other line is untouched. **Given** a release newer than the
@@ -487,7 +488,51 @@ performed by a human and by CI.
   anything and records the refusal reason. *(Not built: the shipped cut renders
   the retention decision and stops before any removal, and the launch report is
   itd-65's.)*
-- **Given** a documentation-auditor warning, **when** `ship` runs without
-  `--allow-doc-warnings`, **then** the user is shown the warnings and asked
-  transparently whether to proceed. *(Both the auditor gate and the flag are
+- **Given** a documentation-auditor warning, **when** the cut runs without
+  the documentation-warning override, **then** the user is shown the warnings and asked
+  transparently whether to proceed. *(Both the auditor gate and the override are
   itd-65's.)*
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd launch`
+
+Sub-verbs: `abcd launch archive`, `abcd launch scaffold`, `abcd launch ship`.
+
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
+
+### `abcd launch archive`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--out` | string |
+| `--repository` | string |
+| `--tag` | string |
+| `--verify` | bool |
+
+### `abcd launch scaffold`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--confirm` | bool |
+
+### `abcd launch ship`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--changelog-json` | string |
+| `--payload-dir` | string |
+
+<!-- surface-appendix:end -->

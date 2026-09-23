@@ -6,8 +6,8 @@ binary's banner. Then one of them is improved. `/abcd:identity` records the
 canonical wording in one place, tells the maintainer which surfaces have drifted
 away from it, and prints the exact diff that would bring each back.
 
-The bare and `render` forms are **strictly read-only**. `init` is the single
-write path, and it runs once, at onboarding.
+The bare form and the rendered diff are **strictly read-only**. Initialisation
+is the single write path, and it runs once, at onboarding.
 
 It answers a different question from `/abcd:lint`. `lint` reports whether the
 repo conforms to the working conventions as a whole and runs the positioning
@@ -80,11 +80,9 @@ reads as a broken check rather than as a missing tagline.
 
 ## Behaviour
 
-```bash
-abcd identity            # the block and every surface's verdict; read-only
-abcd identity render     # a unified diff per drifted surface; writes nothing
-abcd identity init …     # record the block and the pointer to it
-```
+Bare, the verb prints the block and every surface's verdict, read-only. Its
+render prints a unified diff per drifted surface and writes nothing. Its
+initialiser records the block and the pointer to it.
 
 Comparison is by normalised containment: markup, dashes, line wrapping, and case
 are folded away, so a tagline bolded mid-sentence or wrapped across two lines is
@@ -96,16 +94,16 @@ matches nothing in it, so the check cannot see the text at all. That is reported
 in its own right and in the same breath as drift, because the reader's real
 exposure is identical: a locator that has stopped matching is a surface nobody is
 watching, and it would otherwise read as a clean pass. There is nothing to
-propose for it, so `render` offers no diff; the fix is to correct the locator or
+propose for it, so the render offers no diff; the fix is to correct the locator or
 to unregister the surface. A surface whose candidate files are all absent is
 skipped rather than reported, because a file that does not exist carries no
 drift.
 
-**Autonomous rewriting is permanently out of scope.** `render` proposes; the
+**Autonomous rewriting is permanently out of scope.** The render proposes; the
 maintainer adopts. Changing the positioning deliberately is an edit to the block,
 after which the same proposal flow chases the surfaces.
 
-`init` never re-interviews a repo that already has a block — it adopts it. Run
+Initialisation never re-interviews a repo that already has a block — it adopts it. Run
 again on an adopted repo with a new title, tagline or pitch, it refuses outright
 rather than overwrite the canon, and names the block to edit instead. Run again
 with only a new location for the block, it writes nothing and reports where the
@@ -128,3 +126,35 @@ the recorded three-variant tagline drift this check exists to catch.
 - Intent: [`itd-102`](../../intents/shipped/itd-102-your-repo-says-the-same-thing-about-itself-everywhere-becaus.md)
 - Onboarding consumer: [`15-prepare-this-repo.md`](15-prepare-this-repo.md)
 - Conformance surface: [`16-lint.md`](16-lint.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd identity`
+
+Sub-verbs: `abcd identity init`, `abcd identity render`.
+
+Flags: none.
+
+### `abcd identity init`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--file` | string |
+| `--heading` | string |
+| `--pitch` | string |
+| `--tagline` | string |
+| `--title` | string |
+
+### `abcd identity render`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

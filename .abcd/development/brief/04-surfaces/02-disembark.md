@@ -44,28 +44,27 @@ before writing any of them, refusing the whole pack rather than redacting.
 Bare `/abcd:disembark` prints the sub-verb list and flags, and mutates nothing.
 The verbs divide into three jobs.
 
-**Look before you pack.** `probe` reports, read-only, which brief sections the
+**Look before you pack.** The probe reports, read-only, which brief sections the
 source can ground, which come back blank, and what was searched; it is the
-coverage experiment's readout, and it writes nothing anywhere. `plan` is the dry
+coverage experiment's readout, and it writes nothing anywhere. The plan is the dry
 run: the full file set a pack would write, without writing it. Both take the
 source repo as an optional argument defaulting to the current directory, and
-both accept `--include-ignored` to widen the scan to files git ignores, which
-the report then says.
+both can widen the scan to files git ignores, which the report then says.
 
-**Pack.** `pack <repo> <dest>` writes the lifeboat. Both paths are positional
-and required, and there is no shorthand for either: the lifeboat lands
-out-of-tree at a destination the operator chose, and the source is never written
-to. It takes `--include-ignored` as well, widening its scan exactly as the flag
-widens probe's and plan's.
+**Pack.** Packing takes the source repo and the destination and writes the
+lifeboat. Both paths are positional and required, and there is no shorthand for
+either: the lifeboat lands out-of-tree at a destination the operator chose, and
+the source is never written to. It can widen its scan to ignored files as well,
+exactly as the probe and the plan do.
 
-**Synthesise over an already-packed lifeboat.** `press-release`, `principles`
-and `review` each run in one of two modes: deterministic from the packed
-evidence, or validating a host-produced JSON payload passed on a flag.
-`graveyard` has the validating mode alone and asks for its payload by name when
+**Synthesise over an already-packed lifeboat.** The press release, the
+principles and the review each run in one of two modes: deterministic from the
+packed evidence, or validating a host-produced JSON payload passed on a flag.
+The graveyard has the validating mode alone and asks for its payload by name when
 none is given: what an abandoned approach taught is not something the packed
 files can be read for deterministically, so there is no second mode to fall back
 on. The validating mode is cite-or-be-dropped, and the review carries the
-registered verdict. `coverage` is the cross-repo aggregate: hand it probe reports
+registered verdict. The coverage aggregate is cross-repo: hand it probe reports
 and it returns the section-by-repo table.
 
 **Not built yet:** `to-spec-kit`, which would export shipped intents to GitHub
@@ -73,7 +72,7 @@ Spec Kit format alongside the lifeboat (itd-23).
 
 ## 1. Architecture (a single deterministic pass)
 
-`disembark pack` is one deterministic Go run. It dispatches no agents and runs
+Packing is one deterministic Go run. It dispatches no agents and runs
 no model passes: the synthesis artefacts are written later, by the synthesis
 sub-verbs, over an already-packed lifeboat.
 
@@ -117,10 +116,10 @@ itd-11 (draft); transcript signal density is measured in
 
 ## 5. Output shape
 
-`plan` lists the file set a pack writes, and a pack that completes writes that
+The plan lists the file set a pack writes, and a pack that completes writes that
 same tree. **The two agree on paths, not on outcome.** The secret scan is a
 pack-only seam, injected so the lifeboat core stays free of the scanner adapter,
-and mandatory: a pack called without one refuses. So `plan` never runs it, and
+and mandatory: a pack called without one refuses. So the plan never runs it, and
 its output carries no signal that the pack will refuse. A tree that plans
 cleanly and holds a hard-fail secret in planned content packs to nothing and
 exits non-zero.
@@ -159,9 +158,9 @@ over the record-derived families alone, the omissions, and a `pass_b_exemption`
 present only when no transcript tier grounded the package, so an unmarked
 lifeboat marshals as it always has and embark can say which it is.
 
-The synthesis sub-verbs add the rest afterwards: `press-release` writes
-`press-release.{json,md}`, `principles` writes `principles.{json,md}`, `review`
-writes the verdict artefact, and `graveyard` validates and writes the lesson
+The synthesis sub-verbs add the rest afterwards: the press release writes
+`press-release.{json,md}`, the principles write `principles.{json,md}`, the review
+writes the verdict artefact, and the graveyard validates and writes the lesson
 JSON. None of these exist at pack time.
 
 The lifeboat is written out-of-tree, so the source repo has nothing to
@@ -190,7 +189,7 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
 > **Open question (adr-35):** the shipped voyage line records enough for a bare
 > invocation to say when the source last disembarked and where, so the question
 > is whether bare invocation resolves the source root SHA from the working
-> directory (as `probe` and `plan` already default to it) and reads that log.
+> directory (as the probe and the plan already default to it) and reads that log.
 > The first criterion below is gated on that decision.
 
 - **Given** any abcd-aware terminal, **when** the user runs bare
@@ -206,8 +205,8 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   `.git`, whose internal bookkeeping is not the source of truth. Two mutations
   therefore sit outside the assertion's sight: a rewrite that preserves a file's
   size, and any write under `.git`. No path under the source repo is ever a
-  destination. *(The fingerprint is asserted for `probe`, `plan` and `pack`,
-  which are the three sub-verbs that open the source at all. `review` also takes
+  destination. *(The fingerprint is asserted for the probe, the plan and the pack,
+  which are the three sub-verbs that open the source at all. The review also takes
   a source repo, but only to check that it is a real directory and to take its
   name for the attestation: the content is never read, so there is nothing for a
   fingerprint to catch.)*
@@ -220,16 +219,16 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   rather than fabricated, and coverage records it as blank with what was
   searched and the question a human must answer. A blank is a first-class
   result, not a failure or an exemption footnote.
-- **Given** the user runs `probe`, **when** it completes, **then** every
+- **Given** the user runs the probe, **when** it completes, **then** every
   adapter's probe runs in parallel, the coverage report is rendered to stdout
   with each section marked grounded, partial or blank plus what was searched,
   nothing is written into the source, and the run takes a small fraction of the
   time a full pack would.
-- **Given** `probe` run across the validation corpus, **when** the reports are
+- **Given** the probe run across the validation corpus, **when** the reports are
   aggregated, **then** the aggregate reports the section-coverage delta between
   a rich-record repo and a git-only repo: the experiment's readout, and the
   evidence the packer's section list is built to (itd-88, adr-35).
-- **Given** the user runs `plan`, **when** it completes, **then** the source
+- **Given** the user runs the plan, **when** it completes, **then** the source
   inventory runs end to end, the would-be writes are listed as file paths, and
   nothing is written to the source or the destination.
 - **Given** a destination that is neither absent, nor an empty directory, nor
@@ -249,3 +248,79 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   snapshot is replaced and its manifest remains in the voyage log. There is
   never a versioned pair of snapshot directories: history is preserved in the
   manifest log, not in stale copies.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd disembark`
+
+Sub-verbs: `abcd disembark coverage`, `abcd disembark graveyard`, `abcd disembark pack`, `abcd disembark plan`, `abcd disembark press-release`, `abcd disembark principles`, `abcd disembark probe`, `abcd disembark review`.
+
+Flags: none.
+
+### `abcd disembark coverage`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd disembark graveyard`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--lessons-json` | string |
+
+### `abcd disembark pack`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--include-ignored` | bool |
+
+### `abcd disembark plan`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--include-ignored` | bool |
+
+### `abcd disembark press-release`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--press-release-json` | string |
+
+### `abcd disembark principles`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--principles-json` | string |
+
+### `abcd disembark probe`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--include-ignored` | bool |
+
+### `abcd disembark review`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--review-json` | string |
+
+<!-- surface-appendix:end -->
