@@ -2,7 +2,6 @@ package banlist
 
 import (
 	"errors"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -57,9 +56,10 @@ type InheritedReport struct {
 // repository's private patterns, disclosure of its keys, and a cross-repo denial of
 // service from one malformed line over there.
 //
-// So: `git worktree list --porcelain` names the main working tree in its first
-// record, and the candidate is then required to CONFIRM the relationship from its
-// own side, with git rediscovering the repository from that directory
+// So: `git worktree list --porcelain` (gitutil.ListWorktrees) names the main
+// working tree in its first record, and the candidate is then required to
+// CONFIRM the relationship from its own side, with git rediscovering the
+// repository from that directory
 // (gitutil.Run scrubs GIT_DIR and friends, so discovery is not short-circuited by
 // an inherited environment):
 //
@@ -84,11 +84,15 @@ func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
 	if err != nil || commonDir == "" || gitDir == commonDir {
 		return "", false
 	}
-	list, err := gitutil.Run(repoRoot, "worktree", "list", "--porcelain")
-	if err != nil {
+	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
+	if err != nil || len(wts) == 0 {
 		return "", false
 	}
-	primary := mainWorktreePath(list)
+	// git documents the first record as the main working tree. A `bare` marker
+	// on it needs no special case: the `--show-toplevel` confirmation below
+	// refuses a bare repository on its own, and the one authority on whether a
+	// directory is a working tree should be git, not a marker reinterpreted here.
+	primary := wts[0].Path
 	// A primary that resolves back to THIS working tree is not a second store to
 	// inherit.
 	if primary == "" || primary == repoRoot {
@@ -106,24 +110,9 @@ func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
 	return primary, true
 }
 
-// mainWorktreePath reads the working-tree path out of the FIRST record of
-// `git worktree list --porcelain`, which git documents as the main working tree.
-// Anything else — no output, a first line that is not a `worktree ` record — yields
-// "", and the caller treats that as "git cannot answer", which is the fallback's
-// designed failure mode.
-//
-// A `bare` marker on the second line needs no special case: the caller's
-// `--show-toplevel` confirmation refuses a bare repository on its own, and the one
-// authority on whether a directory is a working tree should be git, not a marker
-// this function reinterprets.
-func mainWorktreePath(porcelain string) string {
-	first, _, _ := strings.Cut(porcelain, "\n")
-	path, ok := strings.CutPrefix(strings.TrimSuffix(first, "\r"), "worktree ")
-	if !ok {
-		return ""
-	}
-	return path
-}
+// maxWorktreeListing caps the worktree listing the resolution reads; past it
+// git's answer is refused, which is the resolution's designed failure mode.
+const maxWorktreeListing = 16 << 20
 
 // InheritedPrivate reports the private layer repoRoot inherits from its primary
 // checkout, or nil when there is nothing to inherit — repoRoot is not a linked
