@@ -1,6 +1,5 @@
 ---
 id: itd-43
-shipped_in: v0.2.0
 slug: epic-to-spec-terminology
 spec_id: spc-8
 kind: standalone
@@ -30,9 +29,9 @@ Scope* below is what this intent carries.
 
 ## Why This Matters
 
-abcd's [terminology discipline](../../brief/glossary/) exists to kill exactly one failure: the same concept named two ways, drifting until two readers mean different things. Right now abcd commits that failure about its own core noun. The schema and the intent corpus say `spec_id`; the glossary half is delivered — `brief/glossary/core/spec.md` carries `term: spec` with `epic` in `forbidden_synonyms` (spc-8), and GL002 keeps the live prose on the one word. A framework that enforces ubiquitous language cannot itself be bilingual about its central term.
+abcd's [terminology discipline](../../brief/glossary/) exists to kill exactly one failure: the same concept named two ways, drifting until two readers mean different things. abcd names its own core noun one way: the schema and the intent corpus say `spec_id`, `brief/glossary/core/spec.md` carries `term: spec` with `epic` in `forbidden_synonyms` (spc-8), and GL002 keeps the live prose on the one word. A framework that enforces ubiquitous language cannot itself be bilingual about its central term.
 
-The `epic_id`→`spec_id` field rename was done separately and first, on purpose — it had to be atomic (schema + data + code, or intent-lint validation fails). What remains does **not** break anything: it is inconsistency, not breakage, which is why it is its own intent rather than an emergency fix. But unaddressed it erodes the glossary's authority and confuses every new contributor.
+The `epic_id`→`spec_id` field rename is a separate, earlier change, on purpose — it had to be atomic (schema + data + code, or intent-lint validation fails). The sweep this intent carries does **not** guard against breakage: the drift it removes is inconsistency, not breakage, which is why it is its own intent rather than an emergency fix. Left alone, that drift erodes the glossary's authority and confuses every new contributor.
 
 The reviews subsystem, the schemas, and the spec store are all abcd-owned — there is no vendored external plugin whose `epic`/`spec` aliases must be preserved, so the rename is a coherent internal sweep rather than a negotiation across a boundary. The single-source-of-truth rule decides the order: `brief/glossary/core/spec.md` is canonical for the concept, so it was renamed first and everything else conforms to it.
 
