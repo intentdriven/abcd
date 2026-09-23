@@ -9,6 +9,8 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/reading/ingest.go"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: whether the orphan sweep refuses or reports an orphan whose records carry a disposition (consequence of resolved iss-2608311517509690)). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 Deferring the orphan sweep to the commit path lengthens the window in which an orphan's reading records can be dispositioned before they are deleted. The sweep now runs only when a later ingest validates (iss-2608311517509690), so an orphaned run's reading records sit in the committed ledger for longer, and during that window capture's disposition verb can act on one of them. A later sweep then removes the item record by its id grammar and leaves the disposition record dangling, pointing at an item that no longer exists. The dangling case existed before the move — any orphan could be dispositioned between its crash and the next invocation — but the move widens it from the next invocation to the next one that validates. A future change could have the sweep refuse, or report, an orphan whose records already carry a disposition.

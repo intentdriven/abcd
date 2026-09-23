@@ -6,6 +6,8 @@ severity: "major"
 category: "process"
 source: "user-observation"
 found_during: "manual-capture"
+deferred_after: "v0.9.0"
+deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M2: fold into itd-131 / spc-34, widened to pin the identity at setup and set user.useConfigOnly; the amendment of spc-34 is owed and must reconcile itd-131's disk-only rule (adr-38) with resolving the canonical GitHub identity at install, and iss-85 / iss-2608210738367948 with it)."
 ---
 
 A managed repo commits under whatever identity git happens to resolve, and when

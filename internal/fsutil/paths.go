@@ -210,6 +210,14 @@ func RepoRel(base, target string) string {
 // identity — its base segment IS the username. The filesystem root ("/") and
 // empty or relative roots are skipped so a message is never mangled.
 //
+// An occurrence is redacted only where it STARTS a path: at the start of s, or
+// after a character that cannot continue a path segment (a space, a quote, a
+// colon, an equals sign — and a separator, so a file:/// URL still redacts).
+// The same bytes as the tail of a longer path — root /var/… inside the
+// symlink-resolved /private/var/… — name a different directory, and redacting
+// them would strand that path's head in front of repl ("/private~/wt/a"),
+// neither redacted nor intact (iss-2609230641546141).
+//
 // It is the one statement of what a developer-identity root looks like in
 // rendered output: the CLI's error scrub redacts the working directory and the
 // home directory out of every command error, and `ahoy install`'s receipt
@@ -226,10 +234,36 @@ func RedactRoot(s, root, repl string) string {
 	if len(root) <= 1 || !filepath.IsAbs(root) {
 		return s
 	}
-	fold := caseFoldingFS()
-	sep := string(os.PathSeparator)
-	s = replaceAllFold(s, root+sep, repl+sep, fold)
-	return replaceBareRoot(s, root, repl, fold)
+	return replaceRoot(s, root, repl, caseFoldingFS())
+}
+
+// replaceRoot replaces each occurrence of root that starts a path (a left
+// boundary) and is either the whole path or its directory prefix (a right
+// boundary: end of string, a separator, or a non-path character). A span that
+// is not redacted is re-emitted in its original casing, and the scan resumes
+// one byte on so an occurrence overlapping a rejected one is still judged.
+func replaceRoot(s, root, repl string, fold bool) string {
+	var b strings.Builder
+	written, from := 0, 0
+	for from <= len(s) {
+		j := indexFold(s[from:], root, fold)
+		if j < 0 {
+			break
+		}
+		i := from + j
+		after := i + len(root)
+		left := i == 0 || s[i-1] == os.PathSeparator || isPathBoundary(s[i-1])
+		right := after == len(s) || s[after] == os.PathSeparator || isPathBoundary(s[after])
+		if !left || !right {
+			from = i + 1
+			continue
+		}
+		b.WriteString(s[written:i])
+		b.WriteString(repl)
+		written, from = after, after
+	}
+	b.WriteString(s[written:])
+	return b.String()
 }
 
 // indexFold is strings.Index, comparing case-insensitively when fold is set so a
@@ -253,62 +287,29 @@ func indexFold(s, sub string, fold bool) int {
 	return -1
 }
 
-// replaceAllFold replaces every occurrence of old in s with repl, matching
-// case-insensitively when fold is set. The matched span is dropped and repl
-// written in its place; the surrounding text keeps its original casing.
-func replaceAllFold(s, old, repl string, fold bool) string {
-	if old == "" {
-		return s
-	}
-	var b strings.Builder
-	for {
-		i := indexFold(s, old, fold)
-		if i < 0 {
-			b.WriteString(s)
-			return b.String()
-		}
-		b.WriteString(s[:i])
-		b.WriteString(repl)
-		s = s[i+len(old):]
-	}
-}
-
 // RedactHome replaces the user's home directory in s with "~" wherever it
 // appears — the home-polarity shortcut over RedactRoot for a success or receipt
 // envelope that carries an absolute path the CLI error scrub (which runs only on
 // the error value) never sees. A home-resolution failure or a root-level home
 // leaves s unchanged, so the primitive is never worse than the raw string.
+//
+// The home is redacted in both spellings a path can carry it in: the one the
+// environment names, and its symlink-resolved one, which is what git and the
+// kernel report back wherever the home sits behind a link (macOS's /var →
+// /private/var). Where one spelling is the tail of the other, RedactRoot's left
+// boundary keeps the shorter from matching inside the longer, so the order of
+// the two passes does not matter.
 func RedactHome(s string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return s
 	}
-	return RedactRoot(s, filepath.Clean(home), "~")
-}
-
-// replaceBareRoot replaces occurrences of root that end at a path boundary (end
-// of string or a character that cannot continue a path segment), leaving a longer
-// path that merely shares this prefix untouched. With fold set the match is
-// case-insensitive; a span that is not redacted is re-emitted in its own original
-// casing (the matched bytes), never rewritten to root's spelling.
-func replaceBareRoot(s, root, repl string, fold bool) string {
-	var b strings.Builder
-	for {
-		i := indexFold(s, root, fold)
-		if i < 0 {
-			b.WriteString(s)
-			return b.String()
-		}
-		after := i + len(root)
-		matched := s[i:after]
-		b.WriteString(s[:i])
-		if after >= len(s) || isPathBoundary(s[after]) {
-			b.WriteString(repl)
-		} else {
-			b.WriteString(matched)
-		}
-		s = s[after:]
+	home = filepath.Clean(home)
+	s = RedactRoot(s, home, "~")
+	if real, err := filepath.EvalSymlinks(home); err == nil && real != home {
+		s = RedactRoot(s, real, "~")
 	}
+	return s
 }
 
 // isPathBoundary reports whether c cannot be part of a path segment, so a root

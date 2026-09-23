@@ -9,6 +9,8 @@ found_during: "security review of the owned-copy attestation before the v0.9.0 c
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/cache_attestation.go, hooks/bootstrap.sh"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (contract ruling owed on the cache attestation's freshness term: a release_tag binding, an attested_at bound, or a rewrite on every manifest-reaching run). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 The home-scoped cache attestation (GHSA-4q78-ccfv-f374) binds exactly two

@@ -7,6 +7,8 @@ category: "future-work-seed"
 source: "user-observation"
 found_during: "itd-108 grill session (2026-08-11)"
 found_at: "docs/"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: whether install instructions are a sanctioned place to name a harness (docs-lint escape) before a getting-started page is written). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 Install instructions need a getting-started page once more than one harness is supported, and the version floor needs a home in it. Raised at the itd-108 grill (2026-08-11) while ruling that no migration is owed to existing users, because there are none yet.
