@@ -582,3 +582,46 @@ func TestInstallDegradesLoudlyWhenRootStampIsInvalid(t *testing.T) {
 		})
 	}
 }
+
+// TestInstallUpgradesSupersededVintagePinToOwnedCopy is the upgrade path
+// iss-2609120450411702 found self-blocking: an earlier install wrote the PATH
+// entry as a pin into its own plugin root, the plugin then updated, and the
+// re-run the earlier install's note prescribed — from a session whose hooks had
+// provisioned the cache — refused the pin as foreign. The pin is abcd's own
+// (owned-superseded, 177a407d), so with a verified cache the re-run replaces it
+// with the owned copy: no refusal, no manual removal, no third install.
+func TestInstallUpgradesSupersededVintagePinToOwnedCopy(t *testing.T) {
+	home, pluginRoot := setupUserScope(t)
+	binDir := filepath.Join(home, ".local", "bin")
+	t.Setenv("PATH", binDir)
+	link := filepath.Join(binDir, "abcd")
+	linkSuperseded(t, link, pluginRoot)
+	seedDataCache(t, cacheArtefact)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range res.Notes {
+		if strings.Contains(n, "never clobbers") {
+			t.Errorf("the re-run refused abcd's own superseded pin: %q", n)
+		}
+	}
+	fi, err := os.Lstat(link)
+	if err != nil {
+		t.Fatalf("the PATH entry is gone after the re-run: %v (notes %v)", err, res.Notes)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("the superseded pin was not replaced by the owned copy (notes %v)", res.Notes)
+	}
+	if got, err := os.ReadFile(link); err != nil || string(got) != string(cacheArtefact) {
+		t.Errorf("the owned copy must hold the verified artefact; got %q (%v)", got, err)
+	}
+	if m, _ := detectSignal(t, repo, "install_mode").(string); m != "pinned" {
+		t.Errorf("install_mode = %q after the upgrade, want pinned", m)
+	}
+}
