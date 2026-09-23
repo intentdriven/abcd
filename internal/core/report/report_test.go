@@ -135,3 +135,19 @@ func TestSerializeRoundTrips(t *testing.T) {
 		t.Errorf("round trip = %+v, want %+v", back, r)
 	}
 }
+
+// TestPathRefusalLeavesOrdinaryWordsAlone: the path refusal is about
+// locations, so a slash between words, a tilde before a number and a URL
+// all pass.
+func TestPathRefusalLeavesOrdinaryWordsAlone(t *testing.T) {
+	for _, v := range []string{"defect / enhancement", "took ~5 minutes", "https://example.com/a/b", "and/or", "internal/core/report", "abcd hook session-start"} {
+		if err := refusePath("title", v); err != nil {
+			t.Errorf("refusePath(%q) = %v, want it accepted", v, err)
+		}
+	}
+	for _, v := range []string{"/etc/passwd", "see (/tmp/x)", "~/notes", "~alice/notes", `\\\\server\\share`, "C:/Users", "file:///x", "../up", `a\\..\\b`, "x/../y"} {
+		if err := refusePath("title", v); err == nil {
+			t.Errorf("refusePath(%q) accepted a location", v)
+		}
+	}
+}

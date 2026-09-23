@@ -461,12 +461,16 @@ func evidence(bl *blockLine) ([]string, error) {
 
 // pathRe matches a value that names a location on a filesystem: an absolute
 // path, a home-relative one, a Windows drive or UNC path, a file URL, or a
-// traversal segment. A report is read on a machine that is not the one it
+// traversal segment. A slash between words, a tilde before a number and an
+// http(s) URL are words, not locations. A report is read on a machine that is not the one it
 // describes, so none of these points anywhere a reader can follow; and a report
 // that could name a location is one step from a report that chooses where
 // something is read or written. Pointers are record ids, commit SHAs, URLs and
 // repository-relative locations.
-var pathRe = regexp.MustCompile(`(?i)(^|[\s(\[<"'=,])(/|~|\\\\|[a-z]:[\\/]|file:)|(^|[\\/])\.\.([\\/]|$)`)
+var pathRe = regexp.MustCompile(`(?i)` +
+	`(^|[\s(\[<"'=,])(/[^\s/]|~[a-z0-9._-]*/|\\\\|[a-z]:[\\/])` + // absolute, home-relative, UNC, drive
+	`|file:` + // a file URL
+	`|(^|[\\/\s])\.\.([\\/]|$)`) // a traversal segment
 
 func refusePath(key, v string) error {
 	if pathRe.MatchString(v) {
