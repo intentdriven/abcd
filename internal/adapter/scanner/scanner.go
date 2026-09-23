@@ -540,8 +540,9 @@ const maxAdjacencyBacktrack = 512
 
 // matcher is the single regexp operation the adjacency probes need. Production
 // always passes a compiled *regexp.Regexp; taking the interface is what lets the
-// cost guard hand gallopingFind a counting stand-in and assert the doubling
-// schedule exactly rather than time it.
+// cost guards hand gallopingFind, and the whole of scanAllPatterns, a counting
+// stand-in and assert the doubling schedule and the scan's growth exactly
+// rather than time them.
 type matcher interface {
 	FindStringIndex(s string) []int
 }
@@ -632,7 +633,7 @@ func gallopBudget(line string) int {
 // probe to run after; that is the same pre-existing \b-boundary limitation
 // every bundled pattern already accepts elsewhere in this package, not
 // something this function claims to close.
-func scanAllPatterns(patterns []Pattern, probes []*regexp.Regexp, junctions *regexp.Regexp, line string) []patMatch {
+func scanAllPatterns(patterns []Pattern, probes []matcher, junctions matcher, line string) []patMatch {
 	var all []patMatch
 	// One growth budget for the whole line, shared by every probe and the
 	// junction search: see gallopBudget.
@@ -700,7 +701,7 @@ func scanAllPatterns(patterns []Pattern, probes []*regexp.Regexp, junctions *reg
 // junction probe over that window, not from re-probing every byte in it with
 // every pattern — the difference between one window-bounded search per
 // candidate and a full window scan per pattern per match.
-func stolenJunctions(probe, junctions *regexp.Regexp, line string, m patMatch, budget *int) []int {
+func stolenJunctions(probe, junctions matcher, line string, m patMatch, budget *int) []int {
 	if m.end-m.start < 2 || !wholeMatch(probe, line[m.start:m.end-1]) {
 		return nil
 	}
@@ -741,7 +742,7 @@ func stolenJunctions(probe, junctions *regexp.Regexp, line string, m patMatch, b
 // wholeMatch reports whether s is entirely one match of probe, an anchored
 // boundary-free adjacencyProbe. The anchor makes the match start at 0, so only
 // its end has to reach the end of s.
-func wholeMatch(probe *regexp.Regexp, s string) bool {
+func wholeMatch(probe matcher, s string) bool {
 	loc := probe.FindStringIndex(s)
 	return loc != nil && loc[1] == len(s)
 }
@@ -762,7 +763,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 	}
 	matchers := newIdentityMatchers(id)
 	matchers.bytes = bytes
-	probes := make([]*regexp.Regexp, len(patterns))
+	probes := make([]matcher, len(patterns))
 	for i, cp := range patterns {
 		probes[i] = adjacencyProbe(cp.Re)
 	}

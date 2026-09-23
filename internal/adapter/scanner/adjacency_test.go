@@ -616,34 +616,66 @@ func TestGallopingProbeStaysBoundedOnLongLines(t *testing.T) {
 }
 
 // TestGallopingProbeCostIsLinearInLineLength is the cost-CLASS guard the
-// wall-clock budgets above cannot be: it doubles the input twice and asserts the
-// time grows like the input rather than like its square. A wall-clock ceiling
-// only catches a regression once it is slow enough on the machine that happens
-// to run it; a ratio catches the class itself, which is what the first pass at
-// this fix got wrong (linear before, quadratic after, both comfortably under
-// any fixed bar at the sizes the other guards use).
+// wall-clock budgets above cannot be: it quadruples the input and asserts the
+// probes' work grows like the input rather than like its square. A wall-clock
+// ceiling only catches a regression once it is slow enough on the machine that
+// happens to run it; a growth ratio catches the class itself, which is what the
+// first pass at this fix got wrong (linear before, quadratic after, both
+// comfortably under any fixed bar at the sizes the other guards use).
+//
+// The work is COUNTED, not timed: every probe and the junction search are handed
+// a tallyMatcher, and the measure is the total number of bytes the scan hands
+// them. Go's regexp engine is linear in the length of the string it is run
+// against, so that total bounds the probes' cost from above, and it is the
+// quantity the regression squared — a galloping window grown to the far end of
+// the line at each of Theta(n) junctions, and each such match re-validated at
+// its own length. A count is the same on an idle machine and a loaded one, so
+// the guard cannot refuse a release on runner load (iss-2608292246210181), and
+// its bar can sit far closer to linear than a timing ratio's could.
 //
 // The shape is the one that broke: every junction on the line starts a match
-// that reaches the far end. The bar is deliberately loose — quadratic growth
-// quadruples per doubling, so anything under 3x per doubling separates the two
-// classes without tracking machine speed — and the smallest size is skipped as a
-// timing baseline when it is too fast to measure reliably.
+// that reaches the far end. Four times the input is ~4x linear work and ~16x
+// quadratic.
 func TestGallopingProbeCostIsLinearInLineLength(t *testing.T) {
 	r := strings.Repeat
 	unit := "AIza" + r("a", 35) + "sk-ant-"
-	measure := func(m int) time.Duration {
-		line := r(unit, m)
-		start := time.Now()
-		scanLine(line)
-		return time.Since(start)
+	patterns := DefaultPatterns()
+	if raceDetector {
+		// The count is deterministic, so the instrumented run would assert the
+		// same numbers at well over ten times the cost, and the test has no
+		// concurrency for the detector to watch. The uninstrumented lane asserts it.
+		t.Skip("a deterministic count gains nothing under -race; the uninstrumented run asserts it")
 	}
-	base := scaleAdversarial(320)
-	small, large := measure(base), measure(4*base)
-	if small < 50*time.Millisecond {
-		t.Skipf("baseline %v is too small to measure a growth ratio against", small)
+	work := func(m int) int {
+		var n int
+		probes := make([]matcher, len(patterns))
+		for i, cp := range patterns {
+			probes[i] = tallyMatcher{adjacencyProbe(cp.Re), &n}
+		}
+		scanAllPatterns(patterns, probes, tallyMatcher{junctionProbe(patterns), &n}, r(unit, m))
+		return n
 	}
-	// Four times the input: linear work is ~4x, quadratic ~16x.
-	if ratio := float64(large) / float64(small); ratio > 8 {
-		t.Errorf("quadrupling the line multiplied the scan by %.1fx (%v -> %v), want about 4x: the scan is no longer linear in line length", ratio, small, large)
+	// The size is fixed rather than shrunk under load or instrumentation: a
+	// count needs neither, and below a few hundred units the budget's constant
+	// term still dominates, so neither class has settled into its asymptote yet.
+	// At this size the budgeted scan measures 4.1x and the unbudgeted gallop the
+	// guard exists for measures 10.7x; the bar sits between the two.
+	const base = 320
+	small, large := work(base), work(4*base)
+	if ratio := float64(large) / float64(small); ratio > 6 {
+		t.Errorf("quadrupling the line multiplied the bytes handed to the probes by %.2fx (%d -> %d), want about 4x: the scan is no longer linear in line length", ratio, small, large)
 	}
+}
+
+// tallyMatcher wraps a compiled probe and adds the length of every string it is
+// run against to a counter shared by every probe of one scan, so the whole
+// scan's probe work can be asserted as a count rather than timed.
+type tallyMatcher struct {
+	re *regexp.Regexp
+	n  *int
+}
+
+func (c tallyMatcher) FindStringIndex(s string) []int {
+	*c.n += len(s)
+	return c.re.FindStringIndex(s)
 }
