@@ -280,6 +280,11 @@ whenever it is non-zero: these paths redact the note exactly as `capture` does,
 but their human render stays silent, so the caller learns their wording was
 rewritten only if you relay it.
 
+An id this checkout's ledger does not hold is refused. When a peer holds it —
+a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names
+the peer's branch, path and folder instead of answering not found: the record
+lives there, so relay that rather than capturing it again here.
+
 `resolve` requires `--impact`: a resolved issue is in the release set, so it
 carries the product judgement the version derivation reads (`additive`,
 `breaking`, `fix`, or `internal` — plumbing invisible to users). There is no

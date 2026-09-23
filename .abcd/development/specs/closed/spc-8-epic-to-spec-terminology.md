@@ -11,9 +11,11 @@ spc-8 delivers itd-43's implementable remainder: the **GL002 forbidden-synonym
 lint gate**, built detector-first against the glossary, and the **live-prose
 sweep** it drove — 19 flagged uses of `epic` as the concept-noun cleared to
 `spec` across four record files, with the detector (not human judgment)
-deciding what counted. **The spec stays open**: AC3 (the reviews-subsystem
-`spec-review` token) is blocked on itd-28, which needs a maintainer-gated new
-dependency; itd-43 stays `planned` until that lands or is re-scoped.
+deciding what counted. The criterion that held the spec open, a
+reviews-subsystem `spec-review` token, is dropped from itd-43 as moot (product
+thinker, 2026-09-23): itd-28 was re-scoped to pin plus staleness on
+2026-09-21, and nothing classifies reviews by kind. The spec closes on the four
+criteria that remain.
 
 ## Approach
 
@@ -58,7 +60,7 @@ live corpus at zero GL002 findings from here on.
 
 ## Acceptance-criteria satisfaction
 
-AC as ordered in itd-43 → status and evidence:
+AC as ordered in itd-43 when this spec was minted → status and evidence:
 
 1. **No live `epic`-as-noun reference remains** — gap-filled, detector-driven:
    GL002 armed pre-sweep flagged 19 lines (captured verbatim); post-sweep the
@@ -70,11 +72,12 @@ AC as ordered in itd-43 → status and evidence:
    `forbidden_synonyms`; no stale `epic.md` term file exists anywhere
    (verified by filesystem sweep). The intent's open question (rename vs
    stub) was answered historically — the rename happened with no stub.
-3. **Reviews subsystem classifies against `spec-review`** — **BLOCKED on
-   itd-28** (the native reviews subsystem does not exist in the Go tree; its
-   intent needs a maintainer-gated new dependency). No epic-review token
-   exists to rename and no spec-review emitter exists to test. This spec
-   stays open on exactly this criterion.
+3. **Reviews subsystem classifies against `spec-review`** — dropped from
+   itd-43 as moot (product thinker, 2026-09-23). The Go tree has no reviews
+   subsystem that classifies reviews by kind, and itd-28 was re-scoped on
+   2026-09-21 to pin plus staleness, so no `epic-review` token exists to
+   rename and no `spec-review` emitter exists to build. The intent's criteria
+   renumber: its fourth and fifth are this list's 4 and 5.
 4. **`issue.schema.json` uses `related_specs`** — satisfied-by-adjudication:
    no `issue.schema.json` exists in the Go tree (old-system reference); the
    native validator (`internal/core/capture/validate.go`) and capture engine

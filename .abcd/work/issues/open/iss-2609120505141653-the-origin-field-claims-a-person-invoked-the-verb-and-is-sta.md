@@ -9,6 +9,8 @@ found_during: "peer exchange on capture provenance, 2026-09-12"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/provenance/provenance.go"
+deferred_after: "v0.9.0"
+deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M31: route, not who: correct the KindResearcherAuthored comment in internal/core/provenance to name the route (written directly, not derived); no new kind, no who field, no backfill; a build lane owed, not holding the tag)."
 ---
 
 `origin: researcher-authored` states that a person invoked the verb. It is

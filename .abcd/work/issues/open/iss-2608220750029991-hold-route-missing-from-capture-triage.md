@@ -7,6 +7,8 @@ category: "future-work-seed"
 source: "user-observation"
 found_during: "2026-08-22 filing session (NEXT.md handover)"
 found_at: ".abcd/development/brief/04-surfaces/06-capture.md"
+deferred_after: "v0.9.0"
+deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: hold-with-axes triage route; home question open; decompose before filing). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
 ---
 
 capture's triage routes (defect fix / promote to intent / brief fix / wontfix) force frame-level unease into artefact-level fixes: there is no hold route for a finding whose real content is that the framing itself cannot yet be articulated. A hold-with-axes route is missing — non-articulation is data, holds carry axes and exit by articulation. Candidate RFC or intent; decompose before filing. Ties to the 03-evidence placeholder resolution (where would a hold-register-shaped record live?).
