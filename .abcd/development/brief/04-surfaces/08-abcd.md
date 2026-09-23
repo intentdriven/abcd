@@ -16,8 +16,8 @@ Two read-only forms, and no third.
 
 **Bare `abcd`** renders a four-field snapshot of the current directory: the
 directory itself, whether it is a git repo, whether an abcd record is present,
-and which of the `.abcd/` work tiers exist. The plugin command invokes it as
-`abcd --json`.
+and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
+form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
@@ -39,8 +39,9 @@ is the front door today; an MCP server follows later, per
 does: `consult` and `ingest` run entirely as host-side markdown over the
 sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
-too and writes — `abcd identity init` records the repo's identity block and
-registers the surfaces held to it, and `abcd ahoy install` lays the hooks, the
+too and writes — the identity verb's initialiser records the repo's identity
+block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
+
 banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.

@@ -239,9 +239,12 @@ func TestProseShapeClaims(t *testing.T) {
 		"The `list` sub-verb reads.\n" + // 5: a bare sub-verb name of this chapter's verb
 		"See /abcd:docs cite refresh too.\n" + // 6: another verb's sub-verb path
 		"```\nabcd version --check\n```\n" + // 8: a fenced flag is still shape
-		"`--json` is global.\n" // 10
+		"`--json` is global.\n" + // 10
+		"## Sub-verbs\n\n> _The `list` note is exempt._\n\n| `list` | — | shipped |\n\n" + // 11-16: exempt
+		"The `list` row above is a gate.\n" + // 17: section prose is still checked
+		"## Wrapped\n\nRun `/abcd:capture\n  resolve` or `abcd docs cite\nrefresh` later.\n" // 20-22: a path across a soft wrap
 	got := ProseShapeClaims(dirty, []string{"abcd capture"}, tree)
-	want := map[int]string{3: "--all", 4: "capture resolve", 5: "`list`", 6: "docs cite refresh", 8: "--check", 10: "--json"}
+	want := map[int]string{3: "--all", 4: "capture resolve", 5: "`list`", 6: "docs cite refresh", 8: "--check", 10: "--json", 17: "`list`", 20: "capture resolve", 21: "docs cite refresh"}
 	seen := map[int]bool{}
 	for _, c := range got {
 		if w, ok := want[c.Line]; ok && c.Spelling == w {
@@ -251,6 +254,11 @@ func TestProseShapeClaims(t *testing.T) {
 	for line, w := range want {
 		if !seen[line] {
 			t.Errorf("line %d: shape claim %q not reported; got %+v", line, w, got)
+		}
+	}
+	for _, c := range got {
+		if c.Line >= 11 && c.Line <= 16 {
+			t.Errorf("line %d: the Sub-verbs table and note are exempt, got %+v", c.Line, c)
 		}
 	}
 }

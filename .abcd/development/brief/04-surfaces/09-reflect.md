@@ -59,10 +59,10 @@ well, what could improve, lessons learned, decisions made, and metrics
 
 The writer refuses, each refusal naming the phase-audit prerequisite, when: the
 argument is not a phase id; the answers are hollow (a bare `{}` on stdin, all
-"none recorded") and `--allow-empty` was not passed; no phase-audit receipt
+"none recorded") and the empty-answers override was not given; no phase-audit receipt
 exists for the named phase; the latest receipt is empty-audited, so nothing
-shipped to reflect on; or a retrospective already exists and `--overwrite` was
-not passed.
+shipped to reflect on; or a retrospective already exists and the overwrite
+override was not given.
 
 It also enforces write-site containment: the resolved target must be inside the
 retrospectives tree, and receipt-supplied spec ids are shape-validated before
@@ -105,7 +105,8 @@ target's proposal rather than a settled location.
 The lifeboat must pack every phase retrospective a voyage produced, so the full
 reflection arc travels between voyages. Because `/abcd:reflect` is not built and
 produces no retrospectives yet, this is a **documented forward requirement on
-the disembark pack**, recorded here and in the itd-24 acceptance so a later
+what disembark packs**, recorded here and in the itd-24 acceptance so a later
+
 reader treats it as a requirement rather than a shipped capability.
 
 ## Related documentation

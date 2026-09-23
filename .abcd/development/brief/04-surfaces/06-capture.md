@@ -46,9 +46,9 @@ with an auto-assigned `iss-N` and writes it to `open/`. Provenance and taxonomy
 are caller-supplied flags. Severity, category, source and the found-during
 context each carry a default, so the fast path stays fast; the location, slug
 and dependency flags have none. The `origin` field is derived from the verb that
-ran and is carried by no flag at all (itd-178), and `--production-mode` records
+ran and is carried by no flag at all (itd-178), and a production-mode flag records
 how the text was produced. That last flag is not the fast path's alone:
-`promote` stamps the draft it mints with it, and `resolve` and `wontfix` each
+promotion stamps the draft it mints with it, and resolving and declining each
 take it to restamp the record they are closing, which is refused on a record
 written before the disclosure existed.
 
@@ -57,30 +57,30 @@ gave way must be given with the `lapse` category, and omitting it exits 2 and
 writes nothing. The only available default would be the write-up time, which is
 precisely the value a lapse entry exists to distinguish itself from.
 
-**`/abcd:capture list`** queries the ledger, and one of `--open`,
-`--resolved`, `--wontfix` or `--all` is required. The unfiltered form is
-rejected with exit 2 and a message naming the four. These flags are the only
-earned exception to the naming discipline under this surface, and each must
-appear immediately adjacent to `list`. There is no implicit default: bare
-`/abcd:capture` is what renders status.
+**Listing** queries the ledger, and a status filter — open, resolved, wontfix,
+or all of them — is required. The unfiltered form is rejected with exit 2 and a
+message naming the four. These filters are the only earned exception to the
+naming discipline under this surface, and each must appear immediately adjacent
+to the listing sub-verb. There is no implicit default: bare `/abcd:capture` is
+what renders status.
 
-**`/abcd:capture link`** adds or removes `blocked_by` edges on a record that
-already exists (iss-2609200951237670). The capture-time `--blocked-by` flag can
+**Linking** adds or removes `blocked_by` edges on a record that
+already exists (iss-2609200951237670). The capture-time blocked-by flag can
 name only a record that is already in the ledger, which serves one ordering
 and not the ordinary one: the blocker captured after the blocked record, or in
-another lane. `link <iss-N> --blocked-by <iss-M,...>` appends to the record's
-list and `--unblock <iss-M,...>` removes from it; at least one is required,
+another lane. Linking a record to one or more blockers appends to the record's
+list and unblocking removes from it; at least one is required,
 both together apply unblock-then-block, and the subject may sit in any status
 folder and never moves, because a resolved record's edges are history and stay
 editable. The targets go through the ONE validator the capture flag runs — id
 shape, no self-edge, existence in any status folder, duplicates collapsed — so
 the two verbs cannot come to differ about what an edge may name, and the
 refusal for an absent target names where the field is documented, on both
-verbs. An `--unblock` of an edge the record does not hold is refused naming
-the current list. The write is the in-place frontmatter rewrite `promote`
+verbs. An unblock of an edge the record does not hold is refused naming
+the current list. The write is the in-place frontmatter rewrite promotion
 stamps with, so the derived-priority reader picks the change up unchanged.
 
-**`/abcd:capture mentions`** is the advisory listing (iss-2609100507421759):
+**The mentions listing** is advisory (iss-2609100507421759):
 open records whose ids are named by the default branch's commit messages, with
 the evidence that named them and no resolution behind them. It reads the ledger
 and the history and writes nothing — it never resolves and never moves a record,
@@ -95,40 +95,40 @@ forward-looking half is a merge gate (RS004 in
 `scripts/check-issue-resolution.sh`), which cannot reach the history a
 repository already has.
 
-**`/abcd:capture promote`** graduates an issue, or an accepted reading item,
+**Promotion** graduates an issue, or an accepted reading item,
 into an intent draft. One invocation mints the draft under `intents/drafts/`
 with the slug reused and the body a by-id pointer rather than a copy, and
 stamps the issue's `promoted_to` with the minted id; the draft's
 `promoted_from` is the reciprocal edge. It works from any status folder,
-because promotion is orthogonal to fix-status. `--grounds` is recorded when
+because promotion is orthogonal to fix-status. Grounds are recorded when
 given on the issue route and refused on the reading route, whose conjecture
 already stands in the item's disposition; its absence is reported rather than
 refused, parked by iss-2609091009111294 until the reading work is rethought.
-A value that IS given is held to the vocabulary and the floor as before. `--intent` is the stamp-only mode that links an
+A value that IS given is held to the vocabulary and the floor as before. Naming an existing intent is the stamp-only mode that links an
 existing draft: the repair path after a post-mint stamp failure, which the
 error names.
 
-**`/abcd:capture disposition`** records the researcher's answer to one reading
+**A disposition** records the researcher's answer to one reading
 item as a record of its own, keyed to the item (itd-180, spc-58). Grounds are
 required on every state except a hold, which requires an exit condition
 instead. Which states are available varies by the item's position, read off the
 keyed reading record. Once an item already carries a standing answer, a new one
-must cite it with `--supersedes`: that is the only exit from a hold, and what
+must cite it as superseded: that is the only exit from a hold, and what
 makes the standing disposition the one no sibling supersedes. An item the
-researcher recognises as one that has come round before says so with `--recurs`,
+researcher recognises as one that has come round before says so as a recurrence,
 naming the earlier items it recurs from; that is a recorded recognition, never a
 join a machine derived. Two hold-shaping flags are reserved and dormant, and a
 populated value is refused until activation is ruled.
 
-**`/abcd:capture resolve`** marks an issue resolved and moves it to
+**Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with
 nothing written; grounds are recorded when given, their absence parked by
 iss-2609091009111294. Three optional provenance flags name what fixed
-it: an intent, a spec, or a commit sha. A fourth, `--shipped-in`, is migration
+it: an intent, a spec, or a commit sha. A fourth, the shipped-in release, is migration
 use only: it names the release that already carried the work, so the record
 stays out of the current cut.
 
-**`/abcd:capture wontfix`** records an explicit non-action decision and moves
+**Declining** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
 text only: the token stays `declined`, because a wontfix **is** that non-action.
 
@@ -179,7 +179,7 @@ related_intents: [itd-N, ...]
 related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]
 synthesis_clusters: [<label>, ...]  # optional synthesis grouping
-blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by `link`; blocked/priority is derived, never stored
+blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by linking; blocked/priority is derived, never stored
 promoted_to: itd-M         # set when the issue is promoted to an intent
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
@@ -204,13 +204,10 @@ clock at write-up. Where that source names only a day, the stamp is midnight UTC
 of that day: the day is the whole of the claim, and midnight makes it an instant
 without inventing an hour nobody recorded.
 
-**Verify a `--commit` stamp is reachable before writing it.** The flag is
+**Verify a commit stamp is reachable before writing it.** The flag is
 shape-checked and nothing more, so a stamp that points at nothing reads exactly
-like a good one. The check belongs at write time:
-
-```sh
-git merge-base --is-ancestor <sha> origin/main
-```
+like a good one. The check belongs at write time: ask git's merge-base whether
+the sha is an ancestor of `origin/main`.
 
 Whether a branch's own shas survive a merge depends on the merge method, and
 that is a repository setting which can change without announcement. A habit
@@ -219,14 +216,14 @@ above is correct under both. Where a merge produces two reachable candidates,
 prefer the commit that carries the change over the merge commit, whose diff is
 the whole pull request rather than the fix.
 
-The record body is free-form. One part of it is not, and it is where `--grounds`
-lands.
+The record body is free-form. One part of it is not, and it is where grounds
+land.
 
 ### `## Grounds` is tool-owned and append-only
 
-`promote`, `resolve` and `wontfix` write the conjecture they were given into an
+Promotion, resolving and declining write the conjecture they were given into an
 append-only `## Grounds` section in the record body, one top-level bullet per
-entry in the form `- <token>: <text>`. A `wontfix` that took no `--grounds` at
+entry in the form `- <token>: <text>`. A wontfix that was given no grounds at
 all still gets a bullet, because a wontfix is the non-action the `declined`
 token names. Appending rather than setting is the point: a later triage route
 adds a bullet beside the one an earlier route recorded, and neither overwrites
@@ -260,12 +257,13 @@ for ad-hoc scribbles.
 - **Given** an abcd-installed repo, **when** the user runs `/abcd:capture
   "<text>"`, **then** a new file exists under `.abcd/work/issues/open/` with
   frontmatter populated and the captured text in the body.
-- **Given** an existing open issue, **when** the user runs `/abcd:capture
-  resolve` with an impact, and grounds if they are given (impact is required
+- **Given** an existing open issue, **when** the user resolves it with an
+  impact, and grounds if they are given (impact is required
+
   and never defaulted),
   **then** the file moves to `resolved/` with the resolution recorded.
 - **Given** an existing issue in any status folder, **when** the user runs
-  `/abcd:capture promote` with grounds, **then** one invocation files a new
+  a promotion with grounds, **then** one invocation files a new
   draft intent with the slug reused and the body a by-id pointer, stamps the
   issue's `promoted_to`, and leaves the issue in its folder; an issue already
   promoted is refused with the existing intent id, and a post-mint stamp failure
@@ -282,9 +280,9 @@ for ad-hoc scribbles.
   refusal covers a standing `rejected`, `declined` or `held`, since only
   `accepted` licenses an action.
 - **Given** two existing issues in any status folders, **when** the user runs
-  `/abcd:capture link <iss-N> --blocked-by <iss-M>`, **then** `iss-M` is
+  a link naming `iss-M` as the blocker of `iss-N`, **then** `iss-M` is
   appended to `iss-N`'s `blocked_by` in place, the record stays in its folder,
-  and the next listing derives the block from it; `--unblock <iss-M>` removes
+  and the next listing derives the block from it; unblocking `iss-M` removes
   the edge again, and an absent target, a self-edge or an unblock of an edge
   the record does not hold is refused with nothing written.
 - **Given** a ledger of open issues, **when** the user lists them, **then** the
@@ -300,14 +298,15 @@ for ad-hoc scribbles.
 The library primitives and the command flow are the Go package
 `internal/core/capture` (allocator, find, read, build, mutate; capture,
 link, resolve, wontfix, list, status), a port of predecessor-store primitives.
-`promote` is native (spc-24, itd-119): it mints the draft and stamps both edges
+Promotion is native (spc-24, itd-119): it mints the draft and stamps both edges
 in one invocation, superseding an earlier command-orchestrated flow that left
 the back-link to be written by hand.
 
 Reading records and dispositions (itd-180, spc-58) have their schemas in
 `internal/core/issueschema`, with one writer and refusing gate in
 `internal/core/capture/reading.go`. The **producer** of a reading item is not
-this surface and it ships: `abcd reading ingest` owns the output contract and is
+this surface and it ships: the reading verb's ingest owns the output contract and is
+
 the only caller that writes them (see [`23-reading.md`](23-reading.md)). That
 sequencing is spc-58's own, and it is why the ingest primitive is exported
 rather than made a verb of this surface.

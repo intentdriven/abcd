@@ -34,15 +34,16 @@ surface (itd-16's hash-chain fidelity checks, registered in
 [`02-constraints/04-naming.md`](../02-constraints/04-naming.md)), not to the
 conformance lint.
 
-`lint outbound` is the `gate` bucket rather than `lint`, and the distinction is
+The outbound check is the `gate` bucket rather than `lint`, and the distinction is
+
 the one adr-40 draws: the parent REPORTS on a repository and leaves the decision
 with a human, while this one is wired into CI to make a binary pass/fail decision
 about a single artefact. Its subject differs too — the parent's subject is this
 repository, the sub-verb's is a piece of text the caller hands it — which is why
-it takes `--root` for the scanner configuration explicitly rather than inheriting
+it takes the root for the scanner configuration explicitly rather than inheriting
 the parent's.
 
-## `lint outbound` — the outbound-policy gate
+## The outbound-policy gate
 
 The outbound policy (`scanner.OutboundPolicy`, AGENTS.md § Attribution and
 acknowledgements) bans two shapes from public text: a live agent-session URL and a
@@ -87,9 +88,9 @@ The exit code is the decision, and it is Conftest's tri-state: `0` clean, `1`
 warnings only, `2` any error. That is the shape a CI job can branch on without
 parsing anything.
 
-Without `--json`, the verb prints a grouped, doctor-style report: a severity
+In its plain form, the verb prints a grouped, doctor-style report: a severity
 glyph, the rule id, `file:line`, the message, and the fix indented under it,
-closing on a count. With `--json` it emits `findings` and `skipped`. Each
+closing on a count. The JSON form emits `findings` and `skipped`. Each
 finding carries a stable `ruleId`, a `severity` (`error` or `warn`), a `file`, a
 `message`, a `fix`, and a `policyInfo` rationale.
 
@@ -100,7 +101,8 @@ field's presence and never on the rule id. And `skipped` names rules whose
 enablement condition was not met (a docs rule in a repo with no `docs/`), so a
 not-applicable rule reads as skipped rather than as passed or failed.
 
-`--root` lints a repo other than the current working directory.
+The verb can lint a repo other than the current working directory.
+
 
 **No gate in this repository invokes it.** The verb backs onboarding and runs
 when a human types it; wiring it into CI is a separate decision, tracked as

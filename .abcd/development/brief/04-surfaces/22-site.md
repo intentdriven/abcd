@@ -13,10 +13,10 @@ What it buys: the site cannot say anything the repository does not, and nobody h
 to remember to update it.
 
 The bare form is **strictly read-only**: it reports what the repository has
-declared and what the output directory holds. `build` is the render, and it writes
-only inside the directory it is given; `check` gates a rendered tree, and renders
+declared and what the output directory holds. The build is the render, and it writes
+only inside the directory it is given; the check gates a rendered tree, and renders
 first when the directory holds no `index.html` — the one write path besides
-`build`, confined to the same directory.
+the build, confined to the same directory.
 
 It answers a different question from `/abcd:launch`: `launch` prepares what a
 release ships to users who install the binary; `site` prepares what a reader sees
@@ -57,20 +57,17 @@ reader's theme; rasters are copied verbatim. The build never draws.
 
 ## Behaviour
 
-```bash
-abcd site                    # what is declared, and what the last build left
-abcd site build              # render into ./site
-abcd site build --preview    # stamp the render as unreleased at this commit
-abcd site check              # gate the rendered tree; exit 1 on findings
-```
+Bare, the verb reports what is declared and what the last build left. The build
+renders into `./site`, and can stamp the render as an unreleased preview at this
+commit; the check gates the rendered tree and exits 1 on findings.
 
-Both write paths take `--out` to name a different directory, and the bare board
+Both write paths can be pointed at a different directory, and the bare board
 reports on whichever directory it is pointed at.
 
 The build stamp is injectable in all three of its parts — version, commit and date
 — so a caller that knows better than the defaults can say so. That is what keeps
 the render free of a clock read, and what lets a test pin the whole export byte for
-byte. `--preview` is for an untagged tree: the stamp renders the word `unreleased`
+byte. The preview stamp is for an untagged tree: it renders the word `unreleased`
 with the commit in place of a version, the record export marks itself a preview,
 and pinning a version alongside it refuses.
 
@@ -113,11 +110,13 @@ entry and no links.
 
 ## The gates
 
-`abcd site check` runs seven independent gates over a rendered tree and reports
+The check runs seven independent gates over a rendered tree and reports
+
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
-loop-figure labels. `abcd site check --help` names the same seven, kept beside the
+loop-figure labels. The check's own help text names the same seven, kept beside the
+
 code that runs them.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and

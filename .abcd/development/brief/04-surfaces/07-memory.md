@@ -53,10 +53,10 @@ spirit: a fresh index shows per-source warn and block headroom, a drifted one
 says to run the lint, and an absent or unreadable one says the headroom is
 unavailable rather than guessing at it.
 
-**`/abcd:memory ingest <path-or-https-url>`** registers an external source as
-typed pages with citation frontmatter, and appends to the ingest log. The host
-agent is the distiller: it reads the source, produces the distilled pages, and
-passes them through `--pages-json`, which is load-bearing and required for a
+**Ingesting a source** — a local path or an https URL — registers it as typed
+pages with citation frontmatter, and appends to the ingest log. The host agent
+is the distiller: it reads the source, produces the distilled pages, and passes
+them to the binary as JSON, which is load-bearing and required for a
 source the store has not seen (an already-known source re-ingests from the
 registry without it). The binary computes provenance, licence and content hash,
 validates every page, and writes atomically.
@@ -69,19 +69,19 @@ stripped before the fetched address becomes the stored origin, and masked in
 every fetch-failure message. And PDF is a later-phase seam: the binary rejects
 PDF sources with a clear error until a text-extraction dependency is wired.
 
-**The original is not stored by default.** `--keep-original` opts into keeping
+**The original is not stored by default.** Ingest can opt into keeping
 it under `.abcd/memory/sources/`. The licence gate that would police publishing
 such a file belongs to the lifeboat, not to launch (adr-28): launch excludes
 `.abcd/**` wholesale, so it never publishes the files the gate checks. That gate
 is a later phase, and the shipped ingest classifies restrictive licences without
 ever refusing on them.
 
-**`/abcd:memory ask <question>`** synthesises an answer with per-citation
-provenance, every citation naming its source class, citation and content hash.
-`--file-back` with `--page-json` files the host-produced answer back as a new
-memory page; `--top-n` sets retrieval depth.
+**Asking a question** synthesises an answer with per-citation provenance, every
+citation naming its source class, citation and content hash. The host-produced
+answer can be filed back as a new memory page, and the retrieval depth is the
+caller's to set.
 
-**`/abcd:memory lint`** is the curator health-check over the whole store. It
+**The store lint** is the curator health-check over the whole store. It
 always crawls the full store, rebuilds the regenerable coverage index, and
 writes its findings to a run log under `.abcd/.work.local/logs/memory/`. It
 mutates no memory-store state, and its exit code is the decision: blockers exit
@@ -115,12 +115,12 @@ computed at lint time. Nothing enforces it at ingest.
 
 ## What ships, and what does not
 
-The write core (bare, `ingest`, `ask`) and the lint family are on the binary.
+The write core (bare, ingest and ask) and the lint family are on the binary.
 Contradictions are rendered by the write core's own reconciliation and surfaced
 by the bare render; orphan and stale-claim audits are deferred.
 
-Not built: a curator role on the `principle-distiller` agent (the agent and its
-`disembark principles` verb ship; this role does not), ingest and ask run
+Not built: a curator role on the `principle-distiller` agent (the agent and the
+disembark sub-verb it feeds ship; this role does not), ingest and ask run
 reports, user-scope memory outside the repo, and the automatic extraction of a
 spec's modification grammar into the store at spec completion.
 
@@ -134,10 +134,11 @@ spec's modification grammar into the store at spec completion.
   packer (adr-28). The recovery-humility framing applies: the lifeboat is the
   floor of recoverable theory, not the theory.
 - **`/abcd:embark`** carrying the store forward is designed behaviour. The
-  source-class enum carries forward, and the receiver runs `memory lint` after
+  source-class enum carries forward, and the receiver runs the store lint after
   unpacking to check that quotation budgets and licences have not drifted.
 - **`/abcd:launch`** does not consume the licence gate at all: the public
-  payload excludes `.abcd/**` wholesale as policy, so `launch --dry-run`
+  payload excludes `.abcd/**` wholesale as policy, so the launch preview
+
   surfaces no licence verdict (see
   [`04-launch.md § 2`](04-launch.md#2-curated-release-artefact-default-deny)).
 

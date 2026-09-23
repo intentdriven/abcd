@@ -37,7 +37,7 @@ through it.
 
 ## The invocation carries no free text
 
-`assemble` takes a position and a target state, and nothing else. Both are closed
+Assembly takes a position and a target state, and nothing else. Both are closed
 in shape: the position is one of four registered tokens, and the target is `HEAD`
 or a hexadecimal commit sha. A branch name or a tag is refused as mutable, because
 the manifest's re-runnability rests on a reference that cannot move, and a
@@ -105,21 +105,21 @@ entry with the signal by which a reader detects it.
 
 ## Two artefacts, and where they land
 
-`assemble` writes the assembled input and the manifest as two separate files: the
-input goes to a reader, the manifest stays with the auditor. Without `--out` they
-land in the local-tier run directory named after the run. `--out` names a
+Assembly writes the assembled input and the manifest as two separate files: the
+input goes to a reader, the manifest stays with the auditor. By default they
+land in the local-tier run directory named after the run. The caller can name a
 directory instead, which must be empty or absent, because one run's artefacts are
 one run's evidence; each file is written through a temporary name and renamed into
-place. With `--dry-run` and no `--out`, nothing is written and the result is
-rendered only.
+place. A dry run with no directory named writes nothing and renders the result
+only.
 
-**`--out` costs the run its ingest.** `ingest` resolves a run's manifest from the
-local-tier run directory and nowhere else, and `assemble` parks no copy there when
-`--out` sent the pair elsewhere. A run assembled to any other directory refuses at
+**Naming an output directory costs the run its ingest.** Ingest resolves a run's
+manifest from the local-tier run directory and nowhere else, and assembly parks no
+copy there when the pair was sent elsewhere. A run assembled to any other directory refuses at
 ingest, and bare `abcd reading` does not list it among the staged runs either,
-because that listing reads the same one directory. `--out` is for a run whose
+because that listing reads the same one directory. A named directory is for a run whose
 artefacts are being inspected or archived; a run meant to come back through
-`ingest` lets the default run directory name itself.
+ingest lets the default run directory name itself.
 
 An output directory the include table can reach is refused when it is named,
 because writing a run where the table reaches it commits the next run's
@@ -132,7 +132,7 @@ checkouts assembling in the same window cannot converge on one id.
 
 ## What a reading would cost
 
-Every assembly, `--dry-run` included, reports the size of the item text it
+Every assembly, a dry run included, reports the size of the item text it
 assembled — bytes and an estimated token count, in total and per kind — so what a
 reading would be handed is known before one is commissioned (itd-198). The estimate
 is byte-derived rather than a tokenizer's count, and the render says so beside the
@@ -157,9 +157,9 @@ At the entailment position the report adds that reading's yield bound: How many 
 the projected intents carry a mechanism claim, how many state that they have none,
 and how many carry neither (readings companion 6.6). No other position renders it.
 
-## `ingest` checks what the reading was licensed to produce
+## Ingest checks what the reading was licensed to produce
 
-`ingest` validates the JSON a reading returned and writes its reading records. It
+Ingest validates the JSON a reading returned and writes its reading records. It
 is the output-contract idiom the repository already carries — an agent emits JSON,
 a deterministic verb validates it, the verb writes the record — and it adds a check
 no structural schema performs: what the reading was **licensed** to produce, not
@@ -193,7 +193,8 @@ regimes declare a row; the generative regime declares none, so no name is reserv
 at the widening position. That is designed rather than overlooked: the generative
 body schema is two fields, so any other key is refused as unknown regardless, and
 the generative licence is the widest of the four, with its constraint falling at
-admission rather than at ingest. The shipped `reading ingest --help` states it
+admission rather than at ingest. The shipped help text for ingest states it
+
 outright, and the consequence to hold is that at one of the four positions this
 gate performs no check of its own.
 

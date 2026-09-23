@@ -300,11 +300,14 @@ var (
 //   - a backticked sub-verb name below one of the chapter's own verbs
 //     (“ `list` “ in the capture chapter).
 //
-// The `## Sub-verbs` section is exempt: its table is compared against the
-// command-tree snapshot by surface_coverage and carries the adr-40 bucket, which
-// the tree does not record, so it is a checked register rather than a
-// hand-written shape claim. A plain word ("listing", "the cut") is not a
-// spelling and is how prose refers to a behaviour.
+// The `## Sub-verbs` section's table and its standard blockquote note are
+// exempt: the table is compared against the command-tree snapshot by
+// surface_coverage and carries the adr-40 bucket, which the tree does not
+// record, so it is a checked register rather than a hand-written shape claim;
+// the note names the bucket vocabulary, some of whose words are also sub-verb
+// names. Any other prose in that section is checked like the rest. A plain word
+// ("listing", "the cut") is not a spelling and is how prose refers to a
+// behaviour.
 func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	var paths []string // sub-verb command paths without the root word
 	for _, c := range tree {
@@ -314,7 +317,7 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 		}
 	}
 	// Longest first, so a nested path is reported before the prefix it contains.
-	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	sort.SliceStable(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
 
 	var bare []string
 	for _, o := range own {
@@ -323,64 +326,67 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 		}
 		for _, c := range tree {
 			if strings.HasPrefix(c.Path, o+" ") {
-				bare = append(bare, "`"+c.Path[len(o)+1:]+"`")
+				bare = append(bare, c.Path[len(o)+1:])
 			}
 		}
 	}
 	sort.Strings(bare)
 
-	var out []ShapeClaim
+	// The exempt lines are blanked rather than removed, so line numbers hold and
+	// a spelling cannot bridge from checked prose into an exempt line.
+	lines := strings.Split(prose, "\n")
 	inSubVerbs := false
-	for i, line := range strings.Split(prose, "\n") {
+	for i, line := range lines {
+		t := strings.TrimSpace(line)
 		if headingRe.MatchString(line) {
-			inSubVerbs = subVerbHeadingRe.MatchString(strings.TrimSpace(line))
+			inSubVerbs = subVerbHeadingRe.MatchString(t)
 		}
-		if inSubVerbs {
-			continue
-		}
-		for _, m := range flagSpelling.FindAllStringSubmatch(line, -1) {
-			out = append(out, ShapeClaim{Line: i + 1, Spelling: m[2]})
-		}
-		claimed := line
-		for _, p := range paths {
-			for {
-				at := wordIndex(claimed, p)
-				if at < 0 {
-					break
-				}
-				out = append(out, ShapeClaim{Line: i + 1, Spelling: p})
-				claimed = claimed[:at] + strings.Repeat(" ", len(p)) + claimed[at+len(p):]
-			}
-		}
-		for _, b := range bare {
-			if strings.Contains(line, b) {
-				out = append(out, ShapeClaim{Line: i + 1, Spelling: b})
-			}
+		if inSubVerbs && (strings.HasPrefix(t, "|") || strings.HasPrefix(t, ">")) {
+			lines[i] = ""
 		}
 	}
+	text := strings.Join(lines, "\n")
+	lineOf := func(offset int) int { return strings.Count(text[:offset], "\n") + 1 }
+
+	var out []ShapeClaim
+	for _, m := range flagSpelling.FindAllStringSubmatchIndex(text, -1) {
+		out = append(out, ShapeClaim{Line: lineOf(m[4]), Spelling: text[m[4]:m[5]]})
+	}
+	// A command path is matched across a soft line wrap: markdown prose wraps
+	// wherever the line fills, so `capture` ending one line and `resolve`
+	// opening the next is still the spelling.
+	masked := text
+	for _, p := range paths {
+		re := regexp.MustCompile(`(^|[^\w-])(` + strings.ReplaceAll(regexp.QuoteMeta(p), " ", `\s+`) + `)([^\w-]|$)`)
+		for {
+			m := re.FindStringSubmatchIndex(masked)
+			if m == nil {
+				break
+			}
+			out = append(out, ShapeClaim{Line: lineOf(m[4]), Spelling: p})
+			masked = masked[:m[4]] + blankKeepingNewlines(masked[m[4]:m[5]]) + masked[m[5]:]
+		}
+	}
+	for _, b := range bare {
+		re := regexp.MustCompile("`" + strings.ReplaceAll(regexp.QuoteMeta(b), " ", `\s+`) + "`")
+		for _, m := range re.FindAllStringIndex(text, -1) {
+			out = append(out, ShapeClaim{Line: lineOf(m[0]), Spelling: "`" + b + "`"})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Line < out[j].Line })
 	return out
 }
 
-// wordIndex finds p in s bounded on both sides by a character that cannot
-// continue a command word.
-func wordIndex(s, p string) int {
-	from := 0
-	for {
-		at := strings.Index(s[from:], p)
-		if at < 0 {
-			return -1
+// blankKeepingNewlines replaces every byte of s but a newline with a space, so
+// a matched span cannot match again and offsets and line numbers hold.
+func blankKeepingNewlines(s string) string {
+	b := []byte(s)
+	for i := range b {
+		if b[i] != '\n' {
+			b[i] = ' '
 		}
-		at += from
-		end := at + len(p)
-		if (at == 0 || !isWordByte(s[at-1])) && (end == len(s) || !isWordByte(s[end])) {
-			return at
-		}
-		from = at + 1
 	}
-}
-
-func isWordByte(c byte) bool {
-	return c == '-' || c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+	return string(b)
 }
 
 // RegisterRow is one row of the surfaces register.

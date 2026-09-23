@@ -34,35 +34,35 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 | `staged` | — | shipped |
 
 
-- **`list`** shows what is stored for this repo, newest first, each record
+- **Listing** shows what is stored for this repo, newest first, each record
   reporting when it was captured, its session id and source kind, and how many
   secrets and home paths were redacted out of it. An empty list means nothing is
   stored yet.
-- **`show`** prints one record's metadata and its full **redacted** body,
+- **Showing** prints one record's metadata and its full **redacted** body,
   matched by session id (newest when a session has several records) or by record
   filename.
-- **`capture`** redacts and stores a raw transcript read from a file or stdin.
+- **Capturing** redacts and stores a raw transcript read from a file or stdin.
   It is fail-closed on redaction and idempotent on the (content hash, session
   id, kind) triple, so re-capturing identical content under the same session and
   kind is a no-op while the same content under a different session id writes a
   new record and a second session is never mis-attributed to the first.
-  `--session` names the session the record belongs to: it defaults to the
+  The caller names the session the record belongs to: it defaults to the
   transcript's filename, and it is required when the transcript arrives on
-  standard input, where there is no filename to read it from. `--kind` says
-  where the transcript came from, a session abcd captured itself or an import of
+  standard input, where there is no filename to read it from. The caller also
+  says where the transcript came from, a session abcd captured itself or an import of
   a prior tool's transcripts, and it defaults to the first.
-- **`staged`** lists transcripts that ended but are not yet redacted into the
+- **The staged listing** names transcripts that ended but are not yet redacted into the
   store. A non-empty list means unredacted transcript text is on disk.
-- **`drain`** redacts and stores every staged transcript, then deletes the raw
+- **Draining** redacts and stores every staged transcript, then deletes the raw
   copy. It exits non-zero when anything failed, and this verb runs the backlog to
   completion where the session-start hook drains a bounded number.
 
-- **`/abcd:history ingest [<path>...]`** — redact and store transcripts that are
-  already on disk and were never captured. The **destination repository is an
-  operand, never the working directory**: `--into <repo-root>` is REQUIRED and
+- **Ingesting** — redact and store transcripts that are already on disk, at the
+  paths given, and were never captured. The **destination repository is an
+  operand, never the working directory**: naming it is REQUIRED and it
   has no default, and the run prints which repository it wrote into, so a
   repository's own redaction configuration governs its own transcripts and can
-  never be applied to another's. `--into .` is a fine answer; an unasked
+  never be applied to another's. Naming `.` is a fine answer; an unasked
   question is not. Sources are the paths given, or the `ingest_roots` declared in
   `.abcd/config/history.json`; no vendor directory is ever assumed. The owning
   repository is resolved from the `cwd` recorded inside the transcript lines,
@@ -73,27 +73,27 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   one recorded in two repositories is skipped rather than split. A transcript
   whose repository is not on this machine is an **orphan: ignored, reported,
   never guessed**, and adopted only when this repository claims its project name
-  in `adopt_projects` or `--adopt`; an adopted record carries
+  in `adopt_projects` or on the command line; an adopted record carries
   `adopted_project`. Setting `on_orphan` to `prompt` makes the CLI ask —
   core never prompts. Ingesting the same material twice adds nothing.
-- **`/abcd:history migrate`** — repair the records filed under the pre-lineage
-  composite session id (`<truncated-parent>--agent-<agent>`). The full parent
+- **Migrating** — repair the records filed under the pre-lineage
+  composite session id (the truncated parent, then the agent marker and the agent). The full parent
   session id is recovered from the record's **own body**, which still carries it
   on every transcript line, and the stored prefix is only the check: a body that
   disagrees leaves the record untouched and is reported. `source_sha256` and the
   filename are not touched, so a migrated record still dedups and every path a
-  reader holds still resolves. It **reports by default and writes only under
-  `--apply`**, because the store holds the only copy of these records, and a
-  second run is a no-op. `--sidecar-root` (or the declared `ingest_roots`) names
+  reader holds still resolves. It **reports by default and writes only when told
+  to apply**, because the store holds the only copy of these records, and a
+  second run is a no-op. A sidecar root (or the declared `ingest_roots`) names
   where the harness's per-agent metadata is searched for, by filename; where it
   answers, the record gains the agent type, spawn depth, spawning tool call and
   parent agent, and where it does not the record says its lineage is unknown
   through `spawn_attribution`.
 
-- **`/abcd:history reconstruct <session-id>`** — render one session as **one
+- **Reconstructing** — render one session, named by its id, as **one
   self-contained artefact** (`<session>.md`) and **one telemetry file**
-  (`<session>.telemetry.json`), written into `--out` (default the working
-  directory) or to stdout with `--out -`. The artefact is Markdown because its
+  (`<session>.telemetry.json`), written into an output directory (default the working
+  directory) or to stdout. The artefact is Markdown because its
   consumer is a model being handed the session as context; it names its records
   by basename and carries no store path, so it reads with the store gone.
 
@@ -107,9 +107,9 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   main-thread turns that ran before those conclusions existed. Concurrency is
   read off the table; section order asserts nothing about time. An agent nothing
   could place goes under **Unattributed sub-agents**, last and labelled.
-  `--mode spine` keeps the thread whole and reduces each delegate to its
+  The spine mode keeps the thread whole and reduces each delegate to its
   instruction and its conclusion, for when the full artefact will not fit the
-  context it is read into; `--max-block-bytes` caps one rendered tool input or
+  context it is read into; a block-size cap limits one rendered tool input or
   result, marked where it happens and counted in the telemetry.
 
   The telemetry file carries the span, turn counts, token usage, a per-tool
@@ -126,29 +126,29 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   runs.
 
 Bare `abcd history` prints command usage rather than a status board. The global
-`--json` flag emits machine-readable output for every sub-verb.
+JSON form emits machine-readable output for every sub-verb.
 
-`list`, `show` and `staged` **add nothing to the corpus**: they record no
+Listing, showing and the staged listing **add nothing to the corpus**: they record no
 transcript and change no stored record. They are not side-effect-free, and the
 distinction is worth holding. Every history verb reaches the store through one
 resolve seam, and that seam creates the store chain when it is absent and moves
-a corpus left at the legacy location into it. So a `history list` on a fresh
-machine leaves the whole default chain behind it, and a `history staged` on a
+a corpus left at the legacy location into it. So a listing on a fresh
+machine leaves the whole default chain behind it, and a staged listing on a
 machine carrying a legacy corpus leaves that corpus moved and a tombstone at the
 old path.
 
 ## Why capture is split across two hooks
 
-`abcd hook session-end` only **stages** the raw transcript beside the records.
+The session-end hook entrypoint only **stages** the raw transcript beside the records.
 Redaction is not free, and the host cancels a shutdown hook rather than wait for
 it, so redacting at exit silently dropped every transcript past a couple of
 megabytes: the long, dense sessions most worth keeping
-(iss-2608230817034768). `abcd hook subagent-stop` stages on the same terms when a
+(iss-2608230817034768). The subagent-stop entrypoint stages on the same terms when a
 sub-agent finishes, writing that agent's own transcript with the lineage that
 says which session and which agent produced it — and its exit code matters in a
 way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
-every failure path there is a diagnostic and an exit 0. `abcd hook session-start`
-drains staging into the store through the same fail-closed `capture` path, where
+every failure path there is a diagnostic and an exit 0. The session-start entrypoint
+drains staging into the store through the same fail-closed capture path, where
 there is a real time budget; it takes main-thread transcripts before sub-agent
 ones and bounds the pass by bytes as well as count, so a truncated pass stores
 the part that makes the rest legible. Whatever the budget leaves is reported
@@ -180,7 +180,7 @@ Three mechanisms now bound it, and a fourth names the case none of them can
 clear:
 
 - **A drain runs while a session is LIVE**, not only at its start:
-  `abcd hook prompt-router` (`UserPromptSubmit`) drains one entry and at most
+  the prompt-router entrypoint (`UserPromptSubmit`) drains one entry and at most
   half a megabyte per prompt, so a session that spawns sub-agents redacts its own
   branches as it goes. Everything it says goes to stderr, never to the hook's
   stdout, which is model context.
@@ -190,7 +190,7 @@ clear:
   deleted, never redacted down, never degraded. Losing the only copy is worse
   than keeping it, which is the premise staging is built on.
 - **Session start reports EVERY repository in the store**, not just the one the
-  operator is standing in, and `abcd history staged --all-repos` is the
+  operator is standing in, and the all-repositories form of the staged listing is the
   read-only verb behind the same survey. A per-repo listing is blind to exactly
   the pile that grows: the one nobody opens. The survey carries counts, sizes and
   repository names — never another repository's session ids.
@@ -199,7 +199,7 @@ clear:
   own bytes, so every future drain reaches the same refusal; such an entry moves
   to `quarantine/` (also `0o700`/`0o600`) with a written reason and leaves the
   queue. It is still raw, and nothing removes it but a person running
-  `abcd history discard <file> --yes`. A retryable failure — an unwritable store
+  the history verb's confirmed discard on that file. A retryable failure — an unwritable store
   path, a corrupt sidecar an operator can repair — stays staged and stays queued.
 
 Each staged transcript carries a `.stage.json` sidecar holding its session and
@@ -230,8 +230,8 @@ is read directly and no cross-repo filter exists to get wrong.
 
 **The store creates itself.** `internal/core/history` owns the store path and
 bootstraps it on first use; no install step is a precondition of capture. This
-is the resolution of iss-95: when `abcd ahoy install` had to have run first,
-`hook session-end` on a machine where it had not logged a line to stderr, exited
+is the resolution of iss-95: when the ahoy installer had to have run first,
+the session-end entrypoint on a machine where it had not logged a line to stderr, exited
 0 (a shutdown hook must) and stored nothing, so the store read as wired while
 the corpus never accrued. Creation needs no authority the caller does not
 already hold, and it keeps the discipline it replaces: every level of the chain
@@ -271,8 +271,8 @@ transcript is redacted on write, the redaction counts are recorded on the
 record, and a redaction failure refuses the write rather than storing
 unredacted content.
 
-The corpus has three write paths that all redact: the explicit `capture` verb,
-`drain`, and the automatic session-start drain. The migration above is a fourth
+The corpus has three write paths that all redact: the explicit capture,
+the explicit drain, and the automatic session-start drain. The migration above is a fourth
 path into the store, reached from every verb rather than from those three, and
 the one that does not redact: it moves bytes verbatim, because a record at the
 legacy path was redacted by the same engine when it was first stored, and a
@@ -280,7 +280,7 @@ staged file moves into staging, where the next drain redacts it exactly as it
 would a freshly staged one. Relocating a corpus is not the moment to rewrite it.
 
 Staging does not weaken the boundary. Staged bytes are raw, but staging is
-**not the store**: nothing reads it but `drain`, and what reaches the records
+**not the store**: nothing reads it but a drain, and what reaches the records
 directory is still redacted or absent. A refused drain keeps the staged copy
 rather than deleting it, because discarding the only copy abcd holds would
 convert a reported refusal into exactly the silent permanent loss staging exists
@@ -292,7 +292,8 @@ quietly on disk.
 The store is the substrate a later harvest is meant to read: history captures
 raw sessions, and the design is that `memory` distils curated knowledge out of
 them. **Nothing does that yet.** No shipped surface reads the store but
-`history` itself, and `memory ingest` takes a document or a web address, never a
+`history` itself, and the memory store's ingest takes a document or a web address, never a
+
 stored transcript. The store is keyed per repo, so transcripts never leak across
 projects.
 

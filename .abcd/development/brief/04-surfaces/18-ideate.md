@@ -66,11 +66,10 @@ instructs the host to strip authorship and prior-leg framing before the hand-off
 
 ## Behaviour
 
-```bash
-abcd ideate record <idea-slug> --verdict-json <file|-> --json
-```
+The recorder takes the idea's slug and the verdict JSON, from a file or stdin.
 
-`--verdict-json` is **required**. There is no evidence-only fallback, as there is
+The verdict is **required**. There is no evidence-only fallback, as there is
+
 for three of `disembark`'s four synthesis verbs, because there is no evidence-only
 verdict an idea could have: a binary that invented one would be doing the judging.
 

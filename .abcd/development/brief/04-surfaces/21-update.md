@@ -1,6 +1,6 @@
 # `/abcd:update` — Complete a Chosen Update
 
-`abcd version --check` says a newer release exists. `/abcd:update` is the one
+The online check of `abcd version` says a newer release exists. `/abcd:update` is the one
 command that acts on that: it fetches the release, verifies the platform binary
 against that release's own checksums, and swaps the installed copy atomically. A
 person types one verb and either has the new version or has a refusal that names
@@ -8,7 +8,7 @@ the command that owns the file instead.
 
 The verb is the explicit ask. abcd never checks for or applies updates on its own
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb
-and `version --check` are the only two **commands** that reach the release origin,
+and the online version check are the only two **commands** that reach the release origin,
 each only when invoked
 ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md),
 spc-32).
@@ -20,17 +20,14 @@ root holds no binary, so it reaches the origin without the user naming a network
 action in that moment. adr-38 admits it as a tier of its own: provisioning
 completes a chosen update, it never discovers one.
 
-`version --check` hands over to this verb: when an update is available, its
+The online version check hands over to this verb: when an update is available, its
 `next:` line names the command to type, chosen by the same on-disk classification
 this verb dispatches on ([`12-version.md`](12-version.md)).
 
 ## Behaviour
 
-```bash
-abcd update [tag] [--yes] [--json]
-```
-
-The dispatch is keyed on what actually runs: the first `abcd` on `PATH`. Only a
+The verb takes an optional release tag; with none, it resolves the latest. The dispatch
+ is keyed on what actually runs: the first `abcd` on `PATH`. Only a
 regular file proven to be abcd's own is ever swapped, and there are three proofs,
 tried in order:
 
@@ -50,8 +47,8 @@ ownership.
 
 Everything else on `PATH` is a loud refusal naming its remedy rather than a swap:
 a plugin-root binary belongs to the plugin update, a Homebrew-resolved install to
-`brew upgrade`, a stranded owned entry to `ahoy install`, an owned pin into a
-superseded plugin vintage to that same `ahoy install`, a track-latest dev shim
+`brew upgrade`, a stranded owned entry to a fresh ahoy installation, an owned pin into a
+superseded plugin vintage to that same ahoy installation, a track-latest dev shim
 to a mode switch first, and a foreign occupant to whoever put it there, its
 remedy asking for that occupant to be removed or renamed. Two more answer the
 cases where there is nothing to act on at all: no `abcd` anywhere on `PATH`, and
@@ -65,11 +62,12 @@ only tool able to fetch a replacement — and names the reinstall route that
 overwrites the entry in place instead.
 
 A tag abcd resolved rather than one the caller typed is confirmed before the
-fetch, unless `--yes` is passed. The question is only put where somebody is there
+fetch, unless the caller has already said yes. The question is only put where somebody is there
 to answer it: the input the answer is read from and the stream the question is
 written to both have to be a terminal, so a hooked or scripted run is never left
-blocking on a read. Under the invocation the plugin command issues (`abcd update
---yes --json`) nothing is emitted until the receipt, so there the resolved tag is
+blocking on a read. Under the invocation the plugin command issues, pre-confirmed
+and in JSON, nothing is emitted until the receipt, so there the resolved tag is
+
 first named in the receipt itself.
 
 The transport is pinned: no proxy or CA overrides from the environment (set ones
