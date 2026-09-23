@@ -36,7 +36,8 @@ them.
   },
   "docs": {
     "target": "both"                    // "claude_md" | "agents_md" | "both" | "skip" — which conventions
-                                        //   router carries the marker block
+                                        //   router carries the marker block; "skip" is the default, so
+                                        //   a default install names abcd in neither file
   },
   "oracle": {
     "backend": "host-delegated"         // "host-delegated" (default: abcd emits a prompt, the host runs it —

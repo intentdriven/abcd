@@ -131,7 +131,8 @@ user-scope directory for machine-local state.
 
 <anywhere>/<repo>/             REPO — a single repository (the only install target)
   .abcd/                         repo-scope record + config.json + rules.json
-  CLAUDE.md                      marker block (stands alone)
+  CLAUDE.md                      marker block (stands alone), only where a docs target
+                                 names it
 ```
 
 The same inventory is stated as a table under *The two `.abcd/` scopes* in
@@ -344,7 +345,11 @@ way to apply it (iss-166).
 The marker block and the guard hooks come from canonical files under
 `internal/core/ahoy/defaults/`, never from inline prose in this chapter, which
 is what makes drift detection meaningful: the block has one canonical source. If
-a template is stale, the template file is what to edit. Every name-guard write
+a template is stale, the template file is what to edit. The block names abcd and
+documents its rule loader, so the docs target defaults to `skip`: a default
+install writes it into none of the repository's committed conventions files
+(iss-2609110944498549), and a project that wants it names `claude_md`,
+`agents_md` or `both`, which is the approval to plant it there. Every name-guard write
 is create-if-absent **and** contained: paths resolve through an `os.Root` opened
 at the repo, so a symlink committed at the hooks directory or at the local tier
 cannot land an artefact outside it. The private stub is written only where git
@@ -436,7 +441,8 @@ byte-identical to a fresh install save for the setup date.
   completion, **then** the repo carve-out is written, the identity pin is
   recorded where the git-identity gate is adopted, the visibility-driven ignore
   entries are present, the registry entry exists, the marker block from the
-  canonical template is installed, and the hook-manifest check runs verify-only
+  canonical template is installed in the files a chosen docs target names and in
+  none at the default, and the hook-manifest check runs verify-only
   with a missing or malformed manifest surfacing as a non-resolvable diagnostic.
 - **Given** a repo with `install` already run and no state changes, **when**
   `install` runs again, **then** detection reports zero actionable gaps, the
