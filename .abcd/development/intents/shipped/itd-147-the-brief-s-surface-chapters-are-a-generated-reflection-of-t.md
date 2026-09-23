@@ -248,9 +248,89 @@ commits, so the detector's whole subject was held constant and it still returned
 17% more findings. Which chapters are implicated is broadly stable; how many and
 of what class is not.
 
-<!-- abcd-review: OWED receipt=rcp-2769c7a59830 -->
-Fidelity review OWED (receipt rcp-2769c7a59830).
+<!-- abcd-review: INGESTED receipt=rcp-2769c7a59830 -->
+Fidelity review — receipt rcp-2769c7a59830 (verifier intent-auditor claude-fable-5-1).
 
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:f360a0544725b3e1f3d6e1cd643a8db5c614b5927043c3e33f22721caf04a0db
+Input attestations: diff:4480c5a8^1..4480c5a8 (PR #671 merge, reachable from e2ab1ddc)@sha256:f5b5a456f7bc0f072a578eb663a9d4c3843ec8ae412aaf0abed0264d0a5a2221;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 1
+
+Per-criterion verdicts:
+- ac-1 — MET: TestSurfaceAppendicesMatchCommandTree regenerates every chapter from the live tree and Drift() names the chapter and each missing line; on a scratch copy of HEAD, adding a `colour` flag to `version` without regenerating failed the test with `04-surfaces/12-version.md` and `missing: | --colour | bool |`
+  evidence: internal/surface/cli/brief_appendix_test.go:15 — "func TestSurfaceAppendicesMatchCommandTree(t *testing.T)"
+  evidence: internal/core/surface/appendix.go:643 — "the generated appendix disagrees with the command tree"
+  evidence: internal/core/surface/appendix_test.go:199 — "func TestAppendixDriftNamesTheMissingClaim"
+- ac-2 — MET: RenderChapter returns the bytes above the opening marker unchanged plus the regenerated region, markerLines refuses prose after the end marker, and the idempotence test asserts the prose prefix is byte-identical across two regenerations
+  evidence: internal/core/surface/appendix.go:243 — "func RenderChapter(text, appendix string) (string, error)"
+  evidence: internal/core/surface/appendix_test.go:147 — "func TestRenderChapterPreservesProseAndIsIdempotent"
+- ac-3 — MET_WITH_CONCERNS: The staged reflect chapter carries the markers around the declared unbuilt sentence and a test pins the exact text; the concern is that the same sentence is emitted for the three host-delegated commands whose register rows read `shipped` (consult, ingest, prepare-this-repo), so a generated block states there is no shipped surface where the register says there is one
+  evidence: .abcd/development/brief/04-surfaces/09-reflect.md:119 — "There is no shipped surface: the command tree registers no `abcd reflect` verb"
+  evidence: internal/core/surface/appendix.go:71 — "func UnbuiltSentence(path string) string"
+  evidence: .abcd/development/brief/04-surfaces/13-consult.md:144 — "There is no shipped surface: the command tree registers no `abcd consult` verb"
+  evidence: .abcd/development/brief/04-surfaces/README.md:28 — "| 13 | `/abcd:consult` | shipped |"
+- ac-4 — MET: ComposeAppendix is handed paths, flags and sub-verbs only, and the cobra-tree test asserts an exit-code annotation, a JSON schema and an example in a verb's metadata never reach the appendix
+  evidence: internal/core/surface/appendix.go:87 — "func ComposeAppendix(paths []string, tree []Command) string"
+  evidence: internal/surface/cli/brief_appendix_test.go:84 — ""Exit codes:", "3 refused", "schema_version", "widgets.v1""
+  evidence: internal/core/surface/appendix_test.go:128 — "func TestComposeAppendixCarriesOnlyFlagsAndSubVerbs"
+- ac-5 — MET_WITH_CONCERNS: TestSurfaceChapterProseStatesNoShape passes over all 25 chapters and, on a scratch copy, fired at `12-version.md:8` when `--check` returned to the prose; two ruled narrowings remain: the `## Sub-verbs` table above the marker still states sub-verbs by hand (exempt, checked by surface_coverage), and the check fires only on flags the tree registers, so a flag abcd never or no longer registers passes as another program's
+  evidence: internal/surface/cli/brief_appendix_test.go:35 — "func TestSurfaceChapterProseStatesNoShape(t *testing.T)"
+  evidence: internal/core/surface/appendix.go:357 — "if inSubVerbs && (strings.HasPrefix(t, "|") || strings.HasPrefix(t, ">"))"
+  evidence: internal/core/surface/appendix.go:367 — "if s := text[m[4]:m[5]]; longs[s]"
+  evidence: .abcd/development/decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived-never-hand-authored.md:60 — "The chapter's `## Sub-verbs` table and its standard note are the one exception"
+- ac-6 — INCONCLUSIVE: No full-tier brief-to-surface crosscheck has run after the seam landed; the delivery records the run as owed at the next release gate and nothing in the diff or the tree classifies post-seam findings, so the outcome cannot be verified from the inputs
+  evidence: .abcd/development/release-gate/README.md:63 — "Owed at the next release gate: itd-147's ac-6."
+  evidence: .abcd/development/research/data/2026-08-23-brief-surface-crosscheck/README.md:110 — "That run is the next release gate's crosscheck."
+- ac-7 — MET: Every surface_coverage finding from both the index pass and the sub-verb pass is prefixed with SurfaceCoverageLabel, which names the row-level presence check and disclaims chapter prose, and two tests pin the prefix and the label's wording
+  evidence: internal/core/lint/lint.go:725 — "const SurfaceCoverageLabel = "row-level presence check over the surfaces index and each chapter's sub-verb table (it judges rows, not whether a chapter's prose is correct): ""
+  evidence: internal/core/lint/lint.go:430 — "findings = append(findings, labelSurfaceCoverage(sc)...)"
+  evidence: internal/core/lint/subverbs_test.go:361 — "func TestSubVerbFindingsCarryTheRowLevelLabel"
+- ac-8 — MET_WITH_CONCERNS: The research note records the baseline as a per-chapter table across the three runs and states that the stable signal is the set of files rather than the numbers; the concern is that the post-seam assessment itself has not been made, because it depends on the crosscheck run ac-6 still owes
+  evidence: .abcd/development/research/data/2026-08-23-brief-surface-crosscheck/README.md:69 — "## Chapters implicated: the baseline itd-147 is assessed against"
+  evidence: .abcd/development/research/data/2026-08-23-brief-surface-crosscheck/README.md:104 — "Twenty-three files are implicated across the three runs."
+
+Gap audit:
+- honoured:
+  - one generated appendix per chapter, at the end, under a marker pair; all 25 chapter files carry exactly one begin and one end marker
+    evidence: internal/core/surface/appendix.go:40 — "AppendixBegin = "< !-- surface-appendix:begin"
+    evidence: .abcd/development/brief/04-surfaces/12-version.md:73 — "< !-- surface-appendix:begin"
+  - the appendix is derived from the same command-tree walk that builds the compatibility snapshot, and one generator writes both
+    evidence: internal/surface/cli/brief_appendix.go:17 — "surface.RegenerateChapters(dir, commandSurface(NewRootCommand()))"
+    evidence: cmd/abcd-gen-surface/main.go:60 — "chapters, refused := cli.SurfaceChapters(root)"
+  - a drift test fails `go test` when the committed block and the tree disagree, naming the chapter and the claim
+    evidence: internal/surface/cli/brief_appendix_test.go:24 — "if d := ch.Drift(); d != "" {"
+  - the hand-written flag and sub-verb prose was retired chapter by chapter and a check keeps it out
+    evidence: .abcd/development/brief/04-surfaces/12-version.md:8 — "The one exception is the opt-in online check"
+    evidence: internal/surface/cli/brief_appendix_test.go:47 — "for _, c := range surface.ProseShapeClaims(prose, ch.Commands, tree)"
+  - the trust rule is recorded as an ADR and as brief invariant 18
+    evidence: .abcd/development/decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived-never-hand-authored.md:38 — "Every shape claim the brief's surface chapters"
+    evidence: .abcd/development/brief/02-constraints/03-invariants.md:49 — "18. **Shape claims in the brief's surface chapters are derived, never hand-authored**"
+  - surface_coverage stays and names itself the row-level presence check
+    evidence: internal/core/lint/lint.go:725 — "row-level presence check over the surfaces index"
+    evidence: .abcd/development/brief/04-surfaces/README.md:48 — "the row-level presence check over this index"
+  - a staged chapter carries an empty block that says there is no shipped surface
+    evidence: .abcd/development/brief/04-surfaces/09-reflect.md:119 — "There is no shipped surface"
+  - a malformed or unregistered chapter is refused by name and the rest are still regenerated
+    evidence: internal/core/surface/appendix_test.go:362 — "func TestRegenerateChaptersSkipsAndReportsARefusedChapter"
+- diverged:
+  - the unbuilt sentence was promised for a chapter whose surface has not shipped; it is also emitted for the three shipped host-delegated commands, so their generated block contradicts their `shipped` register row
+    evidence: .abcd/development/brief/04-surfaces/13-consult.md:144 — "There is no shipped surface: the command tree registers no `abcd consult` verb"
+    evidence: .abcd/development/brief/04-surfaces/14-ingest.md:95 — "There is no shipped surface"
+    evidence: .abcd/development/brief/04-surfaces/15-prepare-this-repo.md:153 — "There is no shipped surface"
+    evidence: .abcd/development/brief/04-surfaces/README.md:191 — "They are **host-delegated** commands, with a command page and no Go verb"
+  - the prose above the marker was promised to state no sub-verb; the `## Sub-verbs` table and its note above the marker still state sub-verbs by hand, as a ruled exception checked by surface_coverage
+    evidence: .abcd/development/decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived-never-hand-authored.md:60 — "table and its standard note are the one exception"
+    evidence: internal/core/surface/appendix.go:307 — "The `## Sub-verbs` section's table and its standard blockquote note are exempt"
+  - the prose check fires only on flags the command tree registers, so a flag spelt in prose that abcd never or no longer registers is treated as another program's and passes
+    evidence: internal/core/surface/appendix.go:367 — "if s := text[m[4]:m[5]]; longs[s]"
+    evidence: .abcd/development/decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived-never-hand-authored.md:59 — "Another program's flag (git's `--force`) and the same words as"
+  - every chapter carries a block holds for files in 04-surfaces only; the staged worktree surface documented in the internals chapter carries none
+    evidence: .abcd/development/brief/04-surfaces/README.md:40 — "| 25 | `/abcd:worktree` | staged |"
+    evidence: internal/core/surface/appendix.go:521 — "!strings.ContainsAny(lt[1], "/#")"
+- missing:
+  - a full-tier crosscheck run after the seam, classified so that no finding is a false-claim or stale-count about a covered flag or sub-verb (ac-6), and the chapter-implicated assessment against it (ac-8)
+    evidence: .abcd/development/release-gate/README.md:63 — "Owed at the next release gate: itd-147's ac-6."
+    evidence: .abcd/development/release-gate/README.md:70 — "Delete this paragraph in the change that records the result."
 ## Grounds
 
 - pursued: a shape claim nobody writes by hand cannot drift; a false-claim or stale-count finding about a generated block in the next crosscheck run shows it was wrong
