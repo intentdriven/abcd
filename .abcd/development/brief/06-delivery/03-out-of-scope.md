@@ -119,6 +119,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609090746410233` — A lifeboat packs from a worktree, a branch, or an abandoned feature test, experiment or implementation, not only from a whole repository (refines itd-88 and adr-35; realises the press release's not-yet-real widening, git-source half)
 - `itd-2609090746414083` — A lifeboat packs from a lab session home, the throwaway experiment's intention, harvest and bundle, with the same coverage honesty as a repository (refines itd-88 and adr-35; the non-git half, sequenced after the lab verb family)
 - `itd-2609180517121254` — every payload a host hands back from a delegated step names the model that produced it and the number of agents that ran, and the ingesting verb refuses one that does not
+- `itd-2609231434459890` — abcd's own test lanes check the machine's load before they start and refuse when it is too high, naming what is running (the fourth condition of the load-experiment trust rule; the other three ship in the bundled `LOAD` rule domain)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
