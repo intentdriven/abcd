@@ -419,6 +419,10 @@ func markUsageErrorsExitTwo(c *cobra.Command) {
 type docsLintResult struct {
 	Findings []lint.Finding `json:"findings"`
 	Blockers int            `json:"blockers"`
+	// Checks is how many checks the configuration armed (banned tokens plus
+	// enabled rules). Zero means nothing was checked, and an empty findings list
+	// beside it is not a pass (iss-2609150805167646).
+	Checks int `json:"checks"`
 }
 
 // newDocsCommand builds the `docs` sub-tree. Its `lint` verb is the docs-currency
@@ -508,7 +512,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 					blockers++
 				}
 			}
-			res := docsLintResult{Findings: findings, Blockers: blockers}
+			res := docsLintResult{Findings: findings, Blockers: blockers, Checks: cfg.ArmedChecks()}
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				for _, f := range findings {
 					// Every non-numeric field embeds untrusted repo content: File and
@@ -518,6 +522,16 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 					// are sanitised.
 					fmt.Fprintf(w, "%s:%d: [%s %s] %s\n",
 						termsafe.Sanitize(f.File), f.Line, termsafe.Sanitize(strings.ToUpper(f.Severity)), termsafe.Sanitize(f.RuleID), termsafe.Sanitize(f.Message))
+				}
+				// A config that armed nothing ran nothing: "0 finding(s)" would
+				// manufacture a false green (loud-staging, iss-2609150805167646).
+				if res.Checks == 0 {
+					ref := filepath.Join(".abcd", "docs-lint.json")
+					if configPath != "" {
+						ref = configPath
+					}
+					fmt.Fprintf(w, "abcd docs lint — no rules configured in %s: nothing was checked\n", termsafe.Sanitize(ref))
+					return
 				}
 				fmt.Fprintf(w, "abcd docs lint — %d finding(s), %d blocker(s)\n", len(findings), blockers)
 			}); err != nil {

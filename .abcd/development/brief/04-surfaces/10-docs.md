@@ -29,7 +29,13 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 
 
 - **`docs lint`** reports the findings and writes nothing. The plugin command
-  invokes it with `--json` and summarises the result.
+  invokes it with `--json` and summarises the result. The result carries
+  `checks`, the number of banned tokens and enabled rules the configuration
+  armed. A configuration that arms none runs nothing, and the verb says so
+  ("nothing was checked") in place of a finding count, because "0 finding(s)"
+  over a lint that ran no rule is a green that means nothing
+  (iss-2609150805167646). The exit code is still 0 there: the configuration was
+  read, and no rule it declares was broken.
 - **`docs cite refresh`** fetches every cited URL once and rewrites the
   committed citation baseline. Each URL gets exactly one bounded attempt with no
   retries, and no response body is read: liveness is judged from the status

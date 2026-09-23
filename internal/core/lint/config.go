@@ -353,6 +353,21 @@ func ArmAgentDiff(cfg Config, diffRange string) Config {
 	return cfg
 }
 
+// ArmedChecks counts the checks a Lint over this configuration runs: every
+// banned token and every enabled rule. Zero means a lint runs nothing, and a
+// front door must say so rather than report a finding count that implies a check
+// happened (loud-staging; iss-2609150805167646). A disabled rule is inert and is
+// not counted.
+func (c Config) ArmedChecks() int {
+	n := len(c.BannedTokens)
+	for _, rc := range c.Rules {
+		if rc.Enabled {
+			n++
+		}
+	}
+	return n
+}
+
 // LoadConfig reads and decodes a record-lint config file. The config is a trust
 // boundary: it is a committed, cross-repo-clonable file (a hostile clone can
 // commit .abcd/docs-lint.json as a git mode-120000 symlink), and the read is

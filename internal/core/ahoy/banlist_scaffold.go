@@ -81,19 +81,45 @@ const (
 	guardEOLAttribute    = guardHooksDirRelPath + "/* text eol=lf"
 )
 
-// publicFamilySeed is the docs-lint config a repo with none inherits: the roots the
-// lint walks and an EMPTY banned-names family. Empty is the point — abcd cannot know
-// which names a repo may not publish, and seeding a ban nobody declared would fail a
-// build over a word the maintainer never chose. The array is what `abcd banlist add
-// --public` writes into, so its presence is what makes the public layer usable.
-const publicFamilySeed = `{
-  "roots": ["docs", "README.md"],
-  "banned_tokens": [],
-  "rules": {},
-  "exempt_paths": [],
-  "exempt_if_status": []
+// publicFamilySeed is the docs-lint config a repo with none inherits. Two of its
+// fields carry different owners, and the seed treats them differently
+// (iss-2609150805167646):
+//
+//   - The Writing-Guide rules are abcd's own: the present_tense, punctuation and
+//     spelling token families and the links_resolve, harness_leak and
+//     stray_root_docs rules. They are seeded ARMED, because a lint that runs no rule
+//     reports "0 findings" over any tree, a green that means nothing. A repository
+//     that wants a family off removes it deliberately, a decision with a diff rather
+//     than an absence nobody chose. The token entries are held to the set abcd runs
+//     on itself by a parity test, so the two cannot drift.
+//   - The banned names (the names/ entries `abcd banlist add --public` writes) are
+//     the repository's own, and none is seeded: abcd cannot know which names a repo
+//     may not publish, and a ban nobody declared would fail a build over a word the
+//     repository never chose.
+//
+// The harness token family is withheld too, as a per-repository fit decision: it
+// refuses naming a specific agent tool, which is right for abcd's published surface
+// and wrong for a repository whose content is teaching those tools.
+//
+// The stray_root_docs allowlist names CLAUDE and AGENTS, the two root files the
+// scaffold itself may write, so the seeded gate does not refuse its own output.
+//
+//go:embed defaults/docs-lint.json
+var publicFamilySeed string
+
+// seededTokenFamilies are the banned-token families the docs-lint seed carries:
+// abcd's own Writing-Guide rules, as opposed to the repository's banned names.
+var seededTokenFamilies = []string{"present_tense", "punctuation", "spelling"}
+
+// isSeededFamily reports whether a banned-token family is one the seed carries.
+func isSeededFamily(family string) bool {
+	for _, f := range seededTokenFamilies {
+		if f == family {
+			return true
+		}
+	}
+	return false
 }
-`
 
 // privateStubBody is the scaffolded private banlist: the format declaration, the
 // format's documentation, and worked examples that are ALL COMMENTED OUT.
