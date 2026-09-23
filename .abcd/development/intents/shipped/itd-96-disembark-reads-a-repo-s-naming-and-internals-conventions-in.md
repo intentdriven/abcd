@@ -94,5 +94,56 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-b6cd3962cc41 -->
-Fidelity review OWED (receipt rcp-b6cd3962cc41).
+<!-- abcd-review: INGESTED receipt=rcp-b6cd3962cc41 -->
+Fidelity review — receipt rcp-b6cd3962cc41 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:70a5ee6f6a60d717ff864c0fcff1733a7af53630b3139074282db4146cbd4545
+Input attestations: diff:tree at de3ba5fa (spc-13 delivered; main after PR #661)@sha256:4e7430d38ef6b7b6bc533fdf0b8b32a6e08a3e2449d0566027d43316036b8178;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: convNamingSource grounds constraints/naming from a naming document (or docs/naming*) as partial, citing the file, with a lower-confidence glossary fallback; tests assert the section is partial at TierConventions citing NAMING.md and a docs/naming page
+  evidence: internal/core/lifeboat/sources_conventions.go:508 — "func (convNamingSource) Section() Section { return "constraints/naming" }"
+  evidence: internal/core/lifeboat/sources_conventions.go:512 — "p := ctx.FindFirst(convNamingDocNames...)"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:638 — "func TestConvNamingPartialFromNamingDoc"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:665 — "func TestConvNamingPartialFromDocsNamingPage"
+- ac-2 — MET: convInternalsSource reads ARCHITECTURE.md (or an architecture/design/explanation tree) and the package layout under internal/pkg/src/lib/cmd/app, citing both; the test asserts internals is non-blank citing the doc and the layout entries
+  evidence: internal/core/lifeboat/sources_conventions.go:611 — "func (convInternalsSource) Section() Section { return "internals" }"
+  evidence: internal/core/lifeboat/sources_conventions.go:556 — "var convLayoutRoots = []string{"internal", "pkg", "src", "lib", "cmd", "app"}"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:765 — "func TestConvInternalsCitesArchitectureAndLayout"
+- ac-3 — MET: with no naming doc, no glossary, no architecture doc and no recognised layout both adapters return blank() with a populated searched list and a human question; a bare fixture is tested for both sections
+  evidence: internal/core/lifeboat/sources_conventions.go:536 — ""What names and reserved vocabulary are fixed? No naming document and no glossary found.","
+  evidence: internal/core/lifeboat/sources_conventions.go:653 — "question := "How is this system built internally? No architecture document and no recognisable package layout.""
+  evidence: internal/core/lifeboat/sources_conventions_test.go:1012 — "func TestConvNamingAndInternalsBlankWithoutSignals"
+- ac-4 — MET: the byte-identical probe test's fixture carries NAMING.md, ARCHITECTURE.md and an internal/ layout, so both new adapters run inside the hashed-before-and-after proof
+  evidence: internal/core/lifeboat/probe_test.go:324 — "func TestProbeLeavesEveryFileByteIdentical"
+  evidence: internal/core/lifeboat/probe_test.go:332 — ""NAMING.md": "# Naming\n\nA voyage is never called a run.\n","
+  evidence: internal/core/lifeboat/probe_test.go:333 — ""ARCHITECTURE.md": "# Architecture\n\nA core, and a shell that formats it.\n","
+- ac-5 — MET: the conventions registry carries exactly one glossary adapter (convGlossarySource) beside the two new ones, and a glossary-only fixture is tested to keep glossary grounded by it while naming falls back to it at lower confidence without displacing it
+  evidence: internal/core/lifeboat/sources_conventions.go:27 — "convGlossarySource{},"
+  evidence: internal/core/lifeboat/sources_conventions.go:527 — "Sources: []string{g + " (glossary fallback — no dedicated naming document)"},"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:696 — "func TestConvNamingFallsBackToGlossaryWithoutDisplacingIt"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:1042 — "func TestHasConventionsCoversNamingAndArchitecture"
+- ac-6 — MET_WITH_CONCERNS: the unchanged reduction is deterministic (highest status wins, richer tier on a tie) and the report prints the winning tier per section, so a native record's grounded result beats the partial conventions reading; the concern is that no test exercises a record plus conventional docs on these two sections specifically — spc-13 relies on the reduction's existing tests
+  evidence: internal/core/lifeboat/probe.go:635 — "richer tier wins (a grounded-at-conventions beats grounded-at-git)."
+  evidence: internal/core/lifeboat/coverage.go:119 — "fmt.Fprintf(&b, " (%s, %s)", sanitize(string(s.Tier)), sanitize(string(s.Confidence)))"
+  evidence: internal/core/lifeboat/sources_conventions.go:606 — "The ceiling is StatusPartial by construction"
+
+Gap audit:
+- honoured:
+  - a conventions-tier adapter for constraints/naming
+    evidence: internal/core/lifeboat/sources_conventions.go:28 — "convNamingSource{},"
+  - a conventions-tier adapter for internals reading architecture docs and package layout
+    evidence: internal/core/lifeboat/sources_conventions.go:29 — "convInternalsSource{},"
+    evidence: internal/core/lifeboat/sources_conventions_test.go:765 — "TestConvInternalsCitesArchitectureAndLayout"
+  - bounded reads: the layout scan cites at most 50 packages and reports a truncated walk
+    evidence: internal/core/lifeboat/sources_conventions.go:562 — "const maxLayoutCitations = 50"
+    evidence: internal/core/lifeboat/sources_conventions_test.go:891 — "func TestConvInternalsBoundsItsLayoutCitations"
+  - no second glossary adapter
+    evidence: internal/core/lifeboat/sources_conventions_test.go:696 — "TestConvNamingFallsBackToGlossaryWithoutDisplacingIt"
+- diverged:
+  - real documentation -> grounded — delivered with a partial ceiling for both sections; documentation quality moves confidence, not status
+    evidence: internal/core/lifeboat/sources_conventions.go:606 — "The ceiling is StatusPartial by construction"
+    evidence: internal/core/lifeboat/sources_conventions.go:518 — "Status: StatusPartial,"
+- missing: (none)
