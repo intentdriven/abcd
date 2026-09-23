@@ -988,9 +988,10 @@ expect_refusal_not_naming "$d" "RS005 does not follow a back-link that is not an
 	"spc-7[23]" -- commits main HEAD
 
 # A `Delivers:` line the rule cannot read is refused rather than passed over: the
-# spec id, a bare word, or the trailer in the wrong case would otherwise be a
-# declaration the author believes armed and the gate never sees.
-for spelling in "Delivers: spc-7" "Delivers: the thing" "delivers: itd-7"; do
+# spec id, or the trailer in the wrong case, would otherwise be a declaration the
+# author believes armed and the gate never sees. What makes a line such an
+# attempt is an id-shaped token in its value; a line without one is prose.
+for spelling in "Delivers: spc-7" "delivers: itd-7" "Delivers: itd-7 and itd-8"; do
 	d="$(newrepo_intents "rs005-malformed-$(printf '%s' "$spelling" | tr -c 'a-z0-9' '-')")"
 	echo "touched" >>"$d/README.md"
 	ship_intent "$d" 7
@@ -1000,6 +1001,29 @@ for spelling in "Delivers: spc-7" "Delivers: the thing" "delivers: itd-7"; do
 $spelling"
 	expect_refusal_naming "$d" "RS005 refuses the unreadable trailer '$spelling'" \
 		"RS005 commit [0-9a-f]{12} carries a delivery line RS005 cannot read.*Delivers: itd-N" -- commits main HEAD
+done
+
+# Criterion 3: a change that declares no delivery is refused nothing — and a body
+# line that merely begins with the word is not a declaration. The second message
+# is main's own 182474f5, whose wrapped prose puts `deliver:` at a line start;
+# RS005 refused it until a near-miss had to carry an id-shaped token.
+prose_bodies=(
+	"feat: build the thing
+
+Delivers: the thing"
+	"fix: name the update verb from version --check and the schema-too-new refusals
+
+itd-130 shipped \`abcd update\` and promised two things its surfaces did not
+deliver: that \`version --check\` would follow \"update available\" with the
+next line to type, and that the eight schema-too-new refusals would name a
+verb instead of the verbless \"upgrade abcd\"."
+)
+for i in "${!prose_bodies[@]}"; do
+	d="$(newrepo_intents "rs005-prose-$i")"
+	echo "touched" >>"$d/README.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "${prose_bodies[$i]}"
+	expect pass "$d" "RS005 passes a prose line that starts with the word (body $i)" -- commits main HEAD
 done
 
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit

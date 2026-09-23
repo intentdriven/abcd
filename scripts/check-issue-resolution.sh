@@ -74,8 +74,9 @@
 #          already shipped, a draft or superseded record, a planned intent with
 #          no spec to close, and — the ordinary case — every spec still open
 #          that names it, each with its `abcd spec close`. A `Delivers:` line
-#          the rule cannot read (a spec id, a bare word, the wrong case) is
-#          refused too, since an author who wrote it believes it armed.
+#          that names an id the rule cannot read (a spec id, the wrong case) is
+#          refused too, since an author who wrote it believes it armed; a line
+#          naming no id-shaped token is prose, and passes.
 #
 #   RS003  Every resolved_by.commit already in the ledger must still be
 #          reachable. This is the drift detector, and it is not hypothetical:
@@ -205,12 +206,18 @@ done
 # the thing delivered, and a trailer that could name either store would be
 # ambiguous about which one to look in.
 DELIVERS_RE='^Delivers:[[:space:]]+itd-[0-9]+([[:space:]]*,[[:space:]]*itd-[0-9]+)*[[:space:]]*$'
-# Any line that reads as an attempt at the trailer, whatever its case. A line
-# this matches and DELIVERS_RE does not is refused rather than passed over: the
-# author believes the declaration armed, and a gate that silently skipped it
-# would be the omission the rule exists to close. (Bracket classes, because
+# A line that reads as an attempt at the trailer: the word, whatever its case,
+# then a colon (DELIVERS_LOOSE_RE), AND a record-id-shaped token anywhere in the
+# value after that colon (DELIVERS_ID_SHAPED_RE). A line both match and
+# DELIVERS_RE does not is refused rather than passed over: the author believes
+# the declaration armed, and a gate that silently skipped it would be the
+# omission the rule exists to close. The id-shaped token is what separates an
+# attempt from prose: a wrapped body line can begin `deliver: that …`, and a
+# change that declares no delivery is refused nothing (the intent's criterion
+# 3), so a line naming no id is never a declaration. (Bracket classes, because
 # bash 3.2 has neither ${var,,} nor nocasematch-safe portability here.)
 DELIVERS_LOOSE_RE='^[Dd][Ee][Ll][Ii][Vv][Ee][Rr][Ss]?[[:space:]]*:'
+DELIVERS_ID_SHAPED_RE='[A-Za-z]+-[0-9]+'
 
 violations=0
 
@@ -554,7 +561,7 @@ check_commits() {
 		while IFS= read -r line; do
 			# RS005 — a declared delivery must ship the intent. Judged on the same
 			# lines RS001 reads; a line is one trailer or the other, never both.
-			if [[ "$line" =~ $DELIVERS_LOOSE_RE ]]; then
+			if [[ "$line" =~ $DELIVERS_LOOSE_RE ]] && [[ "${line#*:}" =~ $DELIVERS_ID_SHAPED_RE ]]; then
 				local raw canon_ok=1
 				if [[ "$line" =~ $DELIVERS_RE ]]; then
 					for raw in $(printf '%s\n' "$line" | grep -oE 'itd-[0-9]+'); do

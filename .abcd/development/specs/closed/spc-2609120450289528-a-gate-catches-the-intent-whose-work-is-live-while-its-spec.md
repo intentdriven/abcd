@@ -137,11 +137,18 @@ here because the record held no ruling on either:
   in the same pass over the same trailer lines as RS001. A sibling series would
   have claimed a second convention where the whole point is one.
 - **The trailer takes the intent id only.** `Delivers: spc-N` is refused, not
-  ignored: any line that reads as an attempt at the trailer, in any case, and is
-  not exactly `Delivers: itd-N[, itd-M…]` is an RS005 refusal that names the
-  spelling. The intent is the thing delivered; a trailer that could name either
-  store would be ambiguous about which to read, and a silently skipped spelling
-  is a declaration its author believes armed.
+  ignored: a line that reads as an attempt at the trailer and is not exactly
+  `Delivers: itd-N[, itd-M…]` is an RS005 refusal that names the spelling. The
+  intent is the thing delivered; a trailer that could name either store would be
+  ambiguous about which to read, and a silently skipped spelling is a
+  declaration its author believes armed. A line reads as an attempt when it
+  begins with the word, in any case, followed by a colon, AND its value carries
+  an id-shaped token (`[A-Za-z]+-[0-9]+`): `Delivers: spc-7` and
+  `delivers: itd-7` are refused, while `Delivers: the thing` and a wrapped body
+  line beginning `deliver: that …` are prose and pass. The acceptance criterion
+  that a change declaring no delivery is refused nothing fixes that boundary; a
+  rule refusing every line that begins with the word refused ordinary prose
+  (main's own 182474f5 carries such a line).
 
 Two consequences of the 1:n intent–spec rule (adr-2609151513118583) shaped the
 ordinary-case refusal: it names every spec still in `open/` whose own `intent:`
