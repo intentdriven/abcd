@@ -39,6 +39,7 @@ are wiring rather than user-facing surface are listed separately under
 | 24 | `/abcd:decide` | shipped | Mint a decision record with its id, date and skeleton, ready to write the decision into | [`24-decide.md`](24-decide.md) |
 | 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 | 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it | [`08-abcd.md`](08-abcd.md) |
+| 27 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -131,8 +132,8 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 <!-- index: commands -->
 `abcd`, `ahoy`, `banlist`, `capture`, `consult`, `decide`, `disembark`, `docs`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `ingest`, `intent`,
-`launch`, `lint`, `memory`, `mode`, `prepare-this-repo`, `reading`, `site`,
-`update`, `version`.
+`launch`, `lint`, `memory`, `mode`, `peers`, `prepare-this-repo`, `reading`,
+`site`, `update`, `version`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

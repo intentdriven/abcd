@@ -491,6 +491,10 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
 ```
 
+An intent this checkout does not hold is refused; when a peer holds it (a
+sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
+peer's branch, path and bucket instead of answering not found.
+
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
 or `noop`) and, for `dead_letter`, the reason.
 
