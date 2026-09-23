@@ -53,8 +53,13 @@ it is written. The capture carries:
   the report id as the first evidence pointer, followed by the reporter's own.
 
 The sender's name is never written: every free-text value has each
-case-insensitive occurrence of it replaced with "a managed repository" before
-capture sees it. The inbox names the sender so the reader knows who is asking;
+occurrence of it that stands as a word replaced with "a managed repository"
+before capture sees it. The match ignores case and reads the name as its parts,
+joined by `-`, `_`, `.`, a space or nothing, so `acme-secret`, `acme_secret`,
+`acme secret`, `acmesecret` and `AcmeSecret` are one name, and a trailing digit
+does not hide it. Where the name ends a forge address (`host/owner/name`), the
+owner segment is replaced with it. A word that merely contains a short name is
+left alone. The inbox names the sender so the reader knows who is asking;
 anything committed carries the fingerprint.
 
 The report is then moved to `~/.abcd/inbox/promoted/` and kept, and one line in

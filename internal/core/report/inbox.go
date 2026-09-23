@@ -559,30 +559,87 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 	}
 }
 
-// nameScrubber returns a function replacing every case-insensitive occurrence
-// of name that stands as a word — not run on into a letter or a digit — with
-// GenericSender. A bare substring match would rewrite ordinary words that
-// happen to contain a short name ("cap" inside "capture") without making the
-// record any less identifying.
+// nameScrubber returns a function replacing every occurrence of name that
+// stands as a word with GenericSender. A directory name reaches prose spelt many
+// ways, so the match is case-insensitive and reads the name as its parts — split
+// at `-`, `_`, `.` and a lower-to-upper case change — joined by any one of those
+// separators, a space, or nothing: `acme-secret`, `acme_secret`, `acme secret`,
+// `acmesecret` and `AcmeSecret` are one name. Where the name is the last segment
+// of a forge address (`host/owner/name`, `host:owner/name`), the owner segment
+// goes with it, since an organisation names a sender as surely as a repository
+// does; the host is kept.
+//
+// A word boundary is still required, so a short name does not rewrite ordinary
+// words that happen to contain it ("cap" inside "capture"): the match may not
+// run on into a letter, nor into a digit where the name's own edge is a digit.
+// A letter-to-digit change is a boundary, so `acme-secret2` is caught.
 func nameScrubber(name string) func(string) string {
-	if name == "" {
+	parts := nameParts(name)
+	if len(parts) == 0 {
 		return func(s string) string { return s }
 	}
-	re := regexp.MustCompile(`(?i)` + regexp.QuoteMeta(name))
+	quoted := make([]string, len(parts))
+	for i, p := range parts {
+		quoted[i] = regexp.QuoteMeta(p)
+	}
+	re := regexp.MustCompile(`(?i)` +
+		`(?:([a-z0-9-]+(?:\.[a-z0-9-]+)+[/:])[a-z0-9._-]+/)?` + // a forge address's host, then its owner
+		`(` + strings.Join(quoted, `[-_.\s]?`) + `)`)
 	return func(s string) string {
 		var b strings.Builder
 		last := 0
-		for _, m := range re.FindAllStringIndex(s, -1) {
-			if wordByte(s, m[0]-1) || wordByte(s, m[1]) {
+		for _, m := range re.FindAllStringSubmatchIndex(s, -1) {
+			nameStart, nameEnd := m[4], m[5]
+			if runsOn(s, nameStart-1, s[nameStart]) || runsOn(s, nameEnd, s[nameEnd-1]) {
 				continue
 			}
-			b.WriteString(s[last:m[0]])
+			keep := m[0]
+			if m[2] >= 0 {
+				keep = m[3] // keep the host, drop the owner with the name
+			}
+			b.WriteString(s[last:keep])
 			b.WriteString(GenericSender)
 			last = m[1]
 		}
 		b.WriteString(s[last:])
 		return b.String()
 	}
+}
+
+// nameParts splits a directory name into the words it is spelt from.
+func nameParts(name string) []string {
+	var parts []string
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() > 0 {
+			parts = append(parts, cur.String())
+			cur.Reset()
+		}
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c == '-' || c == '_' || c == '.':
+			flush()
+			continue
+		case c >= 'A' && c <= 'Z' && i > 0 && name[i-1] >= 'a' && name[i-1] <= 'z':
+			flush()
+		}
+		cur.WriteByte(c)
+	}
+	flush()
+	return parts
+}
+
+// runsOn reports whether the byte at s[i] continues a word whose edge byte is
+// edge: a letter always does, and a digit does when the edge is a digit.
+func runsOn(s string, i int, edge byte) bool {
+	if !wordByte(s, i) {
+		return false
+	}
+	c := s[i]
+	isDigit := func(c byte) bool { return c >= '0' && c <= '9' }
+	return !isDigit(c) || isDigit(edge)
 }
 
 // wordByte reports whether s[i] exists and is an ASCII letter or digit.

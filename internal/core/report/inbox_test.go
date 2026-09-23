@@ -290,3 +290,34 @@ func TestAReportAtTheBoundReadsBack(t *testing.T) {
 		t.Fatalf("List = %+v, %v; want the report waiting and readable", list, err)
 	}
 }
+
+// TestNameScrubberCatchesSpellingVariants: a directory name reaches prose
+// spelt many ways. Each separator variant, a trailing digit, a camel-cased
+// directory written with separators, and a forge address's owner segment are
+// all replaced, so none of them leaks the sender into a public ledger.
+func TestNameScrubberCatchesSpellingVariants(t *testing.T) {
+	scrub := nameScrubber("acme-secret")
+	for _, in := range []string{
+		"acme-secret", "acme_secret", "acme secret", "acmesecret", "ACME.Secret",
+		"acme-secret2", "AcmeSecret", "see github.com/acme/acme-secret for it",
+		"cloned git@github.com:acme/acme_secret.git today", "https://gitlab.example.com/acme/acmesecret/-/issues/4",
+	} {
+		got := scrub(in)
+		if strings.Contains(strings.ToLower(got), "acme") || strings.Contains(strings.ToLower(got), "secret") {
+			t.Errorf("scrub(%q) = %q; the name survives", in, got)
+		}
+		if !strings.Contains(got, GenericSender) {
+			t.Errorf("scrub(%q) = %q; nothing stands in for the name", in, got)
+		}
+	}
+	// A camel-cased directory name is caught when the prose separates it.
+	if got := nameScrubber("AcmeSecret")("the acme-secret repo"); strings.Contains(got, "acme") {
+		t.Errorf("camel-cased name: scrub = %q", got)
+	}
+	// Words that merely contain the name's parts are left alone.
+	for _, in := range []string{"a secretary at acmes", "acme alone", "secret alone"} {
+		if got := scrub(in); got != in {
+			t.Errorf("scrub(%q) = %q; an ordinary phrase was rewritten", in, got)
+		}
+	}
+}
