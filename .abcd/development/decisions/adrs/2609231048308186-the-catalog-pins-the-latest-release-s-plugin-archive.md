@@ -56,7 +56,16 @@ decision amends adr-19 and adr-20 accordingly.
    surface snapshot beside it) in the same working tree, so the pin is part of
    the release-content commit. It refuses beforehand on a payload with
    uncommitted changes, whose archive the tagged commit could not reproduce.
-3. **What proves it.** The archive is reproducible: sorted entries, stored
+3. **Where it pins.** The ship pins only in a repository whose version-location
+   contract (`.abcd/config/version-location.json`) carries
+   `"publishes_plugin_archive": true`, the statement that its release uploads the
+   archive. Without that declaration it leaves the catalog untouched and reports
+   `archive: not pinned` (`archive_unpinned` in `--json`): the contract alone
+   says where the version lives, not that a release publishes an archive, and a
+   managed repository's scaffolded workflows upload none, so a pin there would
+   name an asset every install fails to fetch. A key that is not a boolean is
+   refused rather than read as either answer.
+4. **What proves it.** The archive is reproducible: sorted entries, stored
    uncompressed, one fixed timestamp, modes normalised to 0644 or 0755, and the
    catalog left out (it names the digest, so it cannot be inside what it
    hashes). `release.yml` re-renders it from the tagged commit with
@@ -65,7 +74,7 @@ decision amends adr-19 and adr-20 accordingly.
    is the pinned one. The published archive joins `checksums.txt`, the
    build-provenance attestation and the upload, and is downloaded fresh after
    publication, attestation-verified and byte-compared.
-4. **The bootstrap.** Releases up to and including v0.9.0 were published without
+5. **The bootstrap.** Releases up to and including v0.9.0 were published without
    an archive. While the newest dated release is one of those, the catalog keeps
    `./`; the first ship past it writes the pin, and
    `TestCommittedTreeSatisfiesDevPolarity` refuses an unpinned catalog from then
