@@ -458,6 +458,12 @@ func loadEventFields(res LoadResult) map[string]any {
 // LoadResultFromEvent reads a logged `load` event back into the warning it
 // records, so a reader renders exactly what was printed. The run-log outcome is
 // not part of the event.
+//
+// No production code reads it yet; its readers are tests in two packages, this
+// one and the CLI surface's (TestLoggedEventRendersToThePrintedWarning, which
+// needs the surface's unexported renderer). It stays here, exported, because Go
+// has no test-only export across packages and the decoding needs the unexported
+// loadEvent, so moving it into a test file would duplicate the event's shape.
 func LoadResultFromEvent(ev Event) (LoadResult, error) {
 	if ev.Event != EventLoad {
 		return LoadResult{}, fmt.Errorf("a %s event is not a load warning", ev.Event)
