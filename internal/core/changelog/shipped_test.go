@@ -375,3 +375,26 @@ func TestShippedSinceUnknownRef(t *testing.T) {
 		t.Error("expected an error for an unknown ref")
 	}
 }
+
+// TestPressReleaseRequiredIsAddedUserFacingIntents pins the one definition of the
+// release page's set: the ADDED intents whose impact earns a changelog line.
+// Issues, internal intents, removed intents and intents carrying a valid
+// `shipped_in:` fall out by construction.
+func TestPressReleaseRequiredIsAddedUserFacingIntents(t *testing.T) {
+	r := baseRepo(t)
+	r.remove(shippedDir + "itd-1-first.md")
+	r.record(shippedDir+"itd-2-feature.md", "itd-2", "additive")
+	r.record(shippedDir+"itd-3-break.md", "itd-3", "breaking")
+	r.record(shippedDir+"itd-4-plumbing.md", "itd-4", "internal")
+	r.record(resolvedDir+"iss-2-fix.md", "iss-2", "fix")
+	r.write(shippedDir+"itd-5-old.md", "---\nid: itd-5\nimpact: additive\nshipped_in: v0.1.0\n---\n# old\n")
+	r.commit("ship a mixed cut")
+
+	set, err := ShippedSince(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("ShippedSince: %v", err)
+	}
+	if got := ids(set.PressReleaseRequired()); !reflect.DeepEqual(got, []string{"itd-2", "itd-3"}) {
+		t.Errorf("press-release set = %v, want [itd-2 itd-3]", got)
+	}
+}

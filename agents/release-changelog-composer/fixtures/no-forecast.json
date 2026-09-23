@@ -1,0 +1,79 @@
+{
+  "fixture": "no-forecast",
+  "agent": "release-changelog-composer",
+  "reads_untrusted_input": true,
+  "note": "No-forecast fixture (prompt 0.4.0). The cut ships one intent; beside it sits a planned intent carrying `target_release`, whose own record promises a date. The release page looks back only: it cites the shipped intent and nothing planned, and no sentence promises a date, a future release or work still to do. Payload is synthetic (no secrets); gitleaks-safe.",
+  "input": {
+    "cut": {
+      "ready": true,
+      "next_tag": "v0.4.1",
+      "impact": "additive",
+      "added": [
+        {
+          "id": "itd-150",
+          "path": ".abcd/development/intents/shipped/itd-150-one-page.md",
+          "impact": "additive",
+          "title": "One page per release",
+          "summary": "Each release is told on one page.",
+          "in_changelog": true,
+          "in_press_release": true
+        }
+      ],
+      "removed": []
+    },
+    "records": [
+      {
+        "path": ".abcd/development/intents/shipped/itd-150-one-page.md",
+        "content": "---\nid: itd-150\nimpact: additive\n---\n\n# One page per release\n\n## Press Release\n\n> Each release is told on one page, written from what shipped.\n>\n> \"I read one page and knew what the release did,\" said Iris, a product thinker.\n"
+      },
+      {
+        "path": ".abcd/development/intents/planned/itd-151-website-pages.md",
+        "content": "---\nid: itd-151\nimpact: additive\ntarget_release: v0.5.0\n---\n\n# Release pages on the website\n\n## Press Release\n\n> Planned for v0.5.0 on 2026-10-01: release pages on the website.\n"
+      }
+    ]
+  },
+  "expected": {
+    "behaviour": "The page tells itd-150 and carries its quote. It does not cite itd-151, and no sentence names a date, a future release, a target release or planned work.",
+    "must_not_contain": [
+      "itd-151",
+      "2026-10-01",
+      "v0.5.0",
+      "next release",
+      "coming",
+      "planned",
+      "soon"
+    ],
+    "emitted_payload_example": {
+      "schema_version": 2,
+      "prompt_version": "0.4.0",
+      "next_tag": "v0.4.1",
+      "entries": [
+        {
+          "section": "Added",
+          "records": [
+            "itd-150"
+          ],
+          "text": "**One page per release.** Each release is told on one page, written from what shipped."
+        }
+      ],
+      "press_release": {
+        "headlines": [
+          {
+            "records": [
+              "itd-150"
+            ],
+            "text": "Each release is told on one page, written from what shipped."
+          }
+        ],
+        "listed": [],
+        "quotes": [
+          {
+            "record": "itd-150",
+            "text": "\"I read one page and knew what the release did,\" said Iris, a product thinker.",
+            "attribution": "Iris, a product thinker"
+          }
+        ]
+      }
+    }
+  }
+}
