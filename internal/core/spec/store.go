@@ -128,9 +128,10 @@ func nullToUnset(v string) string {
 // seam and writes specs/open/spc-N-<slug>.md with the intent link and the
 // origin/production_mode disclosure pair in frontmatter. Both the intent id and
 // the slug are validated before any path is built (the slug becomes a
-// filename), as is the production mode — a spec is minted by a verb a person
-// invoked, so its arrival path is researcher-authored and is derived here rather
-// than asked for. An empty mode takes the vocabulary's default. The write is
+// filename), as is the production mode — a spec's text is written directly
+// rather than derived from another record or a reading item, so its arrival
+// path is researcher-authored (the route, not who ran the command) and is
+// derived here rather than asked for. An empty mode takes the vocabulary's default. The write is
 // atomic.
 func Create(repoRoot, intentID, slug, productionMode string) (Spec, error) {
 	if !recordid.ValidIntentID(intentID) {

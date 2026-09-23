@@ -255,9 +255,10 @@ func TestCreateConcurrentMintsDistinctIDs(t *testing.T) {
 }
 
 // TestSpecCreateStampsProvenance proves the spec store's mint carries the same
-// disclosure pair as every other write path. A spec is minted by a verb a person
-// invoked, so its arrival path is researcher-authored — the value is derived from
-// which command ran, never asked for.
+// disclosure pair as every other write path. A spec's text is written directly,
+// not derived, so its arrival path is researcher-authored — a route, not a claim
+// about who ran the command — and the value is derived from which command ran,
+// never asked for.
 func TestSpecCreateStampsProvenance(t *testing.T) {
 	root := t.TempDir()
 	sp, err := Create(root, "itd-9", "my-feature", "scribe-transcribed")

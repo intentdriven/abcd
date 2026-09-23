@@ -523,8 +523,8 @@ var ErrBackEdgeTaken = fmt.Errorf("intent: the promote back-edge is already take
 //
 // It writes that one key and NOTHING else. It never reads or rewrites `origin`
 // or `production_mode`, which is what "the origin is unchanged" rests on: an
-// origin is stamped at mint and never rewritten, so a hand-filed draft linked to
-// a reading item stays researcher-authored and says so.
+// origin is stamped at mint and never rewritten, so a draft filed from quoted
+// text and linked to a reading item stays researcher-authored and says so.
 //
 // A back-edge already naming this source is a no-op that reports the record
 // unchanged; one naming a different record returns ErrBackEdgeTaken, naming the
