@@ -205,8 +205,13 @@ irreversible; guessing downward costs nothing.**
 - **Scan before mutating git state.** Before a commit, branch switch, stash,
   rebase, or `git worktree add`/`remove` in a checkout that might be shared,
   check for peer sessions via the harness's session listing, and announce the
-  mutation to any peer found. A worktree counts even though it leaves HEAD
-  alone. The sharpest case is a worktree created *inside* the checkout — the
+  mutation to any peer found. Before capturing, resolving or picking a record,
+  also run `go run ./cmd/abcd peers` (`--json` for a machine reader): it lists
+  what every sibling worktree and local branch of this checkout holds that this
+  tree does not, uncommitted captures included, and writes nothing. It sees
+  records, not sessions: an empty listing says no peer holds anything that
+  differs, not that no peer is running. A worktree counts even though it leaves
+  HEAD alone. The sharpest case is a worktree created *inside* the checkout — the
   shape the store above exists to keep out — which churns the tree a peer's
   scan walks, so a concurrent `make preflight` can fail
   `TestPayloadTreeImplementationsResolveIdentically` with `the payload carries

@@ -21,6 +21,9 @@ type boardOutput struct {
 	// Statusline is present in a managed checkout and omitted — not null —
 	// everywhere else, the collection convention of every --json envelope.
 	Statusline *boardStatusline `json:"statusline,omitempty"`
+	// Peers is present only when a live peer holds a record that differs here
+	// (itd-2609091416295622); omitted, not null, otherwise.
+	Peers *boardPeersLine `json:"peers,omitempty"`
 }
 
 // boardStatusline is the board's view of the row: the state the badge

@@ -10,6 +10,7 @@ severity: major
 origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-2609091416304128, itd-2609091014076309, itd-148, itd-2609150819440345, itd-2609201916151817]
+impact: additive
 ---
 
 # A session sees the records its peers hold before it mints or fixes one
@@ -98,7 +99,8 @@ We expect a read-only view of what peers hold to stop the local collisions on re
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-a5f2f1052770 -->
+Fidelity review OWED (receipt rcp-a5f2f1052770).
 
 ## Grounds
 
