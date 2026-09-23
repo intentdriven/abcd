@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // lint.go — the `abcd memory lint` verb (fn-39): a full-store curator
@@ -752,6 +753,12 @@ func findingsToMaps(findings []Finding) []any {
 // AskReportHeading: core names the binary invocation, never one front door.
 const LintReportHeading = "abcd memory lint"
 
+// renderLintReportMD renders report.md, the local-tier file an operator opens in
+// a pager. Every free-text field — the store path, each finding's file, message
+// and suggestion — goes through termsafe.Sanitize, the primitive the CLI render
+// applies to the same findings: a degraded-scanner MR001 message carries a
+// pattern name read from the per-repo pii.json, and a finding's file is a name
+// the store holds, so either can carry a control sequence (iss-2609020239068243).
 func renderLintReportMD(fields map[string]any) string {
 	summary, _ := fields["summary"].(map[string]any)
 	cov, _ := fields["coverage_index"].(map[string]any)
@@ -759,7 +766,7 @@ func renderLintReportMD(fields map[string]any) string {
 		"# " + LintReportHeading + " — curator health-check",
 		"",
 		fmt.Sprintf("Generated: %v", fields["generated_at"]),
-		fmt.Sprintf("Store: %v", fields["store_path"]),
+		"Store: " + termsafe.Sanitize(fmt.Sprintf("%v", fields["store_path"])),
 		fmt.Sprintf("Summary: %d blocker(s), %d warning(s), %d info(s)",
 			toInt(summary["blockers"]), toInt(summary["warnings"]), toInt(summary["infos"])),
 	}
@@ -786,13 +793,13 @@ func renderLintReportMD(fields map[string]any) string {
 				if f["severity"] != sev {
 					continue
 				}
-				loc := fmt.Sprintf("%v", f["file"])
+				loc := termsafe.Sanitize(fmt.Sprintf("%v", f["file"]))
 				if line := toInt(f["line"]); line != 0 {
 					loc += fmt.Sprintf(":%d", line)
 				}
-				lines = append(lines, fmt.Sprintf("- [%s] %v %s — %v", sev, f["code"], loc, f["message"]))
+				lines = append(lines, fmt.Sprintf("- [%s] %v %s — %s", sev, f["code"], loc, termsafe.Sanitize(fmt.Sprintf("%v", f["message"]))))
 				if sug, _ := f["suggestion"].(string); sug != "" {
-					lines = append(lines, "  fix: "+sug)
+					lines = append(lines, "  fix: "+termsafe.Sanitize(sug))
 				}
 			}
 		}
