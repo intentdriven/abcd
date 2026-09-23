@@ -60,8 +60,5 @@ None stated.
 
 ## Audit Notes
 
-
-_None yet — this intent has not been reviewed._
-
 <!-- abcd-review: OWED receipt=rcp-0d18ea2d4682 -->
 Fidelity review OWED (receipt rcp-0d18ea2d4682).
