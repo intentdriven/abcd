@@ -54,7 +54,9 @@ go generate ./internal/surface/cli   # or: go run ./cmd/abcd-gen-surface
 
 The generator holds no formatting logic of its own — it calls the same
 `GenerateSurface` the drift test calls — so the file that is written and the file
-that is checked are produced by one code path. Output is deterministic: every
+that is checked are produced by one code path. The same run then rewrites the
+generated appendix at the end of each brief surface chapter from the same walk of
+the tree ([`../brief/04-surfaces/README.md` § The generated appendix](../brief/04-surfaces/README.md#the-generated-appendix)). Output is deterministic: every
 collection is sorted by a stable key, the JSON key order is fixed, and nothing
 reads the clock or the environment, so the same tree yields the same bytes on
 every machine.

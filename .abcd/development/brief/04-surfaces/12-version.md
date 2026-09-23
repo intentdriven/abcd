@@ -5,7 +5,7 @@ is: its version, how it was installed, how old it is, and whether it has
 drifted from the reference it should match. The whole answer is read off disk,
 so it costs nothing, works offline, and writes nothing.
 
-The one exception is the opt-in `--check` flag, which fetches the latest
+The one exception is the opt-in online check, which fetches the latest
 release exactly once, compares, and names the source it consulted. That is this
 surface's only network touch, and abcd never fetches implicitly
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
@@ -17,18 +17,18 @@ Bare `abcd version` prints a short block: the version line, then `install:`
 the bare-invocation convention the [surfaces index](README.md) sets out, a
 read-only render of the verb's own state, and `version` keeps it rather than
 sitting among the exceptions that index enumerates. What it is not is a board for
-the repository: the state it reports is the binary's. Adding
-`--json` emits the same facts as `name`, `version`, `vintage` and `staleness`,
-with `install_mode` present only when it resolves and a `check` object present
-only when `--check` was passed.
+the repository: the state it reports is the binary's. The JSON form emits the
+same facts as `name`, `version`, `vintage` and `staleness`, with `install_mode`
+present only when it resolves and a `check` object present only when the online
+check was asked for.
 
-When `--check` finds an update, the answer carries the command that takes it,
+When the online check finds an update, the answer carries the command that takes it,
 so the reader's next move is on screen rather than inferred: `abcd update` for
 the one install shape the update verb can swap, and for every other shape the
 remedy that shape's owner requires (the host's plugin update for a plugin-root
-binary, `ahoy install` for a stranded entry, the package manager's own command
+binary, a fresh ahoy installation for a stranded entry, the package manager's own command
 for a Homebrew install). The classification is the disk-only one `abcd update`
-itself dispatches on, so `--check` keeps its single sanctioned fetch
+itself dispatches on, so the online check keeps its single sanctioned fetch
 ([`21-update.md`](21-update.md)).
 
 **`staleness` is prose, not a token enum.** The field carries the same words the
@@ -69,3 +69,19 @@ build, not from a literal in the record
 
 - Plugin command: [`commands/version.md`](../../../../commands/version.md)
 - Derived versioning: [`04-launch.md § 3`](04-launch.md#3-versioning--marketplace)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd version`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--check` | bool |
+
+<!-- surface-appendix:end -->

@@ -8,8 +8,8 @@ host-agnostic undermines itself the moment its published docs name one specific
 harness.
 
 `/abcd:banlist` declares both classes as banned names and stops them at authoring
-time, where prevention is cheap. Bare invocation and `list` are **strictly
-read-only**; `add` and `remove` are the write paths, and each names its layer
+time, where prevention is cheap. Bare invocation and listing are **strictly
+read-only**; adding and removing are the write paths, and each names its layer
 explicitly.
 
 ## Sub-verbs
@@ -28,13 +28,13 @@ explicitly.
 | `list` | — | shipped |
 | `remove` | — | shipped |
 
-`add` and `remove` each name their layer with `--private` or `--public`, and
-neither defaults: a write that guessed the layer would be a private pattern
-published, or a public ban nobody can see. On `list` the same two flags are
-optional and narrow the render to one layer; naming neither renders both, which
-is what bare invocation already does. `add` takes a key and a pattern, and the
+An add or a remove each names its layer, private or public, and neither
+defaults: a write that guessed the layer would be a private pattern
+published, or a public ban nobody can see. On a listing the layer is
+optional and narrows the render to one layer; naming neither renders both, which
+is what bare invocation already does. An add takes a key and a pattern, and the
 pattern `-` reads one line from **stdin** instead, so a private pattern never has
-to sit in a shell history or a process list. `--severity` and `--successor` shape a public
+to sit in a shell history or a process list. A severity and a successor shape a public
 entry only, because a private entry has one severity and its refusal names
 nothing but its key. A private add still accepts both and silently does nothing
 with them, which is a rough edge rather than a guard: nothing tells the user the
@@ -50,7 +50,7 @@ compromise.
 | | public layer | private layer |
 |---|---|---|
 | store | `.abcd/docs-lint.json`, the `banned_tokens` family | `.abcd/.work.local/private-names.txt`, gitignored; inside a linked worktree the primary checkout's copy is read as well (below) |
-| enforced by | `abcd docs lint` in CI, per-line escape | the committed `.githooks/pre-commit` and `pre-merge-commit` guards |
+| enforced by | the docs currency lint in CI, per-line escape | the committed `.githooks/pre-commit` and `pre-merge-commit` guards |
 | reach | every clone and pull request, when the config is tracked (see below) | only machines that have opted in, and only the commits git runs a hook for |
 | visibility | entries render in full | entries render **by key only** |
 
@@ -58,7 +58,7 @@ The public layer is not a new mechanism. It is the `banned_tokens` family that
 already gates this repo's harness names, so an entry a verb writes and an entry a
 human hand-curated are enforced by the same engine with the same escape hatch.
 Verb-written entries carry the `names/` id prefix, which is the ownership
-boundary — and it holds in one direction only. `list` shows the whole family, and
+boundary — and it holds in one direction only. A listing shows the whole family, and
 a removal is refused for anything outside that namespace, so the verb cannot
 delete an entry a person curated by hand elsewhere in the family. Nothing stops a
 person writing an entry *into* `names/` by hand, and this repository's own config
@@ -94,7 +94,7 @@ it always matched, and no part of any line can be printed. That is the whole
 reason the declaration exists. Deciding per line whether a first field "looks like
 a key" did two harmful things at once: it printed part of a legacy line as a key —
 and on this layer a pattern *is* the secret — and it narrowed an old whole-line
-pattern to the remainder after its first field. `add` and `remove` refuse a
+pattern to the remainder after its first field. An add and a remove refuse a
 non-empty legacy store for the same reason: writing a keyed line into it would
 change what every *other* line means.
 
@@ -147,26 +147,26 @@ entries by key as ever. So an `INACTIVE` local store in a linked worktree does n
 mean the commit goes through unchecked, and the render says so on the same screen.
 
 The fallback is **read-side only**, and that asymmetry is the thing to hold on to.
-`add --private` in a linked worktree writes to that worktree's own store, which
+A private add in a linked worktree writes to that worktree's own store, which
 the primary checkout's guard does not read back: a name that must be enforced in a
 given checkout is declared in that checkout.
 
 ## Two ways an entry fails, reported apart
 
-`abcd banlist list --private` distinguishes a line the guard's engine **cannot
+The private layer's listing distinguishes a line the guard's engine **cannot
 use** from one it **accepts and reads differently**, because the two need opposite
 responses. An unusable line stops every commit until it is fixed. An inert line —
 a Perl-style escape, an inline flag group — stops nothing: grep may read it
 differently than written, so the name goes unguarded while the store looks
 healthy.
 
-`add --private` refuses both up front, screening the constructs POSIX ERE does not
+A private add refuses both up front, screening the constructs POSIX ERE does not
 implement and then asking grep itself, with the pattern on stdin, whether the
 expression is usable. A private pattern is therefore checked against the engine
 that enforces it rather than against Go's, which accepted `\d` and `(?i)` as
 healthy and rejected `[a-z-.]`, which grep refuses.
 
-Because the store's safety rests entirely on its being untracked, `add --private`
+Because the store's safety rests entirely on its being untracked, a private add
 refuses outright when git does not ignore the store's path: the guard cannot catch
 its own source.
 
@@ -178,7 +178,7 @@ would immediately declare unenforceable is worse than an absent one.
 
 | artefact | where | written when |
 |---|---|---|
-| guard hook | `.githooks/pre-commit` | when absent. Committed, so every clone inherits it; a clone arms it once with `git config core.hooksPath .githooks` |
+| commit guard | `.githooks/pre-commit` | when absent. Committed, so every clone inherits it; a clone arms it once with `git config core.hooksPath .githooks` |
 | merge guard | `.githooks/pre-merge-commit` | only beside abcd's own guard. git runs no `pre-commit` for a merge commit, so the same guard needs a second entry point; the shim delegates to whatever occupies `pre-commit`, so beside a foreign hook it would both claim coverage it has not got and silently start running the maintainer's hook on merges |
 | EOL pin | `.gitattributes` | only beside abcd's own guard. One appended line keeps the hooks at LF, because a `core.autocrlf` checkout rewrites a script git executes and its shebang stops resolving |
 | public family | `.abcd/docs-lint.json` | only where git says the path would be tracked. Seeded with abcd's own Writing-Guide rules armed (the `present_tense` and `spelling` token families, held to the set abcd runs on itself, and the `links_resolve`, `harness_leak` and `stray_root_docs` rules) and with **no** banned names: abcd cannot know which names a repo may not publish, and a ban nobody declared would fail a build over a word the repository never chose. The `harness` token family is left for the repository to declare, since refusing to name a specific agent tool is wrong for a repository whose content teaches those tools (iss-2609150805167646), and so is the `punctuation/em-dash-in-list-item` token, which is abcd's house style and whose fit for other repositories awaits the product thinker's ruling |
@@ -288,3 +288,46 @@ pattern, and a guard is only ever asked about what git asks it about.
 - The corpus writer that shares the private store: [`13-consult.md`](13-consult.md)
 - The visibility fence and its tracked-tier narrowing:
   [`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd banlist`
+
+Sub-verbs: `abcd banlist add`, `abcd banlist list`, `abcd banlist remove`.
+
+Flags: none.
+
+### `abcd banlist add`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--private` | bool |
+| `--public` | bool |
+| `--severity` | string |
+| `--successor` | string |
+
+### `abcd banlist list`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--private` | bool |
+| `--public` | bool |
+
+### `abcd banlist remove`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--private` | bool |
+| `--public` | bool |
+
+<!-- surface-appendix:end -->

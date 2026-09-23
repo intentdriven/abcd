@@ -41,21 +41,25 @@ command above.
 The command is markdown, but three of its steps are the binary's, so the result
 does not depend on an agent's memory of what a convention looks like.
 
-`abcd lint --json` supplies the engine-backed conformance core, read-only,
+The JSON form of `abcd lint` supplies the engine-backed conformance core, read-only,
 which the command then supplements with the structural and principles judgement
-the binary does not make. `abcd identity init` records the identity block: the
+the binary does not make. The identity verb's initialiser records the identity block: the
 markdown itself, which stays the source of truth, plus `.abcd/positioning.json`,
 the pointer recording where that block lives and which surfaces render from it.
-`abcd ahoy install` is the adopt phase's workhorse, and it does more than write
+The ahoy installer is the adopt phase's workhorse, and it does more than write
 the commit gates. In one run it plants abcd's own managed block in the repo's
 `CLAUDE.md` and `AGENTS.md` (both by default, and the target is choosable down to
 neither), writes the repo's settings file with its visibility, oracle backend and
 scan depth, writes its rule-loader overrides file, installs a copy of the binary
 on `PATH`, records the repo in the machine's own store, and offers to pin the git
-commit identity. It runs a second time with `--attribution` where the user opts
-in.
+commit identity. It runs a second time, with the installer's attribution flag,
+where the user opts in: that run installs the committed `prepare-commit-msg`
+prompt asking every commit to declare whether a tool assisted it, and the choice
+is recorded, so a later install without the flag keeps the hook. The flag's
+spelling is ahoy's shape, so it lives in the generated appendix of
+[`01-ahoy.md`](01-ahoy.md#appendix-the-shipped-surface) and is not repeated here.
 
-`abcd identity render` is the follow-on surface and writes nothing: it proposes
+The identity verb's render is the follow-on surface and writes nothing: it proposes
 a correction as a diff, and adopting it is always the maintainer's move.
 
 ## Flow
@@ -66,7 +70,7 @@ Four phases, each gated on the one before.
 1. **Orient.** Read the abcd record from the plugin root: the three-tier
    README, the brief, principles, ADRs, intents, the `docs/` Diátaxis rules, and
    the lint configs as patterns.
-2. **Conformance lint.** Run `abcd lint --json`, supplement it, write the gap
+2. **Conformance lint.** Run `abcd lint` in its JSON form, supplement it, write the gap
    report to the target's `.abcd/.work.local/scratch/`, and present it before
    any change.
 3. **Adopt.** Create the three tiers with a repo-specific `CONTEXT.md`; migrate
@@ -139,3 +143,9 @@ layout the shipped abcd surfaces then operate over.
 - Plugin command: [`commands/prepare-this-repo.md`](../../../../commands/prepare-this-repo.md)
 - The three-tier layout it adopts: [`../02-constraints/01-platform.md`](../02-constraints/01-platform.md) and the abcd `.abcd/README.md`
 - The invariants the working-conventions block encodes: [`../02-constraints`](../02-constraints)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+There is no shipped surface: the command tree registers no `abcd prepare-this-repo` verb, so there are no flags and no sub-verbs to list.
+
+<!-- surface-appendix:end -->

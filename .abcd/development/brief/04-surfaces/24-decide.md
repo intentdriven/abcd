@@ -10,11 +10,8 @@ store, which is a restore rather than a mint.
 
 ## Behaviour
 
-```bash
-abcd decide "<title>" --json
-```
-
-emits `{ "id": "adr-<stamp>", "slug": "<kebab-case>", "title": "<title>",
+Given the quoted title as its one operand, the JSON form emits
+`{ "id": "adr-<stamp>", "slug": "<kebab-case>", "title": "<title>",
 "date": "YYYY-MM-DD", "path": ".abcd/development/decisions/adrs/<stamp>-<slug>.md" }`
 and writes that one file, laying the store's directories down first where the
 checkout does not already hold them. Nothing else lands on disk. The plain render
@@ -100,3 +97,17 @@ checks in both directions, and declaring one is an act of judgement.
 - The record-id scheme the mint belongs to: invariant 11 in
   [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md).
 - The plugin surface: `commands/decide.md`.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd decide`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

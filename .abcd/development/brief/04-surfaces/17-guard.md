@@ -26,12 +26,13 @@ what a person is taught and what an agent is stopped by cannot drift apart.
 | `check` | gate | shipped |
 | `hook` | — | shipped |
 
-`check` takes the candidate on `--command` or on stdin, and stdin is the one to
-prefer for a command line you did not type: the shell expands a double-quoted
-`--command` argument before the guard starts, so a command substitution inside
-it runs at check time, the one moment the check exists to prevent. `hook` reads
-a host hook payload and maps the same decision onto the host's block/allow
-protocol; it is wired from `hooks/hooks.json` rather than typed.
+The check takes the candidate as the value of its command flag or on stdin, and
+stdin is the one to prefer for a command line you did not type: the shell
+expands a double-quoted flag value before the guard starts, so a command
+substitution inside it runs at check time, the one moment the check exists to
+prevent. It takes no positional argument. The hook adapter reads a host hook
+payload and maps the same decision onto the host's block/allow protocol; it is
+wired from `hooks/hooks.json` rather than typed.
 
 Bare `abcd guard` prints usage. Guard health lives where every other
 install-state question is answered, on `abcd ahoy`.
@@ -40,7 +41,7 @@ install-state question is answered, on `abcd ahoy`.
 
 Three verdicts, and they are the same decision reported two ways:
 
-| Verdict | `guard check` | `guard hook` |
+| Verdict | Asked by a person or a script | Asked by the host hook |
 |---|---|---|
 | `allow` | exit 0 | exit 0, silent |
 | `warn` | exit 0, warning rendered | exit 1, warning on stderr |
@@ -55,7 +56,7 @@ hook, only exit 2 stops anything; a warn exits 1 because a pre-tool-use hook tha
 exits 0 has its stderr discarded, so a warn returning 0 would run as if allowed
 with nobody told (iss-231). A guard that cannot answer at all — an unparsable
 command line, a registry with nothing left to check against, a registry switched
-off — exits 1 on the hook and lets the command run, and exits 2 on `check` so
+off — exits 1 on the hook and lets the command run, and exits 2 on the check so
 that a script never reads silence as clearance.
 
 Either verb also speaks JSON, and that is the form the plugin page uses: a
@@ -85,10 +86,10 @@ the session keeps its protection:** the repo's overrides are dropped with a
 notice on stderr, the bundled hazards still decide, and a hazardous command is
 still stopped. Even an allow is made loud in that state, because a silent pass
 would take the notice with it and nobody would learn the config is broken.
-**On `check`, the verb refuses:** it names the file and the parse error, checks
+**On the check, the verb refuses:** it names the file and the parse error, checks
 nothing, and exits 2. The asymmetry follows from who is asking. The hook is
 protecting a live session that will run the command either way, so protecting it
-partly beats protecting it not at all; `check` is answering a person or a script
+partly beats protecting it not at all; the check is answering a person or a script
 that asked a question, and a verdict drawn from half the registry they thought
 they had is worse than being told the registry is broken.
 
@@ -153,7 +154,7 @@ guard does read, because the guard sees the variable and not what the shell will
 expand it to, and warning on every variable would bury the warnings that matter;
 a payload inside a non-shell interpreter such as `python -c`, which is one
 opaque token and today a silent allow; and any dangerous form no entry
-describes. `abcd guard check --help` is the fuller statement of the same list,
+describes. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 
@@ -167,3 +168,31 @@ into the bundled defaults through the admission gate.
 - Spec: [`spc-16`](../../specs/closed/spc-16-abcd-teaches-repo-agents-the-shell-commands-they-must-never.md)
 - Intent: [`itd-103`](../../intents/shipped/itd-103-abcd-teaches-repo-agents-the-shell-commands-they-must-never.md)
 - Install/health surface: [`01-ahoy.md`](01-ahoy.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd guard`
+
+Sub-verbs: `abcd guard check`, `abcd guard hook`.
+
+Flags: none.
+
+### `abcd guard check`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--command` | string |
+
+### `abcd guard hook`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->
