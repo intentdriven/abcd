@@ -1,5 +1,6 @@
 ---
 id: itd-162
+shipped_in: v0.6.8
 slug: adoption-templates-outside-record
 spec_id: spc-54
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 builds_on: []
 severity: minor
 promoted_from: iss-87
+impact: fix
 ---
 
 # prepare-this-repo adopt phase is not self-contained in the abcd record: Phase 3-5 reference templates at a machine-local path outside both the abcd repo and the target (pre-commit-config.yaml, prepare-commit-msg, AGENTS.md, DECISIONS.md, NEXT.md). A fresh clone of abcd-cli onboarding a repo would not have them, so the adoption step silently degrades against loud-staging. Detector: an onboarding self-containment check -- every asset the adopt phase applies resolves from within the abcd record or the binary, never an external machine-local path. Acceptance: the Phase 3/4/5 template references in prepare-this-repo.md.
@@ -36,4 +38,5 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-40d49180fe07 -->
+Fidelity review OWED (receipt rcp-40d49180fe07).

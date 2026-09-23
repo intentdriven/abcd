@@ -1,5 +1,6 @@
 ---
 id: itd-158
+shipped_in: v0.6.8
 slug: provenance-lacks-pass-b-exemption-marker
 spec_id: spc-51
 kind: standalone
@@ -8,6 +9,7 @@ reclassification_history: []
 builds_on: []
 severity: minor
 promoted_from: iss-136
+impact: additive
 ---
 
 # itd-88's fidelity gap audit found a missing press-release claim: Pass B is promised to ship as a declared exemption in _provenance.json, never a silent gap, but no exemption field or marker exists anywhere in the lifeboat package or the Provenance struct — a promise with no implementing code, recorded in itd-88's Audit Notes (receipt rcp-4d07032fc6ab)
@@ -37,4 +39,5 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-932e48c90725 -->
+Fidelity review OWED (receipt rcp-932e48c90725).
