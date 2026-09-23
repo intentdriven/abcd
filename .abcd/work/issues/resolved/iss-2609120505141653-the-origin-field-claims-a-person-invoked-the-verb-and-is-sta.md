@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/core/provenance/provenance.go"
 deferred_after: "v0.9.0"
 deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M31: route, not who: correct the KindResearcherAuthored comment in internal/core/provenance to name the route (written directly, not derived); no new kind, no who field, no backfill; a build lane owed, not holding the tag)."
+resolution: "Ruled route, not who (M31): researcher-authored names the route (text written directly, not derived) and asserts nothing about who invoked the command; no new kind, no who field, no backfill. Corrected at every site that claimed who: in 97788f71 the KindResearcherAuthored comment (internal/core/provenance/provenance.go), the DraftOptions.Origin comment (internal/core/intent/create.go) and the disclosure paragraph of commands/capture.md; in f28e164a the commitCapture comment (internal/core/capture/workflow.go), the spec.Create comment (internal/core/spec/store.go) and TestSpecCreateStampsProvenance (internal/core/spec/store_test.go), the researcher-authored line of the closed spc-56, the hand-filed-draft wording in commands/capture.md link mode, internal/core/intent/lifecycle.go, internal/core/intent/intent_test.go, internal/core/capture/promote_reading_origin_test.go, internal/core/lint/schema_test.go and the closed spc-2609020626042168, and the Related note of iss-2609120511058115."
+impact: fix
+resolved_by:
+  commit: "97788f71"
 ---
 
 `origin: researcher-authored` states that a person invoked the verb. It is
@@ -96,3 +100,7 @@ not sit long: every record filed meanwhile inherits the ambiguity.
   the stamped data agree.
 - **Given** a record captured by an agent, **when** its `origin` is read,
   **then** it does not claim a person invoked the verb.
+
+## Grounds
+
+- pursued: the three statements of what researcher-authored means now agree with the stamped data, since none claims a person invoked the verb; shown wrong if any committed text still reads researcher-authored as a claim about who ran the command

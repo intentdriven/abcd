@@ -74,7 +74,8 @@ every non-resolving string would break the documented use.
 ## Related
 
 - `iss-2609120505141653` — the same nine records assert `origin:
-  researcher-authored`, which claims a person invoked the verb.
+  researcher-authored`, which that record read as a claim that a person invoked
+  the verb; ruled to name the route, not who ran the command (M31).
 - `iss-2609120452071388` — `--source` and `--category` do not name their members
   in help, and all nine carry the catch-all `observation`.
 

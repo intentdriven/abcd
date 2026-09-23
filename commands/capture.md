@@ -78,8 +78,10 @@ commands that mint them, and no flag carries either as free text. Records of
 other families — a disposition, for one — carry neither.
 
 `origin` is **derived from which command ran** and has no flag at all:
-`researcher-authored` for a verb a person invoked, `extracted-from-record` for
-`capture promote <iss-N>` — an issue is something a person noticed — and
+`researcher-authored` for text written directly rather than derived (it names
+the route, not whether a person or an agent ran the command),
+`extracted-from-record` for `capture promote <iss-N>` — an issue is something a
+person noticed — and
 `contributed-by-reading <rdg-N>/<rdi-N>`, which `capture promote <rdi-N>` mints
 when it derives a draft from an accepted reading item, naming the item's run and
 id. It is stamped when the record is minted and never rewritten: where a record
@@ -441,7 +443,8 @@ linked) `intent_id`, and both paths from the JSON.
 
 On the reading route `--intent` writes both edges: `promoted_from` on the draft
 and `promoted_to` on the item. It never touches the draft's `origin`, which was
-stamped at mint — a draft filed by hand stays `researcher-authored` and says so.
+stamped at mint — a draft filed from quoted text stays `researcher-authored` and
+says so.
 A draft whose `promoted_from` already names another record keeps it: an intent
 occasioned by several items is promoted from one and joined to the rest by their
 own `promoted_to`, so the item is still stamped forward and the result reports
