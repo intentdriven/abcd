@@ -206,3 +206,28 @@ func TestPathRefusalCatchesTheCheapForms(t *testing.T) {
 		}
 	}
 }
+
+// TestTemplateCommentsDoNotReachTheProse: the template's prose placeholder is
+// an HTML comment, and a reporter who writes below it leaves it in place. It is
+// template chrome, and a comment renders as nothing, so it is removed at parse
+// and never reaches the inbox or the capture a promotion commits.
+func TestTemplateCommentsDoNotReachTheProse(t *testing.T) {
+	in := strings.Replace(filled(t), "Running capture", prosePlaceholder+"\nRunning capture", 1)
+	in = strings.Replace(in, "was refused.", "was refused. <!-- record-lint: illustrative --> end", 1)
+	r, err := Parse([]byte(in))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if strings.Contains(r.Prose, "<!--") || strings.Contains(r.Prose, "What happened") {
+		t.Errorf("prose keeps a comment: %q", r.Prose)
+	}
+	if !strings.HasPrefix(r.Prose, "Running capture") || !strings.HasSuffix(r.Prose, "end") {
+		t.Errorf("prose = %q, want the reporter's words whole", r.Prose)
+	}
+	// A comment opened and never closed would hide everything after it.
+	_, err = Parse([]byte(strings.Replace(filled(t), "was refused.", "was refused. <!-- and then", 1)))
+	var fe *FieldError
+	if !errors.As(err, &fe) || fe.Field != "prose" {
+		t.Errorf("Parse(unclosed comment) = %v, want a refusal naming prose", err)
+	}
+}

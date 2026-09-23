@@ -9,8 +9,9 @@ by itself; nothing is written into the reporting repository or into abcd's
 
 ## Behaviour
 
-- `abcd report --template` prints the skeleton and writes nothing. It is a
-  machine-readable block between `---` lines beside prose the reporter writes.
+- Asked for the template, `abcd report` prints the skeleton and writes nothing.
+  It is a machine-readable block between `---` lines beside prose the reporter
+  writes.
 - `abcd report <file>` validates a filled report and files it; `abcd report -`
   reads it from stdin. The verb prints the report's id (`rpt-` and the sixteen
   digits of the shared record-id mint) and where it landed, with the home
@@ -36,7 +37,10 @@ by itself; nothing is written into the reporting repository or into abcd's
 | `evidence` | optional pointers, one `  - pointer` per line: record ids, commit SHAs, URLs |
 
 The prose below the block is required; the template's placeholder is an HTML
-comment and does not count. The issued skeleton, unchanged, is refused.
+comment and does not count. Every HTML comment is removed from the prose when
+the report is read, so the placeholder a reporter writes below never reaches the
+inbox or a capture, and a comment opened and never closed is refused. The issued
+skeleton, unchanged, is refused.
 
 ## What a report may not carry
 
@@ -97,5 +101,8 @@ silent when nothing waits.
 
 ## Exit codes
 
-`0` filed; `2` refused, with nothing filed. `--json` holds on every path: a
-refusal is the `{"abcd":"error",…}` envelope on stdout.
+`0` filed; `2` refused, with nothing filed. The JSON output holds on every path:
+a refusal is the `{"abcd":"error",…}` envelope on stdout.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+<!-- surface-appendix:end -->

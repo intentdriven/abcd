@@ -182,8 +182,9 @@ func Template(abcdVersion string) []byte {
 	return []byte(b.String())
 }
 
-// prosePlaceholder is the template's prose. Comments are removed before the
-// prose is judged, so a report whose prose is only this is refused as empty.
+// prosePlaceholder is the template's prose. Comments are removed from the
+// prose at parse, so a report whose prose is only this is refused as empty, and
+// the placeholder never reaches the inbox or a capture.
 const prosePlaceholder = "<!-- What happened, what you expected, and how to see it again. Write it here, below the block. -->"
 
 // oneLine clips s to one line of at most max bytes, for a value abcd itself
@@ -400,13 +401,21 @@ func parse(data []byte, filed bool) (Report, error) {
 	}
 
 	prose := strings.Join(lines[closeAt+1:], "\n")
-	if len(strings.TrimSpace(htmlCommentRe.ReplaceAllString(prose, ""))) == 0 {
-		return Report{}, fieldErr("prose", "is empty; write the account below the block")
-	}
 	if err := refuseHidden("prose", prose); err != nil {
 		return Report{}, err
 	}
-	r.Prose = strings.TrimSpace(prose)
+	// Comments are removed, not kept: the template's placeholder is one, and a
+	// reporter who writes below it leaves it in place. A comment renders as
+	// nothing, so one that reached the capture a promotion commits would be text
+	// in the record that no reader of it sees.
+	prose = strings.TrimSpace(htmlCommentRe.ReplaceAllString(prose, ""))
+	if prose == "" {
+		return Report{}, fieldErr("prose", "is empty; write the account below the block")
+	}
+	if strings.Contains(prose, "<!--") {
+		return Report{}, fieldErr("prose", "opens an HTML comment it never closes, which would hide the rest of the account")
+	}
+	r.Prose = prose
 	return r, nil
 }
 
