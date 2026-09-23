@@ -68,8 +68,9 @@ type ClaimRequest struct {
 	// Lease is the claim's lifetime; zero means DefaultLease.
 	Lease time.Duration
 	// Paths are the repository-relative files the lane expects to touch, when the
-	// caller knows them. For the second session a path in the reading corpus
-	// refuses the claim (see TouchesReadingCorpus).
+	// caller knows them. For the second session a path in the reading corpus —
+	// or any path, when the corpus cannot be derived — refuses the claim (see
+	// ReadingCorpus).
 	Paths []string
 }
 
@@ -268,11 +269,7 @@ func (r *Run) secondClaimBounds(root *os.Root, req ClaimRequest) error {
 		return r.refuseLogged(req.Session, "split_roles_second_builds_nothing", map[string]any{"record": req.Record},
 			"in a split-roles window the second session reviews, audits and lands; it opens no lane")
 	}
-	if hit := TouchesReadingCorpus(req.Paths); hit != "" {
-		return r.refuseLogged(req.Session, "reading_corpus_lane", map[string]any{"record": req.Record, "path": hit},
-			fmt.Sprintf("%s is in the reading corpus; a lane that touches it is the first session's", hit))
-	}
-	return nil
+	return r.corpusBound(req.Session, map[string]any{"record": req.Record}, req.Paths)
 }
 
 // Release gives up a session's claim on a record and logs claim_released. Only

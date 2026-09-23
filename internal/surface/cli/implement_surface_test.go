@@ -21,6 +21,13 @@ func implementRepo(t *testing.T) (home, runDir string) {
 	t.Setenv("HOME", home)
 	repo := gittest.NewRepo(t)
 	repo.Write("README.md", "fixture\n")
+	// This repository's own preset file, so the second session's reading-corpus
+	// bound is derived as the live run derives it.
+	presets, err := os.ReadFile(filepath.Join(implementPkgDir, "..", "..", "..", ".abcd", "config", "reading-presets.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo.Write(".abcd/config/reading-presets.json", string(presets))
 	repo.Commit("init")
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
 	t.Chdir(repo.Root())
@@ -123,7 +130,10 @@ func TestImplementTwoSessionsShareARun(t *testing.T) {
 	mustImplement(t, "implement", "claim", "itd-2", "--session", "beta", "--lane", "two", "--json")
 	refusalEnvelope(t, 2, "implement", "claim", "itd-3", "--session", "beta", "--lane", "three", "--json")
 	refusalEnvelope(t, 2, "implement", "check", "release", "--session", "beta", "--json")
-	refusalEnvelope(t, 2, "implement", "check", "lane", "--session", "beta", "--path", "internal/core/lint/x.go", "--json")
+	if msg := refusalEnvelope(t, 2, "implement", "check", "lane", "--session", "beta", "--path", "internal/surface/cli/reading.go", "--json"); !strings.Contains(msg, "is in the reading corpus") {
+		t.Fatalf("corpus refusal = %q; want the corpus named as the reason", msg)
+	}
+	mustImplement(t, "implement", "check", "lane", "--session", "beta", "--path", "internal/surface/cli/implement.go", "--json")
 	mustImplement(t, "implement", "check", "review", "--session", "beta", "--json")
 	mustImplement(t, "implement", "check", "release", "--session", "alpha", "--json")
 

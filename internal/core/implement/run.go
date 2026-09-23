@@ -84,6 +84,9 @@ type Run struct {
 	Dir string
 	// RootSHA is the repository's root-commit SHA the directory is keyed on.
 	RootSHA string
+	// RepoRoot is the checkout the run was opened from. The reading corpus the
+	// second session's bounds check against is read from its preset file.
+	RepoRoot string
 	// Now is the clock. Tests set it; nil means time.Now.
 	Now func() time.Time
 	// exists records whether Dir was present (Peek) or made (Open).

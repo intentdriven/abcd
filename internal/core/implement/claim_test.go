@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // testSHA is a well-formed root-commit SHA for a run no repository owns.
@@ -279,10 +282,26 @@ func TestTheSecondSessionHoldsAtMostOneLane(t *testing.T) {
 	}
 }
 
+// withPresets gives the run a checkout carrying this repository's own preset
+// file, committed, so the reading corpus is derived exactly as the live run
+// derives it.
+func withPresets(t *testing.T, r *Run) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(reading.PresetConfigPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := gittest.NewRepo(t)
+	repo.Write(reading.PresetConfigPath, string(data))
+	repo.Commit("presets")
+	r.RepoRoot = repo.Root()
+}
+
 // TestTheSecondSessionIsRefusedAReadingCorpusLane refuses a claim whose declared
 // paths reach the reading corpus, and grants one whose paths do not.
 func TestTheSecondSessionIsRefusedAReadingCorpusLane(t *testing.T) {
 	r, _ := newRun(t)
+	withPresets(t, r)
 	join(t, r, "alpha", RoleFirst)
 	join(t, r, "beta", RoleSecond)
 	_, err := r.Claim(ClaimRequest{Session: "beta", Record: "itd-1", Lane: "one",
@@ -301,6 +320,91 @@ func TestTheSecondSessionIsRefusedAReadingCorpusLane(t *testing.T) {
 	if _, err := r.Claim(ClaimRequest{Session: "alpha", Record: "itd-2", Lane: "two",
 		Paths: []string{".abcd/config/reading-presets.json"}}); err != nil {
 		t.Fatalf("first session's corpus claim: %v", err)
+	}
+}
+
+// TestTheReadingCorpusIsThePresetsObjectPaths: the corpus is the union of every
+// position's object.paths in the committed preset file, plus that file — so a
+// file the presets name (internal/surface/cli/reading.go) is refused to the
+// second session, a directory they name covers what is under it and nothing
+// beside it, and a path outside the union is open.
+func TestTheReadingCorpusIsThePresetsObjectPaths(t *testing.T) {
+	r, _ := newRun(t)
+	withPresets(t, r)
+	join(t, r, "beta", RoleSecond)
+	for _, p := range []string{
+		"internal/surface/cli/reading.go",
+		".abcd/config/reading-presets.json",
+		"internal/core/lint/rules.go",
+		"commands/reading.md",
+	} {
+		if _, err := r.Check("beta", StepLane, []string{p}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), p) {
+			t.Errorf("second session, lane touching %s = %v; want a refusal naming it", p, err)
+		}
+	}
+	for _, p := range []string{
+		"internal/surface/cli/implement.go",
+		"internal/core/lintx/a.go",
+		"internal/core/implement/bounds.go",
+		"commands/implement.md",
+	} {
+		if v, err := r.Check("beta", StepLane, []string{p}); err != nil || !v.Allowed {
+			t.Errorf("second session, lane touching %s = %+v, %v; want it allowed", p, v, err)
+		}
+	}
+	corpus, err := ReadingCorpus(r.RepoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(corpus, "internal/surface/cli/reading.go") || !slices.Contains(corpus, reading.PresetConfigPath) {
+		t.Fatalf("corpus = %v", corpus)
+	}
+}
+
+// TestAnUnreadablePresetFileFailsClosedForTheSecondSession: when the corpus
+// cannot be derived — no preset file, one that does not parse, or no checkout
+// to read it from — a second session's lane with declared paths is refused and
+// the refusal logged, since nothing can say the lane stays clear of the corpus.
+// A lane with no declared paths asks no corpus question, and the first session
+// is never bounded.
+func TestAnUnreadablePresetFileFailsClosedForTheSecondSession(t *testing.T) {
+	for name, setup := range map[string]func(t *testing.T, r *Run){
+		"no checkout": func(t *testing.T, r *Run) { r.RepoRoot = "" },
+		"absent": func(t *testing.T, r *Run) {
+			repo := gittest.NewRepo(t)
+			repo.Write("README.md", "x\n")
+			repo.Commit("init")
+			r.RepoRoot = repo.Root()
+		},
+		"unparseable": func(t *testing.T, r *Run) {
+			repo := gittest.NewRepo(t)
+			repo.Write(reading.PresetConfigPath, "{not json")
+			repo.Commit("init")
+			r.RepoRoot = repo.Root()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, _ := newRun(t)
+			setup(t, r)
+			join(t, r, "alpha", RoleFirst)
+			join(t, r, "beta", RoleSecond)
+			if _, err := r.Check("beta", StepLane, []string{"internal/core/implement/bounds.go"}); !errors.Is(err, ErrRefused) {
+				t.Fatalf("check with no corpus = %v; want a refusal", err)
+			}
+			if e := lastEvent(t, r, EventRefusal); e.String("condition") != "reading_corpus_unknown" {
+				t.Fatalf("refusal line = %+v", e.Fields)
+			}
+			if _, err := r.Claim(ClaimRequest{Session: "beta", Record: "itd-1", Lane: "one",
+				Paths: []string{"internal/core/implement/bounds.go"}}); !errors.Is(err, ErrRefused) {
+				t.Fatalf("claim with no corpus = %v; want a refusal", err)
+			}
+			if _, err := r.Claim(ClaimRequest{Session: "beta", Record: "itd-1", Lane: "one"}); err != nil {
+				t.Fatalf("claim with no declared paths: %v", err)
+			}
+			if v, err := r.Check("alpha", StepLane, []string{"internal/core/implement/bounds.go"}); err != nil || !v.Allowed {
+				t.Fatalf("first session with no corpus = %+v, %v", v, err)
+			}
+		})
 	}
 }
 

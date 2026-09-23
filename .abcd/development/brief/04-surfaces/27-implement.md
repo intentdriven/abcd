@@ -106,10 +106,17 @@ the condition, when it claims while holding another live claim
 a claim; an allowed step writes nothing. On a refused claim the second session
 also logs a `backoff` with its reason and minutes.
 
-The reading corpus is a stated list — `.abcd/config/reading-presets.json`,
-`internal/core/{capture,grounds,intent,issueschema,lint,provenance}/` and
-`commands/{capture,intent,reading}.md` — the set the run's routing found to move
-the cold-reading windows (iss-2609211105023379). The release step is refused at
+The reading corpus is derived, never restated: the union of every position's
+`object.paths` in the checkout's committed `.abcd/config/reading-presets.json`,
+plus that file itself, read through the loader the `reading` verb uses — so the
+two cannot disagree about what the corpus is. An entry names a file or a
+directory, and a directory covers everything beneath it. A lane that edits one
+of those paths moves what a cold reading is handed, and so the windows the first
+session recalibrates (iss-2609211105023379). When the corpus cannot be derived —
+no preset file, one that is untracked, symlinked or does not parse, or no
+checkout to read it from — a second session's lane that declares paths is
+refused (`reading_corpus_unknown`): the bound fails closed. A lane that declares
+no paths asks no corpus question. The release step is refused at
 this verb, not inside `launch ship`: the ship verb knows no session, and a gate
 keyed on a flag the second session could omit would guard nothing.
 

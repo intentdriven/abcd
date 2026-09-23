@@ -113,6 +113,7 @@ func TestAHandWrittenWindowLineCounts(t *testing.T) {
 // the first session may take every step.
 func TestCheckHoldsTheSecondSessionsBounds(t *testing.T) {
 	r, _ := newRun(t)
+	withPresets(t, r)
 	join(t, r, "alpha", RoleFirst)
 	join(t, r, "beta", RoleSecond)
 	for _, st := range Steps() {

@@ -156,13 +156,21 @@ func implementRun(access runAccess, session string) (*implement.Run, error) {
 		return nil, err
 	}
 	sha := gitutil.RootCommit(root)
+	var run *implement.Run
 	switch access {
 	case runJoin:
-		return implement.Open(sha)
+		run, err = implement.Open(sha)
 	case runJoined:
-		return implement.OpenJoined(sha, session)
+		run, err = implement.OpenJoined(sha, session)
+	default:
+		run, err = implement.Peek(sha)
 	}
-	return implement.Peek(sha)
+	if err != nil {
+		return nil, err
+	}
+	// The reading corpus is the preset file of the checkout the caller stands in.
+	run.RepoRoot = root
+	return run, nil
 }
 
 // implementRefusal maps the core's outcome classes to exit codes: a refusal

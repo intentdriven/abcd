@@ -84,7 +84,10 @@ The second session is refused at exit 2, and the refusal is logged, when it:
 
 - claims while it already holds a live claim — one lane at a time;
 - claims in a `split-roles` window — there it reviews, audits and lands only;
-- declares a `--path` in the reading corpus — those lanes are the first's;
+- declares a `--path` in the reading corpus — every position's `object.paths` in
+  the committed `.abcd/config/reading-presets.json`, plus that file — those
+  lanes are the first's; when the preset file is absent or unreadable, any
+  declared `--path` is refused, since nothing can say the lane is clear;
 - reaches the release step — only the first session cuts a release.
 
 Before a step that is not a claim, ask:
