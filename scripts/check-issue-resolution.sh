@@ -318,9 +318,18 @@ check_mentions() {
 # canon_itd prints an intent id in the one spelling the store's filenames use —
 # leading zeros trimmed, textually — or nothing for an id with no number left
 # (the allocator issues no zero id). recordid.CanonCitedID is the Go original;
-# `itd-007` in a trailer or a back-link names the record filed as itd-7.
+# `itd-007` in a trailer or a back-link names the record filed as itd-7. A value
+# that is not an intent id at all — `null`, a bare number — prints nothing and so
+# matches nothing, which is SameID's fail-closed half.
 canon_itd() {
-	local n="${1#[Ii][Tt][Dd]-}"
+	case "$1" in
+	[Ii][Tt][Dd]-*) ;;
+	*) return 0 ;;
+	esac
+	local n="${1#????}"
+	case "$n" in
+	"" | *[!0-9]*) return 0 ;;
+	esac
 	n="${n#"${n%%[!0]*}"}"
 	[ -n "$n" ] && printf 'itd-%s\n' "$n"
 	return 0

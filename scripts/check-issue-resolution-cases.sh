@@ -971,6 +971,22 @@ Delivers: itd-7"
 expect_refusal_naming "$d" "RS005 finds an open spec through a zero-padded back-link" \
 	"abcd spec close spc-71" -- commits main HEAD
 
+# The fail-closed half of the canonical comparison (recordid.SameID): a
+# back-link that is not an intent id at all — a bare number, or `null` — names
+# no intent, so it is never offered as the spec to close.
+d="$(newrepo_intents rs005-bare-backlink)"
+spec_fixture "$d" open 72 7
+spec_fixture "$d" open 73 null
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: specs whose back-links name no intent"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_not_naming "$d" "RS005 does not follow a back-link that is not an intent id" \
+	"spc-7[23]" -- commits main HEAD
+
 # A `Delivers:` line the rule cannot read is refused rather than passed over: the
 # spec id, a bare word, or the trailer in the wrong case would otherwise be a
 # declaration the author believes armed and the gate never sees.
