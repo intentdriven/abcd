@@ -204,6 +204,20 @@ what was done, and what residual doubt is knowingly accepted
 only item in the sweep that a non-coder can author, verify, and be genuinely
 answerable for.
 
+## Rulings
+
+- **2026-09-23: the rung is stated, and lowering it past strangers is
+  declared** (product thinker, ruling on `iss-2608290944122400`). This answers
+  the question the charge above names as the one this RFC most needs answered.
+  Delivered work states the verification rung it was checked at, so shipping on
+  the cheapest rung is a stated position rather than a silent default; and a
+  project whose blast radius reaches strangers declares that radius before it
+  may lower the rung. The carriers are itd-173 and itd-176, both drafts. The RFC
+  stays open on the questions below, so the ruling is recorded in
+  `.abcd/work/DECISIONS.md` rather than in an ADR. Open question 1 is taken up
+  by the planning interview for an acceptance field on the intent
+  (`iss-2608290956522870`).
+
 ## Open questions
 
 1. Is the object of the product thinker's responsibility the software, or the
