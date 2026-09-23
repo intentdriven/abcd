@@ -1,0 +1,194 @@
+{
+  "roots": [
+    "docs",
+    "README.md"
+  ],
+  "banned_tokens": [
+    {
+      "id": "present_tense/previously",
+      "pattern": "(?i)\\bpreviously\\b",
+      "severity": "blocker",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "change-narration in a doc body; docs state present reality only (git holds history). Rephrase, or add <!-- docs-lint: allow --> if this legitimately describes an external/deprecated thing."
+    },
+    {
+      "id": "present_tense/formerly",
+      "pattern": "(?i)\\bformerly\\b",
+      "severity": "blocker",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "change-narration in a doc body; docs state present reality only (git holds history). Rephrase, or add <!-- docs-lint: allow --> if this legitimately describes an external/deprecated thing."
+    },
+    {
+      "id": "present_tense/to-be-implemented",
+      "pattern": "(?i)\\bto be implemented\\b",
+      "severity": "blocker",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "change-narration in a doc body; docs state present reality only (git holds history). Rephrase, or add <!-- docs-lint: allow --> if this legitimately describes an external/deprecated thing."
+    },
+    {
+      "id": "present_tense/has-been-replaced",
+      "pattern": "(?i)\\b(has|have|had)\\s+been\\s+replaced\\b",
+      "severity": "blocker",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "change-narration in a doc body; docs state present reality only (git holds history). Rephrase, or add <!-- docs-lint: allow --> if this legitimately describes an external/deprecated thing."
+    },
+    {
+      "id": "present_tense/we-switched",
+      "pattern": "(?i)\\bwe switched\\b",
+      "severity": "blocker",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "change-narration in a doc body; docs state present reality only (git holds history). Rephrase, or add <!-- docs-lint: allow --> if this legitimately describes an external/deprecated thing."
+    },
+    {
+      "id": "present_tense/renamed-from",
+      "pattern": "(?i)\\brenamed from\\b",
+      "severity": "blocker",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "change-narration in a doc body; docs state present reality only (git holds history). Rephrase, or add <!-- docs-lint: allow --> if this legitimately describes an external/deprecated thing."
+    },
+    {
+      "id": "present_tense/no-longer",
+      "pattern": "(?i)\\bno longer\\b",
+      "severity": "warn",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "possible change-narration; if this states present reality (e.g. 'wait no longer than'), ignore, otherwise rephrase to present tense. Advisory (non-blocking) because it collides with legitimate present-state prose."
+    },
+    {
+      "id": "present_tense/deprecated",
+      "pattern": "(?i)\\bdeprecated\\b",
+      "severity": "warn",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "possible change-narration; documenting a currently-deprecated external API is present reality, so this is advisory (non-blocking). Rephrase if it narrates a change to this repository itself."
+    },
+    {
+      "id": "present_tense/migrated-from",
+      "pattern": "(?i)\\bmigrated from\\b",
+      "severity": "warn",
+      "successor": "present-tense phrasing",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "possible change-narration; 'records migrated from X are validated' is present-state provenance, so this is advisory (non-blocking). Rephrase if it narrates a one-off migration event."
+    },
+    {
+      "id": "spelling/behavior",
+      "pattern": "(?i)\\bbehavior\\w*\\b",
+      "severity": "warn",
+      "successor": "the British spelling (behaviour…)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use behaviour-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "spelling/color",
+      "pattern": "(?i)\\bcolor\\w*\\b",
+      "severity": "warn",
+      "successor": "the British spelling (colour…)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use colour-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "spelling/favor",
+      "pattern": "(?i)\\bfavor\\w*\\b",
+      "severity": "warn",
+      "successor": "the British spelling (favour…)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use favour-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "spelling/flavor",
+      "pattern": "(?i)\\bflavor\\w*\\b",
+      "severity": "warn",
+      "successor": "the British spelling (flavour…)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use flavour-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "spelling/artifact",
+      "pattern": "(?i)\\bartifact\\w*\\b",
+      "severity": "warn",
+      "successor": "the British spelling (artefact…)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use artefact-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "spelling/analyze",
+      "pattern": "(?i)\\banalyze\\w*\\b",
+      "severity": "warn",
+      "successor": "the British spelling (analyse…)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use analyse-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "punctuation/em-dash-in-list-item",
+      "pattern": "^\\s*(?:[-*+]|[0-9]+\\.)\\s.*\u2014",
+      "severity": "warn",
+      "successor": "a colon at the pivot (capital letter after it)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "em dash inside a list item; this repository's house style, chosen at install, takes a colon at the pivot instead. Rephrase, or add <!-- docs-lint: allow --> with a reason if the em dash is genuinely load-bearing. The severity is this repository's to set: blocker or warn."
+    }
+  ],
+  "rules": {
+    "links_resolve": {
+      "enabled": true,
+      "severity": "blocker"
+    },
+    "harness_leak": {
+      "enabled": true,
+      "severity": "blocker"
+    },
+    "stray_root_docs": {
+      "enabled": true,
+      "severity": "blocker",
+      "allowlist": [
+        "README",
+        "AGENTS",
+        "CLAUDE",
+        "CHANGELOG",
+        "CONTRIBUTING",
+        "SECURITY",
+        "LICENSE",
+        "ACKNOWLEDGEMENTS"
+      ]
+    }
+  },
+  "exempt_paths": [],
+  "exempt_if_status": []
+}

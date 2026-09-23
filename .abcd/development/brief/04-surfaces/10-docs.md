@@ -29,7 +29,21 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 
 
 - **The lint** reports the findings and writes nothing. The plugin command
-  invokes its JSON form and summarises the result.
+  invokes its JSON form and summarises the result. The result carries
+  `checks`, the number of banned tokens and enabled rules the configuration
+  armed, and `documents`, the number of markdown documents its roots hold for
+  the per-document rules to read. A lint that checked nothing (no rule armed,
+  or roots that hold no document) says so loudly, with the reason, on the
+  diagnostic stream in both renders and as `nothing_checked` and `warning` in
+  the JSON, because "0 finding(s)" over a lint that read nothing is a green
+  that means nothing (iss-2609150805167646). A configuration that arms no rule
+  also prints "nothing was checked" in place of a finding count. The exit code
+  is still 0 there (the product thinker's ruling of 2026-09-23 in the decision
+  log): the configuration was read, and no rule it declares was broken, so a
+  nonzero exit would turn red the CI of every repository prepared before its
+  config carried rules. A rule name the lint does not run (a misspelling such
+  as `links_reslove`) is refused when the configuration loads, enabled or not,
+  so `checks` never counts a rule that checks nothing.
 - **The citation refresh** fetches every cited URL once and rewrites the
   committed citation baseline. Each URL gets exactly one bounded attempt with no
   retries, and no response body is read: liveness is judged from the status

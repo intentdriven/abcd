@@ -52,10 +52,26 @@ promotion stamps the draft it mints with it, and resolving and marking wontfix e
 take it to restamp the record they are closing, which is refused on a record
 written before the disclosure existed.
 
-One flag is conditionally required: the RFC 3339 instant a recorded discipline
-gave way must be given with the `lapse` category, and omitting it exits 2 and
-writes nothing. The only available default would be the write-up time, which is
-precisely the value a lapse entry exists to distinguish itself from.
+The location flag is held to the tree it is written into. A location that
+names a repo-relative path (one token of path characters that contains a
+separator or ends in a file extension, with any `:line`, `:range` or `:symbol`
+locator set aside) must resolve in the checkout, and one that does not, or that
+leaves the checkout, is refused before anything is written: the ledger records
+findings about the repository it lives in, and a path that repository does not
+hold is the mechanical sign of a finding filed in the wrong place
+(iss-2609120511058115). A conceptual location, meaning anything that is not a
+lone path token, and an absent value are written as given. The check is made
+at capture only, so a record keeps the path it named when the tree later moves.
+
+One flag belongs to one category: the lapse-instant flag carries the RFC 3339
+instant a recorded discipline gave way, for the `lapse` category, and it has no
+default.
+The only available default would be the write-up time, which is precisely the
+value a lapse entry exists to distinguish itself from, so a lapse capture that
+omits the flag records no instant rather than an invented one. The refusal of an
+omitted instant is parked (iss-2609091009111294) until the rethink of the
+reading work settles what a lapse record must carry; a value that is given must
+be an RFC 3339 instant.
 
 **Listing** queries the ledger, and a status filter — open, resolved, wontfix,
 or all of them — is required. The unfiltered form is rejected with exit 2 and a

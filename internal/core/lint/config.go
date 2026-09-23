@@ -353,6 +353,89 @@ func ArmAgentDiff(cfg Config, diffRange string) Config {
 	return cfg
 }
 
+// knownRules is every rule name a Lint dispatches on: the keys LintAt (and the
+// cross-store and ledger passes it calls) read out of Config.Rules. A config that
+// names any other rule is refused at load (validateRuleNames), because a misspelt
+// name ("links_reslove") decodes cleanly, reads as armed, is counted by
+// ArmedChecks, and runs nothing. A rule added to LintAt and not here is refused
+// the first time a config names it, which fails loud rather than green.
+var knownRules = map[string]bool{
+	"links_resolve":             true,
+	"no_git_metadata":           true,
+	"no_brittle_line_refs":      true,
+	"persona_registry":          true,
+	"directory_coverage":        true,
+	"intent_lifecycle":          true,
+	"intent_impact_valid":       true,
+	"spec_lifecycle":            true,
+	"spec_id_unique":            true,
+	"forbidden_synonyms":        true,
+	"stray_root_docs":           true,
+	"context_status_free":       true,
+	"surface_coverage":          true,
+	"index_drift":               true,
+	"receipt_gate":              true,
+	"gate_lockstep":             true,
+	"issue_id_unique":           true,
+	"issue_impact_valid":        true,
+	ruleAgentContract:           true,
+	ruleCitationFootnotes:       true,
+	ruleCitationCrosswalkRows:   true,
+	ruleCitationURLSyntax:       true,
+	ruleCitationSourcePolicy:    true,
+	ruleCitationBaseline:        true,
+	ruleContextCitationCurrency: true,
+	ruleCrossStoreIDClaim:       true,
+	ruleDeliveryState:           true,
+	ruleHarnessLeak:             true,
+	ruleProseCitationResolves:   true,
+	ruleReadingOutstanding:      true,
+	ruleRecordProvenance:        true,
+	ruleRecordSchema:            true,
+}
+
+// validateRuleNames refuses a rule the lint does not run, enabled or not, and
+// names the rules it does. It is the name-level twin of strictRuleAndTokenKeys:
+// that one refuses a misspelt key inside a rule, this one a misspelt rule. Names
+// are checked in sorted order so the refusal is deterministic when several are
+// wrong.
+func (c Config) validateRuleNames() error {
+	names := make([]string, 0, len(c.Rules))
+	for name := range c.Rules {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if knownRules[name] {
+			continue
+		}
+		known := make([]string, 0, len(knownRules))
+		for k := range knownRules {
+			known = append(known, k)
+		}
+		sort.Strings(known)
+		return &configError{"rule " + strconv.Quote(name) + " is not a rule this lint runs, so it would be read as armed and check nothing; known rules: " + strings.Join(known, ", ")}
+	}
+	return nil
+}
+
+// ArmedChecks counts the checks a Lint over this configuration runs: every
+// banned token and every enabled rule. Zero means a lint runs nothing, and a
+// front door must say so rather than report a finding count that implies a check
+// happened (loud-staging; iss-2609150805167646). A disabled rule is inert and is
+// not counted. Every rule a loaded config names is one the lint runs:
+// validateRuleNames refuses any other at load, so a misspelt name cannot be
+// counted here as a check that ran.
+func (c Config) ArmedChecks() int {
+	n := len(c.BannedTokens)
+	for _, rc := range c.Rules {
+		if rc.Enabled {
+			n++
+		}
+	}
+	return n
+}
+
 // LoadConfig reads and decodes a record-lint config file. The config is a trust
 // boundary: it is a committed, cross-repo-clonable file (a hostile clone can
 // commit .abcd/docs-lint.json as a git mode-120000 symlink), and the read is
@@ -422,6 +505,9 @@ func parseConfig(data []byte) (Config, error) {
 		return Config{}, err
 	}
 	if err := strictRuleAndTokenKeys(data); err != nil {
+		return Config{}, err
+	}
+	if err := cfg.validateRuleNames(); err != nil {
 		return Config{}, err
 	}
 	if err := cfg.validateBannedTokens(); err != nil {
