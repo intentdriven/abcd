@@ -71,9 +71,42 @@ A criterion that the reviews subsystem classifies against a `spec-review` type i
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-3a24ef30ac16 -->
-Fidelity review OWED (receipt rcp-3a24ef30ac16).
+<!-- abcd-review: INGESTED receipt=rcp-3a24ef30ac16 -->
+Fidelity review — receipt rcp-3a24ef30ac16 (verifier intent-auditor claude-fable-5-1).
 
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:85e2f149ad89a02ed2e0e1d99761a26a2e331045a21a310856d3fdf6b95657b4
+Input attestations: diff:da7b7cf4..2a759d32 (PR #668 shipped the record; the sweep itself is the tree read at cede78b8)@-;
+
+Acceptance rollup: MET 3 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: a word-bounded grep of the tree at cede78b8 outside the record folders finds the noun only in the glossary's own declarations, historical plans and reviews, a mined test corpus, and an external tool's model in the acknowledgements; the one live residue is a parenthetical inside a fenced surface diagram on the brief's intent page, which grep finds and which GL002 skips by design as fenced text
+  evidence: .abcd/development/brief/04-surfaces/05-intent.md:244 — "Auto-running the reviewer off that queue is still deferred (no epic currently owns"
+  evidence: .abcd/development/brief/glossary/core/spec.md:6 — "forbidden_synonyms: ["sprint", "milestone", "project", "feature", "epic"]"
+  evidence: internal/core/lint/lint.go:2320 — "(fenced and inline single-backtick), YAML frontmatter, exempt path prefixes, the"
+- ac-2 — MET: the term file is brief/glossary/core/spec.md with term: spec and epic listed among its forbidden_synonyms, and no core/epic term file exists
+  evidence: .abcd/development/brief/glossary/core/spec.md:2 — "term: spec"
+  evidence: .abcd/development/brief/glossary/core/spec.md:6 — "forbidden_synonyms: ["sprint", "milestone", "project", "feature", "epic"]"
+- ac-3 — MET: the issue validator declares related_specs as the spc-N list field and the tree carries no *.schema.json file
+  evidence: internal/core/capture/validate.go:144 — "{"related_specs", reSpcID, "spc-N"},"
+  evidence: internal/core/capture/capture.go:106 — "RelatedSpecs []string `json:"related_specs,omitempty"`"
+- ac-4 — MET: GL002 is enabled as a blocker enforcing epic over the .abcd/development root, and a test lints the live corpus with the real glossary and pins the GL002 count at zero
+  evidence: .abcd/record-lint.json:405 — ""enforce": ["
+  evidence: internal/core/lint/forbidden_synonyms_test.go:201 — "func TestForbiddenSynonymsRealGlossary"
+  evidence: internal/core/lint/forbidden_synonyms_test.go:224 — "if n := countRule(fs, "GL002"); n != 0 {"
+
+Gap audit:
+- honoured:
+  - the glossary term file is the source of truth and the lint reads it rather than a copy
+    evidence: internal/core/lint/lint.go:2310 — "the glossary term files under cfg.GlossaryDir (the single source of truth for"
+  - the issue ledger links to specs through related_specs
+    evidence: internal/core/capture/validate.go:144 — "{"related_specs", reSpcID, "spc-N"},"
+  - the reviews-subsystem criterion is dropped as moot by the product thinker's ruling, and the record says so
+    evidence: .abcd/work/DECISIONS.md:2507 — "itd-43's third criterion is moot and dropped, so spc-8 closes."
+- diverged:
+  - no epic left behind in a heading or the brief: one noun use survives inside a fenced diagram on the brief's intent surface page, outside the detector's scope
+    evidence: .abcd/development/brief/04-surfaces/05-intent.md:244 — "(no epic currently owns"
+- missing: (none)
 ## References
 
 - Follows: the `epic_id`→`spec_id` intent-field rename (intent.schema.json, prd.schema.json, all 41 intent files, internal/core/lint, commands/intent.md) — the atomic part, done first; this intent is the non-atomic remainder.

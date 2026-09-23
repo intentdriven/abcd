@@ -835,6 +835,20 @@ func TestSurfaceCoverage(t *testing.T) {
 	if n := countRule(fs, "surface_coverage"); n != len(want) {
 		t.Fatalf("expected exactly %d surface_coverage findings, got %d: %+v", len(want), n, fs)
 	}
+	// itd-147 ac-7: every finding names the rule as the row-level presence check
+	// it is, and disclaims chapter prose, so a green run cannot be read as a
+	// statement that the chapters are correct.
+	for _, f := range fs {
+		if f.RuleID == "surface_coverage" && !strings.HasPrefix(f.Message, SurfaceCoverageLabel) {
+			t.Errorf("surface_coverage finding does not carry its row-level label: %q", f.Message)
+		}
+	}
+	// The label names both grains the rule checks: the surfaces index rows and
+	// each chapter's `## Sub-verbs` table rows, since the sub-verb findings carry
+	// the same label.
+	if !strings.Contains(SurfaceCoverageLabel, "row-level presence check over the surfaces index and each chapter's sub-verb table") || !strings.Contains(SurfaceCoverageLabel, "not whether a chapter's prose is correct") {
+		t.Errorf("SurfaceCoverageLabel = %q; it must name the row-level presence check over the index and each chapter's sub-verb table, and disclaim chapter prose", SurfaceCoverageLabel)
+	}
 
 	// A well-formed registry over the real surfaces produces zero findings.
 	clean := "# Surfaces\n\n" +

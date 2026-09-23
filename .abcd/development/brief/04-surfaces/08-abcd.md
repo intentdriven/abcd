@@ -16,8 +16,8 @@ Two read-only forms, and no third.
 
 **Bare `abcd`** renders a four-field snapshot of the current directory: the
 directory itself, whether it is a git repo, whether an abcd record is present,
-and which of the `.abcd/` work tiers exist. The plugin command invokes it as
-`abcd --json`.
+and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
+form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
@@ -41,8 +41,8 @@ is the front door today; an MCP server follows later, per
 does: `consult` and `ingest` run entirely as host-side markdown over the
 sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
-too and writes — `abcd identity init` records the repo's identity block and
-registers the surfaces held to it, and `abcd ahoy install` lays the hooks, the
+too and writes — the identity verb's initialiser records the repo's identity
+block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
 banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
@@ -76,9 +76,10 @@ and one with no records at the committed layout is named with the reason and
 not read; when the worktree is gone or git refuses it, its branch is read from
 the object store instead, so a dead worktree never hides an unmerged commit. The board carries one `peers:` line (JSON `peers`: `live`, `ids`)
 only when some peer holds a record that differs here; `abcd peers` prints the
-whole picture, text or `--json`, with every home path redacted to `~`. The same
-reader answers the not-found paths of `abcd <record-id>`, `capture resolve` and
-`intent audit`, consulted only after the local lookup fails. It writes nothing,
+whole picture, as text or in its JSON form, with every home path redacted to
+`~`. The same reader answers the not-found paths of `abcd <record-id>`, of
+resolving a capture and of the intent audit, consulted only after the local
+lookup fails. It writes nothing,
 takes no lock and fetches nothing.
 
 **The inbox row** (itd-2609221656361680) adds one more: wherever the board runs,
@@ -170,3 +171,30 @@ forbidden. Nothing routes them today.
 - Intent: [`itd-20`](../../intents/superseded/itd-20-top-level-abcd-dispatcher.md)
 - The command surface this board sits at the head of: [`README.md`](README.md)
 - The per-verb bare renders it complements: [`05-intent.md`](05-intent.md), [`01-ahoy.md`](01-ahoy.md)
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd`
+
+| Flag | Type |
+|---|---|
+| `--json` | bool |
+| `--no-color` | bool |
+
+### `abcd mode`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd peers`
+
+Sub-verbs: none.
+
+Flags: none.
+
+<!-- surface-appendix:end -->

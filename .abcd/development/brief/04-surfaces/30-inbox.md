@@ -124,4 +124,27 @@ the entry with `notice` beside its fields, and a refusal is
 the `{"abcd":"error",…}` envelope on stdout.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd inbox`
+
+Sub-verbs: `abcd inbox promote`, `abcd inbox show`.
+
+Flags: none.
+
+### `abcd inbox promote`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd inbox show`
+
+Sub-verbs: none.
+
+Flags: none.
+
 <!-- surface-appendix:end -->

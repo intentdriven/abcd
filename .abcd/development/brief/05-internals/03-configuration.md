@@ -481,7 +481,7 @@ abcd/
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
-│   ├── abcd-gen-surface/               #   writes the committed command-surface snapshot
+│   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   └── abcd-gen-cli-ref/               #   writes the generated CLI reference page
 │                                       #   The four are developer tooling, not user surface: they run
 │                                       #   from the Makefile or `go generate`, and ship in no release

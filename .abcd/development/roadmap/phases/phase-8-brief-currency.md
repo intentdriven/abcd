@@ -28,7 +28,7 @@ rather than being smoothed over between cuts.
   gate at spec close and an advisory after each task.
 - The shape claims in the surface chapters are generated from the command
   tree and drift-tested, per
-  [itd-147](../../intents/planned/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md);
+  [itd-147](../../intents/shipped/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md);
   the prose around them carries the why and the refusals.
 - The brief-to-surface crosscheck gate runs at every release cut against a
   manifest whose pinned inputs name the current brief and the current
@@ -62,7 +62,7 @@ Intents bundled:
 - [itd-60](../../intents/planned/itd-60-doc-fidelity-anti-drift.md) — the
   doc-fidelity pass: brief and public docs graded against built reality,
   advisory after each task, a hard gate at spec close.
-- [itd-147](../../intents/planned/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md)
+- [itd-147](../../intents/shipped/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md)
   — generated surface blocks in the brief's chapters, drift-tested like the
   command reference.
 
