@@ -14,7 +14,9 @@
 //     appear in public content cannot be written into public config to ban it there.
 //     The committed .githooks/pre-commit guard is the enforcement point, so this
 //     package's job is the store, the format, and validation against that guard's
-//     engine — parse, add, remove, list — not the matching.
+//     engine — parse, add, remove, list — not the matching. The one read-only
+//     matcher it holds, MatchPrivate, asks that same engine which of a few
+//     names the layer bans, so the load check can mask them before printing.
 //   - The PUBLIC layer is the banned_tokens family of the committed docs-lint
 //     config (PublicConfigRelPath), enforced deterministically in CI with a
 //     per-line escape. There is exactly one banned-token primitive: the

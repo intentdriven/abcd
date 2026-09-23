@@ -28,11 +28,14 @@
 package evals
 
 import (
+	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // abcdBin is the freshly-built binary under test, set once by TestMain.
@@ -53,7 +56,38 @@ func TestMain(m *testing.M) {
 	if err := build.Run(); err != nil {
 		panic("smoke: build abcd: " + err.Error())
 	}
+	// The load check, once, at the start of the harness both tagged lanes share,
+	// through the binary under test (itd-2609231434459890). Its exit is ignored
+	// and it never panics: the check warns, it never refuses.
+	out, closeOut := loadCheckOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), loadCheckTimeout)
+	check := exec.CommandContext(ctx, abcdBin, "implement", "load", "--site", "eval-harness")
+	check.Dir = ".."
+	check.Stdout, check.Stderr = out, out
+	_ = check.Run()
+	cancel()
+	closeOut()
+
 	os.Exit(m.Run())
+}
+
+// loadCheckTimeout bounds the harness's load check; it reads in well under a
+// second.
+const loadCheckTimeout = 30 * time.Second
+
+// loadCheckOutput is where the harness's load check reports. `go test` in
+// package-list mode prints nothing from a passing package, TestMain included,
+// so the report goes to the person directly: to the terminal when one opens,
+// else to stderr. Inside `make preflight` (ABCD_LOAD_CHECKED=preflight) the
+// preflight's own check already put its report on the terminal, so this one goes
+// to stderr only, and one preflight shows one warning.
+func loadCheckOutput() (io.Writer, func()) {
+	if os.Getenv("ABCD_LOAD_CHECKED") != "preflight" {
+		if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
+			return tty, func() { _ = tty.Close() }
+		}
+	}
+	return os.Stderr, func() {}
 }
 
 // run executes the built binary and returns combined output + exit code. A
