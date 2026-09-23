@@ -450,3 +450,113 @@ func TestRollbackCutAfterTheArchivePinRestoresEverything(t *testing.T) {
 		t.Error("the rollback left the tree different from before the cut")
 	}
 }
+
+// shipWithUnwritableDir runs a real `abcd launch ship` ingest against a
+// repository whose relDir cannot take a new file, so the write the cut makes
+// there fails AFTER the dated heading, the release page and the archived page
+// have landed. It returns the refusal and the tree digests either side.
+func shipWithUnwritableDir(t *testing.T, relDir string) (err error, before, after string) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("a directory's mode does not bind the superuser")
+	}
+	r := shipArchiveRepo(t)
+	r.Write("RELEASE.md", "# Release 0.4.0 (2026-07-01)\n\nThe base. (itd-1)\n")
+	r.Commit("the previous release page")
+	payload := composedPayload(t, t.TempDir(), "v0.4.1", "itd-73")
+
+	dir := filepath.Join(r.Root(), filepath.FromSlash(relDir))
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	before = cliTreeDigest(t, r.Root())
+	out, err := shipIn(t, r, "launch", "ship", "--changelog-json", payload)
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("exit = %d, want 2 (the post-write fault)\n%s\n%v", code, out, err)
+	}
+	return err, before, cliTreeDigest(t, r.Root())
+}
+
+// TestLaunchShipRollbackSkipsAFileTheCutNeverChanged: a fault that stops the
+// archive pin's own write leaves the catalog as it was, so the rollback has
+// nothing to put back there. Rewriting it anyway fails the same way the pin did
+// and reports THE ROLLBACK FAILED for a file the cut never changed, sending an
+// operator to recover by hand a tree that is already clean.
+func TestLaunchShipRollbackSkipsAFileTheCutNeverChanged(t *testing.T) {
+	err, before, after := shipWithUnwritableDir(t, ".claude-plugin")
+	if msg := err.Error(); strings.Contains(msg, "THE ROLLBACK FAILED") ||
+		!strings.Contains(msg, "the release record and page were rolled back") {
+		t.Errorf("a rollback that restored everything the cut changed must report success, got:\n%s", msg)
+	}
+	if after != before {
+		t.Error("the refused cut left the tree different from before it")
+	}
+}
+
+// TestLaunchShipRollbackGetsTheCutsUndoAndSavedFiles drives the rollback
+// through the verb rather than calling it directly: the surface snapshot's
+// directory refuses the refresh, which runs after the ingest's three writes
+// AND the catalog pin. Only a rollback handed the ingest's real undo plan
+// (CHANGELOG, RELEASE.md, the archived page) and the ship's saved catalog
+// returns the tree to its pre-ship digest, so a call site that passes an empty
+// plan or drops the saved files fails here.
+func TestLaunchShipRollbackGetsTheCutsUndoAndSavedFiles(t *testing.T) {
+	err, before, after := shipWithUnwritableDir(t, filepath.Dir(filepath.FromSlash(SurfaceSnapshotPath)))
+	if msg := err.Error(); strings.Contains(msg, "THE ROLLBACK FAILED") ||
+		!strings.Contains(msg, "the release record and page were rolled back") {
+		t.Errorf("the rollback must report success, got:\n%s", msg)
+	}
+	if after != before {
+		t.Error("the refused cut left the tree different from before it: the rollback was not handed every write the cut made")
+	}
+}
+
+// TestSavedFileRestoreCases pins every branch of the restore: an unchanged file
+// is left alone, a changed or deleted one gets its saved bytes back, and one the
+// cut created is removed again.
+func TestSavedFileRestoreCases(t *testing.T) {
+	cases := []struct {
+		name   string
+		before *string // nil: absent before the cut
+		cut    func(path string) error
+		want   *string // nil: absent after the restore
+	}{
+		{"unchanged", restoreText("a"), func(string) error { return nil }, restoreText("a")},
+		{"rewritten", restoreText("a"), func(p string) error { return os.WriteFile(p, []byte("b"), 0o644) }, restoreText("a")},
+		{"deleted", restoreText("a"), os.Remove, restoreText("a")},
+		{"created", nil, func(p string) error { return os.WriteFile(p, []byte("b"), 0o644) }, nil},
+		{"still absent", nil, func(string) error { return nil }, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "f.json")
+			if c.before != nil {
+				if err := os.WriteFile(path, []byte(*c.before), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			f, err := saveFile(root, "f.json")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.cut(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.restore(root); err != nil {
+				t.Fatalf("restore: %v", err)
+			}
+			data, err := os.ReadFile(path)
+			switch {
+			case c.want == nil && !os.IsNotExist(err):
+				t.Errorf("want the file absent, got err=%v data=%q", err, data)
+			case c.want != nil && (err != nil || string(data) != *c.want):
+				t.Errorf("want %q, got %q (err=%v)", *c.want, data, err)
+			}
+		})
+	}
+}
+
+func restoreText(s string) *string { return &s }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -223,6 +224,11 @@ func rollbackCut(repoRoot, dest string, undo release.UndoPlan, others ...savedFi
 // savedFile is a repository file's pre-ship bytes, held so a refused ship can
 // put it back. present is false for a file that did not exist, which the
 // restore removes again.
+//
+// The restore touches a file only when it differs from what was saved: a fault
+// that stopped the cut before it wrote a file (an unwritable directory, say)
+// would stop the restore's rewrite the same way, and report a rollback failure
+// for a file the cut never changed.
 type savedFile struct {
 	rel     string
 	data    []byte
@@ -243,7 +249,17 @@ func saveFile(repoRoot, rel string) (savedFile, error) {
 
 func (f savedFile) restore(repoRoot string) error {
 	path := filepath.Join(repoRoot, filepath.FromSlash(f.rel))
-	if !f.present {
+	cur, err := os.ReadFile(path)
+	switch {
+	case os.IsNotExist(err):
+		if !f.present {
+			return nil
+		}
+	case err != nil:
+		return err
+	case f.present && bytes.Equal(cur, f.data):
+		return nil
+	case !f.present:
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
