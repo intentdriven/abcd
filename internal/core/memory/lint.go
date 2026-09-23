@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -229,7 +230,77 @@ func (l *memoryLinter) checkResidue() {
 	if l.redactor == nil {
 		return
 	}
+	l.findings = append(l.findings, pageNameResidue(l.redactor, filepath.Base(l.pagePath), l.pagePath, 0)...)
 	l.findings = append(l.findings, residueFindings(l.redactor, l.content, l.pagePath)...)
+}
+
+const pageNameSuggestion = "If the credential is real, rotate it. Then rename the page by hand and repair every place its name is recorded — index.md, log.md and the sources registry back-link; lint reports and never rewrites the store."
+
+// pageNameResidue is MR001 for a page NAME already in the store
+// (iss-2609090642035097's read side of iss-2609020321100138). The free-text
+// scan cannot see a token a name carries: '_' is a word character, so
+// `topic_auth_ghp_…` has no boundary before the token and the anchored pattern
+// never matches — in the page's own name, or in the registry back-link that
+// repeats it. The name is therefore judged by the write side's own verdict,
+// filenameHardFailKinds, which splits it into its components and its
+// underscore suffixes and holds the hard_fail bar a prose-shaped name needs.
+// file and line locate where the name was found; the message carries the kind,
+// never the span. The finding names the file as the write-side refusal names
+// the page: a report that withheld it would leave nothing to repair.
+func pageNameResidue(r *storeRedactor, name, file string, line int) []Finding {
+	var out []Finding
+	for _, kind := range r.filenameHardFailKinds(name) {
+		out = append(out, Finding{
+			Code: "MR001", Severity: severityFor("MR001"), File: file, Line: line,
+			Message:    fmt.Sprintf("page name carries a %s span the store redactor refuses at the write boundary — a secret committed as a file name and repeated in index.md, log.md and the sources registry back-link.", kind),
+			Suggestion: pageNameSuggestion,
+		})
+	}
+	return out
+}
+
+// storedBackLinks returns every page name the registry's back-link lists
+// (`<content-hash>.consumers.<consumer>.pages`, the list registryBackLinkPath
+// names on the write side) hold, deduplicated, each with the 1-based line of
+// its first quoted occurrence in raw. A registry that does not parse yields
+// none: its bytes are still scanned as text.
+func storedBackLinks(raw []byte) []backLink {
+	var reg map[string]any
+	if json.Unmarshal(raw, &reg) != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []backLink
+	for _, hash := range sortedKeys(reg) {
+		entry, _ := reg[hash].(map[string]any)
+		consumers, _ := entry["consumers"].(map[string]any)
+		for _, c := range sortedKeys(consumers) {
+			consumer, _ := consumers[c].(map[string]any)
+			for _, name := range anyToStrings(consumer["pages"]) {
+				if seen[name] {
+					continue
+				}
+				seen[name] = true
+				out = append(out, backLink{name: name, line: quotedLine(string(raw), name)})
+			}
+		}
+	}
+	return out
+}
+
+type backLink struct {
+	name string
+	line int
+}
+
+// quotedLine is the 1-based line of the first JSON-quoted occurrence of s in
+// text, or 0 when there is none (a name the encoder escaped).
+func quotedLine(text, s string) int {
+	i := strings.Index(text, `"`+s+`"`)
+	if i < 0 {
+		return 0
+	}
+	return strings.Count(text[:i], "\n") + 1
 }
 
 // residueOfStoreFiles scans the store's untouched leaves — the sources
@@ -243,6 +314,9 @@ func residueOfStoreFiles(r *storeRedactor, repoRoot, mem string) []Finding {
 	index := SourcesIndexPath(repoRoot)
 	if raw, err := fsutil.ReadGuarded(index, maxRegistryBytes); err == nil {
 		out = append(out, residueFindings(r, string(raw), index)...)
+		for _, bl := range storedBackLinks(raw) {
+			out = append(out, pageNameResidue(r, bl.name, index, bl.line)...)
+		}
 	}
 	sources := filepath.Join(mem, "sources")
 	if fi, err := os.Lstat(sources); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
