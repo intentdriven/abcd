@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // lint.go — the `abcd memory lint` verb (fn-39): a full-store curator
@@ -229,7 +231,105 @@ func (l *memoryLinter) checkResidue() {
 	if l.redactor == nil {
 		return
 	}
+	l.findings = append(l.findings, pageNameResidue(l.redactor, filepath.Base(l.pagePath), l.pagePath, 0)...)
 	l.findings = append(l.findings, residueFindings(l.redactor, l.content, l.pagePath)...)
+}
+
+const pageNameSuggestion = "If the credential is real, rotate it. Then rename the page by hand and repair every place its name is recorded — index.md, log.md and the sources registry back-link; lint reports and never rewrites the store."
+
+// pageNameResidue is MR001 for a page NAME already in the store
+// (iss-2609090642035097's read side of iss-2609020321100138). The free-text
+// scan cannot see a token a name carries: '_' is a word character, so
+// `topic_auth_ghp_…` has no boundary before the token and the anchored pattern
+// never matches — in the page's own name, or in the registry back-link that
+// repeats it. The name is therefore judged by the write side's own verdict,
+// filenameHardFailKinds, which splits it into its components and its
+// underscore suffixes and holds the hard_fail bar a prose-shaped name needs.
+// file and line locate where the name was found; the message carries the kind,
+// never the span. The finding names the file as the write-side refusal names
+// the page: a report that withheld it would leave nothing to repair.
+func pageNameResidue(r *storeRedactor, name, file string, line int) []Finding {
+	var out []Finding
+	for _, kind := range r.filenameHardFailKinds(name) {
+		out = append(out, Finding{
+			Code: "MR001", Severity: severityFor("MR001"), File: file, Line: line,
+			Message:    fmt.Sprintf("page name carries a %s span the store redactor refuses at the write boundary — a secret committed as a file name and repeated in index.md, log.md and the sources registry back-link.", kind),
+			Suggestion: pageNameSuggestion,
+		})
+	}
+	return out
+}
+
+// storedBackLinks returns every page name the registry's back-link lists
+// (`<content-hash>.consumers.<consumer>.pages`, the list registryBackLinkPath
+// names on the write side) hold, deduplicated, each with the 1-based line of
+// its first quoted occurrence in raw. A registry that does not parse yields
+// none: its bytes are still scanned as text.
+func storedBackLinks(raw []byte) []backLink {
+	var reg map[string]any
+	if json.Unmarshal(raw, &reg) != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []backLink
+	for _, hash := range sortedKeys(reg) {
+		entry, _ := reg[hash].(map[string]any)
+		consumers, _ := entry["consumers"].(map[string]any)
+		for _, c := range sortedKeys(consumers) {
+			consumer, _ := consumers[c].(map[string]any)
+			for _, name := range anyToStrings(consumer["pages"]) {
+				if seen[name] {
+					continue
+				}
+				seen[name] = true
+				out = append(out, backLink{name: name, line: quotedLine(string(raw), name)})
+			}
+		}
+	}
+	return out
+}
+
+// maskBackLinks blanks every quoted back-link that is a well-formed page name
+// out of the registry text before its free-text scan (iss-2609230851376499). A
+// back-link is an identifier the store resolves, not acquired text: the write
+// side excludes it from the leaf walk (registryBackLinkPath) and judges it as a
+// filename, at the hard_fail bar, because a prose-shaped name such as
+// `topic_home_migrating-off-the-nas.md` matches net_device_hostname at warn and
+// the free-text bar promotes that to a blocker. The read side holds the same
+// line: pageNameResidue judges each back-link, and the text scan does not see
+// it. Only a name ParsePageFilename accepts is masked — its charset is bounded
+// by pageNameRe, so the quoted form is its exact JSON encoding — and a
+// hand-edited back-link that is not a page name stays in the text scan. The
+// match is registry-wide: any quoted string byte-equal to a well-formed
+// back-link is masked wherever it sits, not only inside consumers.*.pages. The
+// only findings that can be hidden that way are warn-level identity and network
+// kinds on bytes the write side accepts as a page name, since a hard-fail span
+// in those bytes is still reported by pageNameResidue on the identical name; a
+// free-text value that differs from every back-link is still scanned. The
+// mask is spaces of the same length, so every other finding keeps its line.
+func maskBackLinks(text string, links []backLink) string {
+	for _, bl := range links {
+		if _, _, _, ok := ParsePageFilename(bl.name); !ok {
+			continue
+		}
+		text = strings.ReplaceAll(text, `"`+bl.name+`"`, `"`+strings.Repeat(" ", len(bl.name))+`"`)
+	}
+	return text
+}
+
+type backLink struct {
+	name string
+	line int
+}
+
+// quotedLine is the 1-based line of the first JSON-quoted occurrence of s in
+// text, or 0 when there is none (a name the encoder escaped).
+func quotedLine(text, s string) int {
+	i := strings.Index(text, `"`+s+`"`)
+	if i < 0 {
+		return 0
+	}
+	return strings.Count(text[:i], "\n") + 1
 }
 
 // residueOfStoreFiles scans the store's untouched leaves — the sources
@@ -242,7 +342,11 @@ func residueOfStoreFiles(r *storeRedactor, repoRoot, mem string) []Finding {
 	var out []Finding
 	index := SourcesIndexPath(repoRoot)
 	if raw, err := fsutil.ReadGuarded(index, maxRegistryBytes); err == nil {
-		out = append(out, residueFindings(r, string(raw), index)...)
+		links := storedBackLinks(raw)
+		out = append(out, residueFindings(r, maskBackLinks(string(raw), links), index)...)
+		for _, bl := range links {
+			out = append(out, pageNameResidue(r, bl.name, index, bl.line)...)
+		}
 	}
 	sources := filepath.Join(mem, "sources")
 	if fi, err := os.Lstat(sources); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
@@ -655,6 +759,12 @@ func findingsToMaps(findings []Finding) []any {
 // AskReportHeading: core names the binary invocation, never one front door.
 const LintReportHeading = "abcd memory lint"
 
+// renderLintReportMD renders report.md, the local-tier file an operator opens in
+// a pager. Every free-text field — the store path, each finding's file, message
+// and suggestion — goes through termsafe.Sanitize, the primitive the CLI render
+// applies to the same findings: a degraded-scanner MR001 message carries a
+// pattern name read from the per-repo pii.json, and a finding's file is a name
+// the store holds, so either can carry a control sequence (iss-2609020239068243).
 func renderLintReportMD(fields map[string]any) string {
 	summary, _ := fields["summary"].(map[string]any)
 	cov, _ := fields["coverage_index"].(map[string]any)
@@ -662,7 +772,7 @@ func renderLintReportMD(fields map[string]any) string {
 		"# " + LintReportHeading + " — curator health-check",
 		"",
 		fmt.Sprintf("Generated: %v", fields["generated_at"]),
-		fmt.Sprintf("Store: %v", fields["store_path"]),
+		"Store: " + termsafe.Sanitize(fmt.Sprintf("%v", fields["store_path"])),
 		fmt.Sprintf("Summary: %d blocker(s), %d warning(s), %d info(s)",
 			toInt(summary["blockers"]), toInt(summary["warnings"]), toInt(summary["infos"])),
 	}
@@ -689,13 +799,13 @@ func renderLintReportMD(fields map[string]any) string {
 				if f["severity"] != sev {
 					continue
 				}
-				loc := fmt.Sprintf("%v", f["file"])
+				loc := termsafe.Sanitize(fmt.Sprintf("%v", f["file"]))
 				if line := toInt(f["line"]); line != 0 {
 					loc += fmt.Sprintf(":%d", line)
 				}
-				lines = append(lines, fmt.Sprintf("- [%s] %v %s — %v", sev, f["code"], loc, f["message"]))
+				lines = append(lines, fmt.Sprintf("- [%s] %v %s — %s", sev, f["code"], loc, termsafe.Sanitize(fmt.Sprintf("%v", f["message"]))))
 				if sug, _ := f["suggestion"].(string); sug != "" {
-					lines = append(lines, "  fix: "+sug)
+					lines = append(lines, "  fix: "+termsafe.Sanitize(sug))
 				}
 			}
 		}
