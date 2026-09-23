@@ -128,9 +128,26 @@ requests and teach authors to stop writing it.
 
 ## Open
 
-- The rule's identifier. RS001-RS003 are the issue gates; this needs its own,
-  and whether it joins that numbering or starts a sibling series is a naming
-  decision the implementer should not take alone.
-- Whether the trailer also accepts a spec id (`Delivers: spc-N`). The intent is
-  the thing delivered, but the spec is the thing closed, and an author holding
-  the spec id would have to look up the intent.
+Both questions were settled by the implementing session of 2026-09-23, recorded
+here because the record held no ruling on either:
+
+- **The rule's identifier is RS005.** It joins the RS numbering rather than
+  starting a series, because it lives in `scripts/check-issue-resolution.sh`,
+  reuses that script's `fail` helper, exit convention and CI step, and is judged
+  in the same pass over the same trailer lines as RS001. A sibling series would
+  have claimed a second convention where the whole point is one.
+- **The trailer takes the intent id only.** `Delivers: spc-N` is refused, not
+  ignored: any line that reads as an attempt at the trailer, in any case, and is
+  not exactly `Delivers: itd-N[, itd-M…]` is an RS005 refusal that names the
+  spelling. The intent is the thing delivered; a trailer that could name either
+  store would be ambiguous about which to read, and a silently skipped spelling
+  is a declaration its author believes armed.
+
+Two consequences of the 1:n intent–spec rule (adr-2609151513118583) shaped the
+ordinary-case refusal: it names every spec still in `open/` whose own `intent:`
+back-link names the intent, compared canonically (`itd-007` is `itd-7`), rather
+than the intent's scalar `spec_id`; and a planned intent whose specs are all
+closed is refused with the stale-intent diagnosis the release cut uses. The
+standing backlog of planned intents with open specs is handed to
+`iss-2608290808193471`, which records that shape and against which the batch
+clearance of 2026-09-23 is filed; this gate does not reach it.
