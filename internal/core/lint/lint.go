@@ -427,7 +427,7 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		if err != nil {
 			return nil, err
 		}
-		findings = append(findings, sc...)
+		findings = append(findings, labelSurfaceCoverage(sc)...)
 		// The sub-verb pass (spc-27): armed by the snapshot config key, it
 		// checks each surface file's `## Sub-verbs` table against the committed
 		// command-tree snapshot in both directions.
@@ -435,7 +435,7 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		if err != nil {
 			return nil, err
 		}
-		findings = append(findings, sv...)
+		findings = append(findings, labelSurfaceCoverage(sv)...)
 	}
 
 	// record_schema reasons ACROSS the record's stores (ADRs, intents, specs, and
@@ -714,6 +714,23 @@ func checkContextStatusFree(repoRoot string, cfg RuleConfig) ([]Finding, error) 
 	return out, nil
 }
 
+// SurfaceCoverageLabel opens every surface_coverage finding (itd-147 ac-7). The
+// rule checks that rows exist and agree with the plugin surface and the
+// command-tree snapshot; it reads no chapter prose. A green run once read as a
+// chapter-correctness gate while false prose claims sat beside the rows it
+// checked, so each finding says which check it is. What keeps a chapter's
+// flags and sub-verbs true is its generated appendix and the drift test over
+// it (internal/surface/cli), not this rule.
+const SurfaceCoverageLabel = "row-level presence check over the surfaces index (it judges rows, not whether a chapter's prose is correct): "
+
+// labelSurfaceCoverage prefixes each surface_coverage finding with the label.
+func labelSurfaceCoverage(fs []Finding) []Finding {
+	for i := range fs {
+		fs[i].Message = SurfaceCoverageLabel + fs[i].Message
+	}
+	return fs
+}
+
 // surfaceRow is one parsed row of the brief's surface registry table.
 type surfaceRow struct {
 	name   string // sub-verb after "/abcd:"; empty for the bare "/abcd" top-level
@@ -733,9 +750,12 @@ type surfaceRow struct {
 //     the file check;
 //   - registry integrity: every row's status is "shipped" or "staged".
 //
-// The semantic half (a brief claim vs. binary behaviour — flags, exit codes,
-// schema fields) stays an agent/release-gate check, not a structural lint. A
-// missing registry file is not an error.
+// It is a row-level presence check and says so in every finding
+// (SurfaceCoverageLabel): it reads no chapter prose. A chapter's flags and
+// sub-verbs are held to the command tree by its generated appendix and the
+// drift test over it (itd-147); exit codes, schema fields and behavioural
+// claims stay an agent/release-gate check, not a structural lint. A missing
+// registry file is not an error.
 func checkSurfaceCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	if cfg.Registry == "" {
 		return nil, nil

@@ -354,3 +354,26 @@ func TestSubVerbShortRowIsFlagged(t *testing.T) {
 		t.Fatalf("a short row must be exactly one finding:\n%s", messages(out))
 	}
 }
+
+// itd-147 ac-7: a sub-verb pass finding reached through Lint carries the same
+// row-level label as the registry pass, so neither half reads as a check of
+// chapter prose.
+func TestSubVerbFindingsCarryTheRowLevelLabel(t *testing.T) {
+	f := newSubverbFixture(t, []map[string]any{
+		cmd("abcd", false), cmd("abcd capture", false),
+		cmd("abcd capture list", false), cmd("abcd capture resolve", false),
+	})
+	f.writeSurface(t, "06-capture.md", cleanCaptureTable)
+	fs, err := Lint(Config{Rules: map[string]RuleConfig{"surface_coverage": f.cfg}}, f.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countRule(fs, "surface_coverage") == 0 {
+		t.Fatalf("fixture produced no sub-verb finding; the label assertion would pass vacuously")
+	}
+	for _, x := range fs {
+		if x.RuleID == "surface_coverage" && !strings.HasPrefix(x.Message, SurfaceCoverageLabel) {
+			t.Errorf("sub-verb finding lacks the row-level label: %q", x.Message)
+		}
+	}
+}
