@@ -1,5 +1,6 @@
 ---
 id: itd-101
+shipped_in: v0.4.2
 slug: every-citation-abcd-publishes-is-provably-alive-and-honestly
 spec_id: spc-17
 kind: standalone
@@ -45,4 +46,5 @@ None stated.
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-c9215c58f907 -->
+Fidelity review OWED (receipt rcp-c9215c58f907).
