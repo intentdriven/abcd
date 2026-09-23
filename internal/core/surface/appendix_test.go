@@ -2,6 +2,8 @@ package surface
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -353,3 +355,43 @@ func TestRegeneratedChapterDriftNamesChapterAndClaim(t *testing.T) {
 	}
 }
 
+// Two lanes landing surfaces in sequence each add a register row and a chapter.
+// A chapter that cannot be regenerated — its markers absent, or no row naming it
+// — is refused by name, and every other chapter is still regenerated, so one
+// unfinished chapter never hides the drift of the rest.
+func TestRegenerateChaptersSkipsAndReportsARefusedChapter(t *testing.T) {
+	dir := t.TempDir()
+	register := "# Surfaces\n\n| # | Command | Status | Purpose | File |\n|---|---|---|---|---|\n" +
+		"| 1 | `/abcd:capture` | shipped | x | [`06-capture.md`](06-capture.md) |\n" +
+		"| 2 | `/abcd:version` | shipped | x | [`12-version.md`](12-version.md) |\n" +
+		"| 3 | `/abcd:docs` | shipped | x | [`10-docs.md`](10-docs.md) |\n"
+	files := map[string]string{
+		RegisterFile:    register,
+		"06-capture.md": chapterText("# Capture\n\n"),
+		"12-version.md": "# Version\n\nNo markers yet.\n",
+		"10-docs.md":    chapterText("# Docs\n\n"),
+		"30-peers.md":   chapterText("# Peers\n\n"),
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := RegenerateChapters(dir, fixtureTree())
+	if !errors.Is(err, ErrMarkerAbsent) || !strings.Contains(err.Error(), "12-version.md") {
+		t.Errorf("err = %v; want the unmarked chapter refused by name", err)
+	}
+	if !errors.Is(err, ErrChapterWithoutRow) || !strings.Contains(err.Error(), "30-peers.md") {
+		t.Errorf("err = %v; want the chapter with no row refused by name", err)
+	}
+	var names []string
+	for _, c := range got {
+		names = append(names, c.File)
+		if !strings.Contains(c.Want, AppendixBegin) {
+			t.Errorf("%s: not regenerated: %q", c.File, c.Want)
+		}
+	}
+	if strings.Join(names, ",") != "06-capture.md,10-docs.md" {
+		t.Errorf("regenerated %v; want every chapter but the refused ones", names)
+	}
+}

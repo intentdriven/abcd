@@ -15,7 +15,8 @@ import (
 func TestSurfaceAppendicesMatchCommandTree(t *testing.T) {
 	chapters, err := SurfaceChapters(testRepoRoot())
 	if err != nil {
-		t.Fatalf("cannot regenerate the surface chapters: %v", err)
+		// A refused chapter is named; every other chapter is still checked below.
+		t.Errorf("cannot regenerate every surface chapter: %v", err)
 	}
 	if len(chapters) == 0 {
 		t.Fatal("no surface chapters found; the drift gate would pass vacuously")
@@ -34,7 +35,7 @@ func TestSurfaceAppendicesMatchCommandTree(t *testing.T) {
 func TestSurfaceChapterProseStatesNoShape(t *testing.T) {
 	chapters, err := SurfaceChapters(testRepoRoot())
 	if err != nil {
-		t.Fatalf("cannot read the surface chapters: %v", err)
+		t.Errorf("cannot read every surface chapter: %v", err)
 	}
 	tree := commandSurface(NewRootCommand())
 	for _, ch := range chapters {

@@ -545,19 +545,23 @@ type Chapter struct {
 // Chapters pairs the chapter files with the register's rows. Every chapter file
 // must be named by at least one row, and every row naming a chapter must name a
 // file that exists: a chapter the register does not know has no command to
-// derive an appendix from, and the refusal says so rather than skipping it.
+// derive an appendix from. Each mismatch is refused by name, and every chapter
+// that does pair is still returned, so one unfinished chapter never hides the
+// rest; the error joins every refusal.
 func Chapters(rows []RegisterRow, files []string) ([]Chapter, error) {
 	have := map[string]bool{}
 	for _, f := range files {
 		have[f] = true
 	}
+	var refusals []error
 	byFile := map[string][]string{}
 	for _, r := range rows {
 		if r.Chapter == "" {
 			continue
 		}
 		if !have[r.Chapter] {
-			return nil, fmt.Errorf("%s (register line %d, %s): %w", r.Chapter, r.Line, r.Command, ErrRowWithoutChapter)
+			refusals = append(refusals, fmt.Errorf("%s (register line %d, %s): %w", r.Chapter, r.Line, r.Command, ErrRowWithoutChapter))
+			continue
 		}
 		byFile[r.Chapter] = append(byFile[r.Chapter], r.Command)
 	}
@@ -567,11 +571,12 @@ func Chapters(rows []RegisterRow, files []string) ([]Chapter, error) {
 	for _, f := range sorted {
 		cmds, ok := byFile[f]
 		if !ok {
-			return nil, fmt.Errorf("%s: %w; add its row to %s/%s", f, ErrChapterWithoutRow, BriefSurfacesDir, RegisterFile)
+			refusals = append(refusals, fmt.Errorf("%s: %w; add its row to %s/%s", f, ErrChapterWithoutRow, BriefSurfacesDir, RegisterFile))
+			continue
 		}
 		out = append(out, Chapter{File: f, Commands: cmds})
 	}
-	return out, nil
+	return out, errors.Join(refusals...)
 }
 
 // chapterFileRe is a surface chapter's basename: NN-<name>.md.
@@ -587,7 +592,11 @@ type RegeneratedChapter struct {
 // RegenerateChapters reads the register and every chapter in dir and returns
 // each chapter regenerated against tree. It writes nothing: the generator writes
 // Want, and the drift test compares it with Committed, so the file written and
-// the file checked come from one code path. A refusal names the chapter.
+// the file checked come from one code path. A chapter that cannot be
+// regenerated — no register row, or markers absent or malformed — is skipped
+// and refused by name, and every other chapter is still returned: the error
+// joins the refusals, and a nil error means every chapter was regenerated. Only
+// an unreadable register or directory stops the whole walk.
 func RegenerateChapters(dir string, tree []Command) ([]RegeneratedChapter, error) {
 	register, err := os.ReadFile(filepath.Join(dir, RegisterFile))
 	if err != nil {
@@ -603,10 +612,8 @@ func RegenerateChapters(dir string, tree []Command) ([]RegeneratedChapter, error
 			files = append(files, e.Name())
 		}
 	}
-	chapters, err := Chapters(ParseRegister(string(register)), files)
-	if err != nil {
-		return nil, err
-	}
+	chapters, pairErr := Chapters(ParseRegister(string(register)), files)
+	refusals := []error{pairErr}
 	out := make([]RegeneratedChapter, 0, len(chapters))
 	for _, ch := range chapters {
 		text, err := os.ReadFile(filepath.Join(dir, ch.File))
@@ -615,11 +622,12 @@ func RegenerateChapters(dir string, tree []Command) ([]RegeneratedChapter, error
 		}
 		want, err := RenderChapter(string(text), ComposeAppendix(ch.Commands, tree))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", ch.File, err)
+			refusals = append(refusals, fmt.Errorf("%s: %w", ch.File, err))
+			continue
 		}
 		out = append(out, RegeneratedChapter{Chapter: ch, Committed: string(text), Want: want})
 	}
-	return out, nil
+	return out, errors.Join(refusals...)
 }
 
 // Drift reports how the committed chapter differs from its regeneration, naming

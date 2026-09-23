@@ -8,8 +8,11 @@
 // either ever diverges from the tree. It holds no rendering logic of its own —
 // the walk, the encoding and the composition live in cli.GenerateSurface and
 // cli.SurfaceChapters, so the generator and the drift tests render
-// byte-for-byte identically. A chapter whose markers are absent or malformed is
-// refused by name and left untouched; the snapshot is written first either way.
+// byte-for-byte identically. The snapshot is written first. A chapter that
+// cannot be regenerated — its markers absent or malformed, or no register row
+// naming it — is refused by name and left untouched, every other chapter is
+// still written, and the run then exits 1 with each refusal, so a lane landing
+// behind another never has its whole regeneration blocked by one chapter.
 package main
 
 import (
@@ -54,9 +57,9 @@ func run() error {
 	}
 	fmt.Println("wrote", cli.SurfaceSnapshotPath)
 
-	chapters, err := cli.SurfaceChapters(root)
-	if err != nil {
-		return err
+	chapters, refused := cli.SurfaceChapters(root)
+	if chapters == nil && refused != nil {
+		return refused
 	}
 	for _, ch := range chapters {
 		if ch.Committed == ch.Want {
@@ -68,5 +71,5 @@ func run() error {
 		}
 		fmt.Println("wrote", rel)
 	}
-	return nil
+	return refused
 }
