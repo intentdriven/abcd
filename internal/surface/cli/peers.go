@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/peers"
@@ -78,12 +77,12 @@ func peersView(rep peers.Report) peersOutput {
 	out := peersOutput{Sources: rep.Sources, DefaultRef: rep.DefaultRef, Live: rep.Live(), IDs: rep.IDCount(),
 		Peers: make([]peers.Peer, 0, len(rep.Peers)), Skipped: make([]peers.Skipped, 0, len(rep.Skipped))}
 	for _, p := range rep.Peers {
-		p.Path = redactHomePath(p.Path)
-		p.NotRead = redactHomePath(p.NotRead)
+		p.Path = fsutil.RedactHome(p.Path)
+		p.NotRead = fsutil.RedactHome(p.NotRead)
 		out.Peers = append(out.Peers, p)
 	}
 	for _, s := range rep.Skipped {
-		s.Path = redactHomePath(s.Path)
+		s.Path = fsutil.RedactHome(s.Path)
 		out.Skipped = append(out.Skipped, s)
 	}
 	return out
@@ -165,21 +164,6 @@ func countOf(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
-// redactHomePath replaces the home directory with ~ in either spelling: the one
-// the environment names and the one git reports, which differ wherever the home
-// sits behind a symlink. The resolved spelling goes first: the environment's
-// spelling can be a suffix of it (/var/… inside /private/var/…), and redacting
-// that first would leave the resolved prefix stranded in front of the ~, since
-// fsutil.RedactRoot checks no boundary before a match (iss-2609230641546141).
-func redactHomePath(s string) string {
-	if home, err := os.UserHomeDir(); err == nil {
-		if real, err := filepath.EvalSymlinks(home); err == nil && real != filepath.Clean(home) {
-			s = fsutil.RedactRoot(s, real, "~")
-		}
-	}
-	return fsutil.RedactHome(s)
-}
-
 // boardPeersLine is the board's peers member: present only when some live peer
 // holds a record that differs here.
 type boardPeersLine struct {
@@ -197,7 +181,7 @@ func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
 	}
 	rep, err := peers.Scan(root)
 	if err != nil {
-		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(redactHomePath(err.Error())))
+		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return nil
 	}
 	if rep.IDCount() == 0 {
@@ -241,7 +225,7 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 			h = "a detached worktree"
 		}
 		if l.Path != "" {
-			h += " at " + redactHomePath(l.Path)
+			h += " at " + fsutil.RedactHome(l.Path)
 		} else {
 			h += " (checked out nowhere)"
 		}
