@@ -269,8 +269,8 @@ package-manager install takes the manager's own upgrade.
 
 ## What adopting a repository commits
 
-`abcd ahoy install` in a repository adopts it: it lays down the `.abcd/`
-layout and the commit gates. By default it writes abcd's name into none of the
+Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
+it lays down the `.abcd/` layout and the commit gates. By default it writes abcd's name into none of the
 repository's conventions files (`CLAUDE.md`, `AGENTS.md`); the managed block
 that documents the rule loader, and names abcd, goes into one only when you ask
 for it with `--docs-target`.
