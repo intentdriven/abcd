@@ -288,6 +288,28 @@ func storedBackLinks(raw []byte) []backLink {
 	return out
 }
 
+// maskBackLinks blanks every quoted back-link that is a well-formed page name
+// out of the registry text before its free-text scan (iss-2609230851376499). A
+// back-link is an identifier the store resolves, not acquired text: the write
+// side excludes it from the leaf walk (registryBackLinkPath) and judges it as a
+// filename, at the hard_fail bar, because a prose-shaped name such as
+// `topic_home_migrating-off-the-nas.md` matches net_device_hostname at warn and
+// the free-text bar promotes that to a blocker. The read side holds the same
+// line: pageNameResidue judges each back-link, and the text scan does not see
+// it. Only a name ParsePageFilename accepts is masked — its charset is bounded
+// by pageNameRe, so the quoted form is its exact JSON encoding — and a
+// hand-edited back-link that is not a page name stays in the text scan. The
+// mask is spaces of the same length, so every other finding keeps its line.
+func maskBackLinks(text string, links []backLink) string {
+	for _, bl := range links {
+		if _, _, _, ok := ParsePageFilename(bl.name); !ok {
+			continue
+		}
+		text = strings.ReplaceAll(text, `"`+bl.name+`"`, `"`+strings.Repeat(" ", len(bl.name))+`"`)
+	}
+	return text
+}
+
 type backLink struct {
 	name string
 	line int
@@ -313,8 +335,9 @@ func residueOfStoreFiles(r *storeRedactor, repoRoot, mem string) []Finding {
 	var out []Finding
 	index := SourcesIndexPath(repoRoot)
 	if raw, err := fsutil.ReadGuarded(index, maxRegistryBytes); err == nil {
-		out = append(out, residueFindings(r, string(raw), index)...)
-		for _, bl := range storedBackLinks(raw) {
+		links := storedBackLinks(raw)
+		out = append(out, residueFindings(r, maskBackLinks(string(raw), links), index)...)
+		for _, bl := range links {
 			out = append(out, pageNameResidue(r, bl.name, index, bl.line)...)
 		}
 	}

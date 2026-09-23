@@ -136,3 +136,55 @@ func TestLintReportsASecretInAnOrphanBackLink(t *testing.T) {
 		t.Fatalf("fixture drift: the registry does not carry the back-link")
 	}
 }
+
+// TestLintOrdinaryBackLinkIsNotHostnameResidue — iss-2609230851376499. The
+// registry's free-text scan held every page back-link to the BlockingResidual
+// bar, so the ordinary name `topic_home_migrating-off-the-nas.md` matched
+// net_device_hostname at warn on the hyphen boundary and an ordinary store,
+// written by the ingest path without complaint, linted as a blocker. A back-link
+// is judged by the page-name rule alone, as the write side's leaf walk excludes
+// it; the rest of the registry is still scanned as text.
+func TestLintOrdinaryBackLinkIsNotHostnameResidue(t *testing.T) {
+	repo := t.TempDir()
+	src := writeSource(t, repo, "notes.md", "Plan the move.\n")
+	if _, err := Ingest(IngestRequest{
+		RepoRoot: repo, Source: src, Now: fixedNow,
+		Distiller: oneTopicDistiller("topic", "home", "migrating-off-the-nas", "# Move\nPlan the move.\n"),
+	}); err != nil {
+		t.Fatalf("an ordinary page must write: %v", err)
+	}
+	res, err := Lint(LintRequest{RepoRoot: repo, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("lint: %v", err)
+	}
+	for _, f := range res.Findings {
+		if f.Code == "MR001" {
+			t.Errorf("iss-2609230851376499: an ordinary store drew MR001: %+v", f)
+		}
+	}
+	if res.ExitCode != 0 {
+		t.Errorf("exit = %d, want 0 for an ordinary store", res.ExitCode)
+	}
+}
+
+// The mask covers the back-link list and nothing else: the same span planted in
+// a free-text registry field is still residue.
+func TestLintStillScansTheRegistryTextBesideTheBackLinks(t *testing.T) {
+	repo := t.TempDir()
+	token, _ := x46mSpans(t)
+	seedResidueStore(t, repo, false)
+	plantResidue(t, SourcesIndexPath(repo), map[string]string{`"origin": "notes.md"`: `"origin": "https://example.com/?t=` + token + `"`})
+	res, err := Lint(LintRequest{RepoRoot: repo, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("lint: %v", err)
+	}
+	var text int
+	for _, f := range residueFindingsFor(res, SourcesIndexPath(repo)) {
+		if strings.Contains(f.Message, "stored text") {
+			text++
+		}
+	}
+	if text == 0 {
+		t.Fatalf("the registry's free text was not scanned beside the back-links: %+v", res.Findings)
+	}
+}
