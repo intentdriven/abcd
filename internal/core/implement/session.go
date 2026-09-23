@@ -81,7 +81,20 @@ type Session struct {
 	Role     Role      `json:"role"`
 	JoinedAt time.Time `json:"joined_at"`
 	Model    string    `json:"model,omitempty"`
+	// Ceiling is the session's own agent ceiling as it stated it on joining,
+	// zero when it stated none.
+	Ceiling int `json:"ceiling,omitempty"`
 }
+
+// MaxCeiling bounds a stated agent ceiling.
+//
+// The ceiling is the second session's own limit on the agents it runs at once,
+// on top of the first session's (itd-2609221656373558, criterion 5). abcd runs
+// no agent and counts none — agent_start and agent_end are lines the session
+// writes by hand — so the ceiling is recorded and reported, never enforced
+// here: the session states it on joining, the record and the session_open line
+// carry it, and every check reports it back to the session about to act.
+const MaxCeiling = 64
 
 // maxRecordBytes caps a session or claim record on read.
 const maxRecordBytes = 64 << 10
@@ -102,12 +115,17 @@ type JoinResult struct {
 // the first session learns of a second only if it reads the run state. The
 // record is taken by an exclusive create; a session that joins again with the
 // role it holds is a resume, and one that asks for a different role is refused.
-func (r *Run) Join(id string, role Role, model, reason string) (JoinResult, error) {
+// ceiling is the session's own agent ceiling (see MaxCeiling), zero for none; a
+// resume keeps the ceiling it joined with and refuses a different one.
+func (r *Run) Join(id string, role Role, model, reason string, ceiling int) (JoinResult, error) {
 	if err := validName("session", id); err != nil {
 		return JoinResult{}, err
 	}
 	if _, err := ParseRole(string(role)); err != nil {
 		return JoinResult{}, err
+	}
+	if ceiling < 0 || ceiling > MaxCeiling {
+		return JoinResult{}, refusal("ceiling %d is outside 0 (none stated) to %d", ceiling, MaxCeiling)
 	}
 	var out JoinResult
 	err := r.withLock(func() error {
@@ -116,7 +134,7 @@ func (r *Run) Join(id string, role Role, model, reason string) (JoinResult, erro
 			return err
 		}
 		defer root.Close()
-		s := Session{Session: id, Role: role, JoinedAt: r.now(), Model: model}
+		s := Session{Session: id, Role: role, JoinedAt: r.now(), Model: model, Ceiling: ceiling}
 		data, err := json.MarshalIndent(s, "", "  ")
 		if err != nil {
 			return err
@@ -133,6 +151,9 @@ func (r *Run) Join(id string, role Role, model, reason string) (JoinResult, erro
 			if prev.Role != role {
 				return refusal("session %s joined as %s; a session keeps its role (leave first to rejoin as %s)", id, prev.Role, role)
 			}
+			if ceiling != 0 && ceiling != prev.Ceiling {
+				return refusal("session %s joined with ceiling %d; a session keeps its ceiling (leave first to rejoin with %d)", id, prev.Ceiling, ceiling)
+			}
 			out.Session, out.Rejoined = prev, true
 		default:
 			return fmt.Errorf("cannot record the session: %w", err)
@@ -140,6 +161,9 @@ func (r *Run) Join(id string, role Role, model, reason string) (JoinResult, erro
 		fields := map[string]any{"role": string(role)}
 		if model != "" {
 			fields["model"] = model
+		}
+		if out.Session.Ceiling > 0 {
+			fields["ceiling"] = out.Session.Ceiling
 		}
 		if reason != "" {
 			fields["reason"] = reason

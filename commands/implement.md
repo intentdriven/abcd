@@ -36,13 +36,21 @@ Every write acts for a joined session, named with `--session` on every call.
 Join first, stating the role:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement join --session <id> --role first|second --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement join --session <id> --role first|second [--ceiling <n>] --json
 ```
 
 Joining writes the session's record and a `session_open` line, and signals no
 one: the first session learns of a second only by reading the run state, and
 never waits on it. Joining again with the same role is a resume; asking for the
 other role is refused.
+
+A second session states its own agent ceiling with `--ceiling`: the most agents
+it runs at once, kept on top of the first session's, never instead of it. abcd
+runs and counts no agent, so the ceiling is the session's own discipline: it is
+recorded, carried on the `session_open` line, and reported by every `check`
+(`ceiling` in the verdict), and a resume cannot restate it. Before starting an
+agent, the second session counts its own running agents against it and, at the
+ceiling, waits and logs a `ceiling_wait`.
 
 The first session opens each window by naming its mode — `single`, `claim`,
 `batch` or `split-roles`:
@@ -89,6 +97,9 @@ The second session is refused at exit 2, and the refusal is logged, when it:
   lanes are the first's; when the preset file is absent or unreadable, any
   declared `--path` is refused, since nothing can say the lane is clear;
 - reaches the release step — only the first session cuts a release.
+
+It also keeps its own agent ceiling (stated on joining, reported by `check`),
+which no verb here enforces.
 
 Before a step that is not a claim, ask:
 

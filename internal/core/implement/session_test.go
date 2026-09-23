@@ -15,7 +15,7 @@ import (
 func TestJoiningNeedsNoWordFromTheFirstSession(t *testing.T) {
 	r, _ := newRun(t)
 	join(t, r, "alpha", RoleFirst)
-	res, err := r.Join("beta", RoleSecond, "opus", "window 1")
+	res, err := r.Join("beta", RoleSecond, "opus", "window 1", 0)
 	if err != nil || res.Rejoined {
 		t.Fatalf("join = %+v, %v", res, err)
 	}
@@ -28,7 +28,7 @@ func TestJoiningNeedsNoWordFromTheFirstSession(t *testing.T) {
 		t.Fatalf("sessions = %+v, %v", ss, err)
 	}
 	// A resume keeps the role and says so.
-	res, err = r.Join("beta", RoleSecond, "", "resume")
+	res, err = r.Join("beta", RoleSecond, "", "resume", 0)
 	if err != nil || !res.Rejoined {
 		t.Fatalf("rejoin = %+v, %v", res, err)
 	}
@@ -42,7 +42,7 @@ func TestJoiningNeedsNoWordFromTheFirstSession(t *testing.T) {
 func TestASessionKeepsItsRole(t *testing.T) {
 	r, _ := newRun(t)
 	join(t, r, "beta", RoleSecond)
-	if _, err := r.Join("beta", RoleFirst, "", ""); !errors.Is(err, ErrRefused) {
+	if _, err := r.Join("beta", RoleFirst, "", "", 0); !errors.Is(err, ErrRefused) {
 		t.Fatalf("role change = %v; want a refusal", err)
 	}
 	ss, _ := r.Sessions()
@@ -50,11 +50,11 @@ func TestASessionKeepsItsRole(t *testing.T) {
 		t.Fatalf("role after a refused change = %s", ss[0].Role)
 	}
 	for _, bad := range []string{"", "../x", ".hidden", strings.Repeat("a", 65)} {
-		if _, err := r.Join(bad, RoleFirst, "", ""); !errors.Is(err, ErrRefused) {
+		if _, err := r.Join(bad, RoleFirst, "", "", 0); !errors.Is(err, ErrRefused) {
 			t.Errorf("join %q = %v; want a refusal", bad, err)
 		}
 	}
-	if _, err := r.Join("gamma", Role("third"), "", ""); !errors.Is(err, ErrRefused) {
+	if _, err := r.Join("gamma", Role("third"), "", "", 0); !errors.Is(err, ErrRefused) {
 		t.Fatalf("unknown role = %v; want a refusal", err)
 	}
 }
@@ -309,5 +309,42 @@ func TestOpenJoinedCreatesNothingForARunNobodyStarted(t *testing.T) {
 	}
 	if r, err := OpenJoined(testSHA, "ghost"); err != nil || r == nil {
 		t.Fatalf("OpenJoined on an existing run = %v", err)
+	}
+}
+
+// TestTheSecondSessionsCeilingIsRecordedAndReported: a session states its own
+// agent ceiling when it joins; the record and the session_open line carry it,
+// check reports it with every verdict, and a resume cannot restate it. abcd
+// counts no agents, so the ceiling is the session's discipline, recorded where
+// every check shows it, not a count this verb enforces.
+func TestTheSecondSessionsCeilingIsRecordedAndReported(t *testing.T) {
+	r, _ := newRun(t)
+	join(t, r, "alpha", RoleFirst)
+	if _, err := r.Join("beta", RoleSecond, "", "", 2); err != nil {
+		t.Fatal(err)
+	}
+	if e := lastEvent(t, r, EventSessionOpen); string(e.Fields["ceiling"]) != "2" {
+		t.Fatalf("session_open = %+v", e.Fields)
+	}
+	if ss, _ := r.Sessions(); ss[1].Ceiling != 2 {
+		t.Fatalf("sessions = %+v", ss)
+	}
+	v, err := r.Check("beta", StepReview, nil)
+	if err != nil || v.Ceiling != 2 {
+		t.Fatalf("check = %+v, %v; want the ceiling reported", v, err)
+	}
+	if v, _ := r.Check("alpha", StepReview, nil); v.Ceiling != 0 {
+		t.Fatalf("first session's check = %+v; it recorded no ceiling", v)
+	}
+	if _, err := r.Join("beta", RoleSecond, "", "resume", 3); !errors.Is(err, ErrRefused) {
+		t.Fatalf("rejoin with another ceiling = %v; want a refusal", err)
+	}
+	if _, err := r.Join("beta", RoleSecond, "", "resume", 0); err != nil {
+		t.Fatalf("rejoin stating no ceiling: %v", err)
+	}
+	for _, bad := range []int{-1, MaxCeiling + 1} {
+		if _, err := r.Join("gamma", RoleSecond, "", "", bad); !errors.Is(err, ErrRefused) {
+			t.Errorf("ceiling %d = %v; want a refusal", bad, err)
+		}
 	}
 }

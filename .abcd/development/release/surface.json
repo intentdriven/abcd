@@ -1064,6 +1064,13 @@
       "hidden": false,
       "flags": [
         {
+          "name": "ceiling",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "model",
           "shorthand": "",
           "type": "string",

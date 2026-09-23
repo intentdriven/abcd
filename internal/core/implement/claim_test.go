@@ -49,7 +49,7 @@ func newRun(t *testing.T) (*Run, *clock) {
 // join joins a session or fails the test.
 func join(t *testing.T, r *Run, id string, role Role) {
 	t.Helper()
-	if _, err := r.Join(id, role, "", ""); err != nil {
+	if _, err := r.Join(id, role, "", "", 0); err != nil {
 		t.Fatalf("join %s: %v", id, err)
 	}
 }

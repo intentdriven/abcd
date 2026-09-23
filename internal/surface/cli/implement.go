@@ -69,6 +69,10 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  sessions: %d\n", len(st.Sessions))
 				for _, s := range st.Sessions {
+					if s.Ceiling > 0 {
+						fmt.Fprintf(w, "    %s  %s  agent ceiling %d\n", termsafe.Sanitize(s.Session), s.Role, s.Ceiling)
+						continue
+					}
 					fmt.Fprintf(w, "    %s  %s\n", termsafe.Sanitize(s.Session), s.Role)
 				}
 				fmt.Fprintf(w, "  claims:   %d\n", len(st.Claims))
@@ -226,6 +230,7 @@ func withRun(sub, session string, fn func(*implement.Run) error) error {
 
 func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 	var session, role, model, reason string
+	var ceiling int
 	cmd := &cobra.Command{
 		Use:   "join --session <id> --role first|second",
 		Short: "Join the run: record the session and its role, and log its session_open",
@@ -233,7 +238,10 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 			"Nothing signals any other session: the first learns of a second only by reading the\n" +
 			"run state. Joining again with the same role is a resume and is logged as one; asking\n" +
 			"for the other role is refused. The role is the session's own statement, recorded\n" +
-			"here and read by every bound — never taken from the environment.",
+			"here and read by every bound — never taken from the environment.\n\n" +
+			"--ceiling states the session's own agent ceiling: for the second session, the most\n" +
+			"agents it runs at once, on top of the first session's. abcd counts no agents, so the\n" +
+			"ceiling is recorded and reported by every `check`, not enforced; a resume keeps it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r, err := implement.ParseRole(role)
@@ -241,7 +249,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 				return implementRefusal("join", err)
 			}
 			return withRun("join", session, func(run *implement.Run) error {
-				res, err := run.Join(session, r, model, reason)
+				res, err := run.Join(session, r, model, reason, ceiling)
 				if err != nil {
 					return err
 				}
@@ -259,6 +267,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&role, "role", "", "first | second")
 	cmd.Flags().StringVar(&model, "model", "", "the model this session runs, recorded on the session_open line")
 	cmd.Flags().StringVar(&reason, "reason", "", "why the session opens (run start, window, resume), recorded on the line")
+	cmd.Flags().IntVar(&ceiling, "ceiling", 0, "this session's own agent ceiling (1 to 64; 0 states none), recorded and reported by check")
 	return cmd
 }
 
@@ -411,7 +420,7 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 			"take every step. The second is refused the release step always, a lane in a\n" +
 			"split-roles window, and a lane whose --path reaches the reading corpus; review,\n" +
 			"audit and land are open to it. A refusal exits 2 and is logged; an allowed step\n" +
-			"writes nothing.",
+			"writes nothing. The verdict reports the agent ceiling the session joined with.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := implement.ParseStep(args[0])
@@ -425,6 +434,12 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 				}
 				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) {
 					fmt.Fprintf(w, "%s may take the %s step\n", v.Session, v.Step)
+					switch {
+					case v.Ceiling > 0:
+						fmt.Fprintf(w, "  its own agent ceiling is %d, kept on top of the first session's\n", v.Ceiling)
+					case v.Role == implement.RoleSecond:
+						fmt.Fprintln(w, "  no agent ceiling recorded: it keeps its own on top of the first session's (join with --ceiling to state it)")
+					}
 				})
 			})
 		},

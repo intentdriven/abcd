@@ -108,7 +108,7 @@ func TestImplementBareRendersAndCreatesNothing(t *testing.T) {
 func TestImplementTwoSessionsShareARun(t *testing.T) {
 	_, runDir := implementRepo(t)
 	mustImplement(t, "implement", "join", "--session", "alpha", "--role", "first", "--json")
-	mustImplement(t, "implement", "join", "--session", "beta", "--role", "second", "--model", "opus", "--json")
+	mustImplement(t, "implement", "join", "--session", "beta", "--role", "second", "--model", "opus", "--ceiling", "2", "--json")
 	mustImplement(t, "implement", "mode", "claim", "--session", "alpha", "--window", "1", "--json")
 
 	out := mustImplement(t, "implement", "claim", "itd-1", "--session", "alpha", "--lane", "one", "--json")
@@ -134,7 +134,15 @@ func TestImplementTwoSessionsShareARun(t *testing.T) {
 		t.Fatalf("corpus refusal = %q; want the corpus named as the reason", msg)
 	}
 	mustImplement(t, "implement", "check", "lane", "--session", "beta", "--path", "internal/surface/cli/implement.go", "--json")
-	mustImplement(t, "implement", "check", "review", "--session", "beta", "--json")
+	if out := mustImplement(t, "implement", "check", "review", "--session", "beta", "--json"); !strings.Contains(out, `"ceiling": 2`) {
+		t.Fatalf("check --json does not report the second session's ceiling:\n%s", out)
+	}
+	if out := mustImplement(t, "implement", "check", "review", "--session", "beta"); !strings.Contains(out, "its own agent ceiling is 2") {
+		t.Fatalf("check does not report the second session's ceiling:\n%s", out)
+	}
+	if out := mustImplement(t, "implement", "check", "review", "--session", "alpha"); strings.Contains(out, "ceiling") {
+		t.Fatalf("check reports a ceiling the first session never stated:\n%s", out)
+	}
 	mustImplement(t, "implement", "check", "release", "--session", "alpha", "--json")
 
 	mustImplement(t, "implement", "log", "lane_open", "--session", "beta", "--field", "lane=two", "--field", "record=itd-2", "--json")

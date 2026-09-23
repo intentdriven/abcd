@@ -766,7 +766,7 @@ Say whether this session may take a step, before it takes it. The first session 
 take every step. The second is refused the release step always, a lane in a
 split-roles window, and a lane whose --path reaches the reading corpus; review,
 audit and land are open to it. A refusal exits 2 and is logged; an allowed step
-writes nothing.
+writes nothing. The verdict reports the agent ceiling the session joined with.
 
 **Flags:**
 
@@ -814,9 +814,14 @@ run state. Joining again with the same role is a resume and is logged as one; as
 for the other role is refused. The role is the session's own statement, recorded
 here and read by every bound — never taken from the environment.
 
+--ceiling states the session's own agent ceiling: for the second session, the most
+agents it runs at once, on top of the first session's. abcd counts no agents, so the
+ceiling is recorded and reported by every `check`, not enforced; a resume keeps it.
+
 **Flags:**
 
 ```
+      --ceiling int      this session's own agent ceiling (1 to 64; 0 states none), recorded and reported by check
       --model string     the model this session runs, recorded on the session_open line
       --reason string    why the session opens (run start, window, resume), recorded on the line
       --role string      first | second

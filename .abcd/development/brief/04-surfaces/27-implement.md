@@ -52,8 +52,8 @@ refused before anything is created — no directory, no lock, no log line.
 
 ## Joining
 
-`implement join --session <id> --role first|second` writes the session's record
-by an exclusive create and logs `session_open` with the role. Nothing signals
+`implement join --session <id> --role first|second [--ceiling <n>]` writes the
+session's record by an exclusive create and logs `session_open` with the role. Nothing signals
 any other session. A session that joins again with the role it holds is a
 resume, logged with `rejoin`; asking for the other role is refused. `leave`
 releases every claim the session holds, logs `session_close`, and removes the
@@ -103,7 +103,16 @@ the condition, when it claims while holding another live claim
 (`split_roles_second_builds_nothing`), declares a path in the reading corpus
 (`reading_corpus_lane`), or reaches the release step (`second_session_release`).
 `implement check <lane|release|review|audit|land>` asks before a step that is not
-a claim; an allowed step writes nothing. On a refused claim the second session
+a claim; an allowed step writes nothing.
+
+The second session's own agent ceiling (criterion 5) is recorded and reported,
+not enforced. The session states it with `join --ceiling <n>` (1 to 64); the
+record and the `session_open` line carry it, a resume cannot restate it, and
+every `check` verdict reports it (`ceiling`). abcd runs no agent and counts none
+— `agent_start` and `agent_end` are lines the session writes — so there is no
+count here to hold it against; keeping it, and logging a `ceiling_wait` at it,
+is the session's discipline, which the verdict puts in front of it at every
+step. On a refused claim the second session
 also logs a `backoff` with its reason and minutes.
 
 The reading corpus is derived, never restated: the union of every position's
