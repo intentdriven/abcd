@@ -95,16 +95,6 @@
       "message": "possible change-narration; 'records migrated from X are validated' is present-state provenance, so this is advisory (non-blocking). Rephrase if it narrates a one-off migration event."
     },
     {
-      "id": "punctuation/em-dash-in-list-item",
-      "pattern": "^\\s*(?:[-*+]|[0-9]+\\.)\\s.*—",
-      "severity": "blocker",
-      "successor": "a colon at the pivot (capital letter after it)",
-      "allow_context": [
-        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
-      ],
-      "message": "em dash inside a list item; abcd's writing guide takes a colon at the pivot instead. Rephrase, or add <!-- docs-lint: allow --> with a reason if the em dash is genuinely load-bearing."
-    },
-    {
       "id": "spelling/behavior",
       "pattern": "(?i)\\bbehavior\\w*\\b",
       "severity": "warn",

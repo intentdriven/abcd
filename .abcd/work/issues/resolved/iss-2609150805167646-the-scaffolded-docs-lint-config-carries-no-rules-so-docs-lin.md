@@ -9,7 +9,7 @@ found_during: "peer report from a downstream repo, 2026-09-15"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/banlist_scaffold.go"
-resolution: "docs lint reports 'nothing was checked' (and checks: 0 in --json) when the config arms no rule, and the scaffolded docs-lint config carries abcd's Writing-Guide token families and the links_resolve, harness_leak and stray_root_docs rules armed, with banned names empty and the harness family left to the repository"
+resolution: "docs lint reports 'nothing was checked' (and checks: 0 in --json) when the config arms no rule, and the scaffolded docs-lint config carries abcd's Writing-Guide present_tense and spelling token families and the links_resolve, harness_leak and stray_root_docs rules armed, with banned names empty and the harness family and the em-dash-in-list-item house-style token left to the repository, the latter pending the product thinker's ruling on its fit"
 impact: fix
 resolved_by:
   commit: "5aaf6f2c"

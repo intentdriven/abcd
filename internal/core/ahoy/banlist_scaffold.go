@@ -85,9 +85,8 @@ const (
 // fields carry different owners, and the seed treats them differently
 // (iss-2609150805167646):
 //
-//   - The Writing-Guide rules are abcd's own: the present_tense, punctuation and
-//     spelling token families and the links_resolve, harness_leak and
-//     stray_root_docs rules. They are seeded ARMED, because a lint that runs no rule
+//   - The Writing-Guide rules are abcd's own: the present_tense and spelling token
+//     families and the links_resolve, harness_leak and stray_root_docs rules. They are seeded ARMED, because a lint that runs no rule
 //     reports "0 findings" over any tree, a green that means nothing. A repository
 //     that wants a family off removes it deliberately, a decision with a diff rather
 //     than an absence nobody chose. The token entries are held to the set abcd runs
@@ -99,27 +98,17 @@ const (
 //
 // The harness token family is withheld too, as a per-repository fit decision: it
 // refuses naming a specific agent tool, which is right for abcd's published surface
-// and wrong for a repository whose content is teaching those tools.
+// and wrong for a repository whose content is teaching those tools. So is the
+// punctuation/em-dash-in-list-item token: it is abcd's house style rather than a
+// currency rule, it drew 419 of the 545 findings in the repository that reported
+// the empty seed, and its fit for other repositories awaits the product thinker's
+// ruling. The parity test names every deliberate omission with its reason.
 //
 // The stray_root_docs allowlist names CLAUDE and AGENTS, the two root files the
 // scaffold itself may write, so the seeded gate does not refuse its own output.
 //
 //go:embed defaults/docs-lint.json
 var publicFamilySeed string
-
-// seededTokenFamilies are the banned-token families the docs-lint seed carries:
-// abcd's own Writing-Guide rules, as opposed to the repository's banned names.
-var seededTokenFamilies = []string{"present_tense", "punctuation", "spelling"}
-
-// isSeededFamily reports whether a banned-token family is one the seed carries.
-func isSeededFamily(family string) bool {
-	for _, f := range seededTokenFamilies {
-		if f == family {
-			return true
-		}
-	}
-	return false
-}
 
 // privateStubBody is the scaffolded private banlist: the format declaration, the
 // format's documentation, and worked examples that are ALL COMMENTED OUT.
