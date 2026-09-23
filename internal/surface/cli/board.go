@@ -6,6 +6,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -21,6 +22,9 @@ type boardOutput struct {
 	// Statusline is present in a managed checkout and omitted — not null —
 	// everywhere else, the collection convention of every --json envelope.
 	Statusline *boardStatusline `json:"statusline,omitempty"`
+	// Inbox is the count of reports waiting in the inbox (itd-2609221656361680),
+	// omitted when none wait.
+	Inbox *report.Tally `json:"inbox,omitempty"`
 }
 
 // boardStatusline is the board's view of the row: the state the badge

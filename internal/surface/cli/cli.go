@@ -241,7 +241,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr())}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Inbox: boardInbox()}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -249,6 +249,9 @@ func NewRootCommand() *cobra.Command {
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
 				if board.Statusline != nil {
 					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
+				}
+				if board.Inbox != nil {
+					fmt.Fprintf(w, "  inbox:      %s — `abcd inbox`\n", inboxTallyText(*board.Inbox))
 				}
 			})
 		},
@@ -267,6 +270,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newImplementCommand(&asJSON))
+	root.AddCommand(newReportCommand(&asJSON))
+	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
@@ -1429,6 +1434,14 @@ func newHookCommand() *cobra.Command {
 				notices = append(notices, fmt.Sprintf(
 					"abcd: the running binary is version %s, but this repo was last set up with %s — run `/abcd:ahoy install` (or `abcd ahoy install`) to reconcile the recorded version.",
 					termsafe.Sanitize(to), termsafe.Sanitize(from)))
+			}
+			// The inbox greeting (itd-2609221656361680): one line saying how
+			// many reports wait and from how many repositories, and nothing
+			// else. It goes to STDOUT, where the session reads it, because it
+			// is counts only — no sender name and no word a report wrote, which
+			// is what the paragraph below keeps off that channel.
+			if g := inboxGreeting(); g != "" {
+				fmt.Fprintln(cmd.OutOrStdout(), g)
 			}
 			if len(notices) == 0 {
 				return nil

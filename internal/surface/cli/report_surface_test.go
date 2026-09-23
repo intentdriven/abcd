@@ -1,0 +1,261 @@
+package cli
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/report"
+	"github.com/intentdriven/abcd/internal/gittest"
+)
+
+// fillTemplate fills the issued skeleton the way a reporter does.
+func fillTemplate(t *testing.T, skeleton, title, prose string) string {
+	t.Helper()
+	s := strings.Replace(skeleton, `title: ""`, `title: "`+title+`"`, 1)
+	s = strings.Replace(s, `surface: ""`, `surface: "abcd capture"`, 1)
+	s = strings.Replace(s, "evidence: []", "evidence:\n  - iss-2609221656361680", 1)
+	i := strings.Index(s, "<!--")
+	if i < 0 {
+		t.Fatalf("skeleton has no prose placeholder:\n%s", s)
+	}
+	return s[:i] + prose + "\n"
+}
+
+// inboxFiles lists the report files waiting in the sandboxed home's inbox.
+func inboxFiles(t *testing.T, home string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(home, ".abcd", "inbox"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+func porcelain(t *testing.T, repo string) string {
+	t.Helper()
+	cmd := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=all")
+	cmd.Env = gittest.Env(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git status: %v\n%s", err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// fileOneReport files a filled report from the repository the test stands in.
+func fileOneReport(t *testing.T, title string) string {
+	t.Helper()
+	skeleton := string(runCLI(t, "report", "--template"))
+	out := string(runCLIStdin(t, fillTemplate(t, skeleton, title, "It went wrong."), "report", "-"))
+	i := strings.Index(out, "rpt-")
+	if i < 0 {
+		t.Fatalf("report did not name an id:\n%s", out)
+	}
+	return out[i : i+20]
+}
+
+// TestReportTemplateThenFileLandsInTheInbox: criteria 1 and 2 through the CLI —
+// the verb issues the skeleton, files the filled report, names where it landed,
+// and writes nothing into the reporting repository.
+func TestReportTemplateThenFileLandsInTheInbox(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	skeleton := string(runCLI(t, "report", "--template"))
+	if !strings.Contains(skeleton, "schema_version: 1") || !strings.Contains(skeleton, "abcd_version:") {
+		t.Fatalf("template:\n%s", skeleton)
+	}
+	out := string(runCLIStdin(t, fillTemplate(t, skeleton, "capture refuses", "It went wrong."), "report", "-"))
+	if !strings.Contains(out, "filed rpt-") || !strings.Contains(out, "~/.abcd/inbox/") {
+		t.Errorf("report output = %q, want the id and where it landed", out)
+	}
+	if strings.Contains(out, home) {
+		t.Errorf("output carries the home directory: %q", out)
+	}
+	if files := inboxFiles(t, home); len(files) != 1 {
+		t.Errorf("inbox holds %q, want one report", files)
+	}
+	if st := porcelain(t, repo); st != "" {
+		t.Errorf("the reporting repository changed:\n%s", st)
+	}
+}
+
+// TestReportRefusalNamesTheFieldAndFilesNothing: an unfilled skeleton is refused
+// at exit 2 naming the field, and no inbox is created.
+func TestReportRefusalNamesTheFieldAndFilesNothing(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	skeleton := string(runCLI(t, "report", "--template"))
+	out, err := runCLIStdinErr(t, skeleton, "report", "-")
+	var coded interface{ ExitCode() int }
+	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
+		t.Fatalf("err = %v, want exit 2", err)
+	}
+	if !strings.Contains(err.Error(), `"title"`) || !strings.Contains(err.Error(), "nothing filed") {
+		t.Errorf("refusal = %q, want the field named and nothing filed", err)
+	}
+	_ = out
+	if _, err := os.Stat(filepath.Join(home, ".abcd", "inbox")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a refused report created the inbox (%v)", err)
+	}
+}
+
+// TestReportWithoutAFileOpensTheEditor: bare `abcd report` hands the skeleton to
+// the reporter's editor, then files what they wrote.
+func TestReportWithoutAFileOpensTheEditor(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	skeleton := string(runCLI(t, "report", "--template"))
+	filledPath := filepath.Join(t.TempDir(), "filled.md")
+	if err := os.WriteFile(filledPath, []byte(fillTemplate(t, skeleton, "edited in place", "Written in the editor.")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(t.TempDir(), "editor.sh")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\ncat '"+filledPath+"' > \"$1\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VISUAL", editor)
+	prev := reportInteractive
+	reportInteractive = func() bool { return true }
+	t.Cleanup(func() { reportInteractive = prev })
+
+	out := string(runCLI(t, "report"))
+	if !strings.Contains(out, "filed rpt-") {
+		t.Fatalf("output = %q", out)
+	}
+	if files := inboxFiles(t, home); len(files) != 1 {
+		t.Errorf("inbox holds %q, want one report", files)
+	}
+
+	// Without a terminal the bare verb refuses and names the two other ways in.
+	reportInteractive = func() bool { return false }
+	_, err := runCLIErr(t, "report")
+	var coded interface{ ExitCode() int }
+	if !errors.As(err, &coded) || coded.ExitCode() != 2 || !strings.Contains(err.Error(), "--template") {
+		t.Errorf("non-interactive bare report = %v, want an exit-2 refusal naming --template", err)
+	}
+}
+
+// TestInboxListsShowsAndPromotes: criteria 4 and 5 through the CLI — the list is
+// newest first naming the sender, show renders one sanitised, and only promote
+// files anything.
+func TestInboxListsShowsAndPromotes(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	first := fileOneReport(t, "the first finding")
+	second := fileOneReport(t, "the second finding")
+
+	list := string(runCLI(t, "inbox"))
+	if !strings.Contains(list, "2 waiting from 1 repository") {
+		t.Errorf("inbox header = %q", list)
+	}
+	name := filepath.Base(repo)
+	if !strings.Contains(list, name) {
+		t.Errorf("inbox does not name the sender %q:\n%s", name, list)
+	}
+	if strings.Index(list, second) > strings.Index(list, first) {
+		t.Errorf("inbox is not newest first:\n%s", list)
+	}
+	var js struct {
+		Reports []report.Entry `json:"reports"`
+		Tally   report.Tally   `json:"tally"`
+	}
+	if err := json.Unmarshal(runCLI(t, "inbox", "--json"), &js); err != nil || len(js.Reports) != 2 || js.Tally.Senders != 1 {
+		t.Errorf("inbox --json = %+v, %v", js, err)
+	}
+	if st := porcelain(t, repo); st != "" {
+		t.Fatalf("reading the inbox wrote into the repository:\n%s", st)
+	}
+
+	// A planted report whose title carries a right-to-left override renders
+	// masked: the report is untrusted input, and show sanitises it.
+	files := inboxFiles(t, home)
+	path := filepath.Join(home, ".abcd", "inbox", files[0])
+	data, _ := os.ReadFile(path)
+	if err := os.WriteFile(path, []byte(strings.Replace(string(data), "finding", "find\u202eing", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{first, second} {
+		show := string(runCLI(t, "inbox", "show", id))
+		if strings.Contains(show, "\u202e") {
+			t.Errorf("show printed a raw bidi override:\n%q", show)
+		}
+		if !strings.Contains(show, "It went wrong.") || !strings.Contains(show, name) {
+			t.Errorf("show = %q", show)
+		}
+	}
+
+	out := string(runCLI(t, "inbox", "promote", first))
+	if !strings.Contains(out, "promoted "+first+" to iss-") {
+		t.Fatalf("promote = %q", out)
+	}
+	if st := porcelain(t, repo); !strings.Contains(st, ".abcd/work/issues/open/iss-") {
+		t.Errorf("promote filed no capture:\n%s", st)
+	}
+	if list := string(runCLI(t, "inbox")); strings.Contains(list, first) {
+		t.Errorf("a promoted report still waits:\n%s", list)
+	}
+}
+
+// TestSessionStartGreetsWithTheInboxCount: criterion 3 — one line on the
+// session-start hook's stdout says how many wait and from how many
+// repositories; the bare board carries the same row.
+func TestSessionStartGreetsWithTheInboxCount(t *testing.T) {
+	repo, _ := gitRepoNoStore(t)
+	noAmbientPluginRoot(t)
+	r, err := report.Parse(report.Template("v0.9.0"))
+	_ = r
+	if err == nil {
+		t.Fatal("the unfilled template parsed")
+	}
+	skeleton := string(report.Template("v0.9.0"))
+	parsed, err := report.Parse([]byte(fillTemplate(t, skeleton, "a finding", "It went wrong.")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []report.Sender{
+		{Key: strings.Repeat("a", 40), Name: "alpha"},
+		{Key: strings.Repeat("b", 40), Name: "beta"},
+		{Key: strings.Repeat("b", 40), Name: "beta"},
+	} {
+		if _, err := report.File(parsed, s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stdout, _, code := runSessionStart(startPayload("s1", repo), "hook", "session-start")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	want := "abcd: 3 report(s) from 2 managed repositories wait in the inbox; `abcd inbox` lists them."
+	if strings.Count(stdout, "report(s)") != 1 || !strings.Contains(stdout, want) {
+		t.Errorf("stdout = %q, want the one line %q", stdout, want)
+	}
+	if strings.Contains(stdout, "alpha") || strings.Contains(stdout, "beta") {
+		t.Errorf("the greeting carries a sender name into the session's context: %q", stdout)
+	}
+
+	t.Chdir(repo)
+	board := string(runCLI(t))
+	if !strings.Contains(board, "inbox:      3 report(s) from 2 managed repositories") {
+		t.Errorf("board = %q", board)
+	}
+	var js struct {
+		Inbox *report.Tally `json:"inbox"`
+	}
+	if err := json.Unmarshal(runCLI(t, "--json"), &js); err != nil || js.Inbox == nil || js.Inbox.Reports != 3 {
+		t.Errorf("board --json inbox = %+v, %v", js.Inbox, err)
+	}
+}

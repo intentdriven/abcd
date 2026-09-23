@@ -35,6 +35,11 @@ prints abcd's row; anywhere else it runs the status command that was recorded
 at install time and passes its output through unchanged, so the user's own line
 is untouched. `/abcd:ahoy install` offers and wires it; nothing here invokes it.
 
+When reports from managed repositories wait in the user account's inbox, the
+board carries an `inbox` object (`reports`, `senders`), rendered as an `inbox:`
+line. Relay the count and point at `/abcd:inbox`, which lists them; the field is
+omitted when nothing waits.
+
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is

@@ -170,7 +170,7 @@ Capture issues to the ledger; bare invocation is read-only status
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --severity string          severity: nitpick | minor | major | critical (default minor)
       --slug string              override the slug derived from the text
-      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation (default user-observation)
+      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
 #### `abcd capture disposition`
@@ -926,6 +926,43 @@ By default the run's whole log is read, every day of it; --date reads one day, a
       --log string    read this log file instead of the run's own
 ```
 
+### `abcd inbox`
+
+Read the reports managed repositories filed back to abcd, and promote one to a capture
+
+**Usage:** `abcd inbox`
+
+Read the reports repositories abcd manages filed with `abcd report`, from the
+inbox in the user account's machine store (`~/.abcd/inbox/`).
+
+Bare `abcd inbox` lists the waiting reports newest first, naming each sender
+repository plainly; `abcd inbox show <id>` renders one whole. Both are
+read-only and file nothing. A report written to a template version this abcd
+does not know is listed as unreadable, naming the version, and is never
+dropped. Everything a report says is another repository's words and is
+sanitised before it reaches the terminal.
+
+`abcd inbox promote <id>` is the one act that files anything: it files the
+report as a capture in the ledger of the repository you stand in, through the
+capture verb's own path and redactor, with source `managed-repo`. The capture
+carries the sender's root-commit key and the words "a managed repository",
+never the sender's name, and the report's id as its evidence. The report is
+kept, marked promoted.
+
+Exit 2 on a refusal, with nothing written.
+
+#### `abcd inbox promote`
+
+File one report as a capture in this repository's ledger, fingerprinted, never named
+
+**Usage:** `abcd inbox promote <id>`
+
+#### `abcd inbox show`
+
+Render one report whole (read-only)
+
+**Usage:** `abcd inbox show <id>`
+
 ### `abcd intent`
 
 Intent lifecycle; bare invocation is read-only status, quoted text files a draft
@@ -1254,6 +1291,39 @@ rolled_back_records on every exit, including a failing one.
 
 ```
 abcd reading ingest --reading-json ./reading-output.json --json
+```
+
+### `abcd report`
+
+File a defect report or an enhancement proposal about abcd into the inbox in your account
+
+**Usage:** `abcd report [<file>|-] [flags]`
+
+File a written account about abcd itself, from a repository abcd manages, into
+the inbox in the user account's machine store (`~/.abcd/inbox/`). Nothing is
+written into this repository or into abcd's, and nothing becomes a record until
+a person or a session runs `abcd inbox promote`.
+
+`abcd report --template` prints the skeleton: a block of fields between `---`
+lines (template version, kind, severity, category, title, the abcd version and
+surface in play, an optional remedy and evidence pointers) and the prose below
+it. `abcd report <file>` validates a filled report and files it; `-` reads it
+from stdin. Bare `abcd report` opens the skeleton in $VISUAL or $EDITOR when
+the session is a terminal, and files what is saved.
+
+The report is held to the template: a missing or malformed field is refused
+naming the field, a report over 32 KiB or carrying a control byte is refused,
+and a field naming a filesystem path is refused, because a report points at
+records, commits and URLs, never at a location on a machine. abcd names the
+file from the time and this repository's root-commit key; the verb prints the
+report's id and where it landed.
+
+Exit 2 on a refusal, with nothing filed.
+
+**Flags:**
+
+```
+      --template   print the report skeleton to fill (writes nothing)
 ```
 
 ### `abcd rules`

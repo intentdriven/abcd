@@ -117,6 +117,9 @@ user-scope directory for machine-local state.
                                  (adr-35)
   worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
                                  (NOT BUILT — itd-2609091014076309)
+  inbox/                         reports managed repositories filed back to abcd,
+                                 <received-stamp>-<sender-key>.md; promoted/ keeps
+                                 the ones filed as captures (itd-2609221656361680)
   config.json                    machine config defaults (a later phase)
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)

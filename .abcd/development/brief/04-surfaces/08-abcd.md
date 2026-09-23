@@ -45,8 +45,8 @@ banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
 
-**The presence line** (itd-200, spc-70) is the one addition the shipped board
-has taken since: in a repository abcd manages, the text render carries a
+**The presence line** (itd-200, spc-70) is one of two additions the shipped
+board has taken since: in a repository abcd manages, the text render carries a
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd`, `waiting:
 facilitator`, `waiting: product thinker`), then the repository, the branch and
@@ -56,6 +56,13 @@ unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
 the user-level setting has switched the status line off, and it never runs the
 previous status command that `abcd statusline` falls back to.
+
+**The inbox row** (itd-2609221656361680) is the other: wherever the board runs,
+when reports from managed repositories wait in the user account's inbox, the text
+render carries an `inbox:` line — `3 report(s) from 2 managed repositories` — and
+the JSON an `inbox` object with `reports` and `senders`. It is the same count the
+session-start greeting says ([`28-report.md`](28-report.md)); it names no sender,
+and it is absent when nothing waits.
 
 ## The board itself is not built
 
