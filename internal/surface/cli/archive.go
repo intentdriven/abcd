@@ -34,7 +34,7 @@ type archivePinCheck struct {
 }
 
 // newLaunchArchiveCommand builds `abcd launch archive`, the release gate's
-// half of the pinned plugin archive (adr-2609231200000000).
+// half of the pinned plugin archive (adr-2609231048308186).
 //
 // It renders the plugin archive of the release the newest dated CHANGELOG
 // heading names — the heading auto-release.yml tags — from the checked-out tree,

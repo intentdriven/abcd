@@ -11,7 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// The pinned plugin archive (the 2026-09-23 ruling E1, adr-2609231200000000):
+// The pinned plugin archive (the 2026-09-23 ruling E1, adr-2609231048308186):
 // the ship renders the release's plugin zip from its own tree and commits its
 // address and digest into the catalog; the release workflow renders the zip
 // again from the tagged commit through `abcd launch archive` and refuses to

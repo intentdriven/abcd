@@ -8,7 +8,7 @@ import (
 )
 
 // The release workflow's half of the pinned plugin archive
-// (adr-2609231200000000; the 2026-09-23 rulings E1 and E3). The ship pins the
+// (adr-2609231048308186; the 2026-09-23 rulings E1 and E3). The ship pins the
 // release archive's address and digest in the committed catalog; release.yml
 // must re-render the archive from the tagged commit, refuse unless the digest
 // matches, and publish exactly that archive — checksummed, attested and

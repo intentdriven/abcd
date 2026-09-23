@@ -1,6 +1,6 @@
 package launch
 
-// archive.go — the pinned plugin archive (adr-2609231200000000's decision; the
+// archive.go — the pinned plugin archive (adr-2609231048308186's decision; the
 // 2026-09-23 ruling E1).
 //
 // A release publishes its plugin as ONE zip, `<plugin>-plugin-v<version>.zip`,
