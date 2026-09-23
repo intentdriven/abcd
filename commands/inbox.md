@@ -50,7 +50,10 @@ repository" in place of the sender's name, and the report id as its evidence.
 Tell the user the `capture` id and its `path`, and relay `redacted` or
 `redaction_degraded` when present. The report is kept, marked promoted. A
 refusal exits 2 and writes nothing: an unreadable report, one already promoted
-(the refusal names its capture), or an id with no report.
+(the refusal names its capture), or an id with no report. If a promotion filed
+its capture but could not move the report, promoting it again files nothing:
+it finishes the move and reports `resumed: true` with the capture already
+filed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

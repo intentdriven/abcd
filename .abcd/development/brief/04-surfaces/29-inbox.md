@@ -62,8 +62,12 @@ owner segment is replaced with it. A word that merely contains a short name is
 left alone. The inbox names the sender so the reader knows who is asking;
 anything committed carries the fingerprint.
 
-The report is then moved to `~/.abcd/inbox/promoted/` and kept, and one line in
-`~/.abcd/inbox/promoted.jsonl` records the capture it became; `show` names it.
+One line in `~/.abcd/inbox/promoted.jsonl` records the capture the report
+became and its path, and the report is then moved to `~/.abcd/inbox/promoted/`
+and kept; `show` names the capture. The line is written before the move, so a
+move that fails leaves the report waiting with its capture on record: promoting
+it again files nothing, finishes the move, and answers with that capture and
+`resumed: true`.
 Promotions hold the inbox's lock, so two sessions cannot file one report twice.
 An unreadable report, one already promoted, and an id with no report are
 refused. A capture the ledger refuses leaves the report waiting.

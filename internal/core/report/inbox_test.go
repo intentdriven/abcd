@@ -321,3 +321,52 @@ func TestNameScrubberCatchesSpellingVariants(t *testing.T) {
 		}
 	}
 }
+
+// TestPromoteRetryAfterAFailedMoveFilesOneCapture: a promotion whose move into
+// the promoted folder fails has already filed its capture; the retry completes
+// the move and names that capture, and never files a second one.
+func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
+	home := sandbox(t, time.Date(2026, 9, 23, 14, 0, 0, 0, time.UTC))
+	ledger := committedRepo(t)
+	f, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("c", 40), Name: "retry"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Occupy the move's destination with a non-empty directory, so the rename fails.
+	name := filepath.Base(f.Path)
+	blocker := filepath.Join(home, ".abcd", "inbox", "promoted", name)
+	if err := os.MkdirAll(filepath.Join(blocker, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Promote(ledger.Root(), f.ID); err == nil {
+		t.Fatal("Promote succeeded with its destination occupied")
+	}
+	if err := os.RemoveAll(blocker); err != nil {
+		t.Fatal(err)
+	}
+	captures := func() []string {
+		out, _ := filepath.Glob(filepath.Join(ledger.Root(), ".abcd", "work", "issues", "open", "iss-*.md"))
+		return out
+	}
+	first := captures()
+	if len(first) != 1 {
+		t.Fatalf("the failed promotion filed %d captures, want 1", len(first))
+	}
+
+	p, err := Promote(ledger.Root(), f.ID)
+	if err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if got := captures(); len(got) != 1 {
+		t.Fatalf("the retry filed a second capture: %v", got)
+	}
+	if !strings.Contains(filepath.Base(first[0]), p.Capture) || !p.Resumed {
+		t.Errorf("retry = %+v, want the first capture %s, resumed", p, first[0])
+	}
+	if e, err := Show(f.ID); err != nil || e.State != StatePromoted || e.PromotedTo != p.Capture {
+		t.Errorf("Show after retry = %+v, %v", e, err)
+	}
+	if _, err := Promote(ledger.Root(), f.ID); !errors.Is(err, ErrRefused) {
+		t.Errorf("a third promote = %v, want a refusal", err)
+	}
+}

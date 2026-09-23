@@ -306,6 +306,9 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, p, func(w io.Writer) {
 				fmt.Fprintf(w, "promoted %s to %s — %s\n", p.Report, p.Capture, termsafe.Sanitize(p.Path))
+				if p.Resumed {
+					fmt.Fprintln(w, "  finished an earlier promotion that filed this capture; nothing new was filed")
+				}
 				fmt.Fprintln(w, "  the report is kept in the inbox, marked promoted")
 				if p.Redacted > 0 {
 					fmt.Fprintf(w, "  redacted %d span(s) before writing (home paths and identifiers are never committed)\n", p.Redacted)

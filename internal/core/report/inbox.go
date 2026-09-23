@@ -425,23 +425,34 @@ func Show(id string) (Entry, error) {
 type promotion struct {
 	Report  string `json:"report"`
 	Capture string `json:"capture"`
-	At      string `json:"at"`
+	// Path is the capture's repository-relative path, so a promotion resumed
+	// after a failed move can name it again.
+	Path string `json:"path,omitempty"`
+	At   string `json:"at"`
+}
+
+// promotionOf reads the last line of the promoted log naming report id, and
+// whether there is one.
+func promotionOf(root *os.Root, id string) (promotion, bool) {
+	data, err := fsutil.ReadGuardedInRoot(root, promotedLogName, 4<<20)
+	if err != nil {
+		return promotion{}, false
+	}
+	var found promotion
+	ok := false
+	for _, line := range strings.Split(string(data), "\n") {
+		var p promotion
+		if json.Unmarshal([]byte(line), &p) == nil && p.Report == id && p.Capture != "" {
+			found, ok = p, true
+		}
+	}
+	return found, ok
 }
 
 // promotedTo reads the capture id a report became from the promoted log.
 func promotedTo(root *os.Root, id string) string {
-	data, err := fsutil.ReadGuardedInRoot(root, promotedLogName, 4<<20)
-	if err != nil {
-		return ""
-	}
-	var to string
-	for _, line := range strings.Split(string(data), "\n") {
-		var p promotion
-		if json.Unmarshal([]byte(line), &p) == nil && p.Report == id {
-			to = p.Capture
-		}
-	}
-	return to
+	p, _ := promotionOf(root, id)
+	return p.Capture
 }
 
 // Promoted is what a promotion filed.
@@ -454,6 +465,9 @@ type Promoted struct {
 	// the person who promoted can see the text was altered.
 	Redacted int    `json:"redacted,omitempty"`
 	Degraded string `json:"redaction_degraded,omitempty"`
+	// Resumed says this call completed an earlier promotion that filed its
+	// capture but did not finish moving the report: nothing new was filed.
+	Resumed bool `json:"resumed,omitempty"`
 }
 
 // Source is the capture source a promoted report is filed under.
@@ -466,6 +480,11 @@ const Source = "managed-repo"
 // never the sender's name, and the report's id as its evidence. The report is
 // then moved to the promoted folder and kept. Promotions are serialised by the
 // inbox's lock, so two sessions cannot file one report twice.
+//
+// The promotion is recorded in the promoted log before the report is moved, so
+// a move that fails leaves a report still waiting whose capture is already on
+// record. Promoting it again files nothing: it finishes the move and names the
+// capture the first attempt filed (Resumed).
 func Promote(ledgerRoot, id string) (Promoted, error) {
 	m := idRe.FindStringSubmatch(id)
 	if m == nil {
@@ -507,21 +526,33 @@ func Promote(ledgerRoot, id string) (Promoted, error) {
 		if e.State == StateUnreadable {
 			return fmt.Errorf("%w: report %s is unreadable (%s) and cannot be promoted", ErrRefused, id, e.Unreadable)
 		}
+		name := m[1] + "-" + e.SenderKey + ".md"
+		move := func(capID string) error {
+			if err := root.Rename(name, path.Join(promotedDirName, name)); err != nil {
+				return fmt.Errorf("filed %s and recorded it, but the report could not be moved to the promoted folder (%w); "+
+					"promote it again to finish, which files nothing new", capID, err)
+			}
+			return nil
+		}
+		if done, ok := promotionOf(root, id); ok {
+			out = Promoted{Report: id, Capture: done.Capture, Path: done.Path, Resumed: true}
+			return move(done.Capture)
+		}
 		req := captureRequest(ledgerRoot, id, *e.Report)
 		res, err := capture.Capture(req)
 		if err != nil {
 			return fmt.Errorf("the capture was refused, and the report still waits: %w", err)
 		}
 		out = Promoted{Report: id, Capture: res.ID, Path: res.Path, Redacted: res.Redacted, Degraded: res.Degraded}
-		name := m[1] + "-" + e.SenderKey + ".md"
-		if err := root.Rename(name, path.Join(promotedDirName, name)); err != nil {
-			return fmt.Errorf("filed %s, but the report could not be marked promoted: %w", res.ID, err)
-		}
-		line, err := json.Marshal(promotion{Report: id, Capture: res.ID, At: now().UTC().Format(time.RFC3339)})
+		line, err := json.Marshal(promotion{Report: id, Capture: res.ID, Path: res.Path, At: now().UTC().Format(time.RFC3339)})
 		if err != nil {
 			return err
 		}
-		return fsutil.AppendLineIn(root, promotedLogName, line, fileMode)
+		if err := fsutil.AppendLineIn(root, promotedLogName, line, fileMode); err != nil {
+			return fmt.Errorf("filed %s, but could not record the promotion, and the report still waits; "+
+				"delete that capture before promoting again: %w", res.ID, err)
+		}
+		return move(res.ID)
 	})
 	if errors.Is(err, fsutil.ErrLockContention) {
 		return Promoted{}, fmt.Errorf("%w: another promotion holds the inbox; retry", ErrRefused)
