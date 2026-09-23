@@ -3282,7 +3282,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	captureCmd.Flags().StringVar(&source, "source", "", "surfacing channel: "+enumHelp(issueschema.Sources)+" (default user-observation)")
 	captureCmd.Flags().StringVar(&slug, "slug", "", "override the slug derived from the text")
 	captureCmd.Flags().StringVar(&foundDuring, "found-during", "", "session/command context (default manual-capture)")
-	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path or conceptual location")
+	captureCmd.Flags().StringVar(&foundAt, "found-at", "", "optional repo-relative path, which must exist in this checkout, or a conceptual location in words")
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")

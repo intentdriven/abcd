@@ -40,6 +40,12 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	// A found_at that names a path must name one in THIS checkout
+	// (iss-2609120511058115). Checked before the preamble, so a refused capture
+	// writes nothing at all — not even the ledger directories.
+	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
+		return CaptureResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return CaptureResult{}, err
 	}

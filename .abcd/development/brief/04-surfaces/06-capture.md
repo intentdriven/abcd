@@ -52,6 +52,17 @@ how the text was produced. That last flag is not the fast path's alone:
 take it to restamp the record they are closing, which is refused on a record
 written before the disclosure existed.
 
+The location flag is held to the tree it is written into. A `--found-at` that
+names a repo-relative path (one token of path characters that contains a
+separator or ends in a file extension, with any `:line`, `:range` or `:symbol`
+locator set aside) must resolve in the checkout, and one that does not, or that
+leaves the checkout, is refused before anything is written: the ledger records
+findings about the repository it lives in, and a path that repository does not
+hold is the mechanical sign of a finding filed in the wrong place
+(iss-2609120511058115). A conceptual location, meaning anything that is not a
+lone path token, and an absent value are written as given. The check is made
+at capture only, so a record keeps the path it named when the tree later moves.
+
 One flag is conditionally required: the RFC 3339 instant a recorded discipline
 gave way must be given with the `lapse` category, and omitting it exits 2 and
 writes nothing. The only available default would be the write-up time, which is

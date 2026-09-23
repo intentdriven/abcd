@@ -51,7 +51,9 @@ Provide provenance and taxonomy through flags when known (each falls back to a
 default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 `--category` (default `observation`), `--source` (default `user-observation`),
 `--found-during` (session/command context, default `manual-capture`),
-`--found-at` (optional repo-relative path), `--lapsed-at` (RFC 3339 instant in
+`--found-at` (optional repo-relative path, which must exist in this checkout,
+or a conceptual location in words; a path that does not resolve is refused and
+nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
 write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
