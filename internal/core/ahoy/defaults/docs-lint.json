@@ -153,6 +153,16 @@
         "(?i)<!--\\s*docs-lint:\\s*allow\\b"
       ],
       "message": "US spelling in user-facing prose; abcd's writing guide writes British English; a repository that writes another variety removes the spelling/ entries from .abcd/docs-lint.json. Use analyse-family spelling, or add <!-- docs-lint: allow --> for a quoted title, code-side name, or proper noun."
+    },
+    {
+      "id": "punctuation/em-dash-in-list-item",
+      "pattern": "^\\s*(?:[-*+]|[0-9]+\\.)\\s.*\u2014",
+      "severity": "warn",
+      "successor": "a colon at the pivot (capital letter after it)",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "message": "em dash inside a list item; this repository's house style, chosen at install, takes a colon at the pivot instead. Rephrase, or add <!-- docs-lint: allow --> with a reason if the em dash is genuinely load-bearing. The severity is this repository's to set: blocker or warn."
     }
   ],
   "rules": {

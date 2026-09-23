@@ -78,9 +78,10 @@ func TestScaffoldedDocsLintRefusesAViolation(t *testing.T) {
 // TestDocsLintSeedCarriesTheWritingGuideRulesAndNoNames pins what the seed holds
 // and what it withholds. abcd's own Writing-Guide currency families are seeded;
 // the banned-names family is the repository's own and stays empty, since abcd
-// cannot know which names a repository may not publish; and the harness family
-// and the em-dash house-style token are left for the repository to declare
-// (deliberateSeedOmissions carries the reasons).
+// cannot know which names a repository may not publish; the harness family is
+// left for the repository to declare (deliberateSeedOmissions carries the
+// reasons); and the em-dash house-style token is carried at the severity the
+// adopter chooses (adopterChosenSeverity).
 func TestDocsLintSeedCarriesTheWritingGuideRulesAndNoNames(t *testing.T) {
 	var seed struct {
 		BannedTokens []lint.BannedToken         `json:"banned_tokens"`
@@ -126,11 +127,6 @@ var deliberateSeedOmissions = map[string]string{
 	// teaches those tools (112 false positives in the reporting repository,
 	// iss-2609150805167646).
 	"harness/": "per-repository fit: a repository may teach the tools it names",
-	// abcd's house style, not a currency rule: the colon-at-the-pivot convention
-	// is abcd's Writing Guide, and the reporting repository measured 419 of its 545
-	// findings on it. Its fit for other repositories is the product thinker's
-	// ruling, still owed, so the seed withholds it until that ruling lands.
-	"punctuation/em-dash-in-list-item": "abcd house style; its fit elsewhere awaits the product thinker's ruling",
 	// The citation rules police the research-citation apparatus abcd's own record
 	// keeps (footnote and crosswalk conventions, and a baseline file the scaffold
 	// does not write); a prepared repository has none of it to check.
@@ -157,7 +153,17 @@ func deliberatelyOmitted(id string) bool {
 // seededTokenFamilies are the banned-token families the docs-lint seed carries:
 // abcd's own Writing-Guide currency rules, as opposed to the repository's banned
 // names and the families deliberateSeedOmissions withholds.
-var seededTokenFamilies = []string{"present_tense", "spelling"}
+var seededTokenFamilies = []string{"present_tense", "spelling", "punctuation"}
+
+// adopterChosenSeverity names the canonical tokens the seed carries at a
+// severity the ADOPTER chooses at install rather than at abcd's own. The
+// em-dash-in-list-item token is abcd's house style, not a currency rule (the
+// reporting repository measured 419 of its 545 findings on it), so the product
+// thinker ruled it offered at install, blocking or warning, with an unattended
+// install seeding the warning (ruling G1, 2026-09-23). Parity holds such a token
+// to its canonical pattern, successor and allow context, and its severity to the
+// two the adopter can choose.
+var adopterChosenSeverity = map[string]bool{emDashTokenID: true}
 
 // isSeededFamily reports whether a banned-token family is one the seed carries.
 func isSeededFamily(family string) bool {
@@ -214,7 +220,13 @@ func TestDocsLintSeedMatchesTheCanonicalRuleSet(t *testing.T) {
 			t.Errorf("canonical %s is neither seeded nor named in deliberateSeedOmissions", c.ID)
 			continue
 		}
-		if s.Pattern != c.Pattern || s.Severity != c.Severity || s.Successor != c.Successor ||
+		sevMatches := s.Severity == c.Severity
+		if adopterChosenSeverity[c.ID] {
+			// The embedded seed carries the unattended default; the canonical
+			// severity is abcd's own choice, which the adopter need not share.
+			sevMatches = s.Severity == emDashDefaultSeverity
+		}
+		if s.Pattern != c.Pattern || !sevMatches || s.Successor != c.Successor ||
 			strings.Join(s.AllowContext, "\x00") != strings.Join(c.AllowContext, "\x00") {
 			t.Errorf("seeded %s drifted from the canonical entry:\n seed  %+v\n canon %+v", c.ID, s, c)
 		}
@@ -262,4 +274,46 @@ func omissionReason(id string) string {
 	}
 	fam, _, _ := strings.Cut(id, "/")
 	return deliberateSeedOmissions[fam+"/"]
+}
+
+// TestDocsLintSeedRendersTheChosenSeverity holds the render the install writes:
+// each choice changes the em-dash token's severity and nothing else, and every
+// rendering is a config the lint loads.
+func TestDocsLintSeedRendersTheChosenSeverity(t *testing.T) {
+	decode := func(t *testing.T, data []byte) []lint.BannedToken {
+		t.Helper()
+		var cfg struct {
+			BannedTokens []lint.BannedToken `json:"banned_tokens"`
+		}
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			t.Fatalf("rendered seed is not JSON: %v", err)
+		}
+		return cfg.BannedTokens
+	}
+	base := decode(t, []byte(publicFamilySeed))
+	for _, sev := range []string{"blocker", "warn"} {
+		t.Run(sev, func(t *testing.T) {
+			data := docsLintSeed(sev)
+			path := filepath.Join(t.TempDir(), "docs-lint.json")
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := lint.LoadConfig(path); err != nil {
+				t.Fatalf("the %s rendering does not load: %v", sev, err)
+			}
+			got := decode(t, data)
+			if len(got) != len(base) {
+				t.Fatalf("rendering changed the token count: %d, want %d", len(got), len(base))
+			}
+			for i, tok := range got {
+				want := base[i]
+				if tok.ID == emDashTokenID {
+					want.Severity = sev
+				}
+				if tok.ID != want.ID || tok.Severity != want.Severity || tok.Pattern != want.Pattern || tok.Message != want.Message {
+					t.Errorf("token %d rendered %+v, want %+v", i, tok, want)
+				}
+			}
+		})
+	}
 }

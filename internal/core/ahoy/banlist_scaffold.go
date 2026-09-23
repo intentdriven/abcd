@@ -98,11 +98,15 @@ const (
 //
 // The harness token family is withheld too, as a per-repository fit decision: it
 // refuses naming a specific agent tool, which is right for abcd's published surface
-// and wrong for a repository whose content is teaching those tools. So is the
-// punctuation/em-dash-in-list-item token: it is abcd's house style rather than a
-// currency rule, it drew 419 of the 545 findings in the repository that reported
-// the empty seed, and its fit for other repositories awaits the product thinker's
-// ruling. The parity test names every deliberate omission with its reason.
+// and wrong for a repository whose content is teaching those tools. The parity test
+// names every deliberate omission with its reason.
+//
+// The punctuation/em-dash-in-list-item token is carried, at a severity the
+// ADOPTER chooses: it is abcd's house style rather than a currency rule (it drew
+// 419 of the 545 findings in the repository that reported the empty seed), so
+// the install offers it as blocking or warning and an unattended install seeds
+// the warning (ruling G1; docsLintSeed renders the choice). The embedded file
+// carries the warning, so it is a loadable config as it stands.
 //
 // The stray_root_docs allowlist names CLAUDE and AGENTS, the two root files the
 // scaffold itself may write, so the seeded gate does not refuse its own output.
@@ -811,8 +815,15 @@ func (a *applyCtx) stepBanlist() {
 	// an answer git did not actually give. An unanswerable probe withholds the write
 	// for this run exactly as it withholds the stub's: a config written into a path
 	// nobody could check is the same wager on both halves.
+	//
+	// The em-dash house-style question is asked HERE, where the seed is about to be
+	// written, and nowhere else: a repository that already has a config keeps its
+	// own severity, and a question whose answer would go nowhere is not asked.
 	if a.has("banlist.public_family_missing") && publicPathIsWritable(a.cwd) {
-		a.createContained(root, banlist.PublicConfigRelPath, []byte(publicFamilySeed), 0o644, 0o755)
+		sev, note := a.emDashSeverity()
+		if a.createContained(root, banlist.PublicConfigRelPath, docsLintSeed(sev), 0o644, 0o755) && note != "" {
+			a.notes = append(a.notes, note)
+		}
 	}
 	// Re-asked HERE, after stepVisibility has written the fence, and answered by git
 	// rather than by a comparison of .gitignore text: what matters is whether git
