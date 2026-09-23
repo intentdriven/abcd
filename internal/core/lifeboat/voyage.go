@@ -104,12 +104,7 @@ func appendVoyage(lb Lifeboat, dest, manifestSHA string, files, bytesWritten int
 	}
 
 	relLog := filepath.ToSlash(filepath.Join(rel, "history.jsonl"))
-	f, err := root.OpenFile(relLog, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return false, "failed: cannot open voyage ledger"
-	}
-	defer f.Close()
-	if _, err := f.Write(append(line, '\n')); err != nil {
+	if err := fsutil.AppendLineIn(root, relLog, line, 0o600); err != nil {
 		return false, "failed: cannot append to voyage ledger"
 	}
 	return true, ""
