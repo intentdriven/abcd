@@ -89,5 +89,55 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-272bfa8a4561 -->
-Fidelity review OWED (receipt rcp-272bfa8a4561).
+<!-- abcd-review: INGESTED receipt=rcp-272bfa8a4561 -->
+Fidelity review — receipt rcp-272bfa8a4561 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:a8e28c84c4ec99b02445f970343b22fb4c1eefe15a8425a1a9e8fc0ea0be7456
+Input attestations: diff:tree at de3ba5fa (spc-12 delivered; main after PR #661)@sha256:4e7430d38ef6b7b6bc533fdf0b8b32a6e08a3e2449d0566027d43316036b8178;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: convOpenQuestionsSource is registered at the conventions tier for evidence/open-questions, scans the walked tree for TODO/FIXME/XXX/HACK/BUG and cites file:line (marker); the probe test asserts a record-less fixture reports partial at TierConventions citing retry.go:4 (TODO) and store.go:3 (FIXME)
+  evidence: internal/core/lifeboat/sources_conventions.go:793 — "func (convOpenQuestionsSource) Section() Section { return "evidence/open-questions" }"
+  evidence: internal/core/lifeboat/sources_conventions.go:844 — "citations = append(citations, fmt.Sprintf("%s:%d (%s)", p, i+1, convMarkerName(m)))"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:331 — "func TestConvOpenQuestionsPartialFromWorkMarkers"
+- ac-2 — MET: with zero markers the adapter returns blank() carrying the searched list (the marker set) and a human question, and says so when the scan was truncated rather than claiming the tree is marker-free
+  evidence: internal/core/lifeboat/sources_conventions.go:852 — "if markers == 0 {"
+  evidence: internal/core/lifeboat/sources_conventions.go:872 — "question := "What did this project know was unfinished? Its source carries no work markers.""
+  evidence: internal/core/lifeboat/sources_conventions_test.go:386 — "func TestConvOpenQuestionsBlankWithoutMarkers"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:586 — "func TestConvOpenQuestionsBlankAdmitsAPartialScan"
+- ac-3 — MET: the whole probe (marker adapter included — the fixture carries a TODO and a FIXME) is proved to leave every file byte-identical by hashing before and after, and the walk is proved unable to escape the containment root
+  evidence: internal/core/lifeboat/probe_test.go:324 — "func TestProbeLeavesEveryFileByteIdentical"
+  evidence: internal/core/lifeboat/probe_test.go:329 — ""src/a.go": "package a\n\n// TODO: handle the retry case\n","
+  evidence: internal/core/lifeboat/probe_test.go:117 — "func TestWalkFilesCannotEscapeTheContainmentRoot"
+- ac-4 — MET: the scan runs under the walk's file, directory-entry and depth caps plus its own citation cap and byte budget, each pinned by a test that proves the walk or scan stops and reports the truncation
+  evidence: internal/core/lifeboat/probe.go:51 — "const maxWalkFiles = maxDirEntries"
+  evidence: internal/core/lifeboat/probe.go:60 — "const maxWalkDepth = 32"
+  evidence: internal/core/lifeboat/sources_conventions.go:753 — "const maxMarkerCitations = 200"
+  evidence: internal/core/lifeboat/sources_conventions.go:763 — "const maxMarkerScanBytes = maxPlanTotalBytes // 512 MiB"
+  evidence: internal/core/lifeboat/probe_test.go:192 — "func TestWalkFilesStopsAtTheFileCap"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:545 — "func TestConvOpenQuestionsStopsAtTheScanBudget"
+- ac-5 — MET_WITH_CONCERNS: the reduction is unchanged and deterministic — highest status wins, richer tier on a tie — and the report prints the winning tier per section, so a repo with both a record and markers resolves to the native result (grounded beats the marker adapter's partial ceiling); the concern is that no test exercises both tiers on this section, and the report names the winning tier but does not say marker evidence was discarded
+  evidence: internal/core/lifeboat/probe.go:635 — "richer tier wins (a grounded-at-conventions beats grounded-at-git)."
+  evidence: internal/core/lifeboat/coverage.go:119 — "fmt.Fprintf(&b, " (%s, %s)", sanitize(string(s.Tier)), sanitize(string(s.Confidence)))"
+  evidence: internal/core/lifeboat/sources_conventions_test.go:357 — "func TestConvOpenQuestionsCeilingIsPartial"
+
+Gap audit:
+- honoured:
+  - a conventions-tier adapter grounds evidence/open-questions on in-code markers, citing files
+    evidence: internal/core/lifeboat/sources_conventions.go:30 — "convOpenQuestionsSource{},"
+    evidence: internal/core/lifeboat/sources_conventions_test.go:331 — "TestConvOpenQuestionsPartialFromWorkMarkers"
+  - honest three-valued status: markers -> partial with evidence, none -> blank with searched and question
+    evidence: internal/core/lifeboat/sources_conventions.go:852 — "if markers == 0 {"
+  - bounded, safe scanning inside the probe's caps and containment root
+    evidence: internal/core/lifeboat/probe_test.go:117 — "TestWalkFilesCannotEscapeTheContainmentRoot"
+    evidence: internal/core/lifeboat/sources_conventions_test.go:545 — "TestConvOpenQuestionsStopsAtTheScanBudget"
+  - no fabricated evidence: redaction placeholders and prose mentions are not markers
+    evidence: internal/core/lifeboat/sources_conventions_test.go:416 — "func TestConvOpenQuestionsIgnoresRedactionPlaceholders"
+    evidence: internal/core/lifeboat/sources_conventions_test.go:465 — "func TestConvMarkerRePinsTheRecognisedSpellings"
+- diverged:
+  - markers may ground or partially ground the section — delivered with a hard partial ceiling; volume moves confidence only
+    evidence: internal/core/lifeboat/sources_conventions_test.go:357 — "TestConvOpenQuestionsCeilingIsPartial"
+    evidence: internal/core/lifeboat/sources_conventions.go:771 — "const convMarkerMediumConfidence = 10"
+- missing: (none)
