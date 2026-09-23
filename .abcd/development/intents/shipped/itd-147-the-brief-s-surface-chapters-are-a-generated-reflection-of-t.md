@@ -248,6 +248,9 @@ commits, so the detector's whole subject was held constant and it still returned
 17% more findings. Which chapters are implicated is broadly stable; how many and
 of what class is not.
 
+<!-- abcd-review: OWED receipt=rcp-2769c7a59830 -->
+Fidelity review OWED (receipt rcp-2769c7a59830).
+
 ## Grounds
 
 - pursued: a shape claim nobody writes by hand cannot drift; a false-claim or stale-count finding about a generated block in the next crosscheck run shows it was wrong

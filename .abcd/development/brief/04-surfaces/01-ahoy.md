@@ -35,33 +35,33 @@ repo whose stamp says it is current.
 
 
 Bare `/abcd:ahoy` shows read-only status and mutates nothing. The slash command
-dispatches every sub-verb but `identity-check`, the write verbs included, and
-each announces that it writes before it runs. `identity-check` is a plain
+dispatches every sub-verb but the identity check, the write verbs included, and
+each announces that it writes before it runs. The identity check is a plain
 command-line entrypoint, because its exit code is the whole point of it and its
 home is a pre-commit hook or CI rather than a conversation. `status` is a
 plugin-page alias for the bare form and has no CLI sub-command behind it: `abcd
 ahoy status` is refused as an unknown command. Every other word ships on the
 CLI, and the table above is that set.
 
-- **`install`** installs or updates abcd in this repo, covering first install
+- **Install** installs or updates abcd in this repo, covering first install
   and upgrade alike. It runs the detection pass, then an apply pass over the
   resulting gaps.
-- **`uninstall`** is reversible removal: the marker block, abcd's own `PATH`
+- **Uninstall** is reversible removal: the marker block, abcd's own `PATH`
   entry where abcd owns it, and the provenance record that proves that
   ownership. It leaves `.abcd/` entirely intact, never mutates the hook
-  manifest, and a later `install` re-installs cleanly. It finds the entry by
+  manifest, and a later install re-installs cleanly. It finds the entry by
   scanning `PATH`, so an entry that was installed into a directory `PATH` does
-  not carry is removed by naming that directory again: `--bin-dir <dir>`, the
-  same value the install was given.
-- **`dry-run`** renders the detection envelope as JSON and mutates nothing.
-- **`doctor`** runs the full detection pass plus a read-only audit pass. Its
+  not carry is removed by naming that directory again, the same bin directory
+  the install was given.
+- **The dry run** renders the detection envelope as JSON and mutates nothing.
+- **The doctor** runs the full detection pass plus a read-only audit pass. Its
   distinct contribution is the audit, and its distinct value in the text render
   is that it names, one line each, every required gap that is **not** resolvable
-  — the ones no later `install` will clear, such as a config file abcd refuses
+  — the ones no later install will clear, such as a config file abcd refuses
   to touch until a human repairs it. A bare count of those would be a number the
   reader cannot act on. It is the check to reach for after a repo rename, a
   machine migration, or "why aren't my transcripts showing up".
-- **`remote`** reports, read-only, the GitHub-native secret-scanning toggles on
+- **The remote report** reports, read-only, the GitHub-native secret-scanning toggles on
   the repository this checkout's own origin names, and the changes an apply
   would make. A toggle it could not read reports `unknown`, never `disabled`.
   The same request also reads the repository's merge hygiene, which abcd mirrors
@@ -69,15 +69,15 @@ CLI, and the table above is that set.
   security posture, and each is reported only when the API answered for it,
   because `false` and "the API did not say" are different facts
   (iss-2608270512210664).
-- **`remote apply`** is **the one abcd verb that mutates state outside this
+- **The remote apply** is **the one abcd verb that mutates state outside this
   machine.** See below.
-- **`identity-check`** exits non-zero when the git commit identity does not
+- **The identity check** exits non-zero when the git commit identity does not
   match the repo's identity pin. Read-only, CLI-only, for an operator or CI.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
-namespace too (itd-10), as distinct from `uninstall`'s reversible behaviour.
+namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
 
-### `remote apply`, the one outward-visible write
+### The remote apply, the one outward-visible write
 
 It enables GitHub's native secret scanning and then push protection, in that
 order, because GitHub refuses push protection on a repository whose secret
@@ -90,11 +90,11 @@ verb the user invokes **and** confirms — with four gates that refuse rather th
 guess. The folder must be a repo abcd manages. The repository must be the one
 this checkout's origin names. The repo's own config must not have opted out. And
 the caller must confirm the specific toggles named, an unanswered run declining
-and `--yes` being the explicit advance answer.
+and a pre-given yes being the explicit advance answer.
 
 Exactly two statuses exit non-zero: refused, a gate abcd itself closed, and
 aborted, a confirmation the caller declined, which a non-interactive run without
-`--yes` reaches by reading end-of-file. A run with nothing to change exits 0,
+a pre-given yes reaches by reading end-of-file. A run with nothing to change exits 0,
 whether that is an idempotent re-run or a repo whose own config declined,
 because leaving the repo alone is what the repo asked for. Every request pins
 the API host explicitly, so an ambient host variable cannot send the write to an
@@ -155,12 +155,12 @@ missing user-scope state. Each repo's marker block stands alone: there is no
 inheritance chain to resolve.
 
 The detection pass classifies the working directory into one of three kinds, and
-`install` acts on the matching kind.
+the install acts on the matching kind.
 
-| Folder kind | Strong marker? | `.git/`? | What `install` does |
+| Folder kind | Strong marker? | `.git/`? | What the install does |
 |---|---|---|---|
 | `managed-repo` | yes | not consulted | the repo install flow, as an idempotent update |
-| `unmanaged-repo` | no | yes | the same flow, after `install` adopts it |
+| `unmanaged-repo` | no | yes | the same flow, after the install adopts it |
 | `unmanaged-folder` | no | no | nothing to act on: reports and stops |
 
 Classification keys on a **signal hierarchy**, and this is the part worth
@@ -175,15 +175,15 @@ it is *managed*, and a folder carrying a marker block is treated as a managed
 repo whether or not it is a git checkout at all.
 
 Bare `/abcd:ahoy` **reports the kind and stops.** It never adopts an unmanaged
-repo; it names `install` as the way to do that. The two unmanaged kinds need
+repo; it names the install as the way to do that. The two unmanaged kinds need
 distinct tokens precisely because the offer differs.
 
 ## Architecture: one detection pass, four consumers
 
-`install`, `dry-run`, `doctor` and bare `/abcd:ahoy` all run the **same**
+The install, the dry run, the doctor and bare `/abcd:ahoy` all run the **same**
 detection pass and differ only in what they do with its output: the bare form
-renders a status board, `doctor` adds an audit pass and renders gap counts,
-`dry-run` renders the envelope, and `install` runs the apply pass over the gaps.
+renders a status board, the doctor adds an audit pass and renders gap counts,
+the dry run renders the envelope, and the install runs the apply pass over the gaps.
 Detection logic lives in exactly one place, so those four cannot drift apart.
 
 The detection pass produces an in-memory state contract, and it is a **value
@@ -217,12 +217,12 @@ abcd prints a one-line export fix and never edits a shell profile; and any
 `abcd` that comes *before* abcd's own entry is shadowed, because an entry that is
 correct and never reached is not an install (iss-171). Install carries the two
 non-resolvable ones on its own result as notes, since a fresh user cannot run
-`doctor` by name on a machine where abcd is not yet on `PATH`.
+the doctor by name on a machine where abcd is not yet on `PATH`.
 
 **The name-guard scaffolding is reported at the granularity a maintainer can
 act on.** Each absent artefact is a gap abcd will create; every other state is a
 diagnostic, because abcd writes what is missing and never replaces what a
-maintainer put there. A guard hook present without abcd's own marker line is
+maintainer put there. A pre-commit guard present without abcd's own marker line is
 foreign, and is reported rather than claimed as installed. A lint config with no
 usable banned-names array, one that cannot be read, and one git ignores — so CI
 never sees it, the state a public repo is in by default — are three distinct
@@ -269,7 +269,7 @@ working directory nor world-writable — the shapes the documented install never
 produces (iss-2609012039117381) — and only when the home-scoped `path-entry`
 record names that exact path as this machine's installed binary. The record is a
 string comparison and no hashing, because adr-46 keeps the fast path at one file
-test. Both install routes write it, and `ahoy install` writes it for **every**
+test. Both install routes write it, and the ahoy installer writes it for **every**
 entry shape it leaves on `PATH`: the owned copy, the pinned symlink it degrades
 to when there is no verified artefact to copy from, and the dev shim. An entry
 the record does not name is an install this rung refuses, and it is the one
@@ -370,7 +370,7 @@ place when it holds one. A store that already holds a credential raises its own
 gap, so an otherwise up-to-date repo does not short-circuit past the heal.
 
 **Same-version re-install:** when detection reports zero actionable gaps — gaps
-both required and resolvable — `install` prints that it is already up to date
+both required and resolvable — the install prints that it is already up to date
 and exits without writing. That falls out of detection; it is not a
 version-stamp short-circuit.
 
@@ -394,20 +394,20 @@ and notes the orphaned-predecessor possibility in the summary.
 status, root SHA, install mode where one resolves, vintage and staleness, the
 citation baseline's coverage and age on a repo that has armed the citation gate,
 the gap count, and — on a repo — guard health and the banlist block with its
-reach, closing on a next-step line for the unmanaged kinds. With `--json` the
+reach, closing on a next-step line for the unmanaged kinds. In JSON form the
 same pass renders the detection envelope plus vintage and staleness, and the
 plugin command reads those two from exactly this render, so they are a contract
 with the plugin surface rather than a convenience.
 
-**`dry-run`** renders the detection envelope as JSON and nothing else, so the
+**The dry run** renders the detection envelope as JSON and nothing else, so the
 plugin command can summarise state off the folder kind and the gaps and name
-`install` for anything actionable. Two of the envelope's keys are pointers
+the install for anything actionable. Two of the envelope's keys are pointers
 omitted entirely on an unmanaged folder: guard health and the banlist block
 report definite booleans and named states, so a never-computed zero value would
 serialise facts that read as a broken guard to a consumer that never asked about
 a repo.
 
-**`doctor`** adds the read-only audit pass, and its JSON carries full per-gap
+**The doctor** adds the read-only audit pass, and its JSON carries full per-gap
 detail on both halves. Detection covers user-scope state (the store exists and is
 writable, the registry entry matches this root SHA, the `PATH` entry and hook
 manifest are intact); the audit reconciles the registered path against the
@@ -434,25 +434,25 @@ byte-identical to a fresh install save for the setup date.
   is mutated.
 - **Given** a git repository with no abcd markers and no registry entry for its
   root-commit SHA, **when** the user runs bare `/abcd:ahoy`, **then** it reports
-  `unmanaged-repo`, names `install` as the way to adopt it, and mutates nothing:
+  `unmanaged-repo`, names the install as the way to adopt it, and mutates nothing:
   bare invocation never adopts. **Given** a folder that is not a git repository,
   it reports `unmanaged-folder` and that there is nothing to act on.
-- **Given** a fresh repo with no `.abcd/` directory, **when** `install` runs to
+- **Given** a fresh repo with no `.abcd/` directory, **when** the install runs to
   completion, **then** the repo carve-out is written, the identity pin is
   recorded where the git-identity gate is adopted, the visibility-driven ignore
   entries are present, the registry entry exists, the marker block from the
   canonical template is installed in the files a chosen docs target names and in
   none at the default, and the hook-manifest check runs verify-only
   with a missing or malformed manifest surfacing as a non-resolvable diagnostic.
-- **Given** a repo with `install` already run and no state changes, **when**
-  `install` runs again, **then** detection reports zero actionable gaps, the
+- **Given** a repo with the install already run and no state changes, **when**
+  the install runs again, **then** detection reports zero actionable gaps, the
   message reads that it is already up to date, and nothing is written.
 - **Given** a repo where the marker block was hand-deleted but the setup version
-  is current, **when** `install` runs, **then** detection reports the marker
+  is current, **when** the install runs, **then** detection reports the marker
   missing and the apply pass restores it: idempotency keys off state, not the
   version stamp.
-- **Given** a repo with `install` run at an older setup version, **when**
-  `install` runs, **then** the version is updated, the marker block refreshed,
+- **Given** a repo with the install run at an older setup version, **when**
+  the install runs, **then** the version is updated, the marker block refreshed,
   and existing config keys preserved.
 - **Given** an opt-in scanner is not on `PATH`, **when** the dependency category
   is approved, **then** the user is shown the install commands under one
@@ -462,22 +462,94 @@ byte-identical to a fresh install save for the setup date.
   because it emits prompts the host runs (adr-25), and an adapter can be
   configured later.
 - **Given** a repo whose root SHA is absent from the registry while a sibling
-  entry matches its name, **when** `install` runs, **then** detection flags a
+  entry matches its name, **when** the install runs, **then** detection flags a
   re-founding candidate, ahoy asks before linking, and on confirmation records
   the lineage both ways and leaves both corpora in place.
-- **Given** the user runs `uninstall` then `install`, **when** both complete,
+- **Given** the user runs the uninstall then the install, **when** both complete,
   **then** detection reports zero actionable gaps and the resulting state is
   byte-identical to a fresh install save for the setup date.
-- **Given** the user runs `dry-run`, **when** it completes, **then** the
+- **Given** the user runs the dry run, **when** it completes, **then** the
   detection pass runs, the canonical envelope is printed to stdout, and no files
   are modified.
-- **Given** the user runs `doctor` on an installed repo whose registered path no
+- **Given** the user runs the doctor on an installed repo whose registered path no
   longer matches the registry, **then** an audit gap citing both paths appears
   in the JSON envelope, reported read-only, and no files are modified.
-- **Given** a fresh machine with no `~/.abcd/`, **when** `install` runs in a
+- **Given** a fresh machine with no `~/.abcd/`, **when** the install runs in a
   repo, **then** the user-scope directory is bootstrapped before the repo is
   registered, so the user is not blocked by missing user-scope state.
-- **Given** a registered repo that has been moved on disk, **when** `install` or
-  `doctor` runs, **then** detection notices the stale registered path and
-  `install` refreshes it: the root SHA is unchanged, so the entry is updated
+- **Given** a registered repo that has been moved on disk, **when** the install or
+  the doctor runs, **then** detection notices the stale registered path and
+  the install refreshes it: the root SHA is unchanged, so the entry is updated
   rather than duplicated.
+
+<!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
+
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd ahoy`
+
+Sub-verbs: `abcd ahoy doctor`, `abcd ahoy dry-run`, `abcd ahoy identity-check`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+
+Flags: none.
+
+### `abcd ahoy doctor`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd ahoy dry-run`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd ahoy identity-check`
+
+Sub-verbs: none.
+
+Flags: none.
+
+### `abcd ahoy install`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--adopt` | bool |
+| `--allow-stale-binary` | bool |
+| `--attribution` | bool |
+| `--bin-dir` | string |
+| `--dev` | bool |
+| `--docs-target` | string |
+| `--oracle-backend` | string |
+| `--refuse-adopt` | bool |
+| `--scan-deep` | string |
+| `--visibility` | string |
+| `--yes` | bool |
+
+### `abcd ahoy remote`
+
+Sub-verbs: `abcd ahoy remote apply`.
+
+Flags: none.
+
+### `abcd ahoy remote apply`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--yes` | bool |
+
+### `abcd ahoy uninstall`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--bin-dir` | string |
+
+<!-- surface-appendix:end -->
