@@ -244,7 +244,8 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-staged worktree store, the inbox of reports managed repositories file back to abcd
+staged worktree store, the run state an autonomous run's sessions share
+([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/28-report.md`](../04-surfaces/28-report.md)), machine config defaults (a later phase: every config read
 in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
 is read at all), user-scope memory for personal cross-project knowledge (a later
