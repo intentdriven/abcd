@@ -34,9 +34,9 @@ The listing names that release's `abcd-plugin-vX.Y.Z.zip` by its download
 address and its SHA-256, so an install or update receives exactly the cut
 release, with its version stamped in, and the harness refuses any download whose
 digest differs. The archive is published with the release's binaries, in its
-`checksums.txt` and its build-provenance attestation. The plugin needs Claude
-Code v2.1.224 or later, the first version that installs a plugin from an
-archive. <!-- docs-lint: allow -->
+`checksums.txt` and its build-provenance attestation.
+
+The plugin needs Claude Code v2.1.224 or later, the first version that installs a plugin from an archive. <!-- docs-lint: allow -->
 
 The plugin provisions its own binary; this repository commits none. The
 verified artefact is kept once in the plugin's persistent per-plugin download
