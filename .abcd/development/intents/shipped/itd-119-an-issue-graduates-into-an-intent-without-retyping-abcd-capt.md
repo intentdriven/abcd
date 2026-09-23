@@ -1,5 +1,6 @@
 ---
 id: itd-119
+shipped_in: v0.6.0
 spec_id: spc-24
 kind: standalone
 suggested_kind: null
@@ -93,4 +94,5 @@ and folded into the criteria, 2026-08-16._
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-1e7e37b98414 -->
+Fidelity review OWED (receipt rcp-1e7e37b98414).
