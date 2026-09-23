@@ -120,8 +120,8 @@ join that was written from one end only. No reader tolerates the retired names:
 a record still carrying one is refused and skipped by the ledger reader, the
 committed-ledger gate names the migration as its remedy, and the drift check
 reports it. It reports by default and writes only when applied, because the
-records are the only copy. `abcd intent audit --issue-drift` checks the join
-afterwards.
+records are the only copy. The intent audit's issue-drift form checks the join
+afterwards ([`05-intent.md`](05-intent.md)).
 
 **A disposition** records the researcher's answer to one reading
 item as a record of its own, keyed to the item (itd-180, spc-58). Grounds are
