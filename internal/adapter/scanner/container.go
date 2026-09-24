@@ -192,9 +192,15 @@ func knownFormats() []string {
 // decodeBudget is one payload file's allowance: inflated bytes and entries.
 // It is threaded through every level of the walk, so nesting cannot reset it —
 // a bomb hidden three archives deep draws from the same 4 MiB.
+//
+// reads is not an allowance but a tally: every decode operation, whichever
+// walk asks for it, drains its stream through read, so the count is the work
+// the bounds were meant to cap. A test judges a bound by it rather than by a
+// clock, which reports the machine's load as readily as the scan's cost.
 type decodeBudget struct {
 	bytesLeft   int
 	entriesLeft int
+	reads       int
 }
 
 // read drains r into memory, never allocating past the remaining budget: it
@@ -202,6 +208,7 @@ type decodeBudget struct {
 // ended is refused as errDecodeBudget. That one byte is the whole bomb
 // defence — the decompressor is never asked for its full output.
 func (b *decodeBudget) read(r io.Reader) ([]byte, error) {
+	b.reads++
 	data, err := io.ReadAll(io.LimitReader(r, int64(b.bytesLeft)+1))
 	if err != nil {
 		return nil, err

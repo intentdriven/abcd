@@ -794,9 +794,7 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	res := scanOne(t, sc, "chunkbomb.png", abs)
-	el := time.Since(start)
 
 	// The property is the refusal, not the clock. A bounded loop stops and says
 	// why; an unbounded one never reaches this line at all. Asserting the reason
@@ -807,14 +805,21 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 		t.Fatalf("a chunk-count bomb was not refused by the chunk bound; reason %q: %+v", why, res)
 	}
 
-	// The clock stays as a runaway guard only, and its ceiling moves with the
-	// race detector, which costs this scan about fifteen times its plain run.
-	ceiling := 10 * time.Second
-	if raceEnabled {
-		ceiling = 90 * time.Second
+	// The refusal says the bound fired, not that it fired in time: a walk that
+	// inflated every chunk and refused at the end would pass the check above.
+	// So the same decode is run again on a budget the test holds, and the work
+	// it did is counted, not timed — a count is the same on a loaded machine
+	// and under the race detector, where a wall-clock ceiling reddened a run
+	// whose bound held (iss-2609232048579579). The bomb carries about 180,000
+	// chunks; a working bound inflates at most maxDecodeEntries of them.
+	chunks := (len(body) - len(base)) / len(chunk)
+	b := &decodeBudget{bytesLeft: maxDecodedBytes, entriesLeft: maxDecodeEntries}
+	var out []Finding
+	if ok, why := sc.decodeInto(body, secretPatterns(sc.patterns), "chunkbomb.png", b, 1, &out); ok || !strings.Contains(why, "compressed chunks") {
+		t.Fatalf("the decode of a chunk-count bomb returned (%t, %q), want the chunk bound's refusal", ok, why)
 	}
-	if el > ceiling {
-		t.Fatalf("a chunk-count bomb took %s (ceiling %s): %+v", el, ceiling, res)
+	if b.reads > maxDecodeEntries {
+		t.Fatalf("a chunk-count bomb of %d chunks cost %d decode operations, want at most %d", chunks, b.reads, maxDecodeEntries)
 	}
 }
 
