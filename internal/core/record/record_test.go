@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
 // write writes a file under repo, creating parents.
@@ -615,4 +616,50 @@ func TestDescribeSkippedIssueNamesTheFileAndTheReason(t *testing.T) {
 	if _, err := Describe(repo, "iss-1"); err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("an absent id beside a skipped record must still be not found, got: %v", err)
 	}
+}
+
+// TestDescribeUnmigratedIssueNamesTheMigrateRemedy: the case the finding was
+// raised on. A record still carrying the retired `promoted_to` key is skipped
+// by the reader, and `abcd <iss-N>` answers with the file and the remedy the
+// ledger's other surfaces print — `abcd capture migrate --apply` — never "not
+// found" (iss-2609240200426413).
+func TestDescribeUnmigratedIssueNamesTheMigrateRemedy(t *testing.T) {
+	repo := t.TempDir()
+	res, err := capture.Capture(capture.CaptureRequest{
+		RepoRoot: repo, Text: "a record from before the rename", Severity: capture.SeverityMinor,
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "unmigrated",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs := res.Path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repo, abs)
+	}
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, []byte(strings.Replace(string(raw), "schema_version: 1\n", "schema_version: 1\npromoted_to: \"itd-1\"\n", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := treeSnapshot(t, repo)
+
+	_, err = Describe(repo, res.ID)
+	if err == nil {
+		t.Fatalf("Describe of an unmigrated record must fault")
+	}
+	if !errors.Is(err, ErrSkippedRecord) {
+		t.Fatalf("fault must wrap ErrSkippedRecord, got: %v", err)
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "not found") {
+		t.Fatalf("an unmigrated record must not read as not found: %v", err)
+	}
+	for _, want := range []string{res.ID, filepath.Base(abs), `"promoted_to"`, issueschema.MigrateHint} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("fault must carry %q, got: %v", want, err)
+		}
+	}
+	assertZeroWrites(t, repo, before)
 }
