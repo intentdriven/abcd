@@ -227,7 +227,11 @@ func TestResolveInstallSurfaceCommittedPayload(t *testing.T) {
 		t.Fatalf("expected exactly one marketplace plugin entry, got %+v", surface.Marketplace)
 	}
 	mp := surface.Marketplace[0]
-	if mp.Name != "abcd" || mp.SourceKind != SourceLocal || mp.Root != "" {
+	// adr-28: the single repo is its own marketplace. The plugin resolves to the
+	// payload root either through the relative-path source (the archive
+	// bootstrap) or through the latest release's pinned archive, which is
+	// rendered from that same root (adr-2609231048308186).
+	if mp.Name != "abcd" || (mp.SourceKind != SourceLocal && mp.SourceKind != SourceArchive) || mp.Root != "" {
 		t.Errorf("adr-28 says the single repo is its own marketplace: got %+v", mp)
 	}
 	for _, want := range []struct {

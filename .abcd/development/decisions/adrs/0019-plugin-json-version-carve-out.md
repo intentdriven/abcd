@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-67]
 related_rfcs: []
-related_adrs: [adr-5, adr-28]
+related_adrs: [adr-5, adr-28, adr-2609231048308186]
 ---
 
 # ADR-19: The plugin version lives ONLY in the released artifact; the working tree stays unversioned, and the version location is chosen by a schema-validated decision, not hard-coded
@@ -98,3 +98,9 @@ compatibility claim traces to the pinned schema pointer, not to prose.
 - A new obligation: the no-half-state lint asserts the terminology and docs
   describe the *selected* location (or the escalation text under BLOCKED), never a
   stale hard-coded `plugin.json.version` claim.
+- [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md) amends this decision: the catalog sources the plugin from the
+  latest release's pinned archive instead of the tree, so the version reaches an
+  install through that published archive. The working tree still carries no
+  version key, and the `./` source this ADR's Context records holds only until
+  the first pinned ship. The contract carries no `marketplace_source_to_root`
+  key: nothing read it, and the pin would have made it false.

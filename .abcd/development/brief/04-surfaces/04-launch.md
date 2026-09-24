@@ -2,13 +2,13 @@
 
 Cut a release without deciding anything by hand that the record already
 decides. `launch` reads what shipped since the last tag, derives the version
-from those records' declared impact, composes the changelog section from them,
-and refuses the cut outright when the record and the tree disagree. The version
+from those records' declared impact, composes the changelog section and the
+release page from them, and refuses the cut outright when the record and the tree disagree. The version
 is never typed, the changelog is never hand-written, and a release that would
 publish a compatibility lie does not happen.
 
 Two things bound what it will do. It publishes nothing: the shipped verb writes
-a dated changelog heading and stops, and CI and a human take it from there.
+a dated changelog heading and the release page and stops, and CI and a human take it from there.
 And it never ships the design record: the payload is default-deny with the whole
 `.abcd/` namespace excluded structurally, so no include line can put it back.
 
@@ -29,6 +29,7 @@ Bare `abcd launch` refuses with a hint to ask for it.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `archive` | gate | shipped |
 | `scaffold` | — | shipped |
 | `ship` | gate | shipped |
 
@@ -42,17 +43,43 @@ records that shipped and never the previous release's surface, so the other
 changelog sections are refused by name and each dated section states under its
 heading what the notes list and do not claim (iss-2609011207114761). It then
 writes the dated `CHANGELOG.md` heading that the auto-release workflow turns
-into a tag. Given a payload directory, it stages the versioned release payload, with the
+into a tag. In a repository whose version-location contract declares
+`"publishes_plugin_archive": true`, it then pins the release's plugin archive in
+the catalog (§ 3, *The pinned plugin archive*); without the declaration it leaves
+the catalog untouched and says so. Given a payload directory, it stages the
+versioned release payload, with the
 derived version stamped into the payload's manifests and lockstep-proved before
 return.
 
+**A feature release arrives with a release page.** The same payload carries
+`RELEASE.md`, composed from the press releases of the user-facing intents shipped
+since the last tag: headline intents told as prose, the rest listed by title,
+persona quotes carried word for word. The binary holds it to the changelog's
+rule (every intent in that set cited once, nothing else, nothing planned),
+checks each quote against its source, and runs the outbound policy and the
+persona registry over it. The outgoing page moves to
+`.abcd/development/releases/<version>.md`, then the page is written, then the
+changelog heading; a failure rolls the earlier writes back. A fixes-only cut
+writes no page. A refused payload returns every reason as data, and the host
+recomposes until it is valid, reporting each attempt (itd-2609231013154443).
+
+**The archive render is the release gate's half of the pin.** It renders the
+plugin archive of the release the newest dated CHANGELOG heading names, from the
+checked-out tree, into an existing directory. Bound to the tag being released,
+it refuses (exit 1) unless the committed catalog pins exactly that archive's
+address and digest, and unless that address lies under the releasing
+repository's own release downloads for the tag — removing the archive on either
+refusal, so nothing unpinned can be published. `auto-release.yml` runs it on the
+pushed commit before the tag is made, and the release workflow runs it again on
+the tagged commit, each run bound to the repository the workflow runs in.
+
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
-`release-changelog-composer` agent. The deterministic emit alone is `abcd
-changelog`, read-only and prose-free.
+`release-changelog-composer` agent, including the release page's retry loop. The
+deterministic emit alone is `abcd changelog`, read-only and prose-free.
 
 **Commit, tag and publish stay a design target** (itd-65's gate suite, itd-72's
 publishing). The verb neither commits, tags, nor publishes, so every step past
-the changelog heading is performed by a human and by CI. The dirty-tree and
+the changelog heading and the release page is performed by a human and by CI. The dirty-tree and
 documentation-warning overrides belong to that design and are not on the shipped
 verb. There is no version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
@@ -125,7 +152,9 @@ is not the compatibility surface, which records manifest keys and discards
 values; installability is the mirror question, over the values.
 
 The **light tier** ships: both manifests parse, each local marketplace source
-resolves to a manifest whose name matches the listing, and every declared path
+resolves to a manifest whose name matches the listing (a pinned archive source
+resolves to the payload root it is rendered from, and its pin must be an https
+`.zip` URL with a 64-hex digest), and every declared path
 the payload is responsible for is carried. Resolution reads the resolved bundle,
 so a file present in the tree but excluded from the payload fails here.
 `dry-run` reports it; the payload render refuses on it, because the render is
@@ -293,6 +322,54 @@ version-writing refuses and the escalation stands. Concretely, the cut:
 4. Stamps nothing else. Those two locations are the whole of it, and the render
    names both, so there is no third place for a version to drift out of step.
 
+### The pinned plugin archive
+
+A release publishes its plugin as one zip, `<plugin>-plugin-v<version>.zip`,
+and the committed catalog names it:
+`{"source": "archive", "url": "<repository>/releases/download/v<version>/<name>", "sha256": "<digest>"}`
+([adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md),
+amending adr-19 and adr-20 on the 2026-09-23 ruling). The harness downloads the
+zip and refuses it when the digest differs, so an install or update at the tip of
+`main` receives the latest cut release, stamped with its version and
+fingerprinted — not the unversioned working tree.
+
+- **Pinned only on the declaration.** The cut pins only when the
+  version-location contract declares `"publishes_plugin_archive": true`, the
+  statement that the repository's release workflow uploads the archive; abcd
+  declares it. The contract alone does not count: the workflows the scaffolder
+  renders for a managed repository upload no archive, so a catalog pinned there
+  would name an asset nothing publishes. Without the declaration the catalog is
+  left untouched and the cut's report says so; a declaration that is not a
+  boolean is refused before anything is written.
+- **Rendered twice, identically.** The cut renders the archive from its tree to
+  learn the digest it commits, and refuses a payload with uncommitted changes
+  first. `auto-release.yml` renders it again from the pushed commit before the
+  tag is made, and the release workflow from the tagged commit, in `verify`
+  before anything is built and in the publish job on the bytes that ship; none
+  proceeds unless the digests agree, and each binds the address to the
+  repository it runs in, since `plugin.json`'s `repository` names another one
+  after a rename, a transfer or a fork. The archive is
+  reproducible by construction: sorted entries, stored uncompressed, one fixed
+  timestamp, modes normalised to 0644 or 0755.
+- **The catalog is left out of the zip.** It is the file that names the zip's
+  digest. The stamped marketplace version and changelog entry (points 3 and 4
+  above) therefore live in the staged payload, where the lockstep proves them,
+  and not in the published artefact; the published version is the archived
+  `plugin.json`'s.
+- **Published with the binaries.** The archive is checksummed into
+  `checksums.txt`, covered by the build-provenance attestation, uploaded, and
+  after publication downloaded fresh, attestation-verified and byte-compared.
+- **The window.** From the ship's merge, the catalog on `main` names an archive
+  the publish job has not uploaded yet. An install or update in that window fails
+  closed and leaves an installed plugin on its previous release; nothing else can
+  install, because the digest refuses other bytes. It cannot be closed, since the
+  pin must be in the tagged tree, so the release runbook keeps it short.
+- **The harness floor.** An archive source needs Claude Code v2.1.224 or later;
+  older harnesses fail to install it, and very old ones fail to load the
+  marketplace. The install instructions and the release notes state the floor.
+- **Contributors** load the plugin from their own checkout rather than through a
+  second catalog entry (`CONTRIBUTING.md`).
+
 **Anti-drift.** The two manifests in the artefact describe one release, so the
 version at the selected location and the marketplace entry must agree. A
 read-only lockstep checker proves this over the path list adr-20 records, and a
@@ -376,6 +453,19 @@ performed by a human and by CI.
   written into the selected version location in the **release artefact** only,
   the working-tree manifests staying unversioned, plus the canonical marketplace
   manifest.
+- **Given** a repository whose version-location contract declares
+  `"publishes_plugin_archive": true` and a clean payload, **when** the cut writes
+  the dated heading, **then** the catalog's plugin source becomes the release's
+  pinned archive — its download address and the digest of the archive rendered
+  from that tree — the working-tree manifests stay version-free, and the archive
+  gate on the resulting commit reproduces the digest and exits 0. **Given** a
+  payload file changed after the pin, the archive gate exits 1, names both
+  digests, and leaves no archive behind; **given** an uncommitted payload
+  change, the cut refuses before writing anything. **Given** the contract
+  without the declaration, the cut leaves the catalog byte-identical and reports
+  it as not pinned. **Given** a pinned address under another repository than the
+  one the gate is bound to, the archive gate exits 1 and leaves no archive
+  behind.
 - **Given** at least one additive intent and no breaking intent, **when** the cut
   runs, **then** the tier is minor and the launch report names the intents that
   drove it. **Given** any breaking intent, the tier is major and the report names
@@ -423,11 +513,22 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd launch`
 
-Sub-verbs: `abcd launch scaffold`, `abcd launch ship`.
+Sub-verbs: `abcd launch archive`, `abcd launch scaffold`, `abcd launch ship`.
 
 | Flag | Type |
 |---|---|
 | `--dry-run` | bool |
+
+### `abcd launch archive`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--out` | string |
+| `--repository` | string |
+| `--tag` | string |
+| `--verify` | bool |
 
 ### `abcd launch scaffold`
 

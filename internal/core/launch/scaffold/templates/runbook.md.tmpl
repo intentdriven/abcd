@@ -38,6 +38,15 @@ The `release.yml` `verify` job runs these, in order, on the released commit.
 <%- range $i, $g := .ExtraGates %>
 <% add $i 6 %>. <% $g.Name %>
 <%- end %>
+<%- if .Abcd %>
+<% add (len .ExtraGates) 6 %>. Plugin archive reproduces the committed pin (fail-closed)
+
+The last gate runs after the tag exists, so a refusal there consumes the
+version. `auto-release.yml`'s `detect` job makes the same proof on the pushed
+commit before its `tag` job may run, and checks that the pinned address is this
+repository's own release; a refusal there tags nothing, and the next push to
+`<% .DefaultBranch %>` retries.
+<%- end %>
 
 ## Semantic gates (host-run, before the tag)
 <% if .SemanticGates %>

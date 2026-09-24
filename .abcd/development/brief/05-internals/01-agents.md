@@ -19,7 +19,10 @@ Fifteen agent prompts ship in `agents/` today, in four groups:
   output under a cite-or-be-dropped rule: `principle-distiller`
   (`disembark principles`), `press-release-composer` (`disembark press-release`),
   `lifeboat-reviewer` (`disembark review`), `graveyard-interpreter`
-  (`disembark graveyard`), and `release-changelog-composer` (`launch ship`).
+  (`disembark graveyard`), and `release-changelog-composer` (`launch ship`),
+  which writes both documents of a release cut in one payload, the changelog
+  lines and the release page, and whose payload is refused whole rather than
+  cite-or-be-dropped.
 - **The intent auditor**, `intent-auditor`, which judges a shipped intent's
   promise against delivered reality (below).
 - **Repo-workflow reviewers and researchers**, dispatched by a human rather than

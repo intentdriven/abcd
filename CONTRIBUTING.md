@@ -47,7 +47,8 @@ inbound = outbound statement is the whole of it.
   [`.abcd/work/rulesets/`](.abcd/work/rulesets/).
 - **Volume cap.** At most three open pull requests per external author at a
   time — review attention is the scarce resource this protects.
-- **Local gates.** `make preflight` runs the same build, vet, test and race
+- **Local gates.** `make preflight` runs the load check first (load-check, a
+  warning, never a failure), then the same build, vet, test and race
   steps locally, together with the lint-reviews, lint-issues, lint-decisions,
   record-lint,
   docs-lint and site-render gates and both tagged eval lanes (smoke,
@@ -74,6 +75,16 @@ inbound = outbound statement is the whole of it.
   [writing style guide](docs/reference/writing-style.md).
 - **New dependencies need explicit maintainer sign-off** before they land in
   `go.mod`.
+- **Run the plugin from your checkout.** The marketplace lists one plugin, and
+  its source is the latest release's pinned archive, so installing from the
+  marketplace gives you the last cut release, never your working tree. There is
+  no development entry in the catalog: to exercise the commands, agents and hooks
+  you are changing, start a session with the checkout loaded as a plugin
+  directory — in Claude Code, `claude --plugin-dir <path-to-your-checkout>`,
+  which takes precedence over an installed copy of the same plugin for that
+  session — and run `/reload-plugins` after an edit. Invoke the binary as
+  `go run ./cmd/abcd` from the checkout root, as `AGENTS.md` sets out; a
+  published binary is stale by construction in a source checkout.
 
 ## AI assistance and authorship
 

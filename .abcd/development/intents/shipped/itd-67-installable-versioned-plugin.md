@@ -6,7 +6,7 @@ spec_id: spc-11
 kind: standalone
 suggested_kind: standalone
 reclassification_history: []
-related_adrs: [adr-28]
+related_adrs: [adr-28, adr-2609231048308186]
 prd_path: null
 grill_session_id: 67d0f1de-0067-4a67-9c0d-000000000067
 grilled_at: 2026-07-01
@@ -65,7 +65,8 @@ None stated.
 
 > _Given-When-Then per the itd-1 discipline._
 
-- **Given** the published abcd repo, **when** a user runs `/plugin marketplace add REPPL/abcd`, **then** the marketplace resolves and lists the `abcd` plugin from `marketplace.json` (source `./`).
+- **Given** the published abcd repo, **when** a user runs `/plugin marketplace add REPPL/abcd`, **then** the marketplace resolves and lists the `abcd` plugin from `marketplace.json`, sourced from the latest release's pinned archive (`{"source": "archive", "url": ".../releases/download/vX.Y.Z/abcd-plugin-vX.Y.Z.zip", "sha256": "<digest>"}`).
+  _Amended 2026-09-23 (source `./` → the pinned archive), on the product thinker's rulings E1 and E2 of that day: a relative-path source installs the unversioned working tree, so no install or update could receive a version-stamped release, which is what criterion 3 promises; the host harness reads a published release only through an archive source. The decision and the alternatives weighed are [adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s-plugin-archive.md), which amends adr-19 and adr-20. Until the first release past v0.9.0 is cut, the committed catalog still carries `./` (that ADR's bootstrap)._
 - **Given** the added marketplace, **when** a user runs `/plugin install abcd@abcd-marketplace`, **then** the plugin installs and the full `/abcd:*` command/skill/agent/hook surface registers in a session.
 - **Given** a shipped abcd with a recorded version, **when** a new `launch ship` publishes, **then** `plugin.json.version` is bumped by the auto-selected tier (patch/minor/major per brief §4), `marketplace.json` is updated, the repo is tagged, and `/plugin update abcd` pulls the new version.
 - **Given** the bump-tier detection, **when** a phase completed since the last launch, **then** the bump is minor and the launch report names the completed phase; when none did, the bump is patch; a major bump occurs only via explicit `--version <x.0.0>`.

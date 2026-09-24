@@ -36,7 +36,8 @@ them.
   },
   "docs": {
     "target": "both"                    // "claude_md" | "agents_md" | "both" | "skip" — which conventions
-                                        //   router carries the marker block
+                                        //   router carries the marker block; "skip" is the default, so
+                                        //   a default install names abcd in neither file
   },
   "oracle": {
     "backend": "host-delegated"         // "host-delegated" (default: abcd emits a prompt, the host runs it —
@@ -248,7 +249,9 @@ staged worktree store, the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), machine config defaults (a later phase: every config read
 in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
-is read at all), user-scope memory for personal cross-project knowledge (a later
+is read at all; the one machine setting read today is `load-limits`, the load
+check's two limits, read-only and never created, itd-2609231434459890),
+user-scope memory for personal cross-project knowledge (a later
 phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/abcd:ingest` and
 `/abcd:consult` read (abcd never creates that one, and both verbs say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned

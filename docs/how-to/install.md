@@ -24,16 +24,19 @@ Once the marketplace is added:
 
 `abcd-marketplace` is the marketplace name declared in
 [`.claude-plugin/`](https://github.com/intentdriven/abcd/tree/main/.claude-plugin/); `abcd` is the single plugin it lists,
-sourced from the repository root. Pull the current state of the marketplace with:
+sourced from the latest release's plugin archive. Take a newer release with:
 
 ```text
 /plugin update abcd
 ```
 
-The marketplace is served from the repository itself, so an install tracks the
-repository rather than a versioned artefact: the manifests here carry no version
-key, and a release publishes the `abcd` binaries and their checksums, alongside
-the source archives GitHub attaches for the tagged tree.
+The listing names that release's `abcd-plugin-vX.Y.Z.zip` by its download
+address and its SHA-256, so an install or update receives exactly the cut
+release, with its version stamped in, and the harness refuses any download whose
+digest differs. The archive is published with the release's binaries, in its
+`checksums.txt` and its build-provenance attestation.
+
+The plugin needs Claude Code v2.1.224 or later, the first version that installs a plugin from an archive. <!-- docs-lint: allow -->
 
 The plugin provisions its own binary; this repository commits none. The
 verified artefact is kept once in the plugin's persistent per-plugin download
@@ -267,12 +270,34 @@ version --check` reports whether one is available and names the command your
 install shape takes, since a plugin-root binary takes a plugin update and a
 package-manager install takes the manager's own upgrade.
 
+## What adopting a repository commits
+
+Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
+it lays down the `.abcd/` layout and the commit gates. By default it writes abcd's name into none of the
+repository's conventions files (`CLAUDE.md`, `AGENTS.md`); the managed block
+that documents the rule loader, and names abcd, goes into one only when you ask
+for it with `--docs-target`.
+
+Outside `.abcd/`, a default adoption names abcd in exactly three committed
+files, and nowhere else:
+
+- `.githooks/pre-commit` and `.githooks/pre-merge-commit`, the name-guard hooks,
+  which run the `abcd` binary on each commit and merge.
+- The fenced block in `.gitignore`, between `# BEGIN ABCD` and `# END ABCD`,
+  whose header asks you not to edit it by hand.
+
+This mention is deliberate. abcd recognises its own hooks and fence by the
+markers they carry, so a hook whose marker is renamed or stripped reads as
+someone else's hook, a fence without its markers reads as drifted, and
+`abcd ahoy` reports either as a gap.
+
 ## Build
 
 ```bash
-make preflight   # the pre-push gate: lint-reviews, lint-issues, lint-decisions,
-                 # record-lint, docs-lint, site-render, smoke and
-                 # evals-cold-reading, then build, vet, test and race
+make preflight   # the pre-push gate: the load check first (load-check, a
+                 # warning, never a failure), then lint-reviews, lint-issues,
+                 # lint-decisions, record-lint, docs-lint, site-render, smoke
+                 # and evals-cold-reading, then build, vet, test and race
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd version    # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

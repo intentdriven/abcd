@@ -51,10 +51,13 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`. Each carries recall keywords and its rules, bundled in the abcd
-binary; a repo overrides them per-field via `.abcd/rules.json`. `OPINIONS`
+`OPINIONS`, `LOAD`. Each carries recall keywords and its rules, bundled in the
+abcd binary; a repo overrides them per-field via `.abcd/rules.json`. `OPINIONS`
 points at the canonical conventions under `.abcd/development/principles/` rather
-than copying them.
+than copying them. `LOAD` carries the trust rule for load experiments: one owned
+process group killed together through a re-checked handle and never by pattern,
+clean proven by what is running, and explicit consent with a cap below the core
+count on a live development machine.
 
 ### Reset triggers
 
@@ -84,7 +87,9 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: lint-reviews + lint-issues +
+make preflight      # the pre-push gate: the load check first (load-check,
+                    # a warning, never a failure), then lint-reviews +
+                    # lint-issues +
                     # lint-decisions + record-lint + docs-lint + site-render +
                     # smoke + evals-cold-reading,
                     # then build + vet +
@@ -279,7 +284,9 @@ irreversible; guessing downward costs nothing.**
 - `make preflight` is clean — the six gates (`lint-reviews`, `lint-issues`,
   `lint-decisions`, `record-lint`, `docs-lint`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The eval
+  `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The load
+  check runs first (`load-check`, a warning, never a failure) and is not a gate:
+  it exits 0 whatever it finds. The eval
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each costs about five seconds.
 - `make fmt-check` reports nothing. The format gate is CI's own step, outside

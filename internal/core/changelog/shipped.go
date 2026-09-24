@@ -95,6 +95,11 @@ type Record struct {
 	// value nobody could read would drop real content from a release record on a
 	// typo, which is the worse of the two failures.
 	ShippedInErr string
+	// PressRelease is the body of the record's `## Press Release` section, empty
+	// when it has none. It is the source a release page's quotes are verified
+	// against, read from the same blob as Title and Summary so the page and the
+	// changelog cannot disagree about what a record says.
+	PressRelease string
 }
 
 // RecordSet is a release cut: the set-difference of record END STATES between
@@ -136,6 +141,27 @@ func (s RecordSet) ChangelogRequired() []Record {
 	out := make([]Record, 0, len(s.Added)+len(s.Removed))
 	for _, r := range s.All() {
 		if r.InChangelog() {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// PressReleaseRequired is the release page's set: the ADDED intents whose impact
+// earns a changelog line.
+//
+//	PressReleaseRequired = Added ∩ itd-* ∩ InChangelog
+//
+// Removed records, issues and `impact: internal` intents fall out by
+// construction, and a record carrying a valid `shipped_in:` is already absent
+// from Added. An unlabelled Added record never reaches a ready cut
+// (UnlabelledAdded refuses it), so InChangelog means "user-facing" here without
+// qualification. It is written once, here, so the preview, the composer's view
+// of the cut and the page bijection read one definition.
+func (s RecordSet) PressReleaseRequired() []Record {
+	var out []Record
+	for _, r := range s.Added {
+		if strings.HasPrefix(r.ID, "itd-") && r.InChangelog() {
 			out = append(out, r)
 		}
 	}
@@ -306,6 +332,7 @@ func newRecord(root, ref, baseRef, relPath string) Record {
 	// The source material is extracted even when the impact is unlabelled: the
 	// operator who has to fix that record is helped by seeing what it says.
 	rec.Title, rec.Summary = summarise(blob, rec.ID)
+	rec.PressRelease = pressReleaseSection(blob)
 	fields := frontmatter.Fields(strings.Split(blob, "\n"))
 	// Read BEFORE the impact early-return. A record whose impact does not parse is
 	// exactly the legacy population this field exists for — an old record closed by

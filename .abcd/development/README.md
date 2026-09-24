@@ -17,6 +17,7 @@ artefact type**, one canonical home per concept:
 | [`plans/`](plans) | Dated design / implementation plans (`YYYY-MM-DD-*`). |
 | [`research/`](research) | <!-- index: research-children -->Investigations: `notes/` (dated write-ups) + `prompting/` (prompt R&D) + `data/` (measured corpora) + `abcdev-site/` (the website work cluster).<!-- /index --> |
 | [`readings/`](readings) | The readings family: one directory per cold-reading run (`rdg-<yymmddHHMMSS><rrrr>`), holding the manifest of what the assembler passed. Its [charter](readings/README.md) renders the include table. |
+| [`releases/`](releases) | The archive of release pages: each earlier feature release's `RELEASE.md`, moved here by the cut that replaced it (`<version>.md`). |
 | [`release/`](release) | The committed compatibility baseline: `surface.json` (the shipped-surface registry `surface_coverage` reads). |
 | [`release-gate/`](release-gate) | The pre-tag runbook and its `manifest.json` — the periodic brief↔surface cross-check `gate_lockstep` pins. |
 

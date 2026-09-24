@@ -53,6 +53,16 @@
         "The change that lands a planned intent's work closes its spec in the same change (abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
       ]
     },
+    "LOAD": {
+      "state": "active",
+      "recall": ["burner", "nohup", "pgrep"],
+      "aliases": ["under load", "load test", "load experiment", "background load", "busy loop", "spin loop", "load average", "cpu load", "process group", "orphaned process", "orphan process", "stress run", "stress the machine", "stress test the machine", "stress the cpu", "cpu stress", "stress load", "peg the cpu", "pegging the cpu", "peg the cores", "peg every core", "peg all cores", "on every core", "on all cores", "saturate all cores", "saturate every core", "saturate the cpu", "saturate the cores", "max out the cpu", "max out the cores", "cpu hog"],
+      "rules": [
+        "Background load (burners, busy loops, stress runs) starts as ONE owned process group and is killed as a group, so a failed bookkeeping step cannot orphan it: in bash (zsh refuses job control without a terminal) wrap the whole load in one subshell job, `set -m; ( burner & burner & wait ) & pg=$!`, because a loop of separate `&` jobs gives each job its own group and the group kill then reaches only the last. An agent's shell state does not survive between tool calls, so `pg` lives in a file the session owns and is re-checked before use: `kill -- -\"$pg\"` only once `ps -o pgid= -p \"$pg\"` still prints `$pg` and `ps -o comm= -p \"$pg\"` names the shell that launched the load, so a stale or reused pid is never signalled. Never kill by pattern (`pkill -f`, `killall`): a pattern also matches other sessions' processes, and one took down peer sessions' gates on 2026-09-23. Never `nohup` with a list of pids in a file as the only handle: orphaned burners have starved a development machine into a kernel panic.",
+        "Clean is proven by checking what is actually running, never by having read the list of what was started: `pgrep -g \"$pg\"` and `pgrep -x <burner name>` both return nothing before the machine is called clean.",
+        "A load experiment on a live development machine needs the user's explicit consent first and a hard cap below the core count (`getconf _NPROCESSORS_ONLN`), leaving cores free for the operating system's own daemons."
+      ]
+    },
     "LIFEBOAT": {
       "state": "active",
       "recall": ["lifeboat", "disembark", "embark", "handoff", "handover"],

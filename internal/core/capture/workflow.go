@@ -40,6 +40,12 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	// A found_at that names a path must name one in THIS checkout
+	// (iss-2609120511058115). Checked before the preamble, so a refused capture
+	// writes nothing at all — not even the ledger directories.
+	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
+		return CaptureResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return CaptureResult{}, err
 	}
@@ -109,10 +115,12 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 }
 
 func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
-	// The disclosure pair (itd-178). origin is DERIVED — a capture is a person
-	// filing an observation, so it is researcher-authored and no request member
-	// carries it — while the production mode is the closed choice the caller
-	// declared, defaulted here so a captured record always carries both keys.
+	// The disclosure pair (itd-178). origin is DERIVED — a capture's text is
+	// written directly rather than derived from another record or a reading
+	// item, so its route is researcher-authored (which names the route, not who
+	// ran the command) and no request member carries it — while the production
+	// mode is the closed choice the caller declared, defaulted here so a
+	// captured record always carries both keys.
 	stamp, err := provenance.NewStamp(provenance.KindResearcherAuthored, req.ProductionMode)
 	if err != nil {
 		return CaptureResult{}, fmt.Errorf("capture: %w", err)
