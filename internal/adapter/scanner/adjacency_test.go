@@ -549,22 +549,31 @@ func TestGallopingProbeStaysBoundedOnLongLines(t *testing.T) {
 		name  string
 		base  int
 		build func(m int) string
+		// perByte, when set, holds the probes' work to an absolute multiple of
+		// the line's length at both sizes (see probeBytesPerLineByteBar); a
+		// shape with a fixed number of junctions needs it, because its growth
+		// is linear whether each junction is cheap or not.
+		perByte int
 	}{
-		// Every offset in the dotted run starts a LAN-hostname hit that runs to
-		// the ".local" at the far end, so every junction candidate inside the
-		// leading match gallops the whole way there.
-		{"junction_hits_run_to_the_far_end", 4000, func(m int) string { return "ghp_" + r("a", 600) + r("ab.", m) + "local" }},
+		// A fixed-size leading match followed by a dotted run in which every
+		// offset starts a LAN-hostname hit running to the ".local" at the far
+		// end. The leading match is the same length at every size, so it holds
+		// a constant number of junction candidates and the growth is linear
+		// for the fixed and the broken probe alike; what separates them is the
+		// cost per candidate, which the absolute bound holds.
+		{"junction_hits_run_to_the_far_end", 4000, func(m int) string { return "ghp_" + r("a", 600) + r("ab.", m) + "local" }, probeBytesPerLineByteBar},
 		// The same, with the leading match's backtrack window packed with
-		// candidates that are all rejected, so the walk runs its full length.
-		{"rejected_candidates_each_gallop", 4000, func(m int) string { return "ghp_" + r("AKIA", 150) + r("ab.", m) + "local" }},
+		// candidates that are all rejected, so the backward walk runs its full
+		// length; again a constant number of candidates, held by the bound.
+		{"rejected_candidates_each_gallop", 4000, func(m int) string { return "ghp_" + r("AKIA", 150) + r("ab.", m) + "local" }, probeBytesPerLineByteBar},
 		// A run of tokens each longer than the first window, so the forward
 		// probe doubles at every junction in a long chain.
-		{"window_length_tokens_back_to_back", 24, func(m int) string { return r("ghp_"+r("a", 4*maxAdjacencyProbeWindow), m) }},
+		{"window_length_tokens_back_to_back", 24, func(m int) string { return r("ghp_"+r("a", 4*maxAdjacencyProbeWindow), m) }, 0},
 		// The iss-189 shape repeated: every junction's probe runs into its edge
 		// and has to grow before the boundary can be judged.
 		{"window_edge_boundaries_back_to_back", 60, func(m int) string {
 			return r("AKIA"+r("Q", 16)+r("b", maxAdjacencyProbeWindow-6)+".local"+"zzz ", m)
-		}},
+		}, 0},
 		// The shape an adversarial review found the FIRST galloping pass
 		// quadratic on — every fixed-length google_api match ending inside a
 		// continuous open-ended anthropic_key run — is the reason gallopBudget
@@ -576,6 +585,15 @@ func TestGallopingProbeStaysBoundedOnLongLines(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			assertCostGrowth(t, c.build, c.base, linearCostBar,
 				"a probe that keeps growing turns Theta(n) junctions into Theta(n) full-line matches (galloping-probe cost regression)")
+			if c.perByte > 0 {
+				for _, m := range []int{c.base, 4 * c.base} {
+					line := c.build(m)
+					if n := probeWork(line); n > c.perByte*len(line) {
+						t.Errorf("a %d-byte line handed its probes %d bytes (%.0f per byte of line), want at most %d per byte: a fixed number of junction candidates costs that much only when their probes grow past what their matches need (galloping-probe cost regression)",
+							len(line), n, float64(n)/float64(len(line)), c.perByte)
+					}
+				}
+			}
 		})
 	}
 }
@@ -614,6 +632,17 @@ const (
 	linearCostBar = 6.0
 	flatCostBar   = 1.5
 )
+
+// probeBytesPerLineByteBar is the absolute bound for a shape whose junction
+// count does not grow with the input, where no growth ratio can tell a cheap
+// junction from an expensive one. The probes hand at most this many bytes per
+// byte of line. The fixed probe's worst such shape measures ~250 per byte at
+// its base size (the rejected candidates' re-validations, a constant spread
+// over the line) and falls as the line grows; a probe that grows its window on
+// a failed attempt as well as a running match measures ~14,000-29,000 per byte
+// on the same shapes. The bar leaves the real code 4x of room and the
+// regression over 10x past it.
+const probeBytesPerLineByteBar = 1000
 
 // assertCostGrowth is the shape every cost guard in this file takes in place of
 // a stopwatch: it builds the shape at base and at 4*base, counts the bytes the
