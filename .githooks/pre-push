@@ -9,6 +9,7 @@
 #      a direct push to the protected branch, a deletion of it, and any
 #      non-fast-forward (force) push to any branch.
 #   2. `make preflight` must pass natively before a push leaves this machine —
+#      the load check first (load-check, a warning, never a failure), then
 #      the six lint gates (lint-reviews, lint-issues, lint-decisions,
 #      record-lint, issue-drift, docs-lint),
 #      the site-render gate and both tagged eval lanes (smoke,

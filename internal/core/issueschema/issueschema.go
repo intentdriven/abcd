@@ -156,6 +156,9 @@ var (
 		"plan-review", "impl-review", "manual-test", "review-followup",
 		"agent-finding", "agent-observation", "user-observation",
 		"drift-detection", "memory-curation",
+		// managed-repo is a report a repository abcd manages filed back to abcd
+		// and a person promoted out of the inbox (itd-2609221656361680).
+		"managed-repo",
 	}
 )
 

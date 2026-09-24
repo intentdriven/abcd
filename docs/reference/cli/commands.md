@@ -68,7 +68,7 @@ Install or update abcd in this repo (idempotent)
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
-      --docs-target string      marker target: claude_md | agents_md | both | skip
+      --docs-target string      which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -164,13 +164,13 @@ Capture issues to the ledger; bare invocation is read-only status
 ```
       --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
-      --found-at string          optional repo-relative path or conceptual location
+      --found-at string          optional repo-relative path, which must exist in this checkout, or a conceptual location in words
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --severity string          severity: nitpick | minor | major | critical (default minor)
       --slug string              override the slug derived from the text
-      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation (default user-observation)
+      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
 #### `abcd capture disposition`
@@ -581,6 +581,17 @@ document text and is not one. A trailing backslash and a here-document with
 no delimiter line are grammar a shell does run, so each gets a verdict —
 the backslash is read as bash reads it, the unterminated document blocks.
 
+A host whose shell tool takes a per-call working directory passes it as
+tool_input.workdir. It is resolved against the session directory, and a
+command whose workdir is an existing directory in another repository is
+checked against that repository's registry as well as the session's; the
+stricter verdict wins, so the workdir's registry can add a hazard and never
+remove one. The workdir is never read as a cd: the one host that has the
+field fails the call when the directory is missing, so no failed-cd hazard
+exists. A workdir that is not a string, or holds a NUL byte, a control
+character or invalid UTF-8, or is over 4096 bytes, is refused with the
+blocking status and the reason.
+
 ### `abcd history`
 
 Manage the native session-transcript store
@@ -857,6 +868,45 @@ that stops without leaving strands nothing: its claims lapse with their leases.
       --session string   this session's id
 ```
 
+#### `abcd implement load`
+
+Check the machine's load before abcd's own tests start; warns, never refuses (exit 0)
+
+**Usage:** `abcd implement load --site preflight|eval-harness [flags]`
+
+Read the machine's load averages and process table once and warn when a program
+outside the running work has held a near-full core (a lifetime CPU share of 0.9 or
+more) for longer than the stray limit, or when the one-minute load average is above
+the extreme limit. `make preflight` runs it first, and the eval harness runs it once
+at its start; it never runs once per test package. It never refuses, never waits and
+never stops anything, and it exits 0 on every status: ok, warning, skipped (in CI,
+where the line says why) and unchecked (a platform other than macOS and
+Linux, or a read that failed).
+
+Your own strays are named with their pid, process group, age and CPU share, with
+commands to stop them that re-check each target first and never match by pattern;
+names the private banned-names layer matches are masked. Other accounts' strays
+appear only as a count and a total CPU share. The check's own parent chain is never
+a stray. Inside an autonomous run (a run state with a joined session) a warning is
+also written to the run log as a `load` event.
+
+The limits are per machine, in `~/.abcd/load-limits`, which the check reads and
+never creates. `#` starts a comment; every other line is `<key> <value>`:
+
+  stray-minutes 30   minutes at a near-full core before a program is a stray (1 to 10080)
+  extreme-load 64    the one-minute load above which the machine is overloaded
+
+Either key may be omitted. The defaults are 30 minutes and four times the online
+core count. The file must be a regular file you own that nobody else can write, at
+most 4 KiB; a file that is not, or that holds an unknown key, a repeated key or a
+value out of range, is reported loudly and both defaults are used.
+
+**Flags:**
+
+```
+      --site string   where the check runs: preflight | eval-harness
+```
+
 #### `abcd implement log`
 
 Append one of the run's events to the run log
@@ -937,6 +987,45 @@ By default the run's whole log is read, every day of it; --date reads one day, a
       --date string   read one day's log (YYYY-MM-DD, UTC)
       --log string    read this log file instead of the run's own
 ```
+
+### `abcd inbox`
+
+Read the reports managed repositories filed back to abcd, and promote one to a capture
+
+**Usage:** `abcd inbox`
+
+Read the reports repositories abcd manages filed with `abcd report`, from the
+inbox in the user account's machine store (`~/.abcd/inbox/`).
+
+Bare `abcd inbox` lists the waiting reports newest first, naming each sender
+repository plainly; `abcd inbox show <id>` renders one whole. Both are
+read-only and file nothing. A report written to a template version this abcd
+does not know is listed as unreadable, naming the version, and is never
+dropped. Everything a report says is another repository's words and is
+sanitised before it reaches the terminal.
+
+`abcd inbox promote <id>` is the one act that files anything: it files the
+report as a capture in the ledger of abcd's own checkout, through the capture
+verb's own path and redactor, with source `managed-repo`. Every report is about
+abcd, so run anywhere else it is refused. The capture carries the sender's
+root-commit key and the words "a managed repository", never the sender's
+name, and the report's id as its evidence; a record id the report names is the
+sender's, and is written as one word so it cites nothing in abcd's record. The
+report is kept, marked promoted.
+
+Exit 2 on a refusal, with nothing written.
+
+#### `abcd inbox promote`
+
+File one report as a capture in abcd's own ledger, fingerprinted, never named
+
+**Usage:** `abcd inbox promote <id>`
+
+#### `abcd inbox show`
+
+Render one report whole (read-only)
+
+**Usage:** `abcd inbox show <id>`
 
 ### `abcd intent`
 
@@ -1042,6 +1131,21 @@ Preview the public launch bundle and release gates (--dry-run required; read-onl
 
 ```
       --dry-run   preview the launch bundle and gates without publishing
+```
+
+#### `abcd launch archive`
+
+Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)
+
+**Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
+
+**Flags:**
+
+```
+      --out string          existing directory to write <plugin>-plugin-v<version>.zip into
+      --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
+      --tag string          refuse unless the newest dated CHANGELOG version is this tag
+      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
 ```
 
 #### `abcd launch scaffold`
@@ -1297,6 +1401,39 @@ rolled_back_records on every exit, including a failing one.
 
 ```
 abcd reading ingest --reading-json ./reading-output.json --json
+```
+
+### `abcd report`
+
+File a defect report or an enhancement proposal about abcd into the inbox in your account
+
+**Usage:** `abcd report [<file>|-] [flags]`
+
+File a written account about abcd itself, from a repository abcd manages, into
+the inbox in the user account's machine store (`~/.abcd/inbox/`). Nothing is
+written into this repository or into abcd's, and nothing becomes a record until
+a person or a session runs `abcd inbox promote`.
+
+`abcd report --template` prints the skeleton: a block of fields between `---`
+lines (template version, kind, severity, category, title, the abcd version and
+surface in play, an optional remedy and evidence pointers) and the prose below
+it. `abcd report <file>` validates a filled report and files it; `-` reads it
+from stdin. Bare `abcd report` opens the skeleton in $VISUAL or $EDITOR when
+the session is a terminal, and files what is saved.
+
+The report is held to the template: a missing or malformed field is refused
+naming the field, a report over 32 KiB or carrying a control byte is refused,
+and a field naming a filesystem path is refused, because a report points at
+records, commits and URLs, never at a location on a machine. abcd names the
+file from the time and this repository's root-commit key; the verb prints the
+report's id and where it landed.
+
+Exit 2 on a refusal, with nothing filed.
+
+**Flags:**
+
+```
+      --template   print the report skeleton to fill (writes nothing)
 ```
 
 ### `abcd rules`

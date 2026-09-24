@@ -682,8 +682,8 @@ func TestLinkResolvesSpecByNumber(t *testing.T) {
 
 // TestAddRelatedIssueWritesOnlyTheBackEdge — framework 7.1: `origin` is stamped
 // at mint and never rewritten, so linking an existing draft to a reading item
-// writes the back-edge and touches nothing else. A hand-filed draft linked to a
-// reading item stays researcher-authored and says so.
+// writes the back-edge and touches nothing else. A draft filed from quoted text
+// and linked to a reading item stays researcher-authored and says so.
 func TestAddRelatedIssueWritesOnlyTheBackEdge(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md",

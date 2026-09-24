@@ -81,19 +81,38 @@ const (
 	guardEOLAttribute    = guardHooksDirRelPath + "/* text eol=lf"
 )
 
-// publicFamilySeed is the docs-lint config a repo with none inherits: the roots the
-// lint walks and an EMPTY banned-names family. Empty is the point — abcd cannot know
-// which names a repo may not publish, and seeding a ban nobody declared would fail a
-// build over a word the maintainer never chose. The array is what `abcd banlist add
-// --public` writes into, so its presence is what makes the public layer usable.
-const publicFamilySeed = `{
-  "roots": ["docs", "README.md"],
-  "banned_tokens": [],
-  "rules": {},
-  "exempt_paths": [],
-  "exempt_if_status": []
-}
-`
+// publicFamilySeed is the docs-lint config a repo with none inherits. Two of its
+// fields carry different owners, and the seed treats them differently
+// (iss-2609150805167646):
+//
+//   - The Writing-Guide rules are abcd's own: the present_tense and spelling token
+//     families and the links_resolve, harness_leak and stray_root_docs rules. They are seeded ARMED, because a lint that runs no rule
+//     reports "0 findings" over any tree, a green that means nothing. A repository
+//     that wants a family off removes it deliberately, a decision with a diff rather
+//     than an absence nobody chose. The token entries are held to the set abcd runs
+//     on itself by a parity test, so the two cannot drift.
+//   - The banned names (the names/ entries `abcd banlist add --public` writes) are
+//     the repository's own, and none is seeded: abcd cannot know which names a repo
+//     may not publish, and a ban nobody declared would fail a build over a word the
+//     repository never chose.
+//
+// The harness token family is withheld too, as a per-repository fit decision: it
+// refuses naming a specific agent tool, which is right for abcd's published surface
+// and wrong for a repository whose content is teaching those tools. The parity test
+// names every deliberate omission with its reason.
+//
+// The punctuation/em-dash-in-list-item token is carried, at a severity the
+// ADOPTER chooses: it is abcd's house style rather than a currency rule (it drew
+// 419 of the 545 findings in the repository that reported the empty seed), so
+// the install offers it as blocking or warning and an unattended install seeds
+// the warning (ruling G1; docsLintSeed renders the choice). The embedded file
+// carries the warning, so it is a loadable config as it stands.
+//
+// The stray_root_docs allowlist names CLAUDE and AGENTS, the two root files the
+// scaffold itself may write, so the seeded gate does not refuse its own output.
+//
+//go:embed defaults/docs-lint.json
+var publicFamilySeed string
 
 // privateStubBody is the scaffolded private banlist: the format declaration, the
 // format's documentation, and worked examples that are ALL COMMENTED OUT.
@@ -796,8 +815,15 @@ func (a *applyCtx) stepBanlist() {
 	// an answer git did not actually give. An unanswerable probe withholds the write
 	// for this run exactly as it withholds the stub's: a config written into a path
 	// nobody could check is the same wager on both halves.
+	//
+	// The em-dash house-style question is asked HERE, where the seed is about to be
+	// written, and nowhere else: a repository that already has a config keeps its
+	// own severity, and a question whose answer would go nowhere is not asked.
 	if a.has("banlist.public_family_missing") && publicPathIsWritable(a.cwd) {
-		a.createContained(root, banlist.PublicConfigRelPath, []byte(publicFamilySeed), 0o644, 0o755)
+		sev, note := a.emDashSeverity()
+		if a.createContained(root, banlist.PublicConfigRelPath, docsLintSeed(sev), 0o644, 0o755) && note != "" {
+			a.notes = append(a.notes, note)
+		}
 	}
 	// Re-asked HERE, after stepVisibility has written the fence, and answered by git
 	// rather than by a comparison of .gitignore text: what matters is whether git

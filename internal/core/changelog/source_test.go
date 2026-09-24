@@ -107,3 +107,40 @@ func TestRecordSummaryIsCapped(t *testing.T) {
 		t.Errorf("summary is %d runes, want at most %d", got, maxSummaryRunes)
 	}
 }
+
+// TestPressReleaseSectionExtractsTheWholeSection pins the source a release page's
+// quotes are verified against: the body of the intent's `## Press Release`
+// section, every paragraph of it, and nothing outside it. A quote lifted from
+// the record's other sections must fail verification, so the section's edges
+// are the contract.
+func TestPressReleaseSectionExtractsTheWholeSection(t *testing.T) {
+	body := "---\nid: itd-80\nimpact: additive\n---\n\n# An Intent Ships Itself\n\n" +
+		"## Press Release\n\n> The first paragraph,\n> wrapped.\n>\n> \"A quote,\" said Nia, a facilitator.\n\n" +
+		"## Why This Matters\n\nNot part of the press release.\n"
+	r := newFixtureRepo(t)
+	r.commit("empty base")
+	r.git("tag", "v0.1.0")
+	r.write(shippedDir+"itd-80-x.md", body)
+	r.write(shippedDir+"itd-81-y.md", "---\nid: itd-81\nimpact: additive\n---\n\n# No section\n\nprose.\n")
+	r.write(shippedDir+"itd-82-z.md", "---\nid: itd-82\nimpact: additive\n---\n\n# Lower case\n\n## Press release\n\nthe last section.\n")
+	r.commit("ship them")
+
+	set, err := ShippedSince(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("ShippedSince: %v", err)
+	}
+	got := map[string]string{}
+	for _, rec := range set.Added {
+		got[rec.ID] = rec.PressRelease
+	}
+	want := "> The first paragraph,\n> wrapped.\n>\n> \"A quote,\" said Nia, a facilitator."
+	if got["itd-80"] != want {
+		t.Errorf("itd-80 PressRelease = %q, want %q", got["itd-80"], want)
+	}
+	if got["itd-81"] != "" {
+		t.Errorf("itd-81 has no press release section, got %q", got["itd-81"])
+	}
+	if got["itd-82"] != "the last section." {
+		t.Errorf("itd-82 PressRelease = %q, want the section running to the end of the file", got["itd-82"])
+	}
+}

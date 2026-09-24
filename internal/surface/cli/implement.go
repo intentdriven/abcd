@@ -101,6 +101,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 		newImplementCheckCommand(asJSON),
 		newImplementLogCommand(asJSON),
 		newImplementReportCommand(asJSON),
+		newImplementLoadCommand(asJSON),
 	)
 	return cmd
 }

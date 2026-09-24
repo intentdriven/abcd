@@ -34,6 +34,14 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   three-band flags. The full-size logo is held to the standard's geometry by
   test; the compact variant declares itself an approximation rather than
   claiming a fidelity three rows cannot carry.
+- **The Reproducible Builds project (<https://reproducible-builds.org>)** — the
+  practice of making a build's output a pure function of its source, by fixing
+  every input a build would otherwise pick up from the machine: entry order,
+  timestamps, file modes. The release's plugin archive follows it
+  (`internal/core/launch/archive.go`: sorted entries, one fixed timestamp,
+  normalised modes, stored uncompressed), because its digest is committed by the
+  ship and must be reproduced from the tagged commit before the release can
+  publish (adr-2609231048308186).
 - **The NO_COLOR convention (<https://no-color.org>)** — the environment
   variable that asks a program to emit no colour, and specifically its rule
   that the variable counts when *present and not empty*, whatever its value.
@@ -134,6 +142,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   fix) while rejecting their implicit background network check: abcd implements
   the same grammar over disk-only sources, and the network answers only an
   explicit `--check` (adr-38).
+- **git's editor hand-off (`GIT_EDITOR`, then `$VISUAL`, then `$EDITOR`)** — the
+  order and the shape bare `abcd report` follows to open the report skeleton:
+  `$VISUAL` before `$EDITOR`, run through the shell so the setting may carry
+  arguments, with the file passed as a positional parameter rather than spliced
+  into the command (itd-2609221656361680).
 - **git's "behind upstream" notice** — the disk-only precedent itd-111 follows:
   a comparison against locally cached refs, refreshed only by an explicit fetch,
   never a background poll.

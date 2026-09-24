@@ -533,8 +533,8 @@ var ErrRetiredField = fmt.Errorf("intent: the record carries a retired back-link
 //
 // It writes that one key and NOTHING else. It never reads or rewrites `origin`
 // or `production_mode`, which is what "the origin is unchanged" rests on: an
-// origin is stamped at mint and never rewritten, so a hand-filed draft linked to
-// a reading item stays researcher-authored and says so.
+// origin is stamped at mint and never rewritten, so a draft filed from quoted
+// text and linked to a reading item stays researcher-authored and says so.
 //
 // A list already naming source is a no-op that leaves the record byte-identical.
 // A list naming OTHER records keeps them, in order, and appends source: an intent

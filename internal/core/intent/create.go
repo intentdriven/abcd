@@ -184,7 +184,7 @@ type DraftOptions struct {
 	// caller declaring the reading kind hands over the run and the item in the
 	// same field, so the pointer cannot be forgotten at a call site. It is DERIVED
 	// from which command ran, never carried as free text — the zero value means
-	// the default (a verb a person invoked), the issue route of capture.Promote
+	// the default (text written directly, not derived), the issue route of capture.Promote
 	// passes extracted-from-record, and its reading route passes
 	// contributed-by-reading with the pair it read out of the readings store.
 	Origin provenance.Origin

@@ -2537,7 +2537,7 @@ func TestRecordProvenanceChecksTheForwardEdge(t *testing.T) {
 	writeFile(t, root, "rec/intents/drafts/itd-2-agrees.md",
 		"---\nid: itd-2\nkind: null\nspec_id: null\nrelated_issues: [rdi-18]\norigin: contributed-by-reading rdg-3/rdi-18\nproduction_mode: hand-written\n---\n# draft\n")
 	// Link mode working as designed: an item points forward at a draft that was
-	// filed by hand and says so. Not a finding.
+	// filed from quoted text and says so. Not a finding.
 	writeFile(t, root, "work/issues/readings/rdg-3/rdi-19.md",
 		"---\nid: rdi-19\npattern: a third thing\nrelated_intents: [itd-3]\n---\nbody\n")
 	writeFile(t, root, "rec/intents/drafts/itd-3-hand-filed.md",

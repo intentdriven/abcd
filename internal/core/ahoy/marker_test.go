@@ -274,3 +274,109 @@ func TestStripMarkerBlock(t *testing.T) {
 		t.Errorf("unbalanced fence must be left intact, got changed=%v:\n%s", changed3, out3)
 	}
 }
+
+// TestDefaultAdoptionWritesNoNameIntoConventionsFiles pins the 2026-09-11 ruling
+// (iss-2609110944498549): an adoption with default options leaves the repository's
+// committed conventions files as the repository wrote them. The managed block names
+// the tool and documents its internals, so it is planted only where the adopting
+// project chose a docs target; the default target is skip. The adopted repo must
+// still classify as managed, on its registry entry rather than on a marker.
+func TestDefaultAdoptionWritesNoNameIntoConventionsFiles(t *testing.T) {
+	setupHermetic(t)
+	repo := committedRepo(t)
+	claude := filepath.Join(repo, "CLAUDE.md")
+	own := []byte("# Project\n\nOur own notes.\n")
+	if err := os.WriteFile(claude, own, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The preview must not promise a block the default will not plant.
+	pre, err := Detect(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasGap(pre.Gaps, "marker.missing") {
+		t.Errorf("dry-run on a fresh repo reports marker.missing, but the default docs target plants no block: %+v", pre.Gaps)
+	}
+
+	opts := installOpts()
+	delete(opts.ValueOverrides, "docs_target") // the default, exactly as a user who never passed the flag gets it
+	res, err := Install(repo, opts, RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "clean" {
+		t.Fatalf("default adoption status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
+	}
+
+	got, err := os.ReadFile(claude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, own) {
+		t.Errorf("default adoption rewrote CLAUDE.md:\n%s", got)
+	}
+	if _, err := os.Lstat(filepath.Join(repo, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Errorf("default adoption created AGENTS.md (err=%v)", err)
+	}
+
+	cfg, err := readConfig(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := stringVal(subMap(cfg, "docs"), "target"); v != "skip" {
+		t.Errorf("persisted docs.target = %q, want skip", v)
+	}
+
+	post, err := Detect(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post.FolderKind != ManagedRepo {
+		t.Errorf("after a default adoption the repo classifies as %q, want %q", post.FolderKind, ManagedRepo)
+	}
+	if hasGap(post.Gaps, "marker.missing") {
+		t.Errorf("after a default adoption detection still asks for a marker block: %+v", post.Gaps)
+	}
+}
+
+// TestFirstInstallPlantsTheBlockWhereTheProjectChoseIt is the other half of the
+// skip default: a project that names a docs target on its first install gets the
+// block there. At the default, detection previews no marker gap, so the
+// plugin-owned category is never offered — the chosen target is the approval, or
+// the first install would persist the target and plant nothing.
+func TestFirstInstallPlantsTheBlockWhereTheProjectChoseIt(t *testing.T) {
+	for _, tc := range []struct {
+		target string
+		want   []string
+		absent []string
+	}{
+		{"both", []string{"CLAUDE.md", "AGENTS.md"}, nil},
+		{"claude_md", []string{"CLAUDE.md"}, []string{"AGENTS.md"}},
+		{"agents_md", []string{"AGENTS.md"}, []string{"CLAUDE.md"}},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			setupHermetic(t)
+			repo := committedRepo(t)
+			opts := installOpts()
+			opts.ValueOverrides["docs_target"] = tc.target
+			res, err := Install(repo, opts, RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != "clean" {
+				t.Fatalf("status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
+			}
+			for _, name := range tc.want {
+				if got := classifyMarker(filepath.Join(repo, name)); got != markerCurrent {
+					t.Errorf("%s marker = %q, want current", name, got)
+				}
+			}
+			for _, name := range tc.absent {
+				if _, err := os.Lstat(filepath.Join(repo, name)); !os.IsNotExist(err) {
+					t.Errorf("%s written for docs target %s (err=%v)", name, tc.target, err)
+				}
+			}
+		})
+	}
+}

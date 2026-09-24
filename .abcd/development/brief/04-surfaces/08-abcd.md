@@ -82,6 +82,13 @@ resolving a capture and of the intent audit, consulted only after the local
 lookup fails. It writes nothing,
 takes no lock and fetches nothing.
 
+**The inbox row** (itd-2609221656361680) adds one more: wherever the board runs,
+when reports from managed repositories wait in the user account's inbox, the text
+render carries an `inbox:` line — `3 report(s) from 2 managed repositories` — and
+the JSON an `inbox` object with `reports` and `senders`. It is the same count the
+session-start greeting says ([`29-report.md`](29-report.md)); it names no sender,
+and it is absent when nothing waits.
+
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in

@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/release"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -22,7 +24,13 @@ func shipRenderableRepo(t *testing.T) *gittest.Repo {
 		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version"}`+"\n")
 	r.Write(".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "CHANGELOG.md"]}`+"\n")
+	// The plugin manifest names the repository a pinned archive's download
+	// address would derive from. The contract above does NOT declare that the
+	// release publishes that archive, so a ship here leaves the catalog alone;
+	// shipArchiveRepo adds the declaration.
+	r.Write(".claude-plugin/plugin.json", `{"name":"abcd","description":"fixture","repository":"`+fixtureRepository+`"}`+"\n")
 	r.Commit("the release configuration")
+	refreshSurface(t, r)
 	return r
 }
 
@@ -218,7 +226,7 @@ func TestRollbackCutRestoresTheRecord(t *testing.T) {
 				if err := os.RemoveAll(filepath.Join(repoRoot, "CHANGELOG.md")); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.MkdirAll(filepath.Join(repoRoot, "CHANGELOG.md"), 0o755); err != nil {
+				if err := os.MkdirAll(filepath.Join(repoRoot, "CHANGELOG.md", "x"), 0o755); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -228,12 +236,13 @@ func TestRollbackCutRestoresTheRecord(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repoRoot := t.TempDir()
-			dest := filepath.Join(t.TempDir(), "payload")
-			before := []byte("# Changelog\n\n## [Unreleased]\n")
-			if err := os.WriteFile(filepath.Join(repoRoot, "CHANGELOG.md"), []byte("written by the cut\n"), 0o644); err != nil {
+			r := shipReadyRepo(t)
+			before, err := os.ReadFile(filepath.Join(r.Root(), "CHANGELOG.md"))
+			if err != nil {
 				t.Fatal(err)
 			}
+			undo := ingestForRollback(t, r)
+			dest := filepath.Join(t.TempDir(), "payload")
 			if err := os.MkdirAll(dest, 0o755); err != nil {
 				t.Fatal(err)
 			}
@@ -241,17 +250,17 @@ func TestRollbackCutRestoresTheRecord(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.breakIt != nil {
-				tc.breakIt(t, repoRoot, dest)
+				tc.breakIt(t, r.Root(), dest)
 			}
 
-			got := rollbackCut(repoRoot, dest, before)
+			got := rollbackCut(r.Root(), dest, undo)
 			if !strings.Contains(got, tc.want) {
 				t.Errorf("rollback report = %q, want it to mention %q", got, tc.want)
 			}
 			if tc.breakIt != nil {
 				return
 			}
-			restored, err := os.ReadFile(filepath.Join(repoRoot, "CHANGELOG.md"))
+			restored, err := os.ReadFile(filepath.Join(r.Root(), "CHANGELOG.md"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -262,6 +271,43 @@ func TestRollbackCutRestoresTheRecord(t *testing.T) {
 				t.Error("the staging directory the render created must be removed")
 			}
 		})
+	}
+}
+
+// ingestForRollback runs a real ingest and returns its undo, so the rollback is
+// exercised against the writes a cut actually makes.
+func ingestForRollback(t *testing.T, r *gittest.Repo) release.UndoPlan {
+	t.Helper()
+	raw, err := os.ReadFile(composedPayload(t, t.TempDir(), "v0.4.1", "itd-73"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := ingestCut(r.Root(), raw, time.Date(2026, 7, 21, 9, 30, 0, 0, time.UTC))
+	if err != nil || !res.Written {
+		t.Fatalf("ingest: written=%v err=%v", res.Written, err)
+	}
+	return res.Undo
+}
+
+// TestRollbackCutRestoresThePageAndArchive: the rollback a refused render
+// triggers undoes the whole cut — the page comes back, the archive goes, and the
+// tree is as it was.
+func TestRollbackCutRestoresThePageAndArchive(t *testing.T) {
+	r := shipReadyRepo(t)
+	r.Write("RELEASE.md", "# Release 0.4.0 (2026-07-01)\n\nThe base. (itd-1)\n")
+	r.Commit("the previous release page")
+	before := cliTreeDigest(t, r.Root())
+
+	undo := ingestForRollback(t, r)
+	if _, err := os.Stat(filepath.Join(r.Root(), ".abcd/development/releases/0.4.0.md")); err != nil {
+		t.Fatalf("the cut did not archive the outgoing page: %v", err)
+	}
+	dest := filepath.Join(t.TempDir(), "payload")
+	if got := rollbackCut(r.Root(), dest, undo); !strings.Contains(got, "rolled back") {
+		t.Fatalf("rollback report = %q", got)
+	}
+	if after := cliTreeDigest(t, r.Root()); after != before {
+		t.Error("the rollback did not restore the page and remove the archive")
 	}
 }
 

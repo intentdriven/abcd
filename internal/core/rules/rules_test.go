@@ -84,7 +84,7 @@ func TestDefaultsParseAndValidate(t *testing.T) {
 	if err := Validate(rs); err != nil {
 		t.Fatalf("bundled defaults fail validation: %v", err)
 	}
-	for _, want := range []string{"COMMITTING", "DOCUMENTATION", "ROADMAP", "ISSUES", "INTENTS", "LIFEBOAT", "PII", "OPINIONS"} {
+	for _, want := range []string{"COMMITTING", "DOCUMENTATION", "ROADMAP", "ISSUES", "INTENTS", "LIFEBOAT", "PII", "OPINIONS", "LOAD"} {
 		if _, ok := rs.Domains[want]; !ok {
 			t.Errorf("default domain %q missing", want)
 		}

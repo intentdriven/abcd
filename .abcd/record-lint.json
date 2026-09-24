@@ -427,7 +427,8 @@
         ".abcd/development/decisions/",
         ".abcd/development/plans/",
         ".abcd/development/intents/shipped/",
-        ".abcd/development/intents/superseded/"
+        ".abcd/development/intents/superseded/",
+        ".abcd/development/releases/"
       ],
       "allow_context": [
         "epic-review",

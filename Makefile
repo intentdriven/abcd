@@ -15,7 +15,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # that falls behind is the one nothing runs. Drives the format gate below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -278,7 +278,8 @@ scaffold-sync:
 scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
 
-# Pre-push gate (invoked by .githooks/pre-push): the six lint gates
+# Pre-push gate (invoked by .githooks/pre-push): the load check first (a
+# warning, never a failure: load-check), then the six lint gates
 # (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
 # docs-lint), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
@@ -302,11 +303,25 @@ scaffold-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
-preflight: lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
+preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test ./...
 	go test -race ./internal/...
+
+# The marker tells a check started inside this preflight (the eval harness's own,
+# under `smoke` and `evals-cold-reading`) that the preflight's check already
+# warned on the terminal, so one preflight shows one warning. A target-specific
+# exported variable reaches the target's prerequisites and recipe, and not a
+# prerequisite run on its own.
+preflight: export ABCD_LOAD_CHECKED := preflight
+
+# The load check (itd-2609231434459890): reads the machine's load and process
+# table once and warns about programs left running and extreme load. It exits 0
+# on every status, and the leading `-` ignores even a failure to build it: a
+# broken build is the `go build` step's to fail, never the load check's.
+load-check:
+	-go run ./cmd/abcd implement load --site preflight
 
 clean:
 	rm -rf $(BINDIR)
