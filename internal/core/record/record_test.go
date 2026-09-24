@@ -663,3 +663,85 @@ func TestDescribeUnmigratedIssueNamesTheMigrateRemedy(t *testing.T) {
 	}
 	assertZeroWrites(t, repo, before)
 }
+
+// TestDescribeSkippedIssueMatchesTheRosterByNumber: the skipped roster is
+// matched the way the reader admitted each file — on the leading digit run after
+// `iss-` in the file's base name, compared by number — so a record whose
+// FILENAME is malformed, the one class the roster exists to report, is named
+// with its reason, and a sibling whose number merely begins with the asked id
+// is never taken for it (iss-2609240200426413).
+func TestDescribeSkippedIssueMatchesTheRosterByNumber(t *testing.T) {
+	// captureAndRename captures one record and moves its file to newBase in the
+	// same status folder, returning the repo, the captured id and its number.
+	captureAndRename := func(t *testing.T, newBase func(num string) string) (repo, id, num string) {
+		t.Helper()
+		repo = t.TempDir()
+		res, err := capture.Capture(capture.CaptureRequest{
+			RepoRoot: repo, Text: "a record whose file the reader will skip", Severity: capture.SeverityMinor,
+			Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "renamed",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		abs := res.Path
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(repo, abs)
+		}
+		num = strings.TrimPrefix(res.ID, "iss-")
+		if err := os.Rename(abs, filepath.Join(filepath.Dir(abs), newBase(num))); err != nil {
+			t.Fatal(err)
+		}
+		return repo, res.ID, num
+	}
+	onlySkipped := func(t *testing.T, repo string) capture.SkipRecord {
+		t.Helper()
+		list, err := capture.List(capture.ListRequest{RepoRoot: repo, State: capture.StateAll})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Skipped) != 1 {
+			t.Fatalf("fixture must leave exactly one skipped record, got %+v", list.Skipped)
+		}
+		return list.Skipped[0]
+	}
+
+	t.Run("a malformed filename is named with its reason", func(t *testing.T) {
+		repo, id, num := captureAndRename(t, func(num string) string { return "iss-" + num + "-Bad_Slug.md" })
+		sk := onlySkipped(t, repo)
+		if filepath.Base(sk.Path) != "iss-"+num+"-Bad_Slug.md" {
+			t.Fatalf("fixture must skip the malformed file, got %+v", sk)
+		}
+		before := treeSnapshot(t, repo)
+		_, err := Describe(repo, id)
+		if err == nil {
+			t.Fatalf("Describe of a record with a malformed filename must fault")
+		}
+		if strings.Contains(err.Error(), "not found") {
+			t.Fatalf("a record whose file is present must not read as not found: %v", err)
+		}
+		for _, want := range []string{id, sk.Path, sk.Error} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("fault must carry %q, got: %v", want, err)
+			}
+		}
+		if !errors.Is(err, ErrSkippedRecord) {
+			t.Fatalf("fault must wrap ErrSkippedRecord, got: %v", err)
+		}
+		assertZeroWrites(t, repo, before)
+	})
+
+	t.Run("a sibling whose number begins with the id is not the id", func(t *testing.T) {
+		// iss-<N>0-renamed.md holds the text of iss-<N>, so the reader skips it on
+		// the filename/frontmatter id disagreement. Its PATH contains "iss-<N>",
+		// so a substring match would answer for iss-<N> with a file that is not it.
+		repo, id, num := captureAndRename(t, func(num string) string { return "iss-" + num + "0-renamed.md" })
+		sk := onlySkipped(t, repo)
+		if _, err := Describe(repo, id); err == nil || !strings.Contains(err.Error(), "not found") || errors.Is(err, ErrSkippedRecord) {
+			t.Fatalf("iss-%s has no file; a sibling iss-%s0 must not answer for it, got: %v", num, num, err)
+		}
+		_, err := Describe(repo, "iss-"+num+"0")
+		if err == nil || !errors.Is(err, ErrSkippedRecord) || !strings.Contains(err.Error(), sk.Path) {
+			t.Fatalf("the sibling's own id must be named with its file, got: %v", err)
+		}
+	})
+}

@@ -174,18 +174,25 @@ func describeIssue(repoRoot, id string) (Description, error) {
 	return Description{}, fmt.Errorf("record: %s not found in the issue ledger (open/, resolved/, wontfix/)", id)
 }
 
+// skippedIssueNumRe reads a skipped file's claimed number the way the reader
+// admitted the file to the roster: a base name beginning `iss-` and a digit
+// (capture's name-claim test), with the whole leading digit run captured. The
+// strict record-filename grammar is the wrong reader here — a malformed
+// FILENAME is a class the roster reports, and the strict grammar drops it.
+var skippedIssueNumRe = regexp.MustCompile(`^iss-([0-9]+)`)
+
 // skippedIssue finds the skipped-roster entry whose FILENAME claims id. The
 // filename is the only identity a skipped record has — its frontmatter is what
-// the reader refused — and it is read through the canonical record-filename
-// grammar, compared by number so a zero-padded name cannot miss its id.
+// the reader refused — so its leading digit run is compared by number: a
+// zero-padded name cannot miss its id, and a sibling whose number merely
+// begins with the id's digits cannot answer for it.
 func skippedIssue(skipped []capture.SkipRecord, id string) (capture.SkipRecord, bool) {
 	want, err := strconv.Atoi(strings.TrimPrefix(id, "iss-"))
 	if err != nil {
 		return capture.SkipRecord{}, false
 	}
-	re := recordid.FilenameNumRe("iss")
 	for _, sk := range skipped {
-		m := re.FindStringSubmatch(filepath.Base(sk.Path))
+		m := skippedIssueNumRe.FindStringSubmatch(filepath.Base(sk.Path))
 		if m == nil {
 			continue
 		}
