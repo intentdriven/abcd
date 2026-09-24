@@ -331,6 +331,25 @@ Gap audit:
   - a full-tier crosscheck run after the seam, classified so that no finding is a false-claim or stale-count about a covered flag or sub-verb (ac-6), and the chapter-implicated assessment against it (ac-8)
     evidence: .abcd/development/release-gate/README.md:63 — "Owed at the next release gate: itd-147's ac-6."
     evidence: .abcd/development/release-gate/README.md:70 — "Delete this paragraph in the change that records the result."
+
+### ac-6 outcome check at the v0.10.0 release gate (2026-09-24)
+
+The first full-tier brief-surface cross-check after the generated appendix
+landed ran its 40 pinned checkers over fa744b41 (content commit 64ea8f62,
+receipt `.abcd/work/reviews/64ea8f62201970b9b242b59d0b7e7aab4c3d5baa/iss35-brief-surface-crosscheck.json`).
+Of its 154 unique findings, an independent classification found 17 that are a
+`false-claim` or `stale-count` about the existence, name or set of a flag or
+sub-verb of a command the appendix lists. **ac-6 is NOT MET**: one of the 17
+(x-049, captured as iss-2609240519422232) sits in `04-surfaces/14-ingest.md`
+above the appendix marker, where this intent's rule that the prose states no
+flag and no sub-verb applies, and the prose there enumerates ingest sub-verbs
+without `history ingest`. The other 16 sit in 01-product, 02-constraints,
+05-internals and the glossary, which carry no appendix, so they are outside
+the seam this intent installed; they are deferred with the rest of the brief
+drift to iss-2609091956001547. The seam held in 34 of the 35 brief documents
+it covers; the drift its press release claims to end persists in the chapters
+it does not reach.
+
 ## Grounds
 
 - pursued: a shape claim nobody writes by hand cannot drift; a false-claim or stale-count finding about a generated block in the next crosscheck run shows it was wrong

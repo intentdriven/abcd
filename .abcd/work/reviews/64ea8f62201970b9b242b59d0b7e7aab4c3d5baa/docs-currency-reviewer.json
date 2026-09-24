@@ -1,0 +1,55 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "64ea8f62201970b9b242b59d0b7e7aab4c3d5baa"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-24T05:20:09Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:572ffbd0d79d5aa37216c036181b5324af1a796a8f6892a20a4f66617fa0972a",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.10.0"
+  },
+  "categories": {
+    "false-claim": 2,
+    "stale-record": 0,
+    "stale-count": 0,
+    "incomplete": 1,
+    "criterion-violation": 0
+  },
+  "_reviewProvenance": "Host-run agent-harness semantic review (Fable 5.1, one agent), PROMOTE. The reviewer read 7f70a2cd, the first roll of the 0.10.0 section: every line of the dated CHANGELOG section and the new RELEASE.md page verified against the code or the binary built from that tree, plus every user-facing page changed since v0.9.0, with bin/abcd-darwin-arm64 docs lint as the deterministic check. Three findings: two false claims in the composer's wording (dc-2, dc-3), recomposed by the composer and re-ingested, so the commit this receipt names differs from the one read by exactly those two CHANGELOG lines; and one incomplete (dc-1: the load check ships unannounced because its intent is held in planned/ pending the product thinker's ruling on the stray definition), deferred with that reason because the changelog is derived from terminal records only.",
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "incomplete",
+      "severity": "major",
+      "summary": "CHANGELOG.md:5-21 (## [0.10.0] Added): The section carries no line for `abcd implement load`, the `load-check` preflight target and the `~/.abcd/load-limits` file, all of which ship in this binary and are documented as current on four user-facing pages.",
+      "disposition": "deferred",
+      "note": "The load check's code is on main, but its intent itd-2609231434459890 is held in planned/ with spec remainder spc-2609232027132755, because its stray rule over-claims (iss-2609231947544298, major, deferred_after v0.9.0 pending the product thinker's ruling on the stray definition). The changelog is derived from terminal records only, so the line joins the cut in which that intent ships; hand-writing it is barred. Listed among the rulings owed to the product thinker."
+    },
+    {
+      "id": "dc-2",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "CHANGELOG.md:12: Attributes the one-lane-at-a-time bound to `check`; the binary enforces it in `claim`, and `check` refuses only the release step, a split-roles lane and a corpus path.",
+      "disposition": "fixed",
+      "note": "Recomposed by the composer: the one-lane bound is attributed to claim, and check's three refusals are named. Fixed in content commit 64ea8f62."
+    },
+    {
+      "id": "dc-3",
+      "category": "false-claim",
+      "severity": "nitpick",
+      "summary": "CHANGELOG.md:11: Says `abcd report --template` writes a template; the verb prints it and writes nothing.",
+      "disposition": "fixed",
+      "note": "Recomposed by the composer: report --template prints the template and writes nothing. Fixed in content commit 64ea8f62."
+    }
+  ]
+}
