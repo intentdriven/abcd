@@ -7,11 +7,13 @@
 package record
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -34,6 +36,13 @@ var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr)-[0-9]+$`)
 // confirm — so this reader can never be the one that reports a present decision
 // as absent.
 const adrsRelDir = ".abcd/development/decisions/adrs"
+
+// ErrSkippedRecord marks a record whose file IS in its store but that the
+// store's reader skipped on read — an unknown or retired property, a malformed
+// frontmatter block, a hostile leaf. It is a different answer from "not found":
+// the record exists and cannot be described until its file is repaired, so the
+// fault names the file and the reader's own reason (iss-2609240200426413).
+var ErrSkippedRecord = errors.New("skipped on read")
 
 // Description is the structured answer to "what is this, and what is my next
 // move". Paths are repo-relative; Links carries the record's outbound edges
@@ -152,7 +161,46 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		}
 		return d, nil
 	}
+	// Absent from the parsed issues is not absent from the ledger: a file the
+	// reader skipped is still there, and answering "not found" for it sends the
+	// reader looking elsewhere for a record sitting in plain sight. The skip
+	// reason is the reader's own text — the line `abcd capture list` prints
+	// beside the same file — so a reason that carries a remedy (a retired
+	// property names `abcd capture migrate --apply`) carries it here unchanged.
+	if sk, ok := skippedIssue(res.Skipped, id); ok {
+		return Description{}, fmt.Errorf("record: %s is in the issue ledger but was %w: %s: %s",
+			id, ErrSkippedRecord, sk.Path, sk.Error)
+	}
 	return Description{}, fmt.Errorf("record: %s not found in the issue ledger (open/, resolved/, wontfix/)", id)
+}
+
+// skippedIssueNumRe reads a skipped file's claimed number the way the reader
+// admitted the file to the roster: a base name beginning `iss-` and a digit
+// (capture's name-claim test), with the whole leading digit run captured. The
+// strict record-filename grammar is the wrong reader here — a malformed
+// FILENAME is a class the roster reports, and the strict grammar drops it.
+var skippedIssueNumRe = regexp.MustCompile(`^iss-([0-9]+)`)
+
+// skippedIssue finds the skipped-roster entry whose FILENAME claims id. The
+// filename is the only identity a skipped record has — its frontmatter is what
+// the reader refused — so its leading digit run is compared by number: a
+// zero-padded name cannot miss its id, and a sibling whose number merely
+// begins with the id's digits cannot answer for it.
+func skippedIssue(skipped []capture.SkipRecord, id string) (capture.SkipRecord, bool) {
+	want, err := strconv.Atoi(strings.TrimPrefix(id, "iss-"))
+	if err != nil {
+		return capture.SkipRecord{}, false
+	}
+	for _, sk := range skipped {
+		m := skippedIssueNumRe.FindStringSubmatch(filepath.Base(sk.Path))
+		if m == nil {
+			continue
+		}
+		if n, err := strconv.Atoi(m[1]); err == nil && n == want {
+			return sk, true
+		}
+	}
+	return capture.SkipRecord{}, false
 }
 
 // describeIntent renders an intent: bucket, links, and the lifecycle next
