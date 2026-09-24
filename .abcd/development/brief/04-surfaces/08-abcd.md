@@ -33,7 +33,11 @@ A shape-matching record id found in no store is a structural fault: the command
 exits non-zero with a diagnostic naming the store it searched, never a silent
 fall-through to the snapshot. When the id is in no store here but a peer holds
 it (below), the diagnostic names that peer's branch, path and folder instead of
-answering not found.
+answering not found. An issue whose file is in the ledger but that the reader
+skipped on read (an unknown or retired property, a malformed frontmatter block)
+is not answered as not found either: the diagnostic names the file and the
+reader's own skip reason, the line `abcd capture list` prints beside the same
+file, so a reason that carries a remedy carries it here too.
 
 Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per

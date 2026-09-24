@@ -63,7 +63,10 @@ open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
 read). A shape-matching id found in no store exits non-zero naming the stores
 searched — unless a peer holds it (a sibling worktree or a local branch, see
 `/abcd:peers`), in which case the refusal names that peer's branch, path and
-folder instead; relay it, and do not recreate the record here. Any other positional is refused as an unknown command (exit 2) —
+folder instead; relay it, and do not recreate the record here. An issue whose
+file is present but was skipped on read exits non-zero naming the file and the
+skip reason, which carries the remedy where there is one; relay both, and do
+not recreate the record. Any other positional is refused as an unknown command (exit 2) —
 there is no `status` alias.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

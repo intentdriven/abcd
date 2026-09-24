@@ -1,6 +1,7 @@
 package record
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -553,5 +554,65 @@ func TestDescribeIntentReportsAHoldOnATerminalRecordAsHandWritten(t *testing.T) 
 	}
 	if strings.Contains(first, "abcd intent unhold itd-4") {
 		t.Errorf("the row must not hand the reader the unhold remedy, which refuses there: %v", d.NextMoves)
+	}
+}
+
+// TestDescribeSkippedIssueNamesTheFileAndTheReason: a record whose file IS in
+// the ledger but that the reader skipped (here an unknown property) is not "not
+// found". The answer names the file and the skip reason — the same reason
+// `abcd capture list` prints beside it, which carries the remedy where the
+// reader has one — and writes nothing (iss-2609240200426413).
+func TestDescribeSkippedIssueNamesTheFileAndTheReason(t *testing.T) {
+	repo := t.TempDir()
+	res, err := capture.Capture(capture.CaptureRequest{
+		RepoRoot: repo, Text: "a record the reader will skip", Severity: capture.SeverityMinor,
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "skipped-one",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs := res.Path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repo, abs)
+	}
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, []byte(strings.Replace(string(raw), "schema_version: 1\n", "schema_version: 1\nstray_key: x\n", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	list, err := capture.List(capture.ListRequest{RepoRoot: repo, State: capture.StateAll})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Skipped) != 1 {
+		t.Fatalf("fixture must leave exactly one skipped record, got %+v", list.Skipped)
+	}
+	sk := list.Skipped[0]
+	before := treeSnapshot(t, repo)
+
+	_, err = Describe(repo, res.ID)
+	if err == nil {
+		t.Fatalf("Describe of a skipped record must fault")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "not found") {
+		t.Fatalf("a record whose file is present must not read as not found: %v", err)
+	}
+	for _, want := range []string{res.ID, sk.Path, sk.Error} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("fault must carry %q, got: %v", want, err)
+		}
+	}
+	if !errors.Is(err, ErrSkippedRecord) {
+		t.Fatalf("fault must wrap ErrSkippedRecord, got: %v", err)
+	}
+	assertZeroWrites(t, repo, before)
+
+	// A DIFFERENT id is still not found: the match is on the file's own id, not
+	// on "some record was skipped".
+	if _, err := Describe(repo, "iss-1"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("an absent id beside a skipped record must still be not found, got: %v", err)
 	}
 }
