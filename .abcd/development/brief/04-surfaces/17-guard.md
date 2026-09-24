@@ -8,8 +8,11 @@ on: an unrecognised command passes through untouched.
 
 Two things use it. A person or a script asks it about one command line. A
 compatible agent harness asks it about every command the agent is about to run,
-through a pre-tool-use hook. Both get the same answer from the same registry, so
-what a person is taught and what an agent is stopped by cannot drift apart.
+through a pre-tool-use hook. For a command run in the directory it is asked
+from, both get the same answer from the same registry, so what a person is
+taught and what an agent is stopped by cannot drift apart. The one place they
+part is a host's per-call working directory, described under "Where the command
+runs".
 
 ## Sub-verbs
 
@@ -130,6 +133,30 @@ needs a control at the execution layer — a sandbox, a permission system, a
 restricted shell — with this guard in front of it to teach, never in place of it.
 A missing wrapper name is a real defect in a mistake filter; it is not a silent
 failure of a trust boundary, because there is no trust boundary here to fail.
+
+## Where the command runs
+
+A host whose shell tool takes a per-call working directory passes it as
+`tool_input.workdir`, resolved against the session directory
+(iss-2609212142557657). The command is checked against the registry of the
+repository it runs in as well as the session's, and the stricter verdict wins,
+so a workdir can add a hazard and never remove one. A workdir is never read as
+a `cd`: a probe of the one host with the field found that a missing workdir
+fails the call and runs nothing, so no failed-cd hazard exists. A malformed
+workdir is refused with the blocking status.
+
+The rule that keeps this sound is stated beside the code
+(`internal/core/guard/workdir.go`): a host that falls back to the session
+directory when the workdir cannot be entered must not pass the field at all, and
+its adapter folds the workdir into the command as a `cd` instead, which the
+guard already reads as the failed-cd hazard it then is. No adapter in this
+repository sends the field yet, so the path is reached only by a host that does.
+
+Here the two callers can give different answers. The check has no workdir: it
+reads the registry of the directory it runs in and nothing else. The hook also
+reads the registry of the repository the workdir names, so a command the check
+allows in one repository can be warned about or blocked by the hook when its
+workdir is another.
 
 ## What an allow means
 

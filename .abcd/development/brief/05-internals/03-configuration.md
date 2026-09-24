@@ -247,7 +247,9 @@ acts on the scope that applies.
 history registry, the transcript corpus, the voyage operations namespace, the
 staged worktree store, machine config defaults (a later phase: every config read
 in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
-is read at all), user-scope memory for personal cross-project knowledge (a later
+is read at all; the one machine setting read today is `load-limits`, the load
+check's two limits, read-only and never created, itd-2609231434459890),
+user-scope memory for personal cross-project knowledge (a later
 phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/abcd:ingest` and
 `/abcd:consult` read (abcd never creates that one, and both verbs say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned

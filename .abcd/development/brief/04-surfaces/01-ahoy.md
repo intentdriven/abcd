@@ -123,6 +123,9 @@ user-scope directory for machine-local state.
   sources/                       the local sources corpus /abcd:ingest and /abcd:consult
                                  read. abcd NEVER creates it: absent means both verbs
                                  say so and stop
+  load-limits                    the load check's per-machine limits (stray-minutes,
+                                 extreme-load), read-only; abcd never creates it
+                                 (itd-2609231434459890)
   path-entry                     the abcd copy this machine owns, the one PATH binary a
                                  hook will run
   trusted-roots                  foreign-uid configuration roots the caller vouches for
@@ -145,6 +148,9 @@ can write, and a file failing either test is ignored with one line saying which
 test it failed. `path-entry` is read through the shared guarded read instead:
 a symlinked, non-regular or oversized file is refused, but its ownership and its
 permissions are not checked, and the hook shims that consult it check neither.
+`load-limits` is a setting, not a declaration, but it is read through the same
+guard as the two that widen trust, and a file failing it, or holding a line that
+does not parse, is reported loudly and both of its limits take their defaults.
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd

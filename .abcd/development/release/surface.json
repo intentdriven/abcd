@@ -1121,6 +1121,19 @@
       ]
     },
     {
+      "path": "abcd implement load",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "site",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement log",
       "hidden": false,
       "flags": [
@@ -1305,6 +1318,40 @@
       "flags": [
         {
           "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd launch archive",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "repository",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "tag",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "verify",
           "shorthand": "",
           "type": "bool",
           "required": false,

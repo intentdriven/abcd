@@ -141,7 +141,7 @@ jobs:
           is_inert_path() {
             case "$1" in
               docs/*|.abcd/development/*|.abcd/work/*) return 0 ;;
-              README.md|CHANGELOG.md|CONTRIBUTING.md|SECURITY.md|ACKNOWLEDGEMENTS.md|LICENSE|LICENSE.md) return 0 ;;
+              README.md|CHANGELOG.md|RELEASE.md|CONTRIBUTING.md|SECURITY.md|ACKNOWLEDGEMENTS.md|LICENSE|LICENSE.md) return 0 ;;
               *) return 1 ;;
             esac
           }
@@ -519,6 +519,8 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Load check (skipped on CI, says why)
+        run: go run ./cmd/abcd implement load --site eval-harness
       - name: Smoke every command
         run: make smoke
 
@@ -563,6 +565,8 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Load check (skipped on CI, says why)
+        run: go run ./cmd/abcd implement load --site eval-harness
       - name: Falsify the cold-reading read-block
         run: make evals-cold-reading
 
