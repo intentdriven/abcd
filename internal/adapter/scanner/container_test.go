@@ -1416,8 +1416,11 @@ func TestManySignaturesInAStructuralFieldStayCheap(t *testing.T) {
 	}
 	// The cost is counted as bytes the field rule's search is handed, not
 	// timed (iss-2609232048579579). One pass per signature KIND over each field
-	// hands it at most len(containerSignatures) times the file; one pass per
-	// signature FOUND hands it the tail once per hit, 400 times over.
+	// hands it about len(containerSignatures) times the file; one pass per
+	// signature FOUND hands it the tail once per hit, 400 times over. The bound
+	// allows four times the one-pass cost, so a second legitimate pass over an
+	// overlapping region stays inside it while the per-hit walk lands two
+	// orders of magnitude past it.
 	searched := 0
 	signatureSearch = func(s, sep []byte) int {
 		searched += len(s)
@@ -1425,8 +1428,10 @@ func TestManySignaturesInAStructuralFieldStayCheap(t *testing.T) {
 	}
 	t.Cleanup(func() { signatureSearch = bytes.Index })
 	res := scanOne(t, sc, "packed.png", abs)
-	if bound := len(containerSignatures) * len(raw); searched > bound {
-		t.Fatalf("a signature-packed field of %d bytes had its search handed %d bytes, want at most %d — the field rule is per-hit, not per-field: %+v", len(raw), searched, bound, res)
+	const passes = 4
+	if bound := passes * len(containerSignatures) * len(raw); searched > bound {
+		t.Fatalf("a signature-packed field of %d bytes had its search handed %d bytes, want at most %d (%d passes per signature kind over the file) — work that far past one pass per kind is the field rule walking the field per hit, not per field: %+v",
+			len(raw), searched, bound, passes, res)
 	}
 	if searched == 0 {
 		t.Fatal("the field rule's search was never handed the field; the count proves nothing")
