@@ -183,7 +183,7 @@ slug: <kebab-case>
 severity: nitpick|minor|major|critical
 impact: additive|breaking|fix|internal   # required in resolved/; drives the derived version and changelog inclusion
 category: bug|documentation|drift|inconsistency|tech-debt|security|ux|process|architectural-insight|future-work-seed|observation|lapse
-source: plan-review|impl-review|manual-test|review-followup|agent-finding|agent-observation|user-observation|drift-detection|memory-curation
+source: plan-review|impl-review|manual-test|review-followup|agent-finding|agent-observation|user-observation|drift-detection|memory-curation|managed-repo
 found_during: <session-or-command-context>
 found_at: <path-or-conceptual>
 lapsed_at: <rfc3339>       # on a lapse: the instant the discipline gave way, not the write-up (absence parked, iss-2609091009111294)

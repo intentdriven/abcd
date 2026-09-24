@@ -84,6 +84,12 @@ func SanitizeAll(in []string) []string {
 	return out
 }
 
+// IsHidden reports whether r is a bidirectional control or a zero-width rune:
+// a rune that makes rendered text read differently from its bytes, or hides
+// text altogether. It is the predicate Sanitize masks these with, exported so a
+// parser that refuses such runes outright judges them by the same set.
+func IsHidden(r rune) bool { return isBidiControl(r) || isZeroWidth(r) }
+
 // isBidiControl reports whether r is a Unicode bidirectional override/embedding/
 // isolate or directional mark — the runes a "Trojan Source" attack uses to make a
 // rendered line read differently from its bytes. Code points are written

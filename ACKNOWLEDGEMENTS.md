@@ -142,6 +142,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   fix) while rejecting their implicit background network check: abcd implements
   the same grammar over disk-only sources, and the network answers only an
   explicit `--check` (adr-38).
+- **git's editor hand-off (`GIT_EDITOR`, then `$VISUAL`, then `$EDITOR`)** — the
+  order and the shape bare `abcd report` follows to open the report skeleton:
+  `$VISUAL` before `$EDITOR`, run through the shell so the setting may carry
+  arguments, with the file passed as a positional parameter rather than spliced
+  into the command (itd-2609221656361680).
 - **git's "behind upstream" notice** — the disk-only precedent itd-111 follows:
   a comparison against locally cached refs, refreshed only by an explicit fetch,
   never a background poll.
