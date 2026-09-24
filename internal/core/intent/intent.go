@@ -75,9 +75,13 @@ type Intent struct {
 	SpecID string `json:"spec_id"` // spc-N, the derived link (may be null)
 	Bucket string `json:"bucket"`  // lifecycle directory (directory-as-truth)
 	Path   string `json:"path"`    // repo-relative markdown path
-	// PromotedFrom is the iss-N this intent graduated from (spc-24's two-sided
-	// promote edge). Parsed leniently: absent on every non-promoted record.
-	PromotedFrom string `json:"promoted_from,omitempty"`
+	// RelatedIssues are the ledger records this intent graduated from — an iss-N,
+	// or the rdi-N of a dispositioned reading item — the intent half of the
+	// two-sided promote join (itd-4 AC3; the record half is the source's
+	// `related_intents`). The first entry is the record the intent was promoted
+	// from; a later one was linked beside it. Parsed leniently: absent on every
+	// record that graduated from nothing.
+	RelatedIssues []string `json:"related_issues,omitempty"`
 	// Held is the reason the record is held — the value `abcd intent hold`
 	// wrote — and empty when it is not. HeldMalformed reports a `held:` key
 	// present in a shape no verb writes (blank, null, a list, a map, a block

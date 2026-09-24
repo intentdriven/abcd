@@ -66,7 +66,7 @@ var Known = map[string]bool{
 	// below is the single copy of which.
 	"lapsed_at": true,
 	"details":   true, "suggested_fix": true, "related_intents": true,
-	"promoted_to": true, "related_specs": true, "related_issues": true,
+	"related_specs": true, "related_issues": true,
 	"synthesis_clusters": true, "wontfix_reason": true, "resolution": true,
 	"resolved_by": true, "blocked_by": true,
 	// shipped_in names the release that already carried this record's work, so the
@@ -120,6 +120,21 @@ var Known = map[string]bool{
 	// which blocks a frontmatter `grounds:` and names the section, leaving the record readable meanwhile.
 	"grounds": true, "created": true, "updated": true,
 }
+
+// Retired maps a frontmatter key a ledger record once carried to the key that
+// replaced it. The promote join's forward stamp was the scalar `promoted_to`
+// until itd-4 AC3 renamed it: the promoted intent is a member of the record's
+// `related_intents`, and the intent names the record back in `related_issues`.
+//
+// A retired key is NOT in Known, so the reader refuses a record carrying it —
+// no reader tolerates the old spelling (DECISIONS.md, 2026-09-23). This map
+// exists so that refusal, the committed-ledger gate's and the drift check's all
+// name the successor and the one verb that rewrites it, `abcd capture migrate`,
+// instead of reporting an unexplained unknown property.
+var Retired = map[string]string{"promoted_to": "related_intents"}
+
+// MigrateHint is the remedy every refusal of a retired key names.
+const MigrateHint = "run `abcd capture migrate --apply` to rewrite it"
 
 // The closed enum value sets from issue.schema.json. capture validates a record's
 // severity/category/source against these, and record_schema mirrors the same

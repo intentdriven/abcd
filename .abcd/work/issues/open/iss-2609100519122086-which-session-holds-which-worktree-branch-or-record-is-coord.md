@@ -9,7 +9,7 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work"
-promoted_to: itd-2609150819440345
+related_intents: [itd-2609150819440345]
 deferred_after: "v0.9.0"
 deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M30: plan next cycle as its own intent (itd-2609150819440345), the interview opening on transport (code host, per-machine helper, or both)). Earlier deferral: Nothing records which session holds which worktree, branch or record, so every session rebuilds the picture by conversation. This cut adds evidence rather than a fix: two agents in this very checkout each reported a peer editing it, each named the other's files correctly, and neither was a peer. Designing the substrate means deciding what a claim is, who may write one, and what happens to a claim nobody released, and a coordination record that nobody updates is worse than the conversation it replaced."
 ---

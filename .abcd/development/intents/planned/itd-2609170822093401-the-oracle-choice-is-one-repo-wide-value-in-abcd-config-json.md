@@ -10,7 +10,7 @@ severity: minor
 impact: additive
 related_adrs: [adr-25]
 related_intents: [itd-17]
-promoted_from: iss-2609170818061083
+related_issues: [iss-2609170818061083]
 origin: extracted-from-record
 production_mode: hand-written
 ---

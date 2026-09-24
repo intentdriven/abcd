@@ -72,7 +72,7 @@ ADR is minted in the first delivery and reviewed with the diff.
 
 - packages: internal/core/capture, internal/core/implement, internal/core/issueschema, internal/surface/cli
 - tests: the eligibility table over a fixture ledger; the order; the
-  hand-back routing per kind; `promoted_to` as the only write; the window
+  hand-back routing per kind; the `related_intents` stamp as the only write; the window
   exit and `--max`; the refusal without the ADR.
 
 ## How the criteria are satisfied
@@ -82,7 +82,7 @@ ADR is minted in the first delivery and reviewed with the diff.
 | 1 mixed ledger routed by field | scope 1, 2, 5 |
 | 2 judgement only hands back | scope 3 |
 | 3 the issue-keyed lane | scope 4 |
-| 4 user moment promoted, `promoted_to` only | scope 5 |
+| 4 user moment promoted, `related_intents` stamp only | scope 5 |
 | 5 trust rule flagged, nothing minted | scope 5 |
 | 6 handback stops and routes | scope 5 |
 | 7 window exit; `--max` | scope 7 |

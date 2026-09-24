@@ -25,10 +25,10 @@ as one line and promote the ones that grow up," says Iris, product lead.
 ## Why This Matters
 
 Step 2 of the twelve-step record walk — *decide it is a capability* — has no
-verb. The schema already models the graduation: `promoted_to` is validated
+verb. The schema already models the graduation: `promoted_to` (historical) is validated
 against `^itd-[0-9]+$` and documented as "the itd-N this issue graduated into",
 yet no verb writes it and no issue in the ledger carries it (refines the
-`promoted_to` half of iss-245; the `resolved_by` half is a sibling intent). The
+`promoted_to` (historical) half of iss-245; the `resolved_by` half is a sibling intent). The
 current `commands/capture.md` promote path is skill-orchestrated retyping with
 no back-link. A native verb closes the forced intent-vs-issue choice the
 "Which ledger?" note imposes at the moment of lowest information: capture now,
@@ -52,11 +52,11 @@ None stated.
   from the issue's slug, its body carrying the standard placeholder Press
   Release section plus a by-id pointer ("Graduated from iss-N") and the issue's
   one-line summary, never a copy of the issue body (SSOT) — and the issue's
-  `promoted_to` is stamped with the minted `itd-N` in the same invocation.
+  `promoted_to` (historical) is stamped with the minted `itd-N` in the same invocation.
 - **Given** an issue in *any* status (`open/`, `resolved/`, `wontfix/`),
   **when** promote runs, **then** the graduation succeeds and the issue keeps
   its folder — promotion is orthogonal to fix-status and is not resolution.
-- **Given** an issue already carrying `promoted_to`, **when** promote runs
+- **Given** an issue already carrying `promoted_to` (historical), **when** promote runs
   again, **then** the verb refuses and reports the existing `itd-N` — no
   duplicate drafts.
 - **Given** a malformed or unknown `iss-N`, **when** promote runs, **then** it

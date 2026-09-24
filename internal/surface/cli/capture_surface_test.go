@@ -995,7 +995,7 @@ func TestCapturePromoteReadingItemStampsTheOriginPair(t *testing.T) {
 	if !strings.Contains(string(data), want) {
 		t.Fatalf("the minted draft carries no %q:\n%s", strings.TrimSpace(want), data)
 	}
-	if !strings.Contains(string(data), "\npromoted_from: "+item+"\n") {
+	if !strings.Contains(string(data), "\nrelated_issues: ["+item+"]\n") {
 		t.Fatalf("the minted draft carries no back-edge naming %s:\n%s", item, data)
 	}
 	// The seed names no item: the Press Release is projected to the entailment
@@ -1039,7 +1039,7 @@ func TestCapturePromoteReadingItemLinkReportsAKeptBackEdge(t *testing.T) {
 	if linked.BackEdgeKept != first {
 		t.Fatalf("the JSON rendering reports back_edge_kept %q, want %q", linked.BackEdgeKept, first)
 	}
-	// The item still points forward even though the draft's one back-edge stayed.
+	// The item still points forward, and the draft keeps its first back-edge first.
 	itemPath := filepath.Join(repo, ".abcd", "work", "issues", "readings", run, second+".md")
 	data, err := os.ReadFile(itemPath)
 	if err != nil {

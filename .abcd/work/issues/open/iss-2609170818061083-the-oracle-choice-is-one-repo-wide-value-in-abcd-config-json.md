@@ -9,7 +9,7 @@ found_during: "reviewing the oracle seam after the v0.9.0 install, 2026-09-17"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/config.json"
-promoted_to: itd-2609170822093401
+related_intents: [itd-2609170822093401]
 ---
 
 The oracle choice is one repo-wide value in .abcd/config.json (host-delegated | native | cli | api | mcp), so every delegated step reaches a model the same way. The choice should be configurable per task: some steps want a local model (a cheap, private first pass over a transcript), some want the harness to decide, some want the harness told to use a high-end frontier model (a release gate's semantic review, an intent audit) and some a cheaper one (a slug, a summary). Alongside the backend, the same per-task configuration should say whether the harness may use sub-agents for the step at all, and how many, so a fan-out review can be bounded and a single-pass composition kept to one. Today none of this is expressible: the backend is global, and sub-agent use is whatever the command page tells the host in prose. The task classes the agent trust contract already declares (capability_scope.task_classes) are the natural key; the api adapter draft itd-2609081951381895 would be the first backend such a table could route to.

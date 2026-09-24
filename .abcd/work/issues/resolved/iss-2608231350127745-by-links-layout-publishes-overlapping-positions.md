@@ -7,7 +7,7 @@ category: "bug"
 source: "agent-observation"
 found_during: "agent-verification"
 found_at: "internal/core/site/layout.go"
-promoted_to: itd-157
+related_intents: [itd-157]
 resolution: "the by-links arrangement is sized from what each region holds and settles under the coil's own packing rule, so it publishes no overlapping positions"
 impact: fix
 resolved_by:

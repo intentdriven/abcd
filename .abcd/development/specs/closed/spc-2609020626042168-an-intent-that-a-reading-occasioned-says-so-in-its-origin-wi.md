@@ -43,7 +43,7 @@ In: A reading-pointer constructor in `internal/core/provenance`; the parsed
 origin as the draft-mint option in `internal/core/intent`; the reading route of
 `capture.Promote` deriving the run from the item's store path and refusing a
 record whose own `run` disagrees; the seed note of a reading-route draft; a
-`promoted_from` writer for link mode; the lint checking the join from both
+`promoted_from` (historical) writer for link mode; the lint checking the join from both
 ends; a promoted-seed plant in the read-block eval; the two plugin pages saying
 which path writes which value.
 
@@ -110,7 +110,7 @@ of `capture.Promote` passes
 ### The seed carries no item id, and why the title may
 
 `seedNote` today renders the Press Release placeholder as
-`_Seeded by promotion from <promoted_from>. Expand into the full press-release narrative before planning._`,
+`_Seeded by promotion from <promoted_from>. Expand into the full press-release narrative before planning._` (historical),
 and the Press Release is the first field `intentProjection` projects; a draft
 is admitted at the entailment position. A promoted reading draft would
 therefore hand the entailment reading an `rdi-N`, a prior reading's output
@@ -120,7 +120,7 @@ becomes `_Seeded by promotion from a reading item. Expand into the full press-re
 same opening, same tail, so `IsSeedNote` goes on matching both forms by prefix
 and suffix, and the issue-route seed keeps its `iss-N`, since an issue is not
 a reading's output. The join to the item is carried where no projection
-reaches: `origin` and `promoted_from` are frontmatter keys the projection does
+reaches: `origin` and `promoted_from` (historical) are frontmatter keys the projection does
 not name (the read-block eval's `DRAFT-ORIGIN` class holds `origin` warm at
 every position), and the "Graduated from" line that names the item sits in
 Why This Matters, which is not projected either.
@@ -137,7 +137,7 @@ The read-block eval gains a promoted-seed case in its `DRAFT-BODY` class: A
 second draft fixture under `testdata/cold-reading/baseline/.abcd/development/intents/drafts/`,
 minted in the reading-route shape (the reading-form seed in its Press Release
 carrying the class token, `origin: contributed-by-reading` naming a fixture
-run and item, `promoted_from` naming the item, the "Graduated from" line in
+run and item, `promoted_from` (historical) naming the item, the "Graduated from" line in
 Why This Matters). The class's `Count` moves to 2 and `sentinelClasses` does
 not, since no class is added; the baseline run proves the token cold at
 entailment alone, and a companion assertion in the same test requires the
@@ -177,24 +177,24 @@ disposition it reads, and the first criterion is read under that condition.
 ### Link mode writes both edges and leaves the origin alone
 
 Today `--intent <itd-N>` on either route stamps only the source record's
-`promoted_to`; the existing draft gains nothing. The intent requires the
-reading route to write `promoted_from` on the draft as well. A new
+`promoted_to` (historical); the existing draft gains nothing. The intent requires the
+reading route to write `promoted_from` (historical) on the draft as well. A new
 `intent.SetPromotedFrom(repoRoot, intentID, source string) (Intent, error)` is
 added in `internal/core/intent/lifecycle.go` beside `Link`, on the same
 `readRepoFile`, `setFrontmatterFields`, `writeIntentFile` idiom. It refuses an
 intent not found in any bucket and a source failing `promotedFromRe`; a draft
 already naming this source is a no-op that reports the record unchanged. It
-writes `promoted_from` and nothing else. It never reads or rewrites `origin` or
+writes `promoted_from` (historical) and nothing else. It never reads or rewrites `origin` or
 `production_mode`, which is what "origin unchanged" rests on: An origin is
 stamped at mint and never rewritten, so a draft filed from quoted text and linked
 to a reading item stays `researcher-authored` and says so.
 
-A draft whose `promoted_from` already names a different record is the case the
+A draft whose `promoted_from` (historical) already names a different record is the case the
 intent's first scope condition describes: An intent occasioned by several
 items is promoted from one, and the others are joined by their own
-`promoted_to`. `SetPromotedFrom` returns a typed `ErrBackEdgeTaken` naming the
+`promoted_to` (historical). `SetPromotedFrom` returns a typed `ErrBackEdgeTaken` naming the
 record already there; the reading route does not treat it as a refusal. It
-skips the back-edge, goes on to stamp the item's `promoted_to`, and reports
+skips the back-edge, goes on to stamp the item's `promoted_to` (historical), and reports
 `back_edge: kept <existing>` in the result and in both renderings, so the
 operator sees that the draft's one back-edge stayed where it was and the item
 still points forward.
@@ -209,14 +209,14 @@ intent's scope.
 ### The lint checks the join from both ends
 
 `provenanceFindings` in `internal/core/lint/provenance.go` gains one same-record
-check: A `contributed-by-reading` origin on a record whose `promoted_from` is
+check: A `contributed-by-reading` origin on a record whose `promoted_from` (historical) is
 absent, or names an item other than the origin's, is a finding, on the same
 footing as `extracted-from-record` with no back-edge. `checkRecordProvenance`
-gains a second map from the scan, item to `promoted_to`, and reports an intent
-whose origin names item X while X's `promoted_to` names a different record. The
-reverse direction is deliberately not a finding: An item whose `promoted_to`
+gains a second map from the scan, item to `promoted_to` (historical), and reports an intent
+whose origin names item X while X's `promoted_to` (historical) names a different record. The
+reverse direction is deliberately not a finding: An item whose `promoted_to` (historical)
 names a `researcher-authored` draft is link mode working as designed, and so
-is an item whose `promoted_to` names a draft whose `promoted_from` names
+is an item whose `promoted_to` (historical) names a draft whose `promoted_from` names
 another item, which is the several-items case above. Every message keeps
 `handEditResidual`.
 
@@ -276,7 +276,7 @@ a fixture, not a table row.
   widening the `accepted` disposition the route requires waits on the
   comparative run.
 - **ac-2 (link mode writes both edges, origin unchanged).** `SetPromotedFrom`
-  writes the back-edge, the ledger-locked stamp writes `promoted_to`, and
+  writes the back-edge, the ledger-locked stamp writes `promoted_to` (historical), and
   neither touches the disclosure pair. Proved by
   `TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone`, which asserts
   the two disclosure lines are byte-identical before and after.
@@ -330,7 +330,7 @@ Every test is watched fail before the change and pass after.
   field names a run other than its directory mints nothing.
 - `TestPromoteReadingItemLinkWritesBothEdgesAndLeavesOriginAlone` (ac-2).
 - `TestPromoteReadingItemLinkKeepsAnExistingBackEdge`: A draft already promoted
-  from another item keeps that back-edge, the second item's `promoted_to` is
+  from another item keeps that back-edge, the second item's `promoted_to` (historical) is
   stamped, and the result reports the kept record.
 - `TestPromoteReadingItemLinkCompletesOnRerunAfterAStampFailure`: Under
   `stampWriteHook` the first run fails after the draft write; the second run
@@ -340,7 +340,7 @@ Every test is watched fail before the change and pass after.
 `internal/core/lint`:
 
 - `TestRecordProvenanceRequiresTheBackEdgeBesideAReadingOrigin`.
-- `TestRecordProvenanceChecksTheForwardEdge`: An item whose `promoted_to` names
+- `TestRecordProvenanceChecksTheForwardEdge`: An item whose `promoted_to` (historical) names
   a draft other than the one whose origin names it is reported once, on the
   draft.
 
@@ -361,7 +361,7 @@ run explicitly.
   today whose origin this would have changed.
 - A reading item promoted to anything other than an intent draft. A discipline,
   an ADR or a brief passage carries its join by its own means.
-- The issue route's link mode writing `promoted_from` on the draft. The intent
+- The issue route's link mode writing `promoted_from` (historical) on the draft. The intent
   holds the issue path unchanged, and extending it is its own change.
 - The gate on dispositions at the widening position. It lives in the shared
   disposition writer under the comparative channel and admission specs; this

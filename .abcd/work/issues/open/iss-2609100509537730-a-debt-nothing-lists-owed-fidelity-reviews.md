@@ -11,7 +11,7 @@ production_mode: hand-written
 deferred_after: "v0.8.0"
 deferral_reason: "Owed fidelity reviews accumulate and nothing counts them. Fixing it means deciding where the count belongs and what it should do: a number on a status board is one answer, a refusal at the cut is another, and they differ in how much a debt is allowed to block. The record's own line is the argument, that a debt nothing lists is a debt nobody pays, and it deserves a considered surface rather than a counter bolted to whichever verb was nearest."
 found_at: "internal (intent audit receipts, status render, lint)"
-promoted_to: itd-2609150819445595
+related_intents: [itd-2609150819445595]
 ---
 
 A debt nothing lists is a debt nobody pays. Every shipped intent in a managed repository carries an owed fidelity review, and no surface counts them.

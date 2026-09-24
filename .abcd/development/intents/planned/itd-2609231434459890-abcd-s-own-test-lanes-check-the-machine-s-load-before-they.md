@@ -6,7 +6,7 @@ kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
-promoted_from: iss-2609210828122412
+related_issues: [iss-2609210828122412]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -26,9 +26,9 @@ impact: additive
 On 2026-09-21 the development machine panicked: eight leftover CPU burners from
 a load experiment had run for more than two days, abcd's own test binaries were
 found running beneath them, and nothing had said a word
-(iss-2609210828122412, promoted into this intent; `promoted_from` is written by
-hand because the issue route of `capture promote --intent` stamps only
-`promoted_to`). On 2026-09-22/23 the autonomous run then worked for a whole
+(iss-2609210828122412, promoted into this intent; `promoted_from` (historical) was
+written by hand because the issue route of `capture promote --intent` stamped only
+`promoted_to` (historical)). On 2026-09-22/23 the autonomous run then worked for a whole
 session under a load of about 440 from another account's orphaned loops that it
 could not stop, and the product thinker chose to carry on.
 

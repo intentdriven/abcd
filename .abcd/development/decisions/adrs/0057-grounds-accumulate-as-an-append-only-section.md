@@ -26,7 +26,7 @@ The obvious remedy — refuse a transition that would overwrite a non-empty
 `grounds` — was checked and does not work. `promote`, `resolve` and `wontfix`
 all REQUIRE `--grounds`, so refusing the overwrite makes every promoted issue
 impossible to resolve. Fourteen records in `resolved/` already carry
-`promoted_to`.
+`promoted_to` (historical).
 
 So the two halves held opposite rules for one concept, and the ledger's rule
 was the one that lost data.

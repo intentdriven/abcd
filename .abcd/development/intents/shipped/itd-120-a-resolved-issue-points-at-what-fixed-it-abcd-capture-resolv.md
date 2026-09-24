@@ -30,7 +30,7 @@ only `resolution` and `impact`, so a resolved issue asserts it was fixed in
 prose but cannot point at what fixed it — while the intent side of the same
 record store binds its verdicts to a SHA-256 receipt. One record store, two
 evidence standards. This intent closes the `resolved_by` half of iss-245 (the
-`promoted_to` half is itd-119); when both ship, iss-245 itself resolves *with*
+`promoted_to` (historical) half is itd-119); when both ship, iss-245 itself resolves *with*
 provenance — the first entry in the ledger to carry the trail.
 
 ## Scope Conditions

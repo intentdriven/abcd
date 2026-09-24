@@ -46,7 +46,8 @@ var ErrSkippedRecord = errors.New("skipped on read")
 
 // Description is the structured answer to "what is this, and what is my next
 // move". Paths are repo-relative; Links carries the record's outbound edges
-// (spec_id / intent / promoted_to / resolved_by.* / superseded_by) as present.
+// (spec_id / intent / related_intents / related_issues / resolved_by.* /
+// superseded_by) as present.
 type Description struct {
 	ID        string            `json:"id"`
 	Family    string            `json:"family"` // issue | intent | spec | adr
@@ -125,8 +126,14 @@ func describeIssue(repoRoot, id string) (Description, error) {
 			Path:   iss.Path,
 			Links:  map[string]string{},
 		}
-		if iss.PromotedTo != "" {
-			d.Links["promoted_to"] = iss.PromotedTo
+		if len(iss.RelatedIntents) > 0 {
+			d.Links["related_intents"] = strings.Join(iss.RelatedIntents, ", ")
+		}
+		// Promoted is the two-sided join (itd-4 AC3), not the list: an issue may
+		// name an intent it was only related to.
+		promotedInto, err := capture.PromotedInto(repoRoot, iss)
+		if err != nil {
+			return Description{}, err
 		}
 		if rb := iss.ResolvedBy; rb != nil {
 			if rb.Intent != "" {
@@ -140,9 +147,9 @@ func describeIssue(repoRoot, id string) (Description, error) {
 			}
 		}
 		switch {
-		case iss.Status == capture.StateOpen && iss.PromotedTo != "":
+		case iss.Status == capture.StateOpen && promotedInto != "":
 			d.NextMoves = []string{
-				"promoted — see the intent it graduated into: `abcd " + iss.PromotedTo + "`",
+				"promoted — see the intent it graduated into: `abcd " + promotedInto + "`",
 			}
 		case iss.Status == capture.StateOpen:
 			d.NextMoves = []string{
@@ -229,8 +236,8 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	case len(realising) > 1:
 		d.Links["specs"] = strings.Join(realising, ", ")
 	}
-	if it.PromotedFrom != "" {
-		d.Links["promoted_from"] = it.PromotedFrom
+	if len(it.RelatedIssues) > 0 {
+		d.Links["related_issues"] = strings.Join(it.RelatedIssues, ", ")
 	}
 	if sup := fields["superseded_by"].Value; sup != "" && !frontmatter.IsNull(sup) {
 		d.Links["superseded_by"] = sup

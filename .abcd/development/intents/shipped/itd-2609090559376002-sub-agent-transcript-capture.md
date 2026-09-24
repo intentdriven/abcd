@@ -9,7 +9,7 @@ related_adrs: [adr-29]
 builds_on: []
 severity: major
 impact: additive
-promoted_from: iss-2609081917287384
+related_issues: [iss-2609081917287384]
 origin: extracted-from-record
 production_mode: hand-written
 ---

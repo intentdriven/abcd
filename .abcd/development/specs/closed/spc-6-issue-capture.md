@@ -14,9 +14,13 @@ folder-as-status, the `related_issues`/`related_specs` schema). This spec
 verifies the intent's five Acceptance Criteria against the built binary,
 closes the one genuine coverage gap (AC5's list shape), and records — rather
 than papers over — the two places the live system diverges from the AC letter:
-the resolve-note storage design (AC2) and the promote flow that today's verbs
-cannot complete (AC3). **The spec stays open until AC3 is either delivered or
-formally re-scoped**; itd-4 stays `planned`.
+the resolve-note storage design (AC2) and, until the 2026-09-23 build, the
+promote flow the verbs could not complete (AC3). The product thinker ruled AC3
+built as written (ruling B3, DECISIONS.md 2026-09-23): the back-links renamed
+to `related_issues` / `related_intents` as the AC names them, every existing
+record migrated, and the drift check the AC cites delivered as
+`abcd intent audit --issue-drift`. With AC3 delivered the spec closes and itd-4
+ships.
 
 ## Approach
 
@@ -38,6 +42,11 @@ orchestrator re-running the gate.
    severity, and summary body.
 3. This record: the AC-satisfaction map below, including the AC2 deviation
    and the AC3 blocked analysis.
+4. AC3, built as written (2026-09-23, run A lane `itd4`): the promote join
+   under the AC's names, link mode writing both halves, the retired names
+   refused by every reader and banned by record-lint, `abcd capture migrate`
+   to rewrite them (run over this tree: 58 records), and
+   `abcd intent audit --issue-drift [--strict]` to check the join.
 
 ## Acceptance-criteria satisfaction
 
@@ -58,7 +67,25 @@ AC as ordered in itd-4 → status and evidence:
    and durable. Adjudicated as an intentional design evolution, not a gap
    (DECISIONS.md 2026-07-17). Covered by `TestResolveTransition`.
 3. **`capture promote iss-N` → intent draft + bidirectional links** —
-   **BLOCKED; genuine gap, deliberately not forced.** Promote is
+   **met (2026-09-23).** `abcd capture promote <iss-N>` mints the draft (the
+   quoted-text create itd-46 shipped and `capture.Promote` both route through
+   `intent.CreateDraft`) with `related_issues: [iss-N]`, and appends the minted
+   `itd-M` to the issue's `related_intents`; `--intent <itd-M>` writes both
+   halves onto an existing draft. "Promoted" is the pair, because an issue's
+   `related_intents` also carries loose relations. The drift detection the AC
+   cites is `abcd intent audit --issue-drift`: warnings on stderr and exit 0,
+   `--strict` exit 1, a receipt under `.abcd/.work.local/logs/audit/`. The
+   retired names are refused by every reader and banned by record-lint, and
+   `abcd capture migrate --apply` rewrites them; the tree was migrated in the
+   same change and the drift check reports nothing on it. Covered by
+   `TestPromoteMintsDraftAndStampsIssue`,
+   `TestPromoteLinkModeWritesBothHalvesOnAnIssue`,
+   `TestPromoteKeepsALooseRelatedIntentAndAppends`,
+   `TestMigrateRewritesEveryRetiredBackLinkIntoTheTwoSidedJoin`,
+   `TestIssueDriftReportsEveryBrokenJoinAndNothingElse` and the surface tests
+   in `internal/surface/cli/issue_drift_surface_test.go`. The analysis that
+   held it open until then is kept below as the record of why it was open.
+   **Held open until 2026-09-23 (historical):** Promote is
    skill-orchestrated by design (never a CLI sub-verb — see the comment above
    `newCaptureCommand` in `internal/surface/cli/cli.go`, brief 04-surfaces/06),
    but the skill surface cannot complete the flow with today's engine:

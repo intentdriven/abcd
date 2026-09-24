@@ -114,7 +114,7 @@ scan `core/site` already consumes) and reports four states:
 - a value outside its closed set;
 - one key present without the other, because every write path stamps both
   together;
-- `origin: extracted-from-record` on an intent carrying no `promoted_from`
+- `origin: extracted-from-record` on an intent carrying no `promoted_from` (historical)
   back-edge, which no promote could have written;
 - `origin: contributed-by-reading` whose run and item identifiers do not resolve
   to a reading record.

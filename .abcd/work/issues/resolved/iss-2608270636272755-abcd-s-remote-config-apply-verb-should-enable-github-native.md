@@ -7,7 +7,7 @@ category: "security"
 source: "user-observation"
 found_during: "secret-scanning-default-2026-08-27"
 found_at: ".abcd/work/rulesets"
-promoted_to: itd-153
+related_intents: [itd-153]
 resolution: "abcd ahoy remote apply enables GitHub native secret scanning then push protection on a managed repo, behind a config opt-out and the caller's confirmation, and is idempotent"
 impact: additive
 resolved_by:

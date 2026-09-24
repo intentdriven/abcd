@@ -105,7 +105,10 @@ Optional:
   midnight UTC of that day: the day is what the source asserts, and midnight is
   the convention that makes it an instant without inventing an hour the source
   never gave.
-- `related_intents` — list of `itd-N` ids.
+- `related_intents` — list of `itd-N` ids. An intent listed here that names this
+  issue back in its own `related_issues` is the intent the issue was promoted
+  into (`capture promote` writes both halves); any other entry is a loose
+  relation.
 - `related_specs` — list of `spc-N` ids.
 - `related_issues` — list of `iss-N` ids.
 - `blocked_by` — list of `iss-N` ids this issue depends on (see below).
@@ -120,7 +123,6 @@ Optional:
   its first commit should never set this field: RS001 makes resolution ride the
   fixing commit, so a record reaching `resolved/` and the work shipping are the
   same event. It exists because abcd was built before that rule did.
-- `promoted_to` — the `itd-N` this issue graduated into.
 - `impact` — one of `additive`, `breaking`, `fix`, `internal`. Required and valid
   in `resolved/`, where the record-lint blocker `issue_impact_valid` gates it;
   absent (or `null`, meaning "not judged yet") in `open/`; not written in

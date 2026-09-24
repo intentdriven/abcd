@@ -106,7 +106,6 @@ type Issue struct {
 	RelatedSpecs   []string `json:"related_specs,omitempty"`
 	RelatedIssues  []string `json:"related_issues,omitempty"`
 	BlockedBy      []string `json:"blocked_by,omitempty"` // iss-N dependency edges
-	PromotedTo     string   `json:"promoted_to,omitempty"`
 	// Grounds is the record's recorded conjectures, in the order they were
 	// written: one `<token>: <text>` value in the shared core/grounds vocabulary
 	// per grounds-bearing act. Appended by promote, resolve and wontfix; never by
@@ -344,7 +343,7 @@ var (
 	// recordid.SplitRecordFilename (validate.go) because that check EXTRACTS and
 	// compares the slug; detection only needs the ordinal.
 	issFileNumRe = recordid.FilenameNumRe(issFamily)
-	reAbcdListID = regexp.MustCompile(`^(itd|fn|iss)-[0-9]+$`)
+	reAbcdListID = regexp.MustCompile(`^(itd|fn|iss|rdi)-[0-9]+$`)
 	reSortIssID  = regexp.MustCompile(`^iss-([0-9]+)(-|$|\.)`)
 	reScalarKey  = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 	// statusDirs is the ledger's status list projected into State, and

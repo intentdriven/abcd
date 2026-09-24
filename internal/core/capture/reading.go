@@ -524,6 +524,10 @@ func validateReadingStrict(fm map[string]any) error {
 		return err
 	}
 	for k := range fm {
+		if successor, retired := issueschema.Retired[k]; retired {
+			return fmt.Errorf("%w: retired property %q on a reading record (renamed to %q); %s",
+				ErrMalformedFrontmatter, k, successor, issueschema.MigrateHint)
+		}
 		if !issueschema.ReadingKnown[k] {
 			return fmt.Errorf("%w: unknown property %q on a reading record", ErrMalformedFrontmatter, k)
 		}
@@ -584,9 +588,15 @@ func validateReadingStrict(fm map[string]any) error {
 				ErrInvariantViolation, f)
 		}
 	}
-	if v, present := fm["promoted_to"]; present {
-		if !reItdID.MatchString(asString(v)) {
-			return fmt.Errorf("%w: promoted_to %q does not match ^itd-[0-9]+$", ErrMalformedFrontmatter, v)
+	if v, present := fm["related_intents"]; present {
+		items, isList := v.([]string)
+		if !isList {
+			return fmt.Errorf("%w: %q must be a list", ErrMalformedFrontmatter, "related_intents")
+		}
+		for _, it := range items {
+			if !reItdID.MatchString(it) {
+				return fmt.Errorf("%w: related_intents item %q does not match ^itd-[0-9]+$", ErrMalformedFrontmatter, it)
+			}
 		}
 	}
 	return nil
@@ -979,7 +989,7 @@ func isReadingEnvelopeField(key string) bool {
 	if containsString(issueschema.ReservedSurpriseFields, key) {
 		return true
 	}
-	return key == "promoted_to"
+	return key == "related_intents"
 }
 
 // isReadingBodyField reports whether key belongs to SOME position's body.

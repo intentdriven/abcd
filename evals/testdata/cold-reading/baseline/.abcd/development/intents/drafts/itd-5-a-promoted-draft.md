@@ -1,6 +1,6 @@
 ---
 id: itd-5
-promoted_from: rdi-2609020000000009
+related_issues: [rdi-2609020000000009]
 origin: contributed-by-reading rdg-2609020000000007/rdi-2609020000000009
 production_mode: hand-written
 ---

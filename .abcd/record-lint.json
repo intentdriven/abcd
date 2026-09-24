@@ -183,6 +183,23 @@
       "allow_context": [
         "historical"
       ]
+    },
+    {
+      "id": "retired-promote-back-links",
+      "pattern": "\\bpromoted_(from|to)\\b",
+      "message": "the promote join's back-links are related_issues (on the intent) and related_intents (on the ledger record); promoted_from and promoted_to were retired by itd-4 AC3 (DECISIONS.md, 2026-09-23)",
+      "severity": "blocker",
+      "successor": "related_issues / related_intents",
+      "allow_context": [
+        "historical",
+        "retired",
+        "older abcd",
+        "^- ac-[0-9]+ — (MET|MET_WITH_CONCERNS|NOT_MET|INCONCLUSIVE): ",
+        "^- cond-[0-9]+ — [a-z_]+: ",
+        "^ +evidence: [^ ]+:[0-9]+ — \"",
+        "^  - capture promote refuses an item identifier that carries no disposition, and stamps promoted_to / origin on success$",
+        "^  - the lint reads the join from both ends — .* an item whose promoted_to names some other record$"
+      ]
     }
   ],
   "rules": {

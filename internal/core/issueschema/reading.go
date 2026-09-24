@@ -277,10 +277,11 @@ func bodyFieldsByPosition() map[string][]string {
 
 func readingKnown() map[string]bool {
 	known := map[string]bool{
-		// promoted_to is the forward half of the routing join: an accepted item's
-		// action is a SEPARATE admission, and the item id stamped forward here (with
-		// promoted_from in the draft) is what joins the two.
-		"promoted_to": true,
+		// related_intents is the forward half of the routing join: an accepted
+		// item's action is a SEPARATE admission, and the intent id stamped forward
+		// here (with the item named in the draft's related_issues) is what joins
+		// the two (itd-4 AC3).
+		"related_intents": true,
 	}
 	for _, k := range ReadingRequired {
 		known[k] = true

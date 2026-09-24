@@ -44,7 +44,7 @@ func TestReadBlockBaselineIsClean(t *testing.T) {
 			// entailment, because the candidate set is what an entailment reading
 			// reads — but the ITEM IT WAS GRADUATED FROM is a prior reading's
 			// output, and no reading sees another's output (companion 8.3). The
-			// join lives in `origin`, `promoted_from` and the Why This Matters line,
+			// join lives in `origin`, `related_issues` and the Why This Matters line,
 			// none of which the intent projection names, so the identifier must
 			// reach no bundle at any position, the one that reads the draft
 			// included.

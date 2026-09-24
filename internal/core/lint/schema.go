@@ -875,6 +875,12 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 				" schema is closed, so a key outside it makes this a record the reader refuses and skips — invisible to every " +
 				r.store.noun + " surface while it still sits in the store"
 		}
+		// A retired key names what replaced it and the verb that rewrites it: the
+		// record carries a spelling an older abcd wrote, and the remedy is known.
+		if successor, retired := issueschema.Retired[key]; retired &&
+			(r.store.prefix == "iss" || r.store.prefix == issueschema.ReadingItemFamily) {
+			msg += "; it is retired, renamed to '" + successor + "'; " + issueschema.MigrateHint
+		}
 		out = append(out, Finding{
 			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity, Message: msg,
 		})

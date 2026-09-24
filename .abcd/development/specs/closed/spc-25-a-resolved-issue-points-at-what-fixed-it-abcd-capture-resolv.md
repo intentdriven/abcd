@@ -33,7 +33,7 @@ optional: a flagless resolve stays byte-identical to today.
 
 Out of scope: backfilling already-resolved issues (ruled out at the grill —
 resolve still transitions open issues only); any change to `wontfix`; any
-change to `promoted_to` (itd-119/spc-24).
+change to `promoted_to` (historical) (itd-119/spc-24).
 
 ## Approach
 

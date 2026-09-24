@@ -103,8 +103,8 @@ func TestDescribeIssueNextMoves(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Links["promoted_to"] != pr.IntentID {
-		t.Fatalf("promoted_to link missing: %+v", d.Links)
+	if d.Links["related_intents"] != pr.IntentID {
+		t.Fatalf("related_intents link missing: %+v", d.Links)
 	}
 	if !strings.Contains(strings.Join(d.NextMoves, " "), pr.IntentID) {
 		t.Fatalf("promoted next move must point at %s: %v", pr.IntentID, d.NextMoves)

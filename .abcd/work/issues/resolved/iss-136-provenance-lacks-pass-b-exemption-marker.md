@@ -7,7 +7,7 @@ category: "inconsistency"
 source: "agent-finding"
 found_during: "itd-88 fidelity review (2026-07-24 run queue, burst 10)"
 found_at: "internal/core/lifeboat/plan.go"
-promoted_to: itd-158
+related_intents: [itd-158]
 resolution: "Provenance carries a pass_b_exemption marker with its reason; the embark coverage handoff reads it as a declared exemption, and an unmarked record is treated exactly as before"
 impact: additive
 resolved_by:

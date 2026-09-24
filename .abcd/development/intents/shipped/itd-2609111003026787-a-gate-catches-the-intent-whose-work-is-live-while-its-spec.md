@@ -11,6 +11,7 @@ severity: major
 impact: breaking
 origin: researcher-authored
 production_mode: hand-written
+related_issues: [iss-2609091642508005]
 ---
 
 # A gate catches the intent whose work is live while its spec is still open

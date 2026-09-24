@@ -137,23 +137,30 @@ func TestCreateFromTextPassesRecordLint(t *testing.T) {
 	}
 }
 
-// TestCreateDraftPromotedFromRoundTrip: a draft minted through the promote
-// path carries the promoted_from back-edge in its frontmatter, and the intent
+// TestCreateDraftRelatedIssuesRoundTrip: a draft minted through the promote
+// path carries the related_issues back-edge in its frontmatter, and the intent
 // reader parses it back (two-sided edge, spc-24).
-func TestCreateDraftPromotedFromRoundTrip(t *testing.T) {
+func TestCreateDraftRelatedIssuesRoundTrip(t *testing.T) {
 	root := t.TempDir()
 
 	it, err := CreateDraft(root, DraftOptions{
 		Slug:         "an-issue-that-grew-up",
 		Title:        "An issue that grew up",
 		SeedBody:     "Graduated from `iss-7`: an issue that grew up. Read that issue record for the source observation.",
-		PromotedFrom: "iss-7",
+		RelatedIssue: "iss-7",
 	})
 	if err != nil {
 		t.Fatalf("CreateDraft: %v", err)
 	}
-	if it.PromotedFrom != "iss-7" {
-		t.Fatalf("created intent PromotedFrom = %q, want iss-7", it.PromotedFrom)
+	if len(it.RelatedIssues) != 1 || it.RelatedIssues[0] != "iss-7" {
+		t.Fatalf("created intent RelatedIssues = %q, want [iss-7]", it.RelatedIssues)
+	}
+	data, err := os.ReadFile(filepath.Join(root, it.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "\nrelated_issues: [iss-7]\n") {
+		t.Fatalf("the minted draft must carry related_issues: [iss-7]:\n%s", data)
 	}
 	c, err := Load(root)
 	if err != nil {
@@ -163,8 +170,8 @@ func TestCreateDraftPromotedFromRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatalf("minted draft %s not found by Load", it.ID)
 	}
-	if got.PromotedFrom != "iss-7" {
-		t.Fatalf("parsed-back PromotedFrom = %q, want iss-7", got.PromotedFrom)
+	if len(got.RelatedIssues) != 1 || got.RelatedIssues[0] != "iss-7" {
+		t.Fatalf("parsed-back RelatedIssues = %q, want [iss-7]", got.RelatedIssues)
 	}
 	// Absent on every existing record: a draft minted from text has none.
 	plain, err := CreateFromText(root, "a plain quoted-text draft", TextOptions{})
@@ -175,20 +182,20 @@ func TestCreateDraftPromotedFromRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := c.Lookup(plain.ID); got.PromotedFrom != "" {
-		t.Fatalf("text-created draft must carry no promoted_from, got %q", got.PromotedFrom)
+	if got, _ := c.Lookup(plain.ID); len(got.RelatedIssues) != 0 {
+		t.Fatalf("text-created draft must carry no related_issues, got %q", got.RelatedIssues)
 	}
 }
 
 // TestCreateDraftValidatesInputs: a promote-path mint refuses a malformed slug
-// or promoted_from before any path is built.
+// or related issue before any path is built.
 func TestCreateDraftValidatesInputs(t *testing.T) {
 	root := t.TempDir()
 	if _, err := CreateDraft(root, DraftOptions{Slug: "../evil", Title: "x", SeedBody: "y"}); err == nil {
 		t.Fatalf("CreateDraft must refuse a non-kebab slug")
 	}
-	if _, err := CreateDraft(root, DraftOptions{Slug: "ok-slug", Title: "x", SeedBody: "y", PromotedFrom: "itd-3"}); err == nil {
-		t.Fatalf("CreateDraft must refuse a promoted_from that is not an iss-N id")
+	if _, err := CreateDraft(root, DraftOptions{Slug: "ok-slug", Title: "x", SeedBody: "y", RelatedIssue: "itd-3"}); err == nil {
+		t.Fatalf("CreateDraft must refuse a related issue that is not an iss-N id")
 	}
 	if entries, err := os.ReadDir(filepath.Join(root, IntentsRelDir, BucketDrafts)); err == nil && len(entries) > 0 {
 		t.Fatalf("a refused CreateDraft wrote %d file(s)", len(entries))
@@ -230,7 +237,7 @@ func TestSeedDraftStampsProvenance(t *testing.T) {
 	// A promote-shaped draft declares the other arrival path.
 	it3, err := CreateDraft(root, DraftOptions{
 		Slug: "graduated", Title: "Graduated", SeedBody: "from a record",
-		PromotedFrom: "iss-1", Origin: provenance.Origin{Kind: provenance.KindExtractedFromRecord},
+		RelatedIssue: "iss-1", Origin: provenance.Origin{Kind: provenance.KindExtractedFromRecord},
 	})
 	if err != nil {
 		t.Fatalf("CreateDraft: %v", err)
@@ -279,7 +286,7 @@ func TestCreateDraftStampsAReadingOrigin(t *testing.T) {
 	it, err := CreateDraft(root, DraftOptions{
 		Slug: "a-reading-occasioned-draft", Title: "A reading occasioned draft",
 		SeedBody:     "Graduated from a reading item.",
-		PromotedFrom: "rdi-17",
+		RelatedIssue: "rdi-17",
 		Origin: provenance.Origin{
 			Kind: provenance.KindContributedByReading, Run: "rdg-3", Item: "rdi-17",
 		},
@@ -295,8 +302,8 @@ func TestCreateDraftStampsAReadingOrigin(t *testing.T) {
 	if got := fields[provenance.KeyProductionMode].Value; got != "dictated-and-formatted" {
 		t.Errorf("production_mode = %q, want dictated-and-formatted", got)
 	}
-	if got := fields["promoted_from"].Value; got != "rdi-17" {
-		t.Errorf("promoted_from = %q, want rdi-17", got)
+	if got := fields["related_issues"].Value; got != "[rdi-17]" {
+		t.Errorf("related_issues = %q, want [rdi-17]", got)
 	}
 	// The rendered value is a plain scalar: no ": " inside it, which is what keeps
 	// it readable to the same-line frontmatter scanner every record reader uses.
@@ -306,7 +313,7 @@ func TestCreateDraftStampsAReadingOrigin(t *testing.T) {
 }
 
 // TestCreateDraftRefusesAReadingOriginDisagreeingWithTheBackEdge — framework
-// 11.3: the origin's item and the `promoted_from` back-edge are one join written
+// 11.3: the origin's item and the `related_issues` back-edge are one join written
 // twice, so a draft carrying them in disagreement is a state no command
 // produced. The mint refuses it rather than writing it.
 func TestCreateDraftRefusesAReadingOriginDisagreeingWithTheBackEdge(t *testing.T) {
@@ -324,7 +331,7 @@ func TestCreateDraftRefusesAReadingOriginDisagreeingWithTheBackEdge(t *testing.T
 	}
 	_, err := CreateDraft(root, DraftOptions{
 		Slug: "seeded", Title: "Seeded", SeedBody: "body",
-		PromotedFrom: "rdi-18",
+		RelatedIssue: "rdi-18",
 		Origin:       provenance.Origin{Kind: provenance.KindContributedByReading, Run: "rdg-3", Item: "rdi-17"},
 	})
 	if err == nil {
@@ -351,7 +358,7 @@ func TestReadingRouteSeedNamesNoItem(t *testing.T) {
 		Slug: "a-reading-occasioned-draft", Title: "A reading occasioned draft",
 		SeedBody: "Graduated from `rdi-17` (accepted): a stated constraint.",
 		// The back-edge and the origin carry the item; the seed must not.
-		PromotedFrom: "rdi-17",
+		RelatedIssue: "rdi-17",
 		Origin: provenance.Origin{
 			Kind: provenance.KindContributedByReading, Run: "rdg-3", Item: "rdi-17",
 		},
@@ -375,7 +382,7 @@ func TestReadingRouteSeedNamesNoItem(t *testing.T) {
 	// noticed, not a reading's output.
 	it2, err := CreateDraft(root, DraftOptions{
 		Slug: "graduated-from-an-issue", Title: "Graduated from an issue",
-		SeedBody: "from a record", PromotedFrom: "iss-1",
+		SeedBody: "from a record", RelatedIssue: "iss-1",
 		Origin: provenance.Origin{Kind: provenance.KindExtractedFromRecord},
 	})
 	if err != nil {
@@ -559,7 +566,7 @@ func TestPromotePathSeedUnchanged(t *testing.T) {
 	root := t.TempDir()
 	it, err := CreateDraft(root, DraftOptions{
 		Slug: "graduated-from-an-issue", Title: "Graduated from an issue",
-		SeedBody: "Graduated from `iss-1`: read that issue record for the source observation.", PromotedFrom: "iss-1",
+		SeedBody: "Graduated from `iss-1`: read that issue record for the source observation.", RelatedIssue: "iss-1",
 		Origin: provenance.Origin{Kind: provenance.KindExtractedFromRecord},
 	})
 	if err != nil {
