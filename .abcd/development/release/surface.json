@@ -1763,7 +1763,15 @@
     },
     {
       "file": ".claude-plugin/marketplace.json",
-      "key": "plugins[abcd].source"
+      "key": "plugins[abcd].source.sha256"
+    },
+    {
+      "file": ".claude-plugin/marketplace.json",
+      "key": "plugins[abcd].source.source"
+    },
+    {
+      "file": ".claude-plugin/marketplace.json",
+      "key": "plugins[abcd].source.url"
     },
     {
       "file": ".claude-plugin/plugin.json",
