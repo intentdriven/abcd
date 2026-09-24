@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 // iss-2608291832160371 (the GHSA-9wv7 residual): a payload file in a
@@ -276,11 +275,7 @@ func TestDecompressionBombIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	res := scanOne(t, sc, "bomb.gz", abs)
-	if el := time.Since(start); el > 30*time.Second {
-		t.Fatalf("the bomb took %s — the decoder is not bounded", el)
-	}
 	if contains(res.ContentDecoded, "bomb.gz") {
 		t.Errorf("a bomb must never be reported decoded: %+v", res)
 	}
@@ -289,6 +284,21 @@ func TestDecompressionBombIsRefused(t *testing.T) {
 	}
 	if why := res.ContentUnverifiedWhy["bomb.gz"]; !strings.Contains(why, "budget") {
 		t.Errorf("the reason must say the decode budget was exceeded, got %q", why)
+	}
+
+	// Bounded output is measured as output, not as time: the same decode on a
+	// budget the test holds must pull at most one byte past the budget out of
+	// the decompressor. A read that inflated the whole member and refused it
+	// afterwards would say "budget" just the same, so the reason alone cannot
+	// tell the bound from its absence; a wall-clock ceiling could, but it read
+	// the machine's load as well (iss-2609232048579579).
+	b := &decodeBudget{bytesLeft: maxDecodedBytes, entriesLeft: maxDecodeEntries}
+	var out []Finding
+	if ok, why := sc.decodeInto(bomb, secretPatterns(sc.patterns), "bomb.gz", b, 1, &out); ok || !strings.Contains(why, "budget") {
+		t.Fatalf("the decode of a bomb returned (%t, %q), want the budget's refusal", ok, why)
+	}
+	if b.drained > maxDecodedBytes+1 {
+		t.Fatalf("a bomb of 64 MiB drained %d bytes from its decompressor, want at most %d", b.drained, maxDecodedBytes+1)
 	}
 }
 
@@ -794,9 +804,7 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	res := scanOne(t, sc, "chunkbomb.png", abs)
-	el := time.Since(start)
 
 	// The property is the refusal, not the clock. A bounded loop stops and says
 	// why; an unbounded one never reaches this line at all. Asserting the reason
@@ -807,14 +815,21 @@ func TestPNGChunkCountBombIsBounded(t *testing.T) {
 		t.Fatalf("a chunk-count bomb was not refused by the chunk bound; reason %q: %+v", why, res)
 	}
 
-	// The clock stays as a runaway guard only, and its ceiling moves with the
-	// race detector, which costs this scan about fifteen times its plain run.
-	ceiling := 10 * time.Second
-	if raceEnabled {
-		ceiling = 90 * time.Second
+	// The refusal says the bound fired, not that it fired in time: a walk that
+	// inflated every chunk and refused at the end would pass the check above.
+	// So the same decode is run again on a budget the test holds, and the work
+	// it did is counted, not timed — a count is the same on a loaded machine
+	// and under the race detector, where a wall-clock ceiling reddened a run
+	// whose bound held (iss-2609232048579579). The bomb carries about 180,000
+	// chunks; a working bound inflates at most maxDecodeEntries of them.
+	chunks := (len(body) - len(base)) / len(chunk)
+	b := &decodeBudget{bytesLeft: maxDecodedBytes, entriesLeft: maxDecodeEntries}
+	var out []Finding
+	if ok, why := sc.decodeInto(body, secretPatterns(sc.patterns), "chunkbomb.png", b, 1, &out); ok || !strings.Contains(why, "compressed chunks") {
+		t.Fatalf("the decode of a chunk-count bomb returned (%t, %q), want the chunk bound's refusal", ok, why)
 	}
-	if el > ceiling {
-		t.Fatalf("a chunk-count bomb took %s (ceiling %s): %+v", el, ceiling, res)
+	if b.reads > maxDecodeEntries {
+		t.Fatalf("a chunk-count bomb of %d chunks cost %d decode operations, want at most %d", chunks, b.reads, maxDecodeEntries)
 	}
 }
 
@@ -1399,10 +1414,27 @@ func TestManySignaturesInAStructuralFieldStayCheap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
+	// The cost is counted as bytes the field rule's search is handed, not
+	// timed (iss-2609232048579579). One pass per signature KIND over each field
+	// hands it about len(containerSignatures) times the file; one pass per
+	// signature FOUND hands it the tail once per hit, 400 times over. The bound
+	// allows four times the one-pass cost, so a second legitimate pass over an
+	// overlapping region stays inside it while the per-hit walk lands two
+	// orders of magnitude past it.
+	searched := 0
+	signatureSearch = func(s, sep []byte) int {
+		searched += len(s)
+		return bytes.Index(s, sep)
+	}
+	t.Cleanup(func() { signatureSearch = bytes.Index })
 	res := scanOne(t, sc, "packed.png", abs)
-	if el := time.Since(start); el > 10*time.Second {
-		t.Fatalf("a signature-packed field took %s — the field rule is per-hit, not per-field: %+v", el, res)
+	const passes = 4
+	if bound := passes * len(containerSignatures) * len(raw); searched > bound {
+		t.Fatalf("a signature-packed field of %d bytes had its search handed %d bytes, want at most %d (%d passes per signature kind over the file) — work that far past one pass per kind is the field rule walking the field per hit, not per field: %+v",
+			len(raw), searched, bound, passes, res)
+	}
+	if searched == 0 {
+		t.Fatal("the field rule's search was never handed the field; the count proves nothing")
 	}
 }
 
