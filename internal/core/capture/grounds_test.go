@@ -67,7 +67,7 @@ func TestPromoteWithoutGroundsRecordsNone(t *testing.T) {
 
 // TestPromoteWithoutGroundsStillPromotes: with the refusal parked
 // (iss-2609091009111294) the route completes as a promote with no grounds
-// entry — one draft minted, promoted_to stamped, and no `## Grounds` bullet
+// entry — one draft minted, related_intents stamped, and no `## Grounds` bullet
 // invented for the caller.
 func TestPromoteWithoutGroundsStillPromotes(t *testing.T) {
 	repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
@@ -78,8 +78,8 @@ func TestPromoteWithoutGroundsStillPromotes(t *testing.T) {
 	if n := draftCount(t, repo); n != 1 {
 		t.Fatalf("a promote without grounds minted %d draft(s), want 1", n)
 	}
-	if iss := readIssue(t, ir, issID); iss.PromotedTo == "" {
-		t.Fatal("a promote without grounds did not stamp promoted_to")
+	if iss := readIssue(t, ir, issID); len(iss.RelatedIntents) == 0 {
+		t.Fatal("a promote without grounds did not stamp related_intents")
 	}
 	if g := groundsBullets(t, ir, issID); len(g) != 0 {
 		t.Fatalf("a promote without grounds recorded grounds = %q", g)
@@ -100,8 +100,8 @@ func TestPromoteStampsGrounds(t *testing.T) {
 	}
 	// The stamped record still reads: an unknown key would make capture's reader
 	// refuse and SKIP it, leaving it invisible to every capture surface.
-	if iss := readIssue(t, ir, issID); iss.PromotedTo == "" {
-		t.Fatal("the stamped record no longer reads back with its promoted_to")
+	if iss := readIssue(t, ir, issID); len(iss.RelatedIntents) == 0 {
+		t.Fatal("the stamped record no longer reads back with its related_intents")
 	}
 }
 
@@ -305,8 +305,8 @@ func TestPromoteControlCharacterGroundsWriteNothing(t *testing.T) {
 		if n := draftCount(t, repo); n != 0 {
 			t.Fatalf("%s: a refused promote minted %d draft(s), want 0", name, n)
 		}
-		if iss := readIssue(t, ir, issID); iss.PromotedTo != "" {
-			t.Fatalf("%s: a refused promote stamped promoted_to = %q", name, iss.PromotedTo)
+		if iss := readIssue(t, ir, issID); len(iss.RelatedIntents) != 0 {
+			t.Fatalf("%s: a refused promote stamped related_intents = %q", name, iss.RelatedIntents)
 		}
 	}
 }
@@ -365,7 +365,7 @@ func TestWontfixEmptyReasonNamesItsOwnCause(t *testing.T) {
 // the resolve that followed it.
 //
 // The two acts are the ledger's mainline sequence, not a corner — fourteen
-// records in resolved/ carry promoted_to — and the loss was unavoidable rather
+// records in resolved/ carried the forward promote stamp — and the loss was unavoidable rather
 // than accidental, because all three routes REQUIRE grounds. Refusing the second
 // write was therefore never open: it would have made a promoted issue impossible
 // to resolve. The entries are asserted in ORDER, because what makes the earlier

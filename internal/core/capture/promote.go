@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -51,10 +50,10 @@ type PromoteResult struct {
 	IntentID    string `json:"intent_id"`
 	IntentPath  string `json:"intent_path"`
 	Linked      bool   `json:"linked"`
-	// BackEdgeKept names the record a linked draft's `promoted_from` ALREADY
-	// carried, when this call left it there. An intent occasioned by several
-	// reading items is promoted from one and joined to the others by their own
-	// `promoted_to`, so a taken back-edge is reported rather than refused or
+	// BackEdgeKept names the record a linked draft's `related_issues` ALREADY
+	// carried first, when this call appended beside it. An intent occasioned by
+	// several records is promoted from one and joined to the others, so an
+	// existing back-edge is kept first and reported rather than refused or
 	// overwritten (itd-2609020625400169, first scope condition). Empty on every
 	// other outcome, the mint included.
 	BackEdgeKept string `json:"back_edge_kept,omitempty"`
@@ -84,9 +83,12 @@ var beforeStampHook func()
 // Promote graduates an issue into an intent without retyping (spc-24, step 2
 // of the record walk). Default mode mints an intent draft — slug reused from
 // the issue, body carrying a by-id pointer to the issue rather than a copy
-// (SSOT), promoted_from back-edge in the draft's frontmatter — then stamps the
-// issue's promoted_to with the minted itd-N. Promotion is orthogonal to
-// fix-status: the issue may sit in any status directory and never moves.
+// (SSOT), the issue named in the draft's `related_issues` — then appends the
+// minted itd-N to the issue's `related_intents`. The two halves are itd-4 AC3's
+// bidirectional join, and the pair — an intent the record names that names the
+// record back — is what "promoted" means (see promotedInto). Promotion is
+// orthogonal to fix-status: the issue may sit in any status directory and never
+// moves.
 //
 // Ordering + residue contract: mint first, stamp second. No cross-store lock
 // is attempted — the ledger lock alone guards the stamp, exactly as transition
@@ -153,8 +155,10 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	if err := validateInvariants(fm, status, src); err != nil {
 		return PromoteResult{}, err
 	}
-	if existing := asString(fm["promoted_to"]); existing != "" {
-		return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing)
+	if into, err := promotedInto(repoRoot, req.ID, asStrList(fm["related_intents"]), ""); err != nil {
+		return PromoteResult{}, err
+	} else if into != "" {
+		return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, into)
 	}
 	// Establish that the RECORD can accept the append, before anything is minted.
 	// requireGrounds above already gated the grounds TEXT; what it cannot answer
@@ -176,7 +180,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		}
 	}
 
-	var itdID, intentPath string
+	var itdID, intentPath, backEdgeKept string
 	linked := req.LinkIntent != ""
 	if linked {
 		// Stamp-only mode: the target intent must exist in the store (any bucket)
@@ -191,6 +195,18 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 			return PromoteResult{}, fmt.Errorf("%s not found in the intent store; nothing stamped", req.LinkIntent)
 		}
 		itdID, intentPath = req.LinkIntent, rel
+		// The intent half of the join, written before the ledger-locked stamp
+		// exactly as the reading route writes it: idempotent, so a failure between
+		// the two is completed by re-running the same command. A draft filed by
+		// hand used to be linked from the issue side alone, which left a join that
+		// read from one end only (itd-4 AC3).
+		it, err := intent.AddRelatedIssue(repoRoot, req.LinkIntent, req.ID)
+		if err != nil {
+			return PromoteResult{}, err
+		}
+		if len(it.RelatedIssues) > 0 && it.RelatedIssues[0] != req.ID {
+			backEdgeKept = it.RelatedIssues[0]
+		}
 	} else {
 		// Mint mode: reuse the issue's slug and seed a draft that POINTS at the
 		// issue by id — never a copy of its body (the issue record stays the
@@ -203,7 +219,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 			Slug:         slug,
 			Title:        title,
 			SeedBody:     seed,
-			PromotedFrom: req.ID,
+			RelatedIssue: req.ID,
 			// The one arrival path a command derives from what it did (itd-178).
 			// An issue is something a PERSON noticed, so promoting one keeps
 			// saying extracted-from-record; the reading route below is the one
@@ -237,10 +253,17 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		if err != nil {
 			return err
 		}
-		if existing := asString(fm["promoted_to"]); existing != "" {
-			return fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing)
+		// The intent this call is joining names the record back by now — the mint
+		// and the link both wrote that half first — so it is left out of the
+		// question: what is asked here is whether ANOTHER promotion landed between
+		// the pre-flight and the lock.
+		related := asStrList(fm["related_intents"])
+		if into, err := promotedInto(repoRoot, req.ID, related, itdID); err != nil {
+			return err
+		} else if into != "" {
+			return fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, into)
 		}
-		newContent, err := setScalarField(content, "promoted_to", rawScalar(itdID))
+		newContent, err := setListField(content, "related_intents", appendUnique(related, itdID))
 		if err != nil {
 			return err
 		}
@@ -288,15 +311,72 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	}
 
 	return PromoteResult{
-		IssueID:     req.ID,
-		IssueStatus: stamped.status,
-		IssuePath:   fsutil.RepoRel(repoRoot, stamped.path),
-		IntentID:    itdID,
-		IntentPath:  intentPath,
-		Linked:      linked,
-		Redacted:    gRedacted,
-		Degraded:    gDegraded,
+		IssueID:      req.ID,
+		IssueStatus:  stamped.status,
+		IssuePath:    fsutil.RepoRel(repoRoot, stamped.path),
+		IntentID:     itdID,
+		IntentPath:   intentPath,
+		Linked:       linked,
+		BackEdgeKept: backEdgeKept,
+		Redacted:     gRedacted,
+		Degraded:     gDegraded,
 	}, nil
+}
+
+// promotedInto names the intent the ledger record id was promoted into, or ""
+// when it was promoted into none. "Promoted" is the PAIR, not either half: an
+// intent the record's related_intents names that names the record back in its
+// own related_issues (itd-4 AC3). Neither half alone says it — an issue may be
+// captured already related to an intent it was never promoted into, and an
+// intent names the record the moment it is minted, before the stamp lands.
+//
+// except is left out of the question: the intent the calling promote is
+// joining, whose half is already written by the time the lock is taken.
+//
+// It reads the intent store only when the record names an intent at all, so a
+// promote of a record naming none costs what it did before the join was two-sided.
+func promotedInto(repoRoot, id string, related []string, except string) (string, error) {
+	if len(related) == 0 {
+		return "", nil
+	}
+	corpus, err := intent.Load(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	for _, itd := range related {
+		if itd == except {
+			continue
+		}
+		it, ok := corpus.Lookup(itd)
+		if !ok {
+			continue
+		}
+		for _, back := range it.RelatedIssues {
+			if back == id {
+				return it.ID, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// PromotedInto names the intent iss was promoted into, or "" — the read-side
+// form of the question promote asks before it writes, for a surface that
+// renders a record's next move.
+func PromotedInto(repoRoot string, iss Issue) (string, error) {
+	return promotedInto(repoRoot, iss.ID, iss.RelatedIntents, "")
+}
+
+// appendUnique appends id to list unless list already carries it, returning a
+// fresh slice either way so the caller's copy is never aliased.
+func appendUnique(list []string, id string) []string {
+	out := append([]string{}, list...)
+	for _, have := range out {
+		if have == id {
+			return out
+		}
+	}
+	return append(out, id)
 }
 
 // shellQuoted wraps s in SINGLE quotes for the shell a remedy is pasted into,
@@ -366,8 +446,10 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 	if err := validateReadingStrict(fm); err != nil {
 		return PromoteResult{}, err
 	}
-	if existing := asString(fm["promoted_to"]); existing != "" {
-		return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing)
+	// A reading item carries no loose relation — only promote writes its
+	// related_intents — so any entry at all is the forward half of a promotion.
+	if existing := asStrList(fm["related_intents"]); len(existing) > 0 {
+		return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing[0])
 	}
 	// The run half of the origin pair, taken from WHERE THE ITEM WAS FOUND: the
 	// item's bucket IS its run directory, which is the same join the provenance
@@ -410,13 +492,14 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		//
 		// A back-edge already naming another record is not a refusal here: an
 		// intent occasioned by several items is promoted from one, and the others
-		// are joined by their own `promoted_to`. The existing edge stays, the
-		// forward stamp is still written, and the kept record is reported.
-		switch it, err := intent.SetPromotedFrom(repoRoot, req.LinkIntent, req.ID); {
-		case errors.Is(err, intent.ErrBackEdgeTaken):
-			backEdgeKept = it.PromotedFrom
-		case err != nil:
+		// join it in the list. The existing edge stays first, the forward stamp is
+		// still written, and the kept record is reported.
+		it, err := intent.AddRelatedIssue(repoRoot, req.LinkIntent, req.ID)
+		if err != nil {
 			return PromoteResult{}, err
+		}
+		if len(it.RelatedIssues) > 0 && it.RelatedIssues[0] != req.ID {
+			backEdgeKept = it.RelatedIssues[0]
 		}
 	} else {
 		// The pattern named is the item's one durable one-liner and the only body
@@ -434,7 +517,7 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 			Slug:         slug,
 			Title:        title,
 			SeedBody:     seed,
-			PromotedFrom: req.ID,
+			RelatedIssue: req.ID,
 			// The third arrival path, and the one this command is the sole minter
 			// of (itd-178's `contributed-by-reading`): the run and the item are
 			// the pair read off `readings/<run>/<item>.md` above, so the value
@@ -466,19 +549,19 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		if err != nil {
 			return err
 		}
-		if existing := asString(fm["promoted_to"]); existing != "" {
-			return fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing)
+		if existing := asStrList(fm["related_intents"]); len(existing) > 0 {
+			return fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing[0])
 		}
 		// Re-read the standing answer HERE, not only in the pre-flight. A
 		// disposition landing between the two — an acceptance superseded by a
 		// rejection while the mint runs — would otherwise leave a standing
-		// `rejected` beside a `promoted_to`, a ledger holding both a refusal and
+		// `rejected` beside a forward stamp, a ledger holding both a refusal and
 		// the admission it refused. Nothing can land after this check, because the
 		// lock is held from here to the write.
 		if err := refuseUnlessAccepted(issuesRoot, req.ID); err != nil {
 			return err
 		}
-		newContent, err := setScalarField(content, "promoted_to", rawScalar(itdID))
+		newContent, err := setListField(content, "related_intents", []string{itdID})
 		if err != nil {
 			return err
 		}

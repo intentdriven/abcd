@@ -101,7 +101,7 @@ and **reserve-registry**.
 closed numeric id type-system: the release bijection, the canonical resolver,
 the record-lint handle and uniqueness rules, `capture list` ordering, the
 `abcd <id>` dispatch and its typo guard, the ledger store contract, and every
-`promoted_to`/`resolved_by` field anchor on `(iss|itd|spc)-[0-9]+` (and adr's
+`promoted_to` (historical)/`resolved_by` field anchor on `(iss|itd|spc)-[0-9]+` (and adr's
 zero-padded filename ordinals), with several consumers failing *silently* on a
 non-matching id — a ULID-shaped record drops out of the release cut unreported,
 its typed links go unchecked, and it sorts below every legacy record forever.

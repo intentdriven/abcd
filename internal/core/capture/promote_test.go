@@ -71,8 +71,8 @@ func readIssue(t *testing.T, ir, issID string) Issue {
 
 // TestPromoteMintsDraftAndStampsIssue is the spc-24 headline: one invocation
 // mints an intent draft from the issue (slug reused, by-id pointer body,
-// promoted_from back-edge) and stamps the issue's promoted_to with the minted
-// itd-N.
+// related_issues back-edge) and stamps the issue's related_intents with the
+// minted itd-N — the two halves of itd-4 AC3's join.
 func TestPromoteMintsDraftAndStampsIssue(t *testing.T) {
 	repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
 
@@ -94,7 +94,7 @@ func TestPromoteMintsDraftAndStampsIssue(t *testing.T) {
 	}
 
 	// The minted draft: reused slug, placeholder press release, by-id pointer —
-	// never a copy of the issue body — and the promoted_from back-edge.
+	// never a copy of the issue body — and the related_issues back-edge.
 	abs := filepath.Join(repo, res.IntentPath)
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -110,14 +110,14 @@ func TestPromoteMintsDraftAndStampsIssue(t *testing.T) {
 	if !strings.Contains(draft, "Graduated from `"+issID+"`") {
 		t.Fatalf("draft missing the by-id pointer to %s:\n%s", issID, draft)
 	}
-	if !strings.Contains(draft, "promoted_from: "+issID) {
-		t.Fatalf("draft frontmatter missing promoted_from %s:\n%s", issID, draft)
+	if !strings.Contains(draft, "\nrelated_issues: ["+issID+"]\n") {
+		t.Fatalf("draft frontmatter missing related_issues: [%s]:\n%s", issID, draft)
 	}
 
 	// The issue: stamped in place, still in open/.
 	iss := readIssue(t, ir, issID)
-	if iss.PromotedTo != res.IntentID {
-		t.Fatalf("issue promoted_to = %q, want %q", iss.PromotedTo, res.IntentID)
+	if got := lastRelatedIntent(iss); got != res.IntentID {
+		t.Fatalf("issue related_intents ends %q, want %q", got, res.IntentID)
 	}
 	if iss.Status != StateOpen {
 		t.Fatalf("promotion must not move the issue; status = %q", iss.Status)
@@ -154,8 +154,8 @@ func TestPromoteWorksInAnyStatusAndKeepsFolder(t *testing.T) {
 			if iss.Status != tc.status {
 				t.Fatalf("promotion moved the issue: status = %q, want %q", iss.Status, tc.status)
 			}
-			if iss.PromotedTo != res.IntentID {
-				t.Fatalf("promoted_to = %q, want %q", iss.PromotedTo, res.IntentID)
+			if got := lastRelatedIntent(iss); got != res.IntentID {
+				t.Fatalf("related_intents ends %q, want %q", got, res.IntentID)
 			}
 		})
 	}
@@ -197,8 +197,8 @@ func TestPromoteUnknownOrMalformedIDWritesNothing(t *testing.T) {
 	if _, err := Promote(PromoteRequest{Grounds: testGrounds, RepoRoot: repo, IssuesRoot: ir, ID: issID, LinkIntent: "itd-42"}); err == nil {
 		t.Fatalf("link mode must refuse an unknown itd-N")
 	}
-	if iss := readIssue(t, ir, issID); iss.PromotedTo != "" {
-		t.Fatalf("failed link mode stamped promoted_to = %q", iss.PromotedTo)
+	if iss := readIssue(t, ir, issID); len(iss.RelatedIntents) != 0 {
+		t.Fatalf("failed link mode stamped related_intents = %q", iss.RelatedIntents)
 	}
 }
 
@@ -242,8 +242,8 @@ func TestPromoteStampFailureReportsOrphanAndLinkRepairs(t *testing.T) {
 	if n := draftCount(t, repo); n != 1 {
 		t.Fatalf("link mode minted: %d drafts, want 1", n)
 	}
-	if iss := readIssue(t, ir, issID); iss.PromotedTo != orphan {
-		t.Fatalf("repair did not stamp promoted_to: %q", iss.PromotedTo)
+	if iss := readIssue(t, ir, issID); lastRelatedIntent(iss) != orphan {
+		t.Fatalf("repair did not stamp related_intents: %q", iss.RelatedIntents)
 	}
 }
 
@@ -331,8 +331,9 @@ func TestPromoteRefusesUndispositionedReadingItem(t *testing.T) {
 }
 
 // Acceptance is one record; the action is a separate admission, joined by the
-// item id stamped forward on promoted_to and back in the draft's promoted_from.
-func TestPromoteStampsReadingItemPromotedTo(t *testing.T) {
+// item id stamped forward on related_intents and back in the draft's
+// related_issues.
+func TestPromoteStampsReadingItemRelatedIntents(t *testing.T) {
 	repo, ir, item := dispositionedReadingFixture(t)
 
 	res, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: item})
@@ -355,16 +356,16 @@ func TestPromoteStampsReadingItemPromotedTo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse reading record: %v", err)
 	}
-	if got := asString(fm["promoted_to"]); got != res.IntentID {
-		t.Fatalf("reading record promoted_to = %q, want %q", got, res.IntentID)
+	if got := strings.Join(asStrList(fm["related_intents"]), ","); got != res.IntentID {
+		t.Fatalf("reading record related_intents = %q, want [%s]", got, res.IntentID)
 	}
 
 	draft, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(res.IntentPath)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(draft), "promoted_from: "+item) {
-		t.Fatalf("the minted draft must carry the back edge promoted_from: %s\n%s", item, draft)
+	if !strings.Contains(string(draft), "\nrelated_issues: ["+item+"]\n") {
+		t.Fatalf("the minted draft must carry the back edge related_issues: [%s]\n%s", item, draft)
 	}
 
 	// A second promote is refused with the existing id, exactly as it is for an
@@ -435,7 +436,7 @@ func TestPromoteRefusesAHeldReadingItem(t *testing.T) {
 // The standing answer is read in the pre-flight, but the pre-flight is not where
 // the stamp lands. A disposition arriving between the two — a colleague
 // superseding an acceptance with a rejection while the mint runs — would leave a
-// standing `rejected` beside a `promoted_to`: a ledger holding both a refusal and
+// standing `rejected` beside a `related_intents` stamp: a ledger holding both a refusal and
 // the admission it refused, which is the state the refusal exists to prevent.
 //
 // So the state is recomputed inside the locked closure, where nothing can land
@@ -470,7 +471,7 @@ func TestPromoteRechecksTheStandingStateUnderTheLock(t *testing.T) {
 		t.Fatalf("the refusal must name the standing answer it read under the lock; got %v", err)
 	}
 
-	// And nothing was stamped: the record must not carry a promoted_to it was
+	// And nothing was stamped: the record must not carry a related_intents it was
 	// refused for.
 	path, err := findReadingItem(ir, item)
 	if err != nil {
@@ -480,7 +481,7 @@ func TestPromoteRechecksTheStandingStateUnderTheLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(content), "promoted_to") {
+	if strings.Contains(string(content), "related_intents") {
 		t.Fatalf("the reading record was stamped despite the refusal:\n%s", content)
 	}
 }
@@ -624,7 +625,7 @@ func TestPromoteRefusesAnInvalidRecordBeforeMinting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(string(data), "promoted_to") {
+			if strings.Contains(string(data), "related_intents") {
 				t.Fatalf("a refused promote must not stamp the record:\n%s", data)
 			}
 		})
@@ -808,4 +809,13 @@ func promoteOrphanRemedyRunsAsPrinted(t *testing.T, grounds string) {
 	if n := draftCount(t, repo); n != 1 {
 		t.Fatalf("the remedy must mint nothing, got %d draft(s)", n)
 	}
+}
+
+// lastRelatedIntent is the forward promote stamp as the record now carries it:
+// the last entry of related_intents, or "" when it carries none.
+func lastRelatedIntent(iss Issue) string {
+	if len(iss.RelatedIntents) == 0 {
+		return ""
+	}
+	return iss.RelatedIntents[len(iss.RelatedIntents)-1]
 }

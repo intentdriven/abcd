@@ -7,7 +7,7 @@ category: "architectural-insight"
 source: "user-observation"
 found_during: "plugin-update post-mortem 2026-08-21"
 found_at: "hooks/bootstrap.sh"
-promoted_to: itd-132
+related_intents: [itd-132]
 resolution: "binary and binary-meta relocated to the persistent data dir owned copy (itd-132/spc-35); plugin cache re-clones no longer discard the artefact"
 impact: fix
 ---

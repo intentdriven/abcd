@@ -8,7 +8,7 @@ reclassification_history: []
 builds_on: [itd-20]
 severity: minor
 impact: additive
-promoted_from: iss-168
+related_issues: [iss-168]
 origin: extracted-from-record
 production_mode: dictated-and-formatted
 ---

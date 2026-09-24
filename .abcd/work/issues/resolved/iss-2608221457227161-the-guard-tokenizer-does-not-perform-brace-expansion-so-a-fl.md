@@ -7,7 +7,7 @@ category: "bug"
 source: "agent-finding"
 found_during: "all-dimensions bug-hunt round 7"
 found_at: "internal/core/guard/tokenize.go"
-promoted_to: itd-156
+related_intents: [itd-156]
 resolution: "the tokenizer now recognises an unquoted brace group and Check folds it into a fail-closed VerdictBlock, so git push {--force,} origin main is refused rather than read as a literal token; quoted braces, ${VAR} parameter expansion and a reserved-word group command keep their prior verdicts"
 impact: fix
 resolved_by:

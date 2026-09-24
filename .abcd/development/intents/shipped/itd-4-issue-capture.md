@@ -6,6 +6,7 @@ kind: standalone
 suggested_kind: null
 reclassification_history: []
 severity: major
+impact: breaking
 ---
 
 # Nothing You Notice Gets Lost
@@ -91,4 +92,5 @@ Acceptance Criteria and carries the open AC3 (promote) gap. Historical index:
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-2662745d5344 -->
+Fidelity review OWED (receipt rcp-2662745d5344).

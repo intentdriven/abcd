@@ -109,7 +109,7 @@ register and the iss-2608220750029991 triage-route seed.
   exit conditions; a hold exits only through a superseding disposition
   that cites it — never by expiry, and never silently.
 - Routing on acceptance: action is a separate admission joined by the
-  item identifier stamped forward on `promoted_to` and back in
+  item identifier stamped forward on `promoted_to` (historical) and back in
   `origin`. Item-to-intent without a disposition is the collapse this
   record family exists to prevent: `capture promote` refuses an item
   identifier that carries no disposition, and a circumvention is a
@@ -131,7 +131,7 @@ register and the iss-2608220750029991 triage-route seed.
   recorded form.
 - **Where an accepted item goes (per the acceptance-routing ruling):** acceptance is one
   record; the action is a separate admission and build, joined by the
-  item identifier (forward on `promoted_to`, back in `origin` with
+  item identifier (forward on `promoted_to` (historical), back in `origin` with
   the run identifier). The landings are enumerated — artefact via the
   intent lifecycle, cross-cutting rule via a discipline, redecision via a
   superseding ADR, the brief's description via the delivering change, the

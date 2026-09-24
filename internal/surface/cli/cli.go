@@ -2301,11 +2301,21 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 // Notes (fail-closed: ingested | dead_letter | noop); bare `audit <itd-N>`
 // re-emits the OWED stub + ephemeral request for a shipped intent.
 func newIntentAuditCommand(asJSON *bool) *cobra.Command {
+	var issueDrift, strict bool
 	auditCmd := &cobra.Command{
-		Use:   "audit [<itd-N>]",
-		Short: "Intent audit (promise vs delivered): re-emit a shipped intent's request, or ingest a verdict",
+		Use:   "audit [<itd-N>] | audit --issue-drift [--strict]",
+		Short: "Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if issueDrift {
+				if len(args) > 0 {
+					return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: the drift check walks the whole corpus and takes no <itd-N>"}
+				}
+				return runIssueDrift(cmd, *asJSON, strict)
+			}
+			if strict {
+				return &exitError{Code: 2, Msg: "abcd intent audit: --strict applies to --issue-drift only"}
+			}
 			if len(args) == 0 {
 				return cmd.Help()
 			}
@@ -2362,7 +2372,46 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	}
 	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON")
 	auditCmd.AddCommand(ingestCmd)
+	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
+		"walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0")
+	auditCmd.Flags().BoolVar(&strict, "strict", false, "with --issue-drift: exit 1 when any finding is reported (the CI mode)")
 	return auditCmd
+}
+
+// runIssueDrift is `abcd intent audit --issue-drift`: the bidirectional
+// cross-reference check between the intent store and the issue ledger (itd-4
+// AC3, in the predecessor store's spc-23 shape). Each finding is a warning on
+// stderr and the summary names the receipt the run left in the local tier; the
+// exit is 0 unless --strict, which exits 1 on any finding so a CI gate can
+// stand on it.
+func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
+	repoRoot, err := intentStoreRoot(cmd)
+	if err != nil {
+		return err
+	}
+	res, err := capture.IssueDrift(capture.IssueDriftRequest{RepoRoot: repoRoot})
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: " + err.Error()}
+	}
+	// The warnings are the human rendering's; --json carries the same findings
+	// in the envelope on stdout, and a machine reader needs them once.
+	for _, f := range res.Findings {
+		if asJSON {
+			break
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: issue-drift %s %s -> %s (%s): %s\n",
+			f.Kind, f.Record, f.Other, termsafe.Sanitize(f.Path), termsafe.Sanitize(f.Message))
+	}
+	if err := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+		fmt.Fprintf(w, "abcd intent audit --issue-drift — %d record(s) scanned, %d finding(s) (receipt %s)\n",
+			res.Scanned, len(res.Findings), termsafe.Sanitize(res.ReceiptPath))
+	}); err != nil {
+		return err
+	}
+	if strict && len(res.Findings) > 0 {
+		return &exitError{Code: 1}
+	}
+	return nil
 }
 
 // specStatusView is the machine-readable envelope for bare `abcd spec`: the
@@ -3551,14 +3600,15 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 
 	// promote — graduate an issue, or a dispositioned reading item, into an
 	// intent draft (spc-24, step 2 of the record walk; spc-58 for the reading
-	// item). Default mode mints a draft and stamps the source record's
-	// promoted_to in one invocation; --intent is the stamp-only repair/link
-	// mode. The issue keeps its status folder — promotion is not resolution —
+	// item). Default mode mints a draft naming the source record in its
+	// related_issues and stamps the minted itd-N into the source record's
+	// related_intents in one invocation — both halves of itd-4 AC3's join;
+	// --intent links an existing draft, writing both halves the same way. The issue keeps its status folder — promotion is not resolution —
 	// and an undispositioned rdi-N is refused before anything is minted.
 	var promoteIntent, promoteGrounds, promoteProductionMode string
 	promoteCmd := &cobra.Command{
 		Use:   "promote <iss-N> [--grounds \"<token>: <text>\"] | promote <rdi-N>",
-		Short: "Graduate an issue or a dispositioned reading item into an intent draft (mints + stamps promoted_to)",
+		Short: "Graduate an issue or a dispositioned reading item into an intent draft (mints + links both ways: related_issues / related_intents)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
@@ -3595,9 +3645,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "%s (%s, %s) promoted — %s %s — %s\n",
 					res.IssueID, res.IssueStatus, termsafe.Sanitize(res.IssuePath),
 					verb, res.IntentID, termsafe.Sanitize(res.IntentPath))
-				// The draft's ONE back-edge stayed where it was: an intent
-				// occasioned by several reading items is promoted from one, and
-				// the item this call linked still points forward.
+				// The draft's first back-edge stayed first: an intent occasioned
+				// by several records is promoted from one, and the record this
+				// call linked joins it in related_issues and points forward.
 				if res.BackEdgeKept != "" {
 					fmt.Fprintf(w, "back_edge: kept %s\n", termsafe.Sanitize(res.BackEdgeKept))
 				}
@@ -3605,10 +3655,56 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	promoteCmd.Flags().StringVar(&promoteIntent, "intent", "", "stamp-only mode: link this existing itd-N instead of minting a draft")
+	promoteCmd.Flags().StringVar(&promoteIntent, "intent", "", "link mode: link this existing itd-N instead of minting a draft (writes both halves of the join)")
 	promoteCmd.Flags().StringVar(&promoteGrounds, "grounds", "", groundsFlagUsage)
 	promoteCmd.Flags().StringVar(&promoteProductionMode, "production-mode", "", productionModeFlagHelp)
 	captureCmd.AddCommand(promoteCmd)
+
+	// migrate — rewrite the promote join's retired back-links (`promoted_to` on
+	// a ledger record, `promoted_from` on an intent) into the names itd-4 AC3
+	// gives them, completing a join an older abcd wrote from one end only. It
+	// reports by default: the records are the only copy, so writing is the
+	// explicit ask and never the default.
+	var migrateApply bool
+	migrateCmd := &cobra.Command{
+		Use:   "migrate [--apply]",
+		Short: "Rewrite retired promote back-links (promoted_to / promoted_from) to related_intents / related_issues (reports; writes only with --apply)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd capture migrate: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				mode := "report only — nothing was written; re-run with --apply to write"
+				if res.Applied {
+					mode = "applied"
+				}
+				fmt.Fprintf(w, "abcd capture migrate — %d record(s) scanned, %d record(s) to rewrite (%s)\n",
+					res.Scanned, len(res.Changes), mode)
+				if len(res.Changes) == 0 {
+					fmt.Fprintln(w, "  nothing to migrate")
+				}
+				for _, c := range res.Changes {
+					from := "joined from the other end"
+					if c.Retired != "" {
+						from = termsafe.Sanitize(c.Retired)
+					}
+					fmt.Fprintf(w, "  %s (%s): %s -> %s: [%s]\n", c.ID, termsafe.Sanitize(c.Path), from,
+						c.Key, termsafe.Sanitize(strings.Join(c.List, ", ")))
+				}
+				for _, n := range res.Notes {
+					fmt.Fprintf(w, "  NOTE: %s\n", termsafe.Sanitize(n))
+				}
+			})
+		},
+	}
+	migrateCmd.Flags().BoolVar(&migrateApply, "apply", false, "write the rewritten records (default: report only)")
+	captureCmd.AddCommand(migrateCmd)
 
 	// disposition — the researcher's answer to ONE reading item, written as a
 	// separate record keyed to that item (spc-58). It is a distinct verb rather

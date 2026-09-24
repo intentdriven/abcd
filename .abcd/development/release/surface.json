@@ -426,6 +426,19 @@
       ]
     },
     {
+      "path": "abcd capture migrate",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture promote",
       "hidden": false,
       "flags": [
@@ -1251,7 +1264,22 @@
     {
       "path": "abcd intent audit",
       "hidden": false,
-      "flags": []
+      "flags": [
+        {
+          "name": "issue-drift",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "strict",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd intent audit ingest",

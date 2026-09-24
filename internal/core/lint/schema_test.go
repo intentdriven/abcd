@@ -2397,15 +2397,15 @@ func TestRecordProvenanceOutOfVocabulary(t *testing.T) {
 	}
 }
 
-// TestRecordProvenanceExtractedWithoutPromotedFrom: promote writes the back-edge
+// TestRecordProvenanceExtractedWithoutRelatedIssues: promote writes the back-edge
 // and the origin in one act, so the origin without the back-edge is a record no
 // promote could have produced.
-func TestRecordProvenanceExtractedWithoutPromotedFrom(t *testing.T) {
+func TestRecordProvenanceExtractedWithoutRelatedIssues(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "rec/intents/drafts/itd-1-orphan.md",
 		"---\nid: itd-1\nkind: null\nspec_id: null\norigin: extracted-from-record\nproduction_mode: hand-written\n---\n# draft\n")
 	writeFile(t, root, "rec/intents/drafts/itd-2-promoted.md",
-		"---\nid: itd-2\nkind: null\nspec_id: null\npromoted_from: iss-1\norigin: extracted-from-record\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-2\nkind: null\nspec_id: null\nrelated_issues: [iss-1]\norigin: extracted-from-record\nproduction_mode: hand-written\n---\n# draft\n")
 	fs, err := Lint(provenanceConfig(), root)
 	if err != nil {
 		t.Fatal(err)
@@ -2413,7 +2413,7 @@ func TestRecordProvenanceExtractedWithoutPromotedFrom(t *testing.T) {
 	if n := countRule(fs, ruleRecordProvenance); n != 1 {
 		t.Fatalf("expected exactly the back-edge-less record to be reported, got %d: %+v", n, fs)
 	}
-	if !findingWith(fs, filepath.Join("rec/intents/drafts", "itd-1-orphan.md"), ruleRecordProvenance, "promoted_from") {
+	if !findingWith(fs, filepath.Join("rec/intents/drafts", "itd-1-orphan.md"), ruleRecordProvenance, "related_issues") {
 		t.Errorf("expected the missing back-edge named: %+v", fs)
 	}
 }
@@ -2431,14 +2431,14 @@ func TestRecordProvenanceReportsUnresolvableReading(t *testing.T) {
 	// carries the back-edge promote writes beside the origin, so the only finding
 	// these fixtures can raise is the pointer's own resolution.
 	writeFile(t, root, "rec/intents/drafts/itd-1-resolves.md",
-		"---\nid: itd-1\nkind: null\nspec_id: null\npromoted_from: rdi-17\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-1\nkind: null\nspec_id: null\nrelated_issues: [rdi-17]\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
 	// Dangling item.
 	writeFile(t, root, "rec/intents/drafts/itd-2-dangling.md",
-		"---\nid: itd-2\nkind: null\nspec_id: null\npromoted_from: rdi-99\norigin: contributed-by-reading rdg-3/rdi-99\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-2\nkind: null\nspec_id: null\nrelated_issues: [rdi-99]\norigin: contributed-by-reading rdg-3/rdi-99\nproduction_mode: hand-written\n---\n# draft\n")
 	// The item exists, but in a different run: the pair is what resolves, not
 	// either id alone.
 	writeFile(t, root, "rec/intents/drafts/itd-3-wrong-run.md",
-		"---\nid: itd-3\nkind: null\nspec_id: null\npromoted_from: rdi-17\norigin: contributed-by-reading rdg-4/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-3\nkind: null\nspec_id: null\nrelated_issues: [rdi-17]\norigin: contributed-by-reading rdg-4/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
 	fs, err := Lint(provenanceConfig(), root)
 	if err != nil {
 		t.Fatal(err)
@@ -2482,7 +2482,7 @@ func TestRecordProvenanceIsArmedInThisRepo(t *testing.T) {
 }
 
 // TestRecordProvenanceRequiresTheBackEdgeBesideAReadingOrigin — framework 11.3
-// (linkage): the origin's item and the `promoted_from` back-edge are one join
+// (linkage): the origin's item and the `related_issues` back-edge are one join
 // written twice, on the same footing as extracted-from-record with no back-edge.
 // Promote writes both in one act, so a record carrying the origin alone, or the
 // two in disagreement, is a state no command produced.
@@ -2495,10 +2495,10 @@ func TestRecordProvenanceRequiresTheBackEdgeBesideAReadingOrigin(t *testing.T) {
 		"---\nid: itd-1\nkind: null\nspec_id: null\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
 	// A back-edge naming a different item from the one the origin names.
 	writeFile(t, root, "rec/intents/drafts/itd-2-disagrees.md",
-		"---\nid: itd-2\nkind: null\nspec_id: null\npromoted_from: rdi-18\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-2\nkind: null\nspec_id: null\nrelated_issues: [rdi-18]\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
 	// The shape promote writes: both halves, agreeing.
 	writeFile(t, root, "rec/intents/drafts/itd-3-agrees.md",
-		"---\nid: itd-3\nkind: null\nspec_id: null\npromoted_from: rdi-17\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-3\nkind: null\nspec_id: null\nrelated_issues: [rdi-17]\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
 
 	fs, err := Lint(provenanceConfig(), root)
 	if err != nil {
@@ -2507,7 +2507,7 @@ func TestRecordProvenanceRequiresTheBackEdgeBesideAReadingOrigin(t *testing.T) {
 	if n := countRule(fs, ruleRecordProvenance); n != 2 {
 		t.Fatalf("expected exactly the two records missing or contradicting the back-edge, got %d: %+v", n, fs)
 	}
-	if !findingWith(fs, filepath.Join("rec/intents/drafts", "itd-1-no-back-edge.md"), ruleRecordProvenance, "promoted_from") {
+	if !findingWith(fs, filepath.Join("rec/intents/drafts", "itd-1-no-back-edge.md"), ruleRecordProvenance, "related_issues") {
 		t.Errorf("expected the absent back-edge named: %+v", fs)
 	}
 	if !findingWith(fs, filepath.Join("rec/intents/drafts", "itd-2-disagrees.md"), ruleRecordProvenance, "rdi-18") {
@@ -2517,31 +2517,31 @@ func TestRecordProvenanceRequiresTheBackEdgeBesideAReadingOrigin(t *testing.T) {
 
 // TestRecordProvenanceChecksTheForwardEdge — framework 11.3: the join is
 // redundant by design, so the gate can check it from both ends. An item whose
-// `promoted_to` names a record other than the one whose origin names the item is
+// `related_intents` names a record other than the one whose origin names the item is
 // reported once, on the draft.
 //
 // The reverse direction is deliberately not a finding: an item whose
-// `promoted_to` names a researcher-authored draft is link mode working as
-// designed, and so is a draft whose `promoted_from` names another item, which is
+// `related_intents` names a researcher-authored draft is link mode working as
+// designed, and so is a draft whose `related_issues` names another item, which is
 // the several-items case the intent's first scope condition describes.
 func TestRecordProvenanceChecksTheForwardEdge(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "work/issues/readings/rdg-3/rdi-17.md",
-		"---\nid: rdi-17\npattern: a thing the instrument returned\npromoted_to: itd-9\n---\nbody\n")
+		"---\nid: rdi-17\npattern: a thing the instrument returned\nrelated_intents: [itd-9]\n---\nbody\n")
 	writeFile(t, root, "work/issues/readings/rdg-3/rdi-18.md",
-		"---\nid: rdi-18\npattern: another thing\npromoted_to: itd-2\n---\nbody\n")
+		"---\nid: rdi-18\npattern: another thing\nrelated_intents: [itd-2]\n---\nbody\n")
 	// The origin names rdi-17, whose forward stamp names a different record.
 	writeFile(t, root, "rec/intents/drafts/itd-1-forward-disagrees.md",
-		"---\nid: itd-1\nkind: null\nspec_id: null\npromoted_from: rdi-17\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-1\nkind: null\nspec_id: null\nrelated_issues: [rdi-17]\norigin: contributed-by-reading rdg-3/rdi-17\nproduction_mode: hand-written\n---\n# draft\n")
 	// The pair agrees in both directions.
 	writeFile(t, root, "rec/intents/drafts/itd-2-agrees.md",
-		"---\nid: itd-2\nkind: null\nspec_id: null\npromoted_from: rdi-18\norigin: contributed-by-reading rdg-3/rdi-18\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-2\nkind: null\nspec_id: null\nrelated_issues: [rdi-18]\norigin: contributed-by-reading rdg-3/rdi-18\nproduction_mode: hand-written\n---\n# draft\n")
 	// Link mode working as designed: an item points forward at a draft that was
 	// filed from quoted text and says so. Not a finding.
 	writeFile(t, root, "work/issues/readings/rdg-3/rdi-19.md",
-		"---\nid: rdi-19\npattern: a third thing\npromoted_to: itd-3\n---\nbody\n")
+		"---\nid: rdi-19\npattern: a third thing\nrelated_intents: [itd-3]\n---\nbody\n")
 	writeFile(t, root, "rec/intents/drafts/itd-3-hand-filed.md",
-		"---\nid: itd-3\nkind: null\nspec_id: null\npromoted_from: rdi-19\norigin: researcher-authored\nproduction_mode: hand-written\n---\n# draft\n")
+		"---\nid: itd-3\nkind: null\nspec_id: null\nrelated_issues: [rdi-19]\norigin: researcher-authored\nproduction_mode: hand-written\n---\n# draft\n")
 
 	fs, err := Lint(provenanceConfig(), root)
 	if err != nil {
@@ -2653,5 +2653,27 @@ func TestRecordProvenanceHeldReportsShapesNoVerbWrites(t *testing.T) {
 		if !findingWith(fs, filepath.Join("rec/intents/drafts", name), ruleRecordProvenance, want) {
 			t.Errorf("%s: expected the shape named (%q): %+v", name, want, fs)
 		}
+	}
+}
+
+// TestRetiredPromoteStampIsNamedWithItsMigration — `promoted_to` is retired
+// (itd-4 AC3): the forward half of the promote join lives in `related_intents`.
+// A committed record still carrying it is refused by capture's reader, so the
+// gate refuses it too, and says what replaced it and which verb rewrites it,
+// rather than reporting an unexplained unknown property.
+func TestRetiredPromoteStampIsNamedWithItsMigration(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/.keep", "")
+	writeFile(t, root, "work/issues/open/iss-2-a-finding.md",
+		"---\nschema_version: 1\nid: \"iss-2\"\nslug: \"a-finding\"\nseverity: \"minor\"\n"+
+			"category: \"bug\"\nsource: \"impl-review\"\nfound_during: \"t\"\npromoted_to: itd-4\n---\n\nbody\n")
+
+	fs, err := Lint(schemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !findingWith(fs, filepath.Join("work", "issues", "open", "iss-2-a-finding.md"), ruleRecordSchema,
+		"'related_intents'; run `abcd capture migrate --apply`") {
+		t.Fatalf("a retired promoted_to must be a finding naming its successor and the migration: %+v", fs)
 	}
 }

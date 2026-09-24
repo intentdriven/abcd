@@ -28,6 +28,7 @@ binary.
 | `link` | — | shipped |
 | `list` | — | shipped |
 | `mentions` | — | shipped |
+| `migrate` | — | shipped |
 | `promote` | — | shipped |
 | `resolve` | — | shipped |
 | `wontfix` | — | shipped |
@@ -113,16 +114,30 @@ repository already has.
 
 **Promotion** graduates an issue, or an accepted reading item,
 into an intent draft. One invocation mints the draft under `intents/drafts/`
-with the slug reused and the body a by-id pointer rather than a copy, and
-stamps the issue's `promoted_to` with the minted id; the draft's
-`promoted_from` is the reciprocal edge. It works from any status folder,
+with the slug reused and the body a by-id pointer rather than a copy, naming
+the issue in the draft's `related_issues`, and appends the minted id to the
+issue's `related_intents`. The two halves are one join read from both ends
+(itd-4 AC3), and the pair is what "promoted" means: an issue may name an intent
+it is only related to, and it is promoted into the one that names it back. It
+works from any status folder,
 because promotion is orthogonal to fix-status. Grounds are recorded when
 given on the issue route and refused on the reading route, whose conjecture
 already stands in the item's disposition; its absence is reported rather than
 refused, parked by iss-2609091009111294 until the reading work is rethought.
-A value that IS given is held to the vocabulary and the floor as before. Naming an existing intent is the stamp-only mode that links an
-existing draft: the repair path after a post-mint stamp failure, which the
-error names.
+A value that IS given is held to the vocabulary and the floor as before. Naming an existing intent is the link mode: it writes both halves
+onto an existing draft, and is the repair path after a post-mint stamp failure,
+which the error names. A draft already naming another record keeps it first,
+and the linked record joins it in the list.
+
+**Migration** rewrites the promote join's retired back-links — `promoted_to` on
+a ledger record, `promoted_from` on an intent, the names an older abcd wrote —
+into `related_intents` and `related_issues`, and completes from the other end a
+join that was written from one end only. No reader tolerates the retired names:
+a record still carrying one is refused and skipped by the ledger reader, the
+committed-ledger gate names the migration as its remedy, and the drift check
+reports it. It reports by default and writes only when applied, because the
+records are the only copy. The intent audit's issue-drift form checks the join
+afterwards ([`05-intent.md`](05-intent.md)).
 
 **A disposition** records the researcher's answer to one reading
 item as a record of its own, keyed to the item (itd-180, spc-58). Grounds are
@@ -191,12 +206,11 @@ origin: researcher-authored|extracted-from-record|contributed-by-reading <rdg-N>
 production_mode: hand-written|dictated-and-formatted|scribe-transcribed
 details: "<text>"          # optional structured detail
 suggested_fix: "<text>"    # optional proposed remedy
-related_intents: [itd-N, ...]
+related_intents: [itd-N, ...]  # an intent naming this issue back in related_issues is the one it was promoted into
 related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]
 synthesis_clusters: [<label>, ...]  # optional synthesis grouping
 blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by linking; blocked/priority is derived, never stored
-promoted_to: itd-M         # set when the issue is promoted to an intent
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
 shipped_in: vX.Y.Z         # migration use: the release that already carried the work
@@ -282,8 +296,9 @@ for ad-hoc scribbles.
   **then** the file moves to `resolved/` with the resolution recorded.
 - **Given** an existing issue in any status folder, **when** the user runs
   a promotion with grounds, **then** one invocation files a new
-  draft intent with the slug reused and the body a by-id pointer, stamps the
-  issue's `promoted_to`, and leaves the issue in its folder; an issue already
+  draft intent with the slug reused and the body a by-id pointer and the issue
+  in its `related_issues`, appends the intent to the issue's `related_intents`,
+  and leaves the issue in its folder; an issue already
   promoted is refused with the existing intent id, and a post-mint stamp failure
   names the orphan draft and the repair flag.
 - **Given** a reading item with no disposition, **when** the user records one,
@@ -346,7 +361,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -401,6 +416,14 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--ref` | string |
+
+### `abcd capture migrate`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--apply` | bool |
 
 ### `abcd capture promote`
 

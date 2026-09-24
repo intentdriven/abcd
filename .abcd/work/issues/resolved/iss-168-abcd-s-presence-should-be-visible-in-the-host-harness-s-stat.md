@@ -7,9 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-105 grill session"
 found_at: "commands/abcd"
-related_intents: [itd-20]
+related_intents: [itd-20, itd-200]
 related_issues: [iss-164, iss-165]
-promoted_to: itd-200
 resolution: "Delivered by itd-200 (spc-70): the presence badge leads the host's status line in a managed repository, in three states read from the per-repo mode store; ahoy install offers and wires the line, the bare board carries the same state, and the palette ruling on this record is what ships."
 impact: additive
 resolved_by:

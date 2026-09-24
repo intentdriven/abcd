@@ -255,8 +255,29 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 					t.Fatalf("capture promote %s from the subdirectory: %v\n%s", ids[2], err, out)
 				}
 				body := recordBody(t, repo, "open", ids[2])
-				if !strings.Contains(body, "promoted_to") {
+				if !strings.Contains(body, "related_intents") {
 					t.Errorf("promote from the subdirectory left the checkout's record %s unstamped:\n%s", ids[2], body)
+				}
+			},
+		},
+		"migrate": {
+			args: func(_ []string, _ string) []string {
+				return []string{"capture", "migrate", "--json"}
+			},
+			check: func(t *testing.T, repo string, ids []string, _ string, out []byte, err error) {
+				if err != nil {
+					t.Fatalf("capture migrate from the subdirectory: %v\n%s", err, out)
+				}
+				var res struct {
+					Scanned int `json:"scanned"`
+				}
+				if jerr := json.Unmarshal(out, &res); jerr != nil {
+					t.Fatalf("capture migrate --json: not JSON: %v\n%s", jerr, out)
+				}
+				// The report reads the checkout's ledger: every record the fixture
+				// filed there is scanned, where a subdirectory ledger holds none.
+				if res.Scanned < len(ids) {
+					t.Errorf("migrate from the subdirectory scanned %d record(s); the checkout's ledger holds at least %d", res.Scanned, len(ids))
 				}
 			},
 		},

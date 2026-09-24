@@ -52,7 +52,7 @@ transition; any change to the bare board.
 
 **Description shape.** `Description{ID, Family, Title, Status, Path string,
 Links map[string]string, NextMoves []string}` — links carry `spec_id` /
-`intent` / `promoted_to` / `resolved_by.*` / `superseded_by` as present.
+`intent` / `promoted_to` (historical) / `resolved_by.*` / `superseded_by` as present.
 
 **The next-move mapping** is one Go table keyed on `(family, state)`:
 

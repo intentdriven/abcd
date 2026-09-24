@@ -80,7 +80,7 @@ const sentinelPrefix = "ABCD-EVAL-SENTINEL-"
 // graduated from, and it is NOT a sentinel class: it is an identifier that must
 // reach no bundle at any position, not a warm span with a home to count.
 //
-// A promoted draft carries the join in `origin` and `promoted_from` — two
+// A promoted draft carries the join in `origin` and `related_issues` — two
 // frontmatter keys the intent projection does not name — and names the item once
 // more under Why This Matters, which the projection does not name either. The
 // seed in its Press Release, which IS projected, says "a reading item" and no

@@ -9,8 +9,7 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues"
-promoted_to: itd-2609091034175565
-related_intents: [itd-2609091416295622, itd-2609091416304128]
+related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091034175565]
 deferred_after: "v0.9.0"
 deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M20: plan next cycle: the planning interview of itd-2609091034175565 answers its three open questions and relates it in prose to itd-2609221656373558 and itd-2609150819440345). Earlier deferral: The remedy is a mechanism, not a patch, and it is now filed as one. Promoted to itd-2609091034175565 during this cycle: a session needs a way to see that a record is claimed before it starts work, and the shape of that signal is design rather than a change a bug-fix batch can carry honestly. The finding is real and current, having cost duplicated work twice in this session alone, which is why it is deferred against a filed intent rather than left as an open note."
 ---

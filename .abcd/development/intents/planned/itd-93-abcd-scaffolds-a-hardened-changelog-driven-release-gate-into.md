@@ -8,6 +8,7 @@ reclassification_history: []
 builds_on: []
 related_adrs: [adr-37]
 severity: minor
+related_issues: [iss-327]
 ---
 
 # abcd Scaffolds a Release Gate That Works on the First Try

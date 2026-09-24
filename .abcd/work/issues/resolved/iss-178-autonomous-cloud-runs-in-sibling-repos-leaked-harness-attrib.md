@@ -7,9 +7,8 @@ category: "security"
 source: "user-observation"
 found_during: "manual-capture"
 found_at: "autonomous cloud routines / public GitHub artifacts"
-related_intents: [itd-107]
+related_intents: [itd-107, itd-152]
 related_issues: [iss-172]
-promoted_to: itd-152
 resolution: "the harness-leak class (live session URL, tool attribution footer) is defined once in the scanner's canonical pattern set and enforced on three wired surfaces: the store-before-commit redactors, abcd lint's privacy rule, and the harness_leak record/docs-lint rule, with the routine policy carried as scanner.OutboundPolicy. A fourth surface exists as a primitive only: ScrubOutbound sanitises an outbound artefact and is tested, but no command or plugin verb calls it, because spc-45 scopes a forge client out; the three wired surfaces judge already-committed or already-stored text, so posting-time protection is the re-read-and-strip policy that OutboundPolicy states (itd-152)"
 impact: additive
 resolved_by:

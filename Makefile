@@ -15,7 +15,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # that falls behind is the one nothing runs. Drives the format gate below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint docs-lint site-render smoke \
+.PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -164,6 +164,14 @@ check-attribution:
 record-lint:
 	@go run ./cmd/record-lint
 
+# Promote-join drift gate (itd-4 AC3). Blocking: an intent naming a record in
+# `related_issues` that does not name it back, a dangling id on either side, a
+# shipped intent whose issue never reached resolved/, or a retired
+# `promoted_to` / `promoted_from` key fails preflight and CI. `--strict` is what
+# turns the verb's warning into exit 1; the receipt lands in the local tier.
+issue-drift:
+	@go run ./cmd/abcd intent audit --issue-drift --strict
+
 # Deterministic issue-resolution gate (iss-2608241347321757). RS001: a
 # `Resolves: iss-N` trailer must be accompanied by that record entering a terminal
 # folder (resolved/ or wontfix/) in the same change, so resolution lands INSIDE
@@ -271,8 +279,9 @@ scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
 
 # Pre-push gate (invoked by .githooks/pre-push): the load check first (a
-# warning, never a failure: load-check), then the five lint gates
-# (lint-reviews, lint-issues, lint-decisions, record-lint, docs-lint), the
+# warning, never a failure: load-check), then the six lint gates
+# (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
+# docs-lint), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
 # and race-enabled internal tests natively. CI's check job runs those same four
@@ -294,7 +303,7 @@ scaffold-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
-preflight: load-check lint-reviews lint-issues lint-decisions record-lint docs-lint site-render smoke evals-cold-reading
+preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test ./...

@@ -7,7 +7,7 @@ category: "inconsistency"
 source: "user-observation"
 found_during: "abcdev-site-plan investigation 2026-08-21"
 found_at: ".abcd/development/decisions/adrs"
-promoted_to: itd-160
+related_intents: [itd-160]
 resolution: "the dangling-reference detector is armed and proven: both field kinds reach the gate, the eight-entry backlog is baselined, and the four ratchet behaviours are pinned by tests"
 impact: internal
 resolved_by:

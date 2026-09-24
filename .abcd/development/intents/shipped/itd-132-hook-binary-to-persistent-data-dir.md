@@ -8,7 +8,7 @@ reclassification_history: []
 builds_on: [itd-105]
 severity: major
 impact: fix
-promoted_from: iss-2608210934566221
+related_issues: [iss-2608210934566221]
 ---
 
 # The hook binary survives plugin updates

@@ -7,7 +7,7 @@ category: "drift"
 source: "agent-finding"
 found_during: "2026-07-13 B1 dogfood: prepare-this-repo audit of Manuscripts"
 found_at: "commands/abcd/prepare-this-repo.md"
-promoted_to: itd-162
+related_intents: [itd-162]
 resolution: "every adopt-phase asset resolves from the record or the embedded binary; the prepare-commit-msg template is scaffolded by ahoy install --attribution and an onboarding self-containment test refuses a machine-local path"
 impact: fix
 resolved_by:

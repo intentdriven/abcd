@@ -56,7 +56,7 @@ record in its store — any status folder or bucket — and renders it read-only
 ```
 
 Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
-(`spec_id`, `intent`, `promoted_to`, `resolved_by.*`, `superseded_by` as
+(`spec_id`, `intent`, `related_intents`, `related_issues`, `resolved_by.*`, `superseded_by` as
 present), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
