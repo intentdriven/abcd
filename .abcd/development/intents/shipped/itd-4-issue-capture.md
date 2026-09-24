@@ -92,5 +92,99 @@ Acceptance Criteria and carries the open AC3 (promote) gap. Historical index:
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-2662745d5344 -->
-Fidelity review OWED (receipt rcp-2662745d5344).
+<!-- abcd-review: INGESTED receipt=rcp-2662745d5344 -->
+Fidelity review — receipt rcp-2662745d5344 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:63bbd14cfb62139b464a3b8539b3fefb484da8342a9dfa91bc2373aa0f092da4
+Input attestations: diff:e86d4f95..07b41ab5 (PR #689, tree read at 07b41ab5)@sha256:32bb9ea2da11af3bf3bf14944bdd3d23bdd28da6be56765809fae7d0d437d984;
+
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 3 · NOT_MET 1 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: capture writes open/iss-N-< slug>.md with id, severity, category, source and found_during in frontmatter and the text as body; the round-trip test asserts every field and the filename; the plugin page invokes the same verb
+  evidence: internal/core/capture/workflow.go:132 — "{"severity", string(req.Severity)}, {"category", ...}, {"source", ...}, {"found_during", req.FoundDuring}"
+  evidence: internal/core/capture/workflow_test.go:89 — "func TestCaptureAppendAndReadBack"
+  evidence: internal/core/capture/workflow_test.go:165 — "filepath.Base(got.Path) != tc.want.ID+"-"+tc.want.Slug+".md""
+  evidence: commands/capture.md:4 — "argument-hint: "[text] | list --open|--resolved|--wontfix|--all | ..."
+- ac-2 — MET_WITH_CONCERNS: resolve moves open/ to resolved/ and persists the note, but as the frontmatter scalar `resolution:` rather than appended to the body as the criterion says; the divergence is signed off (DECISIONS.md 2026-07-17, adjudication 1) and the test asserts the scalar
+  evidence: internal/core/capture/workflow.go:289 — "transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolve", "resolution", req.Resolution,"
+  evidence: internal/core/capture/workflow_test.go:291 — "tr.FromStatus != StateOpen || tr.ToStatus != StateResolved"
+  evidence: internal/core/capture/workflow_test.go:299 — "lr.Issues[0].Resolution !="
+  evidence: .abcd/work/DECISIONS.md:579 — "AC2's resolve note lives as the structured frontmatter scalar `resolution:` ... not body-appended prose as the AC letter says"
+- ac-3 — MET_WITH_CONCERNS: promote mints the draft with related_issues: [iss-N] and appends itd-M to the issue's related_intents, the drift walker checks the join and is enforced in preflight and CI; concerns: the seed is a by-id pointer, not the entry's content (spc-24 design), the mint goes through intent.CreateDraft rather than a `/abcd:intent new` invocation (that alias is deprecated), and the check is named `abcd intent audit --issue-drift`, not intent-fidelity-reviewer
+  evidence: internal/core/capture/promote.go:222 — "RelatedIssue: req.ID,"
+  evidence: internal/core/intent/create.go:427 — "b.WriteString(RelatedIssuesKey + ": [" + opts.RelatedIssue + "]\n")"
+  evidence: internal/core/capture/promote.go:266 — "setListField(content, "related_intents", appendUnique(related, itdID))"
+  evidence: internal/core/intent/lifecycle.go:543 — "func AddRelatedIssue(repoRoot, intentID, source string) (Intent, error)"
+  evidence: internal/core/capture/promote_test.go:114 — "draft frontmatter missing related_issues: [%s]"
+  evidence: internal/core/capture/drift.go:75 — "func IssueDrift(req IssueDriftRequest) (IssueDriftResult, error)"
+  evidence: internal/core/capture/drift_test.go:49 — "func TestIssueDriftReportsEveryBrokenJoinAndNothingElse"
+  evidence: internal/surface/cli/cli.go:3609 — "promote < iss-N> [--grounds "< token>: < text>"] | promote < rdi-N>"
+  evidence: internal/surface/cli/cli.go:2306 — "Use: "audit [< itd-N>] | audit --issue-drift [--strict]""
+  evidence: Makefile:172 — "issue-drift:"
+  evidence: .github/workflows/ci.yml:346 — "- name: Issue-drift (promote-join gate)"
+  evidence: commands/capture.md:406 — "and appends the minted `itd-N` to the issue's `related_intents`"
+  evidence: commands/intent.md:534 — "intent audit --issue-drift # warnings on stderr, exit 0"
+  evidence: internal/core/capture/promote.go:216 — "seed := "Graduated from `" + req.ID + "`: " + title +"
+  evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent-without-retyping-abcd-capt.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
+  evidence: internal/surface/cli/cli.go:1996 — "WARNING: `abcd intent new` is deprecated; use `abcd intent "<text>"`"
+- ac-4 — NOT_MET: promised: the plugin's sync step promotes every entry of the local-tier issues file into open/ with provenance 'migrated from' that file; delivered: no verb or sync step reads that file (its only mention is a package comment), no ledger record carries that provenance (grep over .abcd/work/issues/ finds none), and the source file is absent; the ruling of 2026-07-17 declares it satisfied-by-history, which records the omission rather than realising the outcome
+  evidence: internal/core/capture/capture.go:2 — "a per-repo issue ledger that replaces the free-form"
+  evidence: .abcd/work/DECISIONS.md:586 — "AC4 migration recorded satisfied-by-history (source absent, ledger populated iss-1..iss-103); no dead migration code built"
+  evidence: .abcd/work/issues/resolved/iss-1-launch-phase-ownership.md:9 — "found_during: "roadmap-consistency-review""
+  evidence: .abcd/development/specs/closed/spc-6-issue-capture.md:106 — "satisfied-by-history ... Record-only; no code."
+- ac-5 — MET_WITH_CONCERNS: the pin test captures five issues and asserts `capture list --open --json` returns all five with id, slug, severity and the one-line body; concern: the human render prints id, status, severity and slug with no summary, so the criterion holds on the JSON surface only (captured as iss-2609240307549105)
+  evidence: internal/surface/cli/capture_surface_test.go:182 — "func TestCaptureListOpenRendersIssueFields"
+  evidence: internal/surface/cli/capture_surface_test.go:220 — "if iss.ID == "" || iss.Slug == "" || iss.Severity == "" || iss.Body == """
+  evidence: internal/surface/cli/cli.go:3447 — "fmt.Fprintf(w, "%s %s %s %s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss))"
+  evidence: .abcd/work/issues/open/iss-2609240307549105-itd-4-ac5-says-capture-list-open-lists-every-open-issue-with.md:1 — "id: "iss-2609240307549105""
+
+Gap audit:
+- honoured:
+  - `/abcd:capture <text>` writes a structured iss-N entry into the committed ledger with stable ids and folder-as-status
+    evidence: internal/core/capture/workflow.go:132 — "{"severity", string(req.Severity)}"
+    evidence: internal/core/capture/capture.go:9 — "status directories (open/, resolved/, wontfix/) whose folder membership IS"
+  - resolve and wontfix move the record between status folders
+    evidence: internal/core/capture/workflow_test.go:278 — "func TestResolveTransition"
+    evidence: internal/core/capture/workflow_test.go:364 — "func TestWontfixTransition"
+  - promote writes both halves of the issue-intent join, in mint mode and in link mode
+    evidence: internal/core/capture/promote.go:266 — "setListField(content, "related_intents", appendUnique(related, itdID))"
+    evidence: internal/core/capture/promote_related_test.go:17 — "func TestPromoteLinkModeWritesBothHalvesOnAnIssue"
+  - the drift check reports a shipped intent whose promoted issue did not move to resolved/ (the intent-fidelity-reviewer extension the scope names)
+    evidence: internal/core/capture/drift.go:121 — "if bucket == intent.BucketShipped && strings.HasPrefix(src, "iss-")"
+    evidence: internal/core/capture/drift_test.go:62 — "DriftShippedUnresolved + " itd-5 iss-5""
+  - drift detection is enforced: a make preflight prerequisite and a CI check step, both --strict, and the decision log corrects its own earlier 'not wired' statement
+    evidence: Makefile:306 — "preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-drift"
+    evidence: .github/workflows/ci.yml:348 — "run: go run ./cmd/abcd intent audit --issue-drift --strict"
+    evidence: .abcd/work/DECISIONS.md:2523 — "Decision (5) says the drift check is not wired into preflight or CI. That contradicts the criterion it delivers"
+  - every retired back-link in the tree was migrated to the two-sided join and the gate reports nothing at HEAD
+    evidence: internal/core/capture/migrate_test.go:106 — "func TestMigrateRewritesEveryRetiredBackLinkIntoTheTwoSidedJoin"
+    evidence: .abcd/work/issues/open/iss-327-managed-repo-pii-config-wrong-and-abcd-lint-missing-privacy-hygiene-error.md:10 — "related_intents: [itd-93]"
+    evidence: internal/surface/cli/issue_drift_surface_test.go:67 — "func TestIntentAuditIssueDriftStrictCleanExitsZero"
+  - both verbs are reachable from the plugin markdown surface
+    evidence: commands/capture.md:399 — "capture promote < iss-N> --grounds "pursued: < conjecture>" --json"
+    evidence: commands/intent.md:535 — "intent audit --issue-drift --strict # exit 1 on any finding (CI)"
+- diverged:
+  - resolve note appended to the body — delivered as the frontmatter scalar `resolution:` (signed off 2026-07-17)
+    evidence: internal/core/capture/workflow.go:289 — ""resolve", "resolution", req.Resolution"
+    evidence: .abcd/work/DECISIONS.md:579 — "recorded as intentional design evolution, not a gap"
+  - promote seeds the draft with the entry's content — delivered as a by-id pointer to the issue, never a copy (spc-24 SSOT design)
+    evidence: internal/core/capture/promote.go:216 — "seed := "Graduated from `" + req.ID + "`: " + title +"
+    evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent-without-retyping-abcd-capt.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
+  - `/abcd:intent new` is invoked — delivered as a direct call of intent.CreateDraft, the primitive the quoted-text create shares; the `intent new` alias is deprecated
+    evidence: internal/core/intent/create.go:303 — "created.RelatedIssues = []string{opts.RelatedIssue}"
+    evidence: internal/surface/cli/cli.go:1996 — "`abcd intent new` is deprecated"
+  - drift detection by `intent-fidelity-reviewer --issue-drift` (spc-23 of the retired record system) — delivered as `abcd intent audit --issue-drift [--strict]`
+    evidence: internal/surface/cli/cli.go:2375 — "auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,"
+  - frontmatter field `related_epics` (list of spc-N) — delivered as `related_specs` (the glossary bans 'epic')
+    evidence: internal/core/issueschema/issueschema.go:69 — ""related_specs": true, "related_issues": true,"
+    evidence: internal/core/capture/workflow_test.go:122 — "RelatedSpecs: []string{"spc-12"}"
+  - `capture list --open` output carries a one-line summary — delivered on the --json surface only; the human render omits it (captured as iss-2609240307549105)
+    evidence: internal/surface/cli/cli.go:3447 — "iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss)"
+    evidence: internal/surface/cli/capture_surface_test.go:199 — "runCLI(t, "capture", "list", "--open", "--json")"
+- missing:
+  - the plugin's sync-step migration of the local-tier issues file into the ledger with 'migrated from' provenance (ruled satisfied-by-history 2026-07-17; nothing in the tree performs or evidences it)
+    evidence: .abcd/work/DECISIONS.md:586 — "no dead migration code built"
+    evidence: internal/core/capture/capture.go:2 — "a per-repo issue ledger that replaces the free-form"
+  - brief § 5 reserved-meta-command table covering /abcd:dredge and /abcd:reflect — the brief reserves /abcd:audit alone
+    evidence: .abcd/development/brief/04-surfaces/16-lint.md:16 — "`/abcd:audit` stays reserved for itd-16's hash-chain fidelity surface."
