@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 // iss-2608291832160371 (the GHSA-9wv7 residual): a payload file in a
@@ -276,11 +275,7 @@ func TestDecompressionBombIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	res := scanOne(t, sc, "bomb.gz", abs)
-	if el := time.Since(start); el > 30*time.Second {
-		t.Fatalf("the bomb took %s — the decoder is not bounded", el)
-	}
 	if contains(res.ContentDecoded, "bomb.gz") {
 		t.Errorf("a bomb must never be reported decoded: %+v", res)
 	}
@@ -289,6 +284,21 @@ func TestDecompressionBombIsRefused(t *testing.T) {
 	}
 	if why := res.ContentUnverifiedWhy["bomb.gz"]; !strings.Contains(why, "budget") {
 		t.Errorf("the reason must say the decode budget was exceeded, got %q", why)
+	}
+
+	// Bounded output is measured as output, not as time: the same decode on a
+	// budget the test holds must pull at most one byte past the budget out of
+	// the decompressor. A read that inflated the whole member and refused it
+	// afterwards would say "budget" just the same, so the reason alone cannot
+	// tell the bound from its absence; a wall-clock ceiling could, but it read
+	// the machine's load as well (iss-2609232048579579).
+	b := &decodeBudget{bytesLeft: maxDecodedBytes, entriesLeft: maxDecodeEntries}
+	var out []Finding
+	if ok, why := sc.decodeInto(bomb, secretPatterns(sc.patterns), "bomb.gz", b, 1, &out); ok || !strings.Contains(why, "budget") {
+		t.Fatalf("the decode of a bomb returned (%t, %q), want the budget's refusal", ok, why)
+	}
+	if b.drained > maxDecodedBytes+1 {
+		t.Fatalf("a bomb of 64 MiB drained %d bytes from its decompressor, want at most %d", b.drained, maxDecodedBytes+1)
 	}
 }
 
@@ -1404,10 +1414,22 @@ func TestManySignaturesInAStructuralFieldStayCheap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
+	// The cost is counted as bytes the field rule's search is handed, not
+	// timed (iss-2609232048579579). One pass per signature KIND over each field
+	// hands it at most len(containerSignatures) times the file; one pass per
+	// signature FOUND hands it the tail once per hit, 400 times over.
+	searched := 0
+	signatureSearch = func(s, sep []byte) int {
+		searched += len(s)
+		return bytes.Index(s, sep)
+	}
+	t.Cleanup(func() { signatureSearch = bytes.Index })
 	res := scanOne(t, sc, "packed.png", abs)
-	if el := time.Since(start); el > 10*time.Second {
-		t.Fatalf("a signature-packed field took %s — the field rule is per-hit, not per-field: %+v", el, res)
+	if bound := len(containerSignatures) * len(raw); searched > bound {
+		t.Fatalf("a signature-packed field of %d bytes had its search handed %d bytes, want at most %d — the field rule is per-hit, not per-field: %+v", len(raw), searched, bound, res)
+	}
+	if searched == 0 {
+		t.Fatal("the field rule's search was never handed the field; the count proves nothing")
 	}
 }
 

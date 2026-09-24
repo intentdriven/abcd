@@ -193,14 +193,16 @@ func knownFormats() []string {
 // It is threaded through every level of the walk, so nesting cannot reset it —
 // a bomb hidden three archives deep draws from the same 4 MiB.
 //
-// reads is not an allowance but a tally: every decode operation, whichever
-// walk asks for it, drains its stream through read, so the count is the work
-// the bounds were meant to cap. A test judges a bound by it rather than by a
-// clock, which reports the machine's load as readily as the scan's cost.
+// reads and drained are not allowances but tallies: every decode operation,
+// whichever walk asks for it, drains its stream through read, so the number
+// of reads and the bytes they pulled out of the decompressors are the work the
+// bounds exist to cap. A test judges a bound by them rather than by a clock,
+// which reports the machine's load as readily as the scan's cost.
 type decodeBudget struct {
 	bytesLeft   int
 	entriesLeft int
 	reads       int
+	drained     int
 }
 
 // read drains r into memory, never allocating past the remaining budget: it
@@ -210,6 +212,7 @@ type decodeBudget struct {
 func (b *decodeBudget) read(r io.Reader) ([]byte, error) {
 	b.reads++
 	data, err := io.ReadAll(io.LimitReader(r, int64(b.bytesLeft)+1))
+	b.drained += len(data)
 	if err != nil {
 		return nil, err
 	}
@@ -531,13 +534,18 @@ var containerSignatures = []containerSignature{
 func signatureIn(region []byte) (string, bool) {
 	at, name := -1, ""
 	for _, sig := range containerSignatures {
-		i := bytes.Index(region, sig.bytes)
+		i := signatureSearch(region, sig.bytes)
 		if i >= 0 && (at < 0 || i < at) {
 			at, name = i, sig.format
 		}
 	}
 	return name, at >= 0
 }
+
+// signatureSearch is the field rule's one search primitive. It is a variable
+// so that a test can count the bytes the rule searches, which is how the
+// rule's one-pass cost is held without a clock; nothing else assigns it.
+var signatureSearch = bytes.Index
 
 // hidesAContainer is signatureIn's predicate half, which is what the detectors
 // holding the signature list to the format sniff assert on.
