@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"regexp"
-	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -356,22 +355,6 @@ func TestJunctionBacktrackIsBounded(t *testing.T) {
 	}
 }
 
-// raceDetector reports whether this test binary was built with -race. It is read
-// from the build settings rather than a build tag so the whole guard stays in
-// one file.
-var raceDetector = func() bool {
-	bi, ok := debug.ReadBuildInfo()
-	if !ok {
-		return false
-	}
-	for _, s := range bi.Settings {
-		if s.Key == "-race" {
-			return s.Value == "true"
-		}
-	}
-	return false
-}()
-
 // TestAdjacencyProbeWindowEdgeIsNotAWordBoundary is the repro for iss-189: the
 // probe's own trailing `\b` used to be satisfied by the ARTIFICIAL end of the
 // fixed window rather than by real content. The line below places ".local"
@@ -659,7 +642,7 @@ const probeBytesPerLineByteBar = 1000
 // to watch. The uninstrumented lane asserts them on every run.
 func assertCostGrowth(t *testing.T, build func(int) string, base int, bar float64, why string) {
 	t.Helper()
-	if raceDetector {
+	if raceEnabled {
 		t.Skip("a deterministic count gains nothing under -race; the uninstrumented run asserts it")
 	}
 	small, large := build(base), build(4*base)
