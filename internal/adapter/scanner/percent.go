@@ -1,7 +1,5 @@
 package scanner
 
-import "regexp"
-
 // maxPercentDecodePasses bounds the percent-decode pre-pass. One pass reverses a
 // single layer of URL encoding (%3D -> '='); a second reaches a double-encoded
 // delimiter (%253D -> %3D -> '='); the third is slack. The bound is deliberate:
@@ -40,7 +38,7 @@ const maxPercentDecodePasses = 3
 // copy and mapping each hit back to its raw span is what stops such an identity
 // leak surviving into a committed memory/intent/capture artifact
 // (iss-2608270720336165).
-func decodedLineFindings(patterns []Pattern, probes []*regexp.Regexp, junctions *regexp.Regexp, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
+func decodedLineFindings(patterns []Pattern, probes []matcher, junctions matcher, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
 	decoded, posMap := percentDecodeBounded(rawLine)
 	if posMap == nil {
 		return nil // nothing was percent-encoded; the raw scan already covers it

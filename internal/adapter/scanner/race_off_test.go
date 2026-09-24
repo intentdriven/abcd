@@ -3,7 +3,8 @@
 package scanner
 
 // raceEnabled reports whether the race detector is instrumenting this build.
-// A duration assertion has to know: the detector multiplies wall clock by an
-// order of magnitude, so a bound that holds is indistinguishable from one that
-// does not unless the ceiling moves with it (iss-2609091215552981).
+// The cost guards read it to skip under -race (see assertCostGrowth): their
+// counts are deterministic, so the instrumented run would assert the same
+// numbers at many times the cost. A build tag answers at compile time, which is
+// why it is the package's one race-detection mechanism.
 const raceEnabled = false
