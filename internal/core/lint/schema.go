@@ -943,12 +943,12 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 //
 // The second is PRESENCE: a target that is not in the corpus joins nothing.
 //
-// The fourth is the POSITION, where the join declares one: what reads such a join
+// The third is the POSITION, where the join declares one: what reads such a join
 // consults it only for a target at that position, so a target at any other is
 // never queried and the record counts for nothing — the third coordinate of the
 // pair the run and spelling axes already close (iss-2608301649339636).
 //
-// The third is the BUCKET. A target that is in the corpus but in ANOTHER BUCKET
+// The fourth is the BUCKET. A target that is in the corpus but in ANOTHER BUCKET
 // joins something nobody will ever look for: what reads that family keys what it
 // finds on the PAIR — the bucket the record is filed under, and the target it
 // names — so a record reaching across buckets is keyed on a pair no reader

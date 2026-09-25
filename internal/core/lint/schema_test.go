@@ -2295,9 +2295,18 @@ func TestDuplicateKeyClaimIsScopedToThisRulesOwnScanner(t *testing.T) {
 		if !findingWith(fs, rel, ruleRecordSchema, "silence a blocker armed on the value the first hides") {
 			t.Errorf("the finding on %s keeps the account this rule can make: %+v", rel, fs)
 		}
-		for _, claim := range []string{"every record surface", "every disposition surface", "skipped", "refuses"} {
-			if findingWith(fs, rel, ruleRecordSchema, claim) {
-				t.Errorf("no reader of %s performs that, so the finding must not claim %q: %+v", rel, claim, fs)
+		// Scoped to the duplicate-key finding itself: another record_schema
+		// finding on these paths may say "refuses" truthfully about something
+		// else, and would trip this loop for a reason it does not name
+		// (iss-2608301901260461).
+		for _, f := range fs {
+			if f.File != rel || f.RuleID != ruleRecordSchema || !strings.Contains(f.Message, "duplicate top-level key") {
+				continue
+			}
+			for _, claim := range []string{"every record surface", "every disposition surface", "skipped", "refuses"} {
+				if strings.Contains(f.Message, claim) {
+					t.Errorf("no reader of %s performs that, so the duplicate-key finding must not claim %q: %+v", rel, claim, f)
+				}
 			}
 		}
 	}
