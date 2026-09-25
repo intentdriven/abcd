@@ -350,6 +350,20 @@ drift to iss-2609091956001547. The seam held in 34 of the 35 brief documents
 it covers; the drift its press release claims to end persists in the chapters
 it does not reach.
 
+### ac-6 met by the ingest chapter fix (2026-09-25)
+
+**ac-6 is met, against the v0.10.0 classification, by commit 7dafb541**, which resolves iss-2609240519422232. The
+one finding of the 17 that sat inside the seam (x-049) was the ingest chapter's
+prose above its appendix marker enumerating ingest sub-verbs without
+`history ingest`. The fix does not add the missing verb, because this intent's
+rule is that the prose there states no sub-verb: the paragraph names none
+and defers the list to the generated CLI reference. With it, none of the 17
+false-claim or stale-count findings the v0.10.0 classification found sits in a
+chapter's prose above an appendix marker. The other 16 stay outside the seam
+and deferred to iss-2609091956001547. The next full-tier crosscheck is what
+would show this wrong: a false-claim or stale-count about a flag or sub-verb
+the appendix covers, found above a marker.
+
 ## Grounds
 
 - pursued: a shape claim nobody writes by hand cannot drift; a false-claim or stale-count finding about a generated block in the next crosscheck run shows it was wrong
