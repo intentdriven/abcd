@@ -128,8 +128,11 @@ func TestScanTextReportsKeysAndOffsetsOnly(t *testing.T) {
 	if len(hits) != 1 || hits[0].Key != "sources/k1/title" || hits[0].Line != 2 {
 		t.Fatalf("hits = %+v", hits)
 	}
-	if hits[0].Offset < 9 || hits[0].Offset > 13 {
-		t.Errorf("offset %d is not on line 2's match", hits[0].Offset)
+	// The offset is counted from the start of the whole text, and the span starts
+	// at the boundary byte the leading neighbour test consumed: "line one\n" is 9
+	// bytes and "see" 3 more, so the space before the phrase is byte 12.
+	if hits[0].Offset != 12 {
+		t.Errorf("offset %d, want 12 (the text offset of the span, boundary byte included)", hits[0].Offset)
 	}
 }
 

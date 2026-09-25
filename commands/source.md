@@ -99,7 +99,9 @@ anywhere git does not gate:
 
 Exit 1 means a finding: each names the source's key, the field (`title`,
 `alias-N`, `author-N`), the line and the byte offset — never the matched text, so
-the report is safe to relay. Reword generically and scan again. A clean scan
+the report is safe to relay. The offset counts from the start of the whole text,
+not from the start of the line, and it can point at the one byte before the
+phrase that bounds it. Reword generically and scan again. A clean scan
 covers literal strings only, never an identifying paraphrase.
 
 ## Declassify a published source

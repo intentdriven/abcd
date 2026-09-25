@@ -496,7 +496,9 @@ func newSourceCiteCheckCommand(asJSON *bool, corpusFlag *string) *cobra.Command 
 		Long: "Scan a file, or stdin with -, for every confidential source's title, aliases and\n" +
 			"opted-in authors, through the private banlist's matcher — the engine the pre-commit\n" +
 			"guard runs. Offenders are reported by key, field, line and byte offset, never by the\n" +
-			"text matched, so the report is safe to relay. Exit 1 when anything is found.",
+			"text matched, so the report is safe to relay. The offset counts bytes from the start\n" +
+			"of the whole text, not from the start of the line, to the start of the matched span,\n" +
+			"which can be the one byte before the phrase that bounds it. Exit 1 when anything is found.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir, err := sourceCorpusDir(*corpusFlag)
@@ -526,7 +528,7 @@ func newSourceCiteCheckCommand(asJSON *bool, corpusFlag *string) *cobra.Command 
 				}
 				fmt.Fprintf(w, "abcd source cite-check — %d finding%s (the matched text is withheld)\n", len(rep.Findings), pluralS(len(rep.Findings)))
 				for _, f := range rep.Findings {
-					fmt.Fprintf(w, "  %s  %s  line %d, byte %d\n", f.Source, f.Field, f.Line, f.Offset)
+					fmt.Fprintf(w, "  %s  %s  line %d, at byte %d of the text\n", f.Source, f.Field, f.Line, f.Offset)
 				}
 			}); rerr != nil {
 				return rerr

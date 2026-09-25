@@ -91,8 +91,12 @@ func SyncBanlist(corpus, repoRoot string, opts SyncOptions) (SyncResult, error) 
 type Finding struct {
 	Source string `json:"source"`
 	Field  string `json:"field"`
-	Line   int    `json:"line"`
-	Offset int    `json:"offset"`
+	// Line is the 1-based line the match is on.
+	Line int `json:"line"`
+	// Offset is banlist.Hit's: the 0-based byte offset from the start of the WHOLE
+	// scanned text (never a column in Line) to the start of the matched span, which
+	// can be the one boundary byte before the phrase.
+	Offset int `json:"offset"`
 }
 
 // CiteReport is a cite-check's outcome.

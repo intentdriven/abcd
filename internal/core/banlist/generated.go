@@ -33,10 +33,13 @@ type KeyedPattern struct {
 	Pattern string
 }
 
-// Hit is one match found by ScanText: the key, the 1-based line, and the byte
-// offset of the matched span in the scanned text. The span may begin one byte
-// before the phrase itself, where the leading boundary consumed a non-alphanumeric
-// neighbour. There is deliberately no field for the matched text: the type is the
+// Hit is one match found by ScanText: the key, the 1-based line, and the 0-based
+// byte offset of the start of the matched span, counted from the start of the WHOLE
+// scanned text — grep -b's file offset, never a column in Line. The span may begin
+// one byte before the phrase itself, where the leading boundary consumed a
+// non-alphanumeric neighbour; which byte it is cannot be told apart from a phrase
+// that itself begins with punctuation without a second matcher, and there is one
+// matcher. There is deliberately no field for the matched text: the type is the
 // redaction, so a scan's report is safe to relay.
 type Hit struct {
 	Key    string `json:"key"`
@@ -172,7 +175,7 @@ func foldOrbit(r rune) string {
 }
 
 // ScanText reports every place the given patterns match text, by key, line and
-// byte offset, through the guard's own engine: `grep -inobaE` under LC_ALL=C, each
+// text offset (see Hit), through the guard's own engine: `grep -inobaE` under LC_ALL=C, each
 // pattern on STDIN (never argv), against the text in a 0600 temporary file removed
 // afterwards. It is the read-only twin of the pre-commit guard, so a text this scan
 // calls clean is a text the guard would pass, line for line.

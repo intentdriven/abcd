@@ -132,8 +132,10 @@ ban ordinary words.
 The scan reads a file or stdin through the same projection and the same engine
 as the guard, so a text it calls clean is a text the guard would pass. It
 reports each finding by key, field (`title`, `alias-N`, `author-N`), line and
-byte offset, and never by the text matched, so its report is safe to relay. It
-exits 1 when anything is found.
+byte offset, and never by the text matched, so its report is safe to relay. The
+offset is the guard engine's own: it counts from the start of the whole text,
+not from the start of the line, to the start of the matched span, which can be
+the one byte before the phrase that bounds it. It exits 1 when anything is found.
 
 ## Absence is loud
 

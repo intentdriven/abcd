@@ -250,3 +250,26 @@ func TestSourceRefreshNamesTheMigrationForALegacyStore(t *testing.T) {
 		t.Fatalf("a legacy store was written:\n%s", body)
 	}
 }
+
+// TestSourceCiteCheckStatesTheOffsetAsATextOffset (iss-2609252007434356): the
+// offset is grep -b's, counted from the start of the scanned text and taken at the
+// start of the matched span, which can be the boundary byte before the phrase. A
+// finding on line 2 must not read as a column in line 2: the human line says what
+// the number counts from, and the JSON carries the same number.
+func TestSourceCiteCheckStatesTheOffsetAsATextOffset(t *testing.T) {
+	sourceCheckout(t)
+	confidentialCorpus(t)
+	text := "line one\nsee Quiet Harbour Working Notes\n"
+	var stdin bytes.Buffer
+	stdin.WriteString(text)
+	code, out, errs := runSourceStdin(t, &stdin, "cite-check", "-")
+	if code != 1 || !strings.Contains(out, "line 2, at byte 12 of the text") {
+		t.Fatalf("cite-check: exit %d\n%s%s", code, out, errs)
+	}
+	stdin.Reset()
+	stdin.WriteString(text)
+	code, out, errs = runSourceStdin(t, &stdin, "cite-check", "-", "--json")
+	if code != 1 || !strings.Contains(out, `"offset": 12`) {
+		t.Fatalf("cite-check --json: exit %d\n%s%s", code, out, errs)
+	}
+}

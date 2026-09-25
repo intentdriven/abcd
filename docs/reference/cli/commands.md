@@ -1606,7 +1606,9 @@ Scan text for confidential sources; report offenders by key only (exit 1 on a hi
 Scan a file, or stdin with -, for every confidential source's title, aliases and
 opted-in authors, through the private banlist's matcher — the engine the pre-commit
 guard runs. Offenders are reported by key, field, line and byte offset, never by the
-text matched, so the report is safe to relay. Exit 1 when anything is found.
+text matched, so the report is safe to relay. The offset counts bytes from the start
+of the whole text, not from the start of the line, to the start of the matched span,
+which can be the one byte before the phrase that bounds it. Exit 1 when anything is found.
 
 #### `abcd source declassify`
 
