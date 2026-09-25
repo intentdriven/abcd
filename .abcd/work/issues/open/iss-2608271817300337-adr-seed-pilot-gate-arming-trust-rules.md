@@ -7,8 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-84 decomposition of the pilot-note proposal (2026-08-27)"
 found_at: ".abcd/development/research/notes/2026-08-27-security-advisory-handling-pilot.md"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: file the ADR for the pilot's trust rules (auto-merge arming, human release gates, no verdict transfer) before itd-149 planning). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): File the ADR for the pilot's trust rules (auto-merge arming, human release gates, no verdict transfer) before itd-149 is planned?"
 ---
 
 ADR seed from the security-advisory pilot's verified trust rules (itd-149 decomposition, part 2): auto-merge arms only after a comprehensive no-bypass required-check set AND an independent adversarial APPROVE, never on CI-green alone (F-N); the two release gates that are human-by-design stay human (F-Q); a verdict is never transferred — every required pass re-runs against the final content commit (F-U). These are trust-boundary rules, not intent scope: file the ADR with its brief invariant, then link itd-149 to it at planning.

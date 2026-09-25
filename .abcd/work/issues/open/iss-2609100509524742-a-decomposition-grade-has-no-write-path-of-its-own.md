@@ -9,8 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "conventions (decomposition grading, calibration note)"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: a verb and a per-row store for decomposition grades). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Plan a verb and a per-row store for decomposition grades, with iss-2609100508566700?"
 ---
 
 A decomposition grade has no write path of its own, and the note it belongs in is a single shared file, so in a parallel run the grade cannot land at all.

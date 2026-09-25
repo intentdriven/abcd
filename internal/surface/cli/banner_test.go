@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
+	"golang.org/x/text/width"
+
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/term"
 )
@@ -71,8 +75,10 @@ func TestBareInvocationMachineStreamClean(t *testing.T) {
 	if strings.Contains(s, "\x1b") {
 		t.Fatalf("machine stream carries an escape byte: %q", s)
 	}
-	if strings.Contains(s, bakedTagline) {
-		t.Fatalf("banner leaked onto a non-TTY stream")
+	for _, l := range bannerTaglineLines() {
+		if strings.Contains(s, l) {
+			t.Fatalf("banner leaked onto a non-TTY stream")
+		}
 	}
 	if !strings.HasPrefix(s, "abcd — ") {
 		t.Fatalf("status board changed shape: %q", bannerFirstLine(s))
@@ -112,13 +118,14 @@ func TestBannerRendersAboveBoard(t *testing.T) {
 	defer func() { bannerTTY = prev }()
 	withBanner := bare()
 
-	if !strings.Contains(withBanner, bakedTagline) {
+	tagline := strings.Join(bannerTaglineLines(), "\n")
+	if !strings.Contains(withBanner, tagline) {
 		t.Fatalf("banner missing from TTY output")
 	}
 	if !strings.HasSuffix(withBanner, withoutBanner) {
 		t.Fatalf("board bytes changed under the banner:\nwith:    %q\nwithout: %q", withBanner, withoutBanner)
 	}
-	if !strings.Contains(strings.TrimSuffix(withBanner, withoutBanner), bakedTagline) {
+	if !strings.Contains(strings.TrimSuffix(withBanner, withoutBanner), tagline) {
 		t.Fatalf("banner does not precede the board")
 	}
 }
@@ -137,27 +144,29 @@ func TestBannerJSONNeverDecorated(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("--json invocation: %v", err)
 	}
-	if s := out.String(); strings.Contains(s, "\x1b") || strings.Contains(s, bakedTagline) {
+	if s := out.String(); strings.Contains(s, "\x1b") || strings.Contains(s, bannerTaglineLines()[0]) {
 		t.Fatalf("--json output decorated: %q", bannerFirstLine(s))
 	}
 }
 
 // TestBannerLinesRungs pins the composition per rung.
 func TestBannerLinesRungs(t *testing.T) {
+	tagline := bannerTaglineLines()
+	nt := len(tagline)
 	colour := bannerLines(term.TrueColor, true)
-	if len(colour) != 5 {
-		t.Fatalf("colour banner: %d lines, want 5 (3 strip + tagline + hints)", len(colour))
+	if len(colour) != 4+nt {
+		t.Fatalf("colour banner: %d lines, want %d (3 strip + %d tagline + hints)", len(colour), 4+nt, nt)
 	}
 	if !strings.Contains(colour[0], "▀") || !strings.Contains(colour[0], "abcd") {
 		t.Errorf("colour banner top line lacks strip or name: %q", colour[0])
 	}
-	if colour[3] != bakedTagline {
-		t.Errorf("tagline line is %q", colour[3])
+	if got := strings.Join(colour[3:3+nt], " "); got != bakedTagline {
+		t.Errorf("tagline lines rejoin as %q", got)
 	}
 
 	mono := bannerLines(term.Mono, true)
-	if len(mono) != 8 {
-		t.Fatalf("mono banner: %d lines, want 8 (5 shade rows + 3 text)", len(mono))
+	if len(mono) != 7+nt {
+		t.Fatalf("mono banner: %d lines, want %d (5 shade rows + name + %d tagline + hints)", len(mono), 7+nt, nt)
 	}
 	for i, l := range mono {
 		if strings.Contains(l, "\x1b") {
@@ -166,8 +175,8 @@ func TestBannerLinesRungs(t *testing.T) {
 	}
 
 	text := bannerLines(term.TrueColor, false)
-	if len(text) != 3 {
-		t.Fatalf("non-UTF-8 banner: %d lines, want 3", len(text))
+	if len(text) != 2+nt {
+		t.Fatalf("non-UTF-8 banner: %d lines, want %d", len(text), 2+nt)
 	}
 	for i, l := range text {
 		if strings.Contains(l, "\x1b") || strings.Contains(l, "▀") || strings.Contains(l, "░") {
@@ -190,5 +199,111 @@ func TestWriteBannerHonoursNoColor(t *testing.T) {
 	writeBanner(&coloured, false, colourEnv)
 	if !strings.Contains(coloured.String(), "\x1b[38;2;") {
 		t.Fatalf("truecolor env did not produce a truecolor banner")
+	}
+}
+
+// sgrEscape matches the SGR sequences the banner path emits; they occupy no
+// terminal column.
+var sgrEscape = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// terminalColumns is the test's own display-width oracle, independent of the
+// production wrap: escapes stripped, East Asian wide and fullwidth runes
+// counted as two columns, every other rune as one.
+func terminalColumns(s string) int {
+	n := 0
+	for _, r := range sgrEscape.ReplaceAllString(s, "") {
+		switch width.LookupRune(r).Kind() {
+		case width.EastAsianWide, width.EastAsianFullwidth:
+			n += 2
+		default:
+			n++
+		}
+	}
+	return n
+}
+
+// TestBannerFitsSixtySixColumns is AC1's width bound (itd-112, spc-2609230613206687):
+// every banner line, on every rung and for both name segments, renders
+// within 66 terminal columns — counted in display columns, not bytes.
+func TestBannerFitsSixtySixColumns(t *testing.T) {
+	orig := core.Version
+	t.Cleanup(func() { core.Version = orig })
+	for _, version := range []string{"dev", "v10.10.10"} {
+		core.Version = version
+		for _, mode := range []term.ColorMode{term.TrueColor, term.Ansi256, term.Ansi16, term.Mono} {
+			for _, utf8OK := range []bool{true, false} {
+				for i, line := range bannerLines(mode, utf8OK) {
+					if w := terminalColumns(line); w > 66 {
+						t.Errorf("version %q, mode %d, utf8 %v: line %d is %d columns (> 66): %q",
+							version, mode, utf8OK, i, w, sgrEscape.ReplaceAllString(line, ""))
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestWrapWords pins the render-time wrap: words are never broken or
+// reordered, no line exceeds the limit unless it is one overlong word, and
+// the wrap is balanced rather than stranding a last word.
+func TestWrapWords(t *testing.T) {
+	cases := []struct {
+		in    string
+		limit int
+		want  []string
+	}{
+		{"one two three", 66, []string{"one two three"}},
+		// Greedy at 14 strands "four"; balanced keeps two lines, evened.
+		{"one two three four", 14, []string{"one two", "three four"}},
+		{"alpha supercalifragilistic beta", 8, []string{"alpha", "supercalifragilistic", "beta"}},
+		{"", 66, nil},
+	}
+	for _, c := range cases {
+		got := wrapWords(c.in, c.limit)
+		if strings.Join(got, "|") != strings.Join(c.want, "|") || len(got) != len(c.want) {
+			t.Errorf("wrapWords(%q, %d) = %q, want %q", c.in, c.limit, got, c.want)
+		}
+	}
+	// The baked tagline: every word kept, in order; within the bound; and no
+	// line under half the longest, so the break is balanced.
+	lines := bannerTaglineLines()
+	if got := strings.Join(lines, " "); got != bakedTagline {
+		t.Errorf("wrapped tagline rejoins as %q, want %q", got, bakedTagline)
+	}
+	longest := 0
+	for _, l := range lines {
+		longest = max(longest, terminalColumns(l))
+	}
+	for _, l := range lines {
+		if w := terminalColumns(l); w > bannerWidth || 2*w < longest {
+			t.Errorf("tagline line %q is %d columns (bound %d, longest %d)", l, w, bannerWidth, longest)
+		}
+	}
+}
+
+// TestBannerNeverOnASubcommandOrHook is AC2's other half: with the seam
+// forced on — as if every stream were an interactive TTY — a subcommand and a
+// hook invocation still carry no banner byte, because only the bare root
+// invocation composes one.
+func TestBannerNeverOnASubcommandOrHook(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	prev := bannerTTY
+	bannerTTY = func(io.Writer) bool { return true }
+	defer func() { bannerTTY = prev }()
+
+	for _, args := range [][]string{{"version"}, {"hook", "prompt-router"}} {
+		root := NewRootCommand()
+		var out, errOut bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&errOut)
+		root.SetIn(strings.NewReader(`{"prompt":"hello"}`))
+		root.SetArgs(args)
+		_ = root.Execute() // the outcome is irrelevant; only the bytes are asserted
+		for _, s := range []string{out.String(), errOut.String()} {
+			if strings.Contains(s, bannerTaglineLines()[0]) || strings.Contains(s, "▀") || strings.Contains(s, "░") {
+				t.Errorf("%v carries banner bytes: %q", args, s)
+			}
+		}
 	}
 }
