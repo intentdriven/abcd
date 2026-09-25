@@ -118,7 +118,10 @@ func TestMarkerBlockGatePassesBalancedAndQuotedMarkers(t *testing.T) {
 // present-tense "now"/"previously" does not. The passes include the four
 // present-state sentences the first review found refused
 // (iss-2609251827286563); the refusals include the genuine narration the
-// second review found passed (iss-2609251940304726). Where a pair cannot be
+// second review found passed (iss-2609251940304726); the third review added
+// the subordinate-clause "no longer" passes (iss-2609252045148890) and the
+// "previously … now" split at a sentence end (iss-2609252045147575), which a
+// row carries as two sentences on one line. Where a pair cannot be
 // told apart lexically the gate refuses (the escape marker is one comment
 // away and every finding names it); the residual trade is recorded in
 // .abcd/work/DECISIONS.md.
@@ -148,6 +151,8 @@ var narrationSpecification = []struct {
 	{"The gate skips the classes that used to drift.", true},
 	{"Until v0.6 the dry-run used to skip the tags.", true},
 	{"In earlier releases the archive used to include the record.", true},
+	{"Previously, the ledger was a flat file. Now it is a folder.", true},
+	{"Previously the gate read JSON. Now it reads YAML.", true},
 	// Must pass.
 	{"The command now accepts a path.", false},
 	{"Run the previously saved query with `--replay`.", false},
@@ -163,6 +168,14 @@ var narrationSpecification = []struct {
 	{"The output is renamed to match the tag.", false},
 	{"Keep the names that must not be renamed, and link each to the glossary.", false},
 	{"The words \"now\" and \"previously\" are fine on their own.", false},
+	{"Retry until the error no longer appears.", false},
+	{"Stop when the gate no longer reports a finding.", false},
+	{"If the path no longer exists, the loader skips it.", false},
+	{"Delete the copy once it is no longer needed.", false},
+	{"Cached entries are dropped once they are no longer referenced.", false},
+	{"Once a record is resolved it is no longer open.", false},
+	{"Branches whose upstream no longer exists are pruned.", false},
+	{"Run the previously saved query. Now run the gate.", false},
 }
 
 // TestNarrationGateHardFailsOnAChangeConstruct is itd-65 AC3 and the second half

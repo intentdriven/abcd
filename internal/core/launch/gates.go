@@ -376,14 +376,18 @@ func isDocBody(rel string) bool {
 var narrationEscapeRe = regexp.MustCompile(`(?i)<!--\s*docs-lint:\s*allow\b`)
 
 // narrationConstructs are the deterministic constructs that narrate a change,
-// each judged within ONE sentence. A construct that also reads as present
-// state carries a check that exempts only its present-state reading, and
-// refuses every other (iss-2609251827286563, iss-2609251940304726): "no
-// longer" except in a relative clause over a copula ("files that are no longer
-// present") and as a comparative ("no longer than"); "renamed … to" except the
-// present purpose form ("is renamed to match"); "previously … now" only beside
-// a change verb or with "previously" opening its clause; "used to" only as the
-// past habit. Bare "now" and bare "previously" are not constructs at all
+// each judged within ONE sentence; narrations adds the one pair judged
+// across a sentence end, "previously" opening a sentence and "now" the next
+// (iss-2609252045147575). A construct that also reads as present state
+// carries a check that exempts only its present-state reading, and refuses
+// every other (iss-2609251827286563, iss-2609251940304726,
+// iss-2609252045148890): "no longer" except in a relative clause over a
+// copula ("files that are no longer present"), in a clause a subordinator
+// opens ("retry until the error no longer appears") and as a comparative ("no
+// longer than"); "renamed … to" except the present purpose form ("is renamed
+// to match"); "previously … now" only beside a change verb or with
+// "previously" opening its clause; "used to" only as the past habit. Bare
+// "now" and bare "previously" are not constructs at all
 // (itd-65 AC10); the present-tense warning docs lint carries is where they
 // belong. The gate's specification is narrationSpecification in
 // gates_test.go, and the pairs it cannot tell apart lexically are refused
@@ -424,6 +428,14 @@ var (
 // or subordinate clause, whose subject is not the main clause's.
 var clauseBreaks = wordSet(",", ";", ":", "(", ")", "—", "–", "\"", "“", "”",
 	"that", "which", "who", "whose", "where", "when", "whenever", "if", "because", "while", "what", "and", "but", "or")
+
+// subordinators open a subordinate clause whose "no longer" states a
+// condition or a time, not a change ("retry until the error no longer
+// appears", "branches whose upstream no longer exists"). They end a clause
+// for the "no longer" reading alone: "until" and "before" also open a time
+// adverbial ("until v0.6 the dry-run used to skip the tags"), which the
+// "used to" reading must read through.
+var subordinators = wordSet("until", "once", "when", "whenever", "if", "unless", "after", "before", "while", "whose")
 
 // relativePronouns open a relative clause, and presentCopulas are the present
 // "be" a state-describing relative clause runs on ("files that are no longer
@@ -533,10 +545,13 @@ func anyIn(words []string, set map[string]struct{}) bool {
 
 // noLongerNarrates reports whether a "no longer" narrates a change. It does,
 // whatever its subject ("the registry can no longer be edited", "the scanner,
-// which no longer skips fenced blocks"), except in its two present-state
-// forms: a comparative ("no longer than one screen"), and a relative clause
-// over a present copula, which describes the state of the thing it qualifies
-// ("files that are no longer present").
+// which no longer skips fenced blocks"), except in its three present-state
+// forms: a comparative ("no longer than one screen"); a relative clause over
+// a present copula, which describes the state of the thing it qualifies
+// ("files that are no longer present"); and a clause a subordinator opens,
+// which states a condition or a time ("retry until the error no longer
+// appears", "if the path no longer exists", "branches whose upstream no
+// longer exists").
 func noLongerNarrates(sentence string, at []int) bool {
 	if after := narrationWords(sentence[at[1]:]); len(after) > 0 && after[0] == "than" {
 		return false
@@ -545,6 +560,14 @@ func noLongerNarrates(sentence string, at []int) bool {
 	k := clauseStart(words)
 	if k > 0 && inSet(relativePronouns, words[k-1]) && len(words)-k == 1 && inSet(presentCopulas, words[k]) {
 		return false
+	}
+	for i := len(words) - 1; i >= 0; i-- {
+		if inSet(subordinators, words[i]) {
+			return false
+		}
+		if inSet(clauseBreaks, words[i]) {
+			break
+		}
 	}
 	return true
 }
@@ -737,14 +760,50 @@ func narrationFindings(bundle Bundle) []GateFinding {
 			out = append(out, GateFinding{File: f.LogicalPath, Detail: "could not be read to check it for change narration: " + err.Error()})
 			continue
 		}
-		for _, s := range docSentences(proseLines(data)) {
-			if name := narrationConstruct(s.text); name != "" {
-				out = append(out, GateFinding{File: f.LogicalPath, Line: s.line,
-					Detail: "narrates a change (" + name + "): \"" + clip(s.text, 200) + "\" — " + narrationEscapeHint})
-			}
+		for _, n := range narrations(docSentences(proseLines(data))) {
+			out = append(out, GateFinding{File: f.LogicalPath, Line: n.line,
+				Detail: "narrates a change (" + n.construct + "): \"" + clip(n.text, 200) + "\" — " + narrationEscapeHint})
 		}
 	}
 	return out
+}
+
+// narration is a sentence, or a pair of adjacent sentences, that narrates a
+// change: the line it starts on, its text and the construct it carries.
+type narration struct {
+	line      int
+	text      string
+	construct string
+}
+
+// narrations returns every sentence that carries a construct, and every pair
+// that splits "previously … now" at a sentence end: a sentence opening with
+// "now" whose predecessor in the same run of text opens with "previously"
+// ("Previously, the ledger was a flat file. Now it is a folder."). The pair
+// is located at its first sentence and named whole.
+func narrations(sentences []docSentence) []narration {
+	var out []narration
+	for i, s := range sentences {
+		if name := narrationConstruct(s.text); name != "" {
+			out = append(out, narration{line: s.line, text: s.text, construct: name})
+			continue
+		}
+		if i == 0 || !opensWith(s.text, "now") {
+			continue
+		}
+		prev := sentences[i-1]
+		if prev.run == s.run && opensWith(prev.text, "previously") && narrationConstruct(prev.text) == "" {
+			out = append(out, narration{line: prev.line, text: prev.text + " " + s.text, construct: "previously … now"})
+		}
+	}
+	return out
+}
+
+// opensWith reports whether a sentence's first word is w, used rather than
+// quoted to name it.
+func opensWith(sentence, w string) bool {
+	words := narrationWords(sentence)
+	return len(words) > 0 && words[0] == w && (len(words) == 1 || !inSet(quoteMarks, words[1]))
 }
 
 // narrationConstruct returns the first construct a sentence carries, or "".
@@ -765,9 +824,11 @@ var sentenceEndRe = regexp.MustCompile(`[.!?]["')\]]*\s+`)
 // listItemRe starts a list item, which starts a new sentence whatever precedes it.
 var listItemRe = regexp.MustCompile(`^\s*([-*+]|\d+[.)])\s`)
 
-// docSentence is one sentence of prose, located at the line it starts on.
+// docSentence is one sentence of prose, located at the line it starts on,
+// and the run of text (a paragraph, a heading, a list item) it belongs to.
 type docSentence struct {
 	line int
+	run  int
 	text string
 }
 
@@ -780,16 +841,18 @@ func docSentences(lines []proseLine) []docSentence {
 	var buf strings.Builder
 	// starts[i] is the offset in buf where the text of line lineAt[i] begins.
 	var starts, lineAt []int
+	run := 0
 	flush := func() {
 		text := buf.String()
 		pos := 0
 		for _, loc := range append(sentenceEndRe.FindAllStringIndex(text, -1), []int{len(text), len(text)}) {
 			sentence := strings.TrimSpace(text[pos:loc[1]])
 			if sentence != "" {
-				out = append(out, docSentence{line: lineOf(pos, starts, lineAt), text: sentence})
+				out = append(out, docSentence{line: lineOf(pos, starts, lineAt), run: run, text: sentence})
 			}
 			pos = loc[1]
 		}
+		run++
 		buf.Reset()
 		starts, lineAt = starts[:0], lineAt[:0]
 	}

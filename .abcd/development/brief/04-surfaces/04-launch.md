@@ -141,11 +141,15 @@ The **hard-fail** gates refuse the release:
   carrying "changed from … to" or "migrated from" is named with its file, line
   and text, and so is one carrying "no longer", "renamed … to", "previously …
   now" or "used to", each refused except in the present-state readings it has:
-  "no longer" as a comparative ("no longer than one screen") or in a relative
-  clause over "is"/"are" ("files that are no longer present"); "renamed … to"
-  in the purpose form ("the output is renamed to match the tag"); "previously
-  … now" with no change verb beside either word and "previously" not opening
-  its clause ("Now, as previously noted, …"); and "used to" as a passive or a
+  "no longer" as a comparative ("no longer than one screen"), in a relative
+  clause over "is"/"are" ("files that are no longer present"), or in a clause
+  a subordinator opens ("retry until the error no longer appears", "if the
+  path no longer exists", "branches whose upstream no longer exists");
+  "renamed … to" in the purpose form ("the output is renamed to match the
+  tag"); "previously … now" with no change verb beside either word and
+  "previously" not opening its clause ("Now, as previously noted, …"), where
+  the form split at a sentence end ("Previously, the ledger was a flat file.
+  Now it is a folder.") is refused as one; and "used to" as a passive or a
   participle ("the token used to authenticate the request is read"), where the
   past habit ("the tool used to print", "until v0.6 the dry-run used to skip
   the tags") is refused. Bare "now" and bare "previously" are present-tense
