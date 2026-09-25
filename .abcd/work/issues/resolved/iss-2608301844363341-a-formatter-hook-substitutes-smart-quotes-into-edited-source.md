@@ -7,6 +7,10 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-189-delta-builder"
 found_at: "internal"
+resolution: "The substituting formatter is gofmt's doc-comment reformatter (go/doc/comment rewrites a doubled backtick or apostrophe in doc-comment prose to a typographic quote), so it is deterministic and fmt-check enforces the rewritten form. Seven comments on main were already rewritten; they now carry the spelling in an indented code block or are reworded. TestNoCurlyQuotesInGoSource (internal/core/lint/curlyquotes_test.go) refuses the four glyphs in any Go file outside a counted allowlist of the three deliberate users; TestCurlyQuoteGuardRefusesAPlantedGlyph plants one and sees the refusal."
+impact: internal
+resolved_by:
+  commit: "dd976947"
 ---
 
 a formatter hook substitutes smart quotes into edited source comments which passes gofmt and every gate and is visible only in a diff
@@ -41,3 +45,6 @@ before committing rather than reading them back. Same family as
 iss-2608301715040589, the interactive `cp` hazard: a machine-local property that
 silently breaks an otherwise correct instruction.
 
+## Grounds
+
+- pursued: any doc comment gofmt rewrites to a typographic quote now fails go test; a curly quote landing in a Go file outside the allowlist with the suite still green would show it wrong
