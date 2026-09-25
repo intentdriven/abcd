@@ -27,8 +27,8 @@ func TestURLHomeWaiverHoldsOnlyAtThePathRoot(t *testing.T) {
 	}
 	swept := map[string]string{
 		"https://ci.example.com/root/build.log": "https://ci.example.com~/build.log",
-		"file:///root/notes.md":                  "file://~/notes.md",
-		"git@host.example.com:/root/repo.git":    "git@host.example.com:~/repo.git",
+		"file:///root/notes.md":                 "file://~/notes.md",
+		"git@host.example.com:/root/repo.git":   "git@host.example.com:~/repo.git",
 	}
 	for line, want := range swept {
 		if got := SweepCallerHome(line, home); got != want {
