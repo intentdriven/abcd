@@ -552,7 +552,9 @@ data, but a substitution in one whose delimiter is unquoted runs, and is
 read as a command; a body line ending in an odd number of backslashes
 joins the next before the delimiter compare, as bash joins it. A
 `"$(cat <<'EOF' … EOF)"` handed to `sh -c` or `eval` is read as its
-document's text.
+document's text, and an unquoted one as the words bash splits its
+document into, at every layer. Two `sh -c` or `eval` layers are
+followed; a payload nested deeper is blocked.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
 or a process substitution is blocked, and so is a line over 64 KiB.

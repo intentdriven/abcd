@@ -194,7 +194,16 @@ line ending in an odd number of backslashes joins the next one before the
 compare, and `x\` followed by `EOF` does not end the document. A word that is
 wholly `"$(cat <<'EOF' … EOF)"`, whose document the shell does not change, is
 also read as that document's text where it is a payload, so `sh -c` or `eval`
-handed one reads the document as the command it runs. A substitution nested more than
+handed one reads the document as the command it runs. Unquoted, the same
+substitution runs the words its document splits into on blanks and newlines, and
+those words are read as bash splits them: as the command in command position,
+as operands after it, and at every payload layer the guard follows, so a
+document whose own text is `$(cat <<'F' … F)` is read too. The words are never
+read again as a command line, as bash never reads them, so a `;` or a `$(` in
+them stays a word. The guard follows two execute-a-string layers, an `sh -c` or
+`eval` inside another; a payload nested deeper is a **block**
+(`execute-string-uninspectable`) whatever it holds, because the guard has
+stopped reading it. A substitution nested more than
 eight double-quoted substitutions deep, or one holding a case command, is a
 **block** (`substitution-unread`), because the guard has stopped reading it and
 its command runs all the same. An arithmetic expansion `$(( … ))` is read as an

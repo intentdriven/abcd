@@ -97,6 +97,15 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		item := queue[0]
 		queue = queue[1:]
 		for _, s := range item.segs {
+			// A word that is an unquoted `$(cat <<'EOF' … EOF)` runs the
+			// words its document splits into. That command is read at this
+			// layer, in this chain, as the segment it makes, and any payload
+			// it carries is followed from there; the words hold no literal of
+			// their own, so the reading does not repeat.
+			if fs, ok := fixedOutputSegment(s); ok {
+				out = append(out, fs)
+				queue = append(queue, work{segs: []segment{fs}, depth: item.depth})
+			}
 			for _, ref := range payloadRefsOf(s) {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
@@ -252,12 +261,13 @@ type payloadRef struct {
 }
 
 // payloadRefsOf is payloadsOf, and then payloadsOf again over the segment with
-// each word whose output is fixed (segment.literal) read as that text: `sh -c
-// "$(cat <<'EOF' … EOF)"` hands the shell the document, verbatim
+// each double-quoted word whose output is fixed (segment.literal) read as that
+// text: `sh -c "$(cat <<'EOF' … EOF)"` hands the shell the document, verbatim
 // (review5-guard finding 3). The unknown reading is kept, so every signal it
 // raises — the uninspectable payload's warn among them — still stands, and
 // the literal reading can only add what the document itself spells. A payload
-// both readings return is expanded once.
+// both readings return is expanded once. An unquoted fixed output is not one
+// word but several, and is read as the segment it makes (fixedOutputSegment).
 func payloadRefsOf(s segment) []payloadRef {
 	refs := payloadsOf(s)
 	if len(s.literal) == 0 {
@@ -265,10 +275,15 @@ func payloadRefsOf(s segment) []payloadRef {
 	}
 	v := segment{tokens: append([]string(nil), s.tokens...), chain: s.chain,
 		globbed: s.globbed, stdinStream: s.stdinStream}
-	for i, text := range s.literal {
-		if i < len(v.tokens) {
-			v.tokens[i] = text
+	quoted := false
+	for i, lit := range s.literal {
+		if i < len(v.tokens) && !lit.split {
+			v.tokens[i] = lit.text
+			quoted = true
 		}
+	}
+	if !quoted {
+		return refs
 	}
 	type key struct {
 		kind    int
@@ -287,6 +302,50 @@ func payloadRefsOf(s segment) []payloadRef {
 		}
 	}
 	return refs
+}
+
+// fixedOutputSegment is the command a segment runs once each unquoted word
+// whose output is fixed (segment.literal) is replaced by that output as bash
+// reads it: split into words on blanks and newlines, the default IFS, and
+// each word a pattern where it holds `*`, `?` or `[`. The words are not read
+// again as a command line — bash does not, so a `;` or a `$(` in them is text
+// (review6-guard finding 1). A double-quoted fixed output stays one word and
+// keeps its record, so the payload readers still reach it. ok is false when the
+// segment holds no unquoted fixed output.
+func fixedOutputSegment(s segment) (segment, bool) {
+	split := false
+	for _, lit := range s.literal {
+		if lit.split {
+			split = true
+			break
+		}
+	}
+	if !split {
+		return segment{}, false
+	}
+	out := segment{chain: s.chain, braceGroup: s.braceGroup, stdinStream: s.stdinStream}
+	var globs []bool
+	for i, tok := range s.tokens {
+		lit, fixed := s.literal[i]
+		if !fixed || !lit.split {
+			if fixed {
+				if out.literal == nil {
+					out.literal = map[int]wordLiteral{}
+				}
+				out.literal[len(out.tokens)] = lit
+			}
+			out.tokens = append(out.tokens, tok)
+			globs = append(globs, s.globAt(i))
+			continue
+		}
+		tally(len(lit.text))
+		for _, w := range strings.FieldsFunc(lit.text, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' }) {
+			out.tokens = append(out.tokens, w)
+			globs = append(globs, strings.ContainsAny(w, "*?["))
+		}
+	}
+	out.globbed = globsOrNil(globs)
+	return out, true
 }
 
 // carriesReadPayload reports whether the guard READ a payload the segment

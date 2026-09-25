@@ -59,12 +59,13 @@ type segment struct {
 	// because a glob's expansion IS decidable at the positions an entry
 	// constrains (match.go) where a brace group's is not.
 	globbed []bool
-	// literal records, per token index, the fixed text of a word that is
-	// wholly a double-quoted substitution whose output is known —
-	// `"$(cat <<'EOF' … EOF)"` (literalHeredocOutput). The token itself stays
-	// unknown; the payload readers ALSO read the word as this text
-	// (payloadRefsOf), so no verdict the unknown reading reaches is lost.
-	literal map[int]string
+	// literal records, per token index, the fixed output of a word that is
+	// wholly one command substitution whose output is known — `$(cat <<'EOF'
+	// … EOF)` (literalHeredocOutput) — and whether the word was double-quoted.
+	// The token itself stays unknown; the readers ALSO read the word as this
+	// output (payloadRefsOf, fixedOutputSegment), so no verdict the unknown
+	// reading reaches is lost.
+	literal map[int]wordLiteral
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built
@@ -74,6 +75,15 @@ type segment struct {
 	// walkCapped records that the walk stopped at maxUnknownSites, which
 	// Check refuses.
 	walkCapped bool
+}
+
+// wordLiteral is the fixed output of a word that is wholly one command
+// substitution (segment.literal). split records that the substitution stood
+// unquoted, so bash splits the output into words, and expands each as a
+// pattern, before the command runs; a double-quoted one is one word, verbatim.
+type wordLiteral struct {
+	text  string
+	split bool
 }
 
 // globAt reports whether token i carried an unquoted glob metacharacter.
@@ -192,9 +202,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// lits rides with the segment and records, per token index, the text
 		// of a word that is wholly one substitution whose output is fixed
 		// (literalHeredocOutput); curLit holds that text for the word being
-		// built, and curLitSet that the last double-quoted string set it.
-		lits      map[int]string
-		curLit    string
+		// built, and curLitSet that the substitution closed last set it.
+		lits      map[int]wordLiteral
+		curLit    wordLiteral
 		curLitSet bool
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
@@ -320,18 +330,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
-				curLit, curLitSet = "", false
+				curLit, curLitSet = wordLiteral{}, false
 				return
 			}
 			braceGroup = true
 		}
 		if curLitSet && string(cur) == unknownText {
 			if lits == nil {
-				lits = map[int]string{}
+				lits = map[int]wordLiteral{}
 			}
 			lits[len(toks)] = curLit
 		}
-		curLit, curLitSet = "", false
+		curLit, curLitSet = wordLiteral{}, false
 		toks = append(toks, unknownFromOpenExpansion(string(cur)))
 		globs = append(globs, curGlob)
 		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
@@ -474,7 +484,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curStdin: curStdin, pipeNext: pipeNext,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
-		curLit, curLitSet = "", false
+		curLit, curLitSet = wordLiteral{}, false
 		curStdin, pipeNext = false, false
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
@@ -669,7 +679,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					// flushToken keeps that text beside the word when the
 					// word is this output and nothing else.
 					if line[j] == '$' {
-						curLit, curLitSet = literalHeredocOutput(line[open:inner])
+						curLit.text, curLitSet = literalHeredocOutput(line[open:inner])
+						curLit.split = false
 					}
 					j = inner + 1
 					continue
@@ -1001,6 +1012,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					parens = parens[:n-1]
 					if top.saved != nil {
 						closeSubstitution(top.saved)
+						// An unquoted `$(cat <<'EOF' … EOF)` prints its
+						// document, which bash splits into words; flushToken
+						// keeps that output beside the word when the word is
+						// this substitution and nothing else.
+						if c == ')' && top.kind == parenCommandSub && !top.saved.procSub {
+							if text, ok := literalHeredocOutput(line[top.pos+1 : i]); ok {
+								curLit, curLitSet = wordLiteral{text: text, split: true}, true
+							}
+						}
 					}
 				}
 			}
@@ -1485,7 +1505,7 @@ type parenFrame struct {
 type enclosing struct {
 	toks       []string
 	globs      []bool
-	lits       map[int]string
+	lits       map[int]wordLiteral
 	cur        []byte
 	curMask    []byte
 	hasCur     bool
@@ -2230,9 +2250,14 @@ func literalHeredocOutput(text string) (string, bool) {
 	if next >= len(text) || text[next] != '\n' {
 		return "", false
 	}
-	tally(len(text) - next)
+	// The count is what the body scan reads — up to its delimiter line, or to
+	// the end when none comes — not the rest of the text: an unquoted
+	// substitution is offered here with every byte after its document in it,
+	// the next substitution's among them, and counting those would count a
+	// nesting's bytes once per level (review6-guard finding 1).
 	start := next + 1
 	end, body, found := readHeredocBody(text, start, hd, true)
+	tally(end - next)
 	if !found {
 		return "", false
 	}

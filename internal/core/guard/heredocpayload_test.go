@@ -64,3 +64,88 @@ func TestHereDocumentPayloadStaysLinear(t *testing.T) {
 		})
 	}
 }
+
+// TestNestedHereDocumentPayloadIsRead — review6-guard finding 1. A document
+// whose own text is a command-position `$(cat <<'F' … F)` hands the shell that
+// substitution, and the shell runs its output: unquoted, the output is split
+// into words on blanks and newlines and the first word is the command. The
+// payload re-read saw only a bare substitution there and warned, which runs.
+// That fixed output is ALSO read now, as the words bash splits it into, at
+// every payload layer the guard follows; past maxPayloadDepth the layer is
+// refused, not read, so a nesting too deep to follow blocks. Each shape was
+// run under bash 3.2 and 5.3 with a neutral word in place of the hazard.
+func TestNestedHereDocumentPayloadIsRead(t *testing.T) {
+	const push = "git push --force origin main"
+	inner := func(body string) string { return "$(cat <<'F'\n" + body + "\nF\n)" }
+	runVerdictCases(t, []verdictCase{
+		// Two levels: the review's shapes.
+		{"sh -c \"$(cat <<'E'\n" + inner(push) + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		{"eval \"$(cat <<'E'\n" + inner(push) + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		{"bash -c \"$(cat <<'E'\n" + inner(push) + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		{"sh -c \"$(cat <<'E'\n$(cat <<F\n" + push + "\nF\n)\nE\n)\"", VerdictBlock, "git-push-force"},
+		// The output is split on newlines too: one command, not five.
+		{"sh -c \"$(cat <<'E'\n" + inner("git\npush\n--force\norigin\nmain") + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		// An empty output vanishes and the words after it are the command.
+		{"sh -c \"$(cat <<'E'\n$(cat <<'F'\nF\n) " + push + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		// Its words are operands where the substitution is one.
+		{"sh -c \"$(cat <<'E'\ngit " + inner("push --force origin main") + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		// The same substitution with no wrapper round it.
+		{inner(push), VerdictBlock, "git-push-force"},
+		{"cd s && " + inner("rm -rf *"), VerdictBlock, "rm-rf-after-cd-chain"},
+		// Three levels: a document in a double-quoted document in a document.
+		{"sh -c \"$(cat <<'E'\nsh -c \"$(cat <<'G'\n" + inner(push) + "\nG\n)\"\nE\n)\"", VerdictBlock, "git-push-force"},
+		{"bash -c \"$(cat <<'E'\neval \"$(cat <<'G'\n" + inner(push) + "\nG\n)\"\nE\n)\"", VerdictBlock, "git-push-force"},
+		// Past the bound the layer is refused, however clean its text.
+		{"sh -c \"$(cat <<'E'\nsh -c \"$(cat <<'G'\nsh -c \"$(cat <<'H'\n" + inner("echo hello") + "\nH\n)\"\nG\n)\"\nE\n)\"", VerdictBlock, syntheticEntryID},
+		{"sh -c \"$(cat <<'E'\nsh -c \"$(cat <<'G'\neval " + inner("echo hello") + "\nG\n)\"\nE\n)\"", VerdictBlock, syntheticEntryID},
+
+		// A clean output keeps the warn the unknown reading earns.
+		{"sh -c \"$(cat <<'E'\n" + inner("echo hello") + "\nE\n)\"", VerdictWarn, ""},
+		// Words are not re-read as commands: bash runs `echo` with the rest as
+		// its operands, and a `$(` inside the output is a word.
+		{"sh -c \"$(cat <<'E'\n" + inner("echo "+push) + "\nE\n)\"", VerdictWarn, ""},
+		{"sh -c \"$(cat <<'E'\n" + inner("$(cat <<'G'\n"+push+"\nG\n)") + "\nE\n)\"", VerdictWarn, ""},
+		// Data where no shell runs it.
+		{"echo \"$(cat <<'E'\n" + inner(push) + "\nE\n)\"", VerdictAllow, ""},
+	})
+}
+
+// TestNestedHereDocumentPayloadStaysLinear pins the cost of reading a
+// command-position document's words: each output is split once, and each
+// layer is read once, whatever the nesting.
+func TestNestedHereDocumentPayloadStaysLinear(t *testing.T) {
+	shapes := map[string]struct {
+		build func(int) string
+		base  int
+	}{
+		"many nested document payloads": {func(n int) string {
+			return strings.Repeat("sh -c \"$(cat <<'E'\n$(cat <<'F'\necho a b c\nF\n)\nE\n)\"\n", n)
+		}, 1 << 8},
+		// One document's output is one command of thousands of words, and a
+		// command that long pays the bounded operand enumeration's constant
+		// floor whether a document spells it or the line does (about 370,000
+		// units: 75 a byte at 5 KB, 22 at 20 KB, for the plain command). The
+		// base is set where the floor no longer dominates, so the bars see
+		// the reading's own linear cost.
+		"one long nested document": {func(n int) string {
+			return "sh -c \"$(cat <<'E'\n$(cat <<'F'\n" + strings.Repeat("echo a b c; ls -l x\n", n) + "F\n)\nE\n)\""
+		}, 1 << 10},
+		"many three-level documents": {func(n int) string {
+			return strings.Repeat("sh -c \"$(cat <<'E'\nsh -c \"$(cat <<'G'\n$(cat <<'F'\necho a b c\nF\n)\nG\n)\"\nE\n)\"\n", n)
+		}, 1 << 8},
+		"many command-position documents": {func(n int) string {
+			return strings.Repeat("$(cat <<'F'\necho a b c\nF\n)\n", n)
+		}, 1 << 8},
+		// Each substitution holds a document and then the next one, so each
+		// is offered for reading with every byte after it in its text.
+		"documents nested in substitutions": {func(n int) string {
+			return strings.Repeat("$(cat <<'F'\necho a b c\nF\n", n) + strings.Repeat(")", n)
+		}, 1 << 6},
+	}
+	for name, shape := range shapes {
+		shape := shape
+		t.Run(name, func(t *testing.T) {
+			assertWorkGrowth(t, shape.build, shape.base, "each output is split once and each layer read once")
+		})
+	}
+}
