@@ -86,8 +86,13 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"eight of them where the program name could be, is blocked, because the\n" +
 			"guard has stopped reading it. An ANSI-C string ends at its closing quote\n" +
 			"and its first NUL, as bash ends it. A `${…}` holding a substitution is\n" +
-			"unknown from its `${` on. A here-document body is data, but a substitution\n" +
-			"in one whose delimiter is unquoted runs, and is read as a command.\n" +
+			"unknown from its `${` on, and inside double quotes it ends at its own\n" +
+			"`}`, its nested quotes opening a nested string. A here-document body is\n" +
+			"data, but a substitution in one whose delimiter is unquoted runs, and is\n" +
+			"read as a command; a body line ending in an odd number of backslashes\n" +
+			"joins the next before the delimiter compare, as bash joins it. A\n" +
+			"`\"$(cat <<'EOF' … EOF)\"` handed to `sh -c` or `eval` is read as its\n" +
+			"document's text.\n" +
 			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
 			"or a process substitution is blocked, and so is a line over 64 KiB.\n" +
