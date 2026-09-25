@@ -105,3 +105,42 @@ func TestNameRootsRefuseAFileTheyCannotExamine(t *testing.T) {
 		t.Fatalf("the refusal does not name the file: %v", err)
 	}
 }
+
+// TestNameBansReadInsideCodeFences: the names family is a leak gate over the
+// whole public surface, and a fenced block is published as readily as prose, so
+// a name ban reads inside fences by default wherever it runs, under roots and
+// name_roots alike (iss-2609252251320133). The rest of the family keeps the
+// documentation default (a fenced example is not prose), and a name ban that
+// declares skip_code_fences: true keeps the declaration.
+func TestNameBansReadInsideCodeFences(t *testing.T) {
+	root := t.TempDir()
+	fenced := "# Page\n\n```sh\necho moonbeam previously\n```\n"
+	writeFile(t, root, "docs/page.md", fenced)
+	writeFile(t, root, "AGENTS.md", fenced)
+	skip := true
+	declared := nameToken()
+	declared.ID, declared.Pattern, declared.SkipCodeFences = "names/declared-skip", `(?i)\becho\b`, &skip
+	cfg := Config{
+		Roots: []string{"docs"},
+		BannedTokens: []BannedToken{nameToken(), declared, {
+			ID: "present_tense/previously", Pattern: `(?i)\bpreviously\b`, Message: "narration",
+			Severity: "blocker", Successor: "present tense", AllowContext: []string{`docs-lint: allow`},
+		}},
+		NameRoots: []string{"AGENTS.md"},
+	}
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{filepath.Join("docs", "page.md"), "AGENTS.md"} {
+		if !hasFinding(fs, file, "names/secret-project", 4) {
+			t.Errorf("a banned name inside a code fence in %s passed the name gate: %+v", file, fs)
+		}
+	}
+	if n := countRule(fs, "present_tense/previously"); n != 0 {
+		t.Errorf("a documentation token read inside a fence: %+v", fs)
+	}
+	if n := countRule(fs, "names/declared-skip"); n != 0 {
+		t.Errorf("a name ban declaring skip_code_fences: true read inside a fence: %+v", fs)
+	}
+}

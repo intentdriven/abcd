@@ -66,14 +66,17 @@ type BannedToken struct {
 	// non-empty: every ban must declare where its token is legitimately allowed.
 	AllowContext []string `json:"allow_context"`
 	// SkipCodeFences omits fenced-code lines from scanning. A nil pointer means
-	// the default (true); set false to also scan inside fences.
+	// the family's default: true for a documentation token, whose fenced example
+	// is not prose; false for a `names/` token, the name gate, which reaches the
+	// whole public surface, where a fence is published as readily as prose
+	// (iss-2609252251320133). Set it to override either default.
 	SkipCodeFences *bool `json:"skip_code_fences"`
 }
 
 // skipFences resolves the SkipCodeFences pointer to its effective value.
 func (t BannedToken) skipFences() bool {
 	if t.SkipCodeFences == nil {
-		return true
+		return !strings.HasPrefix(t.ID, nameTokenPrefix)
 	}
 	return *t.SkipCodeFences
 }
