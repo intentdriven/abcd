@@ -2583,6 +2583,14 @@ func stripInlineCode(line string) string {
 			continue
 		}
 		if open < 0 {
+			// Outside a span, a backtick behind an odd run of backslashes is
+			// escaped: a literal character, never a delimiter (CommonMark), so
+			// it opens nothing and a link after it is still read
+			// (iss-2609251004336500). Inside a span backslashes are literal, so
+			// a closer is never escaped.
+			if escapedAt(b, i) {
+				continue
+			}
 			open = i // provisional opener; blanked only once its pair closes
 			continue
 		}
@@ -2595,6 +2603,16 @@ func stripInlineCode(line string) string {
 	// A leftover unpaired backtick (open >= 0) and its tail stay literal, so the
 	// earlier paired spans that were already blanked are preserved.
 	return string(out)
+}
+
+// escapedAt reports whether the rune at i sits behind an odd number of
+// backslashes, which escape it.
+func escapedAt(b []rune, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && b[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 // wordBoundaryAt reports whether [start,end) in s is bounded by non-word runes on
