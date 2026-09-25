@@ -2263,10 +2263,6 @@ const ledgerDecisionRule = "  which ledger? half-formed observation, question, o
 // The one line of capture friction the ledgers promise stays one line.
 const ideateRoutingRule = "  a big, unproven idea? `abcd ideate` runs the optional admission gauntlet and records the verdict either way\n"
 
-// createIntentFromText is the shared quoted-text create path behind both
-// `abcd intent "<text>"` and the deprecated `abcd intent new "<text>"` alias: it
-// files a new draft via intent.CreateFromText and renders the created record. The
-// engine refuses empty/whitespace text and mints the id under the store lock, so
 // resolveProductionMode turns the --production-mode flag into the value a MINT
 // path stamps: the operator's declared choice, or the repo's own declared
 // default from the identity pin (itd-91's seam), which is hand-written when the
@@ -2300,7 +2296,10 @@ func resolveProductionMode(repoRoot, flag string) (string, error) {
 var productionModeFlagHelp = "how this record's text was produced: " + provenance.ModeList() +
 	" (default: the repo's declared mode, else " + string(provenance.DefaultMode) + ")"
 
-// this surface stays a thin marshaller.
+// createIntentFromText is the quoted-text create path behind
+// `abcd intent "<text>"`: it files a new draft via intent.CreateFromText and
+// renders the created record. The engine refuses empty/whitespace text and
+// mints the id under the store lock, so this surface stays a thin marshaller.
 func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent.TextOptions, asJSON bool) error {
 	mode, err := resolveProductionMode(repoRoot, opts.ProductionMode)
 	if err != nil {
