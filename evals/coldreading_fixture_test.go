@@ -306,8 +306,11 @@ var sentinelClasses = []sentinelClass{
 		// derived per-family row does at comparative — and its grounds are the
 		// researcher's reasoning about the frame, which no reading may see.
 		Name:  "LEDGER-REFRAME",
+		// Twice in one record: in the grounds the writer records, and in a body
+		// only a hand-written record carries. The body is what an admitting row
+		// would pass, so it is the half that makes the exclusion falsifiable.
 		Homes: []string{"repo:.abcd/work/issues/reframes/rfm-1.md"},
-		Count: 1,
+		Count: 2,
 		Why: "spc-2609020626048705: a reframe record is warm and reaches no reading; its " +
 			"exclusion is asserted in every manifest, by the ledger rows and by the floor's " +
 			"own reframe row",

@@ -11,3 +11,5 @@ glossary_after: "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009
 scope_after: "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
 changed: ["construal"]
 ---
+
+ABCD-EVAL-SENTINEL-LEDGER-REFRAME: a note a researcher wrote under a hand-kept reframe record; the writer leaves the body empty, and a record written by hand may not.

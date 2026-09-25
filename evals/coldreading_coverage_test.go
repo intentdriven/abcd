@@ -700,10 +700,16 @@ var coverage = []coverageRow{
 		Classes:   []string{"FATE"},
 	},
 	{
-		Rule:      "reframe records never reach the comparative reading (spc-2609020626048705)",
-		Falsifier: "delete the derived reframes row and add an include row for it",
-		Caught:    caughtLeak,
-		Classes:   []string{"LEDGER-REFRAME"},
+		// Caught by path, not by plant, and watched: with the derived row gone the
+		// comparative manifest stops asserting the family's exclusion, and the
+		// family-absence oracle's comparative row for reframes names it. An
+		// include row added at comparative leaks nothing on this corpus, because
+		// the comparative preset selects only the discipline kind and the
+		// candidate set, so the leak half of this rule has no plant that reaches
+		// it (spc-2609020626048705).
+		Rule:      "reframe records never reach the comparative reading, and its manifest says so (spc-2609020626048705)",
+		Falsifier: "drop ReframesDir from issueschema.LedgerDirs, so the derived reframes row disappears",
+		Caught:    caughtFamily,
 	},
 	{
 		Rule:      "the status directories never reach the comparative reading",
