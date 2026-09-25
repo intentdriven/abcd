@@ -369,6 +369,10 @@ func (c *SourceContext) listDirNoted(rel string) (names []string, truncated bool
 // and therefore fatal: a probe reads an arbitrary foreign tree in which a
 // symlink is ordinary, so refusing to follow one is enough, and erroring on one
 // would blank a whole section over a repository's normal furniture.
+//
+// A start below the root yields exactly what the whole-tree walk yields beneath
+// it: a skip-set or symlinked start (or one beneath either) yields nothing, and a
+// regular-file start yields that file (see walkStart).
 func (c *SourceContext) WalkFiles(rel string) (paths []string, truncated bool) {
 	return c.walkFilesLimited(rel, maxWalkFiles)
 }
@@ -409,6 +413,19 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 	}
 	startRoot := c.root
 	if start != "." {
+		isDir, isFile := c.walkStart(start)
+		switch {
+		case isFile:
+			if c.pathIsIgnored(start) {
+				return nil, false
+			}
+			if limit < 1 {
+				return nil, true
+			}
+			return []string{start}, false
+		case !isDir:
+			return nil, false
+		}
 		r, err := openWalkDir(c.root, start)
 		if err != nil {
 			return nil, false
@@ -484,6 +501,41 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 	walk(startRoot, start, 0)
 	sort.Strings(paths)
 	return paths, truncated
+}
+
+// walkStart classifies a non-dot walk start the way the whole-tree walk would
+// have met it, so a walk that begins below the root yields exactly the subset of
+// the whole walk beneath that start (iss-135). From "." the walk never enters a
+// walkSkipDirs directory, never follows a symlink, and yields a regular file; so
+// a start whose leading components include a skip-set directory or a symlink is
+// unreachable (neither dir nor file), a skip-set or symlinked leaf is not
+// entered, a regular-file leaf is yielded as itself, and anything else (a FIFO,
+// a device, a missing path) yields nothing. Each component is lstat'ed through
+// the containment root, which opens nothing; the descent that follows goes
+// through openWalkDir, so a leaf swapped after this check still cannot block it.
+func (c *SourceContext) walkStart(start string) (isDir, isFile bool) {
+	parts := strings.Split(start, "/")
+	for i, name := range parts {
+		info, err := c.root.Lstat(filepath.FromSlash(strings.Join(parts[:i+1], "/")))
+		if err != nil || info.Mode()&fs.ModeSymlink != 0 {
+			return false, false
+		}
+		last := i == len(parts)-1
+		switch {
+		case info.IsDir():
+			if isSkipDir(name) {
+				return false, false
+			}
+			if last {
+				return true, false
+			}
+		case last && info.Mode().IsRegular():
+			return false, true
+		default:
+			return false, false
+		}
+	}
+	return false, false
 }
 
 // pathIsIgnored reports whether git ignores rel. It answers false whenever it

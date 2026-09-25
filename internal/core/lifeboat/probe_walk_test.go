@@ -339,3 +339,66 @@ func BenchmarkWalkFilesDeepTreeBaseline(b *testing.B) {
 		}
 	}
 }
+
+// TestWalkFilesStartBoundaryMatchesTheWholeWalk is iss-135: a walk that starts
+// below the root must agree with the whole-tree walk about the start itself. From
+// "." a skip-set directory is never entered, a regular file is yielded, and a
+// symlink is never followed; the same three must hold when the start IS such an
+// entry, or a future caller passing a non-dot start gets a different tree.
+func TestWalkFilesStartBoundaryMatchesTheWholeWalk(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		"src/keep.go":               "package src\n",
+		"src/nested/deep.go":        "package nested\n",
+		"vendor/dep.go":             "package dep\n",
+		"node_modules/lib/index.js": "x\n",
+		"pkg/build":                 "a regular file named like a skip directory\n",
+	})
+	if err := os.Symlink("src", filepath.Join(dir, "linkdir")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if err := os.Symlink("src/keep.go", filepath.Join(dir, "linkfile.go")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := newSourceContext(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+
+	whole, _ := ctx.WalkFiles(".")
+	inWhole := map[string]bool{}
+	for _, p := range whole {
+		inWhole[p] = true
+	}
+
+	for _, tc := range []struct {
+		start string
+		want  []string
+	}{
+		// ok: an ordinary directory start walks its subtree.
+		{"src", []string{"src/keep.go", "src/nested/deep.go"}},
+		// A start named in the skip set is not entered, exactly as from ".".
+		{"vendor", nil},
+		// A start BELOW a skip-set directory is unreachable from "." too.
+		{"node_modules/lib", nil},
+		// A regular-file start yields the file, exactly as the whole walk does.
+		{"src/keep.go", []string{"src/keep.go"}},
+		// A regular file whose name is in the skip set is still a file.
+		{"pkg/build", []string{"pkg/build"}},
+		// A symlink start, file or directory, is never followed.
+		{"linkdir", nil},
+		{"linkfile.go", nil},
+		{"linkdir/keep.go", nil},
+	} {
+		got, _ := ctx.WalkFiles(tc.start)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("WalkFiles(%q) = %v, want %v", tc.start, got, tc.want)
+		}
+		for _, p := range got {
+			if !inWhole[p] {
+				t.Errorf("WalkFiles(%q) yielded %q, which the whole-tree walk does not", tc.start, p)
+			}
+		}
+	}
+}
