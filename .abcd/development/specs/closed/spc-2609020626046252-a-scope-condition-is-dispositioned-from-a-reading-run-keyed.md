@@ -10,7 +10,7 @@ production_mode: dictated-and-formatted
 ## Summary
 
 spc-2609020626046252 delivers
-[itd-2609020625405251](../../intents/planned/itd-2609020625405251-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md).
+[itd-2609020625405251](../../intents/shipped/itd-2609020625405251-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md).
 `abcd intent condition <itd-N> <cond-id> --disposition <value> --occasioned-by
 <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]` writes one
 scope-condition disposition against a shipped intent, keyed to the identity
@@ -31,7 +31,7 @@ The vocabulary the two writers share moves into a leaf package,
 `internal/core/condition`, so that one enum, one marker grammar and one block
 reader serve the verdict ingest, this verb, the readiness gate, and the record
 lint that the sibling spec
-[spc-2609020626042471](spc-2609020626042471-a-principle-carries-typed-claims-its-reference-its-compariso.md)
+[spc-2609020626042471](../open/spc-2609020626042471-a-principle-carries-typed-claims-its-reference-its-compariso.md)
 builds over the same dispositions. The reading-item locator moves into a
 second leaf, `internal/core/readingitem`, which the later Iteration 2 specs
 share.
