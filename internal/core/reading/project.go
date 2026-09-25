@@ -332,6 +332,17 @@ func unfencedBody(lines []string, fenced []bool) string {
 // quietly walk through is a disclosure, not a gate — so a file that still
 // carries an excluded shape after redaction refuses the run and names the shape.
 func verifyRedaction(rel, original, redacted string, keys, headings map[string]bool) error {
+	// A lone carriage return is a line ending to a renderer (CommonMark 2.1) and
+	// nothing to this floor, which splits on newline: a CR-only document is one
+	// line here and many on the page, so a heading after a lone CR is read as
+	// prose. Refused rather than split a second way (iss-2609251507443137).
+	if len(keys)+len(headings) > 0 {
+		if k := strings.Index(strings.ReplaceAll(redacted, "\r\n", "\n\n"), "\r"); k >= 0 {
+			return fmt.Errorf("reading: %s ends line %d with a lone carriage return, which a renderer "+
+				"reads as a line ending and this floor does not; the floor refuses rather than read "+
+				"the document two ways", rel, strings.Count(redacted[:k], "\n")+1)
+		}
+	}
 	lines := strings.Split(redacted, "\n")
 
 	// The block is located BEFORE any mask is computed, and the fence mask then
@@ -414,7 +425,13 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		if fenced[i] {
 			continue
 		}
-		m := floorATXRe.FindStringSubmatch(strings.TrimRight(lines[i], "\r"))
+		line := strings.TrimRight(lines[i], "\r")
+		// A byte-order mark is not part of the first line to a renderer, so a
+		// heading behind one is live (iss-2609251507443137).
+		if i == 0 {
+			line = frontmatter.TrimBOM(line)
+		}
+		m := floorATXRe.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
