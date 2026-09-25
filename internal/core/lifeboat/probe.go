@@ -51,7 +51,7 @@ const maxDirEntries = 50000
 const maxWalkFiles = maxDirEntries
 
 // maxWalkDepth caps how many levels below its start WalkFiles descends. The walk
-// holds a sub-root per directory (os.Root.OpenRoot), so each descent opens one
+// holds a sub-root per directory (openWalkDir), so each descent opens one
 // component in O(1) and a chain costs O(depth) rather than the square of its
 // depth — but an unbounded chain is still an unbounded recursion and a
 // pathological cost, so the cap prunes it. Real trees are shallow — the deepest
@@ -385,8 +385,8 @@ func (c *SourceContext) walkFilesLimited(rel string, limit int) (paths []string,
 // (limit: regular files and directories) and the per-directory read bound
 // (perDir) — so each is exercisable by a test at an affordable scale.
 //
-// It holds a sub-root per directory: each child directory is opened with
-// os.Root.OpenRoot from its parent's already-open handle, so a descent opens one
+// It holds a sub-root per directory: each child directory is opened by
+// openWalkDir from its parent's already-open handle, so a descent opens one
 // component relative to that directory (O(1)) rather than re-resolving the whole
 // path from the containment root on every open (O(depth)). A chain of
 // directories therefore costs O(entries), not O(entries × depth). Each directory
@@ -395,8 +395,9 @@ func (c *SourceContext) walkFilesLimited(rel string, limit int) (paths []string,
 // cap applies.
 //
 // The os.Root containment guarantee the FS() walk had survives unchanged:
-// OpenRoot refuses any component that escapes the root, and a symlinked
-// directory is detected from its ReadDir type and skipped before it is ever
+// OpenRoot refuses any component that escapes the root, a child swapped for a
+// FIFO or device after its parent was listed is refused without blocking
+// (openWalkDir), and a symlinked directory is detected from its ReadDir type and skipped before it is ever
 // opened, so no symlink is ever followed out of the tree.
 func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths []string, truncated bool) {
 	if c.root == nil {
@@ -408,7 +409,7 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 	}
 	startRoot := c.root
 	if start != "." {
-		r, err := c.root.OpenRoot(filepath.FromSlash(start))
+		r, err := openWalkDir(c.root, start)
 		if err != nil {
 			return nil, false
 		}
@@ -453,7 +454,7 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 					truncated = true
 					continue
 				}
-				sub, err := dirRoot.OpenRoot(name)
+				sub, err := openWalkDir(dirRoot, name)
 				if err != nil {
 					// Unreadable (or vanished) in a foreign tree: skip it and report
 					// only what could be read.
@@ -559,6 +560,36 @@ func readDirBounded(dirRoot *os.Root, bound int) (entries []fs.DirEntry, more bo
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	return entries, more
+}
+
+// openWalkDir opens the directory rel (one entry name, or a slash-separated
+// path) beneath dirRoot as a sub-root for a walk's descent, and refuses anything
+// that is not a directory at the moment of the open without ever blocking on it
+// (iss-337).
+//
+// The hazard is the window between a parent's ReadDir reporting an entry as a
+// directory and the descent opening it: a hostile tree can swap the directory
+// for a FIFO or a device in between. os.Root.OpenRoot(rel) opens its FINAL
+// component with O_NOFOLLOW|O_CLOEXEC only — no O_DIRECTORY and no O_NONBLOCK,
+// and it takes no flags — so opening a swapped-in FIFO blocks in the kernel
+// until a writer appears, and the probe hangs.
+//
+// The descent therefore asks for rel + "/.": every component of rel becomes an
+// INTERMEDIATE component, which os.Root opens with O_DIRECTORY|O_NOFOLLOW (its
+// rootOpenDir), and the final "." is the just-opened directory itself. The
+// kernel checks O_DIRECTORY before it opens the file, so a FIFO or device is
+// refused with ENOTDIR and nothing waits. Containment is os.Root's exactly as
+// before: a symlinked component still resolves only inside the root.
+//
+// A raw openat(O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK) on the parent descriptor is
+// the other form of the same fix, and is not taken: the syscall package exports
+// Openat on linux but not on darwin, a release target, and the portable spelling
+// needs golang.org/x/sys/unix as a direct dependency. The property rests on
+// os.Root opening intermediate components as directories, which is internal to
+// the standard library, so TestWalkDescentDoesNotBlockOnFifo holds it: a
+// toolchain that changes it fails that test rather than hanging a probe.
+func openWalkDir(dirRoot *os.Root, rel string) (*os.Root, error) {
+	return dirRoot.OpenRoot(rel + "/.")
 }
 
 // isSkipDir reports whether a directory of this name is one WalkFiles never
