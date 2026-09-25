@@ -292,7 +292,7 @@ Move an open issue to wontfix/ with the reason it is not acted on: Writes the mo
 
 ### `abcd changelog`
 
-Preview the next release cut's version, records, and guardrail verdict: Writes nothing; never refuses, reporting a cut the gates would stop with exit 0.
+Preview the next release cut's version, records, and guardrail verdict: Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.
 
 **Usage:** `abcd changelog`
 
@@ -872,7 +872,7 @@ that stops without leaving strands nothing: its claims lapse with their leases.
 
 #### `abcd implement load`
 
-Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; never refuses.
+Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.
 
 **Usage:** `abcd implement load --site preflight|eval-harness [flags]`
 

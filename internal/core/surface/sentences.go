@@ -70,7 +70,7 @@ var sentences = map[string]string{
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
 	"abcd changelog": "Preview the next release cut's version, records, and guardrail verdict: " +
-		"Writes nothing; never refuses, reporting a cut the gates would stop with exit 0.",
+		"Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.",
 
 	"abcd decide": "Mint an ADR id and lay the record's empty skeleton: " +
 		"Writes one proposed record into the decisions store; refuses a missing or unusable title.",
@@ -163,7 +163,7 @@ var sentences = map[string]string{
 	"abcd implement leave": "Leave the run, releasing every claim this session holds: " +
 		"Writes the releases and a session_close line; refuses without --session.",
 	"abcd implement load": "Check the machine's load before abcd's own tests start: " +
-		"Writes a load event to the run log inside a run; never refuses.",
+		"Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.",
 	"abcd implement log": "Append one of the run's events to today's run log: " +
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +

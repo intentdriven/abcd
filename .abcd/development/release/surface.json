@@ -580,7 +580,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Preview the next release cut's version, records, and guardrail verdict: Writes nothing; never refuses, reporting a cut the gates would stop with exit 0.",
+      "sentence": "Preview the next release cut's version, records, and guardrail verdict: Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.",
       "flags": []
     },
     {
@@ -1235,7 +1235,7 @@
     {
       "path": "abcd implement load",
       "hidden": false,
-      "sentence": "Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; never refuses.",
+      "sentence": "Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.",
       "flags": [
         {
           "name": "site",
