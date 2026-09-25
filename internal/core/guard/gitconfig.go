@@ -257,16 +257,34 @@ func (r Registry) gitValueFlags() []string {
 
 // gitConfigDeclarations collects the alias bodies one git segment declares in its
 // own text, keyed by the folded alias name, and reports whether the segment also
-// points at configuration whose body the guard cannot read.
+// points at configuration whose body the guard cannot read. It is readGitConfig
+// narrowed to what the alias pre-pass reads.
+func gitConfigDeclarations(prefix, args, valueFlags []string) (map[string]string, bool) {
+	c := readGitConfig(prefix, args, valueFlags)
+	if len(c.aliases) == 0 {
+		return nil, c.unread
+	}
+	return c.aliases, c.unread
+}
+
+// gitConfigRead is what one git segment's own text sets in configuration: the
+// alias bodies it declares, whether it points at configuration whose body the
+// guard cannot read, and whether it points core.hooksPath anywhere.
+type gitConfigRead struct {
+	aliases   map[string]string
+	unread    bool
+	hooksPath bool
+}
+
+// readGitConfig reads the configuration one git segment sets in its own text.
 //
 // prefix is the tokens before command position (the environment assignments and
 // wrapper words commandOf steps); args is everything after it. Only the
 // arguments BEFORE operand 0 are read for `-c`/`--config-env`, because that is
 // where git's own parser reads them — `git log -c` past the subcommand is a
 // combined-diff flag, not a config setting.
-func gitConfigDeclarations(prefix, args, valueFlags []string) (map[string]string, bool) {
-	decls := map[string]string{}
-	unread := false
+func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
+	c := gitConfigRead{aliases: map[string]string{}}
 
 	env := map[string]string{}
 	for _, tok := range prefix {
@@ -277,10 +295,10 @@ func gitConfigDeclarations(prefix, args, valueFlags []string) (map[string]string
 		env[tok[:eq]] = tok[eq+1:]
 	}
 	if _, ok := env["GIT_CONFIG_GLOBAL"]; ok {
-		unread = true
+		c.unread = true
 	}
 	if _, ok := env["GIT_CONFIG_SYSTEM"]; ok {
-		unread = true
+		c.unread = true
 	}
 	// The GIT_CONFIG_COUNT/KEY_n/VALUE_n triple. The keys present are read
 	// rather than the count trusted: a count that undersells what is set would
@@ -291,12 +309,12 @@ func gitConfigDeclarations(prefix, args, valueFlags []string) (map[string]string
 			continue
 		}
 		if v, ok := env["GIT_CONFIG_VALUE_"+n]; ok {
-			addConfigPair(decls, &unread, key, v)
+			c.add(key, v)
 		}
 	}
 	if params, ok := env["GIT_CONFIG_PARAMETERS"]; ok {
 		for k, v := range parseConfigParameters(params) {
-			addConfigPair(decls, &unread, k, v)
+			c.add(k, v)
 		}
 	}
 
@@ -311,7 +329,7 @@ func gitConfigDeclarations(prefix, args, valueFlags []string) (map[string]string
 			if i+1 < len(args) {
 				k, v, ok := strings.Cut(args[i+1], "=")
 				if ok {
-					addConfigPair(decls, &unread, k, v)
+					c.add(k, v)
 				}
 			}
 		case arg == "--config-env", strings.HasPrefix(arg, "--config-env="):
@@ -330,31 +348,34 @@ func gitConfigDeclarations(prefix, args, valueFlags []string) (map[string]string
 			if !set {
 				// The body is in a variable the command line does not set, so
 				// it comes from the ambient environment: visible directive,
-				// unreadable value.
-				if strings.HasPrefix(strings.ToLower(k), aliasPrefix) {
-					unread = true
+				// unreadable value. For the hooks path the directive is all
+				// that matters — any value moves the hooks.
+				switch key := strings.ToLower(strings.TrimSpace(k)); {
+				case strings.HasPrefix(key, aliasPrefix):
+					c.unread = true
+				case key == hooksPathKey:
+					c.hooksPath = true
 				}
 				continue
 			}
-			addConfigPair(decls, &unread, k, v)
+			c.add(k, v)
 		}
 	}
-	if len(decls) == 0 {
-		return nil, unread
-	}
-	return decls, unread
+	return c
 }
 
-// addConfigPair files one `key=value` config setting: an alias declaration is
-// stored under its folded name, and a key that pulls configuration in from a
-// file marks the segment unreadable.
-func addConfigPair(decls map[string]string, unread *bool, key, value string) {
+// add files one `key=value` config setting: an alias declaration is stored
+// under its folded name, a key that pulls configuration in from a file marks
+// the segment unreadable, and the hooks path is noted whatever its value.
+func (c *gitConfigRead) add(key, value string) {
 	k := strings.ToLower(strings.TrimSpace(key))
 	switch {
 	case strings.HasPrefix(k, aliasPrefix):
-		decls[strings.TrimPrefix(k, aliasPrefix)] = value
+		c.aliases[strings.TrimPrefix(k, aliasPrefix)] = value
 	case k == "include.path", strings.HasPrefix(k, "includeif."):
-		*unread = true
+		c.unread = true
+	case k == hooksPathKey:
+		c.hooksPath = true
 	}
 }
 

@@ -400,6 +400,11 @@ func (r Registry) Check(command string) (Decision, error) {
 	segs = aliasSegs
 	signals = append(signals, aliasSignals...)
 
+	// A git command that moves core.hooksPath for itself skips the hooks as
+	// --no-verify does, and is read as carrying the flag (iss-2609251640464212).
+	// After the alias pre-pass, so an alias's expansion is read too.
+	segs = expandHooksPathOverrides(segs, r.gitValueFlags())
+
 	// A stash that does not name its entry, in a repository whose stash stack
 	// several worktrees share (iss-2609190338340796). Read after the alias
 	// pre-pass so an alias that expands to `stash pop` is reached too.

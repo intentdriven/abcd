@@ -185,7 +185,10 @@ brace group is expanded as bash expands it and every word it produces is
 checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A
 command string handed to a shell is opened and read. A git alias declared on the same command line is resolved, and the
-command git would actually run is what gets checked. In a repository with more
+command git would actually run is what gets checked. A commit or push that
+moves `core.hooksPath` for itself is read as skipping its hooks, which is what
+it does. A delete chained after `pushd` or `popd` is read as one chained after
+`cd`. In a repository with more
 than one worktree, a stash or pop that does not name its entry is warned about,
 because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.

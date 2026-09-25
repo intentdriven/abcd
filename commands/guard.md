@@ -176,6 +176,12 @@ it — an accepted over-block — and configuration delivered from a FILE
 does not set) is a **warn** under `git-config-rewrite-unread`, because the
 directive is visible and its body is not.
 
+A `git commit` or `git push` that points `core.hooksPath` somewhere else for
+itself — through `-c`, `--config-env` or the `GIT_CONFIG_*` environment — skips
+the repository's hooks exactly as `--no-verify` does, and blocks under the same
+entries whatever the value, because the guard cannot tell a directory of real
+hooks from an empty one. Setting the key with `git config` is not refused.
+
 What an allow still does not see is a hazard that never reaches command position
 at all: one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
