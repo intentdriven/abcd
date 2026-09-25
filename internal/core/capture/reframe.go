@@ -389,9 +389,28 @@ type frameWalk struct {
 	cache    blobCache
 }
 
-// frameHistory reads the bounded list of commits touching the frame.
-func frameHistory(repoRoot string, cache blobCache) (*frameWalk, error) {
-	args := append([]string{"log", "--format=%H", "-n", fmt.Sprint(frameHistoryBound), "HEAD", "--"}, frameSurfacePaths()...)
+// The two shapes a walk reads the history in.
+const (
+	// walkMainline follows first parents only, so across a merge the state
+	// before is the one the line HEAD stands on held, whichever line holds the
+	// newer commits: a rewrite brought in by a --no-ff merge is recorded as a
+	// squash or a rebase of the same branch would record it, and the outcome is
+	// fixed by topology, never by timestamps. The whole write reads this.
+	walkMainline = true
+	// walkEveryLine reads every line of history, so a before triple held only
+	// on a merged branch is still found. The completion reads this: it looks
+	// for one known triple, and which line holds it does not matter.
+	walkEveryLine = false
+)
+
+// frameHistory reads the bounded list of commits touching the frame, along
+// first parents only when mainline is set.
+func frameHistory(repoRoot string, cache blobCache, mainline bool) (*frameWalk, error) {
+	args := []string{"log", "--format=%H", "-n", fmt.Sprint(frameHistoryBound)}
+	if mainline {
+		args = append(args, "--first-parent")
+	}
+	args = append(append(args, "HEAD", "--"), frameSurfacePaths()...)
 	out, err := gitutil.RunCapped(repoRoot, maxStatusBytes, args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the frame's history: %w", err)
@@ -492,7 +511,7 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 		if err := requireWorkingTreeAtHead(repoRoot, head, "commit the rewrite, or record the first half with --open"); err != nil {
 			return ReframeResult{}, err
 		}
-		walk, err := frameHistory(repoRoot, cache)
+		walk, err := frameHistory(repoRoot, cache, walkMainline)
 		if err != nil {
 			return ReframeResult{}, err
 		}
@@ -610,7 +629,7 @@ func completeReframe(repoRoot, issuesRoot string, req ReframeRequest) (ReframeRe
 		return ReframeResult{}, fmt.Errorf("%w: the frame at HEAD is still the state the record opened against; nothing was rewritten, so commit the rewrite before completing %s (nothing written)",
 			ErrInvariantViolation, id)
 	}
-	walk, err := frameHistory(repoRoot, cache)
+	walk, err := frameHistory(repoRoot, cache, walkEveryLine)
 	if err != nil {
 		return ReframeResult{}, err
 	}

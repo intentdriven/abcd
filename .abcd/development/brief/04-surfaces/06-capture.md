@@ -208,7 +208,10 @@ reading item, a disposition or a surprise), the SHA-256 fingerprint of each
 surface before and after, which surfaces changed, and the ground, and no text of
 any surface. The verb reads the surfaces at `HEAD`, in the working tree and
 along their history, so the operator supplies no hash. Written after the
-rewrite's commit it is one write; written before it, a first half records the
+rewrite's commit it is one write, against the previous distinct state along
+first parents, so a rewrite a merge brought in is recorded as a squash of the
+same branch would record it, whatever the commits' timestamps; written before
+it, a first half records the
 before fingerprints and a second write finishes it once the rewrite is
 committed, walking back across as many commits as the rewrite took, merges
 included. Every render names the half it wrote. The occasion

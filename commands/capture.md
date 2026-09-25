@@ -525,8 +525,10 @@ A reframe is written in one of three halves, and every render names which:
 
 - **Whole**, after the rewrite is committed (no flag). All three surfaces in the
   working tree must match `HEAD`, or the verb refuses naming the one that does
-  not. It walks the surfaces' history to the previous distinct committed state
-  and writes both halves at once.
+  not. It walks the surfaces' history along first parents to the previous
+  distinct committed state and writes both halves at once, so a rewrite a merge
+  brought in is recorded against the state the merge's first parent held, as a
+  squash of the same branch would be, whatever the commits' timestamps.
 - **Open**, before the rewrite is committed (`--open`). The before fingerprints
   are `HEAD`'s and the after half is absent; the render names the completion.
   Only one record may be open at a time.

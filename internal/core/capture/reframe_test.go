@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -337,6 +338,65 @@ func TestReframeRefusesAFrameWithNoPriorState(t *testing.T) {
 	}
 	if ledgerDigest(t, ledgerOf(r)) != before {
 		t.Fatal("a refused reframe changed the ledger")
+	}
+}
+
+// commitDated stages everything and commits it with both dates pinned, so a
+// fixture can order commits on two lines of history by timestamp.
+func commitDated(t *testing.T, r *gittest.Repo, msg, date string, extra ...string) {
+	t.Helper()
+	r.Git("add", "-A")
+	args := append([]string{"-C", r.Root(), "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
+		"-c", "commit.gpgsign=false"}, extra...)
+	if len(extra) == 0 {
+		args = append(args, "commit", "-q", "-m", msg)
+	}
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(r.Env(), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+// ac-1 across a --no-ff merge: the rewrite is what the merge brought to the
+// line HEAD stands on, so the previous distinct state is its first parent's,
+// whichever line of history holds the newer commits. The branch moves the
+// construal and a glossary term in two commits while main moves the scope;
+// in both timestamp orders `changed` names both surfaces the merge brought,
+// exactly as a squash of the same branch would.
+func TestReframeWholeWriteAcrossAMergeIsTopological(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		branch1, branch2 string
+		mainline, merge  string
+	}{
+		{"the branch's commits are newer", "2030-01-02T00:00:00Z", "2030-01-03T00:00:00Z", "2030-01-01T00:00:00Z", "2030-01-04T00:00:00Z"},
+		{"main's commit is newer", "2030-01-01T00:00:00Z", "2030-01-02T00:00:00Z", "2030-01-03T00:00:00Z", "2030-01-04T00:00:00Z"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := reframeFixture(t)
+			r.Git("checkout", "-q", "-b", "rewrite")
+			r.Write(fxFraming, framingDoc("The rewrite on its own branch."))
+			commitDated(t, r, "rewrite the construal", tc.branch1)
+			r.Write(fxGlossary+"/core/term.md", "# Term\n\nThe branch's sharper term.\n")
+			commitDated(t, r, "rewrite a term", tc.branch2)
+			r.Git("checkout", "-q", "main")
+			r.Write(fxScope, scopeDoc("Main moved the scope meanwhile."))
+			commitDated(t, r, "move the scope on main", tc.mainline)
+			mainline := frameAt(t, r)
+			commitDated(t, r, "", tc.merge, "merge", "-q", "--no-ff", "-m", "merge the rewrite", "rewrite")
+
+			res, err := Reframe(reframeReq(r, fxItem))
+			if err != nil {
+				t.Fatalf("Reframe: %v", err)
+			}
+			if !slices.Equal(res.Changed, []string{"construal", "glossary"}) {
+				t.Fatalf("changed = %v, want [construal glossary]: the surfaces the merge brought, not a date-ordered neighbour's", res.Changed)
+			}
+			if res.Before != mainline || res.After != frameAt(t, r) || res.Commits != 1 {
+				t.Fatalf("result = %+v\nwant before = the first parent's state %+v across 1 commit", res, mainline)
+			}
+		})
 	}
 }
 
