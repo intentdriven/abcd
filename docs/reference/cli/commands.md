@@ -153,6 +153,31 @@ Remove one banned-name entry from the named layer
       --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
+### `abcd build`
+
+Start a run that takes one READY intent to delivered, refusing while a decision is open
+
+**Usage:** `abcd build <itd-N>`
+
+Start the implement loop for one intent. The checks run first, and every one must pass:
+the intent is READY (planned, criteria written, its spec linked and written), asks no
+open question, has no unanswered claim section, is not held, its spec leaves a step to
+build, and no peer holds it (no sibling worktree or local branch holds it in another
+bucket, and no session holds a live claim on it). A refusal names the check, the reason
+and the remedy, and writes nothing.
+
+When the checks pass, the run is created in this checkout's local tier,
+`.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
+the other unlanded steps pending, and the run record's first line. The tier itself is
+never created: only a repository abcd manages has one. Starting again while the run is
+in progress creates nothing and names the run, so a killed process resumes where it
+stopped.
+
+The run then moves one step per `abcd implement step`, driven by the host session.
+
+Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
+(back off and take other work).
+
 ### `abcd capture`
 
 Capture issues to the ledger; bare invocation is read-only status
@@ -754,11 +779,11 @@ Print the proposed correction for every drifted surface as a unified diff (write
 
 ### `abcd implement`
 
-Share one autonomous run between sessions: join, claim a record, check the bounds, log, and compare the division modes
+Share one autonomous run between sessions (join, claim, check, log, compare the modes) and drive the implement loop
 
 **Usage:** `abcd implement`
 
-The run machinery an autonomous run calls. Every piece lives in the machine-scoped run
+The run machinery an autonomous run calls. The shared run lives in the machine-scoped run
 state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions
 in different worktrees of one repository share one run and no repository file.
 
@@ -774,6 +799,11 @@ The second session is bounded: one lane at a time, never the release, never a la
 that touches the reading corpus, no lane in a split-roles window (`check` asks before
 a step that is not a claim). `log` appends the run's other events, and `report`
 derives the comparison of the modes from the log.
+
+`status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state
+lives in this checkout's local tier: `step` performs one step and exits, naming the
+agent, brief and receipt path when a step hands work to an agent, and `receipt`
+completes that step once the receipt verifies.
 
 Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound
 the session's role does not permit), exit 3 on contention (the record is claimed by
@@ -951,6 +981,28 @@ mode in force is the log's last window_mode line, whoever wrote it.
       --window int       the window's number, recorded on the line
 ```
 
+#### `abcd implement receipt`
+
+Hand back the receipt an agent step of an implement loop run awaits; the step completes only if it verifies
+
+**Usage:** `abcd implement receipt <path> [--run <run-id>] [flags]`
+
+Hand back the receipt the run's awaiting lane named when its step handed work to an
+agent. The path must be the one the step named. The step's verifier checks it; a
+receipt that verifies completes the step and the lane moves to its next step, and one
+that does not is refused naming what is missing, with the lane left where it was. A
+step whose verifier this abcd does not carry is refused naming the spec piece that
+delivers it.
+
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal, exit 3 on a locked run state.
+
+**Flags:**
+
+```
+      --run string   the run the receipt belongs to (run-<16 digits>); the one run in progress when omitted
+```
+
 #### `abcd implement release`
 
 Release this session's claim on a record
@@ -990,6 +1042,50 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 ```
       --date string   read one day's log (YYYY-MM-DD, UTC)
       --log string    read this log file instead of the run's own
+```
+
+#### `abcd implement status`
+
+Render the implement loop's runs in this checkout: lanes, steps, what each awaits (read-only)
+
+**Usage:** `abcd implement status [--run <run-id>] [flags]`
+
+Render the runs `abcd build` started in this checkout, or the one --run names: the
+intent and spec, each lane with its spec step and next step, what an awaiting lane
+waits on, the pending spec steps, and the run record. Read-only: it writes nothing
+and creates nothing. Exit 2 when --run names no run.
+
+**Flags:**
+
+```
+      --run string   the run to render (run-<16 digits>); every run in this checkout when omitted
+```
+
+#### `abcd implement step`
+
+Perform the next step of an implement loop run and exit; at an agent step, name the agent, the brief and the receipt path
+
+**Usage:** `abcd implement step [--run <run-id>] [flags]`
+
+Perform one step of the run's current lane, write the state, and exit. At a step that
+hands work to an agent, the result names the agent to start, the brief it is handed
+and the path its receipt goes to; the lane then advances only on
+`abcd implement receipt`, and asking for a step again re-tells the same thing and
+moves nothing. When a lane is done the spec's next pending step opens the next lane.
+A complete run says so.
+
+A step whose body this abcd does not carry is refused naming the spec piece that
+delivers it, and the run is unchanged. A step that fails leaves the state as it was,
+so the next invocation performs it again; a completed step is never repeated. Before
+the run's next_eligible_at the step is refused as a pause.
+
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal, exit 3 on a pause or a locked run state.
+
+**Flags:**
+
+```
+      --run string   the run to step (run-<16 digits>); the one run in progress when omitted
 ```
 
 ### `abcd inbox`

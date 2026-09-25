@@ -110,3 +110,30 @@ itd-50's fix round runs from the reviewers' findings instead; the lane's definit
 schema gains `handback: {kind, reason}`; the loop reads it before the
 validators and ends the lane with that outcome when present. `abcd build
 <iss-N>` is the person's form; `drain` calls the same loop with the key.
+
+## Progress
+
+The run builds the scope in four lanes; this section says which pieces have
+landed and which remain. The spec stays open until the last lane closes it.
+
+- **Landed (lane 1): pieces 1, 2 and 4.** The state file and its one reader and
+  one atomic writer (`internal/core/implement/loop`), under
+  `.abcd/.work.local/run/<run-id>/state.json` with the tier's advisory lock; the
+  step interface — `abcd build <itd-N>` creates the run after the checks,
+  `implement step` performs one step and exits, `implement receipt <path>`
+  completes an agent step on a verified receipt, `implement status` renders —
+  with the lane sequence (worktree, brief, implement, validate, land) named and
+  every step body left to the piece that delivers it; and the checks: the
+  readiness gate, the open questions, the claim sections, the hold (read from
+  `held:`, since iss-2609200830076665 shipped), the spec's steps through the
+  spec store's reader, and the peers (the peer listing and the shared run's
+  live claims). The end-to-end test plays the host with fake step bodies.
+- **Seam left, not built: piece 3**, the process driver. It waits on the runner
+  intent (itd-2609201916056194) and calls the same `Advance` and `Receipt`.
+- **Remaining: pieces 5 to 8** (the brief, the lane's worktree, the receipt's
+  verifier, the validators with the itd-58 verdict invariant) and **9 to 11**
+  (the landing, the run record and transcripts, `--auto-plan` with its ADR).
+  Each registers its body in `loop.DefaultSteps`. The issue key (decision 10)
+  is refused by name at the key check; the lane that admits it adds the
+  `remedy:` field schema, drain's eligibility rule and the `handback:` report
+  field. `--auto-plan` is not a flag yet.

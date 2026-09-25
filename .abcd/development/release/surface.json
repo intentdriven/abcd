@@ -235,6 +235,11 @@
       ]
     },
     {
+      "path": "abcd build",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd capture",
       "hidden": false,
       "flags": [
@@ -1187,6 +1192,19 @@
       ]
     },
     {
+      "path": "abcd implement receipt",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement release",
       "hidden": false,
       "flags": [
@@ -1212,6 +1230,32 @@
         },
         {
           "name": "log",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement status",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement step",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "run",
           "shorthand": "",
           "type": "string",
           "required": false,

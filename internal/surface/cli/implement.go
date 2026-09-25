@@ -31,8 +31,8 @@ const implementStore = "the run state"
 func newImplementCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "implement",
-		Short: "Share one autonomous run between sessions: join, claim a record, check the bounds, log, and compare the division modes",
-		Long: "The run machinery an autonomous run calls. Every piece lives in the machine-scoped run\n" +
+		Short: "Share one autonomous run between sessions (join, claim, check, log, compare the modes) and drive the implement loop",
+		Long: "The run machinery an autonomous run calls. The shared run lives in the machine-scoped run\n" +
 			"state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions\n" +
 			"in different worktrees of one repository share one run and no repository file.\n\n" +
 			"Bare `abcd implement` is read-only: the sessions that have joined, the claims and\n" +
@@ -46,6 +46,10 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 			"that touches the reading corpus, no lane in a split-roles window (`check` asks before\n" +
 			"a step that is not a claim). `log` appends the run's other events, and `report`\n" +
 			"derives the comparison of the modes from the log.\n\n" +
+			"`status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state\n" +
+			"lives in this checkout's local tier: `step` performs one step and exits, naming the\n" +
+			"agent, brief and receipt path when a step hands work to an agent, and `receipt`\n" +
+			"completes that step once the receipt verifies.\n\n" +
 			"Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound\n" +
 			"the session's role does not permit), exit 3 on contention (the record is claimed by\n" +
 			"another session, or the run state is locked): back off and take other work.",
@@ -102,6 +106,9 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 		newImplementLogCommand(asJSON),
 		newImplementReportCommand(asJSON),
 		newImplementLoadCommand(asJSON),
+		newImplementStatusCommand(asJSON),
+		newImplementStepCommand(asJSON),
+		newImplementReceiptCommand(asJSON),
 	)
 	return cmd
 }
