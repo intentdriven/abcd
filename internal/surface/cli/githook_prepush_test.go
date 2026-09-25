@@ -221,6 +221,38 @@ func TestPreflightReceiptIsWithheldFromATreeThatDiffersFromTheCommit(t *testing.
 	}
 }
 
+// git status hides a tracked file flagged skip-worktree or assume-unchanged: its
+// local edit is invisible to the clean-tree comparison, so the gates read content
+// the commit does not carry while the tree reads as clean. No receipt is minted
+// while any such flag is set, edited or not, because the flag is exactly what
+// stops the script from knowing.
+func TestPreflightReceiptIsWithheldWhileAnIndexFlagHidesAnEdit(t *testing.T) {
+	for name, flag := range map[string]string{
+		"skip-worktree":    "--skip-worktree",
+		"assume-unchanged": "--assume-unchanged",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newPrePushCase(t)
+			c.commit("a.md", "one\n")
+			c.git("update-index", flag, "a.md")
+			c.write("a.md", "two\n", 0o644) // the edit git status no longer reports
+			if st := c.git("status", "--porcelain"); st != "" {
+				t.Fatalf("the fixture's premise is wrong: git status reports the edit\n%s", st)
+			}
+			out := c.preflight(c.dir)
+			if strings.Contains(out, "receipt minted for") {
+				t.Fatalf("a preflight over a %s edit minted a receipt\n%s", name, out)
+			}
+			if !strings.Contains(out, flag[2:]) {
+				t.Errorf("the refusal does not name the flag that hides the edit\n%s", out)
+			}
+			if pushed, err := c.push("origin", "feature"); err == nil {
+				t.Fatalf("a commit preflighted over a hidden edit was pushed\n%s", pushed)
+			}
+		})
+	}
+}
+
 func TestPreflightReceiptIsWithheldWhenHeadMovesDuringTheRun(t *testing.T) {
 	c := newPrePushCase(t)
 	c.commit("a.md", "one\n")
@@ -313,7 +345,7 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(string(dry)), "\n")
 	last := lines[len(lines)-1]
-	mint := regexp.MustCompile(`^scripts/preflight-receipt\.sh mint "[0-9a-f]{40} (clean|dirty)"$`)
+	mint := regexp.MustCompile(`^scripts/preflight-receipt\.sh mint "[0-9a-f]{40} (clean|dirty|hidden)"$`)
 	if !mint.MatchString(last) {
 		t.Fatalf("the preflight recipe's last step is %q; want the receipt minted from the state recorded "+
 			"before the first gate ran\n%s", last, dry)

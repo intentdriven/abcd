@@ -17,8 +17,17 @@
 # can pass every gate while the committed tree fails CI, because CI checks out the
 # commit. A receipt is minted only when the tree matched HEAD (no staged, unstaged
 # or untracked change) when the preflight began AND when it ended, with HEAD
-# unmoved between: then what the gates read is what the push ships. Files git
-# ignores are outside that comparison, as they are outside the commit.
+# unmoved between: then what the gates read is what the push ships. A tracked file
+# flagged skip-worktree or assume-unchanged is hidden from `git status`, so its
+# local edit would read as clean: while any such flag is set (a sparse checkout
+# sets skip-worktree on every file it leaves out), no receipt is minted.
+#
+# LIMITS, stated rather than implied. The comparison is `git status` at two
+# instants, so it cannot see: a file git ignores, which is outside the commit yet
+# can be read by a gate (a `go.work` beside go.mod, which .gitignore lists, changes
+# every Go gate's module resolution); HEAD moved and moved back, or the tree changed
+# and restored, between the two instants; and anything a gate reads from outside
+# the checkout. Each passes a receipt for a tree the gates did not read exactly.
 #
 # The receipt is a file named by the full commit id under the checkout's local
 # tier, .abcd/.work.local/preflight-receipts/. It is a local convenience gate, not
@@ -26,7 +35,8 @@
 # authority, and `git push --no-verify` skips this layer exactly as it always did.
 #
 # Usage:
-#   preflight-receipt.sh state          print "<HEAD> clean|dirty" for this tree
+#   preflight-receipt.sh state          print "<HEAD> clean|dirty|hidden" for this
+#                                       tree (hidden: an index flag hides edits)
 #   preflight-receipt.sh mint "<state>" mint a receipt for HEAD if the tree was
 #                                       clean at <state> and is clean at the same
 #                                       HEAD now; otherwise say why none is minted
@@ -44,14 +54,24 @@ receipts_rel=".abcd/.work.local/preflight-receipts"
 keep=50
 
 state() {
-	local head status
+	local head status flags
 	head="$(git rev-parse --verify --quiet HEAD 2>/dev/null || true)"
 	[ -n "$head" ] || head="none"
 	status="$(git status --porcelain --untracked-files=normal 2>/dev/null)" || {
 		echo "$head dirty"
 		return 0
 	}
-	if [ -z "$status" ]; then
+	# `git ls-files -v` tags a skip-worktree entry S and an assume-unchanged one in
+	# lower case: either flag hides an edit from the status read above.
+	flags="$(git ls-files -v 2>/dev/null)" || {
+		echo "$head dirty"
+		return 0
+	}
+	# A here-string, not a pipe: under pipefail an early-exiting `grep -q` can fail
+	# the writer with SIGPIPE and turn a match into "no match".
+	if grep -q '^[Shs] ' <<<"$flags"; then
+		echo "$head hidden"
+	elif [ -z "$status" ]; then
 		echo "$head clean"
 	else
 		echo "$head dirty"
@@ -72,6 +92,14 @@ mint() {
 	fi
 	if [ "$began_head" = "none" ] || [ "$now_head" = "none" ]; then
 		echo "preflight: no push receipt minted — there is no commit to vouch for."
+		return 0
+	fi
+	if [ "$began_tree" = "hidden" ] || [ "$now_tree" = "hidden" ]; then
+		echo "preflight: no push receipt minted — a tracked file is flagged skip-worktree or assume-unchanged"
+		echo "           (git ls-files -v tags it S or in lower case), which hides its edits from git status,"
+		echo "           so the tree these gates read cannot be shown to be the commit. Clear the flag"
+		echo "           (git update-index --no-skip-worktree / --no-assume-unchanged <path>) and run"
+		echo "           \`make preflight\` again."
 		return 0
 	fi
 	if [ "$began_tree" != "clean" ] || [ "$now_tree" != "clean" ]; then
