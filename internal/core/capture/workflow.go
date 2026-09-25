@@ -119,6 +119,7 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 		return CaptureResult{}, err
 	}
 	result.Redacted, result.Degraded = redacted, degraded
+	result.NoLocation = strings.TrimSpace(req.FoundAt) == ""
 	// Machine output carries a repo-relative locator, never an absolute
 	// developer-identity path (iss-81).
 	result.Path = fsutil.RepoRel(repoRoot, result.Path)

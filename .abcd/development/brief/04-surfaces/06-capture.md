@@ -73,6 +73,10 @@ hold is the mechanical sign of a finding filed in the wrong place
 (iss-2609120511058115). A conceptual location, meaning anything that is not a
 lone path token, and an absent value are written as given. The check is made
 at capture only, so a record keeps the path it named when the tree later moves.
+An absent location is written as given and is not refused, but the verb says the
+record names no location in this checkout, so nothing ties it to the repository
+it is filed into: that is a nudge, not a gate, and it is the shape every
+misfiled record behind iss-2609120511058115 had (iss-2609231156260287).
 
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no

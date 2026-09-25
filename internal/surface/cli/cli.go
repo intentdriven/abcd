@@ -3500,6 +3500,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if res.Uncommitted {
 					fmt.Fprintf(w, "  uncommitted: the record is not in git yet — commit it, or no other branch, worktree or gate will see it\n")
 				}
+				// A nudge, never a refusal (iss-2609231156260287): a capture with
+				// no location is legitimate, and it is also the shape a finding
+				// filed into the wrong repository has.
+				if res.NoLocation {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: no --found-at given — the record names no location in this checkout, so nothing ties it to the repository it is filed into\n")
+				}
 				// Redaction alters what the caller filed, so it is never silent: the
 				// text on disk differs from the text handed in, and only the caller
 				// can judge whether the redacted record still says what they meant.

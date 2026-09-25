@@ -182,6 +182,11 @@ type CaptureResult struct {
 	// It exists so the write can SAY the record reaches no other branch and no
 	// gate until it is committed (iss-2609100508570527).
 	Uncommitted bool `json:"uncommitted,omitempty"`
+	// NoLocation is true when the capture named no found_at: legitimate for a
+	// conceptual finding, and still worth saying, because nothing then ties the
+	// record to the repository it is filed into — the shape every misfiled
+	// record of iss-2609120511058115 had (iss-2609231156260287).
+	NoLocation bool `json:"no_location,omitempty"`
 }
 
 // ResolveRequest moves an open issue to resolved/.

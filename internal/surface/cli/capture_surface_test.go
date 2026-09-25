@@ -1306,3 +1306,28 @@ func TestRecordDispatcherNamesTheLedgerForAnIssue(t *testing.T) {
 		t.Fatalf("abcd %s names no ledger in its text render:\n%s", rec.ID, text)
 	}
 }
+
+// TestCaptureWithoutFoundAtSaysNoLocationWasNamed is iss-2609231156260287:
+// a capture with no --found-at is legitimate and is written as before, but the
+// verb says the record names no location in this checkout — on stderr, and as
+// no_location in --json. A capture naming one says nothing of the kind.
+func TestCaptureWithoutFoundAtSaysNoLocationWasNamed(t *testing.T) {
+	captureLedgerRepo(t)
+	out := string(runCLI(t, "capture", "a process observation with no file", "--slug", "nowhere"))
+	if !strings.Contains(out, "names no location in this checkout") {
+		t.Fatalf("a capture with no --found-at did not say so:\n%s", out)
+	}
+	var res struct {
+		NoLocation bool `json:"no_location"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "another process observation here", "--json"), &res); err != nil || !res.NoLocation {
+		t.Fatalf("--json does not carry no_location: %v %+v", err, res)
+	}
+	if err := os.WriteFile("placed.go", []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	with := string(runCLI(t, "capture", "a finding about one file", "--found-at", "placed.go"))
+	if strings.Contains(with, "names no location") {
+		t.Fatalf("a capture naming a location still said it named none:\n%s", with)
+	}
+}

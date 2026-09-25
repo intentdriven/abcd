@@ -85,7 +85,11 @@ declared mode, else `hand-written`). Report the new `id`, `status`, and `path` f
 too whenever it is non-zero: it counts the spans rewritten before the text was
 written, and the user needs to know their wording was changed. When
 `uncommitted` is true, say that the record is not in git yet: until it is
-committed no other branch, worktree or gate can see it.
+committed no other branch, worktree or gate can see it. When `no_location` is
+true, no `--found-at` was given: the record is written all the same, and the
+verb says (on stderr in the plain render) that it names no location in this
+checkout. Relay that, because a finding about another repository has exactly
+that shape.
 
 `--category lapse` takes `--lapsed-at`, which has no default: a lapse capture
 that omits it records no instant, never the write-up time. The refusal on an
