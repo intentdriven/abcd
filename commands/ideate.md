@@ -1,6 +1,6 @@
 ---
 name: ideate
-description: "List the verb that records an idea-admission verdict: Writes nothing; refuses an unknown sub-verb."
+description: "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb."
 argument-hint: "<the idea, in one or two sentences>"
 block: agents
 ---

@@ -1,6 +1,6 @@
 ---
 name: docs
-description: "List the verbs that maintain the citation baseline the docs lint reads: Writes nothing; refuses an unknown sub-verb."
+description: "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb."
 argument-hint: "[cite refresh | cite confirm <url>...]"
 block: agents
 ---

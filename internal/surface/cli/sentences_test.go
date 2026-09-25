@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -60,6 +61,34 @@ func visibleCommands(root *cobra.Command) []*cobra.Command {
 	return out
 }
 
+// executedTree returns a builder for build's tree with the commands cobra adds
+// to the root only when the tree executes, `help` and `completion`, already
+// added, so a walk sees every command `abcd --help` lists.
+func executedTree(build func() *cobra.Command) func() *cobra.Command {
+	return func() *cobra.Command {
+		root := build()
+		root.InitDefaultHelpCmd()
+		root.InitDefaultCompletionCmd()
+		return root
+	}
+}
+
+// frameworkCommands are the visible commands cobra itself adds when the tree
+// executes: `help` and `completion` with its four shells. `abcd --help` lists
+// them under Set-up with cobra's own text, and the manifest carries no sentence
+// for them, because they are the framework's (DECISIONS.md, 2026-09-25, the
+// sentence lane's rulings). The gate exempts them by name, and
+// TestTheFrameworkCommandsAreTheOnlyExemption holds the name list to the tree,
+// so the gate never reads as covering every listed verb while some are outside it.
+var frameworkCommands = map[string]bool{
+	"abcd help":                  true,
+	"abcd completion":            true,
+	"abcd completion bash":       true,
+	"abcd completion fish":       true,
+	"abcd completion powershell": true,
+	"abcd completion zsh":        true,
+}
+
 // listsSentence reports whether a rendered help lists the entry name with the
 // sentence as its whole summary, as cobra's command list and the root's groups
 // print it: the name, padding, the sentence, and nothing after it but the page
@@ -82,6 +111,9 @@ func sentenceDefects(t *testing.T, build func() *cobra.Command, manifest func(st
 	for _, cmd := range visibleCommands(build()) {
 		path := cmd.CommandPath()
 		sentence, ok := manifest(path)
+		if !ok && frameworkCommands[path] {
+			continue // cobra's own, exempt by name
+		}
 		if !ok {
 			out = append(out, path+": no sentence in the manifest")
 			continue
@@ -126,11 +158,41 @@ func sentenceDefects(t *testing.T, build func() *cobra.Command, manifest func(st
 // the manifest, and the command list, its own --help and its plugin page all
 // render that sentence byte for byte.
 func TestEveryVisibleVerbCarriesItsSentenceEverywhere(t *testing.T) {
-	if n := len(visibleCommands(NewRootCommand())); n < 100 {
+	build := executedTree(NewRootCommand)
+	if n := len(visibleCommands(build())); n < 100 {
 		t.Fatalf("the walk saw %d visible commands; the tree has more than a hundred, so the check would pass on a fraction", n)
 	}
-	for _, d := range sentenceDefects(t, NewRootCommand, surface.SentenceFor, commandFileBodies(t)) {
+	for _, d := range sentenceDefects(t, build, surface.SentenceFor, commandFileBodies(t)) {
 		t.Error(d)
+	}
+}
+
+// TestTheFrameworkCommandsAreTheOnlyExemption: on the executed tree, the
+// visible commands with no sentence are exactly frameworkCommands, and the two
+// top-level ones are listed by `abcd --help`. A stale name in the list, a new
+// framework command, or a verb of abcd's own that lost its sentence all fail
+// here, so the exemption stays the named one.
+func TestTheFrameworkCommandsAreTheOnlyExemption(t *testing.T) {
+	var bare []string
+	for _, cmd := range visibleCommands(executedTree(NewRootCommand)()) {
+		if _, ok := surface.SentenceFor(cmd.CommandPath()); !ok {
+			bare = append(bare, cmd.CommandPath())
+		}
+	}
+	var want []string
+	for p := range frameworkCommands {
+		want = append(want, p)
+	}
+	slices.Sort(bare)
+	slices.Sort(want)
+	if !slices.Equal(bare, want) {
+		t.Fatalf("visible commands with no sentence = %q, want exactly the framework's %q", bare, want)
+	}
+	help := helpOf(t, NewRootCommand, nil)
+	for _, name := range []string{"help", "completion"} {
+		if !regexp.MustCompile(`(?m)^ +` + name + ` +\S`).MatchString(help) {
+			t.Errorf("abcd --help does not list %q, so the exemption names a command no reader meets:\n%s", name, help)
+		}
 	}
 }
 

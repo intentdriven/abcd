@@ -30,8 +30,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
 		"Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.",
-	"abcd ahoy remote": "List the verb that applies GitHub secret scanning: " +
-		"Writes nothing; refuses bare, naming `abcd ahoy --remote`, where the report moved.",
+	"abcd ahoy remote": "Enable GitHub secret scanning and push protection: " +
+		"Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
 	"abcd ahoy remote apply": "Enable GitHub secret scanning and push protection on this repository: " +
 		"Writes both settings and their mirror; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
@@ -66,13 +66,13 @@ var sentences = map[string]string{
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
 	"abcd changelog": "Preview the next release cut's version, records, and guardrail verdict: " +
-		"Writes nothing; never refuses, reporting a cut the gates would stop with exit 0.",
+		"Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.",
 
 	"abcd decide": "Mint an ADR id and lay the record's empty skeleton: " +
 		"Writes one proposed record into the decisions store; refuses a missing or unusable title.",
 
-	"abcd disembark": "List the verbs that pack a repository into a lifeboat: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd disembark": "Pack a repository into a lifeboat, probing and planning first: " +
+		"Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.",
 	"abcd disembark coverage": "Aggregate saved probe reports into the section-by-repository coverage table: " +
 		"Writes nothing; refuses a file that is not a probe report.",
 	"abcd disembark graveyard": "Validate host-produced lesson JSON against a packed lifeboat: " +
@@ -90,31 +90,31 @@ var sentences = map[string]string{
 	"abcd disembark review": "Review a packed lifeboat against its source repository, or validate the host's verdict: " +
 		"Writes the review in the lifeboat; refuses an unregistered verdict.",
 
-	"abcd docs": "List the verbs that maintain the citation baseline the docs lint reads: " +
-		"Writes nothing; refuses an unknown sub-verb.",
-	"abcd docs cite": "List the verbs that keep the citation baseline: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd docs": "Keep the citation baseline that `abcd lint docs` enforces offline: " +
+		"Writes nothing but that baseline; refuses an unknown sub-verb.",
+	"abcd docs cite": "Keep the citation baseline the docs lint enforces offline: " +
+		"Writes nothing bare, and only that baseline; refuses an unknown sub-verb.",
 	"abcd docs cite confirm": "Record that a person verified a cited URL the fetcher could not read: " +
 		"Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.",
 	"abcd docs cite refresh": "Fetch every cited URL once, the one documentation verb that reaches the network: " +
 		"Writes the citation baseline; refuses an unreadable docs-lint configuration.",
 
-	"abcd embark": "List the verbs that unpack a lifeboat into a repository: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd embark": "Unpack a verified lifeboat into a target repository, probing first: " +
+		"Writes only its record families and marker block; refuses the whole write on any conflict.",
 	"abcd embark from": "Unpack a lifeboat's record families into a target repository: " +
 		"Writes those families and the marker block; refuses the whole write on any conflict.",
 	"abcd embark probe": "Report what a lifeboat would write into a target, coverage blanks first: " +
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
-	"abcd guard": "List the command-hazard verbs: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
+		"Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
 		"Writes nothing; refuses a hazard with the host's blocking status.",
 
-	"abcd history": "List the session-transcript store verbs: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
+		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
 	"abcd history capture": "Redact and store one raw session transcript from a file or stdin: " +
 		"Writes one record into the store; refuses stdin without --session.",
 	"abcd history discard": "Delete one staged or quarantined raw transcript for good: " +
@@ -134,20 +134,20 @@ var sentences = map[string]string{
 	"abcd history staged": "List the transcripts that ended but are not yet redacted into the store: " +
 		"Writes nothing; refuses outside a git checkout.",
 
-	"abcd ideate": "List the verb that records an idea-admission verdict: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
+		"Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
 	"abcd ideate record": "Validate a host-composed gauntlet verdict: " +
 		"Writes the dated research record; refuses without an idea slug or --verdict-json.",
 
-	"abcd identity": "List the verbs that record the identity block and propose its corrections: " +
-		"Writes nothing; refuses bare, naming `abcd lint identity`, where the report moved.",
+	"abcd identity": "Record the identity block and propose drift corrections: " +
+		"Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.",
 	"abcd identity init": "Record this repository's identity block and the pointer to it: " +
 		"Writes the block and the pointer; refuses without --title and --tagline when no block exists.",
 	"abcd identity render": "Print the correction for every drifted surface as a unified diff: " +
 		"Writes nothing; refuses a repository that records no identity block.",
 
-	"abcd implement": "Show the autonomous run's sessions, claims, and division mode: " +
-		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd implement": "Share one autonomous run between sessions, from joining to reporting: " +
+		"Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.",
 	"abcd implement check": "Ask whether this session may take a step before taking it: " +
 		"Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
 	"abcd implement claim": "Claim a record for this session before opening its lane: " +
@@ -157,7 +157,7 @@ var sentences = map[string]string{
 	"abcd implement leave": "Leave the run, releasing every claim this session holds: " +
 		"Writes the releases and a session_close line; refuses without --session.",
 	"abcd implement load": "Check the machine's load before abcd's own tests start: " +
-		"Writes a load event to the run log inside a run; never refuses.",
+		"Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.",
 	"abcd implement log": "Append one of the run's events to today's run log: " +
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +

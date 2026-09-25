@@ -219,6 +219,9 @@ func TestSurfaceSnapshotMatchesCommittedBaseline(t *testing.T) {
 				if lines := surface.PlacementChanges(base, now); len(lines) > 0 {
 					moved = "\nhelp placement moved without regenerating:\n  - " + strings.Join(lines, "\n  - ")
 				}
+				if lines := surface.SentenceChanges(base, now); len(lines) > 0 {
+					moved += "\nsentence reworded without regenerating:\n  - " + strings.Join(lines, "\n  - ")
+				}
 			}
 		}
 		t.Fatalf("%s is stale: the committed surface no longer matches the command tree and manifests.\n"+

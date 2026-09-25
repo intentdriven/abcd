@@ -1,6 +1,8 @@
 package surface
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -149,9 +151,10 @@ func TestEncodeRecordsTheSentence(t *testing.T) {
 	}
 }
 
-// TestDecodeReadsTheVersionTwoShape keeps the last released shape readable: the
-// release guardrail reads its baseline out of the last tag, which carries a
-// version-2 file with no sentence recorded.
+// TestDecodeReadsTheVersionTwoShape keeps the version-2 shape readable. No
+// release tag carries one (v0.10.0 carries version 1, which
+// TestDecodeReadsTheReleasedVersionOneShape reads), but a tree between itd-146
+// and this intent does, and every version from 1 to 3 is readable.
 func TestDecodeReadsTheVersionTwoShape(t *testing.T) {
 	v2 := `{"schema_version":2,"commands":[{"path":"abcd capture","hidden":false,` +
 		`"group":"records","block":"people","flags":[]}],"manifest":[]}`
@@ -161,5 +164,119 @@ func TestDecodeReadsTheVersionTwoShape(t *testing.T) {
 	}
 	if snap.Commands[0].Sentence != "" || snap.Commands[0].Group != "records" {
 		t.Fatalf("Decode(version 2) = %+v", snap.Commands[0])
+	}
+}
+
+// namesAVerb matches a doing clause that describes the dispatcher ("List the
+// verbs that ...", "List the command-hazard verbs") rather than the work. The
+// word boundary before "verb" also holds after the hyphen of "sub-verb".
+var namesAVerb = regexp.MustCompile(`(?i)\bverbs?\b`)
+
+// routerDefects names each parent command in paths, one another path extends,
+// whose doing clause names a verb. A parent's sentence is the line a host lists
+// the family's plugin page by, so a sentence about the dispatcher misdescribes
+// the whole family there: the reader choosing a skill learns only that verbs
+// exist. The writing and refusing clauses are free to name a sub-verb ("refuses
+// an unknown sub-verb"); only the doing clause says what the family does.
+func routerDefects(paths []string, lookup func(string) (string, bool)) []string {
+	var out []string
+	for _, p := range paths {
+		parent := false
+		for _, q := range paths {
+			if strings.HasPrefix(q, p+" ") {
+				parent = true
+				break
+			}
+		}
+		if !parent {
+			continue
+		}
+		s, _ := lookup(p)
+		parsed, err := ParseSentence(s)
+		if err != nil {
+			continue // the form check names it
+		}
+		if namesAVerb.MatchString(parsed.Does) {
+			out = append(out, fmt.Sprintf("%s: the doing clause %q names verbs rather than the family's work", p, parsed.Does))
+		}
+	}
+	return out
+}
+
+// TestAParentSentenceNamesItsFamilysWork holds the manifest to routerDefects: a
+// parent verb's sentence names the family's work and its write discipline, never
+// the list of its sub-verbs, because on a family page it is the description a
+// host lists the skill by.
+func TestAParentSentenceNamesItsFamilysWork(t *testing.T) {
+	paths := SentencePaths()
+	parents := 0
+	for _, p := range paths {
+		for _, q := range paths {
+			if strings.HasPrefix(q, p+" ") {
+				parents++
+				break
+			}
+		}
+	}
+	if parents < 7 {
+		t.Fatalf("the manifest holds %d parent commands; the check would pass on a fraction of the families", parents)
+	}
+	for _, d := range routerDefects(paths, SentenceFor) {
+		t.Error(d)
+	}
+}
+
+// TestRouterDefectsNamesADispatcherSentence is routerDefects' negative control:
+// a parent whose doing clause lists its verbs is named, and neither a parent
+// naming its work nor a leaf whose doing clause mentions a verb is.
+func TestRouterDefectsNamesADispatcherSentence(t *testing.T) {
+	table := map[string]string{
+		"abcd pack":        "List the verbs that pack a repository: Writes nothing; refuses an unknown sub-verb.",
+		"abcd pack plan":   "Show the plan: Writes nothing; refuses a missing path.",
+		"abcd guard":       "List the command-hazard verbs: Writes nothing; refuses an unknown sub-verb.",
+		"abcd guard check": "Judge one command: Writes nothing; refuses a hazard.",
+		"abcd store":       "Keep the transcripts: Writes nothing bare; refuses an unknown sub-verb.",
+		"abcd store new":   "File a draft, as the bare verb's quoted form does: Writes the draft; refuses empty text.",
+	}
+	lookup := func(p string) (string, bool) { s, ok := table[p]; return s, ok }
+	paths := make([]string, 0, len(table))
+	for p := range table {
+		paths = append(paths, p)
+	}
+	got := strings.Join(routerDefects(paths, lookup), "\n")
+	for _, want := range []string{"abcd pack:", "abcd guard:"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("routerDefects did not name %q:\n%s", want, got)
+		}
+	}
+	for _, not := range []string{"abcd store", "abcd pack plan", "abcd guard check"} {
+		if strings.Contains(got, not+":") {
+			t.Errorf("routerDefects named %q, which names its work:\n%s", not, got)
+		}
+	}
+}
+
+// TestSentenceChangesNamesEachRewordedVerb: a command whose sentence differs is
+// named, in path order, and one present on a single side, or unchanged, is not.
+func TestSentenceChangesNamesEachRewordedVerb(t *testing.T) {
+	committed := NewSnapshot([]Command{
+		{Path: "abcd capture", Sentence: "Capture: Writes a record; refuses a lone word."},
+		{Path: "abcd lint", Sentence: "Lint: Writes nothing; refuses an error finding."},
+		{Path: "abcd gone", Sentence: "Gone: Writes nothing; refuses any argument."},
+		{Path: "abcd bare"},
+	}, nil)
+	current := NewSnapshot([]Command{
+		{Path: "abcd capture", Sentence: "File an issue: Writes a record; refuses a lone word."},
+		{Path: "abcd lint", Sentence: "Lint: Writes nothing; refuses an error finding."},
+		{Path: "abcd new", Sentence: "New: Writes nothing; refuses any argument."},
+		{Path: "abcd bare", Sentence: "Bare: Writes nothing; refuses any argument."},
+	}, nil)
+	got := strings.Join(SentenceChanges(committed, current), "\n")
+	want := "abcd bare: sentence reworded\nabcd capture: sentence reworded"
+	if got != want {
+		t.Fatalf("SentenceChanges =\n%s\nwant\n%s", got, want)
+	}
+	if again := SentenceChanges(committed, committed); len(again) != 0 {
+		t.Fatalf("SentenceChanges(same, same) = %v, want none", again)
 	}
 }

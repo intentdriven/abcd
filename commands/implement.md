@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Show the autonomous run's sessions, claims, and division mode: Writes nothing; refuses an unknown sub-verb."
+description: "Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb."
 argument-hint: "[join|leave|mode|claim|release|check|log|report|load] …"
 block: agents
 ---

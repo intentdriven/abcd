@@ -1,6 +1,6 @@
 ---
 name: history
-description: "List the session-transcript store verbs: Writes nothing; refuses an unknown sub-verb."
+description: "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb."
 argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
 block: agents
 ---
