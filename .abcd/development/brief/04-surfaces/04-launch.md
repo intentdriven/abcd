@@ -139,16 +139,20 @@ The **hard-fail** gates refuse the release:
 - **Change narration** over the shipped doc bodies — Markdown under `docs/` and
   at the payload root, the changelog and the release page excepted: a sentence
   carrying "changed from … to" or "migrated from" is named with its file, line
-  and text, and so is one carrying a construct that reads as narration only in
-  one of its uses: "used to" as the past habit ("the tool used to print"), not
-  as a passive or a participle ("the token used to authenticate the request is
-  read"); "no longer" and "renamed … to" beside a subject naming abcd or its
-  behaviour (a command, a flag, a hook, the default), not beside anything else
-  ("files that are no longer present"); and "previously … now" beside a
-  past-tense change verb, not "as previously noted". Bare "now" and bare
-  "previously" are present-tense prose and pass, alone or together; a
-  construct inside code, or on a line carrying the docs-lint escape, is exempt,
-  and every finding names that escape.
+  and text, and so is one carrying "no longer", "renamed … to", "previously …
+  now" or "used to", each refused except in the present-state readings it has:
+  "no longer" as a comparative ("no longer than one screen") or in a relative
+  clause over "is"/"are" ("files that are no longer present"); "renamed … to"
+  in the purpose form ("the output is renamed to match the tag"); "previously
+  … now" with no change verb beside either word and "previously" not opening
+  its clause ("Now, as previously noted, …"); and "used to" as a passive or a
+  participle ("the token used to authenticate the request is read"), where the
+  past habit ("the tool used to print", "until v0.6 the dry-run used to skip
+  the tags") is refused. Bare "now" and bare "previously" are present-tense
+  prose and pass, alone or together. A pair the words cannot tell apart is
+  refused, not passed: the tier is a release gate, and a construct inside
+  code, or on a line carrying the docs-lint escape, is exempt, and every
+  finding names that escape.
   The changelog is derived from the records
   ([adr-37](../../decisions/adrs/0037-changelog-driven-releases.md)), so the
   remedy is to rephrase the doc, not to move the sentence into the changelog.
