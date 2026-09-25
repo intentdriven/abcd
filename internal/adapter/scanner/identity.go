@@ -914,6 +914,9 @@ func afterAccountCommand(line string, start int) bool {
 			j--
 		}
 		scanMeter.charge(stageIdentity, i-j)
+		if j == k {
+			return false // the blanks ran past maxKeyGap: nothing adjacent to read
+		}
 		tok := line[j:k]
 		if tok[0] == '-' {
 			i = j

@@ -218,6 +218,8 @@ func TestLocalUsernameGenericAccountNameCaughtInShellAndConfigPositions(t *testi
 		"chown the dev tree later",
 		"superuser: developer",
 		"dev: the source build",
+		"su" + strings.Repeat(" ", 2*maxKeyGap) + "dev", // a gap past the walk's bound
+		"USER" + strings.Repeat(" ", 2*maxKeyGap) + "= dev",
 	} {
 		if got := ScanText(line, id, pats, sev, "f"); hasKind(got, kindLocalUser) {
 			t.Errorf("ordinary vocabulary in %q flagged as the account name: %+v", line, got)
