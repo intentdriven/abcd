@@ -510,7 +510,11 @@ sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
 peer's branch, path and bucket instead of answering not found.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
-or `noop`) and, for `dead_letter`, the reason.
+or `noop`) and, for `dead_letter`, the reason. A second ingest for a receipt
+already ingested is a `noop` when its payload renders to the block on the record,
+replaces that block in place when it renders differently (`ingested`, reported
+as `replaced`), and is refused with nothing written when it does not validate:
+a bad re-ingest never dead-letters a verdict already ingested.
 
 **Hand the auditor the whole request file.** `intent audit` writes it to the
 reported `request_path`, and its `## Provenance` block states the
@@ -553,11 +557,13 @@ condition carries rather than to its wording, and joined to what occasioned it.
   the researcher for the value and the grounds; the reading names the tension
   and never marks the condition itself.
 
-A condition's standing is the last block that names it, except that a later
-fidelity verdict leaves a reading-occasioned block standing unless the verdict's
-rationale names that block's occasion. The verdict ingest reports each block it
-leaves standing (`still standing: …`); an auditor who meant to override one
-names its occasion in the rationale and ingests again.
+A condition's standing is its latest reading-occasioned block where it has one,
+and otherwise its latest verdict: a fidelity verdict leaves a reading-occasioned
+block standing unless the verdict's rationale names that block's occasion,
+wherever the two sit in `## Audit Notes`. The verdict ingest reports each block
+it leaves standing (`still standing: …`); an auditor who meant to override one
+names its occasion in the rationale and ingests again for the same receipt,
+which replaces the ingested verdict (reported as `replaced`).
 
 Every refusal exits 2 with nothing written: an intent not in `shipped/` (the
 refusal names its bucket), a condition id the intent does not carry or carries

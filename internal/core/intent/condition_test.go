@@ -394,3 +394,68 @@ func TestShipConditionIngestOverridesThroughTheWriters(t *testing.T) {
 		t.Errorf("ReadingOccasionedStanding = %+v, want none: the verdict named the occasion", res.ReadingOccasionedStanding)
 	}
 }
+
+// TestReingestNamingTheOccasionOverrides is the other writer order: a verdict,
+// then a condition block, then the auditor names the occasion and ingests again
+// for the same receipt. A payload that renders differently replaces the
+// ingested block in place; the condition block stays in the history.
+func TestReingestNamingTheOccasionOverrides(t *testing.T) {
+	root, rcp := condFixture(t, condOne)
+	first := writeVerdict(t, root, verdictWithConditions(t, rcp,
+		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))
+	if res, err := IngestVerdict(root, first); err != nil || res.Status != "ingested" {
+		t.Fatalf("first ingest: %+v %v", res, err)
+	}
+	if _, err := DispositionCondition(root, condReq(condition.Falsified)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IngestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "ingested" || !res.Replaced {
+		t.Fatalf("re-ingest = %+v, want ingested and replaced", res)
+	}
+	s := intentBody(t, root)
+	if n := strings.Count(s, "<!-- abcd-review: INGESTED receipt="+rcp); n != 1 {
+		t.Fatalf("INGESTED markers = %d, want 1 (replaced in place):\n%s", n, s)
+	}
+	if !strings.Contains(s, "weighed "+condItem) || strings.Count(s, "<!-- abcd-condition:") != 1 {
+		t.Fatalf("want the new verdict and the one condition block:\n%s", s)
+	}
+	if got := condition.Standing(s)[condOne]; got.Disposition != condition.Survived || got.Source != "verdict "+rcp {
+		t.Errorf("standing = %+v, want the re-ingested verdict", got)
+	}
+	if len(res.ReadingOccasionedStanding) != 0 {
+		t.Errorf("ReadingOccasionedStanding = %+v, want none", res.ReadingOccasionedStanding)
+	}
+	// The same payload again is idempotent: nothing written.
+	before := intentBody(t, root)
+	again, err := IngestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
+	if err != nil || again.Status != "noop" {
+		t.Fatalf("identical re-ingest = %+v %v, want noop", again, err)
+	}
+	if intentBody(t, root) != before {
+		t.Fatal("an identical re-ingest changed the record")
+	}
+}
+
+// TestReingestOfAnInvalidPayloadNeverReplacesAnIngestedVerdict: over an
+// INGESTED receipt a payload that fails validation is refused with nothing
+// written, rather than dead-lettered over the verdict already on the record.
+func TestReingestOfAnInvalidPayloadNeverReplacesAnIngestedVerdict(t *testing.T) {
+	root, rcp := condFixture(t, condOne)
+	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWithConditions(t, rcp,
+		dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")))); err != nil {
+		t.Fatal(err)
+	}
+	before := intentBody(t, root)
+	bad := strings.Replace(verdictWithConditions(t, rcp, dispositionOf(condOne, "survived"), dispositionOf(condTwo, "survived")),
+		`"criterion_id": "ac-1"`, `"criterion_id": "ac-9"`, 1)
+	if _, err := IngestVerdict(root, writeVerdict(t, root, bad)); err == nil || !strings.Contains(err.Error(), "nothing written") {
+		t.Fatalf("err = %v, want a refusal saying nothing was written", err)
+	}
+	if intentBody(t, root) != before {
+		t.Fatal("an invalid re-ingest changed the record")
+	}
+}

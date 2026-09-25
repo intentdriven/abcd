@@ -22,10 +22,11 @@ It is the second writer into the surface
 gave the fidelity verdict: The `## Audit Notes` section of the intent, one
 block per write. The verdict ingest keeps writing one undated block covering
 every condition; this verb writes one dated block covering one condition and
-naming its occasion. A condition's standing disposition is the last block in
-document order that names it, except that a later verdict block does not
-override a reading-occasioned block unless its rationale names that block's
-occasion, and the render says which block the standing came from.
+naming its occasion. A condition's standing disposition is its latest
+reading-occasioned block where it has one, and otherwise its latest verdict
+block; a verdict overrides a reading-occasioned block only where its rationale
+names that block's occasion, wherever the two sit in the section, and the render
+says which block the standing came from.
 
 The vocabulary the two writers share moves into a leaf package,
 `internal/core/condition`, so that one enum, one marker grammar and one block
@@ -173,23 +174,37 @@ knows nothing of the condition blocks around it.
 returns every disposition in document order, each carrying its `ConditionID`,
 `Disposition`, `Rationale`, `Narrowing`, `Source` (`verdict rcp-…`,
 `condition rdi-…` or `condition itd-…`) and, for a condition block, its `Date`
-and `Occasion`. `condition.Standing(content)` folds that list. For each
-identity the **last entry in document order** stands, with one exception: An
-entry from a verdict block does not replace a standing entry from a condition
-block unless the verdict entry's rationale names that entry's occasion. A
-re-audit writes a block covering every condition by construction and knows
-nothing of the readings; without the exception it would erase, silently, the
-one thing the join exists to keep, and an auditor who has weighed the reading
-says so by naming it. Document order is the rule, not the date, because the
-verdict block carries no date by design and both writers append, so position
-in the section is the order of writing.
+and `Occasion`. `condition.Standing(content)` folds that list by **source precedence**.
+Within one source document order decides: the last condition-block entry for
+an identity is its standing reading-occasioned judgement, and the last verdict
+entry its standing audit. Between the sources, the condition-block entry stands
+over every verdict entry, except that a verdict entry whose rationale names the
+standing condition block's occasion replaces it, wherever either sits in the
+section. A re-audit writes a block covering every condition by construction and
+knows nothing of the readings; without the precedence it would erase, silently,
+the one thing the join exists to keep, and an auditor who has weighed the
+reading says so by naming it.
+
+> **Corrected 2026-09-25.** This section first folded by position — the last
+> entry in document order stands — on the premise that both writers append, so
+> position in the section is the order of writing. The premise is false for the
+> verdict path: the ingest replaces the receipt's OWED stub in place, and the
+> stub is parked at ship time, before any condition block exists, so a verdict
+> ingested after a condition block sits above it and never overrode it. The
+> fold above is the orchestrator's ruling on the lane review (recorded in
+> `.abcd/work/DECISIONS.md` on 2026-09-25).
 
 The verdict ingest reports what it leaves standing. After `IngestVerdict`
 writes its block, `IngestVerdictResult` gains `ReadingOccasionedStanding`, the
 list of condition-block entries the fold still reports as standing after the
 write, each with its identity and occasion, and the CLI prints the list under
 the ingest's summary. An auditor who meant to override one names its occasion
-in the rationale and ingests again.
+in the rationale and ingests again for the same receipt: a payload that renders
+differently from the ingested block replaces it in place and the result says
+`replaced`, a payload that renders identically is a noop, and a payload that
+does not validate is refused with nothing written rather than dead-lettered over
+the verdict already on the record (corrected 2026-09-25; the re-ingest was a
+noop whatever it carried, which left the override unreachable).
 
 The render lists each condition the intent carries as
 `<id> — <standing value> (from <source>)`, and `untested (no block)` for an
@@ -331,12 +346,16 @@ nothing of the item's dispatch.
 - ac-6: A planned intent is refused and the message names `planned`.
   `TestConditionRefusesUnshippedBucket`.
 - ac-7: After a verdict block and a condition block naming the same identity,
-  `ReadDispositions` returns both and `Standing` reports the later. The
-  inverse order is covered beside it: A verdict block written after a
-  condition block leaves the condition block standing and is reported,
-  unless its rationale names the occasion.
+  `ReadDispositions` returns both and `Standing` reports the condition block.
+  A verdict leaves the condition block standing and is reported, unless its
+  rationale names the occasion, wherever the verdict sits; that holds through
+  the writers, ship then condition then ingest, and ingest then condition then
+  re-ingest (corrected 2026-09-25).
   `TestStandingIsTheLatestBlock`, `TestVerdictDoesNotOverrideAReadingOccasionedBlock`,
-  `TestVerdictNamingTheOccasionOverrides`, `TestReviewBlockBoundaryStopsAtConditionMarker`.
+  `TestVerdictNamingTheOccasionOverrides`, `TestVerdictNamingTheOccasionOverridesWhereverItSits`,
+  `TestShipConditionIngestOverridesThroughTheWriters`, `TestReingestNamingTheOccasionOverrides`,
+  `TestReingestOfAnInvalidPayloadNeverReplacesAnIngestedVerdict`,
+  `TestReviewBlockBoundaryStopsAtConditionMarker`.
 - ac-8: An assembly over the fixture intent carries no block and the manifest
   asserts the exclusion. A regression guard, as stated above.
   `TestConditionBlockNeverReachesTheBundle`.

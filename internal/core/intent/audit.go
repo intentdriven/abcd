@@ -217,11 +217,16 @@ type IngestVerdictResult struct {
 	Untested       int    `json:"untested"`
 	DeadLetterPath string `json:"dead_letter_path,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+	// Replaced is set when the ingest replaced a verdict already ingested for
+	// the receipt: a re-ingest whose payload renders differently from the block
+	// on the record. A re-ingest that renders identically is a noop.
+	Replaced bool `json:"replaced,omitempty"`
 	// ReadingOccasionedStanding is every condition-block disposition the fold
 	// still reports as standing after this write: the verdict did not override
 	// it, because its rationale did not name the block's occasion
 	// (spc-2609020626046252). An auditor who meant to override one names its
-	// occasion and ingests again.
+	// occasion in the rationale and ingests again for the same receipt: a
+	// payload that renders differently replaces the ingested block (Replaced).
 	ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
 }
 
@@ -556,7 +561,10 @@ func auditProvenanceBlock(p auditPolicy) string {
 //
 //   - malformed/oversize/unreadable payload with no resolvable receipt -> reject;
 //   - receipt matching no parked marker (unsolicited) -> reject;
-//   - already INGESTED for this receipt -> no-op;
+//   - already INGESTED for this receipt -> no-op when the payload renders to
+//     the block on the record, a replacement in place when it renders
+//     differently, and a refusal with nothing written when it does not
+//     validate (see reingestVerdict);
 //   - schema/semantic validation failure on a resolvable receipt -> DEAD_LETTER
 //     (marker + INCONCLUSIVE criteria + retained raw payload), never partial;
 //   - otherwise -> INGESTED (OWED stub replaced by the rendered verdict).
@@ -592,7 +600,7 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict receipt %s matches no parked review marker (unsolicited); refusing to ingest", rcp)
 	}
 	if state == "INGESTED" {
-		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
+		return reingestVerdict(repoRoot, raw, it, rcp, content)
 	}
 
 	// The attestation chain must be the pair THIS receipt issued, not merely two
@@ -634,6 +642,49 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	split := countDispositions(v)
 	return IngestVerdictResult{
 		Status: "ingested", ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
+		Met: rollup["MET"], MetWithConcern: rollup["MET_WITH_CONCERNS"],
+		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
+		Conditions: len(v.ScopeConditions), Survived: split["survived"],
+		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
+		Untested:                  split[dispositionUntested],
+		ReadingOccasionedStanding: occasionedStanding(updated),
+	}, nil
+}
+
+// reingestVerdict applies a verdict for a receipt already INGESTED. The receipt
+// is the idempotency key, so a payload that renders to the block already on the
+// record is a noop and writes nothing. A payload that renders differently
+// replaces that block in place, after the same checks a first ingest makes:
+// this is how an auditor who has since weighed a reading-occasioned condition
+// block names its occasion and ingests again (the 2026-09-25 ruling in
+// .abcd/work/DECISIONS.md). A payload that does not validate is refused with
+// nothing written rather than dead-lettered: quarantine is for a receipt still
+// owed a verdict, and a bad re-ingest must never replace a good one.
+func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string) (IngestVerdictResult, error) {
+	free, err := newVerdictProse(repoRoot)
+	if err != nil {
+		return IngestVerdictResult{}, err
+	}
+	v, verr := validateVerdict(raw, rcp, content)
+	if verr != nil {
+		return IngestVerdictResult{}, fmt.Errorf("intent: receipt %s is already INGESTED and this verdict does not validate: %s; "+
+			"an ingested verdict is replaced only by a valid one (nothing written)", rcp, free(verr.Error()))
+	}
+	rollup := countVerdicts(v)
+	block := ingestedBlock(rcp, v, rollup, free)
+	if existing, ok := reviewBlockText(content, rcp); ok && existing == block {
+		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
+	}
+	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	updated := upsertReviewBlock(content, rcp, block)
+	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	split := countDispositions(v)
+	return IngestVerdictResult{
+		Status: "ingested", Replaced: true, ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
 		Met: rollup["MET"], MetWithConcern: rollup["MET_WITH_CONCERNS"],
 		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
 		Conditions: len(v.ScopeConditions), Survived: split["survived"],
@@ -994,30 +1045,54 @@ func markerState(content, rcp string) (string, bool) {
 // rather than being swallowed as part of it (spc-2609020626046252).
 func upsertReviewBlock(content, rcp, newBlock string) string {
 	lines := strings.Split(content, "\n")
-	start := -1
+	if start, end, ok := reviewBlockRange(lines, rcp); ok {
+		// Keep the blank separator the old block ended with, so a block that
+		// follows it is not glued to the replacement.
+		sep := end
+		for sep > start+1 && strings.TrimSpace(lines[sep-1]) == "" {
+			sep--
+		}
+		out := make([]string, 0, len(lines))
+		out = append(out, lines[:start]...)
+		out = append(out, strings.Split(newBlock, "\n")...)
+		out = append(out, lines[sep:]...)
+		return strings.Join(out, "\n")
+	}
+	return appendToAuditNotes(content, newBlock)
+}
+
+// reviewBlockRange locates the review block for rcp in lines: from its marker
+// line to the next block marker of either grammar, the next heading, or end of
+// file. It is the one notion of a review block's extent, so the replacement and
+// the idempotency comparison cannot disagree about where a block ends.
+func reviewBlockRange(lines []string, rcp string) (start, end int, ok bool) {
 	for i, ln := range lines {
 		m := markerRe.FindStringSubmatch(strings.TrimRight(ln, "\r"))
-		if m != nil && m[2] == rcp {
-			start = i
-			break
+		if m == nil || m[2] != rcp {
+			continue
 		}
-	}
-	if start >= 0 {
-		end := len(lines)
-		for j := start + 1; j < len(lines); j++ {
+		end = len(lines)
+		for j := i + 1; j < len(lines); j++ {
 			t := strings.TrimRight(lines[j], "\r")
 			if condition.IsBlockMarker(t) || mdrecord.IsHeading(t) {
 				end = j
 				break
 			}
 		}
-		out := make([]string, 0, len(lines))
-		out = append(out, lines[:start]...)
-		out = append(out, strings.Split(newBlock, "\n")...)
-		out = append(out, lines[end:]...)
-		return strings.Join(out, "\n")
+		return i, end, true
 	}
-	return appendToAuditNotes(content, newBlock)
+	return 0, 0, false
+}
+
+// reviewBlockText is the review block for rcp as a renderer would have written
+// it: its lines with the trailing blank separator trimmed.
+func reviewBlockText(content, rcp string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	start, end, ok := reviewBlockRange(lines, rcp)
+	if !ok {
+		return "", false
+	}
+	return strings.TrimRight(strings.Join(lines[start:end], "\n"), "\r\n\t "), true
 }
 
 // appendToAuditNotes appends a block to the `## Audit Notes` section, creating

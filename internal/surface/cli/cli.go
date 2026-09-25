@@ -2377,7 +2377,8 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 
 // newIntentAuditCommand builds `abcd intent audit`: `ingest --verdict-json`
 // applies a host-produced intent-audit verdict to the shipped intent's Audit
-// Notes (fail-closed: ingested | dead_letter | noop); bare `audit <itd-N>`
+// Notes (fail-closed: ingested | dead_letter | noop; a re-ingest that renders
+// differently replaces the ingested verdict); bare `audit <itd-N>`
 // re-emits the OWED stub + ephemeral request for a shipped intent.
 func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	var issueDrift, strict bool
@@ -2435,6 +2436,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "abcd intent audit ingest — %s (receipt %s, intent %s)\n", res.Status, res.ReceiptID, res.IntentID)
 				switch res.Status {
 				case "ingested":
+					if res.Replaced {
+						fmt.Fprintf(w, "  replaced the verdict already ingested for %s\n", res.ReceiptID)
+					}
 					fmt.Fprintf(w, "  criteria %d: MET %d · MET_WITH_CONCERNS %d · NOT_MET %d · INCONCLUSIVE %d\n",
 						res.Criteria, res.Met, res.MetWithConcern, res.NotMet, res.Inconclusive)
 					// Only an intent that records scope conditions has a disposition
@@ -2447,9 +2451,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  DEAD_LETTER: %s\n  raw payload: %s\n", res.Reason, res.DeadLetterPath)
 				}
 				// The condition blocks this verdict did not override: its rationale
-				// named none of their occasions (spc-2609020626046252).
+				// named none of their occasions (spc-2609020626046252). A re-ingest
+				// for the same receipt naming one replaces the ingested verdict.
 				for _, d := range res.ReadingOccasionedStanding {
-					fmt.Fprintf(w, "  still standing: %s — %s (from %s); name %s in the rationale to override it\n",
+					fmt.Fprintf(w, "  still standing: %s — %s (from %s); name %s in the rationale and ingest again to override it\n",
 						d.ConditionID, d.Disposition, termsafe.Sanitize(d.Source), d.Occasion)
 				}
 			})
