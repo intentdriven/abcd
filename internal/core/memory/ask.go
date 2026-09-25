@@ -282,7 +282,10 @@ const AskReportHeading = "abcd memory ask"
 // citation-renderer, not an LLM. Missing provenance renders as explicit (none).
 func RenderCitedMatches(question string, matches []MatchedPage) string {
 	lines := []string{
-		"# " + AskReportHeading + " — " + termsafe.Sanitize(question),
+		// Every untrusted field on the answer's markdown lines goes through
+		// CleanProse, not Sanitize alone, which leaves an HTML opener and link
+		// syntax live (iss-2609020539188868).
+		"# " + AskReportHeading + " — " + cleanPageField(question),
 		"",
 		fmt.Sprintf("Matched pages (%d, overlap-ranked):", len(matches)),
 		"",
@@ -291,11 +294,13 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 		// Filename and Summary are page-derived (repo content); sanitise each field
 		// before it joins the multi-line answer — masking the whole answer wholesale
 		// would clobber its legitimate newlines.
-		summary := termsafe.Sanitize(m.Summary)
+		summary := cleanPageField(m.Summary)
 		if summary == "" {
 			summary = "(no summary)"
 		}
-		lines = append(lines, fmt.Sprintf("- `%s` (score %d) — %s", termsafe.Sanitize(m.Filename), m.Score, summary))
+		// The filename's code span is termsafe.CodeSpan's, never a hand-written
+		// backtick pair the name could re-pair with.
+		lines = append(lines, fmt.Sprintf("- %s (score %d) — %s", termsafe.CodeSpan(cleanPageField(m.Filename)), m.Score, summary))
 		for _, c := range m.Citations {
 			// Every citation field is page-derived content from the same untrusted
 			// ingest boundary as Summary/Filename above, so each is sanitised before
@@ -305,17 +310,17 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 			// masked here (gh-250). class/source_hash are charset-constrained upstream,
 			// but sanitising them too matches the sibling treatment and defends the
 			// render even if that constraint ever weakens.
-			cls := termsafe.Sanitize(c.SourceClass)
+			cls := cleanPageField(c.SourceClass)
 			if cls == "" {
 				cls = "(none)"
 			}
-			sh := termsafe.Sanitize(c.SourceHash)
+			sh := cleanPageField(c.SourceHash)
 			if sh == "" {
 				sh = "(none)"
 			}
 			cj := "(none)"
 			if len(c.Citation) > 0 {
-				cj = termsafe.Sanitize(compactJSONSorted(c.Citation))
+				cj = cleanPageField(compactJSONSorted(c.Citation))
 			}
 			lines = append(lines, fmt.Sprintf("  - cites: class=%s | source_hash=%s | citation=%s", cls, sh, cj))
 		}
@@ -323,12 +328,11 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// RenderNoMatches is the explicit empty-result render. It sanitises the
-// question itself, as RenderCitedMatches does, so a direct caller is covered
-// and the two renders cannot disagree on what reaches the terminal; Sanitize
-// is idempotent, so the copy Ask already masked costs nothing here.
+// RenderNoMatches is the explicit empty-result render. It cleans the question
+// itself, as RenderCitedMatches does, so a direct caller is covered and the two
+// renders cannot disagree on what reaches the terminal.
 func RenderNoMatches(question string) string {
-	return "# " + AskReportHeading + " — " + termsafe.Sanitize(question) + "\n\n" +
+	return "# " + AskReportHeading + " — " + cleanPageField(question) + "\n\n" +
 		"No matching memory pages (token overlap found nothing; an empty or absent store matches nothing).\n" +
 		"Try different terms, an explicit class:<source-class> / domain:<domain> filter, or ingest a source first.\n"
 }
