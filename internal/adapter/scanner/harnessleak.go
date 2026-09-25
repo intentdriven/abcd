@@ -172,6 +172,17 @@ func footerLinkTarget(line string, end int) string {
 // documentation slug, and calling one a leak would flag every page written about
 // session handling — including this repository's own research notes, which is
 // where the case was found.
+//
+// COVERAGE BOUNDARY, stated rather than implied (iss-2608281948217899). An id
+// that is all lower-case and not all hex — "session_zk3n9q2mvx8rtq" — is NOT
+// detected, digits or not. That is the price of sparing the slugs above: a
+// lower-case slug with a digit in it ("session-guide-2026") is exactly what a
+// documentation URL looks like, and nothing structural tells the two apart.
+// Whether a covered harness mints such an id is a fact about services outside
+// this repository, so the boundary is the rule's stated contract: a harness
+// whose ids take that shape is not covered here, and covering it means naming
+// its host rather than widening this test. TestHarnessSessionURLCoverageBoundary
+// pins the boundary so it moves only on purpose.
 func hasOpaqueSessionID(match string) bool {
 	m := sessionIDTailRe.FindStringSubmatch(match)
 	if m == nil {
