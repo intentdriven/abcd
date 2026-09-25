@@ -182,3 +182,42 @@ func TestLocateAdmissionFindsOneAcrossRuns(t *testing.T) {
 		t.Errorf("a symlinked run bucket: err = %v, want ErrPathUnsafe", err)
 	}
 }
+
+// TestResolveOccasionResolvesASurpriseAsARegularFileOnly is the surprise half
+// of the occasion resolver (spc-2609020626048705): a reframe may be occasioned
+// by a surprise, and a surprise is flat under surprises/, admitted only as a
+// regular file. A symlinked leaf, a symlinked store and an absent record all
+// refuse.
+func TestResolveOccasionResolvesASurpriseAsARegularFileOnly(t *testing.T) {
+	root, ir := repo(t)
+	write(t, filepath.Join(ir, "surprises", "srp-11.md"), "a")
+	path, err := ResolveOccasion(root, "srp-11", FamilySurprise)
+	if err != nil || filepath.Base(path) != "srp-11.md" {
+		t.Fatalf("ResolveOccasion(srp-11) = %q %v", path, err)
+	}
+	if _, err := ResolveOccasion(root, "srp-12", FamilySurprise); !errors.Is(err, ErrUnknown) {
+		t.Errorf("an absent surprise: err = %v, want ErrUnknown", err)
+	}
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "srp-13.md"), "b")
+	if err := os.Symlink(filepath.Join(outside, "srp-13.md"), filepath.Join(ir, "surprises", "srp-13.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := ResolveOccasion(root, "srp-13", FamilySurprise); err == nil {
+		t.Error("a symlinked surprise leaf resolved; it must be refused")
+	}
+	// A surprise is not an occasion where the caller does not hand the family.
+	if _, err := ResolveOccasion(root, "srp-11", FamilyItem, FamilyDisposition); err == nil || !strings.Contains(err.Error(), "is not one of rdi-N, dsp-N") {
+		t.Errorf("a surprise without its family handed: err = %v", err)
+	}
+	// A symlinked store is refused before any leaf is looked at.
+	root2, ir2 := repo(t)
+	store := t.TempDir()
+	write(t, filepath.Join(store, "srp-14.md"), "c")
+	if err := os.Symlink(store, filepath.Join(ir2, "surprises")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := ResolveOccasion(root2, "srp-14", FamilySurprise); !errors.Is(err, ErrPathUnsafe) {
+		t.Errorf("a symlinked surprises store: err = %v, want ErrPathUnsafe", err)
+	}
+}

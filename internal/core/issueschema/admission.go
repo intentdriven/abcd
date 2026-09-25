@@ -1,7 +1,5 @@
 package issueschema
 
-import "strings"
-
 // The step-2 admission records (itd-189, spc-67).
 //
 // Declining a proposal costs nothing epistemically; ADMITTING one is where the
@@ -93,25 +91,7 @@ var SurpriseOccasionFamilies = []string{ReadingItemFamily, AdmissionFamily, Disp
 // ValidSurpriseOccasion reports whether v is VERBATIM a handle of one of
 // SurpriseOccasionFamilies: the family's own prefix, one hyphen and digits,
 // with nothing around it.
-func ValidSurpriseOccasion(v string) bool {
-	for _, f := range SurpriseOccasionFamilies {
-		rest, ok := strings.CutPrefix(v, f+"-")
-		if !ok || rest == "" {
-			continue
-		}
-		digits := true
-		for i := 0; i < len(rest); i++ {
-			if rest[i] < '0' || rest[i] > '9' {
-				digits = false
-				break
-			}
-		}
-		if digits {
-			return true
-		}
-	}
-	return false
-}
+func ValidSurpriseOccasion(v string) bool { return validHandleOf(SurpriseOccasionFamilies, v) }
 
 // SurpriseKnown is the surprise entry's allow-list.
 var SurpriseKnown = knownSet(SurpriseRequired)

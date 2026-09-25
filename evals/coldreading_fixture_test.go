@@ -300,6 +300,19 @@ var sentinelClasses = []sentinelClass{
 			"to inform",
 	},
 	{
+		// The reframe record (spc-2609020626048705): a committed pointer to a
+		// reframe whose content stays local. It is warm at every position — the
+		// ledger's container row refuses it at the three cold positions, and the
+		// derived per-family row does at comparative — and its grounds are the
+		// researcher's reasoning about the frame, which no reading may see.
+		Name:  "LEDGER-REFRAME",
+		Homes: []string{"repo:.abcd/work/issues/reframes/rfm-1.md"},
+		Count: 1,
+		Why: "spc-2609020626048705: a reframe record is warm and reaches no reading; its " +
+			"exclusion is asserted in every manifest, by the ledger rows and by the floor's " +
+			"own reframe row",
+	},
+	{
 		Name:  "DEFINITION",
 		Homes: []string{"repo:agents/cold-reading-widening.md"},
 		Count: 1,

@@ -19,6 +19,7 @@ var (
 	readingItemIDRe = regexp.MustCompile(`^rdi-[0-9]+$`)
 	admissionIDRe   = regexp.MustCompile(`^adm-[0-9]+$`)
 	surpriseIDRe    = regexp.MustCompile(`^srp-[0-9]+$`)
+	reframeIDRe     = regexp.MustCompile(`^rfm-[0-9]+$`)
 )
 
 // ValidIntentID reports whether id is a well-formed intent id (itd-N).
@@ -58,6 +59,11 @@ func ValidAdmissionID(id string) bool { return admissionIDRe.MatchString(id) }
 // the same terms as ValidAdmissionID: the surprise verb writes
 // `surprises/srp-N.md` and the dispatcher reads it back.
 func ValidSurpriseID(id string) bool { return surpriseIDRe.MatchString(id) }
+
+// ValidReframeID reports whether id is a well-formed reframe id (rfm-N), on the
+// same terms: the reframe verb writes `reframes/rfm-N.md`, completes it by id,
+// and the dispatcher reads it back (spc-2609020626048705).
+func ValidReframeID(id string) bool { return reframeIDRe.MatchString(id) }
 
 // recordFilenameRe splits a record filename into its family prefix (group 1,
 // with its hyphen; empty for the ADR store's bare numeric form), its id number

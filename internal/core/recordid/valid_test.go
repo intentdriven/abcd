@@ -51,6 +51,11 @@ func TestAdmissionAndSurpriseIDGrammars(t *testing.T) {
 		{"ValidSurpriseID", ValidSurpriseID,
 			[]string{"srp-1", "srp-2609251200001234", "srp-0007"},
 			[]string{"", "null", "~", "srp-", "srp-1-slug", " srp-1", "srp-1\n", "SRP-1", "adm-1", "srp-../x", "dsp-1"}},
+		// The reframe record (spc-2609020626048705) writes reframes/rfm-N.md and
+		// the dispatcher reads it back, so its grammar joins the two above.
+		{"ValidReframeID", ValidReframeID,
+			[]string{"rfm-1", "rfm-2609251200001234", "rfm-0007"},
+			[]string{"", "null", "~", "rfm-", "rfm-1-slug", " rfm-1", "rfm-1\n", "RFM-1", "srp-1", "rfm-../x", "rfm-1/.."}},
 	}
 	for _, c := range cases {
 		for _, id := range c.ok {

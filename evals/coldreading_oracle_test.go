@@ -100,10 +100,10 @@ var excludedFamilies = []excludedFamily{
 		Path:      ".abcd/work/issues",
 		Positions: []string{posWidening, posEntailment, posDetection},
 		Source: "itd-183 exclusion list: work/issues/ in every state, reading records and " +
-			"dispositions included, admission and selection grounds, and the lapse log. " +
-			"Not at comparative: adr-2609021016272867 admits one derived widening run's " +
-			"items there, so the container row withdraws and the six rows below name each " +
-			"family individually — a narrower assertion, not a weaker one",
+			"dispositions included, admission and selection grounds, reframe records, and the " +
+			"lapse log. Not at comparative: adr-2609021016272867 admits one derived widening " +
+			"run's items there, so the container row withdraws and the seven rows below name " +
+			"each family individually — a narrower assertion, not a weaker one",
 	},
 	// The comparative position's ledger rows, one per family. They mirror the
 	// rows the assembler derives from the ledger's own directory list, and they
@@ -140,6 +140,13 @@ var excludedFamilies = []excludedFamily{
 		Path:      ".abcd/work/issues/surprises",
 		Positions: []string{posComparative},
 		Source:    "adr-2609021016272867: a surprise is the researcher's own act, recorded warm",
+	},
+	{
+		Path:      ".abcd/work/issues/reframes",
+		Positions: []string{posComparative},
+		Source: "spc-2609020626048705: a reframe record is the researcher's pointer to a " +
+			"rewrite of the frame, warm at every position; its directory joins the ledger's " +
+			"list and so the comparative rows by derivation",
 	},
 	{Path: ".abcd/work/DECISIONS.md", Source: "itd-183 assembler rule 1: .abcd/ is excluded but for what the include list names"},
 	{
@@ -631,16 +638,16 @@ func requireOracleTables(t *testing.T) {
 		got  int
 		want int
 	}{
-		{"sentinelClasses", len(sentinelClasses), 21},
+		{"sentinelClasses", len(sentinelClasses), 22},
 		{"carriers", len(carriers), 19},
 		{"materialClasses", len(materialClasses), 11},
 		{"holes", len(holes), 3},
 		{"refusals", len(refusals), 8},
 		{"excludedKeys", len(excludedKeys), 2},
 		{"excludedHeadings", len(excludedHeadings), 4},
-		{"excludedFamilies", len(excludedFamilies), 22},
+		{"excludedFamilies", len(excludedFamilies), 23},
 		{"admittedRecordPaths", len(admittedRecordPaths), 13},
-		{"coverage", len(coverage), 79},
+		{"coverage", len(coverage), 80},
 	} {
 		if tbl.got != tbl.want {
 			t.Fatalf("the %s table holds %d row(s), and this eval is written against %d; "+

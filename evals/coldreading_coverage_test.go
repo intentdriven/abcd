@@ -405,10 +405,10 @@ var coverage = []coverageRow{
 	},
 	{
 		Rule: "the issue ledger never travels in any state, reading records, dispositions, " +
-			"admission and selection grounds and the lapse log included",
+			"admission and selection grounds, reframe records and the lapse log included",
 		Falsifier: "add an include row under work/issues and delete the work/issues Exclusions row",
 		Caught:    caughtLeak,
-		Classes:   []string{"DECISION", "EXHAUST", "GROUNDS"},
+		Classes:   []string{"DECISION", "EXHAUST", "GROUNDS", "LEDGER-REFRAME"},
 	},
 	{
 		Rule:      "the shared decision log never travels",
@@ -698,6 +698,12 @@ var coverage = []coverageRow{
 		Falsifier: "delete the derived surprises row and add an include row for it",
 		Caught:    caughtLeak,
 		Classes:   []string{"FATE"},
+	},
+	{
+		Rule:      "reframe records never reach the comparative reading (spc-2609020626048705)",
+		Falsifier: "delete the derived reframes row and add an include row for it",
+		Caught:    caughtLeak,
+		Classes:   []string{"LEDGER-REFRAME"},
 	},
 	{
 		Rule:      "the status directories never reach the comparative reading",
