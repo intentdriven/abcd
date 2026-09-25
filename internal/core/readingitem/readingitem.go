@@ -45,8 +45,9 @@ const (
 	FamilyIntent      Family = "itd"                         // itd-N, a shipped intent
 )
 
-// ledgerRelDir is where the issues root sits under a repository, so the intent
-// family can reach the intent store from the issues root it is handed.
+// ledgerRelDir is where the issues root sits under a repository, so
+// ResolveOccasion reaches the reading ledger from the repository root it is
+// handed.
 const ledgerRelDir = ".abcd/work/issues"
 
 // Paths returns every file in the ledger that claims item, across all run
@@ -148,10 +149,11 @@ func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
 // ResolveOccasion resolves id in one of the families the caller admits and
 // returns the path of the record it names. An id outside those families is
 // refused by shape before any path is built. A reading item or a disposition
-// resolves through the ledger walk above; an intent resolves only in the intent
-// store's shipped/ bucket, reached from the repository the issues root sits
-// under, and a record in any other bucket is refused naming the bucket.
-func ResolveOccasion(issuesRoot, id string, families ...Family) (string, error) {
+// resolves through the ledger walk above, under repoRoot's issue ledger; an
+// intent resolves only in repoRoot's intent store's shipped/ bucket, and a
+// record in any other bucket is refused naming the bucket.
+func ResolveOccasion(repoRoot, id string, families ...Family) (string, error) {
+	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(ledgerRelDir))
 	fam := Family(id[:max(0, strings.Index(id, "-"))])
 	admitted := false
 	names := make([]string, 0, len(families))
@@ -172,27 +174,21 @@ func ResolveOccasion(issuesRoot, id string, families ...Family) (string, error) 
 		_, path, err := LocateDisposition(issuesRoot, id)
 		return path, err
 	case FamilyIntent:
-		return resolveShippedIntent(issuesRoot, id)
+		return resolveShippedIntent(repoRoot, id)
 	}
 	return "", fmt.Errorf("occasion %q: the %s family has no resolver", id, fam)
 }
 
-// resolveShippedIntent resolves an itd-N occasion to a record in shipped/.
-func resolveShippedIntent(issuesRoot, id string) (string, error) {
+// resolveShippedIntent resolves an itd-N occasion to a record in shipped/,
+// reading the intent store alone.
+func resolveShippedIntent(repoRoot, id string) (string, error) {
 	if !recordid.ValidIntentID(id) {
 		return "", fmt.Errorf("invalid itd-N identifier: %q", id)
 	}
-	clean := filepath.Clean(issuesRoot)
-	suffix := string(filepath.Separator) + filepath.FromSlash(ledgerRelDir)
-	if !strings.HasSuffix(clean, suffix) {
-		return "", fmt.Errorf("occasion %s: the issues root %s is not a repository's %s, so no intent store is reachable from it", id, clean, ledgerRelDir)
-	}
-	repoRoot := strings.TrimSuffix(clean, suffix)
-	res, err := recordid.NewResolver(repoRoot)
+	rel, ok, err := recordid.LookupOne(repoRoot, recordid.CanonCitedID(id))
 	if err != nil {
 		return "", err
 	}
-	rel, ok := res.Lookup(recordid.CanonCitedID(id))
 	if !ok {
 		return "", fmt.Errorf("%w: occasion %s names no intent this repository holds", ErrUnknown, id)
 	}

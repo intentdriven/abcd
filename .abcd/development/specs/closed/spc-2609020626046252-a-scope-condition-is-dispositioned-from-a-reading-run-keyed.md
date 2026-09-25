@@ -218,7 +218,7 @@ readiness gate keeps reporting identities, not dispositions.
 `internal/core/readingitem`, as `Locate(issuesRoot, item string) (run, path
 string, err error)` and `Paths`, with sentinels `ErrUnknown` and
 `ErrDuplicate`; beside them the leaf carries `LocateDisposition` and
-`ResolveOccasion(issuesRoot, id string, families ...Family)`, the one occasion
+`ResolveOccasion(repoRoot, id string, families ...Family)`, the one occasion
 resolver the admission, reframe and condition verbs share, each naming the
 families it admits. `capture` keeps `findReadingItem` and `readingItemPaths`
 as thin wrappers over the leaf, mapping `ErrUnknown` and `ErrDuplicate` onto

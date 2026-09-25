@@ -90,44 +90,60 @@ func TestResolveOccasionAcceptsShippedIntent(t *testing.T) {
 	root, ir := repo(t)
 	write(t, filepath.Join(root, ".abcd/development/intents/shipped/itd-7-a-delivery.md"), "---\nid: itd-7\n---\n")
 	write(t, filepath.Join(ir, "readings", "rdg-1", "rdi-11.md"), "a")
-	path, err := ResolveOccasion(ir, "itd-7", FamilyItem, FamilyIntent)
+	path, err := ResolveOccasion(root, "itd-7", FamilyItem, FamilyIntent)
 	if err != nil || filepath.Base(path) != "itd-7-a-delivery.md" {
 		t.Fatalf("ResolveOccasion(itd-7) = %q %v", path, err)
 	}
-	path, err = ResolveOccasion(ir, "rdi-11", FamilyItem, FamilyIntent)
+	path, err = ResolveOccasion(root, "rdi-11", FamilyItem, FamilyIntent)
 	if err != nil || filepath.Base(path) != "rdi-11.md" {
 		t.Fatalf("ResolveOccasion(rdi-11) = %q %v", path, err)
 	}
-	if _, err := ResolveOccasion(ir, "itd-8", FamilyItem, FamilyIntent); !errors.Is(err, ErrUnknown) {
+	if _, err := ResolveOccasion(root, "itd-8", FamilyItem, FamilyIntent); !errors.Is(err, ErrUnknown) {
 		t.Errorf("an absent intent: err = %v, want ErrUnknown", err)
 	}
 }
 
 func TestResolveOccasionRefusesPlannedIntent(t *testing.T) {
-	root, ir := repo(t)
+	root, _ := repo(t)
 	write(t, filepath.Join(root, ".abcd/development/intents/planned/itd-7-a-plan.md"), "---\nid: itd-7\n---\n")
-	_, err := ResolveOccasion(ir, "itd-7", FamilyItem, FamilyIntent)
+	_, err := ResolveOccasion(root, "itd-7", FamilyItem, FamilyIntent)
 	if err == nil || !strings.Contains(err.Error(), "planned/") {
 		t.Fatalf("a planned intent: err = %v, want a refusal naming planned/", err)
 	}
 }
 
 func TestResolveOccasionRefusesAFamilyItIsNotHanded(t *testing.T) {
-	_, ir := repo(t)
+	root, ir := repo(t)
 	write(t, filepath.Join(ir, "dispositions", "rdi-11", "dsp-5.md"), "a")
 	for _, id := range []string{"dsp-5", "iss-1", "", "rdi", "../x"} {
-		if _, err := ResolveOccasion(ir, id, FamilyItem, FamilyIntent); err == nil || !strings.Contains(err.Error(), "is not one of rdi-N, itd-N") {
+		if _, err := ResolveOccasion(root, id, FamilyItem, FamilyIntent); err == nil || !strings.Contains(err.Error(), "is not one of rdi-N, itd-N") {
 			t.Errorf("ResolveOccasion(%q): err = %v", id, err)
 		}
 	}
-	if _, err := ResolveOccasion(ir, "dsp-5", FamilyDisposition); err != nil {
+	if _, err := ResolveOccasion(root, "dsp-5", FamilyDisposition); err != nil {
 		t.Errorf("a disposition handed its family: %v", err)
 	}
 }
 
-func TestResolveOccasionRefusesAnIssuesRootOutsideARepository(t *testing.T) {
-	ir := t.TempDir()
-	if _, err := ResolveOccasion(ir, "itd-7", FamilyIntent); err == nil || !strings.Contains(err.Error(), "no intent store is reachable") {
-		t.Fatalf("err = %v", err)
+// TestResolveOccasionReadsOnlyTheIntentStore: an intent occasion is looked up
+// in the intent store alone, from the repository root the caller hands it, so a
+// fault in an unrelated record family does not refuse it.
+func TestResolveOccasionReadsOnlyTheIntentStore(t *testing.T) {
+	root, _ := repo(t)
+	write(t, filepath.Join(root, ".abcd/development/intents/shipped/itd-7-a-delivery.md"), "---\nid: itd-7\n---\n")
+	write(t, filepath.Join(root, ".abcd/development/specs/open/spc-3-a-spec.md"), "a")
+	specs := filepath.Join(root, ".abcd", "development", "specs")
+	if err := os.Chmod(specs, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(specs, 0o755) })
+	if _, err := os.ReadDir(specs); err == nil {
+		t.Skip("the store stays readable at mode 000 (running as root)")
+	}
+	if path, err := ResolveOccasion(root, "itd-7", FamilyIntent); err != nil || filepath.Base(path) != "itd-7-a-delivery.md" {
+		t.Fatalf("ResolveOccasion(itd-7) = %q %v", path, err)
+	}
+	if _, err := ResolveOccasion(t.TempDir(), "itd-7", FamilyIntent); !errors.Is(err, ErrUnknown) {
+		t.Errorf("a root holding no intent store: err = %v, want ErrUnknown", err)
 	}
 }

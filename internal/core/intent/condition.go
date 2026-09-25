@@ -23,10 +23,6 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// issuesRelDir is the issue ledger's root under a repository — where the
-// reading items an occasion names live.
-const issuesRelDir = ".abcd/work/issues"
-
 // maxOccasionBytes caps the reading item read for its citation; a reading
 // record is a few short fields.
 const maxOccasionBytes = 256 * 1024
@@ -168,7 +164,7 @@ func DispositionCondition(repoRoot string, req ConditionRequest) (ConditionResul
 	if req.OccasionedBy == "" {
 		return ConditionResult{}, fmt.Errorf("intent: the occasion is required: a reading item (rdi-N) or a shipped intent (itd-N) (nothing written)")
 	}
-	occPath, err := readingitem.ResolveOccasion(filepath.Join(repoRoot, filepath.FromSlash(issuesRelDir)), req.OccasionedBy,
+	occPath, err := readingitem.ResolveOccasion(repoRoot, req.OccasionedBy,
 		readingitem.FamilyItem, readingitem.FamilyIntent)
 	if err != nil {
 		return ConditionResult{}, fmt.Errorf("intent: occasion %q does not resolve: %v (nothing written)", req.OccasionedBy, err)
