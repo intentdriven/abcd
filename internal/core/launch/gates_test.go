@@ -460,3 +460,42 @@ func TestHookRowFindsAnUnparseableHooksConfig(t *testing.T) {
 			report.Smoke, report.WouldRefuseOn)
 	}
 }
+
+// TestRenderPayloadRefusesADirtyTreeByDefault is iss-2609251827294854: the
+// dirty-tree policy is the render caller's to state, and a caller that states
+// none fails closed. A render request with no policy refuses a dirty tree; the
+// cut's post-write render, which states DirtySkip, renders it.
+func TestRenderPayloadRefusesADirtyTreeByDefault(t *testing.T) {
+	r := dirtyRepo(t)
+	r.Write("notes.txt", "scratch\n")
+	req := PayloadRenderRequest{
+		RepoRoot: r.Root(), Dest: filepath.Join(t.TempDir(), "payload"),
+		Version: "0.4.0", Entry: sampleEntry(),
+	}
+	if _, err := RenderPayload(req); !errors.Is(err, ErrDirtyTree) {
+		t.Fatalf("a render that states no dirty-tree policy must refuse a dirty tree, got %v", err)
+	}
+
+	req.Dest = filepath.Join(t.TempDir(), "payload")
+	req.Dirty = DirtySkip
+	if _, err := RenderPayload(req); err != nil {
+		t.Fatalf("a render that states DirtySkip must render: %v", err)
+	}
+}
+
+// TestRenderPathDocAuditRowSaysItWasNotMeasured keeps the render path honest
+// (iss-2609251827294854): it does not measure the documentation audit, so its
+// row says so rather than claiming the repository has no docs-lint config.
+func TestRenderPathDocAuditRowSaysItWasNotMeasured(t *testing.T) {
+	root := renderFixture(t)
+	writeFile(t, root, ".abcd/docs-lint.json", `{"roots": ["docs"], "banned_tokens": [], "rules": {}}`+"\n")
+	pre, err := PrecheckPayload(root, filepath.Join(t.TempDir(), "payload"),
+		PrecheckOptions{Dirty: DirtySkip, DocAudit: renderPathDocAudit})
+	if err != nil {
+		t.Fatalf("PrecheckPayload: %v", err)
+	}
+	row := gateRow(t, pre.Gates, "documentation-auditor")
+	if row.Status != "not_measured" || strings.Contains(row.Detail, "no .abcd/docs-lint.json") {
+		t.Errorf("the render path's doc-auditor row = %+v, want not_measured and no claim about the config", row)
+	}
+}

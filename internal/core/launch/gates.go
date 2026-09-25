@@ -89,7 +89,9 @@ const (
 	// its own writes (the dated CHANGELOG heading, the release page, the
 	// archive pin): those writes are the cut's expected output, not dirt, and
 	// the gate already ran before any of them, at the cut's start. The ordering
-	// is the point — the cut's own staged changes must never read as dirt.
+	// is the point — the cut's own staged changes must never read as dirt. A
+	// render caller states it explicitly (PayloadRenderRequest.Dirty); nothing
+	// defaults to it.
 	DirtySkip
 )
 
@@ -103,6 +105,10 @@ type DocAuditPreflight struct {
 	Findings []GateFinding `json:"findings,omitempty"`
 	// Unreadable says why the audit could not be measured at all.
 	Unreadable string `json:"unreadable,omitempty"`
+	// NotMeasured says why the caller did not measure the audit on this
+	// path. The row then reports "not_measured" and makes no claim about the
+	// repository's configuration.
+	NotMeasured string `json:"not_measured,omitempty"`
 }
 
 // GatePolicy is the repository's configuration of the suite, read from the
@@ -727,6 +733,9 @@ func docAuditGate(pre *DocAuditPreflight) GateSummary {
 	case pre == nil:
 		row.Status = "not_armed"
 		row.Detail = "no .abcd/docs-lint.json: the documentation audit (the docs-lint engine over the configured doc roots) has nothing to run"
+	case pre.NotMeasured != "":
+		row.Status = "not_measured"
+		row.Detail = pre.NotMeasured
 	case pre.Unreadable != "":
 		row.Detail = "could not be measured"
 		row.Findings = []GateFinding{{Detail: "the documentation audit could not be measured: " + pre.Unreadable}}

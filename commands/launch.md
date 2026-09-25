@@ -629,7 +629,9 @@ catalog is left out of it, because the catalog is what names its digest.
   in `detect`, before the tag is made; the release workflow runs it again on the
   tagged commit in `verify`, before anything is built, and once more in the
   publish job, where the verified archive is the file it checksums, attests and
-  uploads.
+  uploads. With `--verify` the pin is the dirty-tree gate, since a payload file
+  that differs from the commit changes the digest; without it, an uncommitted
+  change in the working tree refuses the render (exit 2).
 - `--repository <owner/name>` refuses unless the archive's download address lies
   under that repository's
   `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared

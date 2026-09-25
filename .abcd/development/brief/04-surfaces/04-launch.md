@@ -76,7 +76,10 @@ address and digest, and unless that address lies under the releasing
 repository's own release downloads for the tag — removing the archive on either
 refusal, so nothing unpinned can be published. `auto-release.yml` runs it on the
 pushed commit before the tag is made, and the release workflow runs it again on
-the tagged commit, each run bound to the repository the workflow runs in.
+the tagged commit, each run bound to the repository the workflow runs in. Bound
+to the pin, the render leaves the dirty-tree gate to it — a payload file that
+differs from the commit changes the digest and refuses; unbound, it runs the
+gate, and an uncommitted change refuses the render.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent, including the release page's retry loop. The
@@ -155,7 +158,9 @@ The **hard-fail** gates refuse the release:
   it carried. A tree whose state git cannot read refuses whatever the flag
   says. The preview has no override, so a dirty tree is on its would-refuse
   list. The cut runs this gate before it writes anything; the render after its
-  writes skips it, because by then the cut's own output is on disk.
+  writes skips it, because by then the cut's own output is on disk. Skipping is
+  a render caller's stated choice: a render that states no policy runs the gate
+  and refuses a dirty tree.
 - **The installability smoke** at its light tier (below).
 
 The **warn** gates surface a concern and refuse nothing, unless the

@@ -173,7 +173,7 @@ func TestRenderPayloadRefusesAnUninstallablePayload(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "payload")
 	_, err := RenderPayload(PayloadRenderRequest{
 		RepoRoot: root, Dest: dest, Version: "1.0.0",
-		Entry: ChangelogEntry{Tier: "patch", Reason: "r", Date: time.Now(), SourceSHA: "abc"},
+		Entry: ChangelogEntry{Tier: "patch", Reason: "r", Date: time.Now(), SourceSHA: "abc"}, Dirty: DirtySkip,
 	})
 	if err == nil {
 		t.Fatal("the render must refuse a payload whose declared surface is incomplete")

@@ -65,6 +65,20 @@ type PayloadRenderRequest struct {
 	Version string
 	// Entry is the marketplace changelog record for this release.
 	Entry ChangelogEntry
+	// Dirty is how the render's dirty-tree gate treats uncommitted changes.
+	// The zero value refuses them, so a caller that states no policy fails
+	// closed; a caller that renders after its own writes, having run the gate
+	// before them, states DirtySkip.
+	Dirty DirtyPolicy
+}
+
+// renderPathDocAudit is the render path's documentation-audit input. The
+// docs-lint engine lives in a package that imports this one, so the render
+// cannot measure the audit itself; its row says that, rather than claiming
+// the repository has no docs-lint configuration. A cut measures the audit in
+// its own pre-flight, before its writes.
+var renderPathDocAudit = &DocAuditPreflight{
+	NotMeasured: "not measured on the render path: the docs-lint engine is the caller's to run, and a cut runs it in its pre-flight before its writes",
 }
 
 // PayloadRenderResult is a completed render.
@@ -363,11 +377,10 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 		return res, errors.New("the changelog entry needs a reason, a source SHA and a date")
 	}
 
-	// The dirty-tree gate is skipped here, and only here: a cut renders AFTER
-	// its own writes (the dated heading, the release page, the archive pin), so
-	// the tree is dirty by construction, with exactly the cut's expected output.
-	// The cut ran the gate before those writes, in its own precheck.
-	pre, err := PrecheckPayload(req.RepoRoot, req.Dest, PrecheckOptions{Dirty: DirtySkip})
+	// The dirty-tree policy is the caller's: RenderPayload cannot know whether
+	// the gate already ran, so a request that states none refuses a dirty tree
+	// (iss-2609251827294854).
+	pre, err := PrecheckPayload(req.RepoRoot, req.Dest, PrecheckOptions{Dirty: req.Dirty, DocAudit: renderPathDocAudit})
 	if err != nil {
 		return res, err
 	}
