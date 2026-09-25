@@ -108,7 +108,7 @@ func Bare(repoRoot string) (BareStatus, error) {
 		}
 	}
 
-	status.Headroom = bareHeadroomLines(repoRoot, store)
+	status.Headroom = bareHeadroomLines(store)
 	return status, nil
 }
 
@@ -158,7 +158,7 @@ func fmtSignedPct(fraction float64) string {
 	return fmt.Sprintf("+%.0f%%", pct)
 }
 
-func bareHeadroomLines(repoRoot string, store *storeHandle) []string {
+func bareHeadroomLines(store *storeHandle) []string {
 	const header = "Quotation-budget headroom:"
 
 	raw, err := store.read(coverageIndexName, maxRegistryBytes)
@@ -183,7 +183,7 @@ func bareHeadroomLines(repoRoot string, store *storeHandle) []string {
 	if regErr != nil {
 		registry = nil
 	}
-	budget := loadQuotationBudget(repoRoot)
+	budget := loadQuotationBudget(store)
 	var referenced []string
 	for _, p := range pages {
 		block := coveragePageSourceBlock(p.text)

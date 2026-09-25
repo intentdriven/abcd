@@ -158,7 +158,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	contentHash := SourceContentHash(material.text)
 	tokenCount := CountSourceTokens(normalized)
 
-	registry, err := LoadRegistry(SourcesIndexPath(root))
+	registry, err := store.registry()
 	if err != nil {
 		return IngestResult{}, err
 	}

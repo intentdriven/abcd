@@ -47,7 +47,7 @@ func TestDerivedClassesUnionsBothShapes(t *testing.T) {
 
 	// Unit-level: the union is deduplicated, and a class named by both shapes
 	// appears once.
-	l := newMemoryLinter("p.md", t.TempDir(),
+	l := newMemoryLinter("p.md", &storeHandle{dir: Dir(t.TempDir())},
 		"---\nsource:\n  class: external_pdf\n  classes: [external_pdf, session_memory]\n---\n# Body\n", nil)
 	got := l.derivedClasses()
 	want := []string{"external_pdf", "session_memory"}

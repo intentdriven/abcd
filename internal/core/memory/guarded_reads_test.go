@@ -78,9 +78,14 @@ func TestLoadQuotationBudgetRefusesSymlinkedConfig(t *testing.T) {
 	if err := os.WriteFile(outside, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plantSymlink(t, outside, memoryConfigPath(root))
+	plantSymlink(t, outside, filepath.Join(mem, "config.json"))
 
-	got := loadQuotationBudget(root)
+	store, err := openStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got := loadQuotationBudget(store)
 	if got.PerPagePct == 0.99 {
 		t.Fatal("a symlinked config.json was followed into the quotation budget")
 	}

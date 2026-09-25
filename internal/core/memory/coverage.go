@@ -10,8 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // coverage.go — quotation-budget math + the regenerable coverage index (fn-39):
@@ -56,15 +54,13 @@ func (b quotationBudget) asMap() map[string]any {
 	}
 }
 
-func memoryConfigPath(repoRoot string) string {
-	return Dir(repoRoot) + string(os.PathSeparator) + "config.json"
-}
-
-func loadQuotationBudget(repoRoot string) quotationBudget {
+// loadQuotationBudget reads the store's config.json through the handle: a
+// trust boundary, so a symlinked leaf is refused rather than followed and the
+// read cannot leave the directory the handle vetted (iss-2608291814572914).
+// Absent or unreadable is the default budget.
+func loadQuotationBudget(store *storeHandle) quotationBudget {
 	def := defaultBudget()
-	// Guarded read: config.json lives in the store, a trust boundary — a
-	// committed symlink is refused, not followed.
-	raw, err := fsutil.ReadGuarded(memoryConfigPath(repoRoot), maxRegistryBytes)
+	raw, err := store.read("config.json", maxRegistryBytes)
 	if err != nil {
 		return def
 	}
@@ -532,8 +528,8 @@ func buildCoverage(pages []crawledPage, registry map[string]any, budget quotatio
 // .coverage_index.json IO
 // ---------------------------------------------------------------------------
 
-func readStoredFingerprint(path string) string {
-	raw, err := fsutil.ReadGuarded(path, maxRegistryBytes)
+func readStoredFingerprint(store *storeHandle) string {
+	raw, err := store.read(coverageIndexName, maxRegistryBytes)
 	if err != nil {
 		return ""
 	}

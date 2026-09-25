@@ -84,7 +84,7 @@ func severityFor(code string) string {
 
 type memoryLinter struct {
 	pagePath    string
-	repoRoot    string
+	store       *storeHandle // the one way the checks read the store
 	content     string
 	frontmatter map[string]any
 	sourceLine  int
@@ -95,14 +95,14 @@ type memoryLinter struct {
 	redactor *storeRedactor
 }
 
-func newMemoryLinter(pagePath, repoRoot, content string, redactor *storeRedactor) *memoryLinter {
+func newMemoryLinter(pagePath string, store *storeHandle, content string, redactor *storeRedactor) *memoryLinter {
 	fm, err := parseFrontmatter(content)
 	if err != nil {
 		fm = map[string]any{}
 	}
 	return &memoryLinter{
 		pagePath:    pagePath,
-		repoRoot:    repoRoot,
+		store:       store,
 		content:     content,
 		frontmatter: fm,
 		sourceLine:  frontmatterKeyLine(content, "source"),
@@ -426,7 +426,7 @@ func (l *memoryLinter) checkQuotation() {
 			l.sourceLine, "")
 		return
 	}
-	budget := loadQuotationBudget(l.repoRoot)
+	budget := loadQuotationBudget(l.store)
 	for _, span := range spans {
 		if span.tokenCount > budget.MaxContiguousQuoteWords {
 			l.emit("MQ001",
@@ -436,7 +436,7 @@ func (l *memoryLinter) checkQuotation() {
 		}
 	}
 	pageTokens := pageQuotedTokenTotal(spans)
-	registry, err := LoadRegistry(SourcesIndexPath(l.repoRoot))
+	registry, err := l.store.registry()
 	if err != nil {
 		registry = nil // corrupt index -> every lookup degrades to malformed
 	}
@@ -466,7 +466,7 @@ func (l *memoryLinter) checkQuotation() {
 // Full-corpus coverage lint (MQ002 + per-source MQ003)
 // ---------------------------------------------------------------------------
 
-func runMemoryCoverageLint(repoRoot string) ([]Finding, map[string]any, error) {
+func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[string]any, error) {
 	indexPath := CoverageIndexPath(repoRoot)
 	report := map[string]any{
 		"path":            indexPath,
@@ -475,28 +475,24 @@ func runMemoryCoverageLint(repoRoot string) ([]Finding, map[string]any, error) {
 		"new_fingerprint": nil,
 		"written":         false,
 	}
-	// The store handle refuses a symlinked store DIRECTORY before the coverage
-	// index is written (GHSA-72rp): writeCoverageIndex would otherwise MkdirAll
-	// + write into the symlink target, escaping the repo. The crawl reads
-	// through it (iss-2608291814572914).
-	store, err := openStore(repoRoot)
-	if err != nil {
-		return nil, report, err
-	}
-	defer store.Close()
+	// The caller's store handle refused a symlinked store DIRECTORY before the
+	// coverage index is written (GHSA-72rp): writeCoverageIndex would otherwise
+	// MkdirAll + write into the symlink target, escaping the repo. The crawl
+	// reads through it (iss-2608291814572914), the same handle the page lint
+	// read through, so one Lint never opens the store twice.
 	if !store.present() {
 		return nil, report, nil
 	}
 	pages := store.typedPages()
 
-	budget := loadQuotationBudget(repoRoot)
+	budget := loadQuotationBudget(store)
 	registry, regErr := store.registry()
 	if regErr != nil {
 		registry = nil
 	}
 	result := buildCoverage(pages, registry, budget)
 
-	oldFP := readStoredFingerprint(indexPath)
+	oldFP := readStoredFingerprint(store)
 	if _, err := writeCoverageIndex(indexPath, result, budget); err != nil {
 		return nil, report, err
 	}
@@ -582,6 +578,7 @@ func Lint(req LintRequest) (LintResult, error) {
 	if err != nil {
 		return LintResult{}, err
 	}
+	defer store.Close()
 	mem := store.dir
 
 	var findings []Finding
@@ -599,15 +596,14 @@ func Lint(req LintRequest) (LintResult, error) {
 			})
 		}
 		for _, p := range store.typedPages() {
-			findings = append(findings, newMemoryLinter(store.path(p.rel), root, p.text, redactor).run()...)
+			findings = append(findings, newMemoryLinter(store.path(p.rel), store, p.text, redactor).run()...)
 		}
 		if redactor != nil {
 			findings = append(findings, residueOfStoreFiles(redactor, store)...)
 		}
 	}
-	store.Close()
 
-	corpusFindings, coverageReport, err := runMemoryCoverageLint(root)
+	corpusFindings, coverageReport, err := runMemoryCoverageLint(root, store)
 	if err != nil {
 		return LintResult{}, err
 	}

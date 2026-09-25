@@ -74,8 +74,18 @@ func openStore(repoRoot string) (*storeHandle, error) {
 		return nil, &UnsafeStorePathError{Msg: "memory store changed while it was being opened: " + mem}
 	}
 	h.root = root
+	if storeOpened != nil {
+		storeOpened()
+	}
 	return h, nil
 }
+
+// storeOpened, when set, runs as openStore hands back a present store. It is a
+// test seam and nothing else: it lets a test swap the store directory in the
+// window after the handle was vetted, which is exactly where a read by path
+// would follow the swap and a read through the handle would not. Nil outside
+// tests.
+var storeOpened func()
 
 // Close releases the store descriptor. It is safe on an absent store.
 func (h *storeHandle) Close() {
