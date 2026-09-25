@@ -7,6 +7,8 @@ category: "process"
 source: "user-observation"
 found_during: "install-test round with concurrent agents (2026-08-11)"
 found_at: ".abcd/work/CONTEXT.md"
+deferred_after: "v0.10.0"
+deferral_reason: "bound to itd-148 (worktrees for every change), which waits on a product-thinker ruling owed in run A (2026-09-25, theme L): whether worktrees live in the machine-scoped store or inside the checkout, which record owns the add/list/prune verbs, and whether the block on writes in the main checkout spares a coordinating session; the fix is built once that ruling lands"
 ---
 
 Several agents sharing ONE git worktree silently invalidated a verification result and came close to losing committed work. Observed repeatedly during the 2026-08-11 install-test round, in a repo that is about to run more agents, not fewer.
