@@ -132,6 +132,10 @@ user-scope directory for machine-local state.
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
+  rules.json                     the machine's rule conventions, the user layer
+                                 between the bundled domains and each repo's
+                                 .abcd/rules.json, read-only; abcd never creates it
+                                 (itd-117)
   path-entry                     the abcd copy this machine owns, the one PATH binary a
                                  hook will run
   trusted-roots                  foreign-uid configuration roots the caller vouches for
@@ -157,6 +161,10 @@ permissions are not checked, and the hook shims that consult it check neither.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the two that widen trust, and a file failing it, or holding a line that
 does not parse, is reported loudly and both of its limits take their defaults.
+`rules.json` is read through that guard too, because it injects text into every
+session on the machine, but a file failing it — or failing to parse — fails the
+rules load outright: nothing injects until it is fixed, and the file is named on
+stderr.
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd

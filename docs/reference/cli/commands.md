@@ -1447,14 +1447,17 @@ Render the active rule set; a positional DOMAIN scopes to one (read-only)
 **Usage:** `abcd rules [domain]`
 
 Render the rule set the modular-rules loader injects: the bundled default
-domains merged with this repo's .abcd/rules.json. Bare, it renders every active
-domain; a positional DOMAIN (case-insensitive) renders that one domain regardless
-of its state or the kill switch, so a dormant domain is still inspectable.
+domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+.abcd/rules.json, each layer per field, so the repo wins a field both set.
+Either file may be absent. Bare, it renders every active domain; a positional
+DOMAIN (case-insensitive) renders that one domain regardless of its state or the
+kill switch, so a dormant domain is still inspectable.
 
-Every domain says which layer it came from. A domain the repo override names —
-its rules replaced, its state changed, or a custom domain declared — renders as
-"## NAME (repo override)" here, in the injected block and in the hook's
-diagnostic, and carries "source": "repo" in --json; an untouched bundled domain
+Every domain says which layer it came from. A domain an override names — its
+rules replaced, its state changed, or a custom domain declared — renders as
+"## NAME (user override)" or "## NAME (repo override)" here, in the injected
+block and in the hook's diagnostic, and carries "source": "user" or "repo" in
+--json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.
 
 ### `abcd site`
