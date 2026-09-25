@@ -167,3 +167,28 @@ func TestBlockMarkerAdmitsBothOccasionForms(t *testing.T) {
 		}
 	}
 }
+
+// TestVerdictNamingTheOccasionOverridesWhereverItSits pins the fold as source
+// precedence, not position: the verdict ingest replaces an OWED stub in place,
+// so a verdict written after a condition block can sit above it. A verdict
+// naming the occasion overrides from either side; one naming it does not reach
+// a later condition block with another occasion.
+func TestVerdictNamingTheOccasionOverridesWhereverItSits(t *testing.T) {
+	named := strings.Replace(verdictBlock, "the tree still holds it", "weighed rdi-7 and the tree holds it", 1)
+	content := record(named, conditionBlock(condA, Falsified, "rdi-7", "the detection named it", ""))
+	if got := Standing(content)[condA]; got.Disposition != Survived || got.Occasion != "" {
+		t.Errorf("a verdict above the condition block naming its occasion did not override: %+v", got)
+	}
+	// A verdict above, naming no occasion, still leaves the condition block standing.
+	content = record(verdictBlock, conditionBlock(condA, Falsified, "rdi-7", "the detection named it", ""))
+	if got := Standing(content)[condA]; got.Occasion != "rdi-7" {
+		t.Errorf("standing = %+v, want the condition block", got)
+	}
+	// Condition blocks among themselves keep document order: the later block's
+	// occasion is the one a verdict must name.
+	content = record(conditionBlock(condA, Falsified, "rdi-7", "first", ""), named,
+		conditionBlock(condA, Narrowed, "rdi-8", "second", "one repository"))
+	if got := Standing(content)[condA]; got.Occasion != "rdi-8" {
+		t.Errorf("standing = %+v, want the later condition block (the verdict names rdi-7, not rdi-8)", got)
+	}
+}

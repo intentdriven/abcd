@@ -360,3 +360,37 @@ func TestVerdictIngestUnchangedBesideConditionBlocks(t *testing.T) {
 		t.Errorf("standing for the other = %+v, want the verdict", got)
 	}
 }
+
+// namingVerdict is a verdict over both conditions whose rationale for condOne
+// names the reading item the condition block was occasioned by.
+func namingVerdict(t *testing.T, rcp string) string {
+	t.Helper()
+	d := dispositionOf(condOne, "survived")
+	d["rationale"] = "weighed " + condItem + " and the tree still holds it"
+	return verdictWithConditions(t, rcp, d, dispositionOf(condTwo, "survived"))
+}
+
+// TestShipConditionIngestOverridesThroughTheWriters is the override as the
+// writers produce it: the ship parks an OWED stub, the verb appends a condition
+// block below it, and the ingest replaces the stub in place, so the verdict
+// sits ABOVE the block it names. Naming the occasion overrides regardless.
+func TestShipConditionIngestOverridesThroughTheWriters(t *testing.T) {
+	root, rcp := condFixture(t, condOne)
+	if _, err := DispositionCondition(root, condReq(condition.Falsified)); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IngestVerdict(root, writeVerdict(t, root, namingVerdict(t, rcp)))
+	if err != nil || res.Status != "ingested" {
+		t.Fatalf("ingest: %+v %v", res, err)
+	}
+	s := intentBody(t, root)
+	if vi, ci := strings.Index(s, "<!-- abcd-review: INGESTED"), strings.Index(s, "<!-- abcd-condition:"); vi < 0 || ci < 0 || vi > ci {
+		t.Fatalf("fixture shape: want the verdict above the condition block (verdict %d, condition %d)", vi, ci)
+	}
+	if got := condition.Standing(s)[condOne]; got.Disposition != condition.Survived || got.Source != "verdict "+rcp {
+		t.Errorf("standing = %+v, want the verdict that named %s", got, condItem)
+	}
+	if len(res.ReadingOccasionedStanding) != 0 {
+		t.Errorf("ReadingOccasionedStanding = %+v, want none: the verdict named the occasion", res.ReadingOccasionedStanding)
+	}
+}

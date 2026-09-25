@@ -164,20 +164,44 @@ func ReadDispositions(content string) []Disposition {
 
 // Standing folds ReadDispositions into each identity's standing disposition.
 //
-// The last entry in document order stands, with one exception: an entry from a
-// verdict block does not replace a standing entry from a condition block unless
-// the verdict's rationale names that entry's occasion. A re-audit covers every
-// condition by construction and knows nothing of the readings, so without the
-// exception it would erase, silently, the one thing the join exists to keep; an
-// auditor who has weighed the reading says so by naming it.
+// The fold is by source precedence, not by position. Among the entries of one
+// source, document order decides: the last condition-block entry is the
+// condition's standing reading-occasioned judgement, and the last verdict entry
+// its standing audit. Between the sources, a condition-block entry stands over
+// every verdict entry, except that a verdict entry whose rationale names the
+// standing condition block's occasion replaces it, wherever either sits (the
+// last such verdict entry in document order). A re-audit covers every condition
+// by construction and knows nothing of the readings, so without that precedence
+// it would erase, silently, the one thing the join exists to keep; an auditor
+// who has weighed the reading says so by naming it.
+//
+// Position cannot decide between the sources because it is not the order of
+// writing: the verdict ingest replaces the receipt's OWED stub in place, and the
+// stub is parked at ship time, before any condition block, so a verdict
+// ingested after a condition block sits above it (the 2026-09-25 ruling in
+// .abcd/work/DECISIONS.md).
 func Standing(content string) map[string]Disposition {
-	standing := map[string]Disposition{}
-	for _, d := range ReadDispositions(content) {
-		prev, ok := standing[d.ConditionID]
-		if ok && prev.Occasion != "" && d.Occasion == "" && !namesOccasion(d.Rationale, prev.Occasion) {
-			continue
+	all := ReadDispositions(content)
+	lastCond := map[string]Disposition{}
+	lastVerdict := map[string]Disposition{}
+	for _, d := range all {
+		if d.Occasion != "" {
+			lastCond[d.ConditionID] = d
+		} else {
+			lastVerdict[d.ConditionID] = d
 		}
-		standing[d.ConditionID] = d
+	}
+	standing := map[string]Disposition{}
+	for id, d := range lastVerdict {
+		standing[id] = d
+	}
+	for id, c := range lastCond {
+		standing[id] = c
+		for _, d := range all {
+			if d.ConditionID == id && d.Occasion == "" && namesOccasion(d.Rationale, c.Occasion) {
+				standing[id] = d
+			}
+		}
 	}
 	return standing
 }
