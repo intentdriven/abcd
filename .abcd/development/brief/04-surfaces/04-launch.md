@@ -167,7 +167,8 @@ which makes each warning a refusal:
   `.abcd/docs-lint.json`.
 - **Hook compliance**: every payload file a hook command invokes is executable
   in the payload, every command handler names a command, and every timeout is a
-  positive number.
+  positive number. A hooks config that cannot be read or parsed is a concern of
+  the row, never a row with nothing to judge.
 
 Two rows report without a tier. The **citation baseline** tallies cited claims
 against their receipts and refuses on a broken, unreceipted or overdue one. The
@@ -208,7 +209,9 @@ the payload proves nothing. Every entry records which register declared it. This
 is not the compatibility surface, which records manifest keys and discards
 values; installability is the mirror question, over the values.
 
-The **light tier** ships: both manifests parse, each local marketplace source
+The **light tier** ships: both manifests and every hooks config the payload
+carries parse (a host registers no hook from a config it cannot parse), each
+local marketplace source
 resolves to a manifest whose name matches the listing (a pinned archive source
 resolves to the payload root it is rendered from, and its pin must be an https
 `.zip` URL with a 64-hex digest), and every declared path
