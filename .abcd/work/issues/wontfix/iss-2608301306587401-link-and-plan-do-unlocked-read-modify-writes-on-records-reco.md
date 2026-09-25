@@ -7,6 +7,7 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-179-round-3-security"
 found_at: "internal/core/intent/lifecycle.go"
+wontfix_reason: "duplicate of iss-127: the unlocked read-modify-writes in Link and Plan (internal/core/intent/lifecycle.go) are the intent-transition sites that record names as its strongest candidate, and its fix takes the record lock RecordGrounds already uses"
 ---
 
 Link and Plan do unlocked read-modify-writes on records RecordGrounds now locks
@@ -27,3 +28,7 @@ the practical window is not demonstrable, and the honest thing is to say so
 rather than either fix it blind or drop it.
 
 Pre-existing on main. The branch's new writer is the one that DOES lock.
+
+## Grounds
+
+- declined: the finding is carried whole by iss-127; this would be wrong if iss-127 were closed without answering it

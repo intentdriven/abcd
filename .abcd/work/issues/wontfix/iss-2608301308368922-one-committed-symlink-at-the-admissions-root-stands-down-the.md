@@ -7,6 +7,7 @@ category: "security"
 source: "user-observation"
 found_during: "itd-189-round-2-security"
 found_at: "internal/core/lint/readingoutstanding.go"
+wontfix_reason: "duplicate of iss-2608301203521317: the gate following a committed admissions symlink through os.ReadDir is one instance of that record's unguarded store walk, and it closes with the ReadGuarded walk that record asks for"
 ---
 
 one committed symlink at the admissions root stands down the widening leg for every run while record_schema stays silent
@@ -31,3 +32,7 @@ the whole-tree verdict`), the report is `info` by construction, and the Unsafe
 line names the path. The report is loud about standing down. What is wrong is
 the GATE's silence, and that is the same os.ReadFile/ReadGuarded asymmetry as
 iss-2608301203521317 -- it closes with it.
+
+## Grounds
+
+- declined: the finding is carried whole by iss-2608301203521317; this would be wrong if iss-2608301203521317 were closed without answering it

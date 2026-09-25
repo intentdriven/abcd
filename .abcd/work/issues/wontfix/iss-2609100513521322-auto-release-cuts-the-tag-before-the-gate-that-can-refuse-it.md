@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".github/workflows/auto-release.yml"
 deferred_after: "v0.8.0"
 deferral_reason: "Renewed at v0.8.0, and this cycle adds a reason the first waiver did not have. The v0.7.1 waiver deferred the reorder because the remedy changes the release pipeline underneath a release that was mid-flight; that is still true, the next cut is in flight now, and auto-release is unchanged since v0.8.0 - detect, then tag, then release, which is where verify runs. What is new is that this is the second time the same ruling has had to be made. adr-52 moved the semantic receipt gate to the safe side of the tag on 2026-08-23, on the stated premise that the deterministic gates did not have this problem because they run in verify, before tag. Run 34403815697 falsified that premise: verify runs inside the release job, which needs tag, so the deterministic gate sits on the wrong side of the tag too and adr-52 closed only half of the shape it named. The remedy is therefore no longer a new design but the completion of a ruling already accepted, with adr-52's accepted cost already understood and paid once. The condition the first waiver named still decides the timing: the reorder wants to be the first change of a cycle, proven by a release, not the last change of one. Waits on an ADR extending adr-52's ruling to the deterministic gate, taken at the top of the cycle after this cut."
+wontfix_reason: "duplicate of iss-2608231226347380: the same auto-release job order that cuts the tag before the gate that can refuse the release; the fix (detect, verify, then tag, with a workflow test pinning the order) is carried there"
 ---
 
 `auto-release` cuts the version tag **before** the gate that could refuse the
@@ -121,3 +122,7 @@ generalisation is the same one, and splitting them would lose it.
   rather than rebuilding the same commit.
 - **Given** a `git revert` on this repository, **when** the message is written,
   **then** it carries an `Assisted-by:` trailer without a later rewrite.
+
+## Grounds
+
+- declined: the finding is carried whole by iss-2608231226347380; this would be wrong if iss-2608231226347380 were closed without answering it

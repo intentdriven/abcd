@@ -7,6 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-round-2-security"
 found_at: "internal/core/lint"
+wontfix_reason: "duplicate of iss-2608300244483405: the same gate-versus-reader split, where an indented line after a valued frontmatter key makes every reader skip the record while record_schema reports nothing"
 ---
 
 an indented continuation under a valued frontmatter key skips the record in every reader while record_schema reports nothing
@@ -30,3 +31,7 @@ split the gates) and iss-2608300234598982.
 A differential harness over 41 `grounds:` spellings found this to be the ONLY
 divergence: the round-1 fix 050f3366 closed the parity class for grounds
 itself.
+
+## Grounds
+
+- declined: the finding is carried whole by iss-2608300244483405; this would be wrong if iss-2608300244483405 were closed without answering it
