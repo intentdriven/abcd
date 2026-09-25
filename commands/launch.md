@@ -738,10 +738,14 @@ already has the machinery). It **never publishes**.
 It writes four files, wired to the repo's own default branch and Go version and
 to the check names its own pull-request CI reports:
 
-- `.github/workflows/release.yml` — verify → build → publish, the verify gate
-  armed against the reviewed **content** commit (`HEAD^2^` on the auto-release
-  merge path, `HEAD^` on a direct tag), so the first public release cannot hit the
-  receipt-vs-tag self-reference.
+- `.github/workflows/release.yml` — verify → build → publish. With semantic
+  gates configured, `verify` arms the receipt gate against the reviewed
+  **content** commit it derives from the receipts directory of the released
+  tree, so the first public release cannot hit the receipt-vs-tag
+  self-reference, and on a tag push it first refuses a tag that is not `v` plus
+  the released tree's newest dated CHANGELOG version (`record-lint
+  --released-version`, the reader the receipts are bound with), so a hand-pushed
+  tag cannot publish under another version's receipts.
 - `.github/workflows/auto-release.yml` — newest dated CHANGELOG heading → tag that
   commit → call `release.yml`. `GITHUB_TOKEN`-only, no personal access token.
 - `.abcd/development/release-gate/README.md` — the adr-37 runbook, including the

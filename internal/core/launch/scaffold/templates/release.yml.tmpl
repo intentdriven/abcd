@@ -851,9 +851,11 @@ jobs:
           echo "REHEARSAL_CONTENT_SHA=$content" >> "$GITHUB_ENV"
 
       - name: Resolve the reviewed content commit (release.yml's derivation)
-        # Mirrors release.yml's resolve step exactly: HEAD^2^ on the merge path,
-        # HEAD^ on a direct tag. Asserts the resolution lands on the simulated
-        # content commit and is an ancestor of the released commit.
+        # This profile arms no receipt gate, so release.yml derives no content
+        # commit. The step proves the two-commit release shape instead: HEAD^2^
+        # of the merge (HEAD^ on a direct tag) lands on the simulated content
+        # commit, an ancestor of the released commit, which is the commit the
+        # receipts directory names once a semantic gate is configured.
         run: |
           set -euo pipefail
           released="$(git rev-parse --verify HEAD)"
