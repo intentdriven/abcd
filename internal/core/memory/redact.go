@@ -314,10 +314,12 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 // the hyphen boundary — at BlockingResidual's bar every such ordinary page
 // would be refused. This rule therefore selects on the scanner's own severity
 // vocabulary alone, scanner.SeverityHardFail, which within a filename's
-// charset is exactly the credential class: no '/', '@', ':' or '.' can appear
-// inside a page name, so the address kinds and the home-path kinds are
-// unreachable there and what remains at hard_fail is a secret pattern, the
-// caller's own local username, or a banned real name.
+// charset is the credential class plus two identity kinds: no '/', '@', ':'
+// or '.' can appear inside a page name, so the address kinds and the
+// home-path kinds are unreachable there and what remains at hard_fail is a
+// secret pattern, the caller's own local username, or a banned real name. The
+// two identity kinds are then excluded (hardFailResidue), leaving secrets
+// only, as ruled.
 //
 // The components are judged as well as the joined name because '_' is a word
 // character: `\bghp_...` has no word boundary after `topic_auth_`, so the
@@ -411,15 +413,24 @@ func filenameJudgeTexts(filename string) []string {
 }
 
 // hardFailResidue is judgeFilename's narrow bar: the scanner's own hard_fail
-// severity and nothing else. It is deliberately NOT scanner.BlockingResidual
-// (see judgeFilename) and deliberately NOT a second severity notion — the
-// selection is on scanner.SeverityHardFail, the level the scanner already
-// defines. The literal-home backstop residue applies is skipped too: a home
-// path cannot appear in a page name, which holds no '/'.
+// SECRET findings and nothing else. It is deliberately NOT
+// scanner.BlockingResidual (see judgeFilename) and deliberately NOT a second
+// severity notion — the selection is on scanner.SeverityHardFail, the level the
+// scanner already defines, minus the identity kinds that also sit there.
+//
+// The identity kinds are excluded because the ruling that ordered this refusal
+// asked for secrets only (iss-2609090951282192). Within a page name's charset
+// the hard_fail identities are the caller's own machine account name and a
+// banned real name, and both are ordinary words: on a machine whose account is
+// called `garden`, `topic_home_garden-plan.md` was refused with advice to
+// repair the slug, when what matched was the machine. A refusal the author
+// cannot act on is not a bar, it is a wall. The literal-home backstop residue
+// applies is skipped too: a home path cannot appear in a page name, which
+// holds no '/'.
 func (r *storeRedactor) hardFailResidue(text, label string) []scanner.Finding {
 	var out []scanner.Finding
 	for _, f := range r.sc.ScanText(text, label) {
-		if f.Severity == scanner.SeverityHardFail {
+		if f.Severity == scanner.SeverityHardFail && !scanner.IsIdentityKind(f.Kind) {
 			out = append(out, f)
 		}
 	}
