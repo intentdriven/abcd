@@ -43,18 +43,22 @@ const (
 	StateProductThinker = mode.ProductThinker
 )
 
-// badgeWord is the text inside the badge for each state.
+// badgeWord is the label inside the badge for each state, and the three labels
+// are the whole of what the badge can say (itd-2609212130146198).
 //
-// The two role words say "waiting" outright rather than naming the role alone.
-// A bare "facilitator" is a label and could as easily mean "you are the
-// facilitator"; the status line's one job in that state is to report that an
-// answer is OWED, and the word has to carry that where no colour does. The
-// cost is width, and width is the one thing the badge is allowed to spend:
-// it is element one, so it is what a narrow host keeps.
+// The quiet label names the fact the badge exists to show — this repository is
+// managed by abcd and nobody is waiting — rather than the bare tool name, which
+// says only that the tool is present (iss-2609170627427239). The two role
+// labels say "waiting on" outright and name the role in full. A bare
+// "facilitator" is a label and could as easily mean "you are the facilitator";
+// the status line's one job in that state is to report that an answer is OWED,
+// and the label has to carry that where no colour does. The cost is width, and
+// width is the one thing the badge is allowed to spend: it is element one, so
+// it is what a narrow host keeps.
 var badgeWord = map[State]string{
-	StateManaged:        "abcd",
-	StateFacilitator:    "waiting: facilitator",
-	StateProductThinker: "waiting: product thinker",
+	StateManaged:        "abcd-managed",
+	StateFacilitator:    "waiting on the technical facilitator",
+	StateProductThinker: "waiting on the product thinker",
 }
 
 // rolePairs are the two FIXED badge pairs, drawn from internal/livery's
@@ -82,11 +86,18 @@ var rolePairs = map[State]Pair{
 // zero Pair.
 func fixedPair(s State) Pair { return rolePairs[s] }
 
-// reset ends the badge's colour run. Everything after the badge is plain, so
-// the sequence closes on the badge itself rather than at the end of the row:
-// a host that truncates mid-row must not leave the rest of its status bar
-// painted in abcd's colours.
-const reset = "\x1b[0m"
+// reset ends the badge's colour run: the colour ends at the badge
+// (itd-2609212130146198 criterion 5). Everything after the badge is plain, so
+// the sequence closes on the badge itself rather than at the end of the row: a
+// host that truncates mid-row must not leave the rest of its status bar painted
+// in abcd's colours.
+//
+// It restores exactly the two attributes the badge set — the default
+// foreground (39) and the default background (49) — and nothing else. A full
+// reset (SGR 0) would also cancel whatever styling the host applies around the
+// row, a dimmed status surface for one, and leave every later element in the
+// terminal's plain foreground (iss-2609170709035405).
+const reset = "\x1b[39;49m"
 
 // renderBadge composes the badge element for one state. The plain form is the
 // word alone; the rendered form is the word inside a filled block of colour,

@@ -129,11 +129,14 @@ func asExitError(err error, out **exec.ExitError) bool {
 
 // TestGuardHookIsInstalledForBashCalls holds the wiring itself: the guard is
 // reachable from a live session or it does not exist. The entry must be scoped to
-// the shell tool, so the guard is not asked about every unrelated tool call.
+// the shell tool and the host's question tools (itd-2609212130146198), so the
+// guard is not asked about every unrelated tool call, and the question tools it
+// names are exactly the ones the adapter gates, so the two cannot drift.
 func TestGuardHookIsInstalledForBashCalls(t *testing.T) {
 	matcher, command := preToolUseGuardCommand(t)
-	if matcher != "Bash" {
-		t.Errorf("the guard entry must be scoped to the shell tool; matcher = %q", matcher)
+	want := strings.Join(append([]string{"Bash"}, questionTools...), "|")
+	if matcher != want {
+		t.Errorf("the guard entry must be scoped to the shell tool and the question tools; matcher = %q, want %q", matcher, want)
 	}
 	if !strings.Contains(command, "CLAUDE_PLUGIN_ROOT") {
 		t.Errorf("the entry must invoke the plugin-root binary; command = %q", command)

@@ -27,7 +27,7 @@ func fullInput(t *testing.T) Input {
 
 // wantFullRow is ac-11: the nine elements in the order itd-200 fixes, each
 // separated the same way.
-const wantFullRow = "abcd · abcd · main · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+const wantFullRow = "abcd-managed · abcd · main · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
 
 // TestRenderFullRow is ac-11. Nine elements (the spec's "twelve" is a
 // miscount of its own list), in the order the intent's commitments fix, with
@@ -197,9 +197,9 @@ func TestRenderBadgeStates(t *testing.T) {
 		state     State
 		wantPlain string
 	}{
-		{state: StateManaged, wantPlain: "abcd"},
-		{state: StateFacilitator, wantPlain: "waiting: facilitator"},
-		{state: StateProductThinker, wantPlain: "waiting: product thinker"},
+		{state: StateManaged, wantPlain: "abcd-managed"},
+		{state: StateFacilitator, wantPlain: "waiting on the technical facilitator"},
+		{state: StateProductThinker, wantPlain: "waiting on the product thinker"},
 	}
 	seen := map[string]State{}
 	for _, tc := range cases {
@@ -240,8 +240,65 @@ func TestRenderUnknownStateFallsBackToManaged(t *testing.T) {
 	if !ok {
 		t.Fatal("no badge element")
 	}
-	if badge.Plain != "abcd" {
+	if badge.Plain != "abcd-managed" {
 		t.Fatalf("badge plain = %q, want the managed word", badge.Plain)
+	}
+}
+
+// TestBadgeNeverReadsABareTag is itd-2609212130146198 criterion 1: in a
+// managed repository the badge reads exactly one of the three labels, whatever
+// the state that reaches the render, and never the bare tool name — a bare
+// "abcd" says the tool is present but not that the repository is managed or
+// that anybody is waiting (iss-2609170627427239).
+func TestBadgeNeverReadsABareTag(t *testing.T) {
+	labels := map[string]bool{
+		"abcd-managed":                         true,
+		"waiting on the product thinker":       true,
+		"waiting on the technical facilitator": true,
+	}
+	for _, st := range []State{StateManaged, StateFacilitator, StateProductThinker, State(""), State("nonsense")} {
+		in := fullInput(t)
+		in.State = st
+		badge, ok := Render(in, Defaults()).Element(KeyPresence)
+		if !ok {
+			t.Fatalf("%q: no badge element", st)
+		}
+		if !labels[badge.Plain] {
+			t.Errorf("state %q renders the badge %q, which is not one of the three labels", st, badge.Plain)
+		}
+		if strings.TrimSpace(stripANSI(badge.Rendered)) != badge.Plain {
+			t.Errorf("state %q: the rendered badge reads %q, not its label %q", st, stripANSI(badge.Rendered), badge.Plain)
+		}
+	}
+}
+
+// TestBadgeColourEndsAtTheBadge is criterion 5: the badge's colour ends at the
+// badge. Its closing sequence restores exactly the two attributes it set —
+// the default foreground (39) and background (49) — and nothing else, so no
+// element after it is painted in abcd's colours and none loses the styling the
+// host applies around the row. A full reset (SGR 0) would also cancel that
+// host styling and leave every later element in the terminal's plain
+// foreground, the observation iss-2609170709035405 records. Nothing after the
+// badge opens a colour of its own.
+func TestBadgeColourEndsAtTheBadge(t *testing.T) {
+	for _, st := range []State{StateManaged, StateFacilitator, StateProductThinker} {
+		in := fullInput(t)
+		in.State = st
+		row := Render(in, Defaults())
+		badge, _ := row.Element(KeyPresence)
+		if !strings.HasSuffix(badge.Rendered, "\x1b[39;49m") {
+			t.Errorf("%s: the badge does not close its own colour: %q", st, badge.Rendered)
+		}
+		if strings.Contains(badge.Rendered, "\x1b[0m") || strings.Contains(badge.Rendered, "\x1b[m") {
+			t.Errorf("%s: the badge closes with a full reset, which cancels the host's styling of the rest of the row: %q", st, badge.Rendered)
+		}
+		rest := strings.TrimPrefix(row.String(), badge.Rendered)
+		if rest == row.String() {
+			t.Fatalf("%s: the row does not begin with the badge: %q", st, row.String())
+		}
+		if strings.Contains(rest, "\x1b[") {
+			t.Errorf("%s: an element after the badge carries an escape: %q", st, rest)
+		}
 	}
 }
 

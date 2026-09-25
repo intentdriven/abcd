@@ -69,6 +69,23 @@ the same line tripped, so a command hazardous in two ways reports both rather
 than only the first; the rendered form says the same thing on an `also matched:`
 line.
 
+## The question gate
+
+The hook also answers for the host's question tool (itd-2609212130146198), and
+there it consults the waiting-on state rather than the hazard registry. In a
+repository abcd manages, a question to the human asked while `abcd mode` reads
+managed is refused with the blocking status, and the one-line refusal names the
+two settings, `abcd mode product-thinker` and `abcd mode facilitator`, so the
+agent says whom it is asking before it asks and the status-line badge shows
+it. Once the state names somebody the question runs, and the hook writes a
+`question_open` marker in `.abcd/.work.local/`; the rules loader's prompt hook
+resets the state to managed on the next human message and clears the marker.
+Where the badge does not show, a question is not the gate's business and runs
+silently. A state file or marker the gate cannot read or write is not a
+decision: the question runs and the hook says so on exit 1, the same
+fail-open-loud contract below. The manifest's pre-tool-use matcher names the
+shell tool and the question tool, and nothing else.
+
 ## Fail-open-loud
 
 A broken guard never bricks a session and never silently stops protecting one.

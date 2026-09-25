@@ -70,8 +70,16 @@ working directory's repository when the host names one (below). It is invoked by
 not by hand; a blocker returns the host's blocking status with the successor and
 the why as the message, and a warn or an allow lets the command run.
 
+On the host's question tool the hook gates the question on the waiting-on state
+instead of the registry. In a repository abcd manages, a question asked while
+`/abcd:mode` reads `managed` is refused with the blocking status, and the
+refusal names `abcd mode product-thinker` and `abcd mode facilitator`: set the
+one that names whom you are asking, then ask again. An admitted question is
+marked open in `.abcd/.work.local/question_open`, and the next human message
+resets the state to `managed`. Elsewhere a question runs unchecked.
+
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
-call that is not a shell command, an unparsable command line, a registry that
+call that is neither a shell command nor a question, an unparsable command line, a registry that
 does not load — allows the command and warns loudly. A guard that cannot answer
 never stops a session, and is never silently absent. A command line a shell
 would run is never in that set: a trailing backslash and an unterminated
