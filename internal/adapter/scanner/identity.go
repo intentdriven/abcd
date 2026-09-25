@@ -259,7 +259,16 @@ var (
 	// realistic occurrence. leadingBoundaryOK enforces the real requirement (the
 	// '/' does not continue a longer path segment); the trailing boundary stays
 	// trailingBoundaryOK.
-	genericHomeRe = regexp.MustCompile(`(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+)`)
+	//
+	// Folded, like every other identity matcher on this boundary. macOS and
+	// Windows filesystems fold case, so /USERS/<name>/notes.md and
+	// /Home/<name>/notes.md name exactly the file the canonical spelling names
+	// — a working path to another person's home directory that a
+	// case-SENSITIVE matcher did not see (iss-2609251544556874). The segment
+	// class stays ASCII-cased on purpose: it is the USERNAME, which the boundary
+	// helpers and isHomeSegmentByte judge by the same class, and folding a class
+	// that already carries both cases changes nothing.
+	genericHomeRe = regexp.MustCompile(`(?i)(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+)`)
 	// Loose URL span (scheme to whitespace/quote/closing).
 	urlSpanRe = regexp.MustCompile(`(?:https?://|git@|ftp://|ssh://)[^\s"'` + "`" + `)>\]<]+`)
 	// A git noreply email is not a leak.
