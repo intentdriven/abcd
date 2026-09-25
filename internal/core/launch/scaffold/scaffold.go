@@ -104,6 +104,9 @@ func Scaffold(req Request) (Report, error) {
 	branch, goVersion := DeriveRepoFacts(req.RepoRoot)
 	subs := BareSubstitutions(branch)
 	subs.CIChecks = DeriveCIChecks(req.RepoRoot)
+	if subs.CIChecks == nil {
+		subs.CIChecks = []string{} // --json reports an empty list, never null
+	}
 	rendered, err := Render(subs)
 	if err != nil {
 		return Report{}, err

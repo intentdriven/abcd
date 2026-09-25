@@ -63,7 +63,7 @@ func ReceiptsProtocolFor(root string) (ReceiptsProtocol, error) {
 			"Run each semantic gate `" + gate.Workflow + "` requires against the content commit: " +
 				strings.Join(gate.Gates, ", ") + ".",
 			"Record each PROMOTE receipt at `.abcd/work/reviews/<content-sha>/<gate>.json`, keyed to the full " +
-				"40-character sha of the content commit (`git rev-parse HEAD` right after step 1) — never the tag, " +
+				"sha of the content commit (`git rev-parse HEAD` right after step 1) — never the tag, " +
 				"and never the merge.",
 			"Commit the receipts on top. The release branch is exactly two commits: the roll, then the receipts " +
 				"naming it. Amending the roll after this gives it a new sha and orphans every receipt.",
