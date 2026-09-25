@@ -7,6 +7,7 @@ suggested_kind: standalone
 reclassification_history: []
 builds_on: []
 severity: major
+impact: additive
 ---
 
 # A Machine's Shared Conventions Are Declared Once In The User Scope — And Every Managed Repo Inherits Them
@@ -122,3 +123,8 @@ None stated.
   or repo-grouping layer. The maintainer chose the user scope precisely to
   avoid reversing itd-40; if machine-wide ever proves too coarse a grain, that
   is a separate intent with its own ADR.
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-056068d9886e -->
+Fidelity review OWED (receipt rcp-056068d9886e).
