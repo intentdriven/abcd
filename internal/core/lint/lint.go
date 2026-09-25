@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Finding is one lint violation. File is repo-relative; Line is 1-based (0 when
@@ -245,7 +246,8 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			}
 			return nil, err
 		}
-		mdFiles, err := markdownFiles(rootAbs)
+		ignored := ignoredUnderRoot(repoRoot, root)
+		mdFiles, err := markdownFilesPruned(rootAbs, &ignored)
 		if err != nil {
 			return nil, err
 		}
@@ -319,7 +321,7 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 
 		if dirCfg, ok := cfg.Rules["directory_coverage"]; ok && dirCfg.Enabled {
-			dc, err := checkDirectoryCoverage(repoRoot, rootAbs, dirCfg)
+			dc, err := checkDirectoryCoverage(repoRoot, rootAbs, dirCfg, &ignored)
 			if err != nil {
 				return nil, err
 			}
@@ -1618,7 +1620,7 @@ func checkBrittleRefs(rel string, lines []string, mask []bool, cfg RuleConfig) [
 }
 
 // checkDirectoryCoverage implements check family E.
-func checkDirectoryCoverage(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding, error) {
+func checkDirectoryCoverage(repoRoot, rootAbs string, cfg RuleConfig, ignored *ignoredSet) ([]Finding, error) {
 	var out []Finding
 	err := filepath.WalkDir(rootAbs, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -1626,6 +1628,9 @@ func checkDirectoryCoverage(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 		}
 		if !d.IsDir() {
 			return nil
+		}
+		if ignored != nil && ignored.prunes(path, true) {
+			return filepath.SkipDir
 		}
 		rel := repoRel(repoRoot, path)
 		if matchesGlob(cfg.Exempt, rel) {
@@ -2795,7 +2800,8 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 		if _, err := os.Stat(rootAbs); err != nil {
 			return 0, err
 		}
-		files, err := markdownFiles(rootAbs)
+		ignored := ignoredUnderRoot(repoRoot, root)
+		files, err := markdownFilesPruned(rootAbs, &ignored)
 		if err != nil {
 			return 0, err
 		}
@@ -2805,6 +2811,57 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 }
 
 func markdownFiles(rootAbs string) ([]string, error) {
+	return markdownFilesPruned(rootAbs, nil)
+}
+
+// ignoredSet is the set of untracked paths git ignores beneath one lint root,
+// keyed repo-relative and slash-separated, a wholly ignored directory once with
+// its trailing slash (gitutil.IgnoredUnder). A gitignored path is by definition
+// not the repository's documentation, so the walks over a root prune it rather
+// than lint a cached clone or a build output that happens to sit under a root
+// (iss-2609151952353626). A committed file is never in it: git ignores no
+// tracked file.
+type ignoredSet struct {
+	repoRoot string
+	paths    map[string]bool
+}
+
+// ignoredUnderRoot asks git once for what it ignores under root. Outside a
+// repository, or with git unavailable, the set is empty: nothing is pruned.
+func ignoredUnderRoot(repoRoot, root string) ignoredSet {
+	set := ignoredSet{repoRoot: repoRoot, paths: map[string]bool{}}
+	for _, p := range gitutil.IgnoredUnder(repoRoot, filepath.ToSlash(root)) {
+		set.paths[p] = true
+	}
+	return set
+}
+
+// prunes reports whether the walk skips path: an ignored directory (and so
+// everything beneath it) or an ignored file.
+func (s ignoredSet) prunes(path string, isDir bool) bool {
+	if len(s.paths) == 0 {
+		return false
+	}
+	rel := filepath.ToSlash(repoRel(s.repoRoot, path))
+	if isDir {
+		return s.paths[rel+"/"]
+	}
+	return s.paths[rel]
+}
+
+// sorted lists the set, for the front doors that name what was pruned.
+func (s ignoredSet) sorted() []string {
+	out := make([]string, 0, len(s.paths))
+	for p := range s.paths {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// markdownFilesPruned is markdownFiles skipping what ignored prunes. A nil set
+// prunes nothing.
+func markdownFilesPruned(rootAbs string, ignored *ignoredSet) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(rootAbs, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -2820,6 +2877,12 @@ func markdownFiles(rootAbs string) ([]string, error) {
 			}
 			return err
 		}
+		if ignored != nil && ignored.prunes(path, d.IsDir()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if !d.IsDir() && hasMarkdownExt(d.Name()) {
 			files = append(files, path)
 		}
@@ -2830,6 +2893,24 @@ func markdownFiles(rootAbs string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+// PrunedInRoots names the gitignored paths the per-file walk over cfg's roots
+// prunes, repo-relative and sorted, a wholly ignored directory once with its
+// trailing slash. A front door reports them, so a lint that skipped a cached
+// clone says it did rather than reading as a smaller tree (loud-staging). The
+// roots are contained exactly as LintAt contains them.
+func PrunedInRoots(cfg Config, repoRoot string) ([]string, error) {
+	var out []string
+	for _, root := range cfg.Roots {
+		if err := containedRepoPath(root); err != nil {
+			return nil, &configError{"roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		out = append(out, ignoredUnderRoot(repoRoot, root).sorted()...)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func matchesAny(res []*regexp.Regexp, s string) bool {

@@ -29,6 +29,10 @@ Then summarise the JSON for the user:
 - `documents` — how many markdown documents the configured roots hold for the
   per-document rules. `0` means those rules read nothing: the roots are empty or
   hold no markdown.
+- `pruned` — the gitignored paths under the roots the lint did not read (a
+  cached clone, a build output); a gitignored path is not the repository's
+  documentation. Name them, so the user knows the tree was smaller than the
+  roots. Absent when nothing was pruned.
 - `blockers` — how many blocker findings exist; any blocker fails the gate.
 - `findings` — for each, its `File`, `Line`, `RuleID`, `Severity`, and
   `Message`; group them so the user sees what to fix.

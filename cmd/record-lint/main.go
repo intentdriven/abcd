@@ -87,6 +87,14 @@ func main() {
 		os.Exit(2)
 	}
 
+	// A gitignored path under a root is not the record; the lint pruned it, and
+	// says so (iss-2609151952353626).
+	if pruned, err := lint.PrunedInRoots(cfg, root); err == nil {
+		if note := prunedNote(pruned); note != "" {
+			fmt.Fprintln(os.Stderr, termsafe.Sanitize(note))
+		}
+	}
+
 	blockers := 0
 	for _, f := range findings {
 		fmt.Println(renderFinding(f, root))
@@ -167,4 +175,14 @@ func resolveRoot() string {
 		return wd
 	}
 	return "."
+}
+
+// prunedNote names the gitignored paths the lint pruned under its roots, or ""
+// when it pruned none. It goes to stderr: stdout is one finding per line.
+func prunedNote(pruned []string) string {
+	if len(pruned) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("record-lint: skipped %d gitignored path(s) under the roots: %s",
+		len(pruned), strings.Join(pruned, ", "))
 }

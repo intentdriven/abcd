@@ -463,6 +463,11 @@ type docsLintResult struct {
 	NothingChecked bool `json:"nothing_checked"`
 	// Warning says that nothing was checked, and why. Empty otherwise.
 	Warning string `json:"warning,omitempty"`
+	// Pruned names the gitignored paths under the roots the lint did not read,
+	// a wholly ignored directory once with its trailing slash. A gitignored path
+	// is not the repository's documentation (iss-2609151952353626), and a lint
+	// that skipped one says so rather than reading as a smaller tree.
+	Pruned []string `json:"pruned,omitempty"`
 }
 
 // docsLintNothingCheckedWarning returns the loud warning for a lint that
@@ -577,7 +582,11 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 			if configPath != "" {
 				ref = configPath
 			}
-			res := docsLintResult{Findings: findings, Blockers: blockers, Checks: cfg.ArmedChecks(), Documents: documents}
+			pruned, err := lint.PrunedInRoots(cfg, root)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "docs lint: " + scrubPaths(err)}
+			}
+			res := docsLintResult{Findings: findings, Blockers: blockers, Checks: cfg.ArmedChecks(), Documents: documents, Pruned: pruned}
 			res.Warning = docsLintNothingCheckedWarning(res.Checks, documents, cfg.Roots, ref)
 			res.NothingChecked = res.Warning != ""
 			// A lint that checked nothing is WARNED about loudly, on stderr in
@@ -603,6 +612,10 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 				if res.Checks == 0 {
 					fmt.Fprintf(w, "abcd docs lint — no rules configured in %s: nothing was checked\n", termsafe.Sanitize(ref))
 					return
+				}
+				if len(pruned) > 0 {
+					fmt.Fprintf(w, "abcd docs lint — skipped %d gitignored path(s) under the roots: %s\n",
+						len(pruned), termsafe.Sanitize(strings.Join(pruned, ", ")))
 				}
 				fmt.Fprintf(w, "abcd docs lint — %d finding(s), %d blocker(s)\n", len(findings), blockers)
 			}); err != nil {

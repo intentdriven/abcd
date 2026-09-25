@@ -117,10 +117,20 @@ promotion is reachable only by a human typing the flag.
   material a page must be able to show, and a line carrying the
   `abcd-lint:allow` waiver is deliberately illustrative.
 
+A gitignored path under a root is not the repository's documentation, so the
+walk prunes it: the lint asks git once per root which untracked paths it
+ignores and reads none of them, the way a cached clone a fetch script writes
+under a root would otherwise be linted file by file. A committed file is never
+pruned, because git ignores no tracked file, and outside a repository nothing
+is. The lint names what it pruned, so a smaller tree is never read as a clean
+one; `record-lint` prunes the same way and names the paths on stderr.
+
 ## Output
 
 The JSON payload carries `blockers` (a count) and `findings` (each with
-`File`, `Line`, `RuleID`, `Severity`, `Message`). A `blockers` value of zero
+`File`, `Line`, `RuleID`, `Severity`, `Message`), and `pruned`, the gitignored
+paths the walk skipped (a wholly ignored directory once, with its trailing
+slash), absent when it skipped none; the text render names them on one line. A `blockers` value of zero
 means the docs are currency-clean. The command exits non-zero when a blocker is
 present, so it composes directly into CI and the release gate.
 
