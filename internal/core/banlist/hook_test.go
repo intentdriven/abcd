@@ -944,6 +944,69 @@ func TestPreCommitHook_LinkedWorktreeStoreWinsOverThePrimary(t *testing.T) {
 	})
 }
 
+// noticeLines returns the hook's name-guard NOTICE lines: every `abcd name-guard:`
+// line, which is the success-path announcement. Refusals and the loud banners carry
+// their own prefixes and are not counted.
+func noticeLines(out string) []string {
+	var got []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "abcd name-guard:") {
+			got = append(got, l)
+		}
+	}
+	return got
+}
+
+// TestPreCommitHook_AnnouncesOncePerCommit is iss-2609181122202952. The guard
+// announced each store it read on two lines (the format before the parse, the count
+// after it) and prefixed an inherited store with a third, so a clean commit from a
+// linked worktree printed three notice lines, and five once the worktree carried a
+// store of its own. A notice that repeats reads as a hook running several times. One
+// commit, one notice line, however many stores were read — and that line still names
+// each store's format, its count, and where an inherited one lives.
+func TestPreCommitHook_AnnouncesOncePerCommit(t *testing.T) {
+	t.Run("standalone checkout", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("note.md", "nothing sensitive here\n")
+		r.git("add", "note.md")
+		if blocked, out := r.commit(); blocked {
+			t.Fatalf("clean content was refused\n%s", out)
+		} else if got := noticeLines(out); len(got) != 1 {
+			t.Errorf("a clean commit printed %d name-guard notice lines, want 1\n%s", len(got), out)
+		} else if !strings.Contains(got[0], "keyed store") || !strings.Contains(got[0], "1 entry") {
+			t.Errorf("the notice does not name the format and the count it read\n%s", got[0])
+		}
+	})
+
+	for name, local := range map[string]string{
+		"linked worktree inheriting":                "",
+		"linked worktree inheriting beside its own": "legacy-name\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, linked := newWorktreeCase(t, keyedBanlist)
+			if local != "" {
+				linked.writeBanlist(local)
+			}
+			linked.write("note.md", "nothing sensitive here\n")
+			linked.git("add", "note.md")
+			blocked, out := linked.commit()
+			if blocked {
+				t.Fatalf("clean content was refused\n%s", out)
+			}
+			got := noticeLines(out)
+			if len(got) != 1 {
+				t.Fatalf("a clean commit from a linked worktree printed %d name-guard notice lines, want 1\n%s", len(got), out)
+			}
+			if !strings.Contains(got[0], "primary checkout") || !strings.Contains(got[0], "keyed store") {
+				t.Errorf("the one notice does not say which store was inherited and in what format\n%s", got[0])
+			}
+			if local != "" && !strings.Contains(got[0], "legacy store") {
+				t.Errorf("the one notice does not name the worktree's own store beside the inherited one\n%s", got[0])
+			}
+		})
+	}
+}
+
 // TestPreCommitHook_LinkedWorktreeSaysWhereTheEntryCameFrom: an inherited refusal
 // names a key the developer will not find in the checkout they are standing in, so
 // the guard says which store it came from. Without it the remedy — edit the primary
