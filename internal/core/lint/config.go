@@ -535,7 +535,51 @@ func parseConfig(data []byte) (Config, error) {
 	if err := cfg.validateConfiguredPaths(); err != nil {
 		return Config{}, err
 	}
+	if err := cfg.validateArmedInputs(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// armedInputs names, per rule, the input paths the rule cannot check without.
+// Each rule returned clean on a blank one BEFORE its own fail-closed guards ran,
+// so an enabled rule with a blank input read as armed and checked nothing
+// (iss-336; surface_coverage is its sibling).
+var armedInputs = map[string][]struct {
+	key string
+	get func(RuleConfig) string
+}{
+	"gate_lockstep": {
+		{"runbook", func(r RuleConfig) string { return r.Runbook }},
+		{"workflow", func(r RuleConfig) string { return r.Workflow }},
+	},
+	"surface_coverage": {
+		{"registry", func(r RuleConfig) string { return r.Registry }},
+	},
+}
+
+// validateArmedInputs refuses an ENABLED rule whose required input path is
+// blank, naming the key. A disabled rule is not checked: it runs nothing on
+// purpose, and saying so is what enabled:false is for.
+func (c Config) validateArmedInputs() error {
+	names := make([]string, 0, len(armedInputs))
+	for name := range armedInputs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		rc, ok := c.Rules[name]
+		if !ok || !rc.Enabled {
+			continue
+		}
+		for _, in := range armedInputs[name] {
+			if strings.TrimSpace(in.get(rc)) == "" {
+				return &configError{"rule " + strconv.Quote(name) + " is enabled but its " + strconv.Quote(in.key) +
+					" is blank, so it would read as armed and check nothing; set " + strconv.Quote(in.key) + " or set \"enabled\": false"}
+			}
+		}
+	}
+	return nil
 }
 
 // configuredPath is one repo-relative location the config names, paired with the
