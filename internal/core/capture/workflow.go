@@ -122,6 +122,12 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	// Machine output carries a repo-relative locator, never an absolute
 	// developer-identity path (iss-81).
 	result.Path = fsutil.RepoRel(repoRoot, result.Path)
+	// The write says whether the record is committed: it never is yet, and a
+	// record held only as an untracked file reaches no other branch and no gate
+	// (iss-2609100508570527).
+	if set, ok := uncommittedLedgerPaths(repoRoot, issuesRoot); ok {
+		result.Uncommitted = set[filepath.ToSlash(result.Path)]
+	}
 	return result, nil
 }
 
@@ -622,6 +628,9 @@ func List(req ListRequest) (ListResult, error) {
 	sortIssues(issues)
 	prioritise(issues, openIDSet(ir))
 	relativiseLedgerPaths(repoRoot, issues, skipped)
+	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
+		markUncommitted(set, issues)
+	}
 	// A --json collection is an empty list, never bare null: a consumer that
 	// iterates the rows (the capture.md contract) errors on null.
 	if issues == nil {
@@ -669,6 +678,9 @@ func Status(req StatusRequest) (StatusResult, error) {
 	res.WontfixCount = len(wontfix)
 	res.Skipped = append(append(append([]SkipRecord{}, skOpen...), skRes...), skWf...)
 	res.SkippedCount = len(res.Skipped)
+	// Every readable record, before the recent-open slice is cut, for the
+	// uncommitted count below.
+	every := append(append(append([]Issue{}, open...), resolved...), wontfix...)
 
 	// The same predicate List uses, over the scan already in hand: skOpen carries
 	// the records open/ holds and the reader refused, and they block too.
@@ -685,6 +697,13 @@ func Status(req StatusRequest) (StatusResult, error) {
 	}
 	res.RecentOpen = open
 	relativiseLedgerPaths(repoRoot, res.RecentOpen, res.Skipped)
+	// Uncommitted records are counted over every readable record and marked on
+	// the rows the board shows (iss-2609100508570527).
+	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
+		relativiseLedgerPaths(repoRoot, every, nil)
+		res.UncommittedCount = markUncommitted(set, every)
+		markUncommitted(set, res.RecentOpen)
+	}
 	return res, nil
 }
 

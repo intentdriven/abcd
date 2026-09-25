@@ -45,10 +45,14 @@ refuses is counted in none of the three totals, so the board counts it beside
 them and names, for each one, the reader layer that refused it: the filename,
 the guarded read, the frontmatter parse, the schema or the folder and filename
 invariants. The layer is what tells a reader whether the record or the reader is
-the side to fix (iss-2609120452071388).
+the side to fix (iss-2609120452071388). The board also counts the records git
+reports as untracked or changed and marks each such row: folder membership is a
+status only once the file is committed, so an uncommitted record is in no state to
+any other branch, worktree or gate (iss-2609100508570527).
 
 **`/abcd:capture "<text>"`** is the fast path: it appends a structured entry
-with an auto-assigned `iss-N` and writes it to `open/`. Provenance and taxonomy
+with an auto-assigned `iss-N` and writes it to `open/`, and says that the record
+is not committed yet whenever git reports it so, which for a new record is always. Provenance and taxonomy
 are caller-supplied flags. Severity, category, source and the found-during
 context each carry a default, so the fast path stays fast; the location, slug
 and dependency flags have none. The `origin` field is derived from the verb that

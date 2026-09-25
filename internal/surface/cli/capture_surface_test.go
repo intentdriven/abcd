@@ -513,6 +513,24 @@ func TestCaptureStatusBoardCountsWhatItSkippedAndNamesTheLayer(t *testing.T) {
 	}
 }
 
+// TestCaptureSaysTheRecordIsUncommitted is the surface half of
+// iss-2609100508570527: the write says the record is not in git yet, and the
+// status board marks the row and counts the uncommitted records.
+func TestCaptureSaysTheRecordIsUncommitted(t *testing.T) {
+	captureLedgerRepo(t)
+	out := string(runCLI(t, "capture", "a finding nobody has committed", "--slug", "loose"))
+	if !strings.Contains(out, "uncommitted: the record is not in git yet") {
+		t.Fatalf("the write does not say the record is uncommitted:\n%s", out)
+	}
+	board := string(runCLI(t, "capture"))
+	if !strings.Contains(board, "  loose [uncommitted]") {
+		t.Fatalf("the board does not mark the uncommitted row:\n%s", board)
+	}
+	if !strings.Contains(board, "1 record(s) not committed") {
+		t.Fatalf("the board does not count the uncommitted records:\n%s", board)
+	}
+}
+
 // TestCaptureLapsedAtWritesTheGivenInstant pins the flag half of spc-60: the
 // instant handed to --lapsed-at is the instant committed to the record. The
 // record id is minted from the wall clock, so a surface that dropped, rounded or

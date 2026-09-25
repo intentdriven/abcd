@@ -3264,8 +3264,14 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					if len(st.RecentOpen) > 0 {
 						fmt.Fprintf(w, "recent open:\n")
 						for _, iss := range st.RecentOpen {
-							fmt.Fprintf(w, "  %s  %s  %s%s\n", iss.ID, iss.Severity, iss.Slug, blockedNote(iss))
+							fmt.Fprintf(w, "  %s  %s  %s%s%s\n", iss.ID, iss.Severity, iss.Slug, uncommittedNote(iss), blockedNote(iss))
 						}
+					}
+					// A record held only as an untracked or changed file is in no
+					// state to anyone but this checkout (iss-2609100508570527), so
+					// the board counts them rather than list them as equals.
+					if st.UncommittedCount > 0 {
+						fmt.Fprintf(w, "  %d record(s) not committed — no other branch, worktree or gate reads them until they are\n", st.UncommittedCount)
 					}
 					// The skipped roster, exactly as `capture list` renders it
 					// (iss-2608261437041050): a record the reader refuses is counted
@@ -3392,6 +3398,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				// Folder membership is a status only once the file is committed
+				// (iss-2609100508570527): say so at the write, where it is cheap.
+				if res.Uncommitted {
+					fmt.Fprintf(w, "  uncommitted: the record is not in git yet — commit it, or no other branch, worktree or gate will see it\n")
+				}
 				// Redaction alters what the caller filed, so it is never silent: the
 				// text on disk differs from the text handed in, and only the caller
 				// can judge whether the redacted record still says what they meant.
@@ -4187,6 +4198,14 @@ func skippedLine(sk capture.SkipRecord) string {
 	}
 	return fmt.Sprintf("  skipped %s (refused by %s): %s\n",
 		termsafe.Sanitize(sk.Path), layer, termsafe.Sanitize(sk.Error))
+}
+
+// uncommittedNote marks a board row whose record git reports as not committed.
+func uncommittedNote(iss capture.Issue) string {
+	if !iss.Uncommitted {
+		return ""
+	}
+	return " [uncommitted]"
 }
 
 // blockedNote renders the derived-priority annotation for a row: when the issue

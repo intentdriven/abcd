@@ -128,6 +128,12 @@ type Issue struct {
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.
 	BlockedByOpen []string `json:"blocked_by_open,omitempty"`
+	// Uncommitted is true when git reports the record's file untracked or
+	// changed in this checkout (iss-2609100508570527): folder membership is a
+	// status signal only once the file is committed, so an uncommitted record is
+	// in no state to any other branch, worktree or gate. Derived at read time by
+	// Status and List, never stored; false when git cannot answer.
+	Uncommitted bool `json:"uncommitted,omitempty"`
 }
 
 // CaptureRequest is the input to Capture (append a new issue).
@@ -171,6 +177,11 @@ type CaptureResult struct {
 	// a finding's content without telling whoever filed it (loud-staging).
 	Redacted int    `json:"redacted,omitempty"`
 	Degraded string `json:"redaction_degraded,omitempty"`
+	// Uncommitted is true when git reports the record just written as not yet
+	// committed — always, in a checkout git answers for, since the file is new.
+	// It exists so the write can SAY the record reaches no other branch and no
+	// gate until it is committed (iss-2609100508570527).
+	Uncommitted bool `json:"uncommitted,omitempty"`
 }
 
 // ResolveRequest moves an open issue to resolved/.
@@ -310,9 +321,12 @@ type StatusResult struct {
 	// none of the three totals counts, because the reader refused them. It is
 	// len(Skipped), carried as a count beside the others so the board states
 	// what it excluded next to what it counted (iss-2609120452071388).
-	SkippedCount int          `json:"skipped_count"`
-	RecentOpen   []Issue      `json:"recent_open"` // up to 10, newest first
-	Skipped      []SkipRecord `json:"skipped"`
+	SkippedCount int `json:"skipped_count"`
+	// UncommittedCount is the number of readable records across the three
+	// folders that git reports untracked or changed (iss-2609100508570527).
+	UncommittedCount int          `json:"uncommitted_count"`
+	RecentOpen       []Issue      `json:"recent_open"` // up to 10, newest first
+	Skipped          []SkipRecord `json:"skipped"`
 }
 
 // Sentinel errors the surface maps to exit codes and messages. Core never

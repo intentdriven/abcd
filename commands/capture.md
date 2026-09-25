@@ -33,6 +33,11 @@ Summarise the JSON for the user: `open_count` / `resolved_count` /
 `wontfix_count`, and for each entry in `recent_open` its `id`, `severity`, and
 `slug`. No `iss-*.md` file is created, moved, or mutated by this invocation.
 
+When `uncommitted_count` is non-zero, say how many records are not committed
+and name the `recent_open` entries carrying `uncommitted: true`: an untracked or
+changed record file is in no state to any other branch, worktree or gate until it
+is committed.
+
 When `skipped_count` is non-zero, say so: those are files that claim to be
 records and that none of the three totals counts, because the reader refused
 them. Each entry in `skipped` carries its `path`, the `layer` that refused it
@@ -72,7 +77,9 @@ the ledger, and an edge to a record captured later is written afterwards with
 (`hand-written|dictated-and-formatted|scribe-transcribed`, default: the repo's
 declared mode, else `hand-written`). Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
 too whenever it is non-zero: it counts the spans rewritten before the text was
-written, and the user needs to know their wording was changed.
+written, and the user needs to know their wording was changed. When
+`uncommitted` is true, say that the record is not in git yet: until it is
+committed no other branch, worktree or gate can see it.
 
 `--category lapse` takes `--lapsed-at`, which has no default: a lapse capture
 that omits it records no instant, never the write-up time. The refusal on an
