@@ -303,7 +303,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if curBrace && !(isAssignment(string(cur)) && allAssignments(toks)) {
 			if words, ok := expandBraces(bword{b: cur, m: curMask}, &braceLim); ok {
 				for _, w := range words {
-					toks = append(toks, string(w.b))
+					toks = append(toks, unknownFromOpenExpansion(string(w.b)))
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
@@ -311,7 +311,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			braceGroup = true
 		}
-		toks = append(toks, string(cur))
+		toks = append(toks, unknownFromOpenExpansion(string(cur)))
 		globs = append(globs, curGlob)
 		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
 	}

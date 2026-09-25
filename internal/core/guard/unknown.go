@@ -90,6 +90,40 @@ func knownLead(tok string) string {
 	return tok
 }
 
+// unknownFromOpenExpansion reads a word in which a substitution's output lands
+// inside a parameter expansion — `${X:-$(x)}`, `--${X:-$(x)}` — as unknown
+// from that expansion's `${` on (review4-guard finding 3). What such an
+// expansion prints is the substitution's output or the variable's value, and
+// the text written after the output up to the closing `}` is its own syntax,
+// not text beside the output: read as fixed, the `}` made a command name that
+// could only end in a brace and a flag that could only be one that did. The
+// outermost `${` still open where a mark lands starts the unknown; the text
+// before it is kept, so `--${X:-$(x)}` is a dash-word and `${X:-$(x)}` a
+// word that is wholly unknown. A `${…}` that closes before any mark, and a
+// `$X` with no substitution in it, are left as written: that is the half
+// iss-2609251824244354 defers.
+func unknownFromOpenExpansion(tok string) string {
+	if !isUnknown(tok) {
+		return tok
+	}
+	depth, outer := 0, -1
+	for i := 0; i < len(tok); i++ {
+		switch {
+		case tok[i] == unknownMark && depth > 0:
+			return tok[:outer] + unknownText
+		case tok[i] == '$' && i+1 < len(tok) && tok[i+1] == '{':
+			if depth == 0 {
+				outer = i
+			}
+			depth++
+			i++
+		case tok[i] == '}' && depth > 0:
+			depth--
+		}
+	}
+	return tok
+}
+
 // vanishable reports whether a word is nothing but substitutions, so an
 // unquoted one may leave no word at all.
 func vanishable(tok string) bool {

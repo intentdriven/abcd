@@ -137,16 +137,17 @@ func plainWord(w string) bool {
 // substitutionsOf returns the spellings of a word with a substitution in it
 // that the unknown-word rule must read as the word itself could be: the whole
 // word printed, its dash kept and its name printed, and its text glued to an
-// output that may be empty. Two spellings are the recorded residuals and are
+// output that may be empty, and each of those printed through a parameter
+// expansion's default (`${X:-$(echo w)}`). Two spellings are the recorded residuals and are
 // not generated: a wholly-substituted word standing where a flag could be, and
 // a `+` refspec whose prefix a substitution prints.
 func substitutionsOf(w string) []string {
 	glued := `"$(true)"` + w
 	switch {
 	case strings.HasPrefix(w, "--") && len(w) > 2:
-		return []string{"--$(echo " + w[2:] + ")", "-$(echo " + w[1:] + ")", glued}
+		return []string{"--$(echo " + w[2:] + ")", "-$(echo " + w[1:] + ")", glued, "--${X:-$(echo " + w[2:] + ")}"}
 	case strings.HasPrefix(w, "-") && len(w) > 1:
-		out := []string{"-$(echo " + w[1:] + ")", glued}
+		out := []string{"-$(echo " + w[1:] + ")", glued, "-${X:-$(echo " + w[1:] + ")}"}
 		if len(w) > 2 {
 			out = append(out, w[:2]+"$(echo "+w[2:]+")")
 		}
@@ -154,7 +155,7 @@ func substitutionsOf(w string) []string {
 	case strings.HasPrefix(w, "+") && len(w) > 1:
 		return []string{"+$(echo " + w[1:] + ")", glued}
 	default:
-		return []string{"$(echo " + w + ")", "`echo " + w + "`", `"$(echo ` + w + `)"`, glued}
+		return []string{"$(echo " + w + ")", "`echo " + w + "`", `"$(echo ` + w + `)"`, glued, "${X:-$(echo " + w + ")}"}
 	}
 }
 
