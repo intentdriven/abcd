@@ -330,6 +330,10 @@ type identityMatchers struct {
 	// the bare word is ordinary vocabulary and only an occurrence where an
 	// account name stands is reported (isGenericAccountName, iss-236).
 	localGeneric bool
+	// homeLiterals are the spellings of the caller's home the generic-account
+	// check accepts as closing it: the home itself and, where it carries
+	// backslashes, the doubled spelling a JSON encoder writes.
+	homeLiterals []string
 }
 
 func newIdentityMatchers(id Identity) identityMatchers {
@@ -390,6 +394,12 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// local_username gate — not slip redaction while the home path is caught.
 		m.localBare = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomeUser))
 		m.localGeneric = isGenericAccountName(id.HomeUser)
+		if id.HomePath != "" {
+			m.homeLiterals = []string{id.HomePath}
+			if doubled := strings.ReplaceAll(id.HomePath, `\`, `\\`); doubled != id.HomePath {
+				m.homeLiterals = append(m.homeLiterals, doubled)
+			}
+		}
 		if enc := strings.ReplaceAll(id.HomeUser, ".", "-"); enc != id.HomeUser {
 			m.localEncoded = enc
 		}
@@ -653,7 +663,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			}
 			// A generic account name is ordinary vocabulary wherever it does
 			// not stand as an account (iss-236, iss-2609061504302157).
-			if m.localGeneric && !standsAsAccountName(line, loc[0], loc[1], m.id.HomePath) {
+			if m.localGeneric && !standsAsAccountName(line, loc[0], loc[1], m.homeLiterals) {
 				return
 			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
@@ -712,16 +722,20 @@ func isGenericAccountName(name string) bool {
 }
 
 // accountRootPrefixes are the spellings that put the next segment in the
-// account-name position of a home directory: POSIX, Windows, and the
-// dash-encoded form a harness uses to name a per-project directory.
-var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-home-"}
+// account-name position of a home directory: POSIX, Windows — in its own
+// spelling and in the doubled one a JSON encoder writes, which is how every
+// Windows path in a transcript line reaches the redactor
+// (iss-2609251543293588) — and the dash-encoded form a harness uses to name a
+// per-project directory.
+var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, `\\users\\`, "-users-", "-home-"}
 
 // standsAsAccountName reports whether line[start:end] stands where an account
 // name stands rather than as a word: the segment after a home root, a tilde
 // user ("~name"), or inside the local part of an address or login
 // ("name@host", "name.surname@example.com"), or closing the caller's own home
 // literal wherever it sits ("…0/root/deck.key" under HOME=/root, which
-// home_path_self's leading anchor declines). These are the positions a real
+// home_path_self's leading anchor declines) in any of its spellings (homes,
+// identityMatchers.homeLiterals). These are the positions a real
 // home path or login leaks from, so a generic account name is still reported
 // there, at its hard_fail floor.
 //
@@ -730,9 +744,11 @@ var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-
 // maxLocalPart bytes ahead — and folds only that window. Lower-casing the
 // whole line prefix for every match made a line dense in a generic login cost
 // the square of its length (iss-2609251535090117).
-func standsAsAccountName(line string, start, end int, home string) bool {
-	if home != "" && endsWithFold(line[:end], home) {
-		return true
+func standsAsAccountName(line string, start, end int, homes []string) bool {
+	for _, home := range homes {
+		if endsWithFold(line[:end], home) {
+			return true
+		}
 	}
 	for _, p := range accountRootPrefixes {
 		if endsWithFold(line[:start], p) {

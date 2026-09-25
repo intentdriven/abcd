@@ -148,3 +148,34 @@ func TestGenericAccountNameFloor(t *testing.T) {
 		}
 	}
 }
+
+// A JSON encoder doubles every backslash, so a Windows path quoted in a
+// transcript line reaches the redactor as C:\\Users\\<login>\\…; the account
+// name stands there exactly as it does in the single-backslash spelling
+// (iss-2609251543293588). The home-literal clause holds for a home written
+// with backslashes in either spelling.
+func TestLocalUsernameGenericAccountNameCaughtUnderAJSONEscapedWindowsRoot(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+	for _, tc := range []struct {
+		id   Identity
+		line string
+	}{
+		{Identity{HomeUser: "dev"}, `{"cwd":"C:\\Users\\dev\\Desktop"}`},               // abcd-audit:allow
+		{Identity{HomeUser: "dev"}, `"path": "c:\\users\\dev"`},                        // abcd-audit:allow
+		{Identity{HomePath: `D:\build\dev`, HomeUser: "dev"}, `"D:\\build\\dev\\out"`}, // abcd-audit:allow
+	} {
+		got := ScanText(tc.line, tc.id, pats, sev, "f")
+		if !hasKind(got, kindLocalUser) {
+			t.Errorf("the account name in %q was not flagged: %+v", tc.line, got)
+			continue
+		}
+		if red, _ := Redact(tc.line, got); strings.Contains(strings.ToLower(red), `\dev`) {
+			t.Errorf("the account name survived redaction: %q -> %q", tc.line, red)
+		}
+	}
+	// A doubled separator before an ordinary word is still vocabulary.
+	if got := ScanText(`"msg": "see docs\\dev notes"`, Identity{HomeUser: "dev"}, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("a word after an escaped separator was flagged as the account name: %+v", got)
+	}
+}
