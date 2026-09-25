@@ -591,14 +591,17 @@ stderr, which is the channel the host replays to the agent. A warn and an
 allow both let the command run.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a
-tool call that is not a shell command, an unparsable command line, a
-registry that will not load — allows the command and warns loudly on
-stderr. A guard that cannot answer never stops a session, and is never
-silently absent. Unparsable means an unterminated quote in COMMAND text,
-which no shell runs either — a quote inside a here-document body is
-document text and is not one. A trailing backslash and a here-document with
-no delimiter line are grammar a shell does run, so each gets a verdict —
-the backslash is read as bash reads it, the unterminated document blocks.
+tool call that is not a shell command, a registry that will not load —
+allows the command and warns loudly on stderr. A guard that cannot answer
+never stops a session, and is never silently absent. A command line the
+guard cannot split is not in that set: it is blocked (command-unparsable),
+because a line the guard misreads may be one bash runs, and letting it
+through would pass every hazard in it. Unparsable means an unterminated
+quote in COMMAND text, which no shell runs either — a quote inside a
+here-document body is document text and is not one. A trailing backslash
+and a here-document with no delimiter line are grammar a shell does run,
+so each gets a verdict — the backslash is read as bash reads it, the
+unterminated document blocks.
 
 A host whose shell tool takes a per-call working directory passes it as
 tool_input.workdir. It is resolved against the session directory, and a

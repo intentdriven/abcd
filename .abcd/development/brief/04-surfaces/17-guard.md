@@ -57,10 +57,13 @@ worth having rather than merely obstructive.
 The exit codes are the contract, and the asymmetry in them is deliberate. On the
 hook, only exit 2 stops anything; a warn exits 1 because a pre-tool-use hook that
 exits 0 has its stderr discarded, so a warn returning 0 would run as if allowed
-with nobody told (iss-231). A guard that cannot answer at all — an unparsable
-command line, a registry with nothing left to check against, a registry switched
-off — exits 1 on the hook and lets the command run, and exits 2 on the check so
-that a script never reads silence as clearance.
+with nobody told (iss-231). A guard that cannot answer at all — a registry with
+nothing left to check against, a registry switched off — exits 1 on the hook and
+lets the command run, and exits 2 on the check so that a script never reads
+silence as clearance. A command line the guard cannot split is the exception on
+the hook: it is blocked (`command-unparsable`), not let through, because a line
+the guard misreads may be one bash runs, and a pass would carry every hazard in
+it past the guard. On the check it exits 2, like the rest.
 
 Either verb also speaks JSON, and that is the form the plugin page uses: a
 verdict, and with it the entry that fired, its tier, why the command is

@@ -1581,10 +1581,15 @@ func skipSubstitution(line string, j, end int) (next int, alt bool) {
 
 // readAnsiCQuote decodes a bash ANSI-C `$'...'` body that begins at start (the
 // byte just after the opening quote) and returns the decoded bytes together with
-// the index just past the closing quote. Inside `$'...'` a backslash introduces
-// an escape — so `\'` does not end the string — and the common escapes are
-// resolved so an encoded spelling of a hazard (`$'\x2d\x2dforce'`) tokenises to
-// the same bytes bash would hand the child (`--force`).
+// the index just past the closing quote. bash reads the string in two steps,
+// and so does this: it finds the closing quote first, stepping every backslash
+// together with the byte after it — so `\'` does not end the string, and no
+// escape can consume the quote that does — and only then decodes the body it
+// found. The common escapes are resolved so an encoded spelling of a hazard
+// (`$'\x2d\x2dforce'`) tokenises to the same bytes bash would hand the child
+// (`--force`). Decoding inside the found body is what closes `$'\c'`: a `\c`
+// with nothing after it is left as it is written, never handed the quote
+// (review4-guard finding 2).
 //
 // bash ends the string at the first byte an escape decodes to NUL (`\x00`,
 // `\0`, `\u0000`, `\c@`, …): what follows up to the closing quote is read and
@@ -1592,30 +1597,36 @@ func skipSubstitution(line string, j, end int) (next int, alt bool) {
 // is also what keeps unknownMark unforgeable (unknown.go): no decoded byte is
 // ever a NUL.
 func readAnsiCQuote(line string, start int) ([]byte, int, error) {
-	var out []byte
-	ended := false
-	for i := start; i < len(line); {
-		switch {
-		case line[i] == '\'':
-			return out, i + 1, nil
-		case line[i] == '\\' && i+1 < len(line):
-			decoded, next := decodeAnsiCEscape(line, i+1)
-			if nul := bytes.IndexByte(decoded, 0); nul >= 0 && !ended {
-				out = append(out, decoded[:nul]...)
-				ended = true
-			}
-			if !ended {
-				out = append(out, decoded...)
-			}
-			i = next
-		default:
-			if !ended {
-				out = append(out, line[i])
-			}
+	end := -1
+	for i := start; i < len(line); i++ {
+		if line[i] == '\\' {
 			i++
+			continue
+		}
+		if line[i] == '\'' {
+			end = i
+			break
 		}
 	}
-	return nil, 0, fmt.Errorf("%w: unterminated $'' quote", ErrUnparsableCommand)
+	if end < 0 {
+		return nil, 0, fmt.Errorf("%w: unterminated $'' quote", ErrUnparsableCommand)
+	}
+	body := line[start:end]
+	var out []byte
+	for i := 0; i < len(body); {
+		if body[i] != '\\' || i+1 >= len(body) {
+			out = append(out, body[i])
+			i++
+			continue
+		}
+		decoded, next := decodeAnsiCEscape(body, i+1)
+		if nul := bytes.IndexByte(decoded, 0); nul >= 0 {
+			return append(out, decoded[:nul]...), end + 1, nil
+		}
+		out = append(out, decoded...)
+		i = next
+	}
+	return out, end + 1, nil
 }
 
 // decodeAnsiCEscape resolves one ANSI-C escape whose leading backslash has
@@ -1683,16 +1694,26 @@ func decodeAnsiCEscape(line string, p int) ([]byte, int) {
 		}
 		return utf8.AppendRune(nil, r), p + 1 + n
 	case 'c':
-		// bash \cX: the control character for X (X with bit 6 cleared, uppercased).
-		// `\c` at end of string is left literal.
+		// bash \cX: the control character for X (X uppercased with bit 6
+		// cleared; `?` is DEL). line is the string's body, which the caller
+		// found before decoding it, so a `\c` at its end is left literal and
+		// can never take the closing quote. A backslash after `\c` is X, and
+		// takes the backslash after it too when there is one: `\c\\` is
+		// control-backslash, as bash decodes it.
 		if p+1 >= len(line) {
 			return []byte{c}, p + 1
 		}
-		x := line[p+1]
+		x, next := line[p+1], p+2
+		if x == '\\' && next < len(line) && line[next] == '\\' {
+			next++
+		}
+		if x == '?' {
+			return []byte{0x7f}, next
+		}
 		if x >= 'a' && x <= 'z' {
 			x -= 'a' - 'A'
 		}
-		return []byte{x & 0x1f}, p + 2
+		return []byte{x & 0x1f}, next
 	default:
 		return []byte{'\\', c}, p + 1
 	}

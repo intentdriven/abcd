@@ -107,7 +107,7 @@ type speculationBudget struct {
 // the guard's own verdict.
 var reservedEntryIDs = []string{
 	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
-	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID,
+	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at

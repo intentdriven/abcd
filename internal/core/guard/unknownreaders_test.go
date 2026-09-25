@@ -207,6 +207,19 @@ func TestEverySubstitutionPositionKeepsTheVerdict(t *testing.T) {
 					}
 				}
 			}
+			// The positions a word substitution never reaches: a here-document
+			// body the shell expands, and a command after an ANSI-C string that
+			// ends in an escape (review4-guard findings 1 and 2).
+			for _, line := range runningPositionsOf(fixture) {
+				if d, err := r.Check(line); err != nil || !atLeast(d.Verdict, want) {
+					t.Errorf("%s: %q = %q (via %q, err %v), want at least %q as %q is", id, line, d.Verdict, d.EntryID, err, want, fixture)
+				}
+			}
+			for _, line := range literalPositionsOf(fixture) {
+				if d, err := r.Check(line); err != nil || d.Verdict != VerdictAllow {
+					t.Errorf("%s: %q = %q (via %q, err %v), want allow: a quoted delimiter keeps the body data", id, line, d.Verdict, d.EntryID, err)
+				}
+			}
 			if strings.ContainsAny(fixture, "\n;&|") {
 				continue // a wrapper runs one simple command, not a list
 			}
@@ -225,6 +238,47 @@ func TestEverySubstitutionPositionKeepsTheVerdict(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// docDelim is the here-document delimiter the positions below use: a word no
+// fixture holds on a line of its own.
+const docDelim = "ABCD_DOC"
+
+// runningPositionsOf returns the lines that RUN a fixture somewhere a word
+// substitution never stands: as a command substitution in the body of a
+// here-document with an unquoted delimiter (`<<` and `<<-`, alone and inside
+// a substitution of its own), and as the command after an ANSI-C string that
+// ends in an escape, behind every list separator.
+func runningPositionsOf(fixture string) []string {
+	out := []string{
+		"cat <<" + docDelim + "\n$(" + fixture + ")\n" + docDelim,
+		"cat <<-" + docDelim + "\n\t$(" + fixture + ")\n\t" + docDelim,
+		"x=$(cat <<" + docDelim + "\ntext $(" + fixture + ") text\n" + docDelim + "\n)",
+		"cat <<" + docDelim + " > out.txt\n${X:-$(" + fixture + ")}\n" + docDelim,
+	}
+	if !strings.ContainsAny(fixture, "`\\") {
+		out = append(out, "cat <<"+docDelim+"\n`"+fixture+"`\n"+docDelim)
+	}
+	for _, str := range []string{`$'\c'`, `$'\c\\'`, `$'\\'`, `$'\x'`, `$'\u'`} {
+		for _, sep := range []string{"; ", " && ", " || ", "\n"} {
+			out = append(out, "echo "+str+sep+fixture)
+		}
+	}
+	return out
+}
+
+// literalPositionsOf returns the lines that hold a fixture's substitution in a
+// here-document body the shell does NOT expand: its delimiter quoted, escaped
+// or partly escaped. The fixture there is data, and the line allows.
+func literalPositionsOf(fixture string) []string {
+	body := "\n$(" + fixture + ")\n" + docDelim
+	return []string{
+		"cat <<'" + docDelim + "'" + body,
+		`cat <<"` + docDelim + `"` + body,
+		`cat <<\` + docDelim + body,
+		`cat <<ABCD\_DOC` + body,
+		"cat <<-'" + docDelim + "'\n\t$(" + fixture + ")\n\t" + docDelim,
 	}
 }
 

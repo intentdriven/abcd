@@ -98,9 +98,6 @@ func TestGuardHookFailsOpenLoud(t *testing.T) {
 		{"Bash call with no command", func(t *testing.T, dir string) string {
 			return preToolUse(t, "Bash", "", dir)
 		}},
-		{"command the tokenizer cannot split", func(t *testing.T, dir string) string {
-			return preToolUse(t, "Bash", `rm -rf "unterminated`, dir)
-		}},
 		// A malformed per-repo registry is NOT a fail-open case any more: it is
 		// fail-SAFE (bundled hazards stay armed). Its behaviour is pinned by
 		// TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed below
@@ -129,8 +126,8 @@ func TestGuardHookFailsOpenLoud(t *testing.T) {
 // by bash 3.2 and zsh) and a here-document body with no delimiter line
 // (recovered silently). On the hook a tokenizer error is fail-open, so each was
 // a one-byte bypass of every blocker. Both must now reach the blocking status
-// with the entry named, while the unterminated-quote row in
-// TestGuardHookFailsOpenLoud stays a loud fail-open: no shell runs that one.
+// with the entry named. A line the tokenizer cannot split at all is blocked
+// too (TestGuardHookBlocksAnUnparsableLine).
 func TestGuardHookBlocksWhatBashWouldRun(t *testing.T) {
 	for name, command := range map[string]string{
 		"trailing backslash":            "git push --force origin main \\",
@@ -147,6 +144,27 @@ func TestGuardHookBlocksWhatBashWouldRun(t *testing.T) {
 				t.Errorf("the block must name the entry; stderr = %q", stderr)
 			}
 		})
+	}
+}
+
+// TestGuardHookBlocksAnUnparsableLine — review4-guard finding 2. A command
+// line the tokenizer cannot split used to fail OPEN: the hook let it run
+// unchecked. Where the tokenizer is right, no shell runs the line either, so a
+// block costs nothing; where it is wrong — `$'\c'` read as swallowing its own
+// closing quote — bash runs a line the guard never read, and the fail-open was
+// a bypass of every blocker by construction. The line is blocked under a
+// reserved id, with the way past: close the quote.
+func TestGuardHookBlocksAnUnparsableLine(t *testing.T) {
+	dir := guardRepo(t)
+	_, stderr, code := runGuard(preToolUse(t, "Bash", `rm -rf "unterminated`, dir), "guard", "hook")
+	if code != 2 {
+		t.Errorf("an unparsable line must be blocked: want exit 2, got %d (stderr %q)", code, stderr)
+	}
+	if !strings.Contains(stderr, "command-unparsable") || !strings.Contains(stderr, "quote") {
+		t.Errorf("the block must name the reserved id and the way past; stderr = %q", stderr)
+	}
+	if strings.Contains(stderr, "UNGUARDED") {
+		t.Errorf("a block is not a fail-open; stderr = %q", stderr)
 	}
 }
 

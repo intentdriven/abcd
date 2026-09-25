@@ -189,14 +189,17 @@ func newGuardHookCommand() *cobra.Command {
 			"stderr, which is the channel the host replays to the agent. A warn and an\n" +
 			"allow both let the command run.\n\n" +
 			"Anything the adapter cannot turn into a decision — an unreadable payload, a\n" +
-			"tool call that is not a shell command, an unparsable command line, a\n" +
-			"registry that will not load — allows the command and warns loudly on\n" +
-			"stderr. A guard that cannot answer never stops a session, and is never\n" +
-			"silently absent. Unparsable means an unterminated quote in COMMAND text,\n" +
-			"which no shell runs either — a quote inside a here-document body is\n" +
-			"document text and is not one. A trailing backslash and a here-document with\n" +
-			"no delimiter line are grammar a shell does run, so each gets a verdict —\n" +
-			"the backslash is read as bash reads it, the unterminated document blocks.\n\n" +
+			"tool call that is not a shell command, a registry that will not load —\n" +
+			"allows the command and warns loudly on stderr. A guard that cannot answer\n" +
+			"never stops a session, and is never silently absent. A command line the\n" +
+			"guard cannot split is not in that set: it is blocked (command-unparsable),\n" +
+			"because a line the guard misreads may be one bash runs, and letting it\n" +
+			"through would pass every hazard in it. Unparsable means an unterminated\n" +
+			"quote in COMMAND text, which no shell runs either — a quote inside a\n" +
+			"here-document body is document text and is not one. A trailing backslash\n" +
+			"and a here-document with no delimiter line are grammar a shell does run,\n" +
+			"so each gets a verdict — the backslash is read as bash reads it, the\n" +
+			"unterminated document blocks.\n\n" +
 			"A host whose shell tool takes a per-call working directory passes it as\n" +
 			"tool_input.workdir. It is resolved against the session directory, and a\n" +
 			"command whose workdir is an existing directory in another repository is\n" +
@@ -296,8 +299,15 @@ func newGuardHookCommand() *cobra.Command {
 				return &exitError{Code: 2}
 			}
 			dec, err := reg.Check(candidate)
-			if err != nil {
-				return failOpen("the command line could not be parsed (%s)", scrubPaths(err))
+			switch {
+			case errors.Is(err, guard.ErrUnparsableCommand):
+				// A line the tokenizer cannot split is BLOCKED, never run
+				// unchecked: where the tokenizer is right no shell runs it
+				// either, and where it is wrong a pass is a bypass of every
+				// blocker (review4-guard finding 2). The decision is core's.
+				dec = guard.UnparsableDecision(err)
+			case err != nil:
+				return failOpen("the command line could not be checked (%s)", scrubPaths(err))
 			}
 			// The command runs in the workdir, so the registry of the repository
 			// it runs in names its hazards too. Only an existing directory has

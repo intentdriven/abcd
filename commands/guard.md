@@ -70,12 +70,15 @@ not by hand; a blocker returns the host's blocking status with the successor and
 the why as the message, and a warn or an allow lets the command run.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
-call that is not a shell command, an unparsable command line, a registry that
-does not load — allows the command and warns loudly. A guard that cannot answer
-never stops a session, and is never silently absent. A command line a shell
-would run is never in that set: a trailing backslash and an unterminated
-here-document are decided, not failed open on, and a here-document body is read
-as data however it is quoted, even when the line that opened it ends in `&&`.
+call that is not a shell command, a registry that does not load — allows the
+command and warns loudly. A guard that cannot answer never stops a session, and
+is never silently absent. A command line is never in that set: one the guard
+cannot split is a **block** (`command-unparsable`), because a line the guard
+misreads may be one bash runs, and letting it through would pass every hazard in
+it; a trailing backslash and an unterminated here-document are decided too. A
+here-document body is read as data, even when the line that opened it ends in
+`&&`, and the command substitutions an unquoted delimiter lets the shell run in
+it are read as commands.
 
 A host whose shell tool takes a per-call working directory passes it beside the
 command as `tool_input.workdir`. The adapter resolves it against the session

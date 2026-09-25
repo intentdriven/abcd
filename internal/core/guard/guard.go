@@ -597,7 +597,43 @@ const (
 	commandTooLongEntryID = "command-too-long"
 
 	familyCommandLength = "command length"
+
+	// unparsableEntryID is the reserved id a front door refuses a line under
+	// when the tokenizer cannot split it (UnparsableDecision). No registry
+	// entry may claim it.
+	unparsableEntryID = "command-unparsable"
+
+	familyUnparsable = "command line"
 )
+
+// UnparsableDecision is the verdict a front door that must answer — the
+// pre-tool-use hook — gives a command line Check refused with
+// ErrUnparsableCommand. It is a BLOCK, not a pass: where the tokenizer reads the
+// line right, no shell runs it either (an unterminated quote in command text),
+// so the block costs nothing; where it reads it wrong, bash runs a line the
+// guard never read, and letting it through made every such misreading a bypass
+// of every blocker (review4-guard finding 2: `$'\c'` read as swallowing its
+// own closing quote). err is named in the reason, so the way past is plain.
+func UnparsableDecision(err error) Decision {
+	return syntheticDecision(VerdictBlock, unparsableSignal(err), []string{unparsableEntryID})
+}
+
+// unparsableSignal is the reason and remedy UnparsableDecision carries.
+func unparsableSignal(err error) payloadSignal {
+	what := "it"
+	if err != nil {
+		what = strings.TrimPrefix(err.Error(), ErrUnparsableCommand.Error()+": ")
+	}
+	return payloadSignal{
+		id:      unparsableEntryID,
+		verdict: VerdictBlock,
+		family:  familyUnparsable,
+		reason: "The guard cannot split this command line into words (" + what + "), so it has not checked what would run. " +
+			"A shell refuses a line whose quote never closes, and one the guard misreads is one it cannot vouch for.",
+		successor: "Close every quote the line opens, or put the text in a file and pass the file, " +
+			"so the guard checks the command that actually runs.",
+	}
+}
 
 // commandTooLongSignal is the fail-closed verdict for a line past
 // maxCommandBytes. It is a BLOCK because the guard has not read the line.

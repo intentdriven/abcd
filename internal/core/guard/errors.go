@@ -3,9 +3,9 @@ package guard
 import "errors"
 
 // The guard sentinels. Every error the package returns wraps one of these, so a
-// front door can render the failure loudly (and, for the hook shim, fail OPEN)
-// without string-matching. Core never decides what a failure means for a
-// session — it only names it.
+// front door can render the failure loudly without string-matching. Core never
+// decides what a failure means for a session — it only names it, and offers the
+// decision a front door that must answer may give (UnparsableDecision).
 var (
 	// ErrUnparsableCommand is a candidate command line the shell tokenizer
 	// cannot split — an unterminated quote (`'`, `"`, `$'…'`, or one in a
@@ -13,7 +13,9 @@ var (
 	// either. Text inside a here-document BODY is never command text, so a
 	// quote there is data and does not reach this error. A state bash DOES run
 	// (a trailing backslash, an unterminated here-document) is never this
-	// error: the hook maps it to fail-open, so those get a verdict.
+	// error, so those get a verdict of their own. The hook answers this one
+	// with UnparsableDecision, a block, and the check verb reports it as a
+	// fault: neither front door runs a line the guard could not read.
 	ErrUnparsableCommand = errors.New("guard: unparsable command line")
 
 	// ErrMalformedConfig is a per-repo .abcd/guard.json that is unreadable or
