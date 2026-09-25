@@ -93,4 +93,5 @@ _None gating. The three arguable bucketings were pre-ruled at the grill,
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-4bf2cc7ba486 -->
+Fidelity review OWED (receipt rcp-4bf2cc7ba486).

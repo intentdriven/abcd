@@ -9,7 +9,7 @@ production_mode: hand-written
 
 ## Summary
 
-The remainder of [itd-122](../../intents/planned/itd-122-the-registry-cannot-wave-its-hands-every-surface-file-carrie.md)
+The remainder of [itd-122](../../intents/shipped/itd-122-the-registry-cannot-wave-its-hands-every-surface-file-carrie.md)
 that [spc-27](../closed/spc-27-the-registry-cannot-wave-its-hands-every-surface-file-carrie.md) did not deliver. spc-27 closed on
 2026-09-23 with acceptance criteria 2, 3 and 6 to 9 delivered and criteria 1 and 4 in part: the extended `surface_coverage` check in both directions, the staged-row rule, the explicit exemption config, the adr-40 pre-rulings, the reserved bucket vocabulary, the two-valued status and the README and changelog sweep. This spec carries what did not ship.
 
