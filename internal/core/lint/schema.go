@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 const ruleRecordSchema = "record_schema"
@@ -1426,7 +1427,18 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 		if dir == "" {
 			continue
 		}
+		// The store paths come out of the committed config, so a cloned repo
+		// controls them: held inside the repository lexically and once symlinks
+		// in their ancestry are followed, as every other configured path is.
+		if err := containedRepoPath(dir); err != nil {
+			return nil, nil, &configError{ruleRecordSchema + ": store " + quote(dir) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
 		storeAbs := filepath.Join(repoRoot, filepath.FromSlash(dir))
+		if err := resolvedInsideRoot(repoRoot, storeAbs); err != nil {
+			return nil, nil, &configError{ruleRecordSchema + ": store " + quote(dir) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
 		entries, err := os.ReadDir(storeAbs)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -1477,9 +1489,19 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				if err != nil {
 					continue
 				}
-				content, err := os.ReadFile(filepath.Join(bucketAbs, e.Name()))
+				// fsutil.ReadGuarded on the unresolved leaf, as the reading walk in
+				// readingoutstanding.go reads the same trees: a record is never
+				// legitimately a link, so a symlinked one is refused rather than
+				// followed (its target's frontmatter would otherwise surface in lint
+				// output), a FIFO cannot hang the gate, and an oversized file is not
+				// read. The refusal is a finding on the file, not an aborted crawl,
+				// so the gate and the report decline the same records
+				// (iss-2608301203521317).
+				content, err := fsutil.ReadGuarded(filepath.Join(bucketAbs, e.Name()), issueschema.RecordReadLimit)
 				if err != nil {
-					return err
+					add(rel, store.noun+" record cannot be read safely ("+guardedReason(err)+
+						"); the gate neither follows nor reads it, so nothing it holds is checked")
+					continue
 				}
 				lines := strings.Split(string(content), "\n")
 				// A duplicated top-level key is malformed to every record consumer, but the

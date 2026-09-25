@@ -212,7 +212,7 @@ func checkSubVerbCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 // subtree (operator plumbing is not product surface), and cobra's auto-added
 // help/completion are excluded structurally.
 func loadSnapshotSubVerbs(repoRoot, snapshot string) (map[string][]string, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, snapshot))
+	data, err := readRepoFile(repoRoot, snapshot, maxRepoFileBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +269,7 @@ func loadSnapshotSubVerbs(repoRoot, snapshot string) (map[string][]string, error
 // one, mirroring parseSurfaceRegistry. shortRows collects the lines of rows
 // with fewer than three cells: a silently dropped row would unrecord its fact.
 func parseSubVerbTable(repoRoot, rel string) (rows []subVerbRow, tableFound bool, dupLine int, shortRows []int, err error) {
-	content, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	content, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		return nil, false, 0, nil, err
 	}

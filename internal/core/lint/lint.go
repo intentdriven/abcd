@@ -697,7 +697,7 @@ func checkContextStatusFree(repoRoot string, cfg RuleConfig) ([]Finding, error) 
 	}
 
 	fileAbs := filepath.Join(repoRoot, target)
-	content, err := os.ReadFile(fileAbs)
+	content, err := readRepoFile(repoRoot, target, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -897,7 +897,7 @@ func realSurfaces(repoRoot string, cfg RuleConfig) (map[string]bool, map[string]
 // mistaken for the registry. A missing file yields (nil, nil); a present file
 // with no such table yields an empty, non-nil slice.
 func parseSurfaceRegistry(repoRoot, registry string) ([]surfaceRow, error) {
-	content, err := os.ReadFile(filepath.Join(repoRoot, registry))
+	content, err := readRepoFile(repoRoot, registry, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -1068,7 +1068,14 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// presence in the content tree is the era marker — a receipt/commit that
 	// predates the manifest is judged by the pre-manifest rules only. Read it from
 	// repoRoot, the checked-out content tree the gate is armed against.
-	manifestBytes, manifestErr := os.ReadFile(filepath.Join(repoRoot, releaseGateManifestPath))
+	//
+	// Both this read and each receipt read below are fsutil.ReadGuarded on the
+	// unresolved path: the reviews store and the manifest are committed and travel
+	// with a clone, so a FIFO at either path would hang the gate, and a symlinked
+	// receipt would be judged as if the reviewers had written it — an out-of-tree
+	// forged PROMOTE satisfied the gate. Neither file is ever legitimately a link,
+	// so a symlinked leaf is refused rather than resolved (iss-2609012037127981).
+	manifestBytes, manifestErr := fsutil.ReadGuarded(filepath.Join(repoRoot, releaseGateManifestPath), maxReceiptBytes)
 	var manifestEra bool
 	var expectedManifestHash, requiredTier string
 	switch {
@@ -1085,6 +1092,16 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		return failClosed("receipt_gate cannot read the release-gate manifest " + releaseGateManifestPath + ": " + manifestErr.Error()), nil
 	}
 
+	// The receipts directory comes out of the committed config, so it is held to
+	// the repository the way every other configured path is: lexically, and once
+	// symlinks in its ancestry are followed.
+	if err := containedRepoPath(dir); err != nil {
+		return failClosed("receipt_gate receipts_dir " + quote(dir) + " " + err.Error() + "; the release gate fails closed"), nil
+	}
+	if err := resolvedInsideRoot(repoRoot, filepath.Join(repoRoot, dir)); err != nil {
+		return failClosed("receipt_gate receipts_dir " + quote(dir) + " " + err.Error() + "; the release gate fails closed"), nil
+	}
+
 	var out []Finding
 	add := func(rel, msg string) {
 		out = append(out, Finding{
@@ -1097,13 +1114,16 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		rel := filepath.Join(dir, cfg.Commit, gate+".json")
-		data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+		data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, rel), maxReceiptBytes)
 		if err != nil {
 			if os.IsNotExist(err) {
 				add(rel, "no '"+gate+"' receipt for commit "+cfg.Commit+"; the semantic gate has not run (fail-closed)")
 				continue
 			}
-			return nil, err
+			// A receipt that cannot be read safely is a finding, not an aborted
+			// crawl: an armed gate with nothing valid to check is never a pass.
+			add(rel, "'"+gate+"' receipt cannot be read safely ("+guardedReason(err)+"); the release gate fails closed")
+			continue
 		}
 		var r receipt
 		if err := json.Unmarshal(data, &r); err != nil {
@@ -1360,7 +1380,7 @@ func checkGateLockstep(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 // look different. A missing file yields nil — the caller has already failed it
 // closed.
 func runbookGateList(repoRoot, rel string) ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	data, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -1394,7 +1414,7 @@ func runbookGateList(repoRoot, rel string) ([]string, error) {
 // alternate step form is not invisible. A missing file yields nil; the caller has
 // already failed it closed.
 func workflowStepNames(repoRoot, rel, job string, ignore []string) ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	data, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -1738,7 +1758,7 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 				continue
 			}
 			fileAbs := filepath.Join(bucketDir, e.Name())
-			content, err := os.ReadFile(fileAbs)
+			content, err := readRepoAbs(repoRoot, fileAbs, maxRepoFileBytes)
 			if err != nil {
 				return intentTree{}, err
 			}
@@ -1928,7 +1948,7 @@ func scanIssueLedger(repoRoot, issuesDir string) (issueLedger, error) {
 	}
 
 	for _, p := range files {
-		content, err := os.ReadFile(p.abs)
+		content, err := readRepoAbs(repoRoot, p.abs, maxRepoFileBytes)
 		if err != nil {
 			return issueLedger{}, err
 		}
@@ -2411,7 +2431,7 @@ func checkForbiddenSynonyms(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 		if strings.HasPrefix(relSlash, glossaryPrefix) || hasAnyPrefix(relSlash, cfg.ExemptPrefixes) {
 			continue
 		}
-		content, err := os.ReadFile(fileAbs)
+		content, err := readRepoAbs(repoRoot, fileAbs, maxRepoFileBytes)
 		if err != nil {
 			return nil, err
 		}

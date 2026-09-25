@@ -3,8 +3,6 @@ package lint
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -36,7 +34,7 @@ func loadPersonaRoster(repoRoot, rel string) (map[string]bool, error) {
 	if rel == "" {
 		return nil, fmt.Errorf("persona_registry: rule enabled but \"registry\" is not set")
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	data, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		return nil, fmt.Errorf("persona_registry: reading roster %s: %w", rel, err)
 	}
