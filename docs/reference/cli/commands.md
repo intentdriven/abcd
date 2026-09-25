@@ -127,6 +127,12 @@ Add one banned-name entry to the layer a flag names: Writes that layer's store; 
       --successor string   public entry's replacement, cited in the finding (default "a generic term")
 ```
 
+**Example:**
+
+```
+abcd banlist add --private acme-internal 'acme-internal\.example\.com'
+```
+
 #### `abcd banlist list`
 
 Render the banned-names layers, private entries by key only: Writes nothing; refuses --private and --public together.
@@ -151,6 +157,12 @@ Remove one banned-name entry from the layer a flag names: Writes that layer's st
 ```
       --private   the gitignored per-machine layer (.abcd/.work.local/private-names.txt)
       --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
+```
+
+**Example:**
+
+```
+abcd banlist remove --private acme-internal
 ```
 
 ### `abcd capture`
@@ -191,6 +203,12 @@ Answer one reading item with a disposition record: Writes the record keyed to th
       --supersedes string            the standing dsp-N this answer replaces; required once an item already carries one
 ```
 
+**Example:**
+
+```
+abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"
+```
+
 #### `abcd capture link`
 
 Add or remove blocked_by edges on an issue: Writes the issue's blocked_by list; refuses an id the ledger does not hold.
@@ -202,6 +220,12 @@ Add or remove blocked_by edges on an issue: Writes the issue's blocked_by list; 
 ```
       --blocked-by string   append: comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
       --unblock string      remove: comma-separated iss-N ids to drop from blocked_by; each must currently be in the list. With --blocked-by in the same call the removals are applied first, then the additions
+```
+
+**Example:**
+
+```
+abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002
 ```
 
 #### `abcd capture list`
@@ -257,6 +281,12 @@ Graduate an issue or an accepted reading item into an intent draft: Writes the d
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
+**Example:**
+
+```
+abcd capture promote iss-2609010000000001
+```
+
 #### `abcd capture resolve`
 
 Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.
@@ -275,6 +305,12 @@ Move an open issue to resolved/, naming what fixed it: Writes the moved record; 
       --spec string              resolved_by provenance: the spc-N that fixed it (must exist)
 ```
 
+**Example:**
+
+```
+abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix
+```
+
 #### `abcd capture wontfix`
 
 Move an open issue to wontfix/ with the reason it is not acted on: Writes the moved record; refuses an id this ledger does not hold.
@@ -286,6 +322,12 @@ Move an open issue to wontfix/ with the reason it is not acted on: Writes the mo
 ```
       --grounds string           override the recorded grounds text (the token stays declined — a wontfix IS that non-action)
       --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
+```
+
+**Example:**
+
+```
+abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"
 ```
 
 ### `abcd changelog`
@@ -312,6 +354,12 @@ The verb writes an EMPTY record: it owns the id, the date, the filename and the 
 sections, and states nothing. The decision is the author's to write, and the status it
 lands with is `proposed` until the author sets `accepted`.
 
+**Example:**
+
+```
+abcd decide "Record ids are minted from a timestamp"
+```
+
 ### `abcd disembark`
 
 Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.
@@ -323,6 +371,12 @@ Pack a repository into a lifeboat, probing and planning first: Writes nothing in
 Aggregate saved probe reports into the section-by-repository coverage table: Writes nothing; refuses a file that is not a probe report.
 
 **Usage:** `abcd disembark coverage <report.json>...`
+
+**Example:**
+
+```
+abcd disembark coverage probe-report.json
+```
 
 #### `abcd disembark graveyard`
 
@@ -337,6 +391,12 @@ Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
+**Example:**
+
+```
+abcd disembark graveyard ../lifeboat --lessons-json lessons.json
+```
+
 #### `abcd disembark pack`
 
 Pack a lifeboat from a repository into a destination directory: Writes the destination only; refuses when the secret scanner is unavailable.
@@ -347,6 +407,12 @@ Pack a lifeboat from a repository into a destination directory: Writes the desti
 
 ```
       --include-ignored   also read files git ignores (widens the scan; the report says so)
+```
+
+**Example:**
+
+```
+abcd disembark pack . ../lifeboat
 ```
 
 #### `abcd disembark plan`
@@ -374,6 +440,12 @@ Compose a lifeboat's press release, or validate the host's: Writes the press-rel
       --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
+**Example:**
+
+```
+abcd disembark press-release ../lifeboat
+```
+
 #### `abcd disembark principles`
 
 Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.
@@ -385,6 +457,12 @@ Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the
 ```
       --principles-json string   path to host-produced principle JSON (or - for stdin); absent runs deterministic mode
       --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+```
+
+**Example:**
+
+```
+abcd disembark principles ../lifeboat
 ```
 
 #### `abcd disembark probe`
@@ -410,6 +488,12 @@ Review a packed lifeboat against its source repository, or validate the host's v
 ```
       --review-json string   path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
       --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+```
+
+**Example:**
+
+```
+abcd disembark review ../lifeboat .
 ```
 
 ### `abcd docs`
@@ -471,11 +555,23 @@ Unpack a lifeboat's record families into a target repository: Writes those famil
 
 **Usage:** `abcd embark from <lifeboat-dir> [target-dir]`
 
+**Example:**
+
+```
+abcd embark from ../lifeboat
+```
+
 #### `abcd embark probe`
 
 Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.
 
 **Usage:** `abcd embark probe <lifeboat-dir> [target-dir]`
+
+**Example:**
+
+```
+abcd embark probe ../lifeboat
+```
 
 ### `abcd guard`
 
@@ -613,6 +709,12 @@ Delete one staged or quarantined raw transcript for good: Writes the deletion; r
       --yes   confirm the irreversible deletion of an unredacted transcript
 ```
 
+**Example:**
+
+```
+abcd history discard 0123abcd-session.raw --yes
+```
+
 #### `abcd history drain`
 
 Redact and store every transcript staged for this repository: Writes the records into the store; refuses outside a git checkout.
@@ -671,11 +773,23 @@ Render one session and its sub-agents as one artefact plus telemetry: Writes bot
       --out string            directory to write <session>.md and <session>.telemetry.json into, or - for stdout (default ".")
 ```
 
+**Example:**
+
+```
+abcd history reconstruct 0123abcd-session
+```
+
 #### `abcd history show`
 
 Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.
 
 **Usage:** `abcd history show <session-id-or-filename>`
+
+**Example:**
+
+```
+abcd history show 0123abcd-session
+```
 
 #### `abcd history staged`
 
@@ -712,6 +826,12 @@ Validate a host-composed gauntlet verdict: Writes the dated research record; ref
 
 ```
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
+```
+
+**Example:**
+
+```
+abcd ideate record widen-the-public-api --verdict-json verdict.json
 ```
 
 ### `abcd identity`
@@ -788,6 +908,12 @@ writes nothing. The verdict reports the agent ceiling the session joined with.
       --session string     this session's id
 ```
 
+**Example:**
+
+```
+abcd implement check lane --session s-example
+```
+
 #### `abcd implement claim`
 
 Claim a record for this session before opening its lane: Writes the claim and a run-log line; refuses a record another session holds.
@@ -813,6 +939,12 @@ reading corpus.
       --lease duration     how long the claim holds before it lapses (1m to 24h) (default 2h0m0s)
       --path stringArray   a repository-relative file the lane will touch (repeatable); checked against the reading corpus
       --session string     this session's id
+```
+
+**Example:**
+
+```
+abcd implement claim iss-2609010000000001 --session s-example --lane cli
 ```
 
 #### `abcd implement join`
@@ -841,6 +973,12 @@ ceiling is recorded and reported by every `check`, not enforced; a resume keeps 
       --session string   this session's id (letters, digits, '.', '_', '-')
 ```
 
+**Example:**
+
+```
+abcd implement join --session s-example --role first
+```
+
 #### `abcd implement leave`
 
 Leave the run, releasing every claim this session holds: Writes the releases and a session_close line; refuses without --session.
@@ -856,6 +994,12 @@ that stops without leaving strands nothing: its claims lapse with their leases.
 ```
       --reason string    why the session closes (window, stop condition, crash recovery)
       --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement leave --session s-example
 ```
 
 #### `abcd implement load`
@@ -901,6 +1045,12 @@ value out of range, is reported loudly and both defaults are used.
       --site string   where the check runs: preflight | eval-harness
 ```
 
+**Example:**
+
+```
+abcd implement load --site preflight
+```
+
 #### `abcd implement log`
 
 Append one of the run's events to today's run log: Writes one line; refuses the claim, window, and session events their own verbs write.
@@ -922,6 +1072,12 @@ refused here, so the log cannot record a claim the run state does not hold.
       --session string      this session's id
 ```
 
+**Example:**
+
+```
+abcd implement log lane_open --session s-example
+```
+
 #### `abcd implement mode`
 
 Open a window by logging its division mode: Writes a window_mode line; refuses any session but the first.
@@ -941,6 +1097,12 @@ mode in force is the log's last window_mode line, whoever wrote it.
       --window int       the window's number, recorded on the line
 ```
 
+**Example:**
+
+```
+abcd implement mode single --session s-example
+```
+
 #### `abcd implement release`
 
 Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.
@@ -954,6 +1116,12 @@ releases a claim; another session's claim lapses with its lease instead.
 
 ```
       --session string   this session's id
+```
+
+**Example:**
+
+```
+abcd implement release iss-2609010000000001 --session s-example
 ```
 
 #### `abcd implement report`
@@ -1015,11 +1183,23 @@ File one report as a capture in abcd's own ledger: Writes the capture and marks 
 
 **Usage:** `abcd inbox promote <id>`
 
+**Example:**
+
+```
+abcd inbox promote rpt-2609010000000001
+```
+
 #### `abcd inbox show`
 
 Render one report whole: Writes nothing; refuses an id the inbox does not hold.
 
 **Usage:** `abcd inbox show <id>`
+
+**Example:**
+
+```
+abcd inbox show rpt-2609010000000001
+```
 
 ### `abcd intent`
 
@@ -1049,6 +1229,12 @@ Emit a shipped intent's audit request, or check the issue and intent joins with 
       --strict              with --issue-drift: exit 1 when any finding is reported (the CI mode)
 ```
 
+**Example:**
+
+```
+abcd intent audit itd-2609010000000001
+```
+
 ##### `abcd intent audit ingest`
 
 Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.
@@ -1060,6 +1246,12 @@ Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; 
 ```
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --verdict-json string   path to the intent-audit verdict JSON
+```
+
+**Example:**
+
+```
+abcd intent audit ingest --verdict-json verdict.json
 ```
 
 #### `abcd intent condition`
@@ -1077,6 +1269,12 @@ Read or disposition a shipped intent's scope conditions: Writes a dated conditio
       --occasioned-by string   what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)
 ```
 
+**Example:**
+
+```
+abcd intent condition itd-2609010000000001
+```
+
 #### `abcd intent hold`
 
 Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.
@@ -1089,11 +1287,23 @@ Hold a draft or planned intent so that planning refuses it: Writes the held line
       --reason string   why the record is held: one line, required; redacted before it is written
 ```
 
+**Example:**
+
+```
+abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"
+```
+
 #### `abcd intent link`
 
 Link a planned intent to an existing spec: Writes the intent's spec_id; refuses an intent that is not planned.
 
 **Usage:** `abcd intent link <itd-N> <spc-N>`
+
+**Example:**
+
+```
+abcd intent link itd-2609010000000001 spc-2609010000000002
+```
 
 #### `abcd intent plan`
 
@@ -1108,6 +1318,12 @@ Plan a draft intent by minting and linking its spec, or stamp a planned one's sc
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
+**Example:**
+
+```
+abcd intent plan itd-2609010000000001
+```
+
 #### `abcd intent ready`
 
 Report whether an intent is ready to implement, exiting 1 when not: Writes its grounds only with --grounds; refuses malformed grounds.
@@ -1120,11 +1336,23 @@ Report whether an intent is ready to implement, exiting 1 when not: Writes its g
       --grounds string   record the conjecture behind this gate decision: "<pursued|deferred|declined>: <what is expected, and what would show it wrong>"
 ```
 
+**Example:**
+
+```
+abcd intent ready itd-2609010000000001
+```
+
 #### `abcd intent unhold`
 
 Lift an intent's hold: Writes the removal of its held line; refuses a record not held.
 
 **Usage:** `abcd intent unhold <itd-N>`
+
+**Example:**
+
+```
+abcd intent unhold itd-2609010000000001
+```
 
 ### `abcd launch`
 
@@ -1151,6 +1379,12 @@ Render the release's plugin archive: Writes the archive into --out; refuses with
       --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
       --tag string          refuse unless the newest dated CHANGELOG version is this tag
       --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
+```
+
+**Example:**
+
+```
+abcd launch archive --out dist
 ```
 
 #### `abcd launch scaffold`
@@ -1264,6 +1498,12 @@ Query memory and synthesise a cited answer: Writes a memory page only with --fil
       --top-n int          retrieval depth (0 uses the pinned default)
 ```
 
+**Example:**
+
+```
+abcd memory ask "why do record ids carry a timestamp?"
+```
+
 #### `abcd memory ingest`
 
 Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.
@@ -1275,6 +1515,12 @@ Distil a local file or an https source into cited memory pages: Writes the pages
 ```
       --keep-original       store the original at .abcd/memory/sources/<sha256>.<ext>
       --pages-json string   DistilledPage JSON array (file path, or - for stdin)
+```
+
+**Example:**
+
+```
+abcd memory ingest https://example.com/paper.pdf
 ```
 
 #### `abcd memory lint`
@@ -1392,9 +1638,7 @@ and its hash, so a run is reproducible from the commit it names.
 **Example:**
 
 ```
-abcd reading assemble --position widening --target HEAD --dry-run
-  abcd reading assemble --position entailment --target HEAD \
-    --out .abcd/.work.local/scratch/reading-runs/manual --json
+abcd reading assemble --position widening --target HEAD
 ```
 
 #### `abcd reading ingest`
@@ -1439,7 +1683,7 @@ rolled_back_records on every exit, including a failing one.
 **Example:**
 
 ```
-abcd reading ingest --reading-json ./reading-output.json --json
+abcd reading ingest --reading-json reading.json
 ```
 
 ### `abcd report`
@@ -1545,6 +1789,12 @@ The close that ships an intent also makes its fidelity review owed: it mints an 
       --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
       --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed
+```
+
+**Example:**
+
+```
+abcd spec close spc-2609010000000001
 ```
 
 ### `abcd statusline`

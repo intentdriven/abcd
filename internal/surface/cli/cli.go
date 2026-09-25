@@ -403,6 +403,9 @@ func NewRootCommand() *cobra.Command {
 	// manifest before anything renders a list, so the one declaration is what
 	// every command list, help and page shows.
 	applySentences(root, surface.SentenceFor)
+	// One worked example per verb that takes a required input, from the same
+	// manifest (iss-2609100508565741).
+	applyExamples(root, surface.ExampleFor)
 
 	// The grouped help (itd-146): every visible verb filed under a group, and
 	// the root's help rendering the person's groups, or both blocks with --agent.
