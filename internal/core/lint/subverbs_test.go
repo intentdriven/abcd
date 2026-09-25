@@ -413,3 +413,16 @@ func TestSubVerbFindingsCarryTheRowLevelLabel(t *testing.T) {
 		}
 	}
 }
+
+// TestSubVerbHeadingWithoutTableFails: finding the `## Sub-verbs` heading is not
+// finding the table. A heading followed by prose and no header row carries no
+// table, so a verb with no sub-command waves the grain through in prose exactly
+// as a file with no heading does, and is the same finding (iss-2609250937494009).
+func TestSubVerbHeadingWithoutTableFails(t *testing.T) {
+	f := newSubverbFixture(t, []map[string]any{cmd("abcd", false), cmd("abcd version", false)})
+	f.writeSurface(t, "12-version.md", "# version\n\n## Sub-verbs\n\nNone: version has no sub-verb.\n")
+	out := runSubverbCheck(t, f)
+	if len(out) != 1 || !strings.Contains(out[0].Message, "no '## Sub-verbs' table") {
+		t.Fatalf("a heading with no table under it must be the missing-table finding:\n%s", messages(out))
+	}
+}

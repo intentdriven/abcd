@@ -262,7 +262,8 @@ func loadSnapshotSubVerbs(repoRoot, snapshot string) (map[string][]string, error
 }
 
 // parseSubVerbTable reads one surface file and returns the rows of its
-// `## Sub-verbs` table (tableFound=false when the heading is absent) plus the
+// `## Sub-verbs` table (tableFound=false when the heading is absent, or present
+// with no header row under it) plus the
 // line of any DUPLICATE unfenced heading — only the first is parsed, so a
 // second one could carry an unchecked lying table and must be a finding.
 // Fenced code blocks are masked so an example table is never read as the real
@@ -292,7 +293,12 @@ func parseSubVerbTable(repoRoot, rel string) (rows []subVerbRow, tableFound bool
 		return nil, false, 0, nil, nil
 	}
 
-	inTable := false
+	// The table is found by its header row, not by the heading: a heading with
+	// prose and no `| Verb | Bucket | Status |` row under it carries no table, and
+	// reporting it as found let a surface wave its sub-verb grain through in
+	// prose, which the brief's surfaces README promises is a finding
+	// (iss-2609250937494009).
+	inTable, headerSeen := false, false
 	for i := headingIdx + 1; i < len(lines); i++ {
 		if fenced[i] {
 			continue
@@ -312,6 +318,7 @@ func parseSubVerbTable(repoRoot, rel string) (rows []subVerbRow, tableFound bool
 			lower := strings.ToLower(cells[0])
 			if lower == "verb" || strings.HasPrefix(cells[0], "---") || strings.HasPrefix(cells[0], ":-") {
 				inTable = true
+				headerSeen = headerSeen || lower == "verb"
 				continue
 			}
 		}
@@ -328,7 +335,7 @@ func parseSubVerbTable(repoRoot, rel string) (rows []subVerbRow, tableFound bool
 			line:   i + 1,
 		})
 	}
-	return rows, true, dupLine, shortRows, nil
+	return rows, headerSeen, dupLine, shortRows, nil
 }
 
 // splitTableRow splits a markdown pipe-row into trimmed cells.
