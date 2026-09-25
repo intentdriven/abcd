@@ -526,7 +526,10 @@ emit's `--json` result carries the request block as a `routing` member (`agent`,
 its text a `routing:` line, and the request file a `## Routing` section after
 the provenance block: run the auditor at that tier where the harness lets you
 choose one. The section sits outside the hashed prompt, so it never moves
-`prompt_hash`. `--issue-drift` dispatches no agent and refuses `--route`. The
+`prompt_hash`. The request `spec close` emits when it ships an intent carries
+the same section; a routing table that cannot be read leaves that request
+without one, one stderr warning names `intent audit <itd-N>` as the re-emit that
+adds it, and the close stands. `--issue-drift` dispatches no agent and refuses `--route`. The
 ingest's `--json` result carries a `route` receipt (`tier_asked`,
 `connection_tried`, `connection_used`, `fallback_reason`, `override`,
 `settings_sent`, `model_reported`) and its text a `route:` line; relay it with
