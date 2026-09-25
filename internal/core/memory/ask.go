@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -278,6 +279,24 @@ func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 // be told they invoked a plugin command they may not even have installed.
 const AskReportHeading = "abcd memory ask"
 
+// citationTruncatedMarker ends a citation JSON cut at the page-value cap. The
+// cap cuts mid-JSON, so the cut is said out loud rather than left to read as
+// a whole value. It is plain text: nothing in it opens markdown or HTML.
+const citationTruncatedMarker = " … (citation truncated)"
+
+// cleanCitationJSON is cleanPageField for the compacted citation JSON with the
+// cut made visible: a value that cleans within the cap renders whole, and one
+// that does not is cut short enough for the marker to fit and ends with it, so
+// the field stays within the cap either way. The marker follows CleanProse's
+// output, whose final span-aware pass leaves no span or escape open for it to
+// fall into.
+func cleanCitationJSON(raw string) string {
+	if whole := termsafe.CleanProse(raw, math.MaxInt); len(whole) <= maxPageValueBytes {
+		return whole
+	}
+	return termsafe.CleanProse(raw, maxPageValueBytes-len(citationTruncatedMarker)) + citationTruncatedMarker
+}
+
 // RenderCitedMatches is the default deterministic synthesizer — a
 // citation-renderer, not an LLM. Missing provenance renders as explicit (none).
 func RenderCitedMatches(question string, matches []MatchedPage) string {
@@ -320,7 +339,7 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 			}
 			cj := "(none)"
 			if len(c.Citation) > 0 {
-				cj = cleanPageField(compactJSONSorted(c.Citation))
+				cj = cleanCitationJSON(compactJSONSorted(c.Citation))
 			}
 			lines = append(lines, fmt.Sprintf("  - cites: class=%s | source_hash=%s | citation=%s", cls, sh, cj))
 		}
