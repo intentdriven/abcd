@@ -142,7 +142,7 @@ func TestReadPinnedTagPrefersRootThenCache(t *testing.T) {
 	}
 	t.Setenv("CLAUDE_PLUGIN_DATA", data)
 
-	if got := readPinnedTag(root); got != "v9.9.9" {
+	if got := readPinnedTag(root, root); got != "v9.9.9" {
 		t.Errorf("a cache-provisioned root must read the pin from the cache meta; got %q, want v9.9.9", got)
 	}
 
@@ -150,7 +150,7 @@ func TestReadPinnedTagPrefersRootThenCache(t *testing.T) {
 		[]byte("release_tag=v9.9.8\nrelease_sha=unknown\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := readPinnedTag(root); got != "v9.9.8" {
+	if got := readPinnedTag(root, root); got != "v9.9.8" {
 		t.Errorf("a root-local record must win — it describes THIS root's binary; got %q, want v9.9.8", got)
 	}
 
@@ -158,7 +158,7 @@ func TestReadPinnedTagPrefersRootThenCache(t *testing.T) {
 	if err := os.Remove(filepath.Join(root, ".binary-meta")); err != nil {
 		t.Fatal(err)
 	}
-	if got := readPinnedTag(root); got != "" {
+	if got := readPinnedTag(root, root); got != "" {
 		t.Errorf("no record anywhere must read as no pin; got %q", got)
 	}
 }

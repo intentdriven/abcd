@@ -145,3 +145,10 @@ func dataDirHazard(dataDir, cwd string) string {
 	}
 	return ""
 }
+
+// PluginDataDirHazard is dataDirHazard for a front door that reads the harness
+// data directory itself (the session-start skew notice): the reason dataDir
+// cannot be trusted, or "" when it has the shape the harness always gives it.
+// One check, so the surface and core cannot disagree about which directories
+// are believed.
+func PluginDataDirHazard(dataDir, cwd string) string { return dataDirHazard(dataDir, cwd) }
