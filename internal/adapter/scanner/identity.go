@@ -339,9 +339,9 @@ type identityMatchers struct {
 	// the bare word is ordinary vocabulary and only an occurrence where an
 	// account name stands is reported (isGenericAccountName, iss-236).
 	localGeneric bool
-	// homeLiterals are the spellings of the caller's home the generic-account
-	// check accepts as closing it: the home itself and, where it carries
-	// backslashes, the doubled spelling a JSON encoder writes.
+	// homeLiterals are the caller's home as the generic-account check reads it
+	// closing a match: the home with every run of backslashes collapsed to
+	// one, which endsWithPathFold matches at any escaping depth.
 	homeLiterals []string
 }
 
@@ -404,10 +404,7 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		m.localBare = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomeUser))
 		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if id.HomePath != "" {
-			m.homeLiterals = []string{id.HomePath}
-			if doubled := strings.ReplaceAll(id.HomePath, `\`, `\\`); doubled != id.HomePath {
-				m.homeLiterals = append(m.homeLiterals, doubled)
-			}
+			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
 		}
 		if enc := strings.ReplaceAll(id.HomeUser, ".", "-"); enc != id.HomeUser {
 			m.localEncoded = enc
@@ -787,36 +784,39 @@ func isGenericAccountName(name string) bool {
 }
 
 // accountRootPrefixes are the spellings that put the next segment in the
-// account-name position of a home directory: POSIX, Windows — in its own
-// spelling and in the doubled one a JSON encoder writes, which is how every
-// Windows path in a transcript line reaches the redactor
-// (iss-2609251543293588) — and the dash-encoded form a harness uses to name a
+// account-name position of a home directory: POSIX, Windows — read by
+// endsWithPathFold, so the single-backslash spelling stands for every escaped
+// one too: the doubled one a JSON encoder writes, which is how every Windows
+// path in a transcript line reaches the redactor (iss-2609251543293588), and
+// the quadrupled one a tool result that is itself JSON text reaches it in
+// (iss-2609251638574543) — and the dash-encoded form a harness uses to name a
 // per-project directory.
-var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, `\\users\\`, "-users-", "-home-"}
+var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-home-"}
 
 // standsAsAccountName reports whether line[start:end] stands where an account
 // name stands rather than as a word: the segment after a home root, a tilde
 // user ("~name"), or inside the local part of an address or login
 // ("name@host", "name.surname@example.com"), or closing the caller's own home
 // literal wherever it sits ("…0/root/deck.key" under HOME=/root, which
-// home_path_self's leading anchor declines) in any of its spellings (homes,
+// home_path_self's leading anchor declines) at any escaping depth (homes,
 // identityMatchers.homeLiterals). These are the positions a real
 // home path or login leaks from, so a generic account name is still reported
 // there, at its hard_fail floor.
 //
 // Every test reads a bounded window beside the match — the home literal's
-// length behind its end, each prefix's length behind its start, at most
-// maxLocalPart bytes ahead — and folds only that window. Lower-casing the
+// length behind its end and each prefix's length behind its start, a
+// separator in either widened to at most maxSeparatorRun bytes of its run, and
+// at most maxLocalPart bytes ahead — and folds only that window. Lower-casing the
 // whole line prefix for every match made a line dense in a generic login cost
 // the square of its length (iss-2609251535090117).
 func standsAsAccountName(line string, start, end int, homes []string, toks *pathTokens) bool {
 	for _, home := range homes {
-		if endsWithFold(line[:end], home) && !deeperAbsoluteSegment(line, end-len(home), home, toks) {
+		if endsWithPathFold(line[:end], home) && !deeperAbsoluteSegment(line, end-len(home), home, toks) {
 			return true
 		}
 	}
 	for _, p := range accountRootPrefixes {
-		if endsWithFold(line[:start], p) {
+		if endsWithPathFold(line[:start], p) {
 			return true
 		}
 	}
@@ -957,6 +957,73 @@ func deeperAbsoluteSegment(line string, at int, home string, toks *pathTokens) b
 		return false
 	}
 	return line[toks.startOf(at)] == '/'
+}
+
+// maxSeparatorRun bounds the run of backslashes endsWithPathFold reads as one
+// separator: 64 is a Windows separator escaped six times over.
+const maxSeparatorRun = 64
+
+// endsWithPathFold reports whether s ends with suffix under Unicode case
+// folding, where each backslash in suffix stands for a run of backslashes in
+// s: the separator as written, or escaped any number of times over. A JSON
+// encoder doubles a backslash, and a tool result that is itself JSON text is
+// encoded again by the transcript line that quotes it, so one Windows path
+// reaches the redactor at any depth (iss-2609251638574543). suffix carries
+// single backslashes (collapseSeparatorRuns).
+//
+// It reads only the window it compares: each segment of suffix, and at most
+// maxSeparatorRun bytes of each separator run behind one. A run that goes on
+// past that bound stops the read and reports true, so the bound costs an
+// over-report on a shape no encoder writes, never a finding. The leading
+// separator needs one backslash, not its whole run.
+func endsWithPathFold(s, suffix string) bool {
+	i, read := len(s), 0
+	ok := func(v bool) bool {
+		scanMeter.charge(stageIdentity, read)
+		return v
+	}
+	for j := len(suffix); ; {
+		k := strings.LastIndexByte(suffix[:j], '\\')
+		seg := suffix[k+1 : j]
+		read += len(seg)
+		if len(seg) > i || !strings.EqualFold(s[i-len(seg):i], seg) {
+			return ok(false)
+		}
+		i -= len(seg)
+		if k < 0 {
+			return ok(true)
+		}
+		read++
+		if k == 0 {
+			return ok(i > 0 && s[i-1] == '\\')
+		}
+		n := 0
+		for n < maxSeparatorRun && n < i && s[i-n-1] == '\\' {
+			n++
+		}
+		read += n
+		switch {
+		case n == 0:
+			return ok(false)
+		case n == maxSeparatorRun && n < i && s[i-n-1] == '\\':
+			return ok(true) // the run outlasts the window: keep the finding
+		}
+		i -= n
+		j = k
+	}
+}
+
+// collapseSeparatorRuns rewrites every run of backslashes in p as one, the
+// spelling endsWithPathFold takes its suffix in.
+func collapseSeparatorRuns(p string) string {
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		if p[i] == '\\' && i > 0 && p[i-1] == '\\' {
+			continue
+		}
+		b.WriteByte(p[i])
+	}
+	return b.String()
 }
 
 // maxLocalPart is the longest local part an address can carry (RFC 5321

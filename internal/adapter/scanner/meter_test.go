@@ -33,7 +33,8 @@ var (
 		HomePath:          "/Users/zq8home", // abcd-audit:allow
 		HomeUser:          "zq8home",
 	}
-	meterRootID = Identity{HomePath: "/root", HomeUser: "root"}
+	meterRootID    = Identity{HomePath: "/root", HomeUser: "root"}
+	meterWindowsID = Identity{HomePath: `C:\Users\dev`, HomeUser: "dev"} // abcd-audit:allow
 )
 
 // meterFixtures are the shapes every stage of a line's scan is held linear on.
@@ -64,8 +65,10 @@ var meterFixtures = []meterFixture{
 	{"generic_login_in_urls", meterGenericID, rep("https://h.example/x dev ")},
 	{"generic_login_tilde_users", meterGenericID, rep("~dev ")},
 	{"generic_login_addresses", meterGenericID, rep("dev@h.example ")},
-	{"generic_login_home_segments", meterGenericID, rep("/home/dev/x ")}, // abcd-audit:allow
-	{"nested_other_homes", Identity{}, rep("/home/a")},                   // abcd-audit:allow
+	{"generic_login_home_segments", meterGenericID, rep("/home/dev/x ")},                     // abcd-audit:allow
+	{"generic_login_escaped_windows_roots", meterWindowsID, rep(`C:\\\\Users\\\\dev\\\\x `)}, // abcd-audit:allow
+	{"generic_login_after_separator_runs", meterWindowsID, rep(strings.Repeat(`\`, 2*maxSeparatorRun) + "dev ")},
+	{"nested_other_homes", Identity{}, rep("/home/a")}, // abcd-audit:allow
 	{"named_login_words", meterNamedID, rep("zq8home ")},
 	{"named_login_dotted_run", meterNamedID, rep("zq8home.")},
 	{"named_login_in_urls", meterNamedID, rep("https://h.example/x zq8home ")},
@@ -180,6 +183,14 @@ func TestBoundedContextHelpersKeepTheFinding(t *testing.T) {
 	footer := "Generated with [" + strings.Repeat("x", maxFooterLinkText+1) + "](https://example.com)"
 	if f := ScanText(footer, Identity{}, DefaultPatterns(), DefaultIdentitySeverities(), "f"); !hasKind(f, kindHarnessFooter) {
 		t.Errorf("a footer with an over-long link text was spared: %+v", f)
+	}
+	// A generic login behind a backslash run longer than the escaping window
+	// reads is reported without the home root the window would have found.
+	for _, id := range []Identity{{HomeUser: "dev"}, meterWindowsID} {
+		long := `C:\Users` + strings.Repeat(`\`, maxSeparatorRun+1) + "dev"
+		if f := ScanText(long, id, DefaultPatterns(), DefaultIdentitySeverities(), "f"); !hasKind(f, kindLocalUser) {
+			t.Errorf("a generic login behind an over-long separator run was spared (home %q): %+v", id.HomePath, f)
+		}
 	}
 	// Within the bound the exemption still holds.
 	short := "Generated with [x](https://example.com)"

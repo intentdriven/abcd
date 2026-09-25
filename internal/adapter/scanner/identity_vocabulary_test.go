@@ -180,6 +180,41 @@ func TestLocalUsernameGenericAccountNameCaughtUnderAJSONEscapedWindowsRoot(t *te
 	}
 }
 
+// A tool result that is itself JSON text (go env -json, any --json output)
+// already carries C:\\Users\\<login>, and the transcript line serialises that
+// string again, so the separators arrive quadrupled; a third encoding doubles
+// them once more. Every depth is the same account position, for the root
+// prefix and for the caller's own home literal alike (iss-2609251638574543).
+func TestLocalUsernameGenericAccountNameCaughtUnderAMultiplyEscapedWindowsRoot(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+	winHome := Identity{HomePath: `C:\Users\dev`, HomeUser: "dev"} // abcd-audit:allow
+	for _, tc := range []struct {
+		id   Identity
+		line string
+	}{
+		{winHome, `C:\\\\Users\\\\dev\\\\Desktop`},                                    // abcd-audit:allow
+		{Identity{HomeUser: "dev"}, `x "C:\\\\Users\\\\dev\\\\go\\\\pkg\\\\mod"`},     // abcd-audit:allow
+		{Identity{HomeUser: "dev"}, `C:\\\\\\\\Users\\\\\\\\dev\\\\\\\\AppData`},      // abcd-audit:allow
+		{Identity{HomeUser: "dev"}, `c:\\\\users\\dev`},                               // abcd-audit:allow
+		{Identity{HomePath: `D:\build\dev`, HomeUser: "dev"}, `"D:\\\\build\\\\dev"`}, // abcd-audit:allow
+	} {
+		got := ScanText(tc.line, tc.id, pats, sev, "f")
+		if !hasKind(got, kindLocalUser) {
+			t.Errorf("the account name in %q was not flagged: %+v", tc.line, got)
+			continue
+		}
+		if red, _ := Redact(tc.line, got); strings.Contains(strings.ToLower(red), `\dev`) {
+			t.Errorf("the account name survived redaction: %q -> %q", tc.line, red)
+		}
+	}
+	// An escaped separator before an ordinary word is still vocabulary at any
+	// depth.
+	if got := ScanText(`"msg": "see docs\\\\dev notes"`, Identity{HomeUser: "dev"}, pats, sev, "f"); hasKind(got, kindLocalUser) {
+		t.Errorf("a word after a quadrupled separator was flagged as the account name: %+v", got)
+	}
+}
+
 // The positions a shell session or a config dump puts a login in are account
 // positions too (iss-2609251547568307): a home root with no leading slash, a
 // key/value pair naming the user, and the argument of a command that takes an
