@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,5 +126,75 @@ func TestDrainRetiresTheLockWithTheStagedFile(t *testing.T) {
 	}
 	for _, e := range entries {
 		t.Errorf("lock %s outlived the staged file it guarded", e.Name())
+	}
+}
+
+// TestStageWaitsOutARetiredLock holds, at the staging layer, the guarantee the
+// per-key lock files lean on. A mutator that retires a staged file unlinks its
+// lock while holding it (retireStagingLock), so a Stage queued on that lock
+// file before the unlink is granted the flock on an orphaned inode once the
+// retirer releases. It must notice and wait for whoever holds the fresh lock
+// file at the same path, not run its critical section beside them. Only
+// fsutil's inode revalidation makes that true; without it this Stage returns
+// while the newcomer is still inside.
+func TestStageWaitsOutARetiredLock(t *testing.T) {
+	repoRoot, home := setupStore(t)
+	const agent = "agent-retire"
+	meta := subAgentStage("sess-rt", agent)
+	if _, err := Stage(repoRoot, testRootSHA, meta, []byte("first\n")); err != nil {
+		t.Fatal(err)
+	}
+	sdir := stagingDir(home)
+
+	holderIn := make(chan struct{})
+	retired := make(chan struct{})
+	newcomerIn := make(chan struct{})
+	var newcomerInside atomic.Bool
+	overlapped := make(chan bool, 1)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() { // A: a drain-shaped holder that retires the lock it holds
+		defer wg.Done()
+		if err := withStagingLock(sdir, agent, func() error {
+			close(holderIn)
+			time.Sleep(80 * time.Millisecond) // B opens the lock file and polls
+			retireStagingLock(sdir, agent)
+			close(retired)
+			<-newcomerIn
+			return nil
+		}); err != nil {
+			t.Error(err)
+		}
+	}()
+	<-holderIn
+
+	wg.Add(1)
+	go func() { // B: a re-fired Stage queued on the lock file before it was retired
+		defer wg.Done()
+		_, err := Stage(repoRoot, testRootSHA, meta, []byte("second\n"))
+		overlapped <- newcomerInside.Load()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	<-retired
+	wg.Add(1)
+	go func() { // C: takes the fresh lock file at the same path and holds it
+		defer wg.Done()
+		if err := withStagingLock(sdir, agent, func() error {
+			newcomerInside.Store(true)
+			close(newcomerIn)
+			time.Sleep(300 * time.Millisecond)
+			newcomerInside.Store(false)
+			return nil
+		}); err != nil {
+			t.Error(err)
+		}
+	}()
+	wg.Wait()
+	if <-overlapped {
+		t.Fatal("a Stage queued on a retired lock file ran while a newcomer held the fresh one: two holders of one staging lock")
 	}
 }
