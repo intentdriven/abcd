@@ -222,6 +222,12 @@ var sentinelClasses = []sentinelClass{
 		Name: "EXHAUST",
 		Homes: []string{
 			"repo:.abcd/development/readings/rdg-2608300900000001/manifest.json",
+			// The scribe's manifest, promoted beside the run it transcribed for
+			// (spc-2609020626045177). It names ledger paths by construction, so
+			// it is planted as a regression guard: a row or segment change that
+			// let the readings family travel would carry the ledger with it
+			// (itd-2609020625402599 ac-8).
+			"repo:.abcd/development/readings/rdg-2608300900000001/scribe-manifest.json",
 			"repo:.abcd/work/issues/readings/rdi-1-a-prior-reading.md",
 			"repo:.abcd/work/issues/dispositions/dsp-1-a-prior-disposition.md",
 			// The SECOND widening run's items. The comparative exception admits
@@ -232,7 +238,7 @@ var sentinelClasses = []sentinelClass{
 			"repo:.abcd/work/issues/readings/" + dispositionedWideningRun + "/rdi-201.md",
 			"repo:.abcd/work/issues/readings/" + dispositionedWideningRun + "/rdi-202.md",
 		},
-		Count: 5,
+		Count: 6,
 		Why: "itd-183: manifests, reading records and dispositions are warm on the next " +
 			"run, so the instrument's own output is never its input — with the one " +
 			"positional exception adr-2609021016272867 states, which reaches ONE run",
