@@ -709,6 +709,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// local_username — suppress inside home/generic-home/email/URL spans.
 	if m.localBare != nil {
 		supp := m.localSuppressionSpans(line, urls)
+		acctTokens := pathTokens{line: line}
 		emit := func(loc []int) {
 			if inAnySpan(loc[0], supp) {
 				return
@@ -727,7 +728,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			}
 			// A generic account name is ordinary vocabulary wherever it does
 			// not stand as an account (iss-236, iss-2609061504302157).
-			if m.localGeneric && !urls.inUserinfo(loc[0], loc[1]) && !standsAsAccountName(line, loc[0], loc[1], m.homeLiterals) {
+			if m.localGeneric && !urls.inUserinfo(loc[0], loc[1]) && !standsAsAccountName(line, loc[0], loc[1], m.homeLiterals, &acctTokens) {
 				return
 			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
@@ -808,9 +809,9 @@ var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, `\\users\\`, 
 // maxLocalPart bytes ahead — and folds only that window. Lower-casing the
 // whole line prefix for every match made a line dense in a generic login cost
 // the square of its length (iss-2609251535090117).
-func standsAsAccountName(line string, start, end int, homes []string) bool {
+func standsAsAccountName(line string, start, end int, homes []string, toks *pathTokens) bool {
 	for _, home := range homes {
-		if endsWithFold(line[:end], home) {
+		if endsWithFold(line[:end], home) && !deeperAbsoluteSegment(line, end-len(home), home, toks) {
 			return true
 		}
 	}
@@ -937,6 +938,22 @@ func skipBlanksBack(line string, i int) int {
 		j--
 	}
 	return j
+}
+
+// deeperAbsoluteSegment reports whether the single-segment home literal at
+// line[at:] is only a deeper segment of an ABSOLUTE path — "/sys/fs/cgroup/root"
+// or macOS root's own "/var/root" under HOME=/root — which is a directory that
+// shares the home's name, not the caller's home (iss-2609251551533470). A home
+// of two or more segments carries the caller's name inside it and is the
+// caller's home wherever it sits, and a literal whose path token does not
+// begin with '/' ("…0/root/deck.key" in a blob, "build/root") is kept: that is
+// the shape the home-literal clause exists to catch.
+func deeperAbsoluteSegment(line string, at int, home string, toks *pathTokens) bool {
+	single := len(home) > 1 && home[0] == '/' && strings.IndexAny(home[1:], `/\`) < 0
+	if !single || at == 0 || !isPathSegmentByte(line[at-1]) {
+		return false
+	}
+	return line[toks.startOf(at)] == '/'
 }
 
 // maxLocalPart is the longest local part an address can carry (RFC 5321

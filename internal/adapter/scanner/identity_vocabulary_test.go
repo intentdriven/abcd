@@ -224,3 +224,30 @@ func TestLocalUsernameGenericAccountNameCaughtInShellAndConfigPositions(t *testi
 		}
 	}
 }
+
+// Under a single-segment home such as /root, a deeper segment of an absolute
+// path that happens to share the home's name is a directory named root, not
+// the caller's home (iss-2609251551533470); the blob-shaped literal the clause
+// exists for is still caught.
+func TestLocalUsernameRootHomeSpareADeeperAbsoluteSegment(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+	id := Identity{HomePath: "/root", HomeUser: "root"}
+	for _, line := range []string{
+		"mounted at /sys/fs/cgroup/root",
+		"layer /var/lib/docker/overlay2/4f2a/root/etc",
+		"the superuser's home on macOS is /var/root",
+	} {
+		if got := ScanText(line, id, pats, sev, "f"); hasKind(got, kindLocalUser) {
+			t.Errorf("a directory named root in %q was flagged as the account name: %+v", line, got)
+		}
+	}
+	for _, line := range []string{
+		"tEXtCreator0/root/deck.key",
+		"see build/root/deck.key",
+	} {
+		if got := ScanText(line, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+			t.Errorf("the home literal in %q was not flagged: %+v", line, got)
+		}
+	}
+}
