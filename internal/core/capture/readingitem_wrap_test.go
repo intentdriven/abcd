@@ -65,3 +65,36 @@ func TestCaptureSentinelsWrapLocator(t *testing.T) {
 		t.Errorf("readingItemPaths through a symlinked run: err = %v, want ErrPathUnsafe", err)
 	}
 }
+
+// TestSymlinkGuardIsTheLeafs holds capture's directory guard to the leaf's one
+// primitive: capture's refusal of a symlinked directory is its own
+// ErrPathUnsafe, message unchanged, and also the leaf's, and it agrees with
+// the leaf on every shape.
+func TestSymlinkGuardIsTheLeafs(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "file")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	for _, dir := range []string{real, filepath.Join(root, "absent"), file, link} {
+		ours, leaf := refuseSymlinkedDir(dir), readingitem.RefuseSymlinkedDir(dir)
+		if (ours == nil) != (leaf == nil) {
+			t.Errorf("%s: capture %v, leaf %v", dir, ours, leaf)
+		}
+	}
+	err := refuseSymlinkedDir(link)
+	if !errors.Is(err, ErrPathUnsafe) || !errors.Is(err, readingitem.ErrPathUnsafe) {
+		t.Errorf("a symlinked directory: err = %v, want both ErrPathUnsafe sentinels", err)
+	}
+	if err != nil && err.Error() != "path unsafe: not a real directory: "+link {
+		t.Errorf("the message moved: %q", err.Error())
+	}
+}

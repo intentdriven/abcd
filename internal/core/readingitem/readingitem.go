@@ -59,7 +59,7 @@ func Paths(issuesRoot, item string) ([]string, error) {
 		return nil, fmt.Errorf("invalid %s-N identifier: %q", issueschema.ReadingItemFamily, item)
 	}
 	readingsRoot := filepath.Join(issuesRoot, issueschema.ReadingsDir)
-	if err := refuseSymlinkedDir(readingsRoot); err != nil {
+	if err := RefuseSymlinkedDir(readingsRoot); err != nil {
 		return nil, err
 	}
 	runs, err := os.ReadDir(readingsRoot)
@@ -77,7 +77,7 @@ func Paths(issuesRoot, item string) ([]string, error) {
 		// Every run directory is checked, not only the ones a walk would descend
 		// into: a symlink IS a directory to ReadDir.
 		runDir := filepath.Join(readingsRoot, run.Name())
-		if err := refuseSymlinkedDir(runDir); err != nil {
+		if err := RefuseSymlinkedDir(runDir); err != nil {
 			return nil, err
 		}
 		if !run.IsDir() {
@@ -115,7 +115,7 @@ func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
 		return "", "", fmt.Errorf("invalid %s-N identifier: %q", issueschema.DispositionFamily, id)
 	}
 	root := filepath.Join(issuesRoot, issueschema.DispositionsDir)
-	if err := refuseSymlinkedDir(root); err != nil {
+	if err := RefuseSymlinkedDir(root); err != nil {
 		return "", "", err
 	}
 	items, err := os.ReadDir(root)
@@ -128,7 +128,7 @@ func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
 			continue
 		}
 		dir := filepath.Join(root, e.Name())
-		if err := refuseSymlinkedDir(dir); err != nil {
+		if err := RefuseSymlinkedDir(dir); err != nil {
 			return "", "", err
 		}
 		cand := filepath.Join(dir, id+".md")
@@ -204,9 +204,11 @@ func resolveShippedIntent(repoRoot, id string) (string, error) {
 	return filepath.Join(repoRoot, filepath.FromSlash(rel)), nil
 }
 
-// refuseSymlinkedDir refuses a path that exists and is not a real directory. An
-// absent path is not a fault: an unpopulated tree is a state.
-func refuseSymlinkedDir(dir string) error {
+// RefuseSymlinkedDir refuses a path that exists and is not a real directory,
+// under ErrPathUnsafe. An absent path is not a fault: an unpopulated tree is a
+// state. It is the one guard every reading-ledger walk meets, this leaf's and
+// capture's alike, so no two walks can disagree about what the ledger contains.
+func RefuseSymlinkedDir(dir string) error {
 	fi, err := os.Lstat(dir)
 	if os.IsNotExist(err) {
 		return nil

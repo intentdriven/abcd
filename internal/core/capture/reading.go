@@ -774,19 +774,10 @@ func wrapLocatorErr(err error) error {
 // read here is not read-only in consequence — promote stamps back into whatever
 // findReadingItem returns, so a symlinked readings root or run directory sent
 // that write outside the ledger. An absent path is not a fault: an unpopulated
-// tree is a state.
+// tree is a state. The judgement is the leaf's one primitive,
+// readingitem.RefuseSymlinkedDir, carried under capture's ErrPathUnsafe.
 func refuseSymlinkedDir(dir string) error {
-	fi, err := os.Lstat(dir)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("%w: lstat failed for %s: %v", ErrPathUnsafe, dir, err)
-	}
-	if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
-		return fmt.Errorf("%w: not a real directory: %s", ErrPathUnsafe, dir)
-	}
-	return nil
+	return wrapLocatorErr(readingitem.RefuseSymlinkedDir(dir))
 }
 
 // standingDispositions lists the dispositions of one item that no sibling
