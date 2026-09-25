@@ -202,3 +202,87 @@ func TestCommitMsgHookFailsClosedWithoutAnAbcdSource(t *testing.T) {
 		t.Errorf("the refusal does not name what is missing\n%s", out)
 	}
 }
+
+// withEnv is the case with extra environment for every later git call, which git
+// hands on to the hook it runs.
+func (c *commitMsgHookCase) withEnv(extra ...string) *commitMsgHookCase {
+	return &commitMsgHookCase{t: c.t, root: c.root, dir: c.dir, hooks: c.hooks,
+		env: append(append([]string{}, c.env...), extra...)}
+}
+
+// assertRefusedBeforeACommit is the fail-closed contract: the commit was refused,
+// and no commit exists.
+func (c *commitMsgHookCase) assertRefusedBeforeACommit(refused bool, out string) {
+	c.t.Helper()
+	if !refused {
+		c.t.Fatalf("a commit message carrying a live session URL was committed\n%s", out)
+	}
+	if _, err := c.tryGit("rev-parse", "--verify", "HEAD"); err == nil {
+		c.t.Fatalf("a commit exists after the refusal\n%s", out)
+	}
+	if !strings.Contains(out, "breaks the outbound policy") {
+		c.t.Errorf("the commit was refused, but not because the message was judged\n%s", out)
+	}
+}
+
+// The hook is a fresh bash that git starts with the committer's environment, so it
+// inherits whatever the session exports: a function shadowing a tool the hook runs,
+// or a directory prepended to PATH with a tool of the same name. Either one made the
+// hook's "nothing to judge" test answer yes and pass a message it never judged — the
+// fail-open the pre-commit guard was hardened against (iss-2609250850380420), in the
+// hook that judges the other half of the same commit.
+func TestCommitMsgHookResistsInheritedShellState(t *testing.T) {
+	msg := "fix: the walk\n\nSession: " + sessionURL() + "\n\nAssisted-by: Claude:claude-opus-5\n"
+
+	// Exported functions arrive in the environment. Both spellings are set, so the
+	// case holds whichever bash `env bash` resolves to.
+	t.Run("exported functions", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		var fns []string
+		for _, fn := range []string{"grep() { return 1; }", "awk() { return 0; }", "go() { return 0; }"} {
+			name := fn[:strings.Index(fn, "(")]
+			body := fn[strings.Index(fn, "("):]
+			fns = append(fns, "BASH_FUNC_"+name+"%%="+body, "BASH_FUNC_"+name+"()="+body)
+		}
+		c.withEnv(fns...).assertRefusedBeforeACommit(c.withEnv(fns...).commitWith("a.txt", msg))
+	})
+
+	// BASH_ENV is read by every non-interactive bash at startup, so it can shadow
+	// the names the refusal paths depend on as well as the tools.
+	t.Run("functions through BASH_ENV", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		p := filepath.Join(t.TempDir(), "hostile.sh")
+		body := "grep() { return 1; }\nawk() { return 0; }\ndeclare() { return 0; }\nexit() { return 0; }\n"
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h := c.withEnv("BASH_ENV=" + p)
+		h.assertRefusedBeforeACommit(h.commitWith("a.txt", msg))
+	})
+
+	// A directory prepended to PATH whose awk prints nothing and whose grep finds
+	// nothing: the message the hook judged was empty, so it passed.
+	t.Run("tools shimmed on PATH", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		shims := t.TempDir()
+		for name, script := range map[string]string{
+			"awk":  "#!/bin/sh\nexit 0\n",
+			"grep": "#!/bin/sh\nexit 1\n",
+		} {
+			if err := os.WriteFile(filepath.Join(shims, name), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		path := ""
+		for _, kv := range c.env {
+			if strings.HasPrefix(kv, "PATH=") {
+				path = strings.TrimPrefix(kv, "PATH=")
+			}
+		}
+		if path == "" {
+			path = os.Getenv("PATH")
+		}
+		h := c.withEnv("PATH=" + shims + string(os.PathListSeparator) + path)
+		h.assertRefusedBeforeACommit(h.commitWith("a.txt", msg))
+	})
+}

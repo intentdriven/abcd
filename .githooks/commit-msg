@@ -33,7 +33,83 @@
 # `git am` and a message edited on the forge bypass it by construction; the CI
 # gate over the pull request's range is the backstop for all of them.
 set -euo pipefail
+# --- environment pin: the FIRST statements, before anything is read or run -------
+# The same pin as .githooks/pre-commit, for the same reason: git starts this hook as
+# a fresh bash with the committer's environment, and a hook that judges a commit
+# must not let that environment answer for it. An exported function
+# (`BASH_FUNC_grep%%=() { return 1; }`), a BASH_ENV file or a PATH-prepended tool
+# once turned the "nothing to judge" test into yes, and the hook passed a message
+# carrying a session URL without judging a byte of it.
 case $- in *x*) set +x ;; esac
+# Drop any inherited function shadowing a name this hook runs. A function wins over
+# PATH lookup, so pinning PATH alone does nothing against one. `exit`, `test` and
+# `[` are here because a surviving `exit` function turns every refusal into a
+# printed BLOCK that does not block; `go` because it is the one tool resolved
+# outside the pinned PATH. The list is expansion-free and runs before `declare` is
+# consulted, so it holds even when the sweep below is neutered.
+unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ go cd pwd trap 2>/dev/null || true
+# A field separator the caller cannot choose, pinned before the sweep splits on it.
+IFS=$' \t\n'
+# Then sweep every function that survives: best-effort on top of the fixed list (a
+# shadowed `declare` silences it, which is why the refusal paths' names are on the
+# list above). A shadowed `unset` or `builtin` has no in-script remedy.
+set -f
+for _fn in $(declare -F); do
+  case "$_fn" in declare|-f|-fx) continue ;; esac
+  unset -f "$_fn" 2>/dev/null || true
+done
+set +f
+unset _fn 2>/dev/null || true
+LC_ALL=C
+export LC_ALL
+# The Go toolchain lives wherever its installer put it (~/.local/bin, ~/go/bin,
+# /usr/local/go/bin), so it is resolved on the INHERITED PATH, to an absolute path,
+# before the pin below. That is a deliberate boundary, not an oversight: any real
+# `go` builds this checkout's own source and judges the message the same way, so an
+# accidental substitute cannot pass what the policy refuses; a fake `go` that forges
+# a pass is a deliberate act, the class of `--no-verify`, which CI's check over the
+# pull request is the backstop for.
+go_bin=$(command -v go 2>/dev/null || true)
+case "$go_bin" in /*) ;; *) go_bin="" ;; esac
+# PATH is pinned to the standard system directories for every other tool, with the
+# same repo-local extension the pre-commit guard reads:
+#     git config --local abcd.guardPath /nix/var/nix/profiles/default/bin
+# This NARROWS the class of a substituted tool; it does not close it (two pinned
+# directories are user-writable on a typical developer machine, and
+# `#!/usr/bin/env bash` resolves the interpreter through the inherited PATH).
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+guard_path=$(git config --local --get abcd.guardPath 2>/dev/null || true)
+if [ -n "$guard_path" ]; then
+  case ":$guard_path:" in
+    *::*)
+      echo "commit-msg: BLOCKED — abcd.guardPath contains an empty element, which means the current" >&2
+      echo "            directory to every PATH consumer and would put this repo's working tree on the" >&2
+      echo "            hook's PATH. Set it to directories only: git config --local abcd.guardPath /path/to/bin" >&2
+      exit 1
+      ;;
+  esac
+  PATH="$PATH:$guard_path"
+fi
+export PATH
+for tool in git mktemp rm; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "commit-msg: BLOCKED — $tool is not on the hook's pinned PATH ($PATH)." >&2
+    echo "            the hook pins PATH so a repo-scoped override cannot substitute a fake tool," >&2
+    echo "            and it refuses rather than run unchecked. Install $tool there, or point the" >&2
+    echo "            hook at its directory: git config --local abcd.guardPath /path/to/bin" >&2
+    exit 1
+  fi
+done
+# --- end environment pin --------------------------------------------------------
+
+# Every line of output below goes through this, a builtin loop, so no external tool
+# stands between a refusal and the terminal.
+say() {
+  local prefix="$1" line
+  while IFS= read -r line || [[ -n $line ]]; do
+    printf '%s%s\n' "$prefix" "$line" >&2
+  done <<<"$2"
+}
 
 msg_file="${1:-}"
 if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
@@ -65,7 +141,7 @@ if [ -z "$src" ]; then
   echo "            git config core.hooksPath .githooks" >&2
   exit 1
 fi
-if ! command -v go >/dev/null 2>&1; then
+if [ -z "$go_bin" ]; then
   echo "commit-msg: BLOCKED — go is not on PATH, so the outbound check cannot run." >&2
   echo "            the check refuses a live session URL or a tool attribution footer in the" >&2
   echo "            message, and a check that cannot run must not pass. Install the Go toolchain" >&2
@@ -77,38 +153,48 @@ fi
 # diff, which git discards: judging it would refuse a commit for a fixture it
 # stages rather than for anything in the message. Comment lines are KEPT and judged:
 # whether git strips them depends on the cleanup mode (`-m` keeps a `#` line), and
-# over-judging a comment only ever refuses more.
-artefact="$(mktemp "${TMPDIR:-/tmp}/abcd-commit-msg.XXXXXX")"
-trap 'rm -f "$artefact"' EXIT INT TERM HUP
-awk '/^[^[:alnum:][:space:]]+ -+ >8 -+$/ { exit } { print }' "$msg_file" >"$artefact"
+# over-judging a comment only ever refuses more. The cut is bash builtins end to
+# end, so no external tool decides what is judged.
+scissors_re='^[^[:alnum:][:space:]]+ -+ >8 -+$'
+message=""
+while IFS= read -r line || [[ -n $line ]]; do
+  [[ $line =~ $scissors_re ]] && break
+  message+="$line"$'\n'
+done <"$msg_file"
 
 # An empty message is git's to refuse (or to allow, under --allow-empty-message);
-# there is nothing in it that could leak.
-if ! grep -q '[^[:space:]]' "$artefact"; then
+# there is nothing in it that could leak. The test is a bash builtin: no tool
+# outside this shell can answer "nothing to judge".
+if ! [[ $message =~ [^[:space:]] ]]; then
   exit 0
 fi
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/abcd-commit-msg.XXXXXX")"
+trap 'rm -rf "$work" || true' EXIT INT TERM HUP
+artefact="$work/message"
+printf '%s' "$message" >"$artefact"
 
 # Git exports its private environment (GIT_DIR, GIT_INDEX_FILE et al.) to a hook;
 # the Go build must not see it. -buildvcs=false keeps the build from asking git
 # about this checkout at all while a commit holds its index.
 rc=0
-out="$(cd "$src" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
-  -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_PREFIX \
-  go run -buildvcs=false ./cmd/abcd lint outbound --label "commit message" --root "$src" "$artefact" 2>&1)" || rc=$?
+out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+  "$go_bin" run -buildvcs=false ./cmd/abcd lint outbound --label "commit message" --root "$src" "$artefact" 2>&1)" || rc=$?
 
 case "$rc" in
   0)
-    printf '%s\n' "$out" | sed 's/^/commit-msg: /' >&2
+    say "commit-msg: " "$out"
     ;;
   1)
     echo "commit-msg: BLOCKED — the commit message breaks the outbound policy." >&2
-    printf '%s\n' "$out" | sed 's/^/            /' >&2
+    say "            " "$out"
     echo "            delete the line named above and commit again." >&2
     exit 1
     ;;
   *)
     echo "commit-msg: BLOCKED — the outbound check could not judge the message (exit $rc)." >&2
-    printf '%s\n' "$out" | sed 's/^/            /' >&2
+    say "            " "$out"
     exit 1
     ;;
 esac
