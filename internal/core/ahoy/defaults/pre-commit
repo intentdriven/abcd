@@ -55,6 +55,9 @@
 # is a REFUSAL naming its line number — never a silent skip, and never an echo of
 # the line's content. A store that exists but yields NO entries warns as loudly as
 # an absent one: it checks exactly as much.
+# `set` is dropped before its first use: a shadowed one would leave errexit off for
+# the whole hook. The fixed list below drops it again with the rest.
+unset -f set 2>/dev/null || true
 set -euo pipefail
 # --- environment pin: the FIRST statements, before anything is read or run -------
 # Turn OFF xtrace however it was inherited (a caller's `set -x`, SHELLOPTS, BASH_ENV):
@@ -73,7 +76,12 @@ case $- in *x*) set +x ;; esac
 # shadowed `declare`, and a surviving `exit` function turns every refusal into a
 # printed BLOCK that does not block. This list is expansion-free and runs before
 # `declare` is ever consulted, so it holds even then.
-unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ 2>/dev/null || true
+# `declare`, `continue`, `break`, `return`, `local`, `export`, `set` and `true` are the
+# builtins this hook steers on; a shadowed `continue` or `break` changes which lines
+# a loop reads or never ends it, so they are pinned with the tools (parity with
+# .githooks/commit-msg, where a no-op `continue` once cut the judged message to nothing).
+unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ \
+  declare continue break return local export set true 2>/dev/null || true
 # A field separator the caller cannot choose: an inherited IFS changes how every
 # unquoted expansion below splits — including the sweep loop's, so it is pinned
 # before the sweep runs.

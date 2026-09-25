@@ -303,6 +303,34 @@ func TestCommitMsgHookResistsInheritedShellState(t *testing.T) {
 		h.assertRefusedBeforeACommit(h.commitWith("a.txt", msg))
 	})
 
+	// The scissors cut decides which lines are judged, so a builtin that steers it
+	// is as load-bearing as a tool. With `declare` shadowed the sweep leaves every
+	// function standing, and a `continue` that does nothing sent every line into
+	// the search for a diff below a scissors line: a `diff --git ` line anywhere
+	// in the message cut it to nothing, and the hook passed the URL unjudged.
+	cutMsg := "fix: the walk\n\nSession: " + sessionURL() + "\n\ndiff --git a/a.txt b/a.txt\n\nAssisted-by: Claude:claude-opus-5\n"
+	controlFlow := []string{"declare() { return 0; }", "continue() { :; }", "break() { :; }"}
+	t.Run("control-flow builtins through BASH_ENV", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		p := filepath.Join(t.TempDir(), "hostile.sh")
+		if err := os.WriteFile(p, []byte(strings.Join(controlFlow, "\n")+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h := c.withEnv("BASH_ENV=" + p)
+		h.assertRefusedBeforeACommit(h.commitWith("a.txt", cutMsg))
+	})
+	t.Run("control-flow builtins as exported functions", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		var fns []string
+		for _, fn := range controlFlow {
+			name := fn[:strings.Index(fn, "(")]
+			body := fn[strings.Index(fn, "("):]
+			fns = append(fns, "BASH_FUNC_"+name+"%%="+body, "BASH_FUNC_"+name+"()="+body)
+		}
+		h := c.withEnv(fns...)
+		h.assertRefusedBeforeACommit(h.commitWith("a.txt", cutMsg))
+	})
+
 	// A directory prepended to PATH whose awk prints nothing and whose grep finds
 	// nothing: the message the hook judged was empty, so it passed.
 	t.Run("tools shimmed on PATH", func(t *testing.T) {

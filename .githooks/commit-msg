@@ -35,6 +35,9 @@
 # creates a commit. `git commit --no-verify`, `git rebase`, `git cherry-pick`,
 # `git am` and a message edited on the forge bypass it by construction; the CI
 # gate over the pull request's range is the backstop for all of them.
+# `set` is dropped before its first use: a shadowed one would leave errexit off for
+# the whole hook. The fixed list below drops it again with the rest.
+unset -f set 2>/dev/null || true
 set -euo pipefail
 # --- environment pin: the FIRST statements, before anything is read or run -------
 # The same pin as .githooks/pre-commit, for the same reason: git starts this hook as
@@ -45,12 +48,19 @@ set -euo pipefail
 # carrying a session URL without judging a byte of it.
 case $- in *x*) set +x ;; esac
 # Drop any inherited function shadowing a name this hook runs. A function wins over
-# PATH lookup, so pinning PATH alone does nothing against one. `exit`, `test` and
-# `[` are here because a surviving `exit` function turns every refusal into a
-# printed BLOCK that does not block; `go` because it is the one tool resolved
-# outside the pinned PATH. The list is expansion-free and runs before `declare` is
-# consulted, so it holds even when the sweep below is neutered.
-unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ go cd pwd trap 2>/dev/null || true
+# PATH lookup — and over a builtin — so pinning PATH alone does nothing against one.
+# The list names every command this hook runs that is not its own function or a
+# shell keyword: the tools, `go` (the one tool resolved outside the pinned PATH),
+# and the builtins that decide a value, a refusal or which lines are judged.
+# `exit`, `test` and `[` because a surviving `exit` function turns every refusal
+# into a printed BLOCK that does not block; `continue` and `break` because a loop
+# that steers on them judges the lines they choose (a no-op `continue` once sent
+# every line into the scissors search and cut the message to nothing); `declare`
+# because the sweep below reads it. The list is expansion-free and runs before
+# `declare` is consulted, so what it names is dropped even when the sweep is
+# neutered — and the scissors cut below is steered by no builtin at all.
+unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ go cd pwd trap \
+  declare continue break return local export set true 2>/dev/null || true
 # A field separator the caller cannot choose, pinned before the sweep splits on it.
 IFS=$' \t\n'
 # Then sweep every function that survives: best-effort on top of the fixed list (a
@@ -187,18 +197,24 @@ lines=()
 while IFS= read -r line || [[ -n $line ]]; do
   lines+=("$line")
 done <"$msg_file"
-keep=${#lines[@]}
-for ((i = 0; i < ${#lines[@]}; i++)); do
-  is_scissors "${lines[i]}" || continue
-  # git cuts at its first scissors line; cut there only if the diff follows it.
-  for ((j = i + 1; j < ${#lines[@]}; j++)); do
+# git cuts at its first scissors line; cut there only if the diff follows it. The
+# loops steer on arithmetic and `if` alone, never on `continue` or `break`, so
+# what is judged does not rest on a builtin an inherited function could shadow.
+n=${#lines[@]}
+keep=$n
+first=-1
+for ((i = 0; i < n && first < 0; i++)); do
+  if is_scissors "${lines[i]}"; then
+    first=$i
+  fi
+done
+if ((first >= 0)); then
+  for ((j = first + 1; j < n && keep == n; j++)); do
     if [[ ${lines[j]} == "diff --git "* ]]; then
-      keep=$i
-      break
+      keep=$first
     fi
   done
-  break
-done
+fi
 message=""
 for ((i = 0; i < keep; i++)); do
   message+="${lines[i]}"$'\n'
