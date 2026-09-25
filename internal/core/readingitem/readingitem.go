@@ -84,7 +84,13 @@ func Paths(issuesRoot, item string) ([]string, error) {
 			continue
 		}
 		cand := filepath.Join(runDir, item+".md")
-		if fi, err := os.Lstat(cand); err == nil && fi.Mode().IsRegular() {
+		if fi, err := os.Lstat(cand); err == nil {
+			if !fi.Mode().IsRegular() {
+				// Present and not a regular file is a path to refuse, worded as
+				// the outstanding board words it, never an id the ledger lacks
+				// (iss-2608300848049813).
+				return nil, fmt.Errorf("%w: not a regular file (a symlink, a directory, or a device): %s", ErrPathUnsafe, cand)
+			}
 			matches = append(matches, cand)
 		}
 	}
@@ -132,7 +138,10 @@ func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
 			return "", "", err
 		}
 		cand := filepath.Join(dir, id+".md")
-		if fi, err := os.Lstat(cand); err == nil && fi.Mode().IsRegular() {
+		if fi, err := os.Lstat(cand); err == nil {
+			if !fi.Mode().IsRegular() {
+				return "", "", fmt.Errorf("%w: not a regular file (a symlink, a directory, or a device): %s", ErrPathUnsafe, cand)
+			}
 			found = append(found, cand)
 		}
 	}
