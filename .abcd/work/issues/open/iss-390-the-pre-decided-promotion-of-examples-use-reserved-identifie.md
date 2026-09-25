@@ -7,8 +7,8 @@ category: "process"
 source: "agent-finding"
 found_during: "bughunt-round-3"
 found_at: ".abcd/development/principles/README.md"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (governance act owed: mint the discipline-kind intent for examples-use-reserved-identifiers per principles README). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Mint and adopt the discipline intent for examples-use-reserved-identifiers?"
 ---
 
 the pre-decided promotion of examples-use-reserved-identifiers to a discipline-kind intent never happened — the iss-154 lint shipped, the principles README contract says a mechanical gate promotes the principle, and no discipline intent exists

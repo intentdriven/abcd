@@ -19,7 +19,7 @@ settled the trust rule this record carries: a tool never creates a directory
 in space the user did not hand it, and agent and session scratch is
 machine-scoped. Its occasion was twenty-one spent worktrees (1.4 GB) cleared
 by hand from the maintainer's project directory on 2026-09-01
-([iss-2609020721142452](../../../work/issues/open/iss-2609020721142452-worktrees-for-parallel-lanes-are-created-one-directory-above.md))
+([iss-2609020721142452](../../../work/issues/resolved/iss-2609020721142452-worktrees-for-parallel-lanes-are-created-one-directory-above.md))
 and twenty-two more created there by a single session on 2026-09-06, beside
 four projects that have nothing to do with abcd, with `git worktree list`
 naming twenty-seven; the maintainer's objection, verbatim, was "I don't want a
