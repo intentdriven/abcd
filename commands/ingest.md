@@ -87,8 +87,8 @@ the verb does not make). If the source is webloc/link-only there is no body
 ## 5. Close out
 
 - Confidential ingest → run `"${CLAUDE_PLUGIN_ROOT}/abcd" source sync-banlist`
-  in every guarded repo the session touches (the guard also refreshes it on
-  the next commit).
+  in every guarded repo the session touches (a guard that refreshes the block
+  does so on the next commit, but only a store that already exists).
 - If the user wants a summary or review kept: write it to the source's own
   folder (`summary.md`, notes as siblings) — derived artifacts inherit the
   source's class by location, never anywhere else.

@@ -371,40 +371,6 @@ refuse_store_copy() {
   fi
 }
 
-# --- the sources corpus: refresh its generated block -----------------------------
-# The user-level sources corpus (`abcd source`) projects every confidential
-# source's title and aliases (and, where an entry opts in, its authors) into a
-# generated block of the private store below. The block is refreshed HERE, before
-# the store is read, so the check is never more than this commit stale.
-#
-# Never a failure, never silent. No corpus is one line and the commit proceeds —
-# CI, a fresh clone, and every machine that never made a corpus take that branch.
-# A corpus with no abcd binary to refresh it, or a refresh that fails, is one line
-# and the check runs against the store as it stands (the block already written
-# keeps banning). The binary's own output is discarded: its refusals name keys
-# only, and `abcd source sync-banlist` run by hand shows them.
-#
-# The binary is looked up on the pinned PATH (plus abcd.guardPath), then at the
-# user-level install location ~/.local/bin, which is user-owned and not
-# repository-scoped. The corpus location is the default one; relocating the
-# user-level home is a separate design.
-sources_corpus="${HOME:-}/.abcd/sources"
-if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
-  echo "pre-commit: no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)" >&2
-else
-  abcd_bin=$(command -v abcd 2>/dev/null || true)
-  if [ -z "$abcd_bin" ] && [ -x "$HOME/.local/bin/abcd" ]; then
-    abcd_bin="$HOME/.local/bin/abcd"
-  fi
-  if [ -z "$abcd_bin" ]; then
-    echo "pre-commit: warning — a sources corpus exists but no abcd binary is on the guard's PATH or in ~/.local/bin;" >&2
-    echo "            the generated banlist block was not refreshed, so the banlist is checked as it stands." >&2
-  elif ! "$abcd_bin" source sync-banlist --refresh >/dev/null 2>&1; then
-    echo "pre-commit: warning — the sources banlist refresh failed (run 'abcd source sync-banlist' to see why);" >&2
-    echo "            the banlist is checked as it stands." >&2
-  fi
-fi
-
 # A path that exists but is not a REGULAR FILE is tampering, not non-adoption: a
 # symlink (which `git add -f` can commit, so a checkout materialises it) swaps or
 # empties the guard, and a directory or FIFO there would take the "absent" branch
@@ -443,6 +409,105 @@ refuse_non_regular_store "$banlist" "$banlist_dir" "$banlist"
 if [ -n "$primary_banlist" ]; then
   refuse_non_regular_store "$primary_banlist" "$primary_dir" "$primary_label"
 fi
+
+# --- the sources corpus: refresh its generated block --------------------------
+# abcd's user-level sources corpus (`abcd source`) projects every confidential
+# source's title and aliases (and, where an entry opts in, its authors) into a
+# generated block of this working tree's private store. This guard can refresh the
+# block before it reads the store, so the check is never more than one commit
+# stale — ON OPT-IN, per clone:
+#
+#     git config --local abcd.sourcesBinary /absolute/path/to/abcd
+#
+# That setting is the ONLY way this hook finds an abcd binary: an absolute path to
+# an executable regular file, read through git's repo-local config — never a PATH
+# search, and never an environment variable, which a repo-scoped direnv could set.
+# How a scaffolded hook should find abcd, and whether it should by default, is a
+# decision this template deliberately does not take; until it is taken, nothing
+# runs unless the clone asks for it.
+#
+# Never a failure, never silent, and never a store this commit did not already
+# have. Each branch below is ONE line and the commit proceeds:
+#   * no corpus — CI, a fresh clone, every machine that never made one;
+#   * no opt-in, or a setting that is not an absolute path to an executable file;
+#   * no private store in this working tree — the refresh updates a store, it never
+#     creates one, because creating it writes every confidential title into this
+#     repository's local tier, which is the person's act (`abcd source
+#     sync-banlist`, by hand), not a side effect of a commit;
+#   * a legacy store — named with its migration on the first commit that meets it
+#     and not again, because a line printed on every commit is a line the
+#     committer learns to skip (the store's own format line below says "legacy" on
+#     every commit regardless);
+#   * a binary that has no `source sync-banlist --refresh`.
+# Otherwise the refresh runs and its own output is RELAYED, never discarded: its
+# one-line count is how a refresh that wrote fewer patterns than the last one
+# becomes visible, and its refusals name keys only.
+sources_corpus="${HOME:-}/.abcd/sources"
+sources_noticed="$banlist_dir/sources-legacy-noticed"
+
+# sources_relay runs one refresh binary and relays what it says, prefixed. A binary
+# that has no `source sync-banlist --refresh` is ONE line naming the remedy, not a
+# failure, and its own error text is not relayed.
+sources_relay() {
+  _bin="$1"
+  _what="$2"
+  _rc=0
+  _out=$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
+    "$_bin" source sync-banlist --refresh 2>&1) || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    _help=$("$_bin" source sync-banlist --help 2>&1 || true)
+    case $_help in
+      *--refresh*) ;;
+      *)
+        echo "pre-commit: $_what has no 'source sync-banlist --refresh', so the sources banlist block was not refreshed; point the setting at an abcd that has it, or unset it (skipped)" >&2
+        return 0
+        ;;
+    esac
+  fi
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    if [ -n "$_line" ]; then
+      printf 'pre-commit: %s\n' "$_line" >&2
+    fi
+  done <<<"$_out"
+  if [ "$_rc" -ne 0 ]; then
+    echo "pre-commit: warning — the sources banlist refresh failed; the banlist is checked as it stands." >&2
+  fi
+}
+
+sources_bin=$(git config --local --get abcd.sourcesBinary 2>/dev/null || true)
+if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
+  echo "pre-commit: no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)" >&2
+elif [ -z "$sources_bin" ]; then
+  echo "pre-commit: a sources corpus exists; this hook refreshes its banlist block only on opt-in: git config --local abcd.sourcesBinary /absolute/path/to/abcd (skipped)" >&2
+else
+  # The configured path is NOT printed: a directory name on it can be the very
+  # private name the store bans.
+  case "$sources_bin" in
+    /*) sources_bin_ok=1 ;;
+    *) sources_bin_ok=0 ;;
+  esac
+  if [ "$sources_bin_ok" -eq 1 ] && { [ ! -f "$sources_bin" ] || [ ! -x "$sources_bin" ]; }; then
+    sources_bin_ok=0
+  fi
+  if [ "$sources_bin_ok" -eq 0 ]; then
+    echo "pre-commit: abcd.sourcesBinary is not an absolute path to an executable file, so the sources banlist block was not refreshed (skipped)" >&2
+  elif [ ! -f "$banlist" ]; then
+    echo "pre-commit: this working tree has no private store at $banlist, and the sources refresh never creates one; run 'abcd source sync-banlist' here to opt in (skipped)" >&2
+  else
+    sources_first=""
+    IFS= read -r sources_first < "$banlist" || true
+    if declares_format "$sources_first"; then
+      sources_relay "$sources_bin" "the abcd that abcd.sourcesBinary names"
+    elif [ ! -e "$sources_noticed" ] && [ ! -L "$sources_noticed" ]; then
+      echo "pre-commit: $banlist predates the keyed format, so the sources banlist block is not refreshed into it; migrate it once with 'abcd banlist migrate' (said once per working tree)" >&2
+      # Created with O_EXCL (noclobber), in a directory the refusals above proved is
+      # not a symlink, so the marker can never truncate a file it points at.
+      (set -C; : >"$sources_noticed") 2>/dev/null || true
+    fi
+  fi
+fi
+# --- end sources refresh ------------------------------------------------------
 
 # Which stores does this checkout actually have? Two at most: this working tree's
 # own, and — in a linked worktree — the primary checkout's, inherited.

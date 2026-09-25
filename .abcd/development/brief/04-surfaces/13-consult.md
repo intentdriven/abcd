@@ -83,7 +83,8 @@ discussed freely there.
 The rule is backed mechanically rather than trusted alone, by the `abcd source`
 verbs. `sync-banlist` maintains a generated block in the repo's untracked
 `.abcd/.work.local/private-names.txt`, which the repo's committed pre-commit guard
-refreshes on every commit and then enforces. `cite-check` scans a document before
+refreshes on every commit, where that store already exists and the guard can run
+the verb (see [`31-source.md`](31-source.md)), and then enforces. `cite-check` scans a document before
 it is shared and exits non-zero when a confidential identifier is present, naming
 only the key, so the report itself is safe to relay. Both read the same
 projection of the corpus through the same matcher as the guard, so a scan and a

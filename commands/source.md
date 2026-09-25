@@ -82,10 +82,13 @@ checkout's root commit unless `--repo` names it.
 Projects every confidential source's title and aliases (authors only under
 `ban_authors`) into this repository's untracked private banlist, as a fenced block
 it owns. Run by hand, it creates the store when there is something to ban. The
-committed pre-commit guard runs `sync-banlist --refresh` on every commit, which
-updates a store that already exists and never creates one, so the first sync in a
+committed pre-commit guard runs `sync-banlist --refresh` on every commit (in a
+managed repository, only once the clone opts in with
+`git config --local abcd.sourcesBinary /absolute/path/to/abcd`), which updates a
+store that already exists and never creates one, so the first sync in a
 repository is always the user's own, and running it by hand also matters after an
-add or a declassification, before the next commit. A refusal naming keys means folders and entries disagree: repair
+add or a declassification, before the next commit. A store in the legacy format is
+not refreshed: the guard and the verb both name `abcd banlist migrate`. A refusal naming keys means folders and entries disagree: repair
 those entries (the block already written keeps banning meanwhile).
 
 ## Scan before sharing

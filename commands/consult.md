@@ -74,12 +74,15 @@ decision, and the line number, so they can decide about citing.
 ## Guard wiring
 
 - The repository's committed pre-commit guard runs
-  `abcd source sync-banlist --refresh` on every commit, which regenerates a
-  fenced block of confidential titles and aliases in the untracked
-  `.abcd/.work.local/private-names.txt`; leakage is then blocked mechanically,
-  not just by this command's rule. After adding or declassifying a source, run
-  `"${CLAUDE_PLUGIN_ROOT}/abcd" source sync-banlist` so the block is current
-  before the next commit.
+  `abcd source sync-banlist --refresh` on every commit (in a managed
+  repository, once the clone opts in with
+  `git config --local abcd.sourcesBinary /absolute/path/to/abcd`), which
+  regenerates a fenced block of confidential titles and aliases in the untracked
+  `.abcd/.work.local/private-names.txt` when that store already exists;
+  leakage is then blocked mechanically, not just by this command's rule. The
+  first sync in a repository, and the one after adding or declassifying a
+  source, is `"${CLAUDE_PLUGIN_ROOT}/abcd" source sync-banlist`, run by hand so
+  the block is current before the next commit.
 - Before any document that drew on confidential material is committed, posted,
   or otherwise shared, run `"${CLAUDE_PLUGIN_ROOT}/abcd" source cite-check <file>`
   (exit 1 = a confidential identifier is present; its report names only the

@@ -114,10 +114,30 @@ the store when there is something to ban; the refresh mode updates a store that
 already exists and declares the keyed format, and never creates one, because a
 store created by a commit's side effect would write every confidential title into
 a repository's local tier without the person asking. The committed pre-commit
-guard, the copy this repository runs and the one `abcd ahoy` scaffolds alike,
-runs the sync in its refresh mode before it reads the store, so the block is
-never more than one commit stale, and then refuses a staged commit carrying a
-banned string by key.
+guard runs the sync in its refresh mode before it reads the store, so the block
+is never more than one commit stale, and then refuses a staged commit carrying a
+banned string by key. The refresh's own line is relayed on the commit, never
+discarded: its count is how a refresh that wrote fewer patterns than the last
+one shows itself.
+
+The two copies of the guard find the binary differently. The copy this
+repository runs builds `./cmd/abcd` from the checkout, as its commit-msg hook
+does, and never runs an installed abcd, which in a source checkout is the last
+release and may lack the verb entirely; a tree that does not build is one
+warning line. The copy `abcd ahoy` scaffolds refreshes only on opt-in, per
+clone: the repo-local git setting `abcd.sourcesBinary` names an absolute path
+to the binary, and nothing else is consulted, neither `PATH` nor an
+environment variable. How a scaffolded hook finds abcd, and whether it does so
+by default, is a ruling owed to the product thinker
+(iss-2609250834251447); opt-in decides none of it, and the ruling can widen
+it. Without the setting, AC3 holds in this repository and in a managed
+repository that opted in, and the scaffolded guard names the setting on one
+line.
+
+A legacy private store is not refreshed. The guard names the banlist verb's
+migration ([`20-banlist.md`](20-banlist.md)) on the first commit that meets it
+and not again, since the store's format line already says "legacy" on every
+commit.
 
 Each phrase is projected into the pattern language the guard enforces: literal,
 case-insensitive, and whitespace-flexible across ASCII and Unicode space
@@ -143,9 +163,10 @@ With no corpus at the configured location every verb but the creating one says
 so on one line and exits 3, a code distinct from a refusal, so a script can tell
 "nothing to check against" from "checked and clean". The guard says so on one line
 and lets the commit proceed; the sync's refresh mode, which the guard runs, does
-the same and exits 0, as it does for a repository with no private store. A corpus the guard cannot refresh (no binary found, or a
-refresh that fails) is named on the commit, and the store is checked as it
-stands.
+the same and exits 0, as it does for a repository with no private store. A
+corpus the guard cannot refresh (no binary built or opted in, a binary without
+the verb, or a refresh that fails) is one line on the commit, and the store is
+checked as it stands.
 
 ## What it cannot enforce
 

@@ -561,3 +561,71 @@ func TestInitRefusesInsideAnotherRepository(t *testing.T) {
 		t.Fatalf("init inside a repo: %v", err)
 	}
 }
+
+// TestTheRepositoryGuardRefreshesWithItsOwnBuild is AC3 through this repository's
+// real guard, end to end (iss-2609252007414882): a clone whose hooks path is this
+// checkout's .githooks builds ./cmd/abcd from the checkout and runs ITS
+// `source sync-banlist --refresh`, so a source added to the corpus after the last
+// by-hand sync is banned on the very next commit, and the build's one-line count
+// is relayed. No installed abcd is involved: the only abcd this test can reach is
+// the one the hook builds.
+func TestTheRepositoryGuardRefreshesWithItsOwnBuild(t *testing.T) {
+	for _, tool := range []string{"bash", "go"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s unavailable", tool)
+		}
+	}
+	// The Go caches are read BEFORE the HOME moves: the hook builds abcd, and a
+	// HOME-relative default cache would build it from cold.
+	goEnv, err := exec.Command("go", "env", "GOCACHE", "GOMODCACHE", "GOPATH").Output()
+	if err != nil {
+		t.Skipf("go env: %v", err)
+	}
+	vals := strings.Split(strings.TrimSpace(string(goEnv)), "\n")
+	if len(vals) != 3 {
+		t.Fatalf("go env returned %d values", len(vals))
+	}
+	top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Skip("not in a checkout: the committed guard cannot be found")
+	}
+	hooks := filepath.Join(strings.TrimSpace(string(top)), ".githooks")
+
+	corpus := newCorpus(t)
+	addConfidential(t, corpus, false)
+	repo := t.TempDir()
+	git(t, repo, "init", "-q")
+	git(t, repo, "config", "user.name", "Alice Example")
+	git(t, repo, "config", "user.email", "alice@example.com")
+	writeFile(t, repo, ".gitignore", ".abcd/.work.local/\n")
+	if _, err := SyncBanlist(corpus, repo, SyncOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	git(t, repo, "config", "core.hooksPath", hooks)
+
+	src := t.TempDir()
+	if _, err := Add(AddRequest{
+		Corpus: corpus, Key: "conf2026b", Title: "Tidewater Staffing Memo", Type: "report", Class: ClassConfidential,
+		Original: writeFile(t, src, "memo.md", "# memo\nbody\n"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	writeFile(t, repo, "leak.md", "per the tidewater staffing memo, we\n")
+	git(t, repo, "add", "leak.md", ".gitignore")
+	cmd := exec.Command("git", "-C", repo, "commit", "-q", "-m", "docs: a note")
+	cmd.Env = append(os.Environ(), "GOCACHE="+vals[0], "GOMODCACHE="+vals[1], "GOPATH="+vals[2], "GOFLAGS=-mod=mod")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("the guard let a source added after the last sync through:\n%s", out)
+	}
+	if !strings.Contains(string(out), "pre-commit: abcd source sync-banlist — 2 confidential sources") {
+		t.Errorf("the refresh's count line was not relayed:\n%s", out)
+	}
+	if !strings.Contains(string(out), "sources/conf2026b/title") {
+		t.Errorf("the refusal does not name the new source's key:\n%s", out)
+	}
+	if strings.Contains(strings.ToLower(string(out)), "tidewater") {
+		t.Errorf("the guard's output leaks the title:\n%s", out)
+	}
+}
