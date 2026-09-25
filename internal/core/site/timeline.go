@@ -412,7 +412,14 @@ func (e *explorer) mark(n ExportNode, p tlPoint, r float64, colour string) strin
 	case "fade":
 		extra = ` opacity="0.45"`
 	}
-	return `<a class="tlmark" href="/` + escapeAttr(routeGraph) + `?focus=` + escapeAttr(n.ID) + `">` +
+	// A mark opens the record in the graph; with the graph switched off it
+	// opens the record's own page instead, so it never points at a page the
+	// site does not have.
+	href := "/" + escapeAttr(routeGraph) + "?focus=" + escapeAttr(n.ID)
+	if !e.pages.graph {
+		href = "/" + escapeAttr(RecordRoute(n))
+	}
+	return `<a class="tlmark" href="` + href + `">` +
 		`<title>` + escapeText(n.ID+" · "+n.Date+" · "+n.Lifecycle) + `&#10;` + escapeText(shortTitle(n)) + `</title>` +
 		`<circle cx="` + f1(p.X) + `" cy="` + f1(p.Y) + `" r="` + f1(r) + `" ` + style +
 		` stroke-width="1.8"` + extra + `/></a>`
