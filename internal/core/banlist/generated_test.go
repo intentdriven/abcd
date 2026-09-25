@@ -258,3 +258,43 @@ func TestSyncGeneratedBlockRefusals(t *testing.T) {
 		})
 	}
 }
+
+// TestRefreshGeneratedBlockUpdatesAnExistingKeyedStoreOnly is the guard's mode
+// (iss-2609252007426016): an absent store stays absent — no tier, no lock file — and
+// a store that does not declare the keyed format is refused, even one with no
+// entries, which the by-hand sync would declare. A keyed store is refreshed exactly
+// as the by-hand sync refreshes it.
+func TestRefreshGeneratedBlockUpdatesAnExistingKeyedStoreOnly(t *testing.T) {
+	needGrep(t)
+	p, _ := PhrasePattern("quiet harbour")
+	in := []KeyedPattern{{Key: "sources/a/title", Pattern: p}}
+
+	root := t.TempDir()
+	if _, err := RefreshGeneratedBlock(root, "sources", in); !errors.Is(err, ErrNoStore) {
+		t.Fatalf("refresh of an absent store: %v, want ErrNoStore", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".abcd")); !os.IsNotExist(err) {
+		t.Fatalf("a refresh of an absent store created the tier (%v)", err)
+	}
+
+	for _, legacy := range []string{"# only a comment\n", "somepattern\n"} {
+		root := t.TempDir()
+		writePrivate(t, root, legacy)
+		if _, err := RefreshGeneratedBlock(root, "sources", in); !errors.Is(err, ErrLegacyStore) {
+			t.Fatalf("refresh of legacy store %q: %v, want ErrLegacyStore", legacy, err)
+		}
+		if readStore(t, root) != legacy {
+			t.Fatal("a refused refresh wrote the store")
+		}
+	}
+
+	root = t.TempDir()
+	writePrivate(t, root, privateFormatDecl+"\nhand-key widgetworks\n")
+	res, err := RefreshGeneratedBlock(root, "sources", in)
+	if err != nil || res.Created || !res.Changed || res.Entries != 1 {
+		t.Fatalf("refresh of a keyed store: %+v %v", res, err)
+	}
+	if body := readStore(t, root); !strings.Contains(body, "sources/a/title ") || !strings.Contains(body, "hand-key widgetworks") {
+		t.Fatalf("store after refresh:\n%s", body)
+	}
+}

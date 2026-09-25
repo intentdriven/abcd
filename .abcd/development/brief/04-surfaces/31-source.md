@@ -109,7 +109,11 @@ The banlist sync projects every confidential source into a fenced block of this
 repository's untracked private banlist, `.abcd/.work.local/private-names.txt` (the
 private layer of [`/abcd:banlist`](20-banlist.md)): the title and each alias
 always, the authors only where the entry sets `ban_authors`. Lines outside the
-fence, hand-written or verb-added, survive every sync. The committed pre-commit
+fence, hand-written or verb-added, survive every sync. The by-hand sync creates
+the store when there is something to ban; the refresh mode updates a store that
+already exists and declares the keyed format, and never creates one, because a
+store created by a commit's side effect would write every confidential title into
+a repository's local tier without the person asking. The committed pre-commit
 guard, the copy this repository runs and the one `abcd ahoy` scaffolds alike,
 runs the sync in its refresh mode before it reads the store, so the block is
 never more than one commit stale, and then refuses a staged commit carrying a
@@ -137,7 +141,7 @@ With no corpus at the configured location every verb but the creating one says
 so on one line and exits 3, a code distinct from a refusal, so a script can tell
 "nothing to check against" from "checked and clean". The guard says so on one line
 and lets the commit proceed; the sync's refresh mode, which the guard runs, does
-the same and exits 0. A corpus the guard cannot refresh (no binary found, or a
+the same and exits 0, as it does for a repository with no private store. A corpus the guard cannot refresh (no binary found, or a
 refresh that fails) is named on the commit, and the store is checked as it
 stands.
 

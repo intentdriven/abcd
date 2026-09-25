@@ -48,12 +48,21 @@ type SyncResult struct {
 	Block banlist.GeneratedResult `json:"block"`
 }
 
+// SyncOptions says how a banlist sync may treat the private store.
+type SyncOptions struct {
+	// Refresh is the pre-commit guard's mode: update a private store that already
+	// exists and declares the keyed format, and never create one
+	// (banlist.RefreshGeneratedBlock). Without it the sync is the person's by-hand
+	// act, which creates the store when there is something to ban.
+	Refresh bool
+}
+
 // SyncBanlist projects the corpus's confidential entries into repoRoot's untracked
 // private banlist (the itd-74 private layer), as the generated block the corpus
 // owns. Hand-written entries outside the block survive; a declassified source's
 // strings leave it on the next sync. A corpus whose classes disagree is refused
 // before anything is written, so the block already there keeps banning.
-func SyncBanlist(corpus, repoRoot string) (SyncResult, error) {
+func SyncBanlist(corpus, repoRoot string, opts SyncOptions) (SyncResult, error) {
 	c, err := Load(corpus)
 	if err != nil {
 		return SyncResult{}, err
@@ -65,7 +74,11 @@ func SyncBanlist(corpus, repoRoot string) (SyncResult, error) {
 	if err != nil {
 		return SyncResult{}, err
 	}
-	block, err := banlist.SyncGeneratedBlock(repoRoot, BlockOwner, pats)
+	sync := banlist.SyncGeneratedBlock
+	if opts.Refresh {
+		sync = banlist.RefreshGeneratedBlock
+	}
+	block, err := sync(repoRoot, BlockOwner, pats)
 	if err != nil {
 		return SyncResult{}, err
 	}

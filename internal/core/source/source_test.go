@@ -376,7 +376,7 @@ func TestSyncBanlistFeedsTheGuard(t *testing.T) {
 	addPublic(t, corpus)
 	repo := guardRepo(t)
 
-	res, err := SyncBanlist(corpus, repo)
+	res, err := SyncBanlist(corpus, repo, SyncOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -454,7 +454,7 @@ func TestDeclassifyDropsTheBanAndOpensTheFlip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SyncBanlist(corpus, repo); err != nil {
+	if _, err := SyncBanlist(corpus, repo, SyncOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	store := filepath.Join(repo, ".abcd", ".work.local", "private-names.txt")
@@ -471,7 +471,7 @@ func TestDeclassifyDropsTheBanAndOpensTheFlip(t *testing.T) {
 	if st := git(t, corpus, "status", "--porcelain"); st != "" {
 		t.Fatalf("declassification not committed:\n%s", st)
 	}
-	if _, err := SyncBanlist(corpus, repo); err != nil {
+	if _, err := SyncBanlist(corpus, repo, SyncOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(store); strings.Contains(string(b), "sources/conf2026a") {
@@ -489,7 +489,7 @@ func TestAMismatchedClassRefusesTheSync(t *testing.T) {
 	corpus := newCorpus(t)
 	addConfidential(t, corpus, false)
 	repo := guardRepo(t)
-	if _, err := SyncBanlist(corpus, repo); err != nil {
+	if _, err := SyncBanlist(corpus, repo, SyncOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	store := filepath.Join(repo, ".abcd", ".work.local", "private-names.txt")
@@ -499,7 +499,7 @@ func TestAMismatchedClassRefusesTheSync(t *testing.T) {
 	}
 	git(t, corpus, "mv", "confidential/conf2026a", "public/conf2026a")
 
-	_, err := SyncBanlist(corpus, repo)
+	_, err := SyncBanlist(corpus, repo, SyncOptions{})
 	if !errors.Is(err, ErrClassMismatch) || !strings.Contains(err.Error(), "conf2026a") {
 		t.Fatalf("sync over a mismatch: %v", err)
 	}
@@ -529,7 +529,7 @@ func TestNoCorpusIsNamedByEveryStep(t *testing.T) {
 			return err
 		},
 		"flip":        func() error { _, err := Flip(dir, "r", 1, fixedNow); return err },
-		"sync":        func() error { _, err := SyncBanlist(dir, repo); return err },
+		"sync":        func() error { _, err := SyncBanlist(dir, repo, SyncOptions{}); return err },
 		"cite-check":  func() error { _, err := CiteCheck(dir, []byte("x")); return err },
 		"declassify":  func() error { _, err := Declassify(dir, "k", ""); return err },
 		"list ledger": func() error { _, err := List(dir, "r"); return err },

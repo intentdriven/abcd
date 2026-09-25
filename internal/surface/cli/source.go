@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -434,7 +435,8 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 			"confidential source's title and aliases, and its authors under ban_authors, as\n" +
 			"whitespace-flexible, case-insensitive phrases. Lines outside the block survive.\n" +
 			"A corpus whose folders and entries disagree is refused and nothing is written.\n\n" +
-			"--refresh is the pre-commit guard's mode: with no corpus it says so on one line and\n" +
+			"--refresh is the pre-commit guard's mode: it updates a private store that already\n" +
+			"exists and never creates one. With no corpus, or no store, it says so on one line and\n" +
 			"exits 0.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -450,10 +452,15 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd source sync-banlist: " + err.Error() + " (nothing written)"}
 			}
-			res, err := source.SyncBanlist(dir, root)
+			res, err := source.SyncBanlist(dir, root, source.SyncOptions{Refresh: refresh})
 			if refresh && errors.Is(err, source.ErrNoCorpus) {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: no sources corpus at %s — generated banlist block not refreshed (skipped)\n",
 					fsutil.RedactHome(dir))
+				return nil
+			}
+			if refresh && errors.Is(err, banlist.ErrNoStore) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: no private store at %s — the refresh never creates one; run `abcd source sync-banlist` to opt this repository in (skipped)\n",
+					banlist.PrivateRelPath)
 				return nil
 			}
 			if err != nil {
@@ -472,7 +479,7 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 			})
 		},
 	}
-	cmd.Flags().BoolVar(&refresh, "refresh", false, "the guard's mode: an absent corpus is a one-line notice and exit 0")
+	cmd.Flags().BoolVar(&refresh, "refresh", false, "the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0")
 	return cmd
 }
 

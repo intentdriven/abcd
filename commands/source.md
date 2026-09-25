@@ -81,9 +81,11 @@ checkout's root commit unless `--repo` names it.
 
 Projects every confidential source's title and aliases (authors only under
 `ban_authors`) into this repository's untracked private banlist, as a fenced block
-it owns. The committed pre-commit guard runs `sync-banlist --refresh` on every
-commit, so running it by hand matters after an add or a declassification, before
-the next commit. A refusal naming keys means folders and entries disagree: repair
+it owns. Run by hand, it creates the store when there is something to ban. The
+committed pre-commit guard runs `sync-banlist --refresh` on every commit, which
+updates a store that already exists and never creates one, so the first sync in a
+repository is always the user's own, and running it by hand also matters after an
+add or a declassification, before the next commit. A refusal naming keys means folders and entries disagree: repair
 those entries (the block already written keeps banning meanwhile).
 
 ## Scan before sharing

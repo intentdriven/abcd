@@ -178,3 +178,53 @@ func runSourceStdin(t *testing.T, stdin *bytes.Buffer, args ...string) (int, str
 	}
 	return code, out.String(), errb.String()
 }
+
+// confidentialCorpus makes the default corpus under the temp HOME and adds one
+// confidential source, so a sync has something to project.
+func confidentialCorpus(t *testing.T) {
+	t.Helper()
+	src := t.TempDir()
+	notes := filepath.Join(src, "notes.md")
+	if err := os.WriteFile(notes, []byte("the body\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	meta := filepath.Join(src, "meta.json")
+	if err := os.WriteFile(meta, []byte(`{"title":"Quiet Harbour Working Notes","aliases":["harbourwatch"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out, errs := runSource(t, "init"); code != 0 {
+		t.Fatalf("init: %d %s%s", code, out, errs)
+	}
+	if code, out, errs := runSource(t, "add", notes, "--key", "conf2026a", "--meta", meta, "--confidential"); code != 0 {
+		t.Fatalf("add confidential: %d %s%s", code, out, errs)
+	}
+}
+
+// TestSourceRefreshNeverCreatesTheStore: the guard's refresh updates a private store
+// that already exists and never creates one (iss-2609252007426016). Creating the
+// store writes every confidential title into the repository's local tier, which is
+// the by-hand sync's act, not a side effect of a commit. The refresh says so on one
+// line, exits 0, and leaves no tier behind.
+func TestSourceRefreshNeverCreatesTheStore(t *testing.T) {
+	home, repo := sourceCheckout(t)
+	confidentialCorpus(t)
+	code, stdout, stderr := runSource(t, "sync-banlist", "--refresh")
+	if code != 0 {
+		t.Fatalf("refresh with no store: exit %d\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd", ".work.local")); !os.IsNotExist(err) {
+		t.Fatalf("the refresh created the local tier or the store (%v)", err)
+	}
+	if strings.Count(stdout+stderr, "\n") != 1 || !strings.Contains(stderr, "abcd source sync-banlist") {
+		t.Fatalf("the refresh does not say, on one line, that it created nothing\n%s%s", stdout, stderr)
+	}
+	noHomePath(t, home, stdout+stderr)
+
+	// The by-hand sync is what creates it, and a refresh then updates it.
+	if code, out, errs := runSource(t, "sync-banlist"); code != 0 {
+		t.Fatalf("by-hand sync: %d %s%s", code, out, errs)
+	}
+	if code, out, errs := runSource(t, "sync-banlist", "--refresh"); code != 0 || !strings.Contains(out, "1 confidential source") {
+		t.Fatalf("refresh of an existing store: %d %s%s", code, out, errs)
+	}
+}

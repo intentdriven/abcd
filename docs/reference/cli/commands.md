@@ -1667,13 +1667,14 @@ confidential source's title and aliases, and its authors under ban_authors, as
 whitespace-flexible, case-insensitive phrases. Lines outside the block survive.
 A corpus whose folders and entries disagree is refused and nothing is written.
 
---refresh is the pre-commit guard's mode: with no corpus it says so on one line and
+--refresh is the pre-commit guard's mode: it updates a private store that already
+exists and never creates one. With no corpus, or no store, it says so on one line and
 exits 0.
 
 **Flags:**
 
 ```
-      --refresh   the guard's mode: an absent corpus is a one-line notice and exit 0
+      --refresh   the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0
 ```
 
 ### `abcd spec`

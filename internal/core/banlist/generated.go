@@ -262,6 +262,25 @@ func ScanText(patterns []KeyedPattern, text []byte) ([]Hit, error) {
 // block empties the block and keeps its fence. A second sync of the same entries
 // writes nothing (Changed is false).
 func SyncGeneratedBlock(repoRoot, owner string, entries []KeyedPattern) (GeneratedResult, error) {
+	return syncGeneratedBlock(repoRoot, owner, entries, true)
+}
+
+// RefreshGeneratedBlock is SyncGeneratedBlock for a caller that must never opt a
+// machine in: the pre-commit guard's refresh. It updates a store that already
+// exists AND declares the keyed format, and nothing else. An absent store is
+// ErrNoStore, with no tier, lock or file created, because creating the store writes
+// every projected string into the repository's local tier, which is an act the
+// person takes by hand (SyncGeneratedBlock), not a side effect of a commit. A store
+// that does not declare the keyed format is ErrLegacyStore even when it holds no
+// entries: the by-hand sync would declare the format there, and a refresh changes
+// the block, never the store's format.
+func RefreshGeneratedBlock(repoRoot, owner string, entries []KeyedPattern) (GeneratedResult, error) {
+	return syncGeneratedBlock(repoRoot, owner, entries, false)
+}
+
+// syncGeneratedBlock is both: mayCreate says whether an absent store may be created
+// and an entryless legacy one declared.
+func syncGeneratedBlock(repoRoot, owner string, entries []KeyedPattern, mayCreate bool) (GeneratedResult, error) {
 	res := GeneratedResult{Path: PrivateRelPath, Owner: owner}
 	if !validKey(owner) || strings.Contains(owner, "/") {
 		return res, fmt.Errorf("%w: block owner %q", ErrInvalidKey, owner)
@@ -287,9 +306,16 @@ func SyncGeneratedBlock(repoRoot, owner string, entries []KeyedPattern) (Generat
 	}
 	res.Entries = len(entries)
 
-	// Nothing to project and no store: nothing to do, and no tier to create.
-	if _, err := readPrivate(repoRoot); errors.Is(err, ErrNoStore) && len(entries) == 0 {
-		return res, nil
+	// Nothing to project and no store: nothing to do, and no tier to create. A
+	// refresh never creates one, so an absent store is its refusal, raised before
+	// the lock below creates the tier.
+	if _, err := readPrivate(repoRoot); errors.Is(err, ErrNoStore) {
+		if !mayCreate {
+			return res, err
+		}
+		if len(entries) == 0 {
+			return res, nil
+		}
 	}
 	if err := requireIgnoredStore(repoRoot); err != nil {
 		return res, err
@@ -300,6 +326,9 @@ func SyncGeneratedBlock(repoRoot, owner string, entries []KeyedPattern) (Generat
 		switch {
 		case err == nil:
 		case errors.Is(err, ErrNoStore):
+			if !mayCreate {
+				return err
+			}
 			if len(entries) == 0 {
 				return nil
 			}
@@ -312,7 +341,7 @@ func SyncGeneratedBlock(repoRoot, owner string, entries []KeyedPattern) (Generat
 		if perr != nil {
 			return perr
 		}
-		if !keyed && len(parsed) > 0 {
+		if !keyed && (len(parsed) > 0 || !mayCreate) {
 			return legacyStoreRefusal("sync a generated block into")
 		}
 		body := string(data)
