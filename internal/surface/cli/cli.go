@@ -2552,6 +2552,12 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 					}
 				case "dead_letter":
 					fmt.Fprintf(w, "  DEAD_LETTER: %s\n  raw payload: %s\n", res.Reason, res.DeadLetterPath)
+					// The quarantine records every scope condition untested; the
+					// JSON reports that split, and so does this render.
+					if res.Conditions > 0 {
+						fmt.Fprintf(w, "  scope conditions %d: untested %d (a quarantined verdict disposes none)\n",
+							res.Conditions, res.Untested)
+					}
 				}
 				// The condition blocks this verdict did not override: its rationale
 				// named none of their occasions (spc-2609020626046252). A re-ingest

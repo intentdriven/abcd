@@ -12,6 +12,19 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-26 (iss-2608300927241768 — the description names the whole output)
+
+The frontmatter description, which a host reads to choose and brief the agent,
+summarised the verdict as the criteria verdict and the gap audit alone, a
+summary written before the scope-condition dispositions joined the output.
+
+### intent-auditor 0.3.2
+
+PATCH: the description names the scope conditions among what the auditor reads
+and their dispositions among what it emits. The body, the rubric, the verdict's
+shape and every ingest rule are untouched, so a verdict that was valid before
+stays valid. Unmeasured, as before.
+
 ## 2026-09-25 (iss-2608270926037088 — the binary's notices have their own field)
 
 A graveyard finding carries the binary's own statements about it — a signal

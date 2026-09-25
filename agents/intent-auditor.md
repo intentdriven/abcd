@@ -2,10 +2,12 @@
 name: intent-auditor
 description: >-
   Role 1 (single-document) intent auditor: promise vs delivered reality. Reads a shipping intent's
-  Acceptance Criteria and the delivered code diff, and emits one VSA-shaped
-  verdict JSON: a per-criterion acceptance verdict plus a honoured/diverged/
-  missing audit, every claim carrying a cited file:line evidence pointer.
-prompt_version: 0.3.1
+  Acceptance Criteria, its scope conditions and the delivered code diff, and
+  emits one VSA-shaped verdict JSON: a per-criterion acceptance verdict, a
+  honoured/diverged/missing audit, and a disposition for each scope condition
+  (survived/narrowed/falsified/untested), every claim carrying a cited file:line
+  evidence pointer.
+prompt_version: 0.3.2
 reads_untrusted_input: true
 capability_scope:
   task_classes: [intent_audit]
