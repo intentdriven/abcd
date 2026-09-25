@@ -336,6 +336,25 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Refuse a tag that is not a vX.Y.Z release tag
+        # TAG is inputs.tag or github.ref_name, and every later step consumes it:
+        # the build stamps it into a quoted -ldflags recipe, where a double quote
+        # in a legal v* ref would close the quoting and splice a command
+        # (iss-2608261041218890). Refuse anything that is not a release tag
+        # before it reaches any of them — the pattern site.yml applies to the
+        # same value. A bash [[ =~ ]] match, deliberately NOT grep: grep is
+        # line-oriented, so a tag carrying an embedded newline would pass on its
+        # first line; [[ =~ ]] matches the whole string. TAG arrives through the
+        # workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+          if [[ ! $TAG =~ $tag_re ]]; then
+            printf "refusing to release '%s': not a vX.Y.Z release tag\n" "$TAG" >&2
+            exit 1
+          fi
+          echo "release tag: $TAG"
+
       - name: Record the default-branch tip (no-branch-commit tripwire)
         # This release job must push NOTHING to any branch. Record the remote
         # default-branch tip now; the closing step re-reads it and fails the run if
