@@ -563,3 +563,19 @@ func writeRepoSettingsMirror(cwd, repo string, merge RemoteMergeHygiene) (bool, 
 	}
 	return true, nil
 }
+
+// GitHubRepo is the owner/name this checkout's origin remote names, under the
+// same github.com-only, plain-name rules the remote apply writes behind. Every
+// verb that writes to the forge resolves its repository here, so there is one
+// answer to "which repository may this write reach".
+func GitHubRepo(cwd string) (string, error) { return resolveGitHubRepo(cwd) }
+
+// GH runs one `gh` subcommand under cwd with the same bounds the remote apply
+// uses: a timeout, a capped read, and the caller's own authenticated identity,
+// so a forge write is made by the person who invoked the verb and abcd never
+// holds a forge token. Callers pass `--hostname github.com` explicitly for the
+// reason githubHost states.
+func GH(cwd string, stdin []byte, args ...string) ([]byte, error) { return runGH(cwd, stdin, args...) }
+
+// GitHubHost is the API host every forge request names explicitly.
+const GitHubHost = githubHost

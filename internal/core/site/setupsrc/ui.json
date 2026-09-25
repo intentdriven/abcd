@@ -1,0 +1,116 @@
+{
+  "_purpose": "The complete list of words the site generator may add. Everything else the site shows is a span of a repository file selected by .abcd/site.json, or a number from record.json.",
+  "nav_story": "Story",
+  "nav_install": "Install",
+  "nav_docs": "Docs",
+  "nav_record": "Record",
+  "nav_references": "References",
+  "cta_roles": "Roles",
+  "cta_install": "Install",
+  "cta_docs": "Documentation",
+  "record_link": "built in the open",
+  "from_the_record": "from the record",
+  "latest_release": "Latest release",
+  "all_releases": "all releases",
+  "copy": "copy",
+  "copied": "copied",
+  "search_docs": "Search the docs",
+  "forge_names": {
+    "github.com": "GitHub"
+  },
+  "platform": {
+    "darwin-arm64": "macOS · Apple silicon",
+    "darwin-amd64": "macOS · Intel",
+    "linux-arm64": "Linux · arm64",
+    "linux-amd64": "Linux · amd64"
+  },
+  "tiles": {
+    "releases": "releases",
+    "adr": "decisions",
+    "intent": "intents",
+    "spec": "specs",
+    "issue": "issues",
+    "principle": "principles",
+    "discipline": "disciplines",
+    "commits": "commits"
+  },
+  "record_nav": {
+    "dashboard": "Dashboard",
+    "graph": "Relationships",
+    "timeline": "Genealogy",
+    "foundations": "Foundation",
+    "glossary": "Glossary",
+    "contributors": "Contributors",
+    "development": "Work",
+    "health": "Health"
+  },
+  "panels": {
+    "latest": "Latest decisions",
+    "health": "Record health",
+    "unresolved": "unresolved",
+    "baseline": "baseline",
+    "isolated": "isolated"
+  },
+  "graph": {
+    "arrange": "Arrange",
+    "by_date": "by date",
+    "by_links": "by links",
+    "filters": "Filters",
+    "find": "Find a record",
+    "mentions": "include body mentions",
+    "browse_list": "Browse as a list",
+    "zoom_in": "Zoom in",
+    "zoom_out": "Zoom out",
+    "reset_view": "Reset view",
+    "full_screen": "Full screen",
+    "exit_full_screen": "Exit full screen",
+    "close": "Close",
+    "back": "Back",
+    "forward": "Forward",
+    "history": "History of records looked at",
+    "linked": "linked records",
+    "no_links": "no typed cross-references"
+  },
+  "record": {
+    "frontmatter": "Frontmatter",
+    "inbound": "Referenced by",
+    "outbound": "References",
+    "mentions": "mentions",
+    "not_in_tree": "not in the tree",
+    "open_on_forge": "open on GitHub",
+    "commit_history": "commit history"
+  },
+  "relations": {
+    "blocked_by": "blocks",
+    "supersedes": "superseded by",
+    "implements": "implemented by",
+    "builds_on": "built on by"
+  },
+  "contributors": {
+    "authors": "Authors of record",
+    "tools": "Bots and tools",
+    "assisted": "of authored commits disclose AI assistance",
+    "trailers": "Assisted-by trailers",
+    "merges_excluded": "merge commits excluded",
+    "declared_none": "declared no assistance",
+    "undeclared": "no declaration"
+  },
+  "more": "more",
+  "standby": "Stand by…",
+  "cli_group": "CLI",
+  "matches_system": "matches this computer",
+  "read_script": "read the script",
+  "unreleased": "unreleased",
+  "beta": "Beta",
+  "health": {
+    "unresolved": "References a record the tree does not hold",
+    "isolated": "Linked to nothing, and nothing links to it",
+    "same_author": "Two author names, one contributor",
+    "undeclared": "Authored commits declaring nothing",
+    "multi_trailer": "Commits declaring more than one model",
+    "not_a_defect": "Not a fault: it is why the trailer count and the commit count differ",
+    "clean": "Nothing to report",
+    "suggestion": "Suggested",
+    "supersedes_lead": "Not a fault: the record on the left replaced the one on the right"
+  }
+}

@@ -1,0 +1,182 @@
+name: site
+
+# Written by `abcd site setup` (itd-2609061543533170). Re-running the verb
+# rewrites nothing while this file is unchanged, and refuses a hand edit unless
+# it is told to replace it.
+#
+# Renders this repository's site from each published release with abcd's own
+# released binary — checksum- and attestation-verified before it runs — and
+# deploys the rendered artefact to <% .Provider %>. The render job holds no
+# credential; the deploy job holds the provider's and runs nothing from the
+# repository but the host configuration file (<% .HostConfig %>).
+#
+# Three entry points, one path:
+#
+#   release: published    a release published by a person or a personal token.
+#   workflow_run          the `release` workflow finishing on <% .DefaultBranch %>. A
+#                         release created with the workflow's own GITHUB_TOKEN
+#                         fires no `release` event, so the release workflow's
+#                         completion is what carries those releases here.
+#   workflow_dispatch     a redeploy by hand; an empty tag means the latest
+#                         published release.
+#
+# THE ENVIRONMENT CONTRACT (the tree's record of the forge's state; `abcd site
+# setup` creates both through the forge's API when it is asked to):
+#
+#   site-render   the render job. No secrets. Deployment policy: branch
+#                 `<% .DefaultBranch %>` and tags `v*`.
+#   site          the deploy job. Same policy. Secrets:<% range .Secrets %> <% . %><% end %>.
+#
+# The policy refuses unreviewed workflow content: a dispatch runs this file as
+# it exists on the ref it was dispatched from, so a branch that is neither the
+# default branch nor a release tag is refused before either job starts.
+on:
+  release:
+    types: [published]
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+    branches: [<% .DefaultBranch %>]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to render and deploy (vX.Y.Z). Empty means the latest published release.
+        required: false
+        type: string
+        default: ''
+
+# One production target, so one queue. A deploy cancelled between uploading
+# assets and switching the route leaves the site half-moved.
+concurrency:
+  group: site-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: site-render
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Resolve the release to render
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          tag="${EVENT_TAG:-${INPUT_TAG:-}}"
+          if [ -z "$tag" ]; then
+            tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          fi
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'; then
+            echo "::error::the release tag is not vX.Y.Z; refusing to render it"
+            exit 1
+          fi
+          state="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft \
+            --jq 'if (.isPrerelease or .isDraft) then "true" else "false" end')"
+          if [ "$state" = true ]; then
+            echo "::error::$tag is a pre-release or a draft; the site renders published releases only"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the released commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download abcd and its checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download --repo <% .AbcdRepo %> \
+            --pattern 'abcd-linux-amd64' --pattern 'checksums.txt' --dir "$RUNNER_TEMP"
+
+      - name: Verify abcd against its release manifest and its provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          grep ' abcd-linux-amd64$' checksums.txt | sha256sum -c -
+          gh attestation verify abcd-linux-amd64 --repo <% .AbcdRepo %> \
+            --signer-workflow <% .AbcdRepo %>/.github/workflows/release.yml
+          install -m 0755 abcd-linux-amd64 "${RUNNER_TEMP}/abcd"
+
+      - name: Render and check the site
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/abcd" site build --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)"
+          "${RUNNER_TEMP}/abcd" lint site --out site
+
+      - name: Pack the rendered site
+        run: tar -czf site.tar.gz -C site .
+
+      - name: Hand the rendered site to the deploy job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: site-${{ steps.release.outputs.tag }}
+          path: site.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: render
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: site
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the released commit for the host configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.render.outputs.tag }}
+          persist-credentials: false
+
+      - name: Collect the rendered site
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: site-${{ needs.render.outputs.tag }}
+          path: ${{ runner.temp }}/site-artifact
+
+      # The archive is audited before a byte of it is unpacked: only relative
+      # paths, no parent traversal, only regular files and directories.
+      - name: Audit and unpack the rendered site
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/site-artifact/site.tar.gz"
+          while IFS= read -r member; do
+            [ -n "$member" ] || continue
+            case "$member" in
+              /*|..|../*|*/../*|*/..) echo "::error::refusing site.tar.gz: unsafe member '$member'"; exit 1 ;;
+            esac
+          done <<< "$(tar -tzf "$archive")"
+          while IFS= read -r t; do
+            case "$t" in
+              -|d|'') ;;
+              *) echo "::error::refusing site.tar.gz: non-regular member (type '$t')"; exit 1 ;;
+            esac
+          done <<< "$(tar -tvzf "$archive" | awk '{print substr($1,1,1)}' | sort -u)"
+          staging="${RUNNER_TEMP}/site-unpacked"
+          rm -rf "$staging" site
+          mkdir -p "$staging" site
+          tar -xzf "$archive" -C "$staging"
+          cp -R "$staging/." site/
+          test -n "$(ls -A site)"
+
+<% .DeployStep -%>
