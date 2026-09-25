@@ -2,7 +2,7 @@
 schema_version: 1
 id: "iss-2609251640462464"
 slug: "a-blocked-command-piped-as-text-into-a-bare-shell-at-the-top"
-severity: "minor"
+severity: "major"
 category: "security"
 source: "review-followup"
 found_during: "autonomous run A resumed 2026-09-25"
