@@ -44,7 +44,7 @@ func WithFileLock(lockPath string, timeout time.Duration, fn func() error) error
 		if err != nil {
 			return err
 		}
-		if err := acquireFlock(fd, time.Until(deadline)); err != nil {
+		if err := acquireFlock(fd, deadline, timeout); err != nil {
 			syscall.Close(fd)
 			return err
 		}
@@ -108,10 +108,11 @@ func openLockFd(lockPath string) (int, error) {
 	return fd, nil
 }
 
-// acquireFlock polls for an exclusive flock until timeout elapses, returning
-// ErrLockContention on timeout.
-func acquireFlock(fd int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// acquireFlock polls for an exclusive flock until deadline, returning
+// ErrLockContention on timeout. The error names timeout, the caller's whole
+// budget: a revalidation retry spends one deadline across more than one
+// acquisition, and the slice left for the last one is not what was asked for.
+func acquireFlock(fd int, deadline time.Time, timeout time.Duration) error {
 	backoff := 5 * time.Millisecond
 	for {
 		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
