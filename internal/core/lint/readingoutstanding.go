@@ -41,7 +41,10 @@ const severityInfo = "info"
 
 var (
 	readingRunDirRe   = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
-	readingItemFileRe = regexp.MustCompile(`^(` + issueschema.ReadingItemFamily + `-[0-9]+)\.md$`)
+	// The item filename grammar is the one record_schema holds the store to,
+	// recordid.BareFilenameNumRe, so the gate and the report cannot disagree about
+	// which files are items (iss-2608300929274006).
+	readingItemFileRe = recordid.BareFilenameNumRe(issueschema.ReadingItemFamily)
 	// The admission filename grammar is the RESOLVER's, the same value
 	// record_schema holds the store to — never a local copy. A stricter one here
 	// would pass a record through the gate and then report the proposal it admits
@@ -268,7 +271,7 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			if e.IsDir() || m == nil {
 				continue
 			}
-			item := m[1]
+			item := strings.TrimSuffix(e.Name(), ".md")
 			rel := filepath.Join(issuesDir, issueschema.ReadingsDir, run.Name(), e.Name())
 			// The item file itself, on the same terms as everything below it. A
 			// symlinked rdi-N.md was admitted as a real item, so the board reported

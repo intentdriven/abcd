@@ -7,7 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-189-round-5-builder"
 found_at: "internal/core/lint/schema.go"
-resolution: "The padding and bucket legs (schema.go) end on the position leg's wording: the record counts for nothing and no line reports an answer was written for the item it names. TestTheJoinLegsClaimNothingAboutTheReportTheyDidNotRead pins both legs; TestTheBucketBlockerClaimsAReportLineOnlyForAFileTheFamilyReads keeps the stand-down."
+resolution: "The padding and bucket legs (schema.go) end on the position leg's wording: the record counts for nothing and no line reports an answer was written for the item it names. TestTheJoinLegsClaimNothingAboutTheReportTheyDidNotRead pins both legs."
 impact: internal
 resolved_by:
   commit: "ed4da1e1"

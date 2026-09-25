@@ -82,9 +82,14 @@ var (
 	// named for the run that minted it; a disposition directory is named for the
 	// ITEM it answers, which is what makes the status signal one directory probe
 	// rather than a folder-membership question.
-	readingItemFileNumRe = recordid.FilenameNumRe(issueschema.ReadingItemFamily)
+	//
+	// An item and a disposition are held to the bare-handle grammar their readers
+	// open them by (recordid.BareFilenameNumRe): no reader of either family opens a
+	// slugged file, so passing one here passed a record nothing reads
+	// (iss-2608300929274006).
+	readingItemFileNumRe = recordid.BareFilenameNumRe(issueschema.ReadingItemFamily)
 	readingRunFileNumRe  = recordid.FilenameNumRe(issueschema.ReadingRunFamily)
-	dispositionFileNumRe = recordid.FilenameNumRe(issueschema.DispositionFamily)
+	dispositionFileNumRe = recordid.BareFilenameNumRe(issueschema.DispositionFamily)
 	readingRunBucketRe   = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
 	dispositionBucketRe  = regexp.MustCompile(`^` + issueschema.ReadingItemFamily + `-[0-9]+$`)
 	// The step-2 families' filename grammars. An admission is bucketed by the
@@ -1042,16 +1047,15 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 		// spelling admits is therefore decided by the file, not by the join, and it
 		// is read off the file.
 		//
-		// A target whose filename is not itself a bare handle is left in the silence
-		// it had: the reader of the family does not read such a file at all, so no
-		// spelling of this join admits it and none is more right than another. That
-		// divergence between this rule's filename grammar and the report's is
-		// iss-2608300929274006's to close.
-		stemIsHandle := false
+		// Every target that reaches here has a bare-handle filename: the item store
+		// is held to the readers' grammar, recordid.BareFilenameNumRe, so a slugged
+		// item file is refused at the walk and never enters the index, and the join
+		// naming it is the not-in-the-corpus finding above. The stand-down this leg
+		// and the two below once kept for such a file has no case left to cover
+		// (iss-2608300929274006).
 		if join.sameBucketAs != "" {
 			stem := strings.TrimSuffix(filepath.Base(target.rel), ".md")
-			stemIsHandle = spellsHandleOf(join.sameBucketAs, stem)
-			if stemIsHandle && value != stem {
+			if value != stem {
 				out = append(out, Finding{
 					File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity,
 					Message: join.field + " declares '" + value + "' while the " + target.noun() +
@@ -1067,10 +1071,8 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 		// coordinate of the pair, beside the run the record is filed under and the
 		// spelling of the value: what reads this join consults it only for a target at
 		// the declared position, so a target at any other is never queried and the
-		// record counts for nothing. It is asked only where the target's filename is a
-		// bare handle, for the padding leg's reason one block above — what reads the
-		// family never opens such a file, so its position decides nothing.
-		if join.targetPosition != "" && stemIsHandle {
+		// record counts for nothing.
+		if join.targetPosition != "" {
 			posField := target.fields["position"]
 			if pos := issueScalar(posField.value); pos != join.targetPosition {
 				declares := "declares position '" + pos + "'"
@@ -1102,23 +1104,15 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			"' while this " + r.noun() + " is filed under '" + r.bucket +
 			"'; what reads that family keys it on the pair — the bucket it is filed under and the " +
 			target.noun() + " it names — so this " + r.noun() +
-			" is keyed on a pair nothing ever queries and counts for nothing"
-		// The tail names a REPORT LINE, so it is appended only where the target's
-		// filename is a bare handle — the same test the padding leg makes one block
-		// above, and for the same reason: what reads the family never opens a file
-		// whose name is not one, and emits nothing at all about that target. The
-		// leading clause is true of every cross-bucket target, so the finding stands
-		// either way; sending the operator to find a line that does not exist is what
-		// does not (iss-2608301656193936).
-		//
+			" is keyed on a pair nothing ever queries and counts for nothing" +
+			", and no line reports that an answer was written for the " + target.noun() + " it names"
 		// The tail says only what the walk establishes, as the position leg does:
 		// no line reports an answer written by THIS record. It once said the item
 		// "goes on being reported as unanswered", which is false for an item a
 		// declined or held disposition answers, and this leg reads no disposition
-		// (iss-2608301755006875).
-		if stemIsHandle {
-			msg += ", and no line reports that an answer was written for the " + target.noun() + " it names"
-		}
+		// (iss-2608301755006875). It holds for every target that reaches here,
+		// because only a bare-handle item file enters the index
+		// (iss-2608300929274006).
 		out = append(out, Finding{
 			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
 		})
