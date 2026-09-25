@@ -84,8 +84,9 @@ type Pattern struct {
 	// names a process group and carries no pattern at all.
 	MinOperands int `json:"min_operands,omitempty"`
 	// AfterCD, when true, additionally requires that some EARLIER command in the
-	// same chain is a `cd` — the cd-chain structure (`cd scratch && rm -rf *`)
-	// whose hazard is that a failed cd silently redirects the command. A nil
+	// same chain is a `cd`, `pushd` or `popd` — the cd-chain structure (`cd
+	// scratch && rm -rf *`) whose hazard is that a failed directory change
+	// silently redirects the command. A nil
 	// pointer means false; it is a pointer so a per-repo override can turn the
 	// requirement off as well as on.
 	AfterCD *bool `json:"after_cd,omitempty"`

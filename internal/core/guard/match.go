@@ -160,20 +160,26 @@ var reserved = map[string]bool{
 	"!":     true,
 }
 
-// precededByCD reports whether an earlier command in the SAME chain is a `cd`.
-// A cd on a previous logical line does not chain: a new line is a new shell
-// command, and its failure cannot redirect this one.
+// precededByCD reports whether an earlier command in the SAME chain changes
+// directory. A cd on a previous logical line does not chain: a new line is a
+// new shell command, and its failure cannot redirect this one.
 func precededByCD(before []segment, chain int) bool {
 	for _, s := range before {
 		if s.chain != chain {
 			continue
 		}
-		if cmd, _ := commandOf(s); cmd == "cd" {
+		if cmd, _ := commandOf(s); changesDirectory[cmd] {
 			return true
 		}
 	}
 	return false
 }
+
+// changesDirectory names the builtins an `after_cd` entry reads as the
+// directory change a command is chained after. `pushd` and `popd` change it
+// exactly as `cd` does and fail the same way, leaving the shell where it was
+// for the command that follows (iss-2609251640464735).
+var changesDirectory = map[string]bool{"cd": true, "pushd": true, "popd": true}
 
 // commandOf returns the segment's command name (basename, wrappers and
 // environment-assignment prefixes stepped over) and the arguments that follow
