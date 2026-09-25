@@ -305,7 +305,7 @@ var sentinelClasses = []sentinelClass{
 		// ledger's container row refuses it at the three cold positions, and the
 		// derived per-family row does at comparative — and its grounds are the
 		// researcher's reasoning about the frame, which no reading may see.
-		Name:  "LEDGER-REFRAME",
+		Name: "LEDGER-REFRAME",
 		// Twice in one record: in the grounds the writer records, and in a body
 		// only a hand-written record carries. The body is what an admitting row
 		// would pass, so it is the half that makes the exclusion falsifiable.
