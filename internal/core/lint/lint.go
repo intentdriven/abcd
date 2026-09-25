@@ -8,12 +8,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -21,6 +23,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -60,6 +63,11 @@ const (
 // The path is fixed rather than config-driven so a committer cannot silence the
 // new refusals by blanking a config field.
 const releaseGateManifestPath = ".abcd/development/release-gate/manifest.json"
+
+// maxReleaseGateJSONBytes caps the release-gate manifest and receipt reads. A
+// real receipt is a few hundred kilobytes at most; the cap bounds a hostile tree
+// without constraining one.
+const maxReleaseGateJSONBytes = 4 << 20
 
 var (
 	// Inline markdown link: [text](target). Also matches the link part of an
@@ -1079,7 +1087,10 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// presence in the content tree is the era marker — a receipt/commit that
 	// predates the manifest is judged by the pre-manifest rules only. Read it from
 	// repoRoot, the checked-out content tree the gate is armed against.
-	manifestBytes, manifestErr := os.ReadFile(filepath.Join(repoRoot, releaseGateManifestPath))
+	// Guarded like every other read of the content tree (iss-131): a manifest
+	// replaced by a symlink, a FIFO or an oversize file fails closed below
+	// rather than being followed or read unbounded.
+	manifestBytes, manifestErr := fsutil.ReadGuarded(filepath.Join(repoRoot, releaseGateManifestPath), maxReleaseGateJSONBytes)
 	var manifestEra bool
 	var expectedManifestHash, requiredTier string
 	switch {
@@ -1108,13 +1119,24 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		rel := filepath.Join(dir, cfg.Commit, gate+".json")
-		data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+		data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, rel), maxReleaseGateJSONBytes)
 		if err != nil {
 			if os.IsNotExist(err) {
 				add(rel, "no '"+gate+"' receipt for commit "+cfg.Commit+"; the semantic gate has not run (fail-closed)")
 				continue
 			}
+			if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, fsutil.ErrTooBig) || errors.Is(err, syscall.ELOOP) {
+				add(rel, "'"+gate+"' receipt is not a regular file within "+strconv.Itoa(maxReleaseGateJSONBytes)+" bytes; the release gate fails closed")
+				continue
+			}
 			return nil, err
+		}
+		// A repeated key is refused by name, never read last-wins: under the
+		// attestation model a receipt carrying two verdicts is illegible, whichever
+		// one encoding/json would keep (iss-131).
+		if err := jsonstrict.NoDuplicateKeys(data); err != nil {
+			add(rel, "'"+gate+"' receipt is refused: "+err.Error())
+			continue
 		}
 		var r receipt
 		if err := json.Unmarshal(data, &r); err != nil {
