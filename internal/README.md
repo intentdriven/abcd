@@ -60,6 +60,14 @@ plugin surface, and a future MCP server share one engine.
   beyond the standard library; the arrow points one way, so the issue schema's
   allow-list carries the two key names as literals, pinned to this package's
   constants by a test here.
+- **`core/layered/`** — the one layered configuration resolver: a value comes
+  from the invocation's flag, else the repository's file, else the machine's file
+  under `~/.abcd/`, else the bundled default, and returns with the layer and the
+  origin that supplied it. Any configuration more than one party may set reads
+  through it (the routing table in `core/oracle`, and the pace, runner, review
+  and match keys in `.abcd/config.json`), so the precedence, the guarded reads
+  and the refusals are spelled once. A present file it cannot read, or a key
+  nobody claims inside a claimed namespace, is an error, never a quiet default.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier
