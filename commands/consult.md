@@ -9,8 +9,10 @@ A local-only corpus at `~/.abcd/sources/` holds source documents (working
 papers, private-repo notes, PDFs, books) the agent may **consult** but must
 never **cite** publicly. Metadata lives in `sources.json` (CSL-JSON; the
 `custom` block carries `confidential`, `permission_status`, `keywords`,
-`aliases`). Full details: `~/.abcd/sources/README.md`. If the corpus is
-absent, say so and stop — this command never creates it.
+`aliases`, `ban_authors`). Every write goes through the `abcd source` verbs
+(`/abcd:source`); reading is plain search. First run
+`"${CLAUDE_PLUGIN_ROOT}/abcd" source --json`: exit 3 means there is no corpus —
+say so and stop, because this command never creates it.
 
 ## Hard rule (overrides convenience, always)
 
@@ -46,35 +48,49 @@ To add a source, use `/abcd:ingest`.
 
 Whenever a source **meaningfully influences a decision** (supports it,
 contradicts it, supplies a method, or shapes background understanding — not
-mere incidental reading), append ONE line to
-`~/.abcd/sources/ledger/<repo>.jsonl`:
+mere incidental reading), record ONE line:
 
-```json
-{"ts":"<UTC ISO-8601>","repo":"<repo>","decision_ref":"<DECISIONS.md date | ADR id | intent id | free text>","claim":"<what was decided/claimed>","source_key":"<CSL id>","locator":"<pp./§ if known>","influence":"supports|contradicts|method|background","used_in":["<repo-relative path(s) of the consuming document(s)>"],"cited_publicly":false}
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" source ledger --decision "<DECISIONS.md date | ADR id | intent id | free text>" \
+  --claim "<what was decided/claimed>" --source <CSL key> \
+  --influence supports|contradicts|method|background \
+  [--locator "<pp./§>"] [--used-in <repo-relative path>]... --json
 ```
 
-`used_in` makes acknowledgment machine-readable in both directions: an idea
-is traced to its source even when the consuming document only paraphrases
-(public sources) or must stay silent (confidential sources). Fill it whenever
-the influence landed in an identifiable document, not just a conversation.
+The verb appends the line to this repository's ledger with
+`cited_publicly: false` and commits it in the corpus. `--used-in` makes
+acknowledgment machine-readable in both directions: an idea is traced to its
+source even when the consuming document only paraphrases (public sources) or
+must stay silent (confidential sources). Fill it whenever the influence landed
+in an identifiable document, not just a conversation.
 
-Then commit in the corpus repo:
-`git -C ~/.abcd/sources add -A && git -C ~/.abcd/sources commit -m "ledger(<repo>): <source_key> → <short decision>"`
-
-The ledger is append-only: corrections are new lines, never edits.
-`cited_publicly` is always written `false`; only the user flips it, by hand.
+The ledger is append-only: a correction is a new line (`--corrects <N>`).
+**Never run `ledger --flip`** — flipping `cited_publicly` is the user's act,
+and the verb refuses it anyway unless the source is public and citable.
 
 Always tell the user in conversation which key was recorded against which
-decision, so they can decide about citing.
+decision, and the line number, so they can decide about citing.
 
 ## Guard wiring
 
-- On first use in a repo (and after any confidential source is added), run
-  `~/.abcd/sources/bin/sync-banlist <repo-root>`. It maintains a generated
-  block in the repo's untracked `.abcd/.work.local/private-names.txt`, which
-  the repo's pre-commit guard reads — leakage is then blocked mechanically,
-  not just by this command's rule.
+- The repository's committed pre-commit guard runs
+  `abcd source sync-banlist --refresh` on every commit, which regenerates a
+  fenced block of confidential titles and aliases in the untracked
+  `.abcd/.work.local/private-names.txt`; leakage is then blocked mechanically,
+  not just by this command's rule. After adding or declassifying a source, run
+  `"${CLAUDE_PLUGIN_ROOT}/abcd" source sync-banlist` so the block is current
+  before the next commit.
 - Before any document that drew on confidential material is committed, posted,
-  or otherwise shared, run `~/.abcd/sources/bin/cite-guard <file>` (exit 1 =
-  confidential identifier present; its report names only the CSL key, so the
-  report itself is safe to relay).
+  or otherwise shared, run `"${CLAUDE_PLUGIN_ROOT}/abcd" source cite-check <file>`
+  (exit 1 = a confidential identifier is present; its report names only the
+  CSL key, the field and the position, so the report itself is safe to relay).
+  It runs the same matcher as the guard, and it covers literal strings only.
+
+**Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
+provisions the binary into the plugin root, so this is the rung that fires for a
+plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
+too, you are in a source checkout of this repo, where — and only there —
+`go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
+binary on `PATH`, run `ahoy install` through whichever rung just resolved:
+`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
+`go run ./cmd/abcd ahoy install` in a source checkout.

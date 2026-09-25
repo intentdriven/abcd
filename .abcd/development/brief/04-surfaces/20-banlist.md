@@ -100,10 +100,11 @@ change what every *other* line means.
 
 The store has a second writer, and the format declaration is what lets the two
 share it. The sources corpus derives patterns from its confidential entries and
-maintains them inside a fenced generated block in the same file, refusing a target
-that does not carry the declaration and leaving every line outside its block
-untouched. So a hand-added private entry and the corpus sync write into one store
-without either clobbering the other. See [`13-consult.md`](13-consult.md) for the
+maintains them inside a fenced generated block in the same file, refusing a legacy
+store that carries entries and leaving every line outside its block untouched. So
+a hand-added private entry and the corpus sync write into one store without either
+clobbering the other, and a hand-written key that collides with one the sync owns
+is refused rather than overwritten. See [`31-source.md`](31-source.md) for the
 corpus side of that contract.
 
 Leading and trailing ASCII spaces and tabs are stripped, and so are a trailing

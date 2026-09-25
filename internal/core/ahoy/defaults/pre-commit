@@ -363,6 +363,40 @@ refuse_store_copy() {
   fi
 }
 
+# --- the sources corpus: refresh its generated block -----------------------------
+# The user-level sources corpus (`abcd source`) projects every confidential
+# source's title and aliases (and, where an entry opts in, its authors) into a
+# generated block of the private store below. The block is refreshed HERE, before
+# the store is read, so the check is never more than this commit stale.
+#
+# Never a failure, never silent. No corpus is one line and the commit proceeds —
+# CI, a fresh clone, and every machine that never made a corpus take that branch.
+# A corpus with no abcd binary to refresh it, or a refresh that fails, is one line
+# and the check runs against the store as it stands (the block already written
+# keeps banning). The binary's own output is discarded: its refusals name keys
+# only, and `abcd source sync-banlist` run by hand shows them.
+#
+# The binary is looked up on the pinned PATH (plus abcd.guardPath), then at the
+# user-level install location ~/.local/bin, which is user-owned and not
+# repository-scoped. The corpus location is the default one; relocating the
+# user-level home is a separate design.
+sources_corpus="${HOME:-}/.abcd/sources"
+if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
+  echo "pre-commit: no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)" >&2
+else
+  abcd_bin=$(command -v abcd 2>/dev/null || true)
+  if [ -z "$abcd_bin" ] && [ -x "$HOME/.local/bin/abcd" ]; then
+    abcd_bin="$HOME/.local/bin/abcd"
+  fi
+  if [ -z "$abcd_bin" ]; then
+    echo "pre-commit: warning — a sources corpus exists but no abcd binary is on the guard's PATH or in ~/.local/bin;" >&2
+    echo "            the generated banlist block was not refreshed, so the banlist is checked as it stands." >&2
+  elif ! "$abcd_bin" source sync-banlist --refresh >/dev/null 2>&1; then
+    echo "pre-commit: warning — the sources banlist refresh failed (run 'abcd source sync-banlist' to see why);" >&2
+    echo "            the banlist is checked as it stands." >&2
+  fi
+fi
+
 # A path that exists but is not a REGULAR FILE is tampering, not non-adoption: a
 # symlink (which `git add -f` can commit, so a checkout materialises it) swaps or
 # empties the guard, and a directory or FIFO there would take the "absent" branch

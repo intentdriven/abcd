@@ -126,9 +126,10 @@ user-scope directory for machine-local state.
   config.json                    machine config defaults (a later phase)
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
-  sources/                       the local sources corpus /abcd:ingest and /abcd:consult
-                                 read. abcd NEVER creates it: absent means both verbs
-                                 say so and stop
+  sources/                       the local sources corpus the source verb maintains and
+                                 /abcd:ingest and /abcd:consult read. Created only by
+                                 its explicit init: absent means every other verb and
+                                 both commands say so and stop
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)

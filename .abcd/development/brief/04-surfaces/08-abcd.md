@@ -64,8 +64,9 @@ here too.
 Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
-does: `consult` and `ingest` run entirely as host-side markdown over the
-sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
+does: `consult` and `ingest` run as host-side markdown over the sources corpus,
+and reach the binary only through the `source` verb, which makes every write to
+the corpus. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
 too and writes — the identity verb's initialiser records the repo's identity
 block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
