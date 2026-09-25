@@ -339,7 +339,9 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 		if !reItdID.MatchString(req.ByIntent) {
 			return nil, fmt.Errorf("resolve: --intent %q does not match ^itd-[0-9]+$; nothing written", req.ByIntent)
 		}
-		if _, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.ByIntent); !ok {
+		if _, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.ByIntent); err != nil {
+			return nil, fmt.Errorf("resolve: --intent %s: %w; nothing written", req.ByIntent, err)
+		} else if !ok {
 			return nil, fmt.Errorf("resolve: --intent %s not found in the intent store; nothing written", req.ByIntent)
 		}
 	}
@@ -347,7 +349,9 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 		if !reSpcID.MatchString(req.BySpec) {
 			return nil, fmt.Errorf("resolve: --spec %q does not match ^spc-[0-9]+$; nothing written", req.BySpec)
 		}
-		if _, ok := findRecordFile(repoRoot, specStoreRelDirs(), req.BySpec); !ok {
+		if _, ok, err := findRecordFile(repoRoot, specStoreRelDirs(), req.BySpec); err != nil {
+			return nil, fmt.Errorf("resolve: --spec %s: %w; nothing written", req.BySpec, err)
+		} else if !ok {
 			return nil, fmt.Errorf("resolve: --spec %s not found in the spec store; nothing written", req.BySpec)
 		}
 	}

@@ -192,7 +192,10 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		if !reItdID.MatchString(req.LinkIntent) {
 			return PromoteResult{}, fmt.Errorf("invalid itd-N identifier: %q", req.LinkIntent)
 		}
-		rel, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		rel, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		if err != nil {
+			return PromoteResult{}, fmt.Errorf("--intent %s: %w; nothing stamped", req.LinkIntent, err)
+		}
 		if !ok {
 			return PromoteResult{}, fmt.Errorf("%s not found in the intent store; nothing stamped", req.LinkIntent)
 		}
@@ -536,7 +539,10 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		if !reItdID.MatchString(req.LinkIntent) {
 			return PromoteResult{}, fmt.Errorf("invalid itd-N identifier: %q", req.LinkIntent)
 		}
-		rel, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		rel, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		if err != nil {
+			return PromoteResult{}, fmt.Errorf("--intent %s: %w; nothing stamped", req.LinkIntent, err)
+		}
 		if !ok {
 			return PromoteResult{}, fmt.Errorf("%s not found in the intent store; nothing stamped", req.LinkIntent)
 		}
