@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -339,7 +340,13 @@ func readUserLayer(home string) (over RuleSet, ok bool, err error) {
 	dir := filepath.Join(home, ".abcd")
 	path := filepath.Join(home, filepath.FromSlash(UserRelPath))
 	data, refusal, err := fsutil.ReadDeclaration(path, maxRulesFileBytes)
-	if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR)) {
+	// Absent is the lstat's answer, so a permission error here is a HOME or
+	// ~/.abcd this uid cannot search, never the file's own mode: that reads as
+	// no user layer, as it does for the sibling home-scoped declarations
+	// (trusted-roots, local-transcript-roots), so a sandboxed or foreign HOME
+	// does not warn on every prompt about a file nobody can see. A rules.json
+	// that is there and cannot be opened is DeclarationUnreadable, and loud.
+	if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission)) {
 		return RuleSet{}, false, nil
 	}
 	if di, lerr := os.Lstat(dir); lerr == nil && di.Mode()&os.ModeSymlink != 0 {

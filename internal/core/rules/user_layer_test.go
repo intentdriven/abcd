@@ -91,15 +91,66 @@ func TestUserLayerAbsentChangesNothing(t *testing.T) {
 	}
 }
 
-// AC1, the unresolvable home: with HOME unset there is no user scope to read.
+// AC1, the unresolvable home: with HOME unset, or relative, there is no user
+// scope to read. The relative case lays a well-formed rules.json where the
+// relative HOME would resolve against the working directory, so a loader that
+// honoured a relative HOME would load it and the set would change.
 func TestUserLayerNoHomeIsAbsent(t *testing.T) {
-	t.Setenv("HOME", "")
-	rs, err := Load(t.TempDir())
-	if err != nil {
-		t.Fatalf("an unset HOME must read as no user layer: %v", err)
+	cases := []struct {
+		name  string
+		setup func(t *testing.T)
+	}{
+		{"unset", func(t *testing.T) { t.Setenv("HOME", "") }},
+		{"relative", func(t *testing.T) {
+			cwd := t.TempDir()
+			t.Chdir(cwd)
+			writeUserRules(t, filepath.Join(cwd, "relhome"), `{"schema_version":1,"domains":{"PII":{"rules":["relative home pii"]}}}`)
+			t.Setenv("HOME", "relhome")
+		}},
 	}
-	if !reflect.DeepEqual(rs, Defaults()) {
-		t.Fatal("an unset HOME must leave the defaults untouched")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.setup(t)
+			rs, err := Load(t.TempDir())
+			if err != nil {
+				t.Fatalf("a %s HOME must read as no user layer: %v", tc.name, err)
+			}
+			if !reflect.DeepEqual(rs, Defaults()) {
+				t.Fatalf("a %s HOME must leave the defaults untouched", tc.name)
+			}
+		})
+	}
+}
+
+// AC1, the untraversable scope: a HOME or ~/.abcd this uid cannot search is
+// read as no user layer, exactly as the sibling home-scoped declarations
+// (trusted-roots, local-transcript-roots) read it, so a sandboxed or foreign
+// HOME does not warn on every prompt about a file nobody can see. A rules.json
+// that is there and cannot be read stays a loud refusal (the refusal table).
+func TestUserLayerUntraversableScopeIsAbsent(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads through a mode-000 directory")
+	}
+	for _, name := range []string{"HOME", "~/.abcd"} {
+		t.Run(name, func(t *testing.T) {
+			home := userHome(t)
+			writeUserRules(t, home, `{"schema_version":1,"domains":{"PII":{"rules":["unreachable pii"]}}}`)
+			dir := home
+			if name == "~/.abcd" {
+				dir = filepath.Join(home, ".abcd")
+			}
+			if err := os.Chmod(dir, 0); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+			rs, err := Load(t.TempDir())
+			if err != nil {
+				t.Fatalf("an untraversable %s must read as no user layer, not a refusal: %v", name, err)
+			}
+			if !reflect.DeepEqual(rs, Defaults()) {
+				t.Fatalf("an untraversable %s must leave the defaults untouched", name)
+			}
+		})
 	}
 }
 
@@ -254,16 +305,15 @@ func TestUserLayerRefusalsAreLoud(t *testing.T) {
 			restore := fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })
 			t.Cleanup(restore)
 		}, "not owned by this session's uid"},
-		{"unreadable scope directory", func(t *testing.T, home string) {
+		{"unreadable file", func(t *testing.T, home string) {
 			if os.Getuid() == 0 {
-				t.Skip("root reads through a mode-000 directory")
+				t.Skip("root reads a mode-000 file")
 			}
-			writeUserRules(t, home, `{"schema_version":1,"domains":{}}`)
-			dir := filepath.Join(home, ".abcd")
-			if err := os.Chmod(dir, 0); err != nil {
+			p := writeUserRules(t, home, `{"schema_version":1,"domains":{}}`)
+			if err := os.Chmod(p, 0); err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+			t.Cleanup(func() { _ = os.Chmod(p, 0o644) })
 		}, "could not be read"},
 	}
 	for _, tc := range cases {
