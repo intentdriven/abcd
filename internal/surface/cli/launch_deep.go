@@ -74,11 +74,10 @@ func launchParityInput(cwd, configured string, fetch bool, stderr io.Writer) (*l
 		in.Baseline = configured
 	} else {
 		tag, found, err := changelog.LatestReleaseTag(cwd)
-		switch {
-		case err != nil:
+		if err != nil {
 			in.BaselineError = "the release tags could not be listed: " + scrubPaths(err)
-		case found:
-			in.Baseline = tag.Tag()
+		} else {
+			in.Baseline, in.Unanchored, in.BaselineError = unanchoredBaseline(cwd, tag, found)
 		}
 	}
 	if fetch {
@@ -93,6 +92,47 @@ func launchParityInput(cwd, configured string, fetch bool, stderr io.Writer) (*l
 		in.Fetch = loudFetcher{inner: f, w: stderr, origin: origin}
 	}
 	return in, nil
+}
+
+// unanchoredBaseline names the baseline when no operator named one. The newest
+// release tag is the baseline in a full checkout. A checkout whose tags cannot
+// be trusted to name the previous release — a shallow clone, whose listing
+// holds only the tags it fetched, or a clone with no release tag at all while
+// CHANGELOG.md dates a release — is unanchored: the baseline is the newest
+// release either source names, and why is said, so the diff refuses rather
+// than reading as a first launch (iss-2609251902439938). A tree whose
+// CHANGELOG.md dates no release and that holds no tag is a first launch.
+func unanchoredBaseline(cwd string, tag launch.Semver, found bool) (baseline, unanchored, failure string) {
+	shallow, err := launch.ShallowCheckout(cwd)
+	if err != nil {
+		return "", "", "whether the checkout is shallow could not be read: " + scrubPaths(err)
+	}
+	if found && !shallow {
+		return tag.Tag(), "", ""
+	}
+	dated, _, err := changelog.DatedReleases(cwd)
+	if err != nil {
+		return "", "", "CHANGELOG.md could not be read to tell a first launch from a checkout missing its release tags: " + scrubPaths(err)
+	}
+	newest, datedOK := launch.Semver{}, false
+	if len(dated) > 0 {
+		newest, err = launch.ParseSemver(strings.TrimPrefix(dated[0].Version, "v"))
+		datedOK = err == nil
+	}
+	switch {
+	case shallow && (found || datedOK):
+		if found && (!datedOK || launch.CoreGreater(tag, newest)) {
+			newest = tag
+		}
+		return newest.Tag(), "the checkout is shallow, so its tag listing may hold only the tags that were fetched", ""
+	case found:
+		return tag.Tag(), "", ""
+	case datedOK:
+		return newest.Tag(), "CHANGELOG.md dates release " + newest.String() + ", and this checkout holds no release tag, so this is not a first launch", ""
+	case len(dated) > 0:
+		return "", "", "CHANGELOG.md dates release " + termsafe.Sanitize(dated[0].Version) + ", which is not a release version, and this checkout holds no release tag"
+	}
+	return "", "", ""
 }
 
 // smokePagesTimeout bounds one deep-tier subprocess.

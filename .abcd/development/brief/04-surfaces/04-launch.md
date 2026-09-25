@@ -262,10 +262,17 @@ publishes no archive falls back to the render at the tag, saying so. The two
 manifests the release stamps are compared as canonical JSON with their version
 keys removed, because the render re-marshals them and the version bump is the
 cut's own report; the catalog, which the archive leaves out by construction, is
-named as not compared against an archive. No previous tag is a first launch:
-every path is added and the report says why, as it does for a tag that declared
-no payload. A baseline that cannot be read is a named refusal, never an empty
-diff.
+named as not compared against an archive. A tree whose `CHANGELOG.md` dates no
+release and that holds no release tag is a first launch: every path is added and
+the report says why, as it does for a tag that declared no payload. A checkout
+that cannot read the previous release from its own tags is not a first launch —
+a clone holding no release tag while `CHANGELOG.md` dates one, or a shallow
+clone, whose tag listing holds only the tags it fetched. Its baseline is the
+newest release `CHANGELOG.md` dates (or a newer tag the listing holds), and the
+diff refuses by naming it and both remedies: fetch the tags and the history, or
+read the release's published archive by flag, which is then the only baseline,
+since there is no tag to render at. A baseline that cannot be read is a named
+refusal, never an empty diff.
 
 Every preview, and every cut that renders a payload, writes its pre-flight
 report (§ 4). The scan gate is side-effect-free with respect to the repo: its

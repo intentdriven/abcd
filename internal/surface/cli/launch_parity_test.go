@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -155,6 +156,99 @@ func TestLaunchDryRunFetchBaselineReadsTheVerifiedReleaseAsset(t *testing.T) {
 	if rep, _ := dryRunJSON(t, r); rep.Parity.Source != launch.ParitySourceRenderAtTag || len(origins) != 0 {
 		t.Errorf("without --fetch-baseline the preview must stay disk-only, got %q and %v", rep.Parity.Source, origins)
 	}
+}
+
+// TestLaunchDryRunTaglessOrShallowCheckoutIsNotAFirstLaunch: a checkout that
+// lacks the previous release's tag — a clone made without tags, or a shallow
+// one — while its CHANGELOG.md dates a release refuses the parity diff, naming
+// the release and the remedy, rather than reading as a first launch that adds
+// every path. --fetch-baseline is a real remedy: the verified asset answers. A
+// tree whose CHANGELOG.md dates no release stays a first launch
+// (iss-2609251902439938).
+func TestLaunchDryRunTaglessOrShallowCheckoutIsNotAFirstLaunch(t *testing.T) {
+	r := parityCLIRepo(t)
+	shallowSrc := r.Root()
+	r.Git("tag", "-d", "v0.4.0", "v0.5.0")
+
+	rep, _ := dryRunJSON(t, r)
+	if rep.Parity == nil || !rep.Parity.Refused || rep.Parity.Source == launch.ParitySourceNone || rep.Parity.Baseline != "v0.4.0" {
+		t.Fatalf("a tagless checkout whose CHANGELOG.md dates 0.4.0 must refuse against v0.4.0, got %+v", rep.Parity)
+	}
+	for _, want := range []string{"CHANGELOG.md dates release 0.4.0", "git fetch --tags", "--fetch-baseline"} {
+		if !strings.Contains(rep.Parity.RefusalReason, want) {
+			t.Errorf("the refusal must say %q, got %q", want, rep.Parity.RefusalReason)
+		}
+	}
+	if !containsPrefix(rep.WouldRefuseOn, "payload parity: ") {
+		t.Errorf("the refusal must be on the preview's would-refuse list, got %v", rep.WouldRefuseOn)
+	}
+
+	// The remedy works: the verified release asset of the named release answers.
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range map[string]string{
+		".claude-plugin/plugin.json": `{"name":"abcd","description":"fixture","repository":"` + fixtureRepository + `","version":"0.4.0"}`,
+		"CHANGELOG.md":               readFileString(t, filepath.Join(r.Root(), "CHANGELOG.md")),
+	} {
+		w, _ := zw.Create(name)
+		_, _ = w.Write([]byte(body))
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(buf.Bytes())
+	archive := launch.PluginArchiveName("abcd", "0.4.0")
+	orig := newReleaseAssetFetcher
+	newReleaseAssetFetcher = func(string) (launch.ReleaseAssetFetcher, error) {
+		return fakeReleaseAssets{assets: map[string][]byte{
+			"checksums.txt": []byte(hex.EncodeToString(sum[:]) + "  " + archive + "\n"),
+			archive:         buf.Bytes(),
+		}}, nil
+	}
+	t.Cleanup(func() { newReleaseAssetFetcher = orig })
+	if rep, _ := dryRunJSON(t, r, "--fetch-baseline"); rep.Parity == nil || rep.Parity.Refused || rep.Parity.Source != launch.ParitySourceReleaseAsset {
+		t.Errorf("with --fetch-baseline the verified asset of v0.4.0 is the baseline, got %+v", rep.Parity)
+	}
+
+	// A shallow clone refuses too, even when the listing it holds names a tag:
+	// the listing holds only what was fetched.
+	src := gittest.NewRepo(t)
+	dst := filepath.Join(t.TempDir(), "shallow")
+	clone := exec.Command("git", "clone", "--quiet", "--depth", "2", "file://"+shallowSrc, dst)
+	clone.Env = src.Env()
+	if out, err := clone.CombinedOutput(); err != nil {
+		t.Fatalf("shallow clone: %v\n%s", err, out)
+	}
+	t.Chdir(dst)
+	stdout, stderr, err := runCLIPipedStdinSplit(t, "", "launch", "--dry-run", "--json")
+	if err != nil {
+		t.Fatalf("dry-run in the shallow clone: %v\n%s\n%s", err, stdout, stderr)
+	}
+	var shallow launch.DryRunReport
+	if err := json.Unmarshal(stdout, &shallow); err != nil {
+		t.Fatalf("dry-run JSON: %v\n%s", err, stdout)
+	}
+	if shallow.Parity == nil || !shallow.Parity.Refused || !strings.Contains(shallow.Parity.RefusalReason, "shallow") {
+		t.Errorf("a shallow clone must refuse the parity diff by saying so, got %+v", shallow.Parity)
+	}
+
+	// A tree whose CHANGELOG.md dates no release is a first launch.
+	first := parityCLIRepo(t)
+	first.Git("tag", "-d", "v0.4.0", "v0.5.0")
+	first.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n")
+	first.Commit("no release dated yet")
+	if rep, _ := dryRunJSON(t, first); rep.Parity == nil || rep.Parity.Refused || rep.Parity.Source != launch.ParitySourceNone {
+		t.Errorf("no dated release and no tag is a first launch, got %+v", rep.Parity)
+	}
+}
+
+func containsPrefix(lines []string, prefix string) bool {
+	for _, l := range lines {
+		if strings.HasPrefix(l, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestLaunchDryRunDeepSmokeRunsInAnIsolatedSubprocess is AC4 at the preview,

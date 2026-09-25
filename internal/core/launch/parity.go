@@ -26,6 +26,10 @@ package launch
 // No previous release is a first launch: every path is added, and the report
 // says why. A baseline that cannot be read is a named refusal, never an empty
 // diff, because an empty diff is the one answer that reads as "nothing changed".
+// A checkout that cannot read the previous release from its own tags — tagless,
+// or shallow, while CHANGELOG.md dates a release — is not a first launch
+// either: the front door names the release and says why, and the diff refuses
+// unless the release's verified asset answers instead.
 //
 // # What a digest is taken over
 //
@@ -135,6 +139,13 @@ type ParityInput struct {
 	// BaselineError is set when the caller could not resolve the baseline at
 	// all (the tags could not be listed): the diff refuses with it.
 	BaselineError string
+	// Unanchored is set when this checkout cannot name or read the previous
+	// release from its own tags — a tagless clone of a tree whose CHANGELOG.md
+	// dates a release, or a shallow one — and says why. Baseline then names the
+	// release CHANGELOG.md dates newest. The diff never reads it as a first
+	// launch and never renders it at a tag: it refuses, unless Fetch reads the
+	// release's verified asset.
+	Unanchored string
 	// Fetch, when set, reads the baseline from the tag's release asset first.
 	// Nil keeps the diff disk-only.
 	Fetch ReleaseAssetFetcher
@@ -192,25 +203,34 @@ func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport 
 		rep.fill(current, map[string]string{})
 		return rep
 	}
+	// A release this checkout cannot read from its own tags is measured by its
+	// published asset or not at all: rendering it would need the tag's objects,
+	// and an empty diff would read as "nothing changed".
+	if in.Unanchored != "" {
+		unreadable := fmt.Sprintf("the previous release %s cannot be read in this checkout: %s", in.Baseline, in.Unanchored)
+		if in.Fetch == nil {
+			return refuse(unreadable + " — fetch the release tags and history (git fetch --tags, with --unshallow in a shallow clone), " +
+				"or read the baseline from the published release (--fetch-baseline)")
+		}
+		note, err := rep.fillFromAsset(repoRoot, in, current, stamped)
+		if err != nil {
+			return refuse(fmt.Sprintf("the release asset of %s could not be used: %v", in.Baseline, err))
+		}
+		if note != "" {
+			return refuse(note + ", and " + unreadable + " — fetch the release tags and history (git fetch --tags, with --unshallow in a shallow clone)")
+		}
+		return rep
+	}
 	if err := ValidateBaselineTag(repoRoot, in.Baseline); err != nil {
 		return refuse(err.Error())
 	}
 
 	if in.Fetch != nil {
-		baseline, fetched, note, err := assetDigests(repoRoot, in.Baseline, in.Fetch, stamped)
-		rep.Fetched = fetched
+		note, err := rep.fillFromAsset(repoRoot, in, current, stamped)
 		if err != nil {
 			return refuse(fmt.Sprintf("the release asset of %s could not be used: %v", in.Baseline, err))
 		}
-		if baseline != nil {
-			rep.Source = ParitySourceReleaseAsset
-			// The archive omits the catalog by construction, so the catalog is
-			// named rather than read as added.
-			if _, ok := current[marketplaceFile]; ok {
-				delete(current, marketplaceFile)
-				rep.NotCompared = append(rep.NotCompared, marketplaceFile)
-			}
-			rep.fill(current, baseline)
+		if note == "" {
 			return rep
 		}
 		rep.Note = note + "; the baseline is a fresh render at the tag"
@@ -230,6 +250,30 @@ func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport 
 	}
 	rep.fill(current, baseline)
 	return rep
+}
+
+// fillFromAsset diffs current against the baseline's verified release asset.
+// A non-empty note, with no error, means the release publishes no verifiable
+// archive and nothing was filled; an error means it claims one that cannot be
+// read or verified.
+func (rep *ParityReport) fillFromAsset(repoRoot string, in ParityInput, current map[string]string, stamped map[string][]string) (string, error) {
+	baseline, fetched, note, err := assetDigests(repoRoot, in.Baseline, in.Fetch, stamped)
+	rep.Fetched = fetched
+	if err != nil {
+		return "", err
+	}
+	if baseline == nil {
+		return note, nil
+	}
+	rep.Source = ParitySourceReleaseAsset
+	// The archive omits the catalog by construction, so the catalog is named
+	// rather than read as added.
+	if _, ok := current[marketplaceFile]; ok {
+		delete(current, marketplaceFile)
+		rep.NotCompared = append(rep.NotCompared, marketplaceFile)
+	}
+	rep.fill(current, baseline)
+	return "", nil
 }
 
 // fill classifies every path of the two digest maps.

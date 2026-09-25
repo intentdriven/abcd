@@ -204,7 +204,11 @@ Then summarise the JSON for the user:
   temporary clone, from this checkout's own git objects), `release-asset` (the
   tag's published plugin archive, fetched only with `--fetch-baseline`) or
   `none` (no previous release: a first launch, and every path is `added`, with
-  `parity.note` saying why). `parity.entries` lists every path `added`,
+  `parity.note` saying why). A checkout missing the previous release's tag —
+  cloned without tags, or shallow — while `CHANGELOG.md` dates a release is not
+  a first launch: `parity.refused` names that release and the remedy (fetch the
+  tags and history, or `--fetch-baseline`, whose verified archive is then the
+  only baseline, since there is no tag to render at). `parity.entries` lists every path `added`,
   `changed` or `removed` with its `digest` and `baseline_digest` (SHA-256); report
   the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the
