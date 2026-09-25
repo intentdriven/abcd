@@ -243,7 +243,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox()}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(), Oracle: boardOracle(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -259,6 +259,7 @@ func NewRootCommand() *cobra.Command {
 				if board.Inbox != nil {
 					fmt.Fprintf(w, "  inbox:      %s — `abcd inbox`\n", inboxTallyText(*board.Inbox))
 				}
+				renderBoardOracle(w, board.Oracle)
 			})
 		},
 	}
@@ -2024,6 +2025,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "intent plan", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if res.StampOnly {
 					// The identity step alone, over a record already planned: say what
@@ -2042,6 +2044,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.ImpactStamped != "" {
 					fmt.Fprintf(w, "  impact stamped: %s\n", res.ImpactStamped)
 				}
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
@@ -2550,6 +2553,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if res.AuditEmitError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to repoint the links other files hold; record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
 				if res.Remainder.ID != "" {
@@ -2561,6 +2565,15 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 						verb = "reused existing remainder"
 					}
 					fmt.Fprintf(w, "  %s %s for %s\n  %s\n", verb, res.Remainder.ID, res.Remainder.Intent, termsafe.Sanitize(res.Remainder.Path))
+					// The steps not marked landed travel with the remainder
+					// (itd-2609212103565953); name them, renumbered as the
+					// remainder now lists them. Titles are an author's prose.
+					if n := len(res.RemainderSteps); n > 0 {
+						fmt.Fprintf(w, "  carried %d unlanded step(s) into %s:\n", n, res.Remainder.ID)
+						for _, st := range res.RemainderSteps {
+							fmt.Fprintf(w, "    %d. %s\n", st.Number, termsafe.Sanitize(st.Title))
+						}
+					}
 				}
 				switch {
 				case res.IntentMoved:
@@ -2580,6 +2593,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 				default:
 					fmt.Fprintf(w, "  intent %s already %s (no move)\n", res.Intent.ID, res.To)
 				}
+				emitRelinked(w, res.Relinked)
 				// A close is idempotent, so a re-run against an already-shipped
 				// intent gets the SAME receipt back. Announcing "OWED" each time
 				// reads as a fresh obligation; only the close that actually parked
@@ -2598,7 +2612,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent")
-	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)")
+	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed")
 	closeCmd.Flags().StringVar(&closeMode, "production-mode", "", productionModeFlagHelp)
 	specCmd.AddCommand(closeCmd)
 
@@ -3531,9 +3545,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("resolve", err)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "capture resolve", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s%s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path), resolvedByNote(res.ResolvedBy))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
@@ -3785,9 +3801,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("wontfix", err)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
