@@ -34,6 +34,10 @@ func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, er
 	var out []FlagRoute
 	for _, text := range texts {
 		shown := layered.BoundKey(text)
+		if len(text) > MaxRouteBytes {
+			return nil, fmt.Errorf("--route %s: it is %d bytes; a --route is at most %d, because a receipt carries it verbatim",
+				shown, len(text), MaxRouteBytes)
+		}
 		fr, err := parseRoute(text)
 		if err != nil {
 			return nil, fmt.Errorf("--route %s: %w", shown, err)

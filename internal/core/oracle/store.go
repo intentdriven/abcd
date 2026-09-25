@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Settings are provider sampling settings (temperature, seed, and whatever
@@ -168,6 +169,9 @@ func checkSettings(in map[string]json.RawMessage) (Settings, error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
+	if len(in) > MaxSettings {
+		return nil, fmt.Errorf("%d settings are given; a row or a --route carries at most %d", len(in), MaxSettings)
+	}
 	keys := make([]string, 0, len(in))
 	for k := range in {
 		keys = append(keys, k)
@@ -181,6 +185,17 @@ func checkSettings(in map[string]json.RawMessage) (Settings, error) {
 		v := bytes.TrimSpace(in[k])
 		if !scalar(v) {
 			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", k, layered.BoundKey(string(v)))
+		}
+		// Bounded and clean where it is read, because it reaches the request
+		// block and the receipt as it is (review-tier1 F6): a receipt records a
+		// setting as sent, so it is refused here rather than truncated there.
+		if len(v) > MaxSettingBytes {
+			return nil, fmt.Errorf("setting %s is %d bytes; a setting's value is at most %d", k, len(v), MaxSettingBytes)
+		}
+		var str string
+		if v[0] == '"' && json.Unmarshal(v, &str) == nil && termsafe.Sanitize(str) != str {
+			return nil, fmt.Errorf("setting %s carries a control, bidirectional or zero-width character; "+
+				"a setting's value is plain text", k)
 		}
 		out[k] = append(json.RawMessage(nil), v...)
 	}
