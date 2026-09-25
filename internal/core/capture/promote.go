@@ -286,7 +286,8 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		// In place, atomic — the file keeps its status directory (promotion is
 		// not resolution). The write happens under the same lock as the re-read,
 		// so no checksum window exists between them.
-		write := fsutil.WriteFileAtomicPreserveMode
+		// Inside the ledger's os.Root (iss-2609012037143368).
+		write := func(p string, data []byte) error { return writeLedgerFile(repoRoot, issuesRoot, p, data) }
 		if stampWriteHook != nil {
 			write = stampWriteHook
 		}
@@ -572,7 +573,8 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		if err := validateReadingStrict(newFM); err != nil {
 			return err
 		}
-		write := fsutil.WriteFileAtomicPreserveMode
+		// Inside the ledger's os.Root (iss-2609012037143368).
+		write := func(p string, data []byte) error { return writeLedgerFile(repoRoot, issuesRoot, p, data) }
 		if stampWriteHook != nil {
 			write = stampWriteHook
 		}

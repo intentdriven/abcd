@@ -109,7 +109,13 @@ func Migrate(req MigrateRequest) (MigrateResult, error) {
 			if err != nil {
 				return fmt.Errorf("migrate %s: %w", r.rel, err)
 			}
-			if err := fsutil.WriteFileAtomicPreserveMode(r.abs, []byte(updated)); err != nil {
+			// Resolved inside an os.Root (iss-2609012037143368): the ledger's own
+			// containment base for a ledger record, the checkout for an intent.
+			base := ledgerBase(repoRoot, issuesRoot)
+			if !fsutil.PathWithin(r.abs, issuesRoot, false) {
+				base = repoRoot
+			}
+			if err := writeContained(base, r.abs, []byte(updated)); err != nil {
 				return fmt.Errorf("migrate %s: %w", r.rel, err)
 			}
 		}

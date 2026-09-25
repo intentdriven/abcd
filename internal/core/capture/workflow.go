@@ -26,7 +26,7 @@ import (
 // a commit's fill and delete a just-committed issue file.
 func mutationPreamble(repoRoot, issuesRoot string) error {
 	if err := withLedgerLock(repoRoot, issuesRoot, func() error {
-		return cleanOrphanPlaceholders(issuesRoot)
+		return cleanOrphanPlaceholders(repoRoot, issuesRoot)
 	}); err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 
 	result, err := commitCapture(repoRoot, issuesRoot, req, issID, slugNorm, placeholder)
 	if err != nil {
-		_ = cancelReservation(placeholder)
+		_ = cancelReservation(repoRoot, issuesRoot, placeholder)
 		return CaptureResult{}, err
 	}
 	result.Redacted, result.Degraded = redacted, degraded
@@ -219,7 +219,13 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		if checksum != emptyChecksum {
 			return fmt.Errorf("%w: placeholder %s changed since reservation", ErrChecksumMismatch, placeholder)
 		}
-		if werr := fsutil.WriteFileAtomicPreserveMode(placeholder, []byte(content)); werr != nil {
+		if ledgerRaceHook != nil {
+			ledgerRaceHook("write", placeholder)
+		}
+		// Written inside the ledger's os.Root (iss-2609012037143368): an ancestor
+		// swapped since the re-read above cannot carry the record out of the
+		// checkout.
+		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
 			return werr
 		}
 		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen}
@@ -532,7 +538,7 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 			return err
 		}
 
-		if err := commitTransition(src, dst, newContent, checksum); err != nil {
+		if err := commitTransition(rr, ir, src, dst, newContent, checksum); err != nil {
 			return err
 		}
 		result = TransitionResult{ID: issID, Path: dst, FromStatus: StateOpen, ToStatus: target,
@@ -565,7 +571,7 @@ var removeSourceHook func(path string) error
 // dir, so a stranded copy could never again be transitioned without manual
 // repair. Rolling back restores the pre-call state (src present, dst absent)
 // so the caller can simply retry once the underlying failure clears.
-func commitTransition(src, dst, newContent, expected string) error {
+func commitTransition(repoRoot, issuesRoot, src, dst, newContent, expected string) error {
 	_, current, err := readWithChecksum(src)
 	if os.IsNotExist(err) {
 		return fmt.Errorf("%w: %s move source missing", ErrTransitionConflict, src)
@@ -576,15 +582,17 @@ func commitTransition(src, dst, newContent, expected string) error {
 	if current != expected {
 		return fmt.Errorf("%w: %s changed since it was read", ErrChecksumMismatch, src)
 	}
-	if err := fsutil.WriteFileAtomicPreserveMode(dst, []byte(newContent)); err != nil {
+	// The write and both removals resolve inside the ledger's os.Root
+	// (iss-2609012037143368).
+	if err := writeLedgerFile(repoRoot, issuesRoot, dst, []byte(newContent)); err != nil {
 		return err
 	}
-	removeSrc := os.Remove
+	removeSrc := func(p string) error { return removeLedgerFile(repoRoot, issuesRoot, p) }
 	if removeSourceHook != nil {
 		removeSrc = removeSourceHook
 	}
 	if err := removeSrc(src); err != nil && !os.IsNotExist(err) {
-		if rbErr := os.Remove(dst); rbErr != nil && !os.IsNotExist(rbErr) {
+		if rbErr := removeLedgerFile(repoRoot, issuesRoot, dst); rbErr != nil && !os.IsNotExist(rbErr) {
 			return fmt.Errorf("%w (rollback of %s also failed: %v)", err, dst, rbErr)
 		}
 		return err
