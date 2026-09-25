@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -202,7 +202,7 @@ it. Recording is append-only, so a caller who retries after missing the receipt
 adds a second entry rather than replacing the first.
 
 **The gate reports a planned record that carries no entry, and does not refuse
-it.** The `grounds` check is the seventh and last row of the report and is
+it.** The `grounds` check is the eighth and last row of the report and is
 advisory: its remedy names this exact command, and the verdict ignores the row
 until the rethink of the reading work settles what a human is asked for here
 (iss-2609091009111294). Relay the row; do not treat it as a refusal. Terminal buckets are exempt on the same rule the claim checks follow:
@@ -348,7 +348,10 @@ gate that will refuse the move mechanically is a recorded seed until built.
    This invocation IS the maintainer's sign-off act — never run it unattended
    or infer consent. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
-   `drafts/ → planned/`.
+   `drafts/ → planned/`. Every relative markdown link that named the draft's
+   path, from any file in the tree, is repointed at `planned/` in the same
+   operation; the JSON lists each rewrite under `relinked` (`file`, `line`,
+   `from`, `to`) — report them.
 
    **`--impact` is the judgement the interview settled**, stamped here because
    this is the moment it is made: a draft filed without one gets it now, in the
@@ -369,8 +372,40 @@ gate that will refuse the move mechanically is a recorded seed until built.
    [`plan`](../.abcd/development/brief/glossary/core/plan.md).
 11. **Spec build:** replace the minted spec body's `_Draft:` placeholder with
     the real design record — scope, approach, and how it satisfies each
-    acceptance criterion.
+    acceptance criterion. Where the work is larger than one implementer can
+    hold and land, list its steps under the minted `## Steps` section (see
+    [Steps](#steps-the-unit-below-a-spec)); a spec that lists none is one step.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
+
+## Steps: the unit below a spec
+
+A spec may split its work into **steps**: ordered, independently landable
+pieces, each one lane and one pull request (adr-2609212115255771, decision 4).
+The author writes them; nothing proposes a split. `abcd intent plan` mints every
+spec with an empty `## Steps` section, and a spec that lists no step is built as
+one step. The section is a numbered list, each step's title on its numbered
+line and its footprint indented beneath it:
+
+```markdown
+## Steps
+
+1. The parser
+   - packages: internal/core/spec
+   - tests: the parser over a stepped and an unstepped spec
+   - landed: #123
+2. The remainder copy
+   - packages: internal/core/intent
+   - tests: the remainder carries the unlanded steps
+```
+
+`- landed:` names what landed the step, a pull request or a commit; a step
+without it is not landed. Any other line indented under a step is the author's
+and travels with it. `abcd intent ready` reports the section's shape on its
+advisory `steps` row: the steps listed and how many have landed, or none and so
+one step. A section that is not a numbered list is named there with the shape
+above, and never withholds readiness. The close below reads it too: a
+`--remainder` close carries the steps not marked landed into the spec it mints,
+and refuses, writing nothing, when the section cannot be read as steps.
 
 ## Ship: close the spec in the change that lands the work
 
@@ -390,11 +425,32 @@ scheduled work, the spec that delivered part of it is closed on its own terms
 and a new spec is minted for the remainder and attached to the same intent —
 `--remainder <slug>` does both in one command, and the visible state afterwards
 is exactly what happened: spec closed X, spec open Y, intent still `planned/`.
+The remainder carries the closing spec's steps not marked landed, renumbered
+from one, and the close names each step it carried; a landed step stays with the
+spec that landed it.
 The intent is never narrowed to match what was built; it stands as written, and
 it ships on the close after which no open spec names it. A close that ships
 nothing refuses `--impact`, because that judgement is written only at the close
 that ships (adr-2609151513118583, invariant 17). Report the specs the close
 names as still open — they are the reason the intent did not move.
+
+**The close repoints every link that named a record it moved.** A record's
+folder is its status, so the close renames two files — the spec out of
+`open/`, and on the close that ships, the intent out of `planned/` — and in the
+same operation it rewrites every relative markdown link in the tree that named
+either old path: a spec already closed that pointed at `../open/<the spec>`, an
+ADR or a plan naming the intent's `planned/` path, a draft naming both, and the
+closed spec's own links, which were written from `open/`. A link that never
+resolved is left as written. The JSON lists each rewrite under `relinked`
+(`file`, `line`, `from`, `to`), and the text render prints them; report them,
+because they are files the close changed beyond the two records. The tree the
+close leaves passes record-lint's `links_resolve` with no hand repair. If the
+repoint fails part-way, the close still stands and a warning on stderr says so.
+After an attempt that failed before or during the repoint, re-running the same
+`spec close` repoints every link other files still hold to either old path. The re-run reads the moved records' own links from the folders
+they are in, because they may have been edited there since the move, so it
+never rewrites them; any of those the failed attempt left unrewritten is one
+`links_resolve` names, to repair by hand.
 
 Run it in the **same change** that lands the intent's work — the commit or
 pull request that makes the acceptance criteria true — the way a captured
@@ -515,7 +571,39 @@ sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
 peer's branch, path and bucket instead of answering not found.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
-or `noop`) and, for `dead_letter`, the reason.
+or `noop`) and, for `dead_letter`, the reason. A second ingest for a receipt
+already ingested is a `noop` when its payload renders to the block on the record,
+replaces that block in place when it renders differently (`ingested`, reported
+as `replaced`), and is refused with nothing written when it does not validate:
+a bad re-ingest never dead-letters a verdict already ingested.
+
+**Model-tier routing.** Both `intent audit <itd-N>` and `intent audit ingest`
+dispatch the `intent-auditor` agent, and each resolves that agent's model tier
+before anything else runs: an invocation override, over the repository's
+`.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone. The
+emit's `--json` result carries the request block as a `routing` member (`agent`,
+`tier`, `fan_out`, `source`, `origin`, `override`, `connection`, `fallback`),
+its text a `routing:` line, and the request file a `## Routing` section after
+the provenance block: run the auditor at that tier where the harness lets you
+choose one. The section sits outside the hashed prompt, so it never moves
+`prompt_hash`. The request `spec close` emits when it ships an intent carries
+the same section; a routing table that cannot be read leaves that request
+without one, one stderr warning names `intent audit <itd-N>` as the re-emit that
+adds it, and the close stands. `--issue-drift` dispatches no agent and refuses `--route`. The
+ingest's `--json` result carries a `route` receipt (`tier_asked`,
+`connection_tried`, `connection_used`, `fallback_reason`, `override`,
+`settings_sent`, `model_reported`) and its text a `route:` line; relay it with
+the result. When no configured provider can serve the tier, one stderr line says
+the step goes through the harness instead. A `--route` naming an agent this
+invocation does not dispatch, a tier outside the set, a connection this machine
+has not configured, or a routing table that cannot be read exits 2 before
+anything is written. With no table accepted and no `--route`, the step asks for
+`host-decides` and nothing is printed.
 
 **Hand the auditor the whole request file.** `intent audit` writes it to the
 reported `request_path`, and its `## Provenance` block states the
@@ -532,6 +620,50 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+## Condition: disposition one scope condition from a reading or a delivery
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent condition <itd-N> --json          # read-only: each condition's standing
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent condition <itd-N> <cond-id> \
+    --disposition <survived|narrowed|falsified|untested> \
+    --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"] --json
+```
+
+The verdict ingest above is one writer into a shipped intent's scope-condition
+dispositions; this is the second. It records that a reading item, or a later
+delivery, changed an assumption's standing, keyed to the `cond-…` identity the
+condition carries rather than to its wording, and joined to what occasioned it.
+
+- **With the intent alone** it writes nothing. Report every condition's standing
+  disposition and the block it came from (`from verdict rcp-…` or
+  `from condition <occasion>, <date>`), or `untested (no block)`. `--json`
+  carries the whole history under `dispositions` and the fold under `standing`.
+- **With a condition id** it appends one dated block to `## Audit Notes`:
+  the identity, the value, the occasion and the grounds, with the narrowing
+  under a `narrowed` value. The occasion is a reading item at any position, or
+  an intent in `shipped/` whose delivery changed the condition's standing. Ask
+  the researcher for the value and the grounds; the reading names the tension
+  and never marks the condition itself.
+
+A condition's standing is its latest reading-occasioned block where it has one,
+and otherwise its latest verdict: a fidelity verdict leaves a reading-occasioned
+block standing unless the verdict's rationale names that block's occasion,
+wherever the two sit in `## Audit Notes`. The verdict ingest reports each block
+it leaves standing (`still standing: …`); an auditor who meant to override one
+names its occasion in the rationale and ingests again for the same receipt,
+which replaces the ingested verdict (reported as `replaced`).
+
+Every refusal exits 2 with nothing written: an intent not in `shipped/` (the
+refusal names its bucket), a condition id the intent does not carry or carries
+twice, a value outside the four, grounds below the substance floor, `narrowed`
+without `--narrowing` or `--narrowing` with any other value, an occasion that
+does not resolve (an absent reading item, or an intent that is absent or not in
+`shipped/`), and the intent named as its own occasion. The grounds and the
+narrowing are redacted before the write; report a `redacted` count when there
+is one. When the reading item's `constraint_in_play` cites a different
+condition's identity, the result carries `occasion_citation` and the render a
+`note:` line: report it as a question for the researcher, never as a refusal.
 
 ## Issue drift: does every promote join read from both ends?
 

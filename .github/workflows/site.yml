@@ -334,7 +334,7 @@ jobs:
     environment: site-render
     permissions:
       contents: write       # upload site.tar.gz to the Release (no branch push)
-      id-token: write       # mint the OIDC token attest-build-provenance signs with
+      id-token: write       # mint the OIDC token actions/attest signs with
       attestations: write   # publish the build-provenance attestation (public repo)
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
@@ -514,8 +514,14 @@ jobs:
         # a user-owned private repo (GitHub gates artifact attestation by repo
         # visibility, exactly as release.yml documents); it re-enables automatically on
         # the public flip, and a skipped step is not a failure, so the deploy still runs.
+        # actions/attest directly, with no predicate input: it then generates SLSA
+        # build provenance itself, the predicate the actions/attest-build-provenance
+        # wrapper produced by calling it (iss-273). NODE_OPTIONS is the wrapper's
+        # own env on that call, kept so the attestation is made exactly as before.
         if: ${{ !github.event.repository.private }}
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        env:
+          NODE_OPTIONS: "--max-http-header-size=32768"
         with:
           subject-path: site.tar.gz
 

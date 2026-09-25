@@ -137,7 +137,7 @@ func TestWalkFilesCannotEscapeTheContainmentRoot(t *testing.T) {
 	defer ctx.Close()
 
 	paths, truncated := ctx.WalkFiles(".")
-	if truncated {
+	if truncated.Any() {
 		t.Error("WalkFiles reported truncation on a two-file tree")
 	}
 	if got := strings.Join(paths, ","); got != "src/inside.go" {
@@ -203,13 +203,13 @@ func TestWalkFilesStopsAtTheFileCap(t *testing.T) {
 	defer ctx.Close()
 
 	paths, truncated := ctx.WalkFiles(".")
-	if truncated || len(paths) != len(files) {
+	if truncated.Any() || len(paths) != len(files) {
 		t.Errorf("WalkFiles = %d files, truncated=%v; want %d files untruncated under the %d cap",
 			len(paths), truncated, len(files), maxWalkFiles)
 	}
 
 	capped, truncated := ctx.walkFilesLimited(".", 3)
-	if !truncated {
+	if !truncated.Any() {
 		t.Error("walk did not report truncation with 10 files under a 3-file cap")
 	}
 	if len(capped) != 3 {
@@ -236,7 +236,7 @@ func TestWalkFilesStopsAtTheDirectoryCap(t *testing.T) {
 	defer ctx.Close()
 
 	paths, truncated := ctx.walkFilesLimited(".", 3)
-	if !truncated {
+	if !truncated.stopped {
 		t.Errorf("walk of 10 empty directories under a 3-entry cap reported no truncation (paths %v)", paths)
 	}
 }
@@ -264,7 +264,7 @@ func TestWalkFilesStopsAtTheDepthCap(t *testing.T) {
 	defer ctx.Close()
 
 	paths, truncated := ctx.WalkFiles(".")
-	if !truncated {
+	if truncated.pruned == 0 || truncated.stopped {
 		t.Errorf("walk of a %d-deep chain under a depth cap of %d reported no truncation", len(deep), maxWalkDepth)
 	}
 	for _, p := range paths {

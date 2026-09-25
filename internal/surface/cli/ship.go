@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/release"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -306,6 +307,7 @@ func bumpReason(cut release.Cut) string {
 func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var changelogJSON string
 	var payloadDir string
+	var shipRoute *routeFlag
 	cmd := &cobra.Command{
 		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>]",
 		Args: cobra.NoArgs,
@@ -320,6 +322,14 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if payloadDir != "" && changelogJSON == "" {
 				return &exitError{Code: 2, Msg: "abcd launch ship: --payload-dir needs --changelog-json — " +
 					"the release payload is staged by the ingest step, which the deterministic emit step does not run"}
+			}
+			// Both steps dispatch the composer: the emit step hands the host
+			// its request block, the ingest step returns its receipt. The route
+			// is resolved first, so a refused --route or routing table stops
+			// the verb before anything is read, staged or written.
+			route, err := shipRoute.resolve(cmd, "abcd launch ship", changelogAgent)
+			if err != nil {
+				return err
 			}
 			// The cut is a fact about the repository, not about the directory
 			// the operator stands in (iss-2609251713073532).
@@ -336,15 +346,20 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, root, raw, payloadDir, *asJSON)
+				return runShipIngest(cmd, root, raw, payloadDir, *asJSON, route)
 			}
 
 			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
-			if rerr := render(cmd.OutOrStdout(), *asJSON, cut, func(w io.Writer) {
+			// A refused cut goes to no composer, so it carries no request block.
+			if !cut.Ready {
+				route = nil
+			}
+			if rerr := render(cmd.OutOrStdout(), *asJSON, withRequest(cut, route), func(w io.Writer) {
 				renderCut(w, "abcd launch ship", cut)
+				renderRequestLine(w, route)
 			}); rerr != nil {
 				return rerr
 			}
@@ -358,6 +373,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 		"path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step")
 	cmd.Flags().StringVar(&payloadDir, "payload-dir", "",
 		"stage the versioned release payload in this directory (must be empty and outside the repository)")
+	shipRoute = addRouteFlag(cmd, changelogAgent)
 	return cmd
 }
 
@@ -370,7 +386,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 // contract alone: only a release workflow that uploads the archive makes the
 // pinned address resolve, and a managed repository's scaffolded workflows
 // upload none, so a catalog pinned there would 404 on every install.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, asJSON bool) error {
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, asJSON bool, route *oracle.Route) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -488,8 +504,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
 		}
 	}
-	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+	if rerr := render(cmd.OutOrStdout(), asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 		renderIngest(w, res)
+		renderReceiptLine(w, route, raw)
 	}); rerr != nil {
 		return rerr
 	}

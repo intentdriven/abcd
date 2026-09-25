@@ -48,11 +48,11 @@ func checkByName(t *testing.T, res ReadyResult, name string) ReadyCheck {
 	return ReadyCheck{}
 }
 
-// assertShape enforces the machine-shape contract: always exactly seven rows in
+// assertShape enforces the machine-shape contract: always exactly eight rows in
 // fixed order, whatever the intent's state.
 func assertShape(t *testing.T, res ReadyResult) {
 	t.Helper()
-	want := []string{"bucket", "acceptance_criteria", "mechanism_claim", "scope_conditions", "spec_link", "spec_body", "grounds"}
+	want := []string{"bucket", "acceptance_criteria", "mechanism_claim", "scope_conditions", "spec_link", "spec_body", "steps", "grounds"}
 	if len(res.Checks) != len(want) {
 		t.Fatalf("expected %d checks, got %d: %+v", len(want), len(res.Checks), res.Checks)
 	}
@@ -800,6 +800,11 @@ func TestReadyAdvisoryChecksNeverGate(t *testing.T) {
 	advisory := map[string]bool{CheckMechanismClaim: true, CheckScopeConditions: true, CheckGrounds: true}
 	for _, c := range res.Checks {
 		switch {
+		case c.Name == CheckSteps:
+			// Advisory, and passing: the spec lists no steps, so it is one step.
+			if !c.OK || !c.Advisory {
+				t.Fatalf("%s = %+v, want a passing advisory row", c.Name, c)
+			}
 		case advisory[c.Name]:
 			if c.OK || !c.Advisory || c.Remedy == "" {
 				t.Fatalf("%s = %+v, want a failing advisory row carrying its remedy", c.Name, c)
@@ -809,5 +814,46 @@ func TestReadyAdvisoryChecksNeverGate(t *testing.T) {
 				t.Fatalf("%s = %+v, want a passing structural row", c.Name, c)
 			}
 		}
+	}
+}
+
+// The steps row reports the linked spec's `## Steps` shape — a list, or none
+// and so one step — and is advisory: a malformed section is named with its
+// remedy and never withholds readiness (itd-2609212103565953, spec scope 1).
+func TestReadyReportsTheStepsShape(t *testing.T) {
+	cases := []struct {
+		name, steps string
+		ok          bool
+		detail      string
+		remedy      string
+	}{
+		{"none", "", true, "built as one step", ""},
+		{"listed", "\n## Steps\n\n1. The parser\n   - landed: #1\n2. The loop\n", true, "2 step(s) listed, 1 landed", ""},
+		{"malformed", "\n## Steps\n\nFirst the parser, then the loop.\n", false, "not a numbered step", "1. <title>"},
+		// An unclosed opener masks the section; the remedy is to close it, and
+		// rewriting the list would not help.
+		{"unclosed", "\n```text\n\n## Steps\n\n1. The parser\n", false, "line 8", "close or remove the unclosed opener"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
+			writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10")+tc.steps)
+			res, err := Ready(root, "itd-10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertShape(t, res)
+			c := checkByName(t, res, CheckSteps)
+			if c.OK != tc.ok || !c.Advisory || !strings.Contains(c.Detail, tc.detail) {
+				t.Fatalf("steps = %+v, want ok=%v advisory with detail containing %q", c, tc.ok, tc.detail)
+			}
+			if !tc.ok && !strings.Contains(c.Remedy, tc.remedy) {
+				t.Fatalf("the remedy must contain %q: %+v", tc.remedy, c)
+			}
+			if !res.Ready {
+				t.Fatalf("the steps row never withholds readiness: %+v", res.Checks)
+			}
+		})
 	}
 }

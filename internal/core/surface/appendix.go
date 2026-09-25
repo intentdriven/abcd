@@ -22,6 +22,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
 // BriefSurfacesDir is the brief's surface-chapter directory, repo-relative and
@@ -217,17 +219,17 @@ func writeCommandSection(b *strings.Builder, c Command, tree []Command, root boo
 // region ambiguous. begin and end are 0-based line indices.
 func markerLines(lines []string) (begin, end int, err error) {
 	begin, end = -1, -1
-	fenced := false
+	// A marker is refused where EITHER mdrecord rule reads it as fenced: a
+	// marker a renderer could show as code is an ambiguous region
+	// (iss-2609251044055902).
+	top := mdrecord.Read(lines, mdrecord.TopLevel).Mask
+	nested := mdrecord.Read(lines, mdrecord.ListNested).Mask
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
-			fenced = !fenced
-			continue
-		}
 		if !strings.HasPrefix(t, markerPrefix) {
 			continue
 		}
-		if fenced {
+		if (top[i]|nested[i])&mdrecord.MaskFence != 0 {
 			return -1, -1, fmt.Errorf("line %d: %w", i+1, ErrMarkerInFence)
 		}
 		switch t {
@@ -394,6 +396,7 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	text := strings.Join(lines, "\n")
 	lineOf := func(offset int) int { return strings.Count(text[:offset], "\n") + 1 }
 	code := codeRegions(text)
+	markFencedLines(code, strings.Split(text, "\n"))
 
 	var out []ShapeClaim
 	for _, m := range flagSpelling.FindAllStringSubmatchIndex(text, -1) {
@@ -476,6 +479,25 @@ func codeRegions(s string) []bool {
 		i = closeAt + n
 	}
 	return in
+}
+
+// markFencedLines marks every byte of a fenced line as code, by mdrecord's
+// fence rule. codeRegions pairs backtick runs, which covers a backtick fence
+// but never a tilde one (iss-2609251045302499). A line either rule reads as
+// fenced is marked, because a marked line only ever makes a spelling count as a
+// claim, and a missed claim is the silent direction.
+func markFencedLines(code []bool, lines []string) {
+	top := mdrecord.Read(lines, mdrecord.TopLevel).Mask
+	nested := mdrecord.Read(lines, mdrecord.ListNested).Mask
+	at := 0
+	for i, ln := range lines {
+		if (top[i]|nested[i])&mdrecord.MaskFence != 0 {
+			for k := at; k < at+len(ln) && k < len(code); k++ {
+				code[k] = true
+			}
+		}
+		at += len(ln) + 1
+	}
 }
 
 // blankKeepingNewlines replaces every byte of s but a newline with a space, so

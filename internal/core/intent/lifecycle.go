@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -291,7 +292,15 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	it.SpecID = sp.ID
 	it.Bucket = BucketPlanned
 	it.Path = plannedRel
-	return PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped, ImpactStamped: impactStamp}, nil
+	res := PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped, ImpactStamped: impactStamp}
+	// Repoint every link that named the draft's path, as a close does for the
+	// records it moves (iss-2609250846525896). Reported, not raised: the record
+	// is planned and the plan stands.
+	res.Relinked, err = relink.Repoint(repoRoot, []relink.Move{{From: draftRel, To: plannedRel, MovedNow: true}})
+	if err != nil {
+		res.RelinkError = err.Error()
+	}
+	return res, nil
 }
 
 // draftFaceFields is the frontmatter rewrite the draft face makes in one
@@ -726,6 +735,25 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		}
 	}
 
+	// The remainder carries the closing spec's steps not marked landed
+	// (itd-2609212103565953, criterion 3), so the section is read before the
+	// mint — and a section that is not a numbered list refuses here, with
+	// nothing written, because the copy would otherwise be a guess
+	// (unrecognized-input-never-writes). A close without a remainder never
+	// reads it: the section is the build's, not the close's.
+	var carried []spec.Step
+	if remainder.Slug != "" {
+		listed, err := spec.ReadSteps(repoRoot, sp)
+		if err != nil {
+			return ReconcileResult{}, fmt.Errorf("intent: %v; --remainder carries the steps not marked landed, and this section cannot be read as steps; nothing was minted. Fix what it names, then re-run the close", err)
+		}
+		carried = spec.Unlanded(listed)
+		// Numbered as the remainder lists them, so the result and the file agree.
+		for i := range carried {
+			carried[i].Number = i + 1
+		}
+	}
+
 	// Does any OTHER spec still hold this intent open? Asked before the mint, so
 	// the impact refusal below can fire before anything is written, and asked
 	// again after it (the remainder counts too).
@@ -765,7 +793,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		if existing, ok := openRemainderWithSlug(claimers, remainder.Slug, specID); ok {
 			minted = existing
 		} else {
-			minted, err = spec.Create(repoRoot, intentID, remainder.Slug, remainder.ProductionMode)
+			minted, err = spec.CreateWithSteps(repoRoot, intentID, remainder.Slug, remainder.ProductionMode, carried)
 			if err != nil {
 				return ReconcileResult{}, err
 			}
@@ -787,6 +815,9 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	}
 
 	res := ReconcileResult{Spec: sp, Intent: it, From: it.Bucket, To: it.Bucket, Remainder: minted, RemainderMinted: mintedHere, OpenSpecs: specIDs(held)}
+	if mintedHere {
+		res.RemainderSteps = carried
+	}
 	// 1. Advance the intent planned/ → shipped/ FIRST — but only when this close
 	// leaves no open spec naming it. Its (kind, spec_id) are already set (Plan
 	// wrote them), and its impact is either already recorded or stamped just
@@ -836,12 +867,28 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 
 	// 2. Close the spec, but only if still open — a re-run on an already-closed
 	// spec is a clean completion, not the "already closed" error spec.Close raises.
-	if sp.Status == spec.StatusOpen {
+	specMovedNow := sp.Status == spec.StatusOpen
+	if specMovedNow {
 		closed, err := spec.Close(repoRoot, specID)
 		if err != nil {
 			return ReconcileResult{}, err
 		}
 		res.Spec = closed
+	}
+
+	// 2b. Repoint every link that named either record's old path. The close is
+	// the one place that knows both paths, so a close that reports success
+	// hands on a tree record-lint accepts rather than a links_resolve refusal
+	// the next command meets (iss-2609091732329046). The moves are derived from
+	// the records' current buckets, not from what THIS invocation moved, so a
+	// re-run after a failure here completes the repoint of every other file's
+	// links. Only a record THIS invocation moved has its own links re-read from
+	// the folder it left: a record an earlier run moved may have been edited
+	// where it is now. A failure is reported, not raised: the records have moved
+	// and the close stands.
+	res.Relinked, err = relink.Repoint(repoRoot, closeMoves(res, specMovedNow))
+	if err != nil {
+		res.RelinkError = err.Error()
 	}
 
 	// 3. Emit the fidelity-review OWED stub + ephemeral request over the shipped
@@ -858,6 +905,32 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		}
 	}
 	return res, nil
+}
+
+// closeMoves names the renames a close stands for, derived from where the two
+// records are now: a closed spec left open/, a shipped intent left planned/.
+// Deriving rather than recording what this call moved is what makes the repoint
+// idempotent — relink.Repoint ignores a move the tree does not show. Each move
+// is marked MovedNow only when this call made it (specMovedNow: the spec was
+// open at entry; res.IntentMoved), so a re-run never re-reads an already-moved
+// record's own links from the folder it left.
+func closeMoves(res ReconcileResult, specMovedNow bool) []relink.Move {
+	var moves []relink.Move
+	if res.Spec.Status == spec.StatusClosed {
+		moves = append(moves, relink.Move{
+			From:     filepath.Join(spec.SpecsRelDir, spec.StatusOpen, filepath.Base(res.Spec.Path)),
+			To:       res.Spec.Path,
+			MovedNow: specMovedNow,
+		})
+	}
+	if res.Intent.Bucket == BucketShipped {
+		moves = append(moves, relink.Move{
+			From:     filepath.Join(IntentsRelDir, BucketPlanned, filepath.Base(res.Intent.Path)),
+			To:       res.Intent.Path,
+			MovedNow: res.IntentMoved,
+		})
+	}
+	return moves
 }
 
 // otherOpenSpecs narrows a set of specs realising one intent to the OPEN ones

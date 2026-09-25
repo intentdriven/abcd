@@ -103,6 +103,20 @@ func TestHarnessSessionURLSpares(t *testing.T) {
 	}
 }
 
+// TestHarnessSessionURLCoverageBoundary pins the boundary hasOpaqueSessionID
+// states (iss-2608281948217899): an all-lower-case id that is not all hex is
+// not a session id to this rule, with or without digits, because a
+// documentation slug has the same shape. A change that widens the opacity
+// test fails here, which is where the slug false positives it buys must be
+// weighed.
+func TestHarnessSessionURLCoverageBoundary(t *testing.T) {
+	for _, id := range []string{"zkqnvqmvxqrtqwyz", "zk3n9q2mvx8rtq", "guide-2026-edition"} {
+		if hasOpaqueSessionID("session_" + id) {
+			t.Errorf("the lower-case non-hex id %q is inside the rule's coverage; the stated boundary moved", id)
+		}
+	}
+}
+
 // TestHarnessFooterDetected covers the emphasis and emoji spellings the append
 // actually lands in — the shapes scripts/check-attribution.sh was widened to
 // after each got through it.

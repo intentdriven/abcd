@@ -34,7 +34,7 @@ func TestWalkFilesBoundsEntriesReadPerDirectory(t *testing.T) {
 	// A per-directory bound of 5 over a 20-entry directory: at most 5 entries are
 	// read from it, and the walk reports it stopped short.
 	paths, truncated := ctx.walkFilesBounded(".", 1000, 5)
-	if !truncated {
+	if truncated.oversizedCount != 1 || truncated.oversized[0] != "." || truncated.stopped {
 		t.Errorf("walk of a 20-entry directory under a 5-entry per-directory bound reported no truncation")
 	}
 	if len(paths) > 5 {
@@ -50,7 +50,7 @@ func TestWalkFilesBoundsEntriesReadPerDirectory(t *testing.T) {
 	}
 	defer ctx2.Close()
 	paths2, truncated2 := ctx2.walkFilesBounded(".", 1000, 5)
-	if truncated2 || len(paths2) != 3 {
+	if truncated2.Any() || len(paths2) != 3 {
 		t.Errorf("walk of 3 files under a 5-entry bound = %d files, truncated=%v; want 3 untruncated", len(paths2), truncated2)
 	}
 }
@@ -337,5 +337,122 @@ func BenchmarkWalkFilesDeepTreeBaseline(b *testing.B) {
 		if len(paths) != 1600 {
 			b.Fatalf("baseline walk returned %d leaf files, want 1600", len(paths))
 		}
+	}
+}
+
+// TestWalkFilesStartBoundaryMatchesTheWholeWalk is iss-135: a walk that starts
+// below the root must agree with the whole-tree walk about the start itself. From
+// "." a skip-set directory is never entered, a regular file is yielded, and a
+// symlink is never followed; the same three must hold when the start IS such an
+// entry, or a future caller passing a non-dot start gets a different tree.
+func TestWalkFilesStartBoundaryMatchesTheWholeWalk(t *testing.T) {
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{
+		"src/keep.go":               "package src\n",
+		"src/nested/deep.go":        "package nested\n",
+		"vendor/dep.go":             "package dep\n",
+		"node_modules/lib/index.js": "x\n",
+		"pkg/build":                 "a regular file named like a skip directory\n",
+	})
+	if err := os.Symlink("src", filepath.Join(dir, "linkdir")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if err := os.Symlink("src/keep.go", filepath.Join(dir, "linkfile.go")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := newSourceContext(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+
+	whole, _ := ctx.WalkFiles(".")
+	inWhole := map[string]bool{}
+	for _, p := range whole {
+		inWhole[p] = true
+	}
+
+	for _, tc := range []struct {
+		start string
+		want  []string
+	}{
+		// ok: an ordinary directory start walks its subtree.
+		{"src", []string{"src/keep.go", "src/nested/deep.go"}},
+		// A start named in the skip set is not entered, exactly as from ".".
+		{"vendor", nil},
+		// A start BELOW a skip-set directory is unreachable from "." too.
+		{"node_modules/lib", nil},
+		// A regular-file start yields the file, exactly as the whole walk does.
+		{"src/keep.go", []string{"src/keep.go"}},
+		// A regular file whose name is in the skip set is still a file.
+		{"pkg/build", []string{"pkg/build"}},
+		// A symlink start, file or directory, is never followed.
+		{"linkdir", nil},
+		{"linkfile.go", nil},
+		{"linkdir/keep.go", nil},
+	} {
+		got, _ := ctx.WalkFiles(tc.start)
+		if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("WalkFiles(%q) = %v, want %v", tc.start, got, tc.want)
+		}
+		for _, p := range got {
+			if !inWhole[p] {
+				t.Errorf("WalkFiles(%q) yielded %q, which the whole-tree walk does not", tc.start, p)
+			}
+		}
+	}
+}
+
+// TestReadDirBoundedContract pins what readDirBounded promises and no more
+// (iss-134): at or under the bound it returns the whole directory, sorted, and
+// says nothing is missing; above it, it returns exactly bound distinct entries
+// of that directory, sorted, and says more remain. Which entries survive above
+// the bound is the filesystem's readdir order and is deliberately not asserted.
+func TestReadDirBoundedContract(t *testing.T) {
+	dir := t.TempDir()
+	all := map[string]bool{}
+	files := map[string]string{}
+	for i := 0; i < 12; i++ {
+		name := fmt.Sprintf("f%02d.txt", i)
+		files[name] = "x\n"
+		all[name] = true
+	}
+	writeTree(t, dir, files)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	names := func(es []fs.DirEntry) []string {
+		out := make([]string, 0, len(es))
+		for _, e := range es {
+			out = append(out, e.Name())
+		}
+		return out
+	}
+
+	for _, bound := range []int{12, 20} {
+		entries, more := readDirBounded(root, bound)
+		got := names(entries)
+		if more || len(got) != 12 || !sort.StringsAreSorted(got) {
+			t.Errorf("bound %d over 12 entries = %v (more=%v), want all 12 sorted and nothing more", bound, got, more)
+		}
+	}
+
+	entries, more := readDirBounded(root, 5)
+	got := names(entries)
+	if !more {
+		t.Error("a 12-entry directory under a 5-entry bound must report more")
+	}
+	if len(got) != 5 || !sort.StringsAreSorted(got) {
+		t.Errorf("bound 5 = %v, want exactly 5 names, sorted", got)
+	}
+	seen := map[string]bool{}
+	for _, n := range got {
+		if !all[n] || seen[n] {
+			t.Errorf("bound 5 returned %q, which is not a distinct entry of the directory", n)
+		}
+		seen[n] = true
 	}
 }

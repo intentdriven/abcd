@@ -45,6 +45,12 @@ const (
 	// harness-wide user setting and takes element choices, so only an answered
 	// prompt writes it.
 	StatusLine GapCategory = "status-line"
+	// OracleRouting covers accepting abcd's proposed model-tier routing table,
+	// at the machine and, offered separately, at the repository
+	// (itd-2609170822093401). Its gaps are advisory and never written under
+	// --yes: a routing table decides which model every delegated step asks
+	// for, so only an answered prompt accepts one.
+	OracleRouting GapCategory = "oracle-routing"
 )
 
 // Gap is one detected discrepancy between desired and actual state.
@@ -154,7 +160,8 @@ type InstallResult struct {
 	// silent failure, so the reason travels with the result.
 	Notes []string `json:"notes,omitempty"`
 	// OptionalSkipped names the optional gaps a --yes run deliberately did not
-	// apply: the advisory git-identity pin and the status-line offer. --yes
+	// apply: the advisory git-identity pin, the status-line offer and the two
+	// model-tier routing offers (which accept a table only on an answer). --yes
 	// approves every resolvable CATEGORY, but it never writes the pin, because
 	// the pin captures whatever git identity happens to be configured and an
 	// unattended run would canonicalise a sandbox or agent identity; and it never

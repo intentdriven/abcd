@@ -3,7 +3,10 @@ package lifeboat
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // graveyard.go — shared types, constants, and id helpers for the three-layer
@@ -104,16 +107,44 @@ var signalRank = map[Signal]int{
 // Finding is one graveyard signal, uniform across layers 1 and 2. ID is a stable
 // deterministic token (see the id helpers below) that a layer-3 lesson cites in
 // its Evidence array; an entry citing no live id is dropped by the validator.
-// Summary is a one-line human description; Evidence is the concrete cited
-// material (commit subjects, quoted lines, paths), sanitised at build time
-// because it is drawn from repository content a hostile or archived repo
-// controls.
+// Summary is a one-line human description.
+//
+// Two channels carry the rest, and they are kept apart by type rather than by
+// wording (iss-2608270926037088):
+//
+//   - Evidence is the concrete cited material (commit subjects, quoted lines,
+//     paths). It is drawn from repository content a hostile or archived repo
+//     controls, so every string passes through gvText at build time.
+//   - Notices are the binary's own statements ABOUT the finding: a cap omission,
+//     a shadowed claimant, a truncated listing. They are authored here, never
+//     copied from the repository; where one names a record path, the path is a
+//     Go-quoted operand, so it cannot close its quotes and speak as the notice.
+//
+// When the two shared one array, a crafted path or bullet could write text
+// indistinguishable from an omission notice, and the layer-3 interpreter reading
+// the file had no way to tell the forgery from the binary's word.
 type Finding struct {
 	ID       string   `json:"id"`
 	Signal   Signal   `json:"signal"`
 	Summary  string   `json:"summary"`
 	Evidence []string `json:"evidence,omitempty"`
+	Notices  []string `json:"notices,omitempty"`
 }
+
+// maxGraveyardTextBytes caps one record-drawn graveyard string after cleaning,
+// so a single decision line or commit subject cannot balloon a graveyard file.
+// It matches the cap one layer-3 lesson's prose takes.
+const maxGraveyardTextBytes = maxLessonProseBytes
+
+// gvText cleans one record-drawn string for a graveyard file. Sanitize alone made
+// it terminal-safe but left CommonMark and raw-HTML openers live for the layer-3
+// interpreter that reads the file; the shared prose cleaner breaks those apart,
+// folds the string to one line, and bounds it (iss-2608270926037088).
+func gvText(s string) string { return termsafe.CleanProseLine(s, maxGraveyardTextBytes) }
+
+// gvQuoted is a record-drawn operand inside a notice: cleaned, then Go-quoted,
+// so the reader sees exactly where the repository's text begins and ends.
+func gvQuoted(s string) string { return strconv.Quote(gvText(s)) }
 
 // Archaeology is layer 1: the Tier-0, git-only, deterministic, evidence-only
 // dig. Findings is never nil in a written file (an empty [] is a first-class
@@ -196,7 +227,7 @@ const (
 
 	// maxGraveyardFindingsPerSignal bounds each signal's findings so a pathological
 	// or hostile history cannot balloon a graveyard file. Excess is dropped; the
-	// last retained finding for a truncated signal notes the cap.
+	// last retained finding for a truncated signal notes the cap in its Notices.
 	maxGraveyardFindingsPerSignal = 500
 
 	// maxDependencyTokens bounds the removed-dependency names cited per manifest,
@@ -330,20 +361,20 @@ func capSignalFindings(fs []Finding) []Finding {
 	return noteFindingsOmitted(fs[:maxGraveyardFindingsPerSignal], len(fs)-maxGraveyardFindingsPerSignal)
 }
 
-// noteFindingsOmitted writes the cap notice onto the last retained finding. It is
-// the announcing half of capSignalFindings, split out for the one signal
-// (unmerged-branch) whose list is bounded BEFORE its findings are built: there
-// the count dropped is known only at the probe, so a findings-level cap can never
-// see it. The evidence slice is copied before the append because fs may share its
-// array with the caller's untruncated slice. A drop with no retained finding to
-// carry it has nowhere to be announced and leaves fs untouched.
+// noteFindingsOmitted writes the cap notice onto the last retained finding's
+// Notices. It is the announcing half of capSignalFindings, split out for the one
+// signal (unmerged-branch) whose list is bounded BEFORE its findings are built:
+// there the count dropped is known only at the probe, so a findings-level cap can
+// never see it. The notices slice is copied before the append because fs may
+// share its array with the caller's untruncated slice. A drop with no retained
+// finding to carry it has nowhere to be announced and leaves fs untouched.
 func noteFindingsOmitted(fs []Finding, omitted int) []Finding {
 	if omitted <= 0 || len(fs) == 0 {
 		return fs
 	}
 	last := &fs[len(fs)-1]
-	last.Evidence = append(append([]string(nil), last.Evidence...),
-		fmt.Sprintf("(+%d further findings omitted; capped at %d)", omitted, maxGraveyardFindingsPerSignal))
+	last.Notices = append(append([]string(nil), last.Notices...),
+		fmt.Sprintf("+%d further findings omitted; capped at %d", omitted, maxGraveyardFindingsPerSignal))
 	return fs
 }
 

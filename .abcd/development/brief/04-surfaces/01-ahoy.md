@@ -135,6 +135,10 @@ user-scope directory for machine-local state.
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
+  rules.json                     the machine's rule conventions, the user layer
+                                 between the bundled domains and each repo's
+                                 .abcd/rules.json, read-only; abcd never creates it
+                                 (itd-117)
   path-entry                     the abcd copy this machine owns, the one PATH binary a
                                  hook will run
   trusted-roots                  foreign-uid configuration roots the caller vouches for
@@ -160,6 +164,10 @@ permissions are not checked, and the hook shims that consult it check neither.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the two that widen trust, and a file failing it, or holding a line that
 does not parse, is reported loudly and both of its limits take their defaults.
+`rules.json` is read through that guard too, because it injects text into every
+session on the machine, but a file failing it — or failing to parse — fails the
+rules load outright: nothing injects until it is fixed, and the file is named on
+stderr.
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd
@@ -317,8 +325,10 @@ about, one question per category present, never one per item.
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
 | `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin | transparent confirm; skip-if-set with a "current value" notice |
-| `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest |
+| `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
 | `dependency` | the opt-in scanners | one category-level approval covering them; abcd never auto-executes a package manager, and the user runs the commands |
+| `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
+| `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
 **The questions come in a fixed order**, and the order is a contract rather than
