@@ -76,7 +76,9 @@ dispatcher page `abcd.md` documents the bare call, and the host-delegated pages
 (`consult`, `ingest`, `prepare-this-repo`) run in the host agent, so the line
 for one of those tokens says what it is instead — `abcd <record-id>` for the
 first, the `/abcd:<page>` invocation for the rest — and never sends the reader
-to rebuild or update. Failing that evidence, the disk-only vintage this verb
+to rebuild or update. Neither is a `status` or `show` sub-verb under a record
+verb (`capture`, `intent`, `spec`): the refusal names the record dispatcher,
+`abcd <record-id>`, which answers that question. Failing that evidence, the disk-only vintage this verb
 renders stands in. When neither says anything, the framework's line stands
 byte-for-byte. The exit code, the stream and the JSON envelope are the
 framework's own.

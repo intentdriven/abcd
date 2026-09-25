@@ -113,6 +113,13 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 			return what
 		}
 	}
+	// A status/show sub-verb under a record verb is answered by the record
+	// dispatcher, not by a newer binary (iss-2609190337466942).
+	if len(skew.known) == 1 {
+		if hint := recordReadHint(skew.known[0], positionalsFrom(args, skew.verb)); hint != "" {
+			return hint
+		}
+	}
 	pluginRoot, rootOK := ahoy.ResolvePluginRoot()
 	inRoot := rootOK && executableUnder(pluginRoot)
 	if rootOK {

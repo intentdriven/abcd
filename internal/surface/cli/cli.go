@@ -2002,6 +2002,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
 						"unknown intent subcommand %q; %s (nothing created)", args[0], instead)}
 				}
+				if hint := recordReadHint("intent", args); hint != "" {
+					return &exitError{Code: 2, Msg: fmt.Sprintf(
+						"unknown intent subcommand %q; %s (nothing created)", args[0], hint)}
+				}
 				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 					if sug == "" {
 						return &exitError{Code: 2, Msg: fmt.Sprintf(
@@ -3521,6 +3525,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// writes, iss-29): with a did-you-mean when a real sub-verb is near,
 			// and with the sub-verb list when none is, because a far miss is a
 			// subcommand call too (iss-2609091647589392). Genuine prose still files.
+			if hint := recordReadHint("capture", args); hint != "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"unknown capture subcommand %q; %s (nothing captured)", args[0], hint)}
+			}
 			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 				if sug == "" {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
