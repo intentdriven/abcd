@@ -34,7 +34,7 @@ func TestWalkFilesBoundsEntriesReadPerDirectory(t *testing.T) {
 	// A per-directory bound of 5 over a 20-entry directory: at most 5 entries are
 	// read from it, and the walk reports it stopped short.
 	paths, truncated := ctx.walkFilesBounded(".", 1000, 5)
-	if !truncated {
+	if truncated.oversizedCount != 1 || truncated.oversized[0] != "." || truncated.stopped {
 		t.Errorf("walk of a 20-entry directory under a 5-entry per-directory bound reported no truncation")
 	}
 	if len(paths) > 5 {
@@ -50,7 +50,7 @@ func TestWalkFilesBoundsEntriesReadPerDirectory(t *testing.T) {
 	}
 	defer ctx2.Close()
 	paths2, truncated2 := ctx2.walkFilesBounded(".", 1000, 5)
-	if truncated2 || len(paths2) != 3 {
+	if truncated2.Any() || len(paths2) != 3 {
 		t.Errorf("walk of 3 files under a 5-entry bound = %d files, truncated=%v; want 3 untruncated", len(paths2), truncated2)
 	}
 }
