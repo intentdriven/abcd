@@ -93,7 +93,10 @@ func commandSurface(cmd *cobra.Command) []surface.Command {
 		Group:    helpGroup(cmd),
 		Block:    helpBlock(cmd),
 		Sentence: commandSentence(cmd),
-		Flags:    commandFlags(cmd),
+		// A moved spelling's successor (itd-2609212130136102), so the move is
+		// written down in the committed tree beside the stub it leaves.
+		MovedTo: movedTo(cmd),
+		Flags:   commandFlags(cmd),
 	}}
 	for _, child := range cmd.Commands() {
 		out = append(out, commandSurface(child)...)

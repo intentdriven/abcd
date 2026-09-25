@@ -77,7 +77,7 @@ func SentencePages(repoRoot string) ([]SentencePage, error) {
 	root := NewRootCommand()
 	cmds := []*cobra.Command{root}
 	for _, sub := range root.Commands() {
-		if !sub.Hidden {
+		if !sub.Hidden && sub.Deprecated == "" {
 			cmds = append(cmds, sub)
 		}
 	}

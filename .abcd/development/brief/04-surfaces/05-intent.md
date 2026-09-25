@@ -51,7 +51,6 @@ judgement no verb makes.
 |---|---|---|
 | `hold` | — | shipped |
 | `link` | — | shipped |
-| `new` | — | shipped |
 | `plan` | — | shipped |
 | `unhold` | — | shipped |
 | `ready` | gate | shipped |
@@ -271,7 +270,6 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 |---|---|---|
 | `/abcd:intent` (no args) | Read-only status: bucket counts (drafts / planned / shipped / disciplines / superseded), open/closed spec counts, the itd↔spc links, a ledger-routing hint (`abcd capture "…"` for an observation, `abcd intent "…"` for a user-facing change), and an ideate-routing line (a big, unproven idea? `abcd ideate` runs the optional admission gauntlet and records the verdict either way) | — |
 | `/abcd:intent "<free-text>"` | **Canonical create** (spc-30 (predecessor store)/itd-46): a leading quoted seed is the canonical create entry. Seeds a draft skeleton whose `## Press Release` is the quoted text as prose, under an H1 derived from the text's first sentence (cut on a word boundary at the slug cap) or given as a title — one line, non-empty, redacted like the text — with Why This Matters and Acceptance Criteria seeded as prompts for the human to fill; assigns `itd-N` and derives the slug from the text; writes `suggested_kind: null`. An optional impact (additive, breaking or fix) stamps the draft's product impact at create time, and an optional production mode (hand-written, dictated-and-formatted or scribe-transcribed) stamps how its text was produced (itd-178); the draft's `origin` carries no flag and is derived from the verb that ran. A leading quote always creates — never falls through to bare render | writes to `drafts/itd-N-<slug>.md` (no spec created) |
-| Deprecated create alias | Deprecated alias for the quoted-text create (`abcd intent "<text>"`); files a draft from the text | writes to `drafts/itd-N-<slug>.md` (no spec created) |
 | The grill step, on one intent id | Socratic adversarial interview that stress-tests an intent for vagueness, missing acceptance, hidden assumptions before planning. Glossary-aware once `terminology/` exists. A brief-section mode would stress-test a brief section instead. (per itd-27, `intents/planned/` — a later phase; no grill sub-verb ships yet) | (stays in current state) |
 | Plan (one intent id) | Plans a draft: mints its native spec, injects the bidirectional link (intent `spec_id` ↔ spec `intent`), stamps an identity onto every unmarked scope condition, and moves the file `drafts/` → `planned/`. An impact given at planning stamps the INTENT's product-impact judgement, because the planning interview is where that judgement is made: validated at the create path's bar (never `internal`), written as the bare scalar the create path writes, refused before anything moves when it disagrees with a judgement the record already carries, and a no-op when it agrees; without one the field is left as found and the judgement stays owed to the close (iss-2609170726457256). A production mode given at planning stamps the MINTED SPEC's disclosure pair; the intent's own stamp was written at create time and is never rewritten. On an intent already in `planned/` it does the identity step alone (no spec, no move), takes an impact under the same rules, and refuses when nothing is unmarked and no judgement is added. Single intent ID. | `drafts/` → `planned/` (stamp step: no move) |
 | Readiness gate (one intent id, optionally with grounds) | **Implement-readiness gate**: reports whether an intent is ready to implement — seven checks, four of which gate: in `planned/`, with acceptance criteria, a bidirectional spec link, and a written spec body. The two claim rows (mechanism prompted-and-nullable, scope conditions with each condition identified) and the grounds row (a discipline record is exempt: it carries no conjecture of its own) are reported as advisory and never withhold readiness, their refusals parked by iss-2609091009111294 until the rethink of the reading work. Exit 0 ready / 1 not ready / 2 fault. Recording grounds, in the form `<pursued\|deferred\|declined>: <conjecture>`, is the gate's one write: it appends the conjecture behind this decision — what is expected, and what would show it wrong — to the intent's `## Grounds` section, append-only ([adr-57](../../decisions/adrs/0057-grounds-accumulate-as-an-append-only-section.md)), and then reports; a shipped or superseded record is never backfilled. | (no move; recorded grounds append to `## Grounds`) |
@@ -601,7 +599,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent hold`, `abcd intent link`, `abcd intent new`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -635,12 +633,6 @@ Sub-verbs: none.
 | `--reason` | string |
 
 ### `abcd intent link`
-
-Sub-verbs: none.
-
-Flags: none.
-
-### `abcd intent new`
 
 Sub-verbs: none.
 

@@ -26,22 +26,25 @@ repo whose stamp says it is current.
 | Verb | Bucket | Status |
 |---|---|---|
 | `doctor` | — | shipped |
-| `dry-run` | — | shipped |
-| `identity-check` | — | shipped |
 | `install` | — | shipped |
-| `remote` | audit | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 
 
-Bare `/abcd:ahoy` shows read-only status and mutates nothing. The slash command
-dispatches every sub-verb but the identity check, the write verbs included, and
-each announces that it writes before it runs. The identity check is a plain
-command-line entrypoint, because its exit code is the whole point of it and its
-home is a pre-commit hook or CI rather than a conversation. `status` is a
-plugin-page alias for the bare form and has no CLI sub-command behind it: `abcd
-ahoy status` is refused as an unknown command. Every other word ships on the
-CLI, and the table above is that set.
+Bare `/abcd:ahoy` shows read-only status and mutates nothing. Three read-only
+modes of the same act — the dry run, the identity check and the remote report —
+are flags on the bare verb rather than sub-verbs, one at a time, and the
+appendix lists them. A sub-verb is a distinct action, a flag a mode of the same
+one (itd-2609212130136102). For one release each
+mode's retired sub-verb spelling answers with its flag and exits non-zero, and
+the release after removes it. The slash command dispatches every sub-verb and
+mode but the identity check, the write verbs included, and each announces that
+it writes before it runs. The identity check is a plain command-line
+entrypoint, because its exit code is the whole point of it and its home is a
+pre-commit hook or CI rather than a conversation. `status` is a plugin-page
+alias for the bare form and has no CLI sub-command behind it: `abcd ahoy
+status` is refused as an unknown command. Every other word ships on the CLI:
+the table above is the sub-verb set, and the modes are the bare verb's flags.
 
 - **Install** installs or updates abcd in this repo, covering first install
   and upgrade alike. It runs the detection pass, then an apply pass over the
@@ -516,23 +519,15 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy doctor`, `abcd ahoy dry-run`, `abcd ahoy identity-check`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
 
-Flags: none.
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
+| `--identity` | bool |
+| `--remote` | bool |
 
 ### `abcd ahoy doctor`
-
-Sub-verbs: none.
-
-Flags: none.
-
-### `abcd ahoy dry-run`
-
-Sub-verbs: none.
-
-Flags: none.
-
-### `abcd ahoy identity-check`
 
 Sub-verbs: none.
 
@@ -557,6 +552,8 @@ Sub-verbs: none.
 | `--yes` | bool |
 
 ### `abcd ahoy remote`
+
+Bare, it moved to `abcd ahoy --remote`.
 
 Sub-verbs: `abcd ahoy remote apply`.
 

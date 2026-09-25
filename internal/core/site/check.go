@@ -1,6 +1,6 @@
 package site
 
-// `abcd site check` — the gates adr-47 decision 3 arms.
+// `abcd lint site` — the gates adr-47 decision 3 arms.
 //
 // The build renders; this says whether what it rendered may be published. Seven
 // independent checks run over an already-built output directory and the

@@ -150,7 +150,7 @@ func TestBootstrapFreshInstallSelfCheck(t *testing.T) {
 	// page cache — and the five-second budget that once stood here, widened for
 	// exactly that wobble, failed at 5.77s on a loaded runner
 	// (iss-2609012020479351, the fourth site of the class).
-	cmd := exec.Command(binary, "version")
+	cmd := exec.Command(binary, "--version")
 	cmd.Env = []string{"PATH=" + bootstrapGoFreePath, "HOME=" + t.TempDir()}
 	answer, err := cmd.CombinedOutput()
 	if err != nil {

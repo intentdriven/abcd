@@ -92,11 +92,11 @@ func TestSurfaceSnapshotRecordsFlagDetail(t *testing.T) {
 		t.Fatalf("--json recorded as required")
 	}
 
-	version, ok := findCommand(snap, "abcd version")
+	update, ok := findCommand(snap, "abcd update")
 	if !ok {
-		t.Fatalf("`abcd version` missing")
+		t.Fatalf("`abcd update` missing")
 	}
-	if _, inherited := findFlag(version, "json"); inherited {
+	if _, inherited := findFlag(update, "json"); inherited {
 		t.Fatalf("inherited persistent flag recorded on a subcommand; it must be recorded only where it is declared")
 	}
 }

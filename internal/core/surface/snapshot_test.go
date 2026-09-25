@@ -84,7 +84,7 @@ func TestEncodeShape(t *testing.T) {
 		t.Fatalf("Encode: %v", err)
 	}
 	want := `{
-  "schema_version": 3,
+  "schema_version": 4,
   "commands": [
     {
       "path": "abcd",

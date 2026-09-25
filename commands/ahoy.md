@@ -1,7 +1,7 @@
 ---
 name: ahoy
-description: "Detect abcd's install state for this repository and list its gaps: Writes nothing; refuses any argument."
-argument-hint: "[install | uninstall | doctor | dry-run | remote]"
+description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply]"
 block: people
 ---
 
@@ -12,13 +12,15 @@ harness-invoked row that `install` wires, is in the agents-and-hosts block of
 `abcd --help --agent`, and its line there names this page.
 
 Run abcd's install/update engine for the current repo and present the result.
-Bare invocation and the `doctor`, `dry-run` and `remote` sub-verbs perform **zero
-writes**; `install`, `uninstall` and `remote apply` are the three that change
-something, and each says so before it runs — `remote apply` is the only one that
-changes state outside this machine, and it asks before it does.
+Bare invocation, its `--dry-run` and `--remote` modes, and the `doctor` sub-verb
+perform **zero writes**; `install`, `uninstall` and `remote apply` are the three
+that change something, and each says so before it runs — `remote apply` is the
+only one that changes state outside this machine, and it asks before it does.
+A mode is a flag on the bare verb, one at a time; a distinct action is a
+sub-verb.
 
-Read `$ARGUMENTS` for the sub-verb. No argument, or `status`, is the bare
-read-only detection pass below.
+Read `$ARGUMENTS` for the sub-verb or the mode. No argument, or `status`, is the
+bare read-only detection pass below.
 
 ## Bare — read-only detection
 
@@ -226,10 +228,10 @@ Report the folder kind, the detection-gap count, and the audit-gap count, then
 the per-gap detail from the JSON. This is the sub-verb to reach for when the bare
 render says a repo is healthy and the user's experience says otherwise.
 
-## `remote` — the repo's GitHub security settings
+## `--remote` — the repo's GitHub security settings
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy remote --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --remote --json
 ```
 
 Reports GitHub's two native secret-scanning toggles on the repository this
@@ -281,23 +283,23 @@ at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
 thing abcd deliberately did not do, and the reason.
 
-## `dry-run` — the canonical detection envelope
+## `--dry-run` — the canonical detection envelope
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy dry-run
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --dry-run
 ```
 
 Renders the canonical `DetectionResult` JSON envelope and writes nothing — the
-same pass `install` would apply, shown rather than applied. `dry-run` always
+same pass `install` would apply, shown rather than applied. `--dry-run` always
 emits JSON, so it needs no `--json` flag. Use it when the user wants to see
 exactly what an install would do before letting it run.
 
-## Scoping note: `identity-check` is CLI-only
+## Scoping note: `--identity` is CLI-only
 
-`abcd ahoy identity-check` exits non-zero when the git commit identity diverges
+`abcd ahoy --identity` exits non-zero when the git commit identity diverges
 from the committed pin. It exists to be wired into a pre-commit hook or CI, where
 its exit code is the whole point, so it stays a bare-CLI entrypoint rather than a
-plugin sub-verb; report it only if a user asks how the identity gate fails
+plugin mode; report it only if a user asks how the identity gate fails
 closed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

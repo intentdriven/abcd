@@ -114,7 +114,7 @@ func citationRefusals(pre *CitationPreflight) []string {
 
 // joinURLs renders a bounded list. A release blocked by forty stale citations
 // must not print forty lines into a gate summary; the count above it is the
-// complete number, and `abcd docs lint` names every one.
+// complete number, and `abcd lint docs` names every one.
 func joinURLs(urls []string) string {
 	const max = 3
 	if len(urls) == 0 {

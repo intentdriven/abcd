@@ -1,7 +1,6 @@
 ---
 name: version
-description: "Print abcd's version, install mode, and vintage: Writes nothing; refuses any argument."
-block: agents
+description: "Print abcd's version, install mode, and vintage through abcd --version: Writes nothing; refuses any argument."
 ---
 
 # `/abcd:version`
@@ -11,10 +10,11 @@ binary's build revision (in a source checkout) or pinned version, and whether it
 is up to date, stale, or of an undeterminable vintage relative to the on-disk
 reference. This command performs **zero writes** and touches no network.
 
-Run:
+The binary keeps its version where every tool keeps it, in a root flag, and this
+page runs it. Run:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" version --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" --version --json
 ```
 
 Then tell the user the `name`, `version`, `vintage`, and `staleness` from the
@@ -24,13 +24,14 @@ dangling entry, or an unresolved plugin root). In that case say abcd is not on
 `PATH` yet and point at `ahoy install` below, rather than inventing a mode.
 
 **Checking for a newer release.** Only when the user explicitly asks whether a
-newer version exists, add `--check`:
+newer version exists, ask the update verb, which checks without swapping
+anything:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" version --check --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" update --check --json
 ```
 
-`--check` reaches the network — it fetches the latest release once, compares,
+It prints the same report with a `check` added. `update --check` reaches the network — it fetches the latest release once, compares,
 and reports under `check` (with its `source` named). When an update is
 available, `check.next_step` names the command that takes it — `abcd update`
 for a binary the update verb can swap, the host's plugin update for a
@@ -38,7 +39,7 @@ plugin-root binary, or the package manager's own command for a Homebrew
 install — chosen by the same on-disk classification `abcd update` dispatches
 on. Relay it verbatim rather than paraphrasing; it is the one line the user
 types next. abcd never fetches implicitly (adr-38): the network is only ever
-touched by a verb whose documented job is that fetch — `version --check`,
+touched by a verb whose documented job is that fetch — `update --check`,
 `update`, `docs cite refresh`, and `memory ingest <url>`; every other path
 reads only what is on disk.
 

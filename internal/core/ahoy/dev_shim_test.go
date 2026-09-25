@@ -38,7 +38,7 @@ func TestDevShimFailsLoudlyOnBuildFailure(t *testing.T) {
 	shimPath := filepath.Join(binDir, "abcd-shim")
 	writeExecutable(t, shimPath, renderDevShim(repo, freshBin))
 
-	cmd := exec.Command(shimPath, "version")
+	cmd := exec.Command(shimPath, "--version")
 	cmd.Env = append(os.Environ(), "PATH="+fakeGoDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -79,7 +79,7 @@ func TestDevShimExecsFreshBinaryOnBuildSuccess(t *testing.T) {
 	shimPath := filepath.Join(binDir, "abcd-shim")
 	writeExecutable(t, shimPath, renderDevShim(repo, freshBin))
 
-	cmd := exec.Command(shimPath, "version", "--json")
+	cmd := exec.Command(shimPath, "--version", "--json")
 	cmd.Env = append(os.Environ(), "PATH="+fakeGoDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -87,7 +87,7 @@ func TestDevShimExecsFreshBinaryOnBuildSuccess(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("shim failed on a successful build: %v (stderr=%q)", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "FRESH-EXEC:version --json") {
+	if !strings.Contains(stdout.String(), "FRESH-EXEC:--version --json") {
 		t.Errorf("shim did not exec the fresh binary with args: %q", stdout.String())
 	}
 }

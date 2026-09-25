@@ -119,7 +119,6 @@ var helpPlacements = map[string]helpPlacement{
 	"report":              {group: groupAgents, page: "commands/report.md"},
 	"site":                {group: groupAgents, page: "commands/site.md"},
 	"statusline":          {group: groupAgents, page: "commands/ahoy.md"},
-	"version":             {group: groupAgents, page: "commands/version.md"},
 }
 
 // applyHelpPlacement declares the groups on root, files every placed entry, and
@@ -176,7 +175,7 @@ func isTopLevel(cmd *cobra.Command) bool {
 // helpGroup is the group the snapshot records: a visible top-level verb's
 // GroupID, and nothing for any other command.
 func helpGroup(cmd *cobra.Command) string {
-	if !isTopLevel(cmd) || cmd.Hidden {
+	if !isTopLevel(cmd) || cmd.Hidden || cmd.Deprecated != "" {
 		return ""
 	}
 	return cmd.GroupID
@@ -193,6 +192,9 @@ func helpBlock(cmd *cobra.Command) string {
 		default:
 			return blockPeople
 		}
+	}
+	if cmd.Deprecated != "" {
+		return "" // a stub that moved whole is listed nowhere (itd-2609212130136102)
 	}
 	return cmd.Annotations[annotationHelpBlock]
 }

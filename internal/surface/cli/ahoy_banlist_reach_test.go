@@ -99,7 +99,7 @@ func TestAhoyEnvelopeCarriesTheReach(t *testing.T) {
 			PublicFamily string `json:"public_family"`
 		} `json:"banlist"`
 	}
-	if err := json.Unmarshal(runCLI(t, "ahoy", "dry-run"), &env); err != nil {
+	if err := json.Unmarshal(runCLI(t, "ahoy", "--dry-run"), &env); err != nil {
 		t.Fatalf("dry-run envelope does not parse: %v", err)
 	}
 	if env.Banlist.Reach != banlist.PrivateReachNote {

@@ -56,7 +56,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   `internal/core/surface/sentences.go`): what the verb does, what it writes, and
   when it refuses, declared once and rendered on the command list, the verb's
   `--help` and its plugin page, so the line an agent chooses a verb by answers
-  the questions it asks before the call.
+  the questions it asks before the call. Their standard flag names and their
+  advice to warn before removing a spelling shape the verb consolidation
+  (itd-2609212130136102): the version is the root's `--version`, a mode of one
+  action is a flag rather than a sub-verb, and every moved spelling answers
+  with its successor for one release before it goes.
 - **The NO_COLOR convention (<https://no-color.org>)** — the environment
   variable that asks a program to emit no colour, and specifically its rule
   that the variable counts when *present and not empty*, whatever its value.

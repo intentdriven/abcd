@@ -348,26 +348,26 @@ jobs:
         run: go run ./cmd/abcd intent audit --issue-drift --strict
 
       # Docs-currency gate (itd-60): the internal/core/lint engine over docs/ and
-      # the repo root, driven via the `abcd docs lint` verb. Blocking — a doc-body
+      # the repo root, driven via the `abcd lint docs` verb. Blocking — a doc-body
       # change-narration, broken relative link, or stray root markdown fails CI.
       - name: Docs-lint (currency gate)
         if: matrix.os == 'ubuntu-latest'
-        run: go run ./cmd/abcd docs lint
+        run: go run ./cmd/abcd lint docs
 
       # Site-render gate (iss-2608241845109280): the site renders the record as
       # well as docs/, and the renderer refuses markdown outside its supported
       # subset. This lane always runs — the changes classifier never stands the
       # Linux leg down — so a records-only pull request is covered here, which
-      # site-screenshots.yml's path filter does not cover. Build, then `site
-      # check` the output: the publish gates (provenance, banned-tokens,
+      # site-screenshots.yml's path filter does not cover. Build, then `lint
+      # site` the output: the publish gates (provenance, banned-tokens,
       # baseline, ...) are what release.yml's post-publish site job runs, so a
       # change that renders but trips a check gate must fail HERE, not after the
-      # binaries ship. `site check` excludes docs/, so no mkdocs step is needed.
+      # binaries ship. `lint site` excludes docs/, so no mkdocs step is needed.
       - name: Site-render gate
         if: matrix.os == 'ubuntu-latest'
         run: |
           go run ./cmd/abcd site build --out "$RUNNER_TEMP/site-render-check"
-          go run ./cmd/abcd site check --out "$RUNNER_TEMP/site-render-check"
+          go run ./cmd/abcd lint site --out "$RUNNER_TEMP/site-render-check"
 
   # Secrets never land in history: full-history scan on every push/PR. Run as a
   # pinned, checksum-verified CLI (no PR-comment / SARIF GitHub-API integration),

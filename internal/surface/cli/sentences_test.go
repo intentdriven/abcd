@@ -41,13 +41,15 @@ func helpOf(t *testing.T, build func() *cobra.Command, path []string) string {
 }
 
 // visibleCommands is every command of the tree a reader can see: the root and
-// each command with no hidden command on its path.
+// each command with no hidden command on its path. A stub a moved spelling
+// leaves (itd-2609212130136102) is deprecated, which cobra lists nowhere, so a
+// reader never meets it and it carries no sentence.
 func visibleCommands(root *cobra.Command) []*cobra.Command {
 	out := []*cobra.Command{root}
 	var walk func(*cobra.Command)
 	walk = func(c *cobra.Command) {
 		for _, sub := range c.Commands() {
-			if sub.Hidden {
+			if sub.Hidden || sub.Deprecated != "" {
 				continue
 			}
 			out = append(out, sub)

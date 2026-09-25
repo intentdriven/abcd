@@ -132,11 +132,15 @@ the command's sentence (the section below).
 | people | checks | `lint` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `site`, `statusline`, `version` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `site`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
-carry no adr-40 bucket meaning. The product thinker placed the people's verbs
+carry no adr-40 bucket meaning. A spelling that moved (itd-2609212130136102) is
+listed in neither block: `version` became the root's `--version` flag, and the
+stub it leaves for one release is deprecated, which keeps it out of every list
+and out of the person's count, held by a test at fourteen verbs at most. The
+product thinker placed the people's verbs
 and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
 [`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
 
@@ -184,7 +188,10 @@ It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Six parents print usage with no state
 at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
-because its one operand is the quoted title it mints a record from. And `abcd
+because its one operand is the quoted title it mints a record from. Bare `abcd
+identity` and bare `abcd ahoy remote` answer with the invocation their report
+moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
+release, because their sub-verbs stay. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
 rather than restating it.

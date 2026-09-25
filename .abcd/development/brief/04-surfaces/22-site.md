@@ -14,9 +14,13 @@ to remember to update it.
 
 The bare form is **strictly read-only**: it reports what the repository has
 declared and what the output directory holds. The build is the render, and it writes
-only inside the directory it is given; the check gates a rendered tree, and renders
-first when the directory holds no `index.html` — the one write path besides
-the build, confined to the same directory.
+only inside the directory it is given. The check that gates a rendered tree is the site
+target of the one lint ([`16-lint.md`](16-lint.md), itd-2609212130136102; for
+one release the retired spelling under this verb answers with it and exits
+non-zero): it renders first when the directory holds no `index.html` — the one write path
+besides the build, confined to the same directory. Bare `abcd lint` runs the
+same gates as its `site` rule, over a render in a temporary directory outside
+the repository.
 
 It answers a different question from `/abcd:launch`: `launch` prepares what a
 release ships to users who install the binary; `site` prepares what a reader sees
@@ -37,7 +41,6 @@ production renders from the tag, with the released bytes.
 | Verb | Bucket | Status |
 |---|---|---|
 | `build` | — | shipped |
-| `check` | gate | shipped |
 
 ## The single-source rule
 
@@ -59,7 +62,7 @@ reader's theme; rasters are copied verbatim. The build never draws.
 
 Bare, the verb reports what is declared and what the last build left. The build
 renders into `./site`, and can stamp the render as an unreleased preview at this
-commit; the check gates the rendered tree and exits 1 on findings.
+commit; the lint's site target gates the rendered tree and exits 1 on findings.
 
 Both write paths can be pointed at a different directory, and the bare board
 reports on whichever directory it is pointed at.
@@ -110,7 +113,7 @@ entry and no links.
 
 ## The gates
 
-The check runs seven independent gates over a rendered tree and reports
+The lint's site target runs seven independent gates over a rendered tree and reports
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
@@ -194,7 +197,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd site`
 
-Sub-verbs: `abcd site build`, `abcd site check`.
+Sub-verbs: `abcd site build`.
 
 | Flag | Type |
 |---|---|
@@ -211,13 +214,5 @@ Sub-verbs: none.
 | `--out` | string |
 | `--preview` | bool |
 | `--version` | string |
-
-### `abcd site check`
-
-Sub-verbs: none.
-
-| Flag | Type |
-|---|---|
-| `--out` | string |
 
 <!-- surface-appendix:end -->

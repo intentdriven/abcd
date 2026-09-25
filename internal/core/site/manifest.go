@@ -197,7 +197,7 @@ type Manifest struct {
 	// DEFERRED: consumed by spc-38's pages half; validated here as paths.
 	RecordPages RecordPages `json:"record_pages"`
 	// Checks declares which gates this repo arms.
-	// DEFERRED: consumed by `abcd site check` (spc-37, spc-38). The build
+	// DEFERRED: consumed by `abcd lint site` (spc-37, spc-38). The build
 	// MEASURES the unresolved references and publishes the count; the ratchet
 	// that refuses a larger one is that verb's.
 	Checks ManifestGate `json:"checks"`
@@ -257,7 +257,7 @@ type Figure struct {
 	Kind string `json:"kind"`
 	// LabelsFromPage asks that every label in the figure be a phrase on the page
 	// it illustrates, so a diagram cannot drift from the prose beside it.
-	// CONSUMED by `abcd site check`'s loop-figure gate (spc-37, ported from the
+	// CONSUMED by `abcd lint site`'s loop-figure gate (spc-37, ported from the
 	// script's closing check). Validated here too — it is meaningless without a
 	// figure to check — so a manifest that asks for it and names no figure is
 	// refused at load rather than at render.
@@ -415,7 +415,7 @@ func (m Manifest) validate() error {
 			// Only the prose layout lifts a figure out of its page. A figure
 			// declared on any other layout is read and then dropped, which is the
 			// failure this validation exists to prevent — including the deferred
-			// `labels-from-page`, which would be asking `site check` to compare a
+			// `labels-from-page`, which would be asking `lint site` to compare a
 			// diagram nothing renders.
 			if ch.Layout != LayoutProse {
 				return bad("%s.figure is declared on the %q layout, which lifts no figure (only %q does)",
@@ -487,7 +487,7 @@ func (m Manifest) validateDeferred(bad func(string, ...any) error) error {
 			return bad("record_pages.contributors.policy.heading is empty; the page quotes a span selected by heading")
 		}
 	}
-	// DEFERRED to `abcd site check`.
+	// DEFERRED to `abcd lint site`.
 	if b := m.Checks.UnresolvedReferenceBaseline; b != "" {
 		if !fsutil.ValidRelPath(b) {
 			return bad("checks.unresolved_reference_baseline %q is not a repo-relative path", b)

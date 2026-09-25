@@ -32,12 +32,13 @@ const referenceIntro = "# CLI command reference\n\n" +
 	"`go generate ./internal/surface/cli`.\n\n" +
 	"Every user-facing command is listed with its sentence (what it does, what it\n" +
 	"writes, and when it refuses), its usage line, and its flags; the\n" +
-	"operator-internal hook entrypoints are omitted.\n"
+	"operator-internal hook entrypoints, and the old spellings of moved commands,\n" +
+	"are omitted.\n"
 
 // GenerateReference walks the abcd command tree and renders it as a single,
 // deterministic Markdown reference page — the source of truth for
 // docs/reference/cli/commands.md. Hidden commands (the operator-internal `hook`
-// subtree) are omitted, and children are emitted in a stable alphabetical order,
+// subtree) and the stubs of spellings that moved are omitted, and children are emitted in a stable alphabetical order,
 // so the output depends only on the command tree — never on registration order
 // or the clock. That determinism is what lets a `go test` diff detect drift.
 func GenerateReference() string {
@@ -53,7 +54,10 @@ func GenerateReference() string {
 // children in alphabetical order. Heading depth tracks the command's depth in the
 // tree (capped at Markdown's h6), so the page mirrors the command hierarchy.
 func writeCommandRef(b *strings.Builder, cmd *cobra.Command) {
-	if cmd.Hidden {
+	// A stub that moved whole is omitted as a hidden command is: the reference
+	// names the new forms only, and the stub's successor has its own section
+	// (itd-2609212130136102).
+	if cmd.Hidden || cmd.Deprecated != "" {
 		return
 	}
 

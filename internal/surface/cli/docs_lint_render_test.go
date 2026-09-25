@@ -37,7 +37,7 @@ func TestDocsLintRenderSanitisesConfigFields(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	Run([]string{"docs", "lint"}, &stdout, &stderr)
+	Run([]string{"lint", "docs"}, &stdout, &stderr)
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "evil") {
 		t.Fatalf("expected the finding to render (config id present), got:\n%s", out)
@@ -70,7 +70,7 @@ func TestDocsLintWithNoRulesSaysNothingWasChecked(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	Run([]string{"docs", "lint"}, &stdout, &stderr)
+	Run([]string{"lint", "docs"}, &stdout, &stderr)
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "nothing was checked") {
 		t.Errorf("a config with no rules must say nothing was checked, got:\n%s", out)
@@ -81,7 +81,7 @@ func TestDocsLintWithNoRulesSaysNothingWasChecked(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	Run([]string{"docs", "lint", "--json"}, &stdout, &stderr)
+	Run([]string{"lint", "docs", "--json"}, &stdout, &stderr)
 	var res struct {
 		Checks *int `json:"checks"`
 	}
@@ -113,14 +113,14 @@ func TestDocsLintCountsTheChecksItRan(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	Run([]string{"docs", "lint"}, &stdout, &stderr)
+	Run([]string{"lint", "docs"}, &stdout, &stderr)
 	out := stdout.String() + stderr.String()
 	if !strings.Contains(out, "1 finding(s), 0 blocker(s)") || strings.Contains(out, "nothing was checked") {
 		t.Errorf("an armed config must report its findings, got:\n%s", out)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	Run([]string{"docs", "lint", "--json"}, &stdout, &stderr)
+	Run([]string{"lint", "docs", "--json"}, &stdout, &stderr)
 	var res struct {
 		Checks *int `json:"checks"`
 	}
@@ -168,7 +168,7 @@ func writeDocsLintRepo(t *testing.T, cfg string, files map[string]string) {
 func assertLoudNothingChecked(t *testing.T, reason string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"docs", "lint"}, &stdout, &stderr); code != 0 {
+	if code := Run([]string{"lint", "docs"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("a lint that checked nothing must exit 0, got %d\n%s%s", code, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "WARNING") || !strings.Contains(stderr.String(), "nothing was checked") ||
@@ -177,7 +177,7 @@ func assertLoudNothingChecked(t *testing.T, reason string) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if code := Run([]string{"docs", "lint", "--json"}, &stdout, &stderr); code != 0 {
+	if code := Run([]string{"lint", "docs", "--json"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("--json: a lint that checked nothing must exit 0, got %d", code)
 	}
 	if !strings.Contains(stderr.String(), "nothing was checked") {
@@ -211,7 +211,7 @@ func TestDocsLintWarnsLoudlyWhenTheRootsHoldNoDocument(t *testing.T) {
 	]}`, map[string]string{"docs/notes.txt": "Previously this was different.\n"})
 	assertLoudNothingChecked(t, "no markdown document")
 	var stdout, stderr bytes.Buffer
-	Run([]string{"docs", "lint", "--json"}, &stdout, &stderr)
+	Run([]string{"lint", "docs", "--json"}, &stdout, &stderr)
 	var res docsLintNothingChecked
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		t.Fatal(err)
@@ -228,7 +228,7 @@ func TestDocsLintCheckedSomethingRaisesNoWarning(t *testing.T) {
 	  {"id": "present_tense/previously", "pattern": "(?i)\\bpreviously\\b", "message": "no", "severity": "warn", "successor": "present tense", "allow_context": ["docs-lint: allow"]}
 	]}`, map[string]string{"docs/page.md": "The tool reads the tree.\n"})
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"docs", "lint", "--json"}, &stdout, &stderr); code != 0 {
+	if code := Run([]string{"lint", "docs", "--json"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	if strings.Contains(stderr.String(), "nothing was checked") {

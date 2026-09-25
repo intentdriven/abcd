@@ -186,6 +186,7 @@ func NewRootCommand() *cobra.Command {
 	var asJSON bool
 	var noColor bool
 	var agentHelp bool
+	var showVersion bool
 
 	root := &cobra.Command{
 		Use: "abcd [<record-id>]",
@@ -213,6 +214,15 @@ func NewRootCommand() *cobra.Command {
 			// be a flag that silently does nothing (itd-146).
 			if agentHelp {
 				return &exitError{Code: 2, Msg: "--agent expands the help listing; run `abcd --help --agent`"}
+			}
+			// --version is where every tool keeps its version
+			// (itd-2609212130136102). It answers alone: a record id beside it
+			// would be a second question the flag silently drops.
+			if showVersion {
+				if len(args) > 0 {
+					return &exitError{Code: 2, Msg: "--version takes no argument; run `abcd --version`"}
+				}
+				return runVersion(cmd, asJSON, false)
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -280,8 +290,15 @@ func NewRootCommand() *cobra.Command {
 	// Root-local for the same reason: only the root's help has blocks (itd-146).
 	root.Flags().BoolVar(&agentHelp, "agent", false,
 		"with --help, list the verbs agents and hosts call as well, each naming the page to read next")
+	// Root-local: the version is the binary's, not any verb's. It prints what
+	// the `version` verb printed — version, install mode, vintage — from disk
+	// alone; the network check is `update --check`.
+	// No backquotes in a flag's usage string: cobra reads the first backquoted
+	// word as the flag's argument placeholder.
+	root.Flags().BoolVar(&showVersion, "version", false,
+		"print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)")
 
-	root.AddCommand(newVersionCommand(&asJSON))
+	root.AddCommand(newVersionCommand())
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
@@ -447,7 +464,7 @@ func markUsageErrorsExitTwo(c *cobra.Command) {
 	}
 }
 
-// docsLintResult is the machine-readable envelope for `abcd docs lint`: the
+// docsLintResult is the machine-readable envelope for `abcd lint docs`: the
 // findings plus the blocker count that decides the exit status.
 type docsLintResult struct {
 	Findings []lint.Finding `json:"findings"`
@@ -484,22 +501,33 @@ func docsLintNothingCheckedWarning(checks, documents int, roots []string, ref st
 	return ""
 }
 
-// newDocsCommand builds the `docs` sub-tree. Its `lint` verb is the docs-currency
-// drift gate: it loads .abcd/docs-lint.json (or --config), runs the shared
-// internal/core/lint engine over the repo, renders the findings (text or --json),
-// and exits non-zero when any blocker survives — the same engine record-lint uses.
+// newDocsCommand builds the `docs` sub-tree: `cite`, which maintains the
+// citation baseline the docs lint enforces. The lint itself is `abcd lint docs`
+// (itd-2609212130136102); `docs lint` answers with it for one release.
 func newDocsCommand(asJSON *bool) *cobra.Command {
 	docsCmd := &cobra.Command{
 		Use:  "docs",
 		Args: cobra.NoArgs,
 		RunE: helpRunE,
 	}
+	docsCmd.AddCommand(movedStub("lint", "abcd lint docs"))
+	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
+	// live fetching the gate refuses to do, and confirm closes the manual queue.
+	docsCmd.AddCommand(newCiteCommand(asJSON))
 
+	return docsCmd
+}
+
+// newLintDocsCommand builds `lint docs`, the docs-currency drift gate: it loads
+// .abcd/docs-lint.json (or --config), runs the shared internal/core/lint engine
+// over the repo, renders the findings (text or --json), and exits non-zero when
+// any blocker survives — the same engine record-lint uses.
+func newLintDocsCommand(asJSON *bool) *cobra.Command {
 	var configPath string
 	var rootDir string
 	var releaseGate bool
 	lintCmd := &cobra.Command{
-		Use:  "lint",
+		Use:  "docs",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root := rootDir
@@ -508,13 +536,13 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					// A fault, not a rendered refusal: exit 2 (could not be
 					// evaluated), consistent with the engine-fault path below.
-					return &exitError{Code: 2, Msg: "docs lint: " + scrubPaths(err)}
+					return &exitError{Code: 2, Msg: "lint docs: " + scrubPaths(err)}
 				}
 				root = cwd
 			}
 			root, err := filepath.Abs(root)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "docs lint: " + scrubPaths(err)}
+				return &exitError{Code: 2, Msg: "lint docs: " + scrubPaths(err)}
 			}
 			cfgPath := configPath
 			if cfgPath == "" {
@@ -533,7 +561,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 				}
 				if os.IsNotExist(err) {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"docs lint: config not found at %s — run in a prepared repo or pass --config", ref)}
+						"lint docs: config not found at %s — run in a prepared repo or pass --config", ref)}
 				}
 				// Strip the path-bearing wrapper: a *PathError's inner Err is the
 				// bare cause ("is a directory", "permission denied"), no path.
@@ -542,7 +570,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 				if errors.As(err, &pe) {
 					detail = pe.Err.Error()
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf("docs lint: cannot read config %s: %s", ref, detail)}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("lint docs: cannot read config %s: %s", ref, detail)}
 			}
 			// --release-gate promotes the citation staleness finding from the
 			// commit gate's warn to a blocker (spc-17: commits are never
@@ -561,7 +589,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 				// gate keying on >=2 does not read a lint that never happened as
 				// an ordinary findings-pass. scrubPaths keeps an absolute path
 				// out of the message.
-				return &exitError{Code: 2, Msg: "docs lint: " + scrubPaths(err)}
+				return &exitError{Code: 2, Msg: "lint docs: " + scrubPaths(err)}
 			}
 			blockers := 0
 			for _, f := range findings {
@@ -571,7 +599,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 			}
 			documents, err := lint.DocumentsInRoots(cfg, root)
 			if err != nil {
-				return &exitError{Code: 2, Msg: "docs lint: " + scrubPaths(err)}
+				return &exitError{Code: 2, Msg: "lint docs: " + scrubPaths(err)}
 			}
 			ref := filepath.Join(".abcd", "docs-lint.json")
 			if configPath != "" {
@@ -586,7 +614,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 			// exit would turn every older prepared repository's CI red, but a
 			// quiet 0 is a green that means nothing (loud-staging).
 			if res.NothingChecked {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd docs lint: WARNING: %s\n", termsafe.Sanitize(res.Warning))
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd lint docs: WARNING: %s\n", termsafe.Sanitize(res.Warning))
 			}
 			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				for _, f := range findings {
@@ -601,15 +629,15 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 				// A config that armed nothing ran nothing: "0 finding(s)" would
 				// manufacture a false green (loud-staging, iss-2609150805167646).
 				if res.Checks == 0 {
-					fmt.Fprintf(w, "abcd docs lint — no rules configured in %s: nothing was checked\n", termsafe.Sanitize(ref))
+					fmt.Fprintf(w, "abcd lint docs — no rules configured in %s: nothing was checked\n", termsafe.Sanitize(ref))
 					return
 				}
-				fmt.Fprintf(w, "abcd docs lint — %d finding(s), %d blocker(s)\n", len(findings), blockers)
+				fmt.Fprintf(w, "abcd lint docs — %d finding(s), %d blocker(s)\n", len(findings), blockers)
 			}); err != nil {
 				return err
 			}
 			if blockers > 0 {
-				return fmt.Errorf("docs lint: %d blocker finding(s)", blockers)
+				return fmt.Errorf("lint docs: %d blocker finding(s)", blockers)
 			}
 			return nil
 		},
@@ -618,12 +646,7 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 	lintCmd.Flags().StringVar(&rootDir, "root", "", "repo root to lint (default: current working directory)")
 	lintCmd.Flags().BoolVar(&releaseGate, "release-gate", false,
 		"run as the release gate: a citation past its staleness threshold blocks instead of warning (release-time only)")
-	docsCmd.AddCommand(lintCmd)
-	// `cite` maintains the baseline `lint` enforces: the refresh does the live
-	// fetching the gate refuses to do, and confirm closes the manual queue.
-	docsCmd.AddCommand(newCiteCommand(asJSON))
-
-	return docsCmd
+	return lintCmd
 }
 
 // ignoredScope turns the --include-ignored flag into the probe options it means.
@@ -1914,6 +1937,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// (unrecognized-input-never-writes, iss-29); genuine prose still files.
 				// A far miss names no sub-verb, so the refusal lists them all rather
 				// than filing the words as a draft title (iss-2609091647589392).
+				if instead, ok := removedSubverbs["intent"][args[0]]; ok {
+					return &exitError{Code: 2, Msg: fmt.Sprintf(
+						"unknown intent subcommand %q; %s (nothing created)", args[0], instead)}
+				}
 				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 					if sug == "" {
 						return &exitError{Code: 2, Msg: fmt.Sprintf(
@@ -1976,27 +2003,6 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// already stamp machine-read enums. There is no flag for `origin`: it is
 	// derived from which command ran (itd-178).
 	intentCmd.Flags().StringVar(&intentProductionMode, "production-mode", "", productionModeFlagHelp)
-
-	// new "<text>" — backwards-compatible alias for the sub-verb-free create path
-	// (itd-46, lean a): routes to the same create engine and warns on stderr that
-	// the `new` sub-verb is deprecated in favour of `abcd intent "<text>"`. The
-	// stdout artefact is identical to the quoted-text form.
-	intentCmd.AddCommand(&cobra.Command{
-		Use:  "new <text>",
-		Args: cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, err := intentStoreRoot(cmd)
-			if err != nil {
-				return err
-			}
-			if len(args) == 0 {
-				return &exitError{Code: 2, Msg: "abcd intent new: text is required — use `abcd intent \"<text>\"`"}
-			}
-			fmt.Fprintln(cmd.ErrOrStderr(),
-				"WARNING: `abcd intent new` is deprecated; use `abcd intent \"<text>\"` (quoted text is the create signal).")
-			return createIntentFromText(cmd, repoRoot, strings.Join(args, " "), intent.TextOptions{}, *asJSON)
-		},
-	})
 
 	// plan <itd-N> — mint the spec, write both link sides, move drafts -> planned.
 	var planProductionMode, planImpact string
@@ -2598,9 +2604,13 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 
 // newAhoyCommand builds the `ahoy` sub-tree. Bare `ahoy` runs the read-only
 // detection pass (abcd's convention: bare invocation never mutates); the
-// install/uninstall/doctor/dry-run sub-verbs are thin consumers of the same
-// core engine (detect -> contract -> apply), matching 04-surfaces/01-ahoy.md.
+// install/uninstall/doctor sub-verbs are thin consumers of the same core engine
+// (detect -> contract -> apply), matching 04-surfaces/01-ahoy.md. The read-only
+// modes of the one act — the dry run's JSON envelope, the identity check, the
+// remote report — are flags rather than sub-verbs (itd-2609212130136102): a
+// sub-verb is a distinct action, a flag a mode of the same one.
 func newAhoyCommand(asJSON *bool) *cobra.Command {
+	var dryRun, identityMode, remoteMode bool
 	ahoyCmd := &cobra.Command{
 		Use:  "ahoy",
 		Args: cobra.NoArgs,
@@ -2608,6 +2618,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
+			}
+			switch {
+			case dryRun:
+				return runAhoyDryRun(cmd, cwd)
+			case identityMode:
+				return runAhoyIdentity(cmd, cwd)
+			case remoteMode:
+				return runAhoyRemote(cmd, cwd, *asJSON)
 			}
 			res, err := ahoy.DryRun(cwd)
 			if err != nil {
@@ -2661,6 +2679,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
+
+	ahoyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the detection result as its JSON envelope, whether or not --json is passed")
+	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
+		"check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)")
+	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
+		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
+	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote")
 
 	// install
 	var (
@@ -2802,80 +2827,68 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
-	// dry-run
-	ahoyCmd.AddCommand(&cobra.Command{
-		Use:  "dry-run",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := ahoy.DryRun(cwd)
-			if err != nil {
-				return err
-			}
-			// dry-run always emits the canonical JSON envelope (spc-16 T1).
-			enc := json.NewEncoder(cmd.OutOrStdout())
-			enc.SetIndent("", "  ")
-			return enc.Encode(res)
-		},
-	})
-
+	// The modes' old sub-verb spellings, one release as stubs.
+	ahoyCmd.AddCommand(movedStub("dry-run", "abcd ahoy --dry-run"))
+	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
-
-	// identity-check — the iss-62 gate's canonical, testable entrypoint. Exits
-	// non-zero when the commit identity diverges from the committed pin, so a
-	// pre-commit hook (or CI) can fail closed. A match, or an un-pinned repo,
-	// exits zero.
-	ahoyCmd.AddCommand(&cobra.Command{
-		Use:  "identity-check",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := identity.Check(cwd)
-			if err != nil {
-				return err
-			}
-			if res.Blocks() {
-				return fmt.Errorf("%s\n  fix: git config user.name %q && git config user.email %q",
-					res.Reason, res.Pin.Name, res.Pin.Email)
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "identity ok (%s)\n", res.Status)
-			return nil
-		},
-	})
 
 	return ahoyCmd
 }
 
-// newAhoyRemoteCommand builds `ahoy remote` — abcd's remote config surface for a
-// managed repo (itd-153). Bare invocation READS: it reports GitHub's native
-// secret-scanning toggles and what an apply would change, and contacts nothing
-// else. `apply` is the write, and it is the only thing in abcd that mutates state
-// outside this machine, so it is a verb a person types rather than a step any
-// other command performs.
+// runAhoyDryRun is `ahoy --dry-run`: the detection result as its canonical JSON
+// envelope, always, whether or not --json is passed (spc-16 T1).
+func runAhoyDryRun(cmd *cobra.Command, cwd string) error {
+	res, err := ahoy.DryRun(cwd)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(cmd.OutOrStdout())
+	enc.SetIndent("", "  ")
+	return enc.Encode(res)
+}
+
+// runAhoyIdentity is `ahoy --identity`, the iss-62 gate's canonical, testable
+// entrypoint. It exits non-zero when the commit identity diverges from the
+// committed pin, so a pre-commit hook (or CI) can fail closed. A match, or an
+// un-pinned repo, exits zero.
+func runAhoyIdentity(cmd *cobra.Command, cwd string) error {
+	res, err := identity.Check(cwd)
+	if err != nil {
+		return err
+	}
+	if res.Blocks() {
+		return fmt.Errorf("%s\n  fix: git config user.name %q && git config user.email %q",
+			res.Reason, res.Pin.Name, res.Pin.Email)
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "identity ok (%s)\n", res.Status)
+	return nil
+}
+
+// runAhoyRemote is `ahoy --remote`, abcd's remote config READ for a managed repo
+// (itd-153): it reports GitHub's native secret-scanning toggles and what an
+// apply would change, and contacts nothing else.
+func runAhoyRemote(cmd *cobra.Command, cwd string, asJSON bool) error {
+	res, err := ahoy.RemoteRead(cwd)
+	if err != nil {
+		return err
+	}
+	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+		renderRemoteResult(w, "abcd ahoy --remote", res)
+	})
+}
+
+// newAhoyRemoteCommand builds `ahoy remote apply` — the write half of abcd's
+// remote config surface for a managed repo (itd-153), and the only thing in abcd
+// that mutates state outside this machine, so it is a verb a person types rather
+// than a step any other command performs. The read half is `ahoy --remote`; the
+// bare `ahoy remote` it moved from answers with that flag for one release
+// (itd-2609212130136102).
 func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 	remoteCmd := &cobra.Command{
 		Use:  "remote",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return err
-			}
-			res, err := ahoy.RemoteRead(cwd)
-			if err != nil {
-				return err
-			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				renderRemoteResult(w, "abcd ahoy remote", res)
-			})
-		},
 	}
+	markMoved(remoteCmd, "abcd ahoy --remote")
 	var remoteYes bool
 	applyCmd := &cobra.Command{
 		Use:  "apply",
@@ -3912,6 +3925,16 @@ var recordIDRe = regexp.MustCompile(`^(iss|itd|spc)-[0-9]+$`)
 // unrecognized-input-never-writes contract as the typo guard, iss-29).
 var retiredSubverbs = map[string]map[string]string{
 	"intent": {"review": "audit"}, // spc-28 (adr-40)
+}
+
+// removedSubverbs maps a parent command to sub-verb spellings deleted with no
+// successor sub-verb: `intent new` was a dead alias of the quoted-text create
+// (itd-2609212130136102). A call whose first word is one is refused as an
+// unknown sub-verb in every shape — a lone token and a token before prose
+// alike — so `intent new "some text"` can never be filed as a draft titled
+// "new some text". The value says what to run instead.
+var removedSubverbs = map[string]map[string]string{
+	"intent": {"new": "file a draft with `abcd intent \"<text>\"`"},
 }
 
 // unrecognizedSubverb reports whether a free-text create verb's positionals

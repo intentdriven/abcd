@@ -290,39 +290,6 @@ func TestIntentQuotedTextCreates(t *testing.T) {
 	}
 }
 
-// TestIntentNewAliasWarnsAndCreates is itd-46 AC2 (lean a): `abcd intent new
-// "<text>"` routes to the same create path and prints a deprecation warning on
-// stderr naming the new shape; the stdout artefact matches the sub-verb-free form.
-func TestIntentNewAliasWarnsAndCreates(t *testing.T) {
-	intentTestRepo(t)
-
-	stdout, stderr, err := runCLISplit(t, "intent", "new", "a symmetric create path", "--json")
-	if err != nil {
-		t.Fatalf("intent new alias errored: %v\nstderr: %s", err, stderr)
-	}
-	var got struct {
-		ID     string `json:"id"`
-		Bucket string `json:"bucket"`
-		Path   string `json:"path"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
-		t.Fatalf("alias stdout not JSON: %v\n%s", err, stdout)
-	}
-	if !cliNativeIntentIDRe.MatchString(got.ID) || got.Bucket != "drafts" {
-		t.Fatalf("alias create result = %+v, want a native itd id in drafts", got)
-	}
-	if !strings.Contains(stderr, "deprecat") {
-		t.Fatalf("alias must warn on stderr about deprecation, got: %q", stderr)
-	}
-	if !strings.Contains(stderr, `intent "`) {
-		t.Fatalf("deprecation warning must name the new quoted-text shape, got: %q", stderr)
-	}
-	// The warning is on stderr only — stdout stays the clean artefact.
-	if strings.Contains(stdout, "deprecat") {
-		t.Fatalf("deprecation warning leaked into stdout:\n%s", stdout)
-	}
-}
-
 // TestIntentBareCreatesNothing is itd-46 AC3: bare `abcd intent` renders status +
 // help and mutates nothing — no drafts file appears.
 func TestIntentBareCreatesNothing(t *testing.T) {

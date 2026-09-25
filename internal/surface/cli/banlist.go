@@ -480,7 +480,7 @@ func renderPublicLayer(w io.Writer, rep banlist.PublicReport) {
 	if len(rep.Entries) == 0 {
 		fmt.Fprintln(w, "  no entries")
 	}
-	fmt.Fprintln(w, "  reach: enforced deterministically by `abcd docs lint` in CI, with the per-line escape")
+	fmt.Fprintln(w, "  reach: enforced deterministically by `abcd lint docs` in CI, with the per-line escape")
 }
 
 // stdinPattern is the pattern argument that means "read the pattern from stdin".

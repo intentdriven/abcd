@@ -11,7 +11,7 @@ var abcdSemanticGates = []string{"docs-currency-reviewer", "iss35-brief-surface-
 // gate_lockstep invariant (runbook list == workflow steps) holds by construction.
 var abcdExtraGates = []Gate{
 	{Name: "Record-lint (design-record drift gate)", Run: "go run ./cmd/record-lint"},
-	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd docs lint"},
+	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd lint docs"},
 	{Name: "Reviews-charter discipline (RD001-RD003)", Run: "bash scripts/check-reviews.sh"},
 	{Name: "Smoke every command (self-discovering harness)", Run: "make smoke"},
 }
