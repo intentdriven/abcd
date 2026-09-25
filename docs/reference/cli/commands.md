@@ -531,13 +531,21 @@ a WARN naming the entry it matched, rather than an allow, because the guard
 cannot tell whether that program runs the rest of the line. A `$(…)`,
 backtick, `<(…)` or `>(…)`, quoted or not, IS followed into command
 position, and the words written after one stay the enclosing command's,
-so `rm $(true) -rf *` is read as `rm -rf *`; text beside a quoted one in
-the same word is read as bash leaves it when the output is empty, and one
-nested more than eight double-quoted substitutions deep is blocked,
-because the guard has stopped reading it. An unquoted brace group IS
+so `rm $(true) -rf *` is read as `rm -rf *`. What one prints is unknown,
+so a word holding one fails closed: led by a dash (`--$(…)`) it is every
+flag it could become, after a value flag (`git -C $(pwd) push`) it is that
+flag's value, and as an operand it is one operand; text beside one in the
+same word is also read as bash leaves it when the output is empty. One
+nested more than eight double-quoted substitutions deep, or holding a case
+command, is blocked, because the guard has stopped reading it. `$(( … ))`
+is an expression, not commands. A shell reading its script from a pipe, a
+here-document or a here-string is blocked, and so is a line over 64 KiB.
+An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
-all: one launched through a known
+all: a word that is wholly a `$(…)` standing where a flag would be (read as
+an operand, the way a commit message or a branch is spelled), one launched
+through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 <hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches
 only the warn, not the entry that names it),

@@ -82,20 +82,21 @@ func TestProcessSubstitutionIsAnOperand(t *testing.T) {
 
 // TestSubstitutionTokenShape pins the tokenizer's reading directly: the inner
 // command is emitted first (it runs first), the enclosing command keeps every
-// token around the substitution, a process substitution leaves one /dev/fd
-// operand, and a newline inside a substitution never renumbers the enclosing
-// command's chain.
+// token around the substitution and holds unknownMark where its output goes
+// (unknown.go), a process substitution leaves one /dev/fd operand, and a
+// newline inside a substitution never renumbers the enclosing command's chain.
 func TestSubstitutionTokenShape(t *testing.T) {
 	cases := []struct {
 		line string
 		want []string
 	}{
-		{"rm $(true) -rf *", []string{"0:true", "0:rm|-rf|*"}},
-		{"$(true) gh repo delete", []string{"0:true", "0:gh|repo|delete"}},
-		{"echo a$(x)b c", []string{"0:x", "0:echo|ab|c"}},
+		{"rm $(true) -rf *", []string{"0:true", "0:rm|\x00|-rf|*"}},
+		{"$(true) gh repo delete", []string{"0:true", "0:\x00|gh|repo|delete"}},
+		{"echo a$(x)b c", []string{"0:x", "0:echo|a\x00b|c"}},
+		{"echo --$(x) -r`y`", []string{"0:x", "0:y", "0:echo|--\x00|-r\x00"}},
 		{"git push >(cat) --force", []string{"0:cat", "0:git|push|/dev/fd/63|--force"}},
-		{"cd s && rm $(a\nb) -rf *", []string{"0:cd|s", "0:a", "1:b", "0:rm|-rf|*"}},
-		{"echo $(a)\nls", []string{"0:a", "0:echo", "1:ls"}},
+		{"cd s && rm $(a\nb) -rf *", []string{"0:cd|s", "0:a", "1:b", "0:rm|\x00|-rf|*"}},
+		{"echo $(a)\nls", []string{"0:a", "0:echo|\x00", "1:ls"}},
 	}
 	for _, tc := range cases {
 		segs, err := tokenize(tc.line)

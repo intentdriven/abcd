@@ -81,17 +81,17 @@ func TestTokenizeSegments(t *testing.T) {
 			// runs first; the enclosing command resumes after it (iss-148).
 			name: "backtick command substitution splits into command position",
 			line: "echo `gh repo delete owner/repo`",
-			want: []string{"0:gh|repo|delete|owner/repo", "0:echo"},
+			want: []string{"0:gh|repo|delete|owner/repo", "0:echo|\x00"},
 		},
 		{
 			name: "a bare backtick substitution is a command-position segment",
 			line: "`git push --force origin main`",
-			want: []string{"0:git|push|--force|origin|main"},
+			want: []string{"0:git|push|--force|origin|main", "0:\x00"},
 		},
 		{
 			name: "an assignment carrying a backtick substitution splits it out",
 			line: "x=`git push --force origin main`",
-			want: []string{"0:git|push|--force|origin|main", "0:x="},
+			want: []string{"0:git|push|--force|origin|main", "0:x=\x00"},
 		},
 		{
 			name: "a backtick inside single quotes stays literal",
@@ -184,7 +184,7 @@ func TestTokenizeSegments(t *testing.T) {
 		{
 			name: "an arithmetic shift is not a heredoc",
 			line: "echo $((1<<20))\ncd scratch",
-			want: []string{"0:1<<20", "0:echo", "1:cd|scratch"},
+			want: []string{"0:echo|0", "1:cd|scratch"},
 		},
 		{
 			name: "a herestring is an argument, not a heredoc",

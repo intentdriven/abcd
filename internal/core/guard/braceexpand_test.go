@@ -61,7 +61,11 @@ func TestBraceExpansionMatchesBash(t *testing.T) {
 			var got []string
 			for _, s := range segs {
 				if len(s.tokens) > 0 && s.tokens[0] == "echo" {
-					got = s.tokens[1:]
+					// A substitution's output is marked where it goes
+					// (unknown.go); `$(true)` prints nothing, as bash ran it.
+					for _, tok := range s.tokens[1:] {
+						got = append(got, knownText(tok))
+					}
 					if s.braceGroup {
 						t.Errorf("the word was refused rather than expanded: %+v", s)
 					}

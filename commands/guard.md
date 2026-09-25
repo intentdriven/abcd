@@ -149,12 +149,27 @@ A command or process substitution (`$(…)`, a backtick pair, `<(…)`, `>(…)`
 unquoted or inside double quotes, runs its own command, which is checked like
 any other, and the words
 written after it still belong to the command it sits in: `rm $(true) -rf *` is
-read as `rm -rf *`, and `git push >(cat) --force` as a force push. Text written
-beside a quoted substitution in the same word is read as bash leaves it when the
-output is empty, so a flag glued to one is still the flag. A substitution nested
-more than eight double-quoted substitutions deep is a **block**
-(`substitution-unread`), because the guard has stopped reading it and its
-command runs all the same.
+read as `rm -rf *`, and `git push >(cat) --force` as a force push. What a
+command substitution prints is not in the command line, so a word holding one is
+an unknown word, and it fails closed in every role it could play: written with a
+leading dash (`--$(…)`, `-r"$(…)"`) it is every flag it could still become;
+after a value flag (`git -C $(pwd) push`) it is that flag's value, never the
+word after it; as an operand it counts as one. Text written beside one in the
+same word is also read as bash leaves it when the output is empty, so a flag
+glued to one is still the flag. A word that is wholly a substitution is read as
+an operand, not as a flag: that is how a commit message or a branch name is
+spelled every day (`git commit -m "$(cat msg)"`), so `git push $(printf -- --force)`
+is not seen. A substitution nested more than eight double-quoted substitutions
+deep, or one holding a case command, is a **block** (`substitution-unread`),
+because the guard has stopped reading it and its command runs all the same. An
+arithmetic expansion `$(( … ))` is read as an expression, not as commands; a
+command substitution inside it is followed.
+
+A shell reading its script from a pipe, a here-document or a here-string
+(`curl … | sh`, `bash <<'EOF'`) is a **block** (`interpreter-reads-stream`):
+what it runs is text the guard read as data. A shell handed a script file
+(`bash script.sh`) is not. A command line longer than 64 KiB is a **block**
+(`command-too-long`), because the guard does not read it.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin

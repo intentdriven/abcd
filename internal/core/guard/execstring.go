@@ -100,7 +100,7 @@ func execStringPayload(tokens []string) (verb, value string, resolved, found boo
 	i := 0
 	for i < len(tokens) {
 		tok := tokens[i]
-		if isAssignment(tok) || reserved[tok] {
+		if steppedBeforeCommand(tok) {
 			i++
 			continue
 		}

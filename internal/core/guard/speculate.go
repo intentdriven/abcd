@@ -105,7 +105,10 @@ type speculationBudget struct {
 // claiming one would be indexed out of Registry.Entries by a synthetic winner
 // (yielding a blank message), and would let a repo dress an ordinary entry up as
 // the guard's own verdict.
-var reservedEntryIDs = []string{syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID, gitConfigEntryID, stashEntryID}
+var reservedEntryIDs = []string{
+	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
+	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID,
+}
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at
 // most one signal per segment (the first hit wins; there is nothing to gain from
@@ -172,7 +175,7 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 		}
 		// The glob record travels with the window: a globbed flag behind an
 		// unrecognised launcher is still a pattern bash expands.
-		cand := segment{tokens: tokens, chain: s.chain, subWords: s.subWordSlice(start, start+len(tokens))}
+		cand := segment{tokens: tokens, chain: s.chain}
 		if !noglob {
 			cand.globbed = s.globSlice(start, start+len(tokens))
 		}
@@ -270,7 +273,7 @@ func eligibleStart(tok string) bool {
 	if tok == "" || tok == "-" {
 		return false
 	}
-	return !strings.HasPrefix(tok, "-") && !isAssignment(tok) && !reserved[tok]
+	return !strings.HasPrefix(tok, "-") && !steppedBeforeCommand(tok)
 }
 
 // segmentBytes is the segment's total token size, the quantity the expansion

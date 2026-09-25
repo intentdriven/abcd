@@ -64,6 +64,11 @@ var wrappers = map[string]bool{
 	// payload scope.
 	"noglob":    true,
 	"nocorrect": true,
+
+	// bash's `builtin <name>` runs the shell builtin of that name: `builtin cd`
+	// is the directory change `command cd` is, and fails the same way
+	// (review2-guard finding 7). It takes no options.
+	"builtin": true,
 }
 
 // wrapperValueFlags names, per wrapper, that wrapper's OWN flags which consume
@@ -202,7 +207,7 @@ func commandIndex(s segment) (idx int, noglob bool) {
 	i := 0
 	for i < len(s.tokens) {
 		tok := s.tokens[i]
-		if isAssignment(tok) || reserved[tok] {
+		if steppedBeforeCommand(tok) {
 			i++
 			continue
 		}
@@ -296,6 +301,15 @@ func isShellName(tok string) bool {
 	return true
 }
 
+// steppedBeforeCommand reports whether a token precedes the command rather than
+// being it: an environment assignment, a reserved word, or a word that is
+// nothing but a substitution's output, which an empty output leaves no word
+// for (`$(true) gh repo delete` runs gh). Every walk to command position reads
+// it, so they cannot disagree about where the command is.
+func steppedBeforeCommand(tok string) bool {
+	return isAssignment(tok) || reserved[tok] || vanishable(tok)
+}
+
 // isAssignment reports whether a token is a NAME=VALUE environment prefix,
 // which precedes the command rather than being one.
 func isAssignment(tok string) bool {
@@ -358,18 +372,27 @@ func matchSegment(p Pattern, s segment) bool {
 	args := s.tokens[ci+1:]
 	// glob reports, per ARGUMENT index, whether bash would expand that token.
 	glob := func(i int) bool { return !noglob && s.globAt(ci+1+i) }
+	// One operand walk reads every word, an unknown one included (unknown.go):
+	// a substitution is one operand of unknown value, and as a value flag's
+	// value it fills the slot, so the operands after it keep their positions
+	// (`git -C $(pwd) push` is a push). The count reads that walk. The
+	// positional compares read it too, and read it again with every word that
+	// may vanish taken out — `git $(true) push` is a push as well.
 	opIdx := operandIndexes(args, p.ValueFlags)
-	if len(opIdx) < p.MinOperands && substitutedOperandCount(s, ci, p.ValueFlags) < p.MinOperands {
+	if len(opIdx) < p.MinOperands {
 		return false
 	}
+	vanIdx := withoutVanishable(args, opIdx)
 	ops := make([]string, len(opIdx))
 	for n, i := range opIdx {
 		ops[n] = args[i]
 	}
-	if p.Subcommand != "" && !operandMatches(args, opIdx, 0, p.Subcommand, glob) {
+	if p.Subcommand != "" && !operandMatches(args, opIdx, 0, p.Subcommand, glob) &&
+		!operandMatches(args, vanIdx, 0, p.Subcommand, glob) {
 		return false
 	}
-	if p.Subcommand2 != "" && !operandMatches(args, opIdx, 1, p.Subcommand2, glob) {
+	if p.Subcommand2 != "" && !operandMatches(args, opIdx, 1, p.Subcommand2, glob) &&
+		!operandMatches(args, vanIdx, 1, p.Subcommand2, glob) {
 		return false
 	}
 	opts := gitOptionTable(p)
@@ -421,50 +444,27 @@ func operandIndexes(args []string, valueFlags []string) []int {
 	return idx
 }
 
-// substitutedOperandCount counts the operands after command position ci with
-// every command substitution that stood as a word of its own read back as one
-// operand of unknown text (segment.subWords). The vanish reading drops such a
-// word, which is right where an entry names a position and wrong where it
-// counts: `pkill $(cat p)` kills by whatever p holds, and read as zero operands
-// it slipped past the kill entries' min_operands (iss-2609251640353017). The
-// stand-in is inserted before the flag walk, so a value flag still consumes it
-// — `pkill -g $(cat pgid)` is a group kill, and stays one. Only the count reads
-// it; every positional compare keeps the vanish reading.
-func substitutedOperandCount(s segment, ci int, valueFlags []string) int {
-	args := s.tokens[ci+1:]
-	var view []string
-	w := 0
-	for w < len(s.subWords) && s.subWords[w] <= ci {
-		w++
-	}
-	if w == len(s.subWords) {
-		return len(operandIndexes(args, valueFlags))
-	}
-	view = make([]string, 0, len(args)+len(s.subWords)-w)
-	for i := 0; i <= len(args); i++ {
-		for w < len(s.subWords) && s.subWords[w] == ci+1+i {
-			view = append(view, substitutedOperand)
-			w++
-		}
-		if i < len(args) {
-			view = append(view, args[i])
+// withoutVanishable returns opIdx less the operands that are nothing but a
+// substitution's output, which an empty output leaves no word for.
+func withoutVanishable(args []string, opIdx []int) []int {
+	var out []int
+	for _, i := range opIdx {
+		if !vanishable(args[i]) {
+			out = append(out, i)
 		}
 	}
-	return len(operandIndexes(view, valueFlags))
+	return out
 }
 
-// substitutedOperand stands in for a substitution's unknown output when an
-// operand count reads it back. Any word that does not begin with `-` would do.
-const substitutedOperand = "$(…)"
-
-// operandMatches reports whether the n-th operand is want — literally, or as a
-// word its glob pattern can produce.
+// operandMatches reports whether the n-th operand is want — literally, as a
+// word its glob pattern can produce, or as an unknown word, which can print
+// anything at all.
 func operandMatches(args []string, opIdx []int, n int, want string, glob func(int) bool) bool {
 	if n < 0 || n >= len(opIdx) {
 		return false
 	}
 	i := opIdx[n]
-	return args[i] == want || (glob(i) && globMatches(args[i], want))
+	return args[i] == want || isUnknown(args[i]) || (glob(i) && globMatches(args[i], want))
 }
 
 // globMatches reports whether the shell pattern can produce the literal. A
@@ -524,10 +524,12 @@ func bashGlobPattern(pattern string) string {
 // argPrefixMatches reports whether some operand carries the prefix. Only
 // operands are considered, so a prefix like "+" can never be satisfied by an
 // option token: the constraint describes an argument (`git push origin
-// +main:main`), not a flag.
+// +main:main`), not a flag. An unknown operand is read by its known text: a
+// refspec a substitution prints whole is how an everyday push names its branch
+// (unknown.go), and `"$(true)"+main:main` is still `+main:main`.
 func argPrefixMatches(prefix string, ops []string) bool {
 	for _, op := range ops {
-		if strings.HasPrefix(op, prefix) {
+		if strings.HasPrefix(knownText(op), prefix) {
 			return true
 		}
 	}
@@ -551,10 +553,14 @@ func flagGroupMatches(group string, args []string, glob func(int) bool, opts []s
 			if arg == "--" {
 				break
 			}
-			if flagMatches(alt, arg, glob(i)) {
+			// The known text is the word with every substitution printing
+			// nothing; an unknown dash-word is also every flag it can still
+			// become (unknown.go).
+			k := knownText(arg)
+			if flagMatches(alt, k, glob(i)) || unknownFlagCouldBe(arg, alt) {
 				return true
 			}
-			if opts != nil && abbreviatesAlternative(arg, alt, alts, opts) {
+			if opts != nil && abbreviatesAlternative(k, alt, alts, opts) {
 				return true
 			}
 		}
@@ -638,8 +644,16 @@ func flagValueMatches(fv FlagValue, args []string, glob func(int) bool) bool {
 			if arg == "--" {
 				break
 			}
+			// An unknown word is read as unknown.go says: by its known text,
+			// and, written with a dash, as any flag it can still become —
+			// which, with its value attached, is a setting the constraint
+			// accepts.
+			if unknownFlagCouldBe(arg, alt) {
+				return true
+			}
+			k := knownText(arg)
 			switch {
-			case arg == alt || (glob(i) && flagShaped(arg) && globMatches(arg, alt)):
+			case k == alt || (glob(i) && flagShaped(k) && globMatches(k, alt)):
 				// The separate-token form: the value is the next argument.
 				if i+1 < len(args) && acceptsValue(fv.Values, args[i+1], glob(i+1)) {
 					return true
@@ -648,9 +662,17 @@ func flagValueMatches(fv FlagValue, args []string, glob func(int) bool) bool {
 				if acceptsValue(fv.Values, arg[len(alt)+1:], false) {
 					return true
 				}
+			case strings.HasPrefix(k, alt+"="):
+				if acceptsValue(fv.Values, k[len(alt)+1:], false) {
+					return true
+				}
 			case isShortFlag(alt) && len(arg) > len(alt) && strings.HasPrefix(arg, alt):
 				// A short flag's value may be attached with no separator at all.
 				if acceptsValue(fv.Values, arg[len(alt):], false) {
+					return true
+				}
+			case isShortFlag(alt) && len(k) > len(alt) && strings.HasPrefix(k, alt):
+				if acceptsValue(fv.Values, k[len(alt):], false) {
 					return true
 				}
 			}
@@ -664,6 +686,10 @@ func flagValueMatches(fv FlagValue, args []string, glob func(int) bool) bool {
 // does not turn on how the word was typed. A globbed setting accepts any value
 // its pattern can produce.
 func acceptsValue(values []string, got string, glob bool) bool {
+	// A setting a substitution prints is any setting (unknown.go).
+	if isUnknown(got) {
+		return true
+	}
 	for _, want := range values {
 		if want == "" {
 			continue
@@ -694,8 +720,18 @@ func isShortFlag(alt string) bool {
 // fully-qualified URL is normalised to its path first: `gh` passes an absolute
 // URL through to the API unchanged, so spelling the host out is the same call
 // and must not be a way around the same entry.
+//
+// An unknown operand matches when the path it spells can still be the one
+// constrained (unknownOperandOnPath): `repos/$(gh repo view …)` can print the
+// repository, `repos/o/r/git/refs/heads/$(…)` cannot.
 func pathArgMatches(pa PathArg, ops []string) bool {
 	for _, op := range ops {
+		if isUnknown(op) {
+			if unknownOperandOnPath(pa, op) {
+				return true
+			}
+			continue
+		}
 		segs := strings.Split(strings.Trim(pathOf(op), "/"), "/")
 		if len(segs) != pa.Segments || segs[0] != pa.Root {
 			continue

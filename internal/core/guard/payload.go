@@ -35,6 +35,13 @@ const (
 
 	familyEnvS  = "env -S"
 	familyShell = "sh -c"
+
+	// interpreterStreamEntryID is the reserved id a shell reading its script
+	// from a stream is refused under (readsScriptFromStdin). No registry entry
+	// may claim it.
+	interpreterStreamEntryID = "interpreter-reads-stream"
+
+	familyInterpreterStream = "interpreter stream"
 )
 
 // payloadSignal is a synthetic verdict raised for a payload with no registry
@@ -114,6 +121,8 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				sig, pseg, inspectable := shellInspect(payload)
 				if !inspectable {
 					signals = append(signals, sig)
+				}
+				if len(pseg) == 0 {
 					continue
 				}
 				psegs = pseg
@@ -127,6 +136,8 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				sig, pseg, inspectable := shellInspect(payload)
 				if !inspectable {
 					signals = append(signals, sig)
+				}
+				if len(pseg) == 0 {
 					continue
 				}
 				psegs = pseg
@@ -373,7 +384,7 @@ func splitStringValue(tokens []string) (string, []string, bool) {
 	i := 0
 	for i < len(tokens) {
 		tok := tokens[i]
-		if isAssignment(tok) || reserved[tok] {
+		if steppedBeforeCommand(tok) {
 			i++
 			continue
 		}
@@ -571,7 +582,7 @@ func isPlainCommand(s string) bool {
 	}
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
-		case '\\', '$', '\'', '"', '#':
+		case '\\', '$', '\'', '"', '#', unknownMark:
 			return false
 		}
 	}
@@ -674,22 +685,24 @@ func shellClusterBoolean(cluster string) bool {
 	return true
 }
 
-// shellInspect applies the shell family's posture to a `-c`/eval payload. An
-// uninspectable payload — a command substitution `$(...)`/backtick, a `${...}`
-// expansion, an inner-tokenize error, or a pipe into an interpreter — cannot be
-// read, so it becomes a synthetic loud WARN (common and honest; blocking every
-// `sh -c "$(...)"` would be a false-positive storm). Otherwise the payload is
-// tokenized once and its segments are matched normally.
+// shellInspect applies the shell family's posture to a `-c`/eval payload. The
+// payload is tokenized once and its segments are matched normally. One the
+// guard cannot read in full — a command substitution `$(...)`/backtick, a
+// `${...}` expansion, a substitution's output carried in from the enclosing
+// line, or a pipe into an interpreter — also raises a synthetic loud WARN
+// (common and honest; blocking every `sh -c "$(...)"` would be a false-positive
+// storm), and its segments are still returned: a blocker it DOES spell blocks
+// exactly as it does at the top level. Returning the warn instead of them made
+// `bash -c '<blocker> $(true)'` a warn, which runs the command, while the same
+// text unwrapped blocked (review2-guard finding 4). A payload that does not
+// tokenize returns the warn alone.
 func shellInspect(payload string) (payloadSignal, []segment, bool) {
-	if shellRawUninspectable(payload) {
-		return shellWarnSignal(), nil, false
-	}
 	psegs, err := tokenize(payload)
 	if err != nil {
 		return shellWarnSignal(), nil, false
 	}
-	if pipesIntoInterpreter(psegs) {
-		return shellWarnSignal(), nil, false
+	if shellRawUninspectable(payload) || pipesIntoInterpreter(psegs) {
+		return shellWarnSignal(), psegs, false
 	}
 	return payloadSignal{}, psegs, true
 }
@@ -701,7 +714,8 @@ func shellInspect(payload string) (payloadSignal, []segment, bool) {
 // warning on every `$VAR` would trip the storm STOP, and an uninspectable shell
 // payload never blocks, so it is a visibility gap only.
 func shellRawUninspectable(payload string) bool {
-	return strings.Contains(payload, "$(") ||
+	return isUnknown(payload) ||
+		strings.Contains(payload, "$(") ||
 		strings.Contains(payload, "${") ||
 		strings.Contains(payload, "`")
 }
@@ -720,6 +734,69 @@ func pipesIntoInterpreter(psegs []segment) bool {
 		}
 	}
 	return false
+}
+
+// readsScriptFromStdin reports whether a segment is a bare shell that reads its
+// script from standard input: a member of the interpreter set with no `-c`
+// string and no script operand, or one told to read stdin (`-s`, a lone `-`).
+// Its options are stepped over the way the shell's own parser reads them: `-o`
+// and `-O` take a value, as do `--rcfile` and `--init-file`, and `--version`
+// or `--help` prints and exits without reading anything.
+func readsScriptFromStdin(s segment) bool {
+	cmd, args := commandOf(s)
+	if !isShellFamily(cmd) {
+		return false
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return i+1 >= len(args)
+		case a == "-":
+			return true
+		case a == "--version" || a == "--help":
+			return false
+		case strings.HasPrefix(a, "<<<"):
+			// A here-string is the stream itself, kept as words by the
+			// tokenizer: the operator, and its text when not glued to it.
+			if a == "<<<" {
+				i++
+			}
+		case a == "--rcfile" || a == "--init-file":
+			i++
+		case strings.HasPrefix(a, "--"):
+			// --norc, --noprofile, --posix, --login: no value.
+		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
+			switch cluster := a[1:]; {
+			case strings.ContainsRune(cluster, 'c'):
+				return false // a -c string: the payload reading takes it
+			case strings.ContainsRune(cluster, 's'):
+				return true
+			case strings.ContainsAny(cluster, "oO"):
+				i++
+			}
+		default:
+			return false // the first operand is the script file
+		}
+	}
+	return true
+}
+
+// interpreterStreamSignal is the fail-closed verdict for a shell reading its
+// script from a pipe, a here-document or a here-string. It is a BLOCK because
+// the stream is text the guard read as data: `printf '<blocker>' | sh` runs the
+// blocker, and every blocker in the registry was one pipe away from a silent
+// allow (iss-2609251640462464).
+func interpreterStreamSignal() payloadSignal {
+	return payloadSignal{
+		id:      interpreterStreamEntryID,
+		verdict: VerdictBlock,
+		family:  familyInterpreterStream,
+		reason: "This command hands a shell its script on standard input — through a pipe, a here-document or a here-string — " +
+			"so the commands that shell runs are text the guard read as data and has not checked.",
+		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them; " +
+			"to run a script, save it and run it as a file after reading it.",
+	}
 }
 
 // depthBlockSignal is the fail-closed verdict for a family member nested past the

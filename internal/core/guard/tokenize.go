@@ -13,6 +13,10 @@ import (
 // parenthesis; a newline starts a new chain. The chain is what lets an entry
 // require the cd-chain structure (`cd scratch && rm -rf *`) without matching an
 // unrelated `rm` on the next line.
+//
+// A token that carries the output of a command substitution holds unknownMark
+// where that output goes (unknown.go): the word is unknown, and every reader
+// asks unknown.go what it can be.
 type segment struct {
 	tokens []string
 	chain  int
@@ -32,20 +36,19 @@ type segment struct {
 	// flag into a fail-closed block, the braceGroup precedent.
 	heredocUnterminated bool
 	// substitutionUnread records a command substitution the tokenizer did not
-	// read: one nested inside double quotes past maxQuotedSubstitutionDepth, or
-	// one whose own text does not tokenize. bash runs its command all the same,
-	// so Check turns the flag into a fail-closed block, the braceGroup
-	// precedent. It rides on an empty segment of its own, the way an
+	// read: one nested inside double quotes past maxQuotedSubstitutionDepth,
+	// one whose own text does not tokenize, one whose body holds a case
+	// command (whose pattern `)` the span cannot be told from the close by),
+	// or one the closing scans ran out of budget on. bash runs its command all
+	// the same, so Check turns the flag into a fail-closed block, the
+	// braceGroup precedent. It rides on an empty segment of its own, the way an
 	// unterminated here-document with no command to hang on does.
 	substitutionUnread bool
-	// subWords records, in ascending order, the token indexes at which an
-	// unquoted command substitution stood as a word of its own. The vanish
-	// reading drops such a word — right at a flag or subcommand position, where
-	// an empty output leaves nothing — but bash hands the command whatever the
-	// substitution prints, so an operand COUNT reads each one back as an operand
-	// of unknown text (substitutedOperandCount). An index equal to len(tokens)
-	// is a substitution after the last token. nil in nearly every segment.
-	subWords []int
+	// stdinStream records that the command's standard input is a stream of
+	// text: a pipe from the command before it, a here-document, or a
+	// here-string. A shell reading its script from that stream runs text the
+	// guard read as data (iss-2609251640462464).
+	stdinStream bool
 	// globbed is parallel to tokens and records, per token, that it carried an
 	// UNQUOTED, unescaped `*`, `?` or `[` — a word bash expands against the
 	// working directory before the command runs, so the bytes here are a
@@ -60,19 +63,6 @@ type segment struct {
 // globAt reports whether token i carried an unquoted glob metacharacter.
 func (s segment) globAt(i int) bool {
 	return i >= 0 && i < len(s.globbed) && s.globbed[i]
-}
-
-// subWordSlice returns the subWords record for tokens[lo:hi], re-based on lo,
-// or nil when no substituted word stands in the range — what a sub-segment
-// built from a token window (Tier 2) carries forward beside globSlice.
-func (s segment) subWordSlice(lo, hi int) []int {
-	var out []int
-	for _, w := range s.subWords {
-		if w >= lo && w <= hi {
-			out = append(out, w-lo)
-		}
-	}
-	return out
 }
 
 // globSlice returns the globbed record for tokens[lo:hi], or nil when nothing in
@@ -110,7 +100,8 @@ func (s segment) globSlice(lo, hi int) []bool {
 // (payload.go), never in this splitter — so a hazard hidden there is matched
 // (iss-200), while an uninspectable payload takes the family's posture.
 func tokenize(line string) ([]segment, error) {
-	return tokenizeAt(line, 0, false)
+	budget := closeScanBudget(len(line))
+	return tokenizeAt(line, 0, &budget)
 }
 
 // maxQuotedSubstitutionDepth bounds how deeply substitutions nested inside
@@ -120,32 +111,58 @@ func tokenize(line string) ([]segment, error) {
 // fail-closed substitutionUnread flag (iss-2609251640353405).
 const maxQuotedSubstitutionDepth = 8
 
-// tokenizeAt is tokenize at a double-quoted substitution depth. shadow marks
-// the second pass that reads a line with its followed double-quoted
-// substitutions removed (shadowSegments): that pass follows no substitution
-// inside double quotes and raises no flag for one, because the first pass
-// already has.
-func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
+const (
+	// closeScanPerByte and closeScanFloor size the budget the closing scans
+	// (closingParen, closingDoubleQuote, closingBacktick) share across one
+	// tokenize call. A scan that finds its close reads its own span, and a
+	// byte is read once per double-quoted level around it — at most
+	// maxQuotedSubstitutionDepth times, with room to spare here. A scan that
+	// finds NO close reads to the end of the line, and each unterminated `$(`
+	// inside double quotes started one: quadratic time on a line built of them
+	// (review2-guard finding 6). The shared budget makes the total linear, and
+	// running it down refuses the substitution as unread.
+	closeScanPerByte = 8
+	closeScanFloor   = 1 << 12
+)
+
+// closeScanBudget is the closing-scan budget for a line of n bytes.
+func closeScanBudget(n int) int { return closeScanPerByte*n + closeScanFloor }
+
+// charge spends n units of the closing-scan budget and counts them as work,
+// reporting false once the budget cannot cover them.
+func charge(budget *int, n int) bool {
+	tally(n)
+	if *budget < n {
+		*budget = 0
+		return false
+	}
+	*budget -= n
+	return true
+}
+
+// The closing scans answer with an index, or with one of these.
+const (
+	// closeNone is a span with no close before the input ends: a syntax error
+	// bash refuses to run, left as the literal text it is.
+	closeNone = -1
+	// closeUnread is a span the scan cannot read — a case command in its body,
+	// or a spent budget — and is refused, fail-closed, as substitution-unread.
+	closeUnread = -2
+)
+
+// tokenizeAt is tokenize at a double-quoted substitution depth, spending the
+// closing-scan budget of the tokenize call it belongs to.
+func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	tally(len(line))
 	var (
 		segs []segment
-		// dqSpans are the [start, end) offsets of every double-quoted
-		// substitution this call followed, and extra marks the segments the
-		// double-quote branch added that are not this line's own commands (a
-		// substitution's inner commands, an unread-substitution flag). Both
-		// feed shadowSegments.
-		dqSpans [][2]int
-		extra   []bool
-		// curSub records that a command substitution closed inside the word
-		// being built; when the word ends with no text of its own, the
-		// substitution stood as a word by itself and subWords records where.
-		curSub   bool
-		subWords []int
-		toks     []string
-		cur      []byte
-		hasCur   bool
-		chain    int
-		pending  []heredoc
+		toks []string
+		cur  []byte
+		// hasCur records that a word is being built, which an empty quoted
+		// pair (`''`) makes true with no byte in cur.
+		hasCur  bool
+		chain   int
+		pending []heredoc
 		// braceGroup rides with the segment being built: an unquoted brace group
 		// anywhere in it makes the whole command unexpandable, so the flag is
 		// raised once and lands on the segment flushSegment emits.
@@ -176,10 +193,11 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 		// new command — `cd scratch &&\nrm -rf *` is one chain, not two.
 		lastList bool
 		// parens is the stack of grouping constructs still open at this point,
-		// innermost last. It exists for one question — whether a `<<` reached
-		// here is an arithmetic shift or a here-document redirection — and that
-		// question is answered by what ENCLOSES the operator, never by the bytes
-		// after it. See inArithmetic and the `<<` branch.
+		// innermost last. It answers two questions — whether a `<<` reached
+		// here is an arithmetic shift or a here-document redirection, and
+		// whether a `)` read here can close a substitution — and both are
+		// answered by what ENCLOSES the byte, never by the bytes after it. See
+		// inArithmetic and inSubstitution.
 		parens []parenFrame
 		// chainSeq is the highest chain number handed out so far. A newline
 		// takes the next one rather than incrementing chain, because a
@@ -191,10 +209,15 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 		// procSubNext records that the redirection branch just read the `<`/`>`
 		// of a process substitution, so the `(` that follows opens one.
 		procSubNext bool
+		// curStdin rides with the segment being built: its standard input is a
+		// here-document or a here-string. pipeNext records that the next
+		// command emitted reads a pipe. Both land on segment.stdinStream.
+		curStdin bool
+		pipeNext bool
 	)
 	// inArithmetic reports whether the innermost construct that can change how a
 	// `<<` reads is an arithmetic one. A plain `(` is skipped rather than
-	// answered on: inside `$(( … ))` it is sub-expression grouping, and at the
+	// answered on: inside `(( … ))` it is sub-expression grouping, and at the
 	// top level it is a subshell, whose own enclosing context is what decides —
 	// either way the frame below it has the answer. A `$(` or a backtick stops
 	// the walk, because it starts a FRESH command string, where a here-document
@@ -202,13 +225,44 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 	inArithmetic := func() bool {
 		for n := len(parens) - 1; n >= 0; n-- {
 			switch parens[n].kind {
-			case parenArithmetic:
+			case parenArithmetic, parenArithExp:
 				return true
 			case parenCommandSub, parenBacktick:
 				return false
 			}
 		}
 		return false
+	}
+	// inSubstitution reports whether any construct open here is a command or
+	// process substitution, whose close a stray `)` would take early.
+	inSubstitution := func() bool {
+		for _, p := range parens {
+			if p.saved != nil {
+				return true
+			}
+		}
+		return false
+	}
+	// unread raises the fail-closed flag for a substitution the tokenizer
+	// could not read, on an empty segment of its own. Once per call is enough:
+	// the verdict is the whole command's.
+	unreadRaised := false
+	unread := func() {
+		if !unreadRaised {
+			unreadRaised = true
+			segs = append(segs, segment{chain: chain, substitutionUnread: true})
+		}
+	}
+	// fail is how the tokenizer refuses a line. Once a substitution has been
+	// refused as unread, the quoting after it was read without its span, and a
+	// quote that seems to run to the end may be one the span held: bash may
+	// well run the line. An error there is mapped to fail-OPEN by the hook, so
+	// the refusal stands in its place — the segments read so far, and the flag.
+	fail := func(err error) ([]segment, error) {
+		if unreadRaised {
+			return segs, nil
+		}
+		return nil, err
 	}
 	// addCur appends bytes to the word being built with one mask value for all
 	// of them: wordStruct for bytes read unquoted, zero for quoted, escaped or
@@ -222,16 +276,15 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 	}
 	flushToken := func() {
 		if !hasCur {
-			// A command substitution that closed with no text beside it stood
-			// as a word of its own: recorded where it stood, so an operand
-			// count can read it back (iss-2609251640353017).
-			if curSub {
-				subWords = append(subWords, len(toks))
-				curSub = false
-			}
 			return
 		}
-		curSub = false
+		// A case command inside a substitution: its pattern's `)` is read as the
+		// substitution's close, and the rest of the case command as the
+		// enclosing command's words, so the span is wrong from here on
+		// (review2-guard finding 3). bash runs it, so it is refused, not guessed.
+		if string(cur) == "case" && inSubstitution() && allReserved(toks) {
+			unread()
+		}
 		// A word holding a brace group is expanded into the words bash would
 		// produce, each checked as an argument in its own right
 		// (iss-2608282026038930). An assignment in assignment position is the one
@@ -255,22 +308,77 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
-			segs = append(segs, segment{tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), subWords: subWords})
+			segs = append(segs, segment{
+				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
+				stdinStream: curStdin || pipeNext,
+			})
 			toks = nil
 			globs = nil
 			braceGroup = false
+			pipeNext = false
 		}
-		subWords = nil
+		curStdin = false
 	}
-	// addExtra appends a segment the double-quote branch produced that is not
-	// one of this line's own commands, and marks it so shadowSegments pairs the
-	// line's commands with their shadows past it.
-	addExtra := func(s segment) {
-		for len(extra) < len(segs) {
-			extra = append(extra, false)
+	// follow reads the text of a command substitution the scan found whole —
+	// inside double quotes, or inside an arithmetic expansion — as commands of
+	// their own, emitted now because they run first, in this command's chain.
+	// Past the depth budget, or when the text does not tokenize, it raises the
+	// fail-closed flag instead (iss-2609251640353405).
+	follow := func(text string) {
+		if depth >= maxQuotedSubstitutionDepth {
+			unread()
+			return
 		}
-		segs = append(segs, s)
-		extra = append(extra, true)
+		isegs, err := tokenizeAt(text, depth+1, budget)
+		if err != nil {
+			isegs = []segment{{substitutionUnread: true}}
+		}
+		for _, is := range isegs {
+			is.chain = chain
+			segs = append(segs, is)
+		}
+	}
+	// arithmetic reads the body of an arithmetic expansion. The expression is
+	// not commands — `( 1+2 ) * 3` is grouping and multiplication, never a
+	// subshell and a glob (review2-guard finding 5) — but a command
+	// substitution inside it runs, so each one is followed.
+	arithmetic := func(body string) {
+		tally(len(body))
+		for j := 0; j < len(body); {
+			switch {
+			case body[j] == '\\':
+				j += 2
+			case body[j] == '`':
+				k := closingBacktick(body, j+1, budget)
+				if k < 0 {
+					unread()
+					return
+				}
+				follow(body[j+1 : k])
+				j = k + 1
+			case body[j] == '$' && j+1 < len(body) && body[j+1] == '(':
+				if j+2 < len(body) && body[j+2] == '(' {
+					end := arithmeticEnd(body, j, budget)
+					if end == closeUnread {
+						unread()
+						return
+					}
+					if end >= 0 {
+						j += 3 // a nested expansion: its body is read in this same pass
+						continue
+					}
+				}
+				k := closingParen(body, j+2, budget)
+				if k < 0 {
+					unread()
+					return
+				}
+				follow(body[j+2 : k])
+				j = k + 1
+			default:
+				j++
+			}
+		}
 	}
 	// openSubstitution suspends the command being built when a command or
 	// process substitution opens inside it. The substitution's own command is
@@ -282,36 +390,76 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 		saved := &enclosing{
 			toks: toks, globs: globs, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
-			curSub: curSub, subWords: subWords,
+			curStdin: curStdin, pipeNext: pipeNext,
 		}
 		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, false, false, false, false
-		curSub, subWords = false, nil
+		curStdin, pipeNext = false, false
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
-	// closeSubstitution resumes a suspended enclosing command. What the
-	// substitution contributes to the word it sat in is unknowable here, so a
-	// command substitution contributes nothing — the reading under which an
-	// unquoted one that expands to nothing (`$(true)`) leaves no word at all,
-	// and a leading-position substitution never becomes argv[0]. One that
-	// stands as a word of its own is still recorded (curSub, subWords), because
-	// an operand count cannot take the vanish reading. A process substitution
-	// always contributes exactly one word, the /dev/fd path the shell hands the
-	// command, so the operands after it keep their positions.
+	// closeArithmetic resumes the command an arithmetic expansion suspended,
+	// with the number it prints in the word it sat in. What the loop gathered
+	// while it stepped the expression is dropped: none of it is a word. The
+	// bare `(( … ))` command prints nothing and leaves no word.
+	closeArithmetic := func(f parenFrame) {
+		e := f.saved
+		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
+			e.toks, e.globs, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
+		curStdin, pipeNext = e.curStdin, e.pipeNext
+		if !f.bare {
+			addCur([]byte(arithmeticOperand), 0)
+		}
+		lastList = false
+	}
+	// closeSubstitution resumes a suspended enclosing command. What a command
+	// substitution prints is unknowable here, so it leaves unknownMark in the
+	// word it sat in (unknown.go): standing alone it is a word of its own, one
+	// that may also vanish; glued to text it makes that word unknown. A process
+	// substitution always contributes exactly one word, the /dev/fd path the
+	// shell hands the command, so the operands after it keep their positions.
 	closeSubstitution := func(e *enclosing) {
 		flushSegment()
 		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
-		curSub, subWords = e.curSub, e.subWords
+		curStdin, pipeNext = e.curStdin, e.pipeNext
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
 		} else {
-			curSub = true
+			addCur([]byte{unknownMark}, 0)
 		}
 		lastList = false
 	}
 
 	for i := 0; i < len(line); {
 		c := line[i]
+		// Inside an arithmetic expansion only a command substitution is read:
+		// every other byte is expression, stepped over up to the final `)`,
+		// which resumes the enclosing command with the number in its word.
+		if n := len(parens); n > 0 && parens[n-1].kind == parenArithExp {
+			top := parens[n-1]
+			switch {
+			case i >= top.end:
+				parens = parens[:n-1]
+				closeArithmetic(top)
+				if i == top.end {
+					i++
+				}
+				continue
+			case c == '\\':
+				i += 2
+				continue
+			case c == '`':
+				openSubstitution(parenBacktick, i, false)
+				i++
+				continue
+			case c == '$' && i+1 < len(line) && line[i+1] == '(' && !(i+2 < len(line) && line[i+2] == '('):
+				openSubstitution(parenCommandSub, i+1, false)
+				i += 2
+				continue
+			case c != '"' && c != '\'':
+				i++
+				continue
+			}
+		}
 		switch {
 		case c == '\\':
 			if i+1 >= len(line) {
@@ -341,7 +489,7 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 				j++
 			}
 			if j >= len(line) {
-				return nil, fmt.Errorf("%w: unterminated single quote", ErrUnparsableCommand)
+				return fail(fmt.Errorf("%w: unterminated single quote", ErrUnparsableCommand))
 			}
 			addCur([]byte(line[i+1:j]), 0)
 			lastList = false
@@ -352,50 +500,52 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			// A substitution inside double quotes runs as an unquoted one does,
 			// and double quotes are its idiomatic spelling, so its command is
 			// read as a segment of its own, emitted now because it runs first,
-			// in this command's chain (iss-2609251144159533). The quoted word
-			// keeps the substitution's text: an execute-a-string payload
-			// carrying one is uninspectable, and the payload reading needs to
-			// see it there. What bash puts in the word is the substitution's
-			// OUTPUT, though, joined onto the text beside it, so the span is
-			// recorded and shadowSegments reads the line a second time with it
-			// removed — the vanish reading the unquoted branch takes, under
-			// which a flag glued to an empty substitution is the flag
-			// (iss-2609251640353993). One whose end cannot be found stays
-			// literal text, and the scan stops looking for more in this string,
-			// which keeps it linear; that one is a syntax error bash refuses.
+			// in this command's chain (iss-2609251144159533). What bash puts in
+			// the word is the substitution's OUTPUT, joined onto the text beside
+			// it, so the word holds unknownMark there (unknown.go): under the
+			// vanish reading a flag glued to an empty substitution is the flag
+			// (iss-2609251640353993), and a dash glued to one is a flag of
+			// unknown name. An execute-a-string payload carrying the mark is
+			// one the guard cannot read, which the payload reading sees there.
+			// One whose end cannot be found stays literal text, and the scan
+			// stops looking for more in this string, which keeps it linear;
+			// that one is a syntax error bash refuses.
 			//
-			// Past the depth budget a substitution is not read, and its command
-			// runs all the same, so it raises the fail-closed flag
-			// (iss-2609251640353405); so does one whose text does not tokenize.
-			followSubs := !shadow
+			// An arithmetic expansion is read as one: its output is a number,
+			// and only a command substitution inside it runs a command.
+			followSubs := true
 			for j < len(line) {
-				if followSubs && (line[j] == '`' || (line[j] == '$' && j+1 < len(line) && line[j+1] == '(')) {
-					if depth >= maxQuotedSubstitutionDepth {
-						addExtra(segment{chain: chain, substitutionUnread: true})
+				if followSubs && line[j] == '$' && j+2 < len(line) && line[j+1] == '(' && line[j+2] == '(' {
+					end := arithmeticEnd(line, j, budget)
+					if end == closeUnread {
+						unread()
 						followSubs = false
 						continue
 					}
-					open, inner := j+2, -1
+					if end >= 0 {
+						arithmetic(line[j+3 : end-1])
+						addCur([]byte(arithmeticOperand), 0)
+						j = end + 1
+						continue
+					}
+				}
+				if followSubs && (line[j] == '`' || (line[j] == '$' && j+1 < len(line) && line[j+1] == '(')) {
+					open, inner := j+2, closeNone
 					if line[j] == '`' {
 						open = j + 1
-						inner = closingBacktick(line, open)
+						inner = closingBacktick(line, open, budget)
 					} else {
-						inner = closingParen(line, open)
+						inner = closingParen(line, open, budget)
 					}
 					if inner < 0 {
+						if inner == closeUnread {
+							unread()
+						}
 						followSubs = false
 						continue
 					}
-					isegs, err := tokenizeAt(line[open:inner], depth+1, false)
-					if err != nil {
-						isegs = []segment{{substitutionUnread: true}}
-					}
-					for _, is := range isegs {
-						is.chain = chain
-						addExtra(is)
-					}
-					dqSpans = append(dqSpans, [2]int{j, inner + 1})
-					addCur([]byte(line[j:inner+1]), 0)
+					follow(line[open:inner])
+					addCur([]byte{unknownMark}, 0)
 					j = inner + 1
 					continue
 				}
@@ -420,7 +570,7 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 				j++
 			}
 			if !closed {
-				return nil, fmt.Errorf("%w: unterminated double quote", ErrUnparsableCommand)
+				return fail(fmt.Errorf("%w: unterminated double quote", ErrUnparsableCommand))
 			}
 			hasCur = true
 			lastList = false
@@ -466,6 +616,7 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			if !lastList {
 				chainSeq++
 				chain = chainSeq
+				pipeNext = false
 			}
 		case c == '#' && !hasCur:
 			// A comment starts only at a word boundary (POSIX): `url/#frag` is
@@ -475,27 +626,30 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			}
 		case c == '<' && strings.HasPrefix(line[i:], "<<<"):
 			// A herestring, not a heredoc: its payload is an ordinary argument
-			// token, so the operator is kept as plain token text.
+			// token, so the operator is kept as plain token text. It is the
+			// command's standard input.
 			addCur([]byte("<<<"), wordStruct)
+			curStdin = true
 			lastList = false
 			i += 3
 		case c == '<' && strings.HasPrefix(line[i:], "<<"):
 			// A heredoc redirection (`<<`, `<<-`) — but only when nothing
 			// arithmetic encloses the operator and a delimiter word follows.
-			// `$((1<<20))` is an arithmetic shift, and taking it for a heredoc
-			// would swallow every later line as body text and silently unguard
-			// them.
+			// `(( x = 1<<20 ))` is an arithmetic shift, and taking it for a
+			// heredoc would swallow every later line as body text and silently
+			// unguard them.
 			//
 			// WHAT ENCLOSES the `<<` is what tells the two apart. Inside an
-			// arithmetic context — a `$(( … ))` expansion or the bare `(( … ))`
-			// command — bash has no redirection at all, so a `<<` there is a
-			// shift, full stop; outside one, a delimiter-shaped word opens a
-			// document. Deciding instead on the bytes AFTER the delimiter word
-			// ("does a paren pair close right here?") reads only the flattest
-			// shift: `$(( (1 << n) + 1 ))` closes its sub-expression with a
-			// SINGLE `)`, so `n` was taken for a delimiter — and a later line
-			// equal to `n` then swallowed every command between the two with no
-			// signal at all, while a bit mask with no such line blocked as an
+			// arithmetic context — the bare `(( … ))` command, or a `$(( … ))`
+			// expansion, which is read whole before its bytes reach here —
+			// bash has no redirection at all, so a `<<` there is a shift, full
+			// stop; outside one, a delimiter-shaped word opens a document.
+			// Deciding instead on the bytes AFTER the delimiter word ("does a
+			// paren pair close right here?") reads only the flattest shift:
+			// `(( (1 << n) + 1 ))` closes its sub-expression with a SINGLE `)`,
+			// so `n` was taken for a delimiter — and a later line equal to `n`
+			// then swallowed every command between the two with no signal at
+			// all, while a bit mask with no such line blocked as an
 			// unterminated document.
 			//
 			// The check comes BEFORE readHeredocDelim so an arithmetic
@@ -513,7 +667,7 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			}
 			hd, next, err := readHeredocDelim(line, i+2)
 			if err != nil {
-				return nil, err
+				return fail(err)
 			}
 			// A word that cannot start an unquoted delimiter — `20` in a
 			// `$((1<<20))` reached outside any paren — is not one.
@@ -525,6 +679,7 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			}
 			flushToken()
 			pending = append(pending, hd)
+			curStdin = true
 			i = next
 		case c == '>' || (c == '<' && !strings.HasPrefix(line[i:], "<<")):
 			// A redirection operator (`>`, `>>`, `>|`, `>&`, `<`, `<>`, `<&`),
@@ -594,7 +749,7 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			// (doc.go): `git push $'--force'` fires, like `git push '--force'`.
 			decoded, next, err := readAnsiCQuote(line, i+2)
 			if err != nil {
-				return nil, err
+				return fail(err)
 			}
 			addCur(decoded, 0)
 			lastList = false
@@ -605,6 +760,31 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			// `$` so the double-quote branch reads the string; the same silent
 			// allow as $'...' otherwise.
 			i++
+		case c == '$' && i+2 < len(line) && line[i+1] == '(' && line[i+2] == '(':
+			// An arithmetic expansion (review2-guard finding 5): its expression
+			// is not commands, and the number it prints is no flag, subcommand
+			// or path an entry names. It suspends the enclosing command like a
+			// substitution, and the loop skips its bytes (the parenArithExp
+			// step above) except where a command substitution inside it opens
+			// — that one runs, and is read as a command here, in this loop, so
+			// a here-document it opens takes its body from the lines below as
+			// any other does. `$((` that does not close as an expansion is
+			// bash's other reading, a command substitution opening with a
+			// subshell, and falls to the `(` branch below.
+			end := arithmeticEnd(line, i, budget)
+			if end == closeUnread {
+				unread()
+			}
+			if end < 0 {
+				addCur([]byte{c}, wordStruct)
+				lastList = false
+				i++
+				break
+			}
+			openSubstitution(parenArithExp, i, false)
+			parens[len(parens)-1].end = end
+			lastList = false
+			i += 3
 		case c == '&' || c == '|' || c == ';' || c == '(' || c == ')' || c == '`':
 			// A backtick is command substitution, identical to `$( … )`: the inner
 			// command EXECUTES before its output is used. `$( … )` already splits
@@ -640,14 +820,32 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 				continue
 			}
 			flushSegment()
+			if c == '(' && i+1 < len(line) && line[i+1] == '(' {
+				// The bare arithmetic command `(( … ))` is read as the
+				// expansion is, when its parens close as one: an expression,
+				// not a subshell holding commands and globs.
+				end := arithmeticClose(line, i, budget)
+				if end == closeUnread {
+					unread()
+				}
+				if end >= 0 {
+					openSubstitution(parenArithExp, i, false)
+					parens[len(parens)-1].end = end
+					parens[len(parens)-1].bare = true
+					lastList = false
+					i += 2
+					continue
+				}
+			}
 			switch c {
 			case '(':
-				// `((` and `$((` — two parens with NOTHING between them — open
-				// an arithmetic context, which is how bash lexes them too;
-				// `( (cmd) )` and `$( (cmd) )`, which have a separator, do not.
-				// The inner paren converts the frame the outer one pushed, so
-				// both halves close it and `$(((a))` reads as arithmetic plus
-				// one ordinary group.
+				// `((` — two parens with NOTHING between them — opens an
+				// arithmetic context, which is how bash lexes it too; `( (cmd) )`
+				// and `$( (cmd) )`, which have a separator, do not. The inner
+				// paren converts the frame the outer one pushed, so both halves
+				// close it and `(((a))` reads as arithmetic plus one ordinary
+				// group. A `$((` reaches here only when it did not close as an
+				// expansion (the `$((` branch above), and is read the same way.
 				kind := parenGroup
 				if n := len(parens); n > 0 && parens[n-1].pos == i-1 && parens[n-1].kind != parenArithmetic {
 					parens[n-1].kind = parenArithmetic
@@ -669,10 +867,24 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 					}
 				}
 			}
-			if (c == '&' || c == '|') && i+1 < len(line) && line[i+1] == c {
+			if c == '|' && i+1 < len(line) && line[i+1] == '&' {
+				// `|&` pipes stdout and stderr both: a pipe.
+				pipeNext = true
 				lastList = true
 				i += 2
 				continue
+			}
+			if (c == '&' || c == '|') && i+1 < len(line) && line[i+1] == c {
+				pipeNext = false
+				lastList = true
+				i += 2
+				continue
+			}
+			switch c {
+			case '|':
+				pipeNext = true
+			case ';', '&':
+				pipeNext = false
 			}
 			// A single pipe continues the list across a newline; `;`, `&`, the
 			// grouping parens, and a backtick boundary do not.
@@ -704,6 +916,13 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 			addCur([]byte{c}, mask)
 			lastList = false
 			i++
+		case c == unknownMark:
+			// A payload re-read from a word that carried a substitution's
+			// output: the mark stays where the output goes, and the word it
+			// lands in is unknown (unknown.go).
+			addCur([]byte{c}, 0)
+			lastList = false
+			i++
 		default:
 			// An unquoted glob metacharacter makes the word a PATTERN: bash
 			// expands it against the working directory before exec, so
@@ -725,10 +944,15 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 	// suspended enclosing command is resumed and emitted, so no token written
 	// before an unterminated `$(` or backtick escapes the check.
 	for n := len(parens) - 1; n >= 0; n-- {
-		if parens[n].saved != nil {
+		switch {
+		case parens[n].kind == parenArithExp:
+			closeArithmetic(parens[n])
+		case parens[n].saved != nil:
 			closeSubstitution(parens[n].saved)
-			flushSegment()
+		default:
+			continue
 		}
+		flushSegment()
 	}
 	// A here-document still pending when the INPUT ends is in the same state as
 	// one whose delimiter line never came, and takes the same fail-closed
@@ -741,121 +965,155 @@ func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 	if len(pending) > 0 {
 		markHeredocUnterminated(&segs, chain)
 	}
-	if len(dqSpans) > 0 {
-		return shadowSegments(line, depth, segs, extra, dqSpans), nil
-	}
 	return segs, nil
 }
 
-// shadowSegments adds the vanish reading of every command that carried a
-// followed double-quoted substitution. bash joins the substitution's output
-// onto the text beside it in the same word, and the output is unknowable here,
-// so the reading taken is the one the unquoted branch takes: the substitution
-// contributes nothing, which is exactly the reading under which a flag glued to
-// an empty one (`"$(true)"--force`) is the flag (iss-2609251640353993). The
-// literal reading stays — the execute-a-string family needs to see a
-// substitution in its payload to call it uninspectable — and the vanish
-// reading is added beside it, so it can only ever add a match.
-//
-// The line is read a second time with every followed span removed. Removing
-// text from inside double quotes moves no operator, newline or unquoted
-// substitution, so the second pass holds this line's own commands in the same
-// order, and each shadow that differs is placed directly after the command it
-// shadows, keeping its chain: an `after_cd` entry then reads it where the
-// original stood. Should the two passes ever disagree on the count, every
-// shadow is appended instead, where an `after_cd` entry can only over-read,
-// never miss; and a second pass that cannot tokenize at all raises
-// the fail-closed flag rather than dropping the reading.
-func shadowSegments(line string, depth int, segs []segment, extra []bool, spans [][2]int) []segment {
-	var b strings.Builder
-	b.Grow(len(line))
-	last := 0
-	for _, sp := range spans {
-		b.WriteString(line[last:sp[0]])
-		last = sp[1]
-	}
-	b.WriteString(line[last:])
-	shadow, err := tokenizeAt(b.String(), depth, true)
-	chainOf := func() int {
-		if len(segs) == 0 {
-			return 0
-		}
-		return segs[len(segs)-1].chain
-	}
-	if err != nil {
-		return append(segs, segment{chain: chainOf(), substitutionUnread: true})
-	}
-	isExtra := func(i int) bool { return i < len(extra) && extra[i] }
-	own := 0
-	for i := range segs {
-		if !isExtra(i) {
-			own++
-		}
-	}
-	if own != len(shadow) {
-		return append(segs, shadow...)
-	}
-	out := make([]segment, 0, len(segs)+len(shadow))
-	k := 0
-	for i, s := range segs {
-		out = append(out, s)
-		if isExtra(i) {
-			continue
-		}
-		if sh := shadow[k]; !sameTokens(sh.tokens, s.tokens) {
-			sh.chain = s.chain
-			out = append(out, sh)
-		}
-		k++
-	}
-	return out
-}
+// arithmeticOperand is the word an arithmetic expansion leaves in its
+// command: a number, which is all `$(( … ))` can print. Its value is not
+// modelled, and needs not be: no flag, subcommand or path an entry names is a
+// number.
+const arithmeticOperand = "0"
 
-// sameTokens reports whether two token lists are identical.
-func sameTokens(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
+// allReserved reports whether every token so far is a reserved word, so the
+// next word stands in command position.
+func allReserved(toks []string) bool {
+	for _, t := range toks {
+		if !reserved[t] {
 			return false
 		}
 	}
 	return true
 }
 
+// arithmeticEnd returns the index of the final `)` of the arithmetic expansion
+// whose `$((` begins at line[dollar], closeNone when the bytes do not close as
+// one, or closeUnread when the budget ran out. bash's own test is the one read
+// here: the expansion's two `)` are adjacent and close the two `(` — `$((a) +
+// (b))` closes its first group early and is a command substitution instead.
+func arithmeticEnd(line string, dollar int, budget *int) int {
+	return arithmeticClose(line, dollar+1, budget)
+}
+
+// arithmeticClose is arithmeticEnd for the `((` whose first paren is at
+// line[open]: the bare arithmetic command, or an expansion past its `$`.
+func arithmeticClose(line string, open int, budget *int) int {
+	outer := closingParenMode(line, open+1, budget, true)
+	if outer < 0 {
+		return outer
+	}
+	inner := closingParenMode(line, open+2, budget, true)
+	if inner == closeUnread {
+		return closeUnread
+	}
+	if inner != outer-1 {
+		return closeNone
+	}
+	return outer
+}
+
 // closingParen returns the index of the `)` that closes a `$(` whose body
-// starts at i, or -1 when none does. It reads the body's own quoting — single
-// quotes, double quotes with their own substitutions, backticks and
-// backslashes — so a `)` inside any of them is not the close.
-func closingParen(line string, i int) int {
+// starts at i, closeNone when none does, or closeUnread when the span cannot
+// be read. It reads the body's own grammar, not only its quoting — single
+// quotes, double quotes with their own substitutions, backticks, backslashes,
+// a `#` comment to the end of its line, an arithmetic expansion, and a
+// here-document's body — so a `)` inside any of them is not the close
+// (review2-guard finding 3). A body holding a case command is refused: its
+// patterns end in an unbalanced `)`, and guessing which one closes the span is
+// how a flag glued after it got through.
+func closingParen(line string, i int, budget *int) int {
+	return closingParenMode(line, i, budget, false)
+}
+
+// closingParenMode is closingParen reading either a command body or, with
+// arith, an arithmetic expression, which has no comment, no here-document and
+// no case command: `16#ff` is a number and `1 << 2` a shift.
+func closingParenMode(line string, i int, budget *int, arith bool) int {
+	start := i
 	depth := 1
+	var pending []heredoc
 	for i < len(line) {
-		switch line[i] {
-		case '\\':
+		if !charge(budget, 1) {
+			return closeUnread
+		}
+		c := line[i]
+		switch {
+		case c == '\\':
 			i += 2
 			continue
-		case '\'':
+		case c == '\'':
 			k := strings.IndexByte(line[i+1:], '\'')
 			if k < 0 {
-				return -1
+				return closeNone
+			}
+			if !charge(budget, k+1) {
+				return closeUnread
 			}
 			i += k + 2
 			continue
-		case '"':
-			k := closingDoubleQuote(line, i+1)
+		case c == '"':
+			k := closingDoubleQuote(line, i+1, budget)
 			if k < 0 {
-				return -1
+				return k
 			}
 			i = k + 1
 			continue
-		case '`':
-			k := closingBacktick(line, i+1)
+		case c == '`':
+			k := closingBacktick(line, i+1, budget)
 			if k < 0 {
-				return -1
+				return k
 			}
 			i = k + 1
 			continue
+		case c == '$' && !arith && i+2 < len(line) && line[i+1] == '(' && line[i+2] == '(':
+			if end := arithmeticEnd(line, i, budget); end >= 0 {
+				i = end + 1
+				continue
+			} else if end == closeUnread {
+				return closeUnread
+			}
+		case arith:
+			// An arithmetic expression: only the parens below are structure.
+		case c == '#' && (i == start || isWordBreak(line[i-1])):
+			k := strings.IndexByte(line[i:], '\n')
+			if k < 0 {
+				return closeNone
+			}
+			if !charge(budget, k) {
+				return closeUnread
+			}
+			i += k
+			continue
+		case c == 'c' && keywordAt(line, start, i, "case"):
+			return closeUnread
+		case c == '<' && strings.HasPrefix(line[i:], "<<<"):
+			i += 3
+			continue
+		case c == '<' && strings.HasPrefix(line[i:], "<<"):
+			hd, next, err := readHeredocDelim(line, i+2)
+			if err != nil {
+				return closeNone
+			}
+			if hd.quoted || isDelimStart(hd.delim) {
+				pending = append(pending, hd)
+			}
+			if !charge(budget, next-i) {
+				return closeUnread
+			}
+			i = next
+			continue
+		case c == '\n' && len(pending) > 0:
+			next, ok := skipHeredocBodies(line, i+1, pending)
+			if !ok {
+				return closeNone
+			}
+			if !charge(budget, next-i) {
+				return closeUnread
+			}
+			pending = nil
+			i = next
+			continue
+		}
+		switch c {
 		case '(':
 			depth++
 		case ')':
@@ -865,14 +1123,49 @@ func closingParen(line string, i int) int {
 		}
 		i++
 	}
-	return -1
+	return closeNone
+}
+
+// keywordAt reports whether line[i:] is the reserved word kw standing in
+// command position of a command body that starts at start: bounded by word
+// breaks, and preceded by the body's start, a command separator, or another
+// reserved word (`then case …`).
+func keywordAt(line string, start, i int, kw string) bool {
+	if !strings.HasPrefix(line[i:], kw) {
+		return false
+	}
+	if end := i + len(kw); end < len(line) && !isWordBreak(line[end]) {
+		return false
+	}
+	p := i - 1
+	for p >= start && (line[p] == ' ' || line[p] == '\t') {
+		p--
+	}
+	if p < start {
+		return true
+	}
+	switch line[p] {
+	case ';', '&', '|', '(', '\n', '{', '!':
+		return true
+	}
+	if p+1 == i {
+		return false // glued to the word before it
+	}
+	q := p
+	for q >= start && !isWordBreak(line[q]) {
+		q--
+	}
+	return reserved[line[q+1:p+1]] || line[q+1:p+1] == "time"
 }
 
 // closingDoubleQuote returns the index of the `"` that closes a double-quoted
 // string whose body starts at i, stepping over escapes and the substitutions
-// inside it, or -1.
-func closingDoubleQuote(line string, i int) int {
+// inside it, or one of closeNone and closeUnread.
+func closingDoubleQuote(line string, i int, budget *int) int {
 	for i < len(line) {
+		if !charge(budget, 1) {
+			return closeUnread
+		}
 		switch {
 		case line[i] == '\\':
 			i += 2
@@ -880,29 +1173,32 @@ func closingDoubleQuote(line string, i int) int {
 		case line[i] == '"':
 			return i
 		case line[i] == '$' && i+1 < len(line) && line[i+1] == '(':
-			k := closingParen(line, i+2)
+			k := closingParen(line, i+2, budget)
 			if k < 0 {
-				return -1
+				return k
 			}
 			i = k + 1
 			continue
 		case line[i] == '`':
-			k := closingBacktick(line, i+1)
+			k := closingBacktick(line, i+1, budget)
 			if k < 0 {
-				return -1
+				return k
 			}
 			i = k + 1
 			continue
 		}
 		i++
 	}
-	return -1
+	return closeNone
 }
 
 // closingBacktick returns the index of the unescaped backtick that closes one
-// whose body starts at i, or -1.
-func closingBacktick(line string, i int) int {
+// whose body starts at i, or one of closeNone and closeUnread.
+func closingBacktick(line string, i int, budget *int) int {
 	for i < len(line) {
+		if !charge(budget, 1) {
+			return closeUnread
+		}
 		switch line[i] {
 		case '\\':
 			i += 2
@@ -912,7 +1208,7 @@ func closingBacktick(line string, i int) int {
 		}
 		i++
 	}
-	return -1
+	return closeNone
 }
 
 // parenKind names what an unclosed `(` opened, to the one precision the
@@ -928,8 +1224,13 @@ const (
 	// parenBacktick is an open backtick: command substitution in its other
 	// spelling, and its own closer.
 	parenBacktick
-	// parenArithmetic is one half of a `((` or `$((` pair.
+	// parenArithmetic is one half of a `((` pair, or of a `$((` that did not
+	// close as an expansion.
 	parenArithmetic
+	// parenArithExp is an arithmetic expansion `$(( … ))` whose close the scan
+	// found (arithmeticEnd): the loop steps its expression and reads only the
+	// substitutions inside it.
+	parenArithExp
 )
 
 // parenFrame is one unclosed grouping construct: its kind, and the offset of the
@@ -942,6 +1243,10 @@ type parenFrame struct {
 	// this frame closes; nil for a frame that suspends nothing (a subshell or
 	// grouping paren, an arithmetic half).
 	saved *enclosing
+	// end is the offset of an arithmetic expansion's final `)`, and bare
+	// records that it is the `(( … ))` command, which leaves no word.
+	end  int
+	bare bool
 }
 
 // enclosing is the state of a command suspended by a substitution opening
@@ -960,10 +1265,10 @@ type enclosing struct {
 	// procSub records that the substitution is a process substitution, which
 	// leaves one /dev/fd operand in the word it sat in.
 	procSub bool
-	// curSub and subWords are the enclosing command's own substituted-word
+	// curStdin and pipeNext are the enclosing command's own standard-input
 	// record (tokenizeAt), suspended with the rest of it.
-	curSub   bool
-	subWords []int
+	curStdin bool
+	pipeNext bool
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing
@@ -1504,7 +1809,8 @@ func substitutionBlockSignal() payloadSignal {
 		verdict: VerdictBlock,
 		family:  familySubstitution,
 		reason: "This command nests command substitutions inside double quotes deeper than the guard reads (" +
-			strconv.Itoa(maxQuotedSubstitutionDepth) + " levels), or carries one whose text it cannot split, " +
+			strconv.Itoa(maxQuotedSubstitutionDepth) + " levels), or carries one whose text it cannot split — " +
+			"a case command inside one, or more nesting than its scan budget covers — " +
 			"so a command that runs first is one it has not checked.",
 		successor: "Run the inner command on its own and keep its output in a variable, " +
 			"so each command the shell runs is one the guard checks.",

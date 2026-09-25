@@ -177,10 +177,16 @@ name is read as git reads it, as the one option that prefix can mean. A command
 or process substitution, unquoted
 or inside double quotes, is followed into command position, and the words
 written after one stay the
-enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`; text beside
-a quoted one in the same word is read as bash leaves it when the output is
-empty, and one nested past the depth the guard reads is refused rather than
-left unread. An unquoted
+enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. What a
+substitution prints is not in the line, so a word holding one is unknown and
+fails closed in every role it could play: led by a dash it is every flag it
+could become, after a value flag it is that flag's value, and as an operand it
+is one operand; text beside one in the same word is also read as bash leaves it
+when the output is empty. One nested past the depth the guard reads, or holding
+a case command, is refused rather than left unread. An arithmetic expansion is
+an expression, not commands. A shell reading its script from a pipe, a
+here-document or a here-string is refused, because what it runs is text the
+guard read as data, and so is a line longer than the guard reads. An unquoted
 brace group is expanded as bash expands it and every word it produces is
 checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A
@@ -194,7 +200,10 @@ because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.
 
 What an allow still does not see is a hazard that never reaches command position
-at all: one behind a wrapper flag the per-wrapper table does not name; a REST
+at all: a word that is wholly a command substitution standing where a flag
+would be, which is read as an operand because that is how a commit message or a
+branch name is spelled every day; one behind a wrapper flag the per-wrapper
+table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; a bare `$VAR` standing where the hazard would be inside a payload the
 guard does read, because the guard sees the variable and not what the shell will

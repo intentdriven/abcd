@@ -45,20 +45,20 @@ func TestDoubleQuotedSubstitutionIsFollowed(t *testing.T) {
 
 // TestDoubleQuotedSubstitutionKeepsTheWord pins the tokenizer shape: the inner
 // command is emitted first, in the enclosing command's chain, and the quoted
-// word stays one argument of the enclosing command, its text unchanged. Its
-// vanish reading follows directly after it, in the same chain, with the
-// substitution removed from the word and the word itself kept, since a quoted
-// substitution always leaves one (iss-2609251640353993). An unterminated
-// substitution inside the quotes is left as the literal text it was, and has
-// no shadow.
+// word stays one argument of the enclosing command, holding unknownMark where
+// the substitution's output goes (unknown.go) — so its known text is the vanish
+// reading (iss-2609251640353993) and its dash-led spelling an unknown flag. An
+// unterminated substitution inside the quotes is left as the literal text it
+// was.
 func TestDoubleQuotedSubstitutionKeepsTheWord(t *testing.T) {
 	cases := []struct {
 		line string
 		want []string
 	}{
-		{`git commit -m "at $(date) ok"`, []string{"0:date", "0:git|commit|-m|at $(date) ok", "0:git|commit|-m|at  ok"}},
-		{`echo "$(a)" b`, []string{"0:a", "0:echo|$(a)|b", "0:echo||b"}},
-		{"cd s && rm \"$(a)\"-rf x\necho \"`b`\"", []string{"0:cd|s", "0:a", "0:rm|$(a)-rf|x", "0:rm|-rf|x", "1:b", "1:echo|`b`", "1:echo|"}},
+		{`git commit -m "at $(date) ok"`, []string{"0:date", "0:git|commit|-m|at \x00 ok"}},
+		{`echo "$(a)" b`, []string{"0:a", "0:echo|\x00|b"}},
+		{"cd s && rm \"$(a)\"-rf x\necho \"`b`\"", []string{"0:cd|s", "0:a", "0:rm|\x00-rf|x", "1:b", "1:echo|\x00"}},
+		{`echo "$(( (1+2) * 3 ))"`, []string{"0:echo|0"}},
 		{`echo "$(unterminated"`, []string{"0:echo|$(unterminated"}},
 	}
 	for _, tc := range cases {
@@ -86,8 +86,8 @@ func TestDoubleQuotedSubstitutionKeepsTheWord(t *testing.T) {
 // or split around, an empty quoted substitution is the flag. The quoted word
 // kept the substitution's literal text instead, so the flag compare saw
 // `$(true)--force` and every blocker allowed, while the unquoted twin and an
-// empty single-quoted pair blocked. The vanish reading the unquoted branch
-// takes is now taken here too, in a shadow reading beside the literal one.
+// empty single-quoted pair blocked. The word holds unknownMark where the
+// output goes (unknown.go), and its known text is that vanish reading.
 func TestFollowedQuotedSubstitutionGluesNoText(t *testing.T) {
 	cases := []struct {
 		cmd   string
@@ -121,15 +121,15 @@ func TestFollowedQuotedSubstitutionGluesNoText(t *testing.T) {
 	}
 }
 
-// TestQuotedSubstitutionShadowStaysLinear pins the cost of the second pass
-// shadowSegments takes: each double-quote level reads its own text twice at
-// most, so a line of many quoted substitutions, each nested to the depth
-// budget, still costs work linear in its length.
-func TestQuotedSubstitutionShadowStaysLinear(t *testing.T) {
+// TestQuotedSubstitutionStaysLinear pins the cost of following quoted
+// substitutions: each double-quote level re-reads only its own text, so a line
+// of many quoted substitutions, each nested to the depth budget, still costs
+// work linear in its length.
+func TestQuotedSubstitutionStaysLinear(t *testing.T) {
 	build := func(n int) string {
 		return strings.Repeat(`x "$(a)"b `+nestQuoted("y", maxQuotedSubstitutionDepth)+"; ", n)
 	}
-	assertWorkGrowth(t, build, 1<<9, "the shadow pass reads each quoted level's text once more, never once per substitution")
+	assertWorkGrowth(t, build, 1<<9, "each quoted level reads its own text, never the line once per substitution")
 }
 
 // nestQuoted wraps inner in n levels of `echo "$( … )"`.

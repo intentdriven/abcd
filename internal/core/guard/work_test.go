@@ -19,15 +19,18 @@ const linearWorkBar = 6.0
 // measures well over a hundred.
 const workPerByteBar = 20.0
 
-// checkWork runs one Check over line against the bundled registry and returns
+// checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes
-// the brace look-ahead scanned, and tokens each pattern match walked.
+// the brace look-ahead and the closing scans read, and tokens each pattern match
+// walked. It reads past Check's length cap (maxCommandBytes), because the cost
+// CLASS is a property of the reading, and a cap in front of a quadratic reading
+// only hides it until the cap moves.
 func checkWork(t *testing.T, line string) (Decision, int) {
 	t.Helper()
 	n := 0
 	workTally = &n
 	defer func() { workTally = nil }()
-	d, err := Defaults().Check(line)
+	d, err := Defaults().check(line)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}

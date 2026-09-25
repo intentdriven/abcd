@@ -138,8 +138,11 @@ func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth 
 			seen[shell] = true
 			sig, psegs, inspectable := shellInspect(shell)
 			if !inspectable {
+				// Warned, and what the body does spell is still read.
 				signals = append(signals, sig)
-				continue
+				if len(psegs) == 0 {
+					continue
+				}
 			}
 			// The body may itself carry an execute-a-string layer; expanding it
 			// here gives that its own depth budget, which is right — the body is
@@ -312,7 +315,9 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 			c.add(key, v)
 		}
 	}
-	if params, ok := env["GIT_CONFIG_PARAMETERS"]; ok {
+	if params, ok := env["GIT_CONFIG_PARAMETERS"]; ok && isUnknown(params) {
+		c.add(params, "")
+	} else if ok {
 		for k, v := range parseConfigParameters(params) {
 			c.add(k, v)
 		}
@@ -328,8 +333,12 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 		case arg == "-c":
 			if i+1 < len(args) {
 				k, v, ok := strings.Cut(args[i+1], "=")
-				if ok {
+				switch {
+				case ok:
 					c.add(k, v)
+				case isUnknown(k):
+					// No `=` it spells, but its output may hold one.
+					c.add(k, "")
 				}
 			}
 		case arg == "--config-env", strings.HasPrefix(arg, "--config-env="):
@@ -341,7 +350,10 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				spec = args[i+1]
 			}
 			k, name, ok := strings.Cut(spec, "=")
-			if !ok {
+			if !ok || isUnknown(k) {
+				if isUnknown(k) {
+					c.add(k, "")
+				}
 				continue
 			}
 			v, set := env[name]
@@ -368,10 +380,20 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 // under its folded name, a key that pulls configuration in from a file marks
 // the segment unreadable, and the hooks path is noted whatever its value.
 func (c *gitConfigRead) add(key, value string) {
+	// A key a substitution prints (`-c $(cat cfg)`) is any key (unknown.go):
+	// the hooks path, and an alias the guard cannot read.
+	if isUnknown(key) {
+		c.hooksPath, c.unread = true, true
+		return
+	}
 	k := strings.ToLower(strings.TrimSpace(key))
 	switch {
 	case strings.HasPrefix(k, aliasPrefix):
 		c.aliases[strings.TrimPrefix(k, aliasPrefix)] = value
+		// A body a substitution prints is one the guard cannot read.
+		if isUnknown(value) {
+			c.unread = true
+		}
 	case k == "include.path", strings.HasPrefix(k, "includeif."):
 		c.unread = true
 	case k == hooksPathKey:

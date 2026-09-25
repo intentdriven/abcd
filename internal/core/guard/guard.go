@@ -380,6 +380,23 @@ func (r Registry) Check(command string) (Decision, error) {
 	if r.Disabled {
 		return Decision{Verdict: VerdictAllow}, nil
 	}
+	// A line past the cap is refused before it is read (review2-guard finding
+	// 6): no everyday command comes near it, and the guard runs on the
+	// PreToolUse path, where every byte it is handed is paid for in time.
+	if len(command) > maxCommandBytes {
+		return syntheticDecision(VerdictBlock, commandTooLongSignal(), []string{commandTooLongEntryID}), nil
+	}
+	return r.check(command)
+}
+
+// check is Check past the disabled switch and the length cap. The cost guards
+// measure it directly (work_test.go), because the class of the work is a
+// property of the reading, whatever the cap in front of it.
+func (r Registry) check(command string) (Decision, error) {
+	// No argv word can hold a NUL, and bash drops one from its input; the byte
+	// is the tokenizer's mark for a substitution's output (unknown.go), so the
+	// line's own are removed before a word is read.
+	command = strings.ReplaceAll(command, unknownText, "")
 	segs, err := tokenize(command)
 	if err != nil {
 		return Decision{}, err
@@ -436,6 +453,15 @@ func (r Registry) Check(command string) (Decision, error) {
 	for _, s := range segs {
 		if s.substitutionUnread {
 			signals = append(signals, substitutionBlockSignal())
+			break
+		}
+	}
+	// A shell reading its script from a pipe, a here-document or a here-string
+	// runs text the guard read as data (iss-2609251640462464). After the payload
+	// expansion, so a payload's own pipe into a shell is read too.
+	for _, s := range segs {
+		if s.stdinStream && readsScriptFromStdin(s) {
+			signals = append(signals, interpreterStreamSignal())
 			break
 		}
 	}
@@ -526,6 +552,35 @@ func (r Registry) Check(command string) (Decision, error) {
 		return decisionFromEntry(VerdictWarn, r.Entries[warns[0]], matches), nil
 	}
 	return syntheticDecision(VerdictWarn, *synWarn, matches), nil
+}
+
+const (
+	// maxCommandBytes is the longest command line Check reads. It is generous
+	// next to any command an agent writes — a commit message or a pull-request
+	// body passed through a here-document is a few kilobytes — and small next to
+	// the front doors' 1 MiB stdin cap, which bounds what arrives, not what is
+	// worth reading.
+	maxCommandBytes = 64 << 10
+
+	// commandTooLongEntryID is the reserved id a line past maxCommandBytes is
+	// refused under. No registry entry may claim it.
+	commandTooLongEntryID = "command-too-long"
+
+	familyCommandLength = "command length"
+)
+
+// commandTooLongSignal is the fail-closed verdict for a line past
+// maxCommandBytes. It is a BLOCK because the guard has not read the line.
+func commandTooLongSignal() payloadSignal {
+	return payloadSignal{
+		id:      commandTooLongEntryID,
+		verdict: VerdictBlock,
+		family:  familyCommandLength,
+		reason: fmt.Sprintf("This command line is longer than the %d bytes the guard reads, so it has not been checked.",
+			maxCommandBytes),
+		successor: "Split it into shorter commands, or put the long text in a file and pass the file, " +
+			"so the guard checks the command that actually runs.",
+	}
 }
 
 // decisionFromEntry builds the decision a concrete registry match produces.
