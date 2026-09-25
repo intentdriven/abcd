@@ -1,6 +1,8 @@
 package spec
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -210,5 +212,40 @@ func TestRenderSpecWithStepsCarriesThem(t *testing.T) {
 	back, err := ParseSteps(minted)
 	if err != nil || len(back) != 2 {
 		t.Fatalf("the minted remainder must carry the two unlanded steps: %+v, %v\n%s", back, err, minted)
+	}
+}
+
+// An unclosed fence or HTML comment runs to end of file, so a `## Steps`
+// heading below it is masked and the section would read as absent: zero steps
+// and no error, and `spec close --remainder` would mint the placeholder and
+// drop the unlanded steps. The reader refuses instead, naming the opener's
+// line — the thing to close — wherever in the document it sits.
+func TestParseStepsRefusesAnUnclosedSpan(t *testing.T) {
+	const live = "## Steps\n\n1. The parser\n2. The loop\n"
+	for name, tc := range map[string]struct {
+		content, construct string
+		line               int
+	}{
+		"fence above":   {"# a\n\n## Approach\n\n```text\nan example\n\n" + live, "fenced code block", 5},
+		"comment above": {"# a\n\n## Approach\n\n<!-- parked\n\n" + live, "HTML comment", 5},
+		"fence below":   {"# a\n\n" + live + "\n## Approach\n\n~~~\n", "fenced code block", 10},
+	} {
+		t.Run(name, func(t *testing.T) {
+			steps, err := ParseSteps(tc.content)
+			if err == nil {
+				t.Fatalf("an unclosed span must be refused, got %d step(s) and no error: %+v", len(steps), steps)
+			}
+			for _, want := range []string{fmt.Sprintf("line %d", tc.line), tc.construct} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal must name %q: %v", want, err)
+				}
+			}
+			if !errors.Is(err, ErrUnclosedSpan) {
+				t.Errorf("the refusal must be ErrUnclosedSpan, so a caller can name the remedy: %v", err)
+			}
+			if _, err := Steps(tc.content); err == nil {
+				t.Fatal("Steps must refuse what ParseSteps refuses")
+			}
+		})
 	}
 }

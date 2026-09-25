@@ -736,7 +736,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	if remainder.Slug != "" {
 		listed, err := spec.ReadSteps(repoRoot, sp)
 		if err != nil {
-			return ReconcileResult{}, fmt.Errorf("intent: %v; --remainder carries the steps not marked landed, and this section cannot be read as steps; nothing was minted. Fix the section, then re-run the close", err)
+			return ReconcileResult{}, fmt.Errorf("intent: %v; --remainder carries the steps not marked landed, and this section cannot be read as steps; nothing was minted. Fix what it names, then re-run the close", err)
 		}
 		carried = spec.Unlanded(listed)
 		// Numbered as the remainder lists them, so the result and the file agree.

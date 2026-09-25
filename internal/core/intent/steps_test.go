@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,5 +124,43 @@ func TestReconcileRemainderRefusesAMalformedStepsSection(t *testing.T) {
 	// Without --remainder the close does not read the section and proceeds.
 	if _, err := Reconcile(root, "spc-1", "", RemainderRequest{}); err != nil {
 		t.Fatalf("a plain close does not depend on the Steps section: %v", err)
+	}
+}
+
+// An unclosed span above the closing spec's `## Steps` masks the section, and
+// read as absent the remainder would carry the placeholder and drop the
+// unlanded steps. A --remainder close refuses instead, naming the opener's
+// line, with nothing minted and nothing moved.
+func TestReconcileRemainderRefusesAnUnclosedSpan(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
+	body := specNaming("spc-1", "alpha", "itd-10") + "\n## Approach\n\n<!-- a draft nobody closed\n" +
+		strings.TrimPrefix(steppedSpecNaming("spc-1", "alpha", "itd-10"), specNaming("spc-1", "alpha", "itd-10"))
+	writeFile(t, root, specsOpen+"/spc-1-alpha.md", body)
+	opener := 0
+	for i, l := range strings.Split(body, "\n") {
+		if strings.HasPrefix(l, "<!--") {
+			opener = i + 1
+		}
+	}
+
+	_, err := Reconcile(root, "spc-1", "", RemainderRequest{Slug: "the-rest"})
+	if err == nil {
+		t.Fatal("an unclosed span above ## Steps must refuse the remainder close")
+	}
+	for _, want := range []string{fmt.Sprintf("line %d", opener), "HTML comment", "nothing was minted"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %q: %v", want, err)
+		}
+	}
+	entries, rerr := os.ReadDir(filepath.Join(root, specsOpen))
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("the refusal must mint nothing and close nothing: %d specs in open/", len(entries))
+	}
+	if _, serr := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); serr != nil {
+		t.Fatalf("the intent must stay in planned/: %v", serr)
 	}
 }

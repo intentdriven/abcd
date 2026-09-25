@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -497,6 +498,10 @@ func stepsCheck(repoRoot string, sp spec.Spec, linkOK bool) (ReadyCheck, error) 
 	steps, perr := spec.ParseSteps(string(data))
 	if perr != nil {
 		c.Detail = perr.Error()
+		if errors.Is(perr, spec.ErrUnclosedSpan) {
+			c.Remedy = fmt.Sprintf("close or remove the unclosed opener the detail names in %s, then re-run", sp.Path)
+			return c, nil
+		}
 		c.Remedy = fmt.Sprintf("rewrite %s in %s as a numbered list — `1. <title>`, with `- packages:`, `- tests:` and, once it lands, `- landed:` indented beneath each step — or empty it to build the spec as one step",
 			spec.StepsHeading, sp.Path)
 		return c, nil

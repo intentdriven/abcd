@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -49,6 +50,11 @@ type Step struct {
 	body     []string
 }
 
+// ErrUnclosedSpan is ParseSteps' refusal of a document holding a fenced block
+// or HTML comment that nothing closes. It is its own error so a caller names
+// the right remedy: close the opener, not rewrite the section.
+var ErrUnclosedSpan = errors.New("unclosed span")
+
 // ImplicitStepTitle is the title of the one step an unstepped spec is.
 const ImplicitStepTitle = "the whole spec"
 
@@ -75,8 +81,22 @@ var (
 // mdrecord's answer: a heading inside a fenced block or an HTML comment
 // elsewhere is an example, or parked, and is not the section; a fenced block or
 // comment inside the section is refused, since a step inside one is not a step.
+//
+// A document holding a fence or comment that nothing closes is refused whole
+// (ErrUnclosedSpan), naming the opener's line. The span runs to end of file,
+// so a `## Steps` heading below it is masked and the section would read as
+// absent — zero steps, no error — which a remainder copy would turn into a
+// silent drop of every unlanded step. The opener is the fault, not the section.
 func ParseSteps(content string) ([]Step, error) {
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	if i, flag, ok := mdrecord.Unclosed(lines); ok {
+		construct := "a fenced code block"
+		if flag&mdrecord.MaskComment != 0 {
+			construct = "an HTML comment (`<!--` with no `-->`)"
+		}
+		return nil, fmt.Errorf("spec: %w — the document leaves %s open at line %d, %q; it runs to end of file, so %s may be masked and cannot be read. Close it or remove it; the steps are not the fault",
+			ErrUnclosedSpan, construct, i+1, strings.TrimSpace(lines[i]), StepsHeading)
+	}
 	mask := mdrecord.Mask(lines)
 	start, end, err := stepsSection(lines, mask)
 	if err != nil || start < 0 {

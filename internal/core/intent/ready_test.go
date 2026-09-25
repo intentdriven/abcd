@@ -825,10 +825,14 @@ func TestReadyReportsTheStepsShape(t *testing.T) {
 		name, steps string
 		ok          bool
 		detail      string
+		remedy      string
 	}{
-		{"none", "", true, "built as one step"},
-		{"listed", "\n## Steps\n\n1. The parser\n   - landed: #1\n2. The loop\n", true, "2 step(s) listed, 1 landed"},
-		{"malformed", "\n## Steps\n\nFirst the parser, then the loop.\n", false, "not a numbered step"},
+		{"none", "", true, "built as one step", ""},
+		{"listed", "\n## Steps\n\n1. The parser\n   - landed: #1\n2. The loop\n", true, "2 step(s) listed, 1 landed", ""},
+		{"malformed", "\n## Steps\n\nFirst the parser, then the loop.\n", false, "not a numbered step", "1. <title>"},
+		// An unclosed opener masks the section; the remedy is to close it, and
+		// rewriting the list would not help.
+		{"unclosed", "\n```text\n\n## Steps\n\n1. The parser\n", false, "line 8", "close or remove the unclosed opener"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -844,8 +848,8 @@ func TestReadyReportsTheStepsShape(t *testing.T) {
 			if c.OK != tc.ok || !c.Advisory || !strings.Contains(c.Detail, tc.detail) {
 				t.Fatalf("steps = %+v, want ok=%v advisory with detail containing %q", c, tc.ok, tc.detail)
 			}
-			if !tc.ok && !strings.Contains(c.Remedy, "1. <title>") {
-				t.Fatalf("a malformed section's remedy must show the list shape: %+v", c)
+			if !tc.ok && !strings.Contains(c.Remedy, tc.remedy) {
+				t.Fatalf("the remedy must contain %q: %+v", tc.remedy, c)
 			}
 			if !res.Ready {
 				t.Fatalf("the steps row never withholds readiness: %+v", res.Checks)
