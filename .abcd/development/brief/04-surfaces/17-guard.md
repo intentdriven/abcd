@@ -200,7 +200,8 @@ string of its own. A here-document body is data, but the substitutions the shell
 runs in a body whose delimiter is unquoted are read as commands, and such a body
 is read by the lines bash compares with its delimiter, joined across a trailing
 odd run of backslashes. A payload that is wholly a substitution printing a
-here-document the shell does not change (`sh -c "$(cat <<'EOF' … EOF)"`) is also
+here-document the shell does not change (`sh -c "$(cat <<'EOF' … EOF)"`, or the
+backtick spelling where no backslash stands between the backticks) is also
 read as that document's text. The same substitution unquoted runs the words its
 document splits into, and is read as those words wherever it stands and at every
 payload layer, so a document whose text is another such substitution is read

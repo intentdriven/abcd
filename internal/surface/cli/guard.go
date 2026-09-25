@@ -93,7 +93,8 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"joins the next before the delimiter compare, as bash joins it. A\n" +
 			"`\"$(cat <<'EOF' … EOF)\"` handed to `sh -c` or `eval` is read as its\n" +
 			"document's text, and an unquoted one as the words bash splits its\n" +
-			"document into, at every layer. Two `sh -c` or `eval` layers are\n" +
+			"document into, at every layer; a backtick spelling with no backslash\n" +
+			"in it is read the same way. Two `sh -c` or `eval` layers are\n" +
 			"followed; a payload nested deeper is blocked.\n" +
 			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +

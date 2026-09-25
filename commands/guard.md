@@ -192,7 +192,8 @@ but where its delimiter is unquoted (`<<EOF`, not `<<'EOF'`, `<<"EOF"` or
 command; such a body is read by the lines bash compares with the delimiter, so a
 line ending in an odd number of backslashes joins the next one before the
 compare, and `x\` followed by `EOF` does not end the document. A word that is
-wholly `"$(cat <<'EOF' … EOF)"`, whose document the shell does not change, is
+wholly `"$(cat <<'EOF' … EOF)"`, whose document the shell does not change, or
+its backtick spelling with no backslash between the backticks, is
 also read as that document's text where it is a payload, so `sh -c` or `eval`
 handed one reads the document as the command it runs. Unquoted, the same
 substitution runs the words its document splits into on blanks and newlines, and

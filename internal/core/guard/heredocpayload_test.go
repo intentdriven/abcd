@@ -110,6 +110,30 @@ func TestNestedHereDocumentPayloadIsRead(t *testing.T) {
 	})
 }
 
+// TestBacktickHereDocumentPayloadIsRead — iss-2609252310310823. A backtick is
+// command substitution in its other spelling, so “ `cat <<'F' … F` “ prints
+// its document as `$(cat <<'F' … F)` does, and bash 3.2 and 5.3 run it in the
+// same places. Where the text between the backticks holds no backslash — the
+// one byte a backtick treats otherwise — its output is read as the dollar
+// form's is.
+func TestBacktickHereDocumentPayloadIsRead(t *testing.T) {
+	const push = "git push --force origin main"
+	tick := func(body string) string { return "`cat <<'F'\n" + body + "\nF\n`" }
+	runVerdictCases(t, []verdictCase{
+		{"sh -c \"" + tick(push) + "\"", VerdictBlock, "git-push-force"},
+		{"eval \"" + tick(push) + "\"", VerdictBlock, "git-push-force"},
+		{"bash -c \"$(cat <<'E'\n" + tick(push) + "\nE\n)\"", VerdictBlock, "git-push-force"},
+		{tick(push), VerdictBlock, "git-push-force"},
+		{"cd s && " + tick("rm -rf *"), VerdictBlock, "rm-rf-after-cd-chain"},
+
+		// A backslash between the backticks is read by bash before the
+		// command is, so that text stays unknown.
+		{"sh -c \"" + tick("echo a\\\\b") + "\"", VerdictWarn, ""},
+		// Data where no shell runs it.
+		{"echo \"" + tick(push) + "\"", VerdictAllow, ""},
+	})
+}
+
 // TestNestedHereDocumentPayloadStaysLinear pins the cost of reading a
 // command-position document's words: each output is split once, and each
 // layer is read once, whatever the nesting.

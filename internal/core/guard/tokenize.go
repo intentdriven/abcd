@@ -675,13 +675,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					}
 					follow(line[open:inner])
 					addCur([]byte{unknownMark}, 0)
-					// A `$(cat <<'EOF' … EOF)` prints its document verbatim;
-					// flushToken keeps that text beside the word when the
-					// word is this output and nothing else.
-					if line[j] == '$' {
-						curLit.text, curLitSet = literalHeredocOutput(line[open:inner])
-						curLit.split = false
-					}
+					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
+					// and so does its backtick spelling; flushToken keeps
+					// that text beside the word when the word is this output
+					// and nothing else.
+					curLit.text, curLitSet = substitutionOutput(line[open:inner], line[j] == '`')
+					curLit.split = false
 					j = inner + 1
 					continue
 				}
@@ -1012,12 +1011,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					parens = parens[:n-1]
 					if top.saved != nil {
 						closeSubstitution(top.saved)
-						// An unquoted `$(cat <<'EOF' … EOF)` prints its
-						// document, which bash splits into words; flushToken
+						// An unquoted `$(cat <<'EOF' … EOF)`, or its backtick
+						// spelling, prints its document, which bash splits
+						// into words; flushToken
 						// keeps that output beside the word when the word is
 						// this substitution and nothing else.
-						if c == ')' && top.kind == parenCommandSub && !top.saved.procSub {
-							if text, ok := literalHeredocOutput(line[top.pos+1 : i]); ok {
+						if (c == ')' && top.kind == parenCommandSub && !top.saved.procSub) || (c == '`' && top.kind == parenBacktick) {
+							if text, ok := substitutionOutput(line[top.pos+1:i], c == '`'); ok {
 								curLit, curLitSet = wordLiteral{text: text, split: true}, true
 							}
 						}
@@ -2215,6 +2215,17 @@ func readHeredocBody(line string, pos int, hd heredoc, collect bool) (int, strin
 		}
 	}
 	return pos, body.String(), false
+}
+
+// substitutionOutput is literalHeredocOutput for a command substitution in
+// either spelling. Between backticks bash reads a backslash before it reads
+// the command, so a backtick text holding one is not read at all: without one
+// the command is the text as written.
+func substitutionOutput(text string, backtick bool) (string, bool) {
+	if backtick && strings.IndexByte(text, '\\') >= 0 {
+		return "", false
+	}
+	return literalHeredocOutput(text)
 }
 
 // literalHeredocOutput reports whether the text of a command substitution is
