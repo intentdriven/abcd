@@ -217,3 +217,48 @@ ceiling clamp.
   They follow the implement loop and the API adapter.
 
 The spec closes in the change that lands the last of steps 3 to 5.
+
+Part 2 (branch `feat/model-tier-routes`, autonomous run A, 2026-09-25) lands
+Approach steps 3, 4 and 5 and closes this spec with a remainder.
+
+**Delivered here, each with tests:**
+
+- AC 2 in full: `ahoy install` asks the `oracle-routing` category after
+  `status-line`. It renders the proposal as a table and writes
+  `~/.abcd/oracle-routing.json` (owner-only) on consent. A separate question
+  offers `.abcd/config/oracle-routing.json`, written only on its own consent.
+  `--yes` writes neither and names both under `optional_skipped`. A decline is
+  not recorded, and uninstall leaves both files.
+- AC 4, the surface half: the stderr line before the step, and the receipt's
+  three connection fields and reason.
+- AC 5 in full: the receipt's `route` block carries `tier_asked`,
+  `connection_used` and `model_reported` side by side. `model_reported` is the
+  payload's own `model`, or a reading's `instrument.model`.
+- AC 7, the surface half: `--route` on the delegating verbs through one helper.
+  Its refusals exit 2 before anything is written, and the receipt carries the
+  override verbatim.
+- AC 8, the receipt half: `settings_sent` records the merged map.
+
+**Where the blocks land:**
+
+- The request block is a `routing` member on `intent audit <itd-N>` and on a
+  ready `launch ship` cut. For the audit it is also a `## Routing` section in
+  the request document, outside the hashed prompt.
+- The receipt is a `route` member on every ingest's result.
+
+**Shape decisions** (recorded in `.abcd/work/DECISIONS.md`, 2026-09-25):
+
+- The verbs are seven, not eight. `memory ingest` has no roster agent: its
+  distiller is the host session.
+- The receipt is the ingest's result, not a new durable field.
+- The repository layer is read from `layered.RootsFor`, the rules loader's root.
+- Settings are bounded and refused unclean where they are read. The limits are
+  16 per row, 256 bytes per value, no hidden runes in a string value, and a
+  `--route` text of at most 1024 bytes.
+
+**What remains** goes to the remainder spec this close mints:
+
+- AC 10: one tier up after a failed fix round, recorded in the state file. It
+  needs the implement loop's state file.
+- AC 11: a provider route only on that provider's allowlist. It needs the API
+  adapter (itd-2609081951381895) and adr-2609221009491186's allowlist.
