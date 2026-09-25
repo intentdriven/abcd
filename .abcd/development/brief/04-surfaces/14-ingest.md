@@ -12,9 +12,10 @@ the read side and the provenance recorder.
 
 It is a **host-delegated command**: a markdown workflow that runs in the host
 agent, with **no Go verb** behind it. There is no top-level `abcd ingest` verb,
-no bare-status render, and no CLI flags of its own. The ingest sub-verbs of the
-reading and memory verbs, and the intent audit's own ingest path, belong to other
-verbs and validate other inputs, never this corpus.
+no bare-status render, and no CLI flags of its own. Every ingest path the binary
+does have belongs to another verb, validates that verb's own input and never
+writes this corpus; the generated CLI reference lists them, so this chapter
+names none of them.
 
 
 **Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
