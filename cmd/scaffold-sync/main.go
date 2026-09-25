@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -70,15 +69,10 @@ func main() {
 // correct root under the Makefile/CI contract, so scrubbing introduces no
 // regression.
 func resolveRoot() string {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
-	if err == nil {
-		if top := strings.TrimSpace(string(out)); top != "" {
+	if wd, err := os.Getwd(); err == nil {
+		if top, err := gitutil.Toplevel(wd); err == nil {
 			return top
 		}
-	}
-	if wd, err := os.Getwd(); err == nil {
 		return wd
 	}
 	return "."

@@ -4711,7 +4711,7 @@ func readSourceCapped(cmd *cobra.Command, spec string, limit int64) ([]byte, err
 // cwd when git cannot answer (not a repo, git absent) — the scanner then behaves
 // exactly as before, so the fallback never regresses a non-git use.
 func captureRoot(cwd string) string {
-	if top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
+	if top, err := gitutil.Toplevel(cwd); err == nil {
 		return top
 	}
 	return cwd

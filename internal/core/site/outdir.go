@@ -184,17 +184,12 @@ func resolveOutDir(repoRoot, outDir string) (string, error) {
 // refuseTrackedOutDir takes, because the boundary it would silently fall back
 // to is the one the rule exists to widen past.
 func checkoutRoot(repoRoot string) (string, error) {
-	top, err := gitutil.Run(repoRoot, "rev-parse", "--show-toplevel")
-	if err == nil && filepath.IsAbs(top) && !strings.ContainsRune(top, '\n') &&
-		fsutil.PathWithin(fsutil.RealExistingPath(repoRoot), fsutil.RealExistingPath(top), fsutil.CaseFoldingFS()) {
+	top, err := gitutil.Toplevel(repoRoot)
+	if err == nil {
 		return top, nil
 	}
 	if gitutil.RepoShaped(repoRoot) {
-		reason := "an answer that is not one absolute path containing this directory"
-		if err != nil {
-			reason = err.Error()
-		}
-		return "", fmt.Errorf("site: %s sits inside a checkout but git cannot name its root (%s); the symlink rule is keyed on that root, so refusing", repoRoot, reason)
+		return "", fmt.Errorf("site: %s sits inside a checkout but git cannot name its root (%s); the symlink rule is keyed on that root, so refusing", repoRoot, err.Error())
 	}
 	return repoRoot, nil
 }

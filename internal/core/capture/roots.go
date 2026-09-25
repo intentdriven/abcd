@@ -8,7 +8,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -111,19 +110,13 @@ func LedgerRoot(cwd string) (string, error) {
 
 // discoverRepoRoot returns the git worktree root containing start, or "".
 func discoverRepoRoot(start string) string {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Dir = start
-	// Isolate: `rev-parse --show-toplevel` honours an inherited GIT_WORK_TREE/GIT_DIR
-	// over cmd.Dir, so without scrubbing an inherited value redirects repo-root
-	// discovery at a DIFFERENT tree — and the derived issuesRoot then reads and
-	// writes the ledger under an attacker-chosen path. Repo discovery needs no
-	// global config, so full isolation is safe.
-	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
-	if err == nil {
-		if root := strings.TrimSpace(string(out)); root != "" {
-			return root
-		}
+	// gitutil.Toplevel runs git isolated: `rev-parse --show-toplevel` honours an
+	// inherited GIT_WORK_TREE/GIT_DIR over the directory it is run in, so without
+	// scrubbing an inherited value redirects repo-root discovery at a DIFFERENT
+	// tree — and the derived issuesRoot then reads and writes the ledger under an
+	// attacker-chosen path. It also refuses an answer of the wrong shape.
+	if root, err := gitutil.Toplevel(start); err == nil {
+		return root
 	}
 	dir := start
 	for {
