@@ -240,20 +240,6 @@ func renderReceiptLine(w io.Writer, r *oracle.Route, payload []byte) {
 	fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(line))
 }
 
-// peekPayload reads an ingest's payload file for the receipt's model and a
-// reading's position, bounded; any fault returns nil, and the verb's own
-// guarded read then refuses the payload with its own reason.
-func peekPayload(path string, limit int64) []byte {
-	if path == "" || path == "-" {
-		return nil
-	}
-	raw, err := readGuardedOperand(path, limit)
-	if err != nil {
-		return nil
-	}
-	return raw
-}
-
 // routeCloseRequest gives the fidelity-review request a spec close emitted the
 // same `## Routing` section `intent audit <itd-N>` writes, so a host that reads
 // the close's request directly runs the auditor at the resolved tier. The core

@@ -2398,11 +2398,16 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := intent.IngestVerdict(repoRoot, verdictJSON)
+			// Read once: the ingest validates these bytes and the receipt's
+			// model_reported is read from them, so the two describe one read.
+			payload, err := intent.ReadVerdict(verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
 			}
-			payload := peekPayload(verdictJSON, maxOperandJSONBytes)
+			res, err := intent.IngestVerdictBytes(repoRoot, payload)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, payload), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent audit ingest — %s (receipt %s, intent %s)\n", res.Status, res.ReceiptID, res.IntentID)
 				switch res.Status {

@@ -237,10 +237,15 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 				resolved = filepath.Join(cwd, filepath.FromSlash(resolved))
 			}
 			// The agent is the cold-reading position the output names, so the
-			// output is peeked for it (and for the model its instrument
-			// reports) before the route is resolved; the ingest's own read is
-			// what validates it.
-			payload := peekPayload(resolved, reading.MaxFileBytes)
+			// output is read once, before the route is resolved, and the same
+			// bytes go to the ingest that validates them and to the receipt's
+			// model: what was routed and reported is what was ingested. A read
+			// that fails hands the ingest nothing, and its own read refuses the
+			// output with its own reason.
+			payload, rerr := reading.ReadOutput(resolved)
+			if rerr != nil {
+				payload = nil
+			}
 			route, err := readingIngestRoute(cmd, readingRoute, payload)
 			if err != nil {
 				return err
@@ -248,6 +253,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			res, err := reading.Ingest(reading.IngestRequest{
 				RepoRoot:   captureRoot(cwd),
 				OutputPath: resolved,
+				Output:     payload,
 			})
 			if err != nil {
 				// A refusal that produced a durable record renders it before it

@@ -571,6 +571,21 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	if err != nil {
 		return IngestVerdictResult{}, err
 	}
+	return IngestVerdictBytes(repoRoot, raw)
+}
+
+// ReadVerdict reads a verdict file the way IngestVerdict does (guarded, capped),
+// for a front door that needs the payload itself as well as its ingest.
+func ReadVerdict(verdictPath string) ([]byte, error) {
+	return readVerdictFile(verdictPath)
+}
+
+// IngestVerdictBytes is IngestVerdict over a payload a front door has already
+// read through ReadVerdict. The front door reads the verdict once and hands the
+// same bytes to the ingest and to whatever else it reports from the payload
+// (the receipt's model_reported), so the two can never describe different
+// reads of a file that changed between them.
+func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error) {
 
 	// Lenient first pass: recover _type + receipt id so we can classify and
 	// resolve the payload. A payload that is not a fidelity verdict at all, or that
