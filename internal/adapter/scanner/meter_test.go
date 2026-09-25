@@ -37,19 +37,21 @@ var (
 )
 
 // meterFixtures are the shapes every stage of a line's scan is held linear on.
+// Addresses are assembled (network_test.go's v4, v6, mac and host) so the committed
+// file carries no literal one.
 // Each packs one stage's per-match work as densely as a line allows: a match
 // every few bytes, each one asking its position check, suppression or context
 // helper about the line around it.
 var meterFixtures = []meterFixture{
 	// Secret patterns, their Skip callbacks and the adjacency probes.
 	{"github_tokens", Identity{}, rep("ghp_" + strings.Repeat("a", 36) + " ")},
-	{"public_ipv4", Identity{}, rep("8.8.8.8 ")},
-	{"reserved_ipv4", Identity{}, rep("10.1.2.3 ")},
+	{"public_ipv4", Identity{}, rep(v4(8, 8, 8, 8) + " ")},
+	{"reserved_ipv4", Identity{}, rep(v4(10, 1, 2, 3) + " ")},
 	{"ipv4_version_run", Identity{}, rep("10.1.")},
-	{"public_ipv6", Identity{}, rep("2600:1f18:aaaa:bbbb:cccc:dddd:eeee:ffff ")},
-	{"public_mac", Identity{}, rep("3c:22:fb:01:23:45 ")},
-	{"lan_hosts", Identity{}, rep("a.local ")},
-	{"lan_host_selectors", Identity{}, rep("x = cfg.local ")},
+	{"public_ipv6", Identity{}, rep(v6("2600", "1f18", "aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff") + " ")},
+	{"public_mac", Identity{}, rep(mac(0x3c, 0x22, 0xfb, 0x01, 0x23, 0x45) + " ")},
+	{"lan_hosts", Identity{}, rep(host("a", "local") + " ")},
+	{"lan_host_selectors", Identity{}, rep("x = " + host("cfg", "local") + " ")},
 	{"device_hosts", Identity{}, rep("the alice-laptop ")},
 	{"fingerprint_colon_run", Identity{}, rep("ab:")},
 	{"footers", Identity{}, rep("generated with [x](y) ")},
