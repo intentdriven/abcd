@@ -97,7 +97,7 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		item := queue[0]
 		queue = queue[1:]
 		for _, s := range item.segs {
-			for _, ref := range payloadsOf(s) {
+			for _, ref := range payloadRefsOf(s) {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
 				// family member here is fail-closed regardless of family.
@@ -249,6 +249,44 @@ type payloadRef struct {
 	payload  string
 	trailing []string
 	guessed  bool
+}
+
+// payloadRefsOf is payloadsOf, and then payloadsOf again over the segment with
+// each word whose output is fixed (segment.literal) read as that text: `sh -c
+// "$(cat <<'EOF' … EOF)"` hands the shell the document, verbatim
+// (review5-guard finding 3). The unknown reading is kept, so every signal it
+// raises — the uninspectable payload's warn among them — still stands, and
+// the literal reading can only add what the document itself spells. A payload
+// both readings return is expanded once.
+func payloadRefsOf(s segment) []payloadRef {
+	refs := payloadsOf(s)
+	if len(s.literal) == 0 {
+		return refs
+	}
+	v := segment{tokens: append([]string(nil), s.tokens...), chain: s.chain,
+		globbed: s.globbed, stdinStream: s.stdinStream}
+	for i, text := range s.literal {
+		if i < len(v.tokens) {
+			v.tokens[i] = text
+		}
+	}
+	type key struct {
+		kind    int
+		family  string
+		payload string
+		guessed bool
+	}
+	seen := map[key]bool{}
+	for _, r := range refs {
+		seen[key{r.kind, r.family, r.payload, r.guessed}] = true
+	}
+	for _, r := range payloadsOf(v) {
+		if k := (key{r.kind, r.family, r.payload, r.guessed}); !seen[k] {
+			seen[k] = true
+			refs = append(refs, r)
+		}
+	}
+	return refs
 }
 
 // carriesReadPayload reports whether the guard READ a payload the segment

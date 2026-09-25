@@ -59,6 +59,12 @@ type segment struct {
 	// because a glob's expansion IS decidable at the positions an entry
 	// constrains (match.go) where a brace group's is not.
 	globbed []bool
+	// literal records, per token index, the fixed text of a word that is
+	// wholly a double-quoted substitution whose output is known —
+	// `"$(cat <<'EOF' … EOF)"` (literalHeredocOutput). The token itself stays
+	// unknown; the payload readers ALSO read the word as this text
+	// (payloadRefsOf), so no verdict the unknown reading reaches is lost.
+	literal map[int]string
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built
@@ -183,6 +189,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// a backslash or an ANSI-C decode are literal to bash too.
 		curGlob bool
 		globs   []bool
+		// lits rides with the segment and records, per token index, the text
+		// of a word that is wholly one substitution whose output is fixed
+		// (literalHeredocOutput); curLit holds that text for the word being
+		// built, and curLitSet that the last double-quoted string set it.
+		lits      map[int]string
+		curLit    string
+		curLitSet bool
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -307,10 +320,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
+				curLit, curLitSet = "", false
 				return
 			}
 			braceGroup = true
 		}
+		if curLitSet && string(cur) == unknownText {
+			if lits == nil {
+				lits = map[int]string{}
+			}
+			lits[len(toks)] = curLit
+		}
+		curLit, curLitSet = "", false
 		toks = append(toks, unknownFromOpenExpansion(string(cur)))
 		globs = append(globs, curGlob)
 		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
@@ -320,10 +341,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if len(toks) > 0 {
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
-				stdinStream: curStdin || pipeNext,
+				stdinStream: curStdin || pipeNext, literal: lits,
 			})
 			toks = nil
 			globs = nil
+			lits = nil
 			braceGroup = false
 			pipeNext = false
 		}
@@ -447,11 +469,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
+			toks: toks, globs: globs, lits: lits, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext,
 		}
-		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, false, false, false, false
+		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
+		curLit, curLitSet = "", false
 		curStdin, pipeNext = false, false
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
@@ -461,8 +484,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// bare `(( … ))` command prints nothing and leaves no word.
 	closeArithmetic := func(f parenFrame) {
 		e := f.saved
-		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
-			e.toks, e.globs, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
+		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
+			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext = e.curStdin, e.pipeNext
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
@@ -477,8 +500,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// shell hands the command, so the operands after it keep their positions.
 	closeSubstitution := func(e *enclosing) {
 		flushSegment()
-		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
-			e.toks, e.globs, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
+		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
+			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext = e.curStdin, e.pipeNext
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
@@ -642,6 +665,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					}
 					follow(line[open:inner])
 					addCur([]byte{unknownMark}, 0)
+					// A `$(cat <<'EOF' … EOF)` prints its document verbatim;
+					// flushToken keeps that text beside the word when the
+					// word is this output and nothing else.
+					if line[j] == '$' {
+						curLit, curLitSet = literalHeredocOutput(line[open:inner])
+					}
 					j = inner + 1
 					continue
 				}
@@ -1456,6 +1485,7 @@ type parenFrame struct {
 type enclosing struct {
 	toks       []string
 	globs      []bool
+	lits       map[int]string
 	cur        []byte
 	curMask    []byte
 	hasCur     bool
@@ -2104,58 +2134,117 @@ func heredocBlockSignal() payloadSignal {
 // `#` hid a substitution the body runs, and that is an under-read.
 func skipHeredocBodies(line string, pos int, pending []heredoc, collect bool) (int, []string, bool) {
 	var expanded []string
-	var joined []byte
 	for _, hd := range pending {
-		found := false
-		var body strings.Builder
-		for pos < len(line) {
-			text, spliced := "", false
-			joined = joined[:0]
-			for {
-				end := pos
-				for end < len(line) && line[end] != '\n' {
-					end++
-				}
-				physical := line[pos:end]
-				more := end < len(line)
-				if more {
-					pos = end + 1
-				} else {
-					pos = end
-				}
-				if !hd.quoted && more && oddTrailingBackslashes(physical) {
-					joined = append(joined, physical[:len(physical)-1]...)
-					spliced = true
-					continue
-				}
-				if spliced {
-					joined = append(joined, physical...)
-					text = string(joined)
-				} else {
-					text = physical
-				}
-				break
-			}
-			if hd.stripTabs {
-				text = strings.TrimLeft(text, "\t")
-			}
-			if text == hd.delim {
-				found = true
-				break
-			}
-			if collect && !hd.quoted {
-				body.WriteString(text)
-				body.WriteByte('\n')
-			}
-		}
+		next, body, found := readHeredocBody(line, pos, hd, collect && !hd.quoted)
+		pos = next
 		if !found {
 			return pos, expanded, false
 		}
-		if !hd.quoted && body.Len() > 0 {
-			expanded = append(expanded, body.String())
+		if body != "" {
+			expanded = append(expanded, body)
 		}
 	}
 	return pos, expanded, true
+}
+
+// readHeredocBody reads one here-document's body from pos by logical line (see
+// skipHeredocBodies) and returns the position just past its delimiter line,
+// the body's text when collect is set — each logical line with a `<<-` body's
+// leading tabs stripped, and a newline after it — and whether the delimiter
+// line came.
+func readHeredocBody(line string, pos int, hd heredoc, collect bool) (int, string, bool) {
+	var body strings.Builder
+	var joined []byte
+	for pos < len(line) {
+		text, spliced := "", false
+		joined = joined[:0]
+		for {
+			end := pos
+			for end < len(line) && line[end] != '\n' {
+				end++
+			}
+			physical := line[pos:end]
+			more := end < len(line)
+			if more {
+				pos = end + 1
+			} else {
+				pos = end
+			}
+			if !hd.quoted && more && oddTrailingBackslashes(physical) {
+				joined = append(joined, physical[:len(physical)-1]...)
+				spliced = true
+				continue
+			}
+			if spliced {
+				joined = append(joined, physical...)
+				text = string(joined)
+			} else {
+				text = physical
+			}
+			break
+		}
+		if hd.stripTabs {
+			text = strings.TrimLeft(text, "\t")
+		}
+		if text == hd.delim {
+			return pos, body.String(), true
+		}
+		if collect {
+			body.WriteString(text)
+			body.WriteByte('\n')
+		}
+	}
+	return pos, body.String(), false
+}
+
+// literalHeredocOutput reports whether the text of a command substitution is
+// `cat` reading one here-document and nothing else — `cat <<'EOF'`, a newline,
+// the body, the delimiter line, and only blank space after it — whose body the
+// shell does not change: a quoted delimiter's, or an unquoted one's holding no
+// `$`, backtick or backslash. What such a substitution prints is then fixed:
+// the body with its trailing newlines removed, as bash removes them
+// (review5-guard finding 3). It is how `sh -c "$(cat <<'EOF' … EOF)"` hands the
+// shell a string written out in full.
+func literalHeredocOutput(text string) (string, bool) {
+	i := 0
+	for i < len(text) && (text[i] == ' ' || text[i] == '\t' || text[i] == '\n') {
+		i++
+	}
+	if !strings.HasPrefix(text[i:], "cat") {
+		return "", false
+	}
+	i += len("cat")
+	for i < len(text) && (text[i] == ' ' || text[i] == '\t') {
+		i++
+	}
+	if !strings.HasPrefix(text[i:], "<<") || strings.HasPrefix(text[i:], "<<<") {
+		return "", false
+	}
+	hd, next, err := readHeredocDelim(text, i+2)
+	if err != nil || (!hd.quoted && !isDelimStart(hd.delim)) {
+		return "", false
+	}
+	for next < len(text) && (text[next] == ' ' || text[next] == '\t') {
+		next++
+	}
+	if next >= len(text) || text[next] != '\n' {
+		return "", false
+	}
+	tally(len(text) - next)
+	start := next + 1
+	end, body, found := readHeredocBody(text, start, hd, true)
+	if !found {
+		return "", false
+	}
+	if !hd.quoted && strings.ContainsAny(text[start:end], "$`\\") {
+		return "", false
+	}
+	for k := end; k < len(text); k++ {
+		if c := text[k]; c != ' ' && c != '\t' && c != '\n' {
+			return "", false
+		}
+	}
+	return strings.TrimRight(body, "\n"), true
 }
 
 // oddTrailingBackslashes reports whether text ends in an odd number of
