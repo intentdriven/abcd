@@ -19,7 +19,7 @@ func TestSpecLifecycleRefusesAnIntentWhoseBucketDisagreesWithItsSpecs(t *testing
 		"planned, its only spec closed": {"planned", map[string]string{"spc-1-a.md": "closed"},
 			"planned intent 'itd-10' has no open spec"},
 		"planned, a closed spec and an open remainder": {"planned", map[string]string{"spc-1-a.md": "closed", "spc-2-b.md": "open"}, ""},
-		"planned, its spec open":                        {"planned", map[string]string{"spc-1-a.md": "open"}, ""},
+		"planned, its spec open":                       {"planned", map[string]string{"spc-1-a.md": "open"}, ""},
 		"shipped, its spec still open": {"shipped", map[string]string{"spc-1-a.md": "open"},
 			"shipped intent 'itd-10' has a spec still open: spc-1"},
 		"shipped, one closed and one open": {"shipped", map[string]string{"spc-1-a.md": "closed", "spc-2-b.md": "open"},
