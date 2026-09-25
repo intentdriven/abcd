@@ -726,6 +726,25 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		}
 	}
 
+	// The remainder carries the closing spec's steps not marked landed
+	// (itd-2609212103565953, criterion 3), so the section is read before the
+	// mint — and a section that is not a numbered list refuses here, with
+	// nothing written, because the copy would otherwise be a guess
+	// (unrecognized-input-never-writes). A close without a remainder never
+	// reads it: the section is the build's, not the close's.
+	var carried []spec.Step
+	if remainder.Slug != "" {
+		listed, err := spec.ReadSteps(repoRoot, sp)
+		if err != nil {
+			return ReconcileResult{}, fmt.Errorf("intent: %v; --remainder carries the steps not marked landed, and this section cannot be read as steps; nothing was minted. Fix the section, then re-run the close", err)
+		}
+		carried = spec.Unlanded(listed)
+		// Numbered as the remainder lists them, so the result and the file agree.
+		for i := range carried {
+			carried[i].Number = i + 1
+		}
+	}
+
 	// Does any OTHER spec still hold this intent open? Asked before the mint, so
 	// the impact refusal below can fire before anything is written, and asked
 	// again after it (the remainder counts too).
@@ -765,7 +784,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		if existing, ok := openRemainderWithSlug(claimers, remainder.Slug, specID); ok {
 			minted = existing
 		} else {
-			minted, err = spec.Create(repoRoot, intentID, remainder.Slug, remainder.ProductionMode)
+			minted, err = spec.CreateWithSteps(repoRoot, intentID, remainder.Slug, remainder.ProductionMode, carried)
 			if err != nil {
 				return ReconcileResult{}, err
 			}
@@ -787,6 +806,9 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	}
 
 	res := ReconcileResult{Spec: sp, Intent: it, From: it.Bucket, To: it.Bucket, Remainder: minted, RemainderMinted: mintedHere, OpenSpecs: specIDs(held)}
+	if mintedHere {
+		res.RemainderSteps = carried
+	}
 	// 1. Advance the intent planned/ → shipped/ FIRST — but only when this close
 	// leaves no open spec naming it. Its (kind, spec_id) are already set (Plan
 	// wrote them), and its impact is either already recorded or stamped just
