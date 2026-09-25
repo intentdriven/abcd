@@ -241,6 +241,10 @@ func TestLocalUsernameGenericAccountNameCaughtInShellAndConfigPositions(t *testi
 		"chown dev notes.txt",
 		"chown dev:staff notes.txt",
 		"chown -R dev:staff build/",
+		// A column-aligned dump pads the value out past a single space.
+		"USER=" + strings.Repeat(" ", 10) + "dev",
+		"username:" + strings.Repeat(" ", 20) + "dev",
+		"su" + strings.Repeat(" ", 12) + "dev",
 	} {
 		got := ScanText(line, id, pats, sev, "f")
 		if !hasKind(got, kindLocalUser) {

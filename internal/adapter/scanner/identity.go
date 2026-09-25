@@ -859,8 +859,10 @@ var accountKeys = map[string]bool{"user": true, "username": true, "login": true,
 
 // maxKeyGap bounds the blanks afterAccountKey and afterAccountCommand read
 // between the tokens they look for, so the walk back from a match stays a
-// constant.
-const maxKeyGap = 8
+// constant. A gap past it drops the position, so the bound is wide enough for
+// a column-aligned dump ("USER=" or "username:" padded out to a value column)
+// rather than a single space (iss-2609251639024615).
+const maxKeyGap = 32
 
 // afterAccountKey reports whether the match is the value of a key that names a
 // login: USER=<login>, LOGNAME=<login>, "username: <login>", "login: <login>",
