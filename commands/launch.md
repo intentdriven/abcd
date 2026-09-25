@@ -194,9 +194,11 @@ Then summarise the JSON for the user:
   says whether every page loads; `deep_smoke.findings` names each page that
   resolves on disk and would not load — a frontmatter block never closed, a line
   that is not a YAML mapping entry, a duplicated key, bytes that are not UTF-8, a
-  skill with no name or description, a page with no help at all. The cut always
-  runs this tier; offer `--deep-smoke` when the user wants the preview to say
-  what the cut will.
+  skill with no name or description, a page with no help at all. Frontmatter is
+  read as YAML reads it: a value continued on indented lines, a quoted or
+  non-ASCII key, and a block closed by `...` all load. The tier costs a copy of
+  the payload and one child process. The cut always runs this tier; offer
+  `--deep-smoke` when the user wants the preview to say what the cut will.
 - `parity` — the file-level diff between this payload and the previous
   release's. `parity.baseline` is the tag it was measured against (the newest
   release tag, or the tag given with `--baseline <vX.Y.Z>`), `parity.source` how
@@ -208,14 +210,17 @@ Then summarise the JSON for the user:
   cloned without tags, or shallow — while `CHANGELOG.md` dates a release is not
   a first launch: `parity.refused` names that release and the remedy (fetch the
   tags and history, or `--fetch-baseline`, whose verified archive is then the
-  only baseline, since there is no tag to render at). `parity.entries` lists every path `added`,
-  `changed` or `removed` with its `digest` and `baseline_digest` (SHA-256); report
-  the counts and the paths. The two stamped manifests are compared with their
+  only baseline, since there is no tag to render at). `parity.entries` lists
+  every path `added`, `changed` or `removed` with its `digest` and
+  `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the
   catalog, which the archive omits by construction, is named in
-  `parity.not_compared`. A baseline that cannot be read sets `parity.refused`
-  with a `refusal_reason` and lands in `would_refuse_on`; it is never an empty
-  diff. A `--baseline` that is not a release tag in this checkout exits 2 by
+  `parity.not_compared`. A render at the tag is a shared clone of this checkout
+  checked out at the tag in a private temporary directory, removed afterwards:
+  a few seconds and a working tree the size of the tag's, on every preview and
+  on every cut that renders a payload, which has no opt-out. A baseline that
+  cannot be read sets `parity.refused` with a `refusal_reason` and lands in
+  `would_refuse_on`; it is never an empty diff. A `--baseline` that is not a release tag in this checkout exits 2 by
   name.
   `--fetch-baseline` is the one network read the preview makes, and only on that
   explicit ask: it fetches the tag's `checksums.txt` and plugin archive from the

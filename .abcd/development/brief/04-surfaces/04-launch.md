@@ -239,7 +239,10 @@ could write lands in the throwaway copy, which is removed. The child renders eac
 page's help and frontmatter; a page fails when it is not UTF-8, opens a
 frontmatter block it never closes, holds a line no YAML mapping holds or a
 duplicated key, renders no help at all, or is a skill without a name and a
-description. The parent refuses a child that ran anywhere but the tree it was
+description. The frontmatter is read no more strictly than YAML reads it: a
+scalar continued on indented lines, plain or quoted, a quoted or non-ASCII key,
+and a block closed by the document-end marker `...` all load, and a key spelled
+once quoted and once plain is one key, duplicated. The parent refuses a child that ran anywhere but the tree it was
 given, and a child that fails or leaves a page unanswered fails the tier. The
 tier is opt-in on the preview, by flag, and always on in the cut, where a
 finding refuses before anything is written. There is no import check: nothing the

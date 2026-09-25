@@ -423,13 +423,13 @@ func smokeDeepOverBundle(bundle Bundle, run PageRunner) DeepSmokeReport {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	dir := filepath.Join(tmp, "payload")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return deepUnavailable(err)
+	}
 	for _, f := range bundle.Included {
 		if err := copyPayloadFile(dir, f); err != nil {
 			return deepUnavailable(fmt.Errorf("materialising %s: %w", f.LogicalPath, pathFreeError(err)))
 		}
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return deepUnavailable(err)
 	}
 	return SmokeDeep(dir, run)
 }
