@@ -626,3 +626,22 @@ func TestTheSeedSourcesAreAbcdsOwn(t *testing.T) {
 		}
 	}
 }
+
+// TestAWorkflowRunFromAForkNeverRenders: the workflow_run entry admits only a
+// successful run of this repository's own release workflow, never a pull
+// request's and never a fork's.
+func TestAWorkflowRunFromAForkNeverRenders(t *testing.T) {
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"github.event.workflow_run.conclusion == 'success'",
+		"github.event.workflow_run.event != 'pull_request'",
+		"github.event.workflow_run.head_repository.full_name == github.repository",
+	} {
+		if !strings.Contains(string(wf), want) {
+			t.Errorf("the render job's gate lacks %q", want)
+		}
+	}
+}

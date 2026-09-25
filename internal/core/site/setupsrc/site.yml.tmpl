@@ -56,7 +56,17 @@ permissions:
 
 jobs:
   render:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    # A workflow_run fires for the release workflow's runs whatever triggered
+    # them, and its branch filter matches a head branch a fork can name. Only a
+    # successful run of this repository's own release, not of a pull request,
+    # reaches the render. Nothing from the triggering run is used either way:
+    # the tag is resolved from the repository's published releases.
+    if: >-
+      ${{ github.event_name != 'workflow_run' || (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event != 'pull_request' &&
+          github.event.workflow_run.event != 'pull_request_target' &&
+          github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: site-render
