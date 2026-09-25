@@ -400,16 +400,19 @@ func newIdentityMatchers(id Identity) identityMatchers {
 type span struct{ start, end int }
 
 func inAnySpan(pos int, spans []span) bool {
-	for _, s := range spans {
+	for i, s := range spans {
 		if s.start <= pos && pos < s.end {
+			scanMeter.charge(stageIdentity, i+1)
 			return true
 		}
 	}
+	scanMeter.charge(stageIdentity, len(spans))
 	return false
 }
 
 // urlSpans returns the URL-like spans on a line.
 func urlSpans(line string) []span {
+	scanMeter.charge(stageIdentity, len(line))
 	var out []span
 	for _, loc := range urlSpanRe.FindAllStringIndex(line, -1) {
 		out = append(out, span{loc[0], loc[1]})
@@ -453,6 +456,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// still the caller's home, and no other detector reaches it — local_username
 	// is URL-suppressed and home_path_other stops at the same byte.
 	if m.homeSelf != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
 			stands := homeSweepable(line, loc[0], loc[1], urls)
 			if m.bytes {
@@ -468,6 +472,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 		}
 	}
 	// home_path_other — a generic /Users|/home path that is not the caller's own.
+	scanMeter.charge(stageIdentity, len(line))
 	for _, loc := range genericHomeRe.FindAllStringIndex(line, -1) {
 		if !(leadingBoundaryOK(line, loc[0]) || underAbsoluteRoot(line, loc[0])) || !trailingBoundaryOK(line, loc[1]) {
 			continue
@@ -510,6 +515,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	}
 	// real_email — skip the noreply form.
 	if m.email != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.email.FindAllStringIndex(line, -1) {
 			matched := line[loc[0]:loc[1]]
 			if noreplyRe.MatchString(matched) {
@@ -521,6 +527,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// real_name — suppress inside URL spans (a name that is the public handle
 	// was left out of the matcher: isPublicHandle).
 	if m.name != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.name.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
@@ -533,6 +540,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	}
 	// github_username — suppress inside URL spans.
 	if m.github != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.github.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
@@ -573,6 +581,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
 				"(local machine username, the last segment of $HOME; replace with [USERNAME] or remove)")
 		}
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.localBare.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
@@ -638,6 +647,7 @@ var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-
 // home path or login leaks from, so a generic account name is still reported
 // there, at its hard_fail floor.
 func standsAsAccountName(line string, start, end int, home string) bool {
+	scanMeter.charge(stageIdentity, end+start)
 	if home != "" && strings.HasSuffix(strings.ToLower(line[:end]), strings.ToLower(home)) {
 		return true
 	}
@@ -666,6 +676,7 @@ func isLocalPartByte(b byte) bool {
 // isNonUserHomeMatch reports whether a generic-home match's final segment is a
 // well-known non-user directory under a /Users root.
 func isNonUserHomeMatch(matched string) bool {
+	scanMeter.charge(stageIdentity, len(matched))
 	if !strings.HasPrefix(strings.ToLower(matched), "/users/") {
 		return false
 	}
@@ -688,6 +699,7 @@ func isNonUserHomeMatch(matched string) bool {
 // genericHomeRe is POSIX-only, so '/' is the only separator that can reach here.
 func nextPathSegmentEnd(line string, pos int) (int, bool) {
 	traversed := false
+	from := pos
 	for pos < len(line) && line[pos] == '/' {
 		i, named := pos+1, false
 		for i < len(line) && isHomeSegmentByte(line[i]) {
@@ -697,6 +709,7 @@ func nextPathSegmentEnd(line string, pos int) (int, bool) {
 			i++
 		}
 		if named {
+			scanMeter.charge(stageIdentity, i-from)
 			return i, traversed
 		}
 		// The segment names nothing: pure dots, or empty (two separators in a
@@ -704,6 +717,7 @@ func nextPathSegmentEnd(line string, pos int) (int, bool) {
 		traversed = true
 		pos = i
 	}
+	scanMeter.charge(stageIdentity, pos-from)
 	return 0, false
 }
 
@@ -724,6 +738,7 @@ func isHomeSegmentByte(b byte) bool {
 // anchored detector declines it as the caller's own, so the home_path_other
 // skip must decline it too, or nothing reports it at all.
 func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
+	scanMeter.charge(stageIdentity, len(matched))
 	for _, loc := range homeSelf.FindAllStringIndex(matched, -1) {
 		if homeStandsAsPath(matched, loc[0], loc[1]) {
 			return true
@@ -742,6 +757,7 @@ func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span {
 	spans := append([]span(nil), urls...)
 	if m.homeSelf != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
 			if !homeSweepable(line, loc[0], loc[1], urls) {
 				continue // not reported as the home, so it must not suppress the username either
@@ -750,6 +766,7 @@ func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span
 		}
 	}
 	if m.email != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.email.FindAllStringIndex(line, -1) {
 			spans = append(spans, span{loc[0], loc[1]})
 		}
@@ -762,6 +779,7 @@ func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span
 // lookbehind replacement) and followed by EOL or a non-[A-Za-z0-9.] rune.
 func encodedMatches(line, encoded string) [][]int {
 	var out [][]int
+	scanMeter.charge(stageIdentity, len(line))
 	// Case-insensitive, matching the folded m.localBare matcher: the encoded
 	// (dot->dash) spelling of the login must be redacted whatever its case. The
 	// window is compared with EqualFold rather than lower-casing the whole line,
@@ -850,6 +868,7 @@ func isDottedNamespaceComponent(line string, start, end int) bool {
 	for hi < len(line) && isDottedIdentifierByte(line[hi]) {
 		hi++
 	}
+	scanMeter.charge(stageIdentity, 2*(hi-lo))
 	// A dotted local part is an address, not a namespace.
 	if hi < len(line) && line[hi] == '@' {
 		return false
@@ -933,6 +952,7 @@ func underAbsoluteRoot(line string, start int) bool {
 	for i > 0 && isPathSegmentByte(line[i-1]) {
 		i--
 	}
+	scanMeter.charge(stageIdentity, start-i)
 	if line[i] != '/' {
 		return false
 	}

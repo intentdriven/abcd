@@ -642,6 +642,7 @@ func gallopingFind(re matcher, line string, at, base int, budget *int) []int {
 		if hi > len(line) {
 			hi = len(line)
 		}
+		scanMeter.charge(stageAdjacency, hi-at)
 		loc := re.FindStringIndex(line[at:hi])
 		if hi == len(line) || loc == nil || at+loc[1] < hi {
 			return loc
@@ -724,6 +725,7 @@ func scanAllPatterns(patterns []Pattern, probes []matcher, junctions junctionSet
 		}
 	}
 	for i, cp := range patterns {
+		scanMeter.charge(stagePattern, len(line))
 		for _, loc := range cp.Re.FindAllStringIndex(line, -1) {
 			add(patMatch{i, loc[0], loc[1]})
 		}
@@ -813,6 +815,7 @@ func stolenJunctions(probe, junctions matcher, line string, m patMatch, budget *
 // boundary-free adjacencyProbe. The anchor makes the match start at 0, so only
 // its end has to reach the end of s.
 func wholeMatch(probe matcher, s string) bool {
+	scanMeter.charge(stageAdjacency, len(s))
 	loc := probe.FindStringIndex(s)
 	return loc != nil && loc[1] == len(s)
 }
@@ -847,6 +850,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		for _, m := range scanAllPatterns(patterns, probes, junctions, line) {
 			cp := patterns[m.patIdx]
 			matched := line[m.start:m.end]
+			scanMeter.charge(stageSkip, len(matched))
 			if cp.Skip != nil && cp.Skip(matched) {
 				continue
 			}

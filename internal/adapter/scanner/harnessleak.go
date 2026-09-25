@@ -125,6 +125,7 @@ func HarnessLeakPatterns() []Pattern {
 			// rest of the line: scanning the remainder let an unrelated
 			// example.com link later in the line disarm a genuine footer.
 			SkipAt: func(line string, start, end int) bool {
+				scanMeter.charge(stageSkipAt, start)
 				return !footerLinePrefixRe.MatchString(line[:start]) ||
 					hasReservedDocHost(footerLinkTarget(line, end))
 			},
@@ -153,12 +154,15 @@ func footerLinkTarget(line string, end int) string {
 	rest := line[end:]
 	i := strings.Index(rest, "](")
 	if i < 0 {
+		scanMeter.charge(stageSkipAt, len(rest))
 		return ""
 	}
+	scanMeter.charge(stageSkipAt, i+2)
 	target := rest[i+2:]
 	if j := strings.IndexAny(target, ") \t"); j >= 0 {
 		target = target[:j]
 	}
+	scanMeter.charge(stageSkipAt, len(target))
 	return target
 }
 

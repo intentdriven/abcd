@@ -483,7 +483,8 @@ func insideLongerDottedRun(line string, start, end int) bool {
 
 // trailingDottedGroups counts the ".<digits>" groups immediately following pos.
 func trailingDottedGroups(line string, pos int) int {
-	n := 0
+	from, n := pos, 0
+	defer func() { scanMeter.charge(stageSkipAt, pos-from) }()
 	for pos < len(line) && line[pos] == '.' {
 		i := pos + 1
 		for i < len(line) && isASCIIDigit(line[i]) {
@@ -547,6 +548,7 @@ func colonRunGroups(line string, start, end int) int {
 	for end < len(line) && isColonRunByte(line[end]) {
 		end++
 	}
+	scanMeter.charge(stageSkipAt, 2*(end-start))
 	n := 0
 	for _, g := range strings.Split(line[start:end], ":") {
 		if g != "" {
@@ -608,6 +610,7 @@ func dottedFileOrDirectory(line string, start, end int) bool {
 // noisy report but a silent leak, and the cost of getting it too narrow is a
 // corrupted transcript — so the position is required as well as the case.
 func mixedCaseSelector(line string, start, end int) bool {
+	scanMeter.charge(stageSkipAt, end-start)
 	return mixedCaseHostSuffix(line[start:end]) && valuePosition(line, start)
 }
 
@@ -630,6 +633,7 @@ func valuePosition(line string, start int) bool {
 	for j > 0 && isWordByte(line[j-1]) {
 		j--
 	}
+	scanMeter.charge(stageSkipAt, start-j)
 	return line[j:i] == "return"
 }
 
@@ -659,6 +663,7 @@ func selectorExpression(line string, start, end int) bool {
 	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
 		i++
 	}
+	scanMeter.charge(stageSkipAt, i-end)
 	return i < len(line) && (line[i] == '=' || line[i] == '{')
 }
 
@@ -690,6 +695,7 @@ var slugFunctionWords = map[string]bool{
 // reproduction step unfollowable (iss-2609240646532741). The token sequence is
 // the match's own; a determiner BEFORE the match is commonNounPhrase's case.
 func proseSlug(line string, start, end int) bool {
+	scanMeter.charge(stageSkipAt, end-start)
 	toks := strings.Split(strings.ToLower(line[start:end]), "-")
 	for _, t := range toks[:len(toks)-1] {
 		if slugFunctionWords[t] {
@@ -716,6 +722,7 @@ func commonNounPhrase(line string, start, _ int) bool {
 	for j > 0 && isWordByte(line[j-1]) {
 		j--
 	}
+	scanMeter.charge(stageSkipAt, start-j)
 	return determiners[strings.ToLower(line[j:i])]
 }
 

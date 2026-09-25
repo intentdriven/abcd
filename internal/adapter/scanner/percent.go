@@ -47,6 +47,7 @@ func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctio
 	for _, m := range scanAllPatterns(patterns, probes, junctions, decoded) {
 		cp := patterns[m.patIdx]
 		matchedDecoded := decoded[m.start:m.end]
+		scanMeter.charge(stageSkip, len(matchedDecoded))
 		if cp.Skip != nil && cp.Skip(matchedDecoded) {
 			continue
 		}
@@ -143,6 +144,7 @@ func percentDecodeBounded(s string) (string, []int) {
 // offset in s it came from (with a trailing sentinel == len(s)). A '%' not
 // followed by two hex digits is copied literally.
 func percentDecodeOnce(s string) (string, []int) {
+	scanMeter.charge(stagePercent, len(s))
 	b := make([]byte, 0, len(s))
 	pos := make([]int, 0, len(s)+1)
 	for i := 0; i < len(s); {
