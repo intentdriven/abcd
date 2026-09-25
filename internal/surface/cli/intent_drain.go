@@ -7,6 +7,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/site"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -48,6 +49,12 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 		intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent audit --owed: " + err.Error()}
+	}
+	// An emit error can carry an absolute path, and the host is told to report
+	// it (commands/intent.md), so it leaves here with the home redacted, in the
+	// text row and the JSON emit_error alike (iss-2609252127428538).
+	for i := range step.Queue {
+		step.Queue[i].EmitError = fsutil.RedactHome(step.Queue[i].EmitError)
 	}
 	view := drainView{ReviewQueue: step.ReviewQueue}
 	if step.Next != nil {

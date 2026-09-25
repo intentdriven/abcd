@@ -388,3 +388,44 @@ func TestIntentAuditOwedFailedRequestWriteParksNoStub(t *testing.T) {
 		t.Fatalf("no entry was emitted, so there is no next:\n%s", text)
 	}
 }
+
+// TestIntentAuditEmitErrorsRedactHome (iss-2609252127428538): an emit error
+// whose path lies under HOME reaches the drain's text row, its JSON emit_error
+// and the single audit's refusal as ~/…, never as the absolute path.
+func TestIntentAuditEmitErrorsRedactHome(t *testing.T) {
+	repo := drainRepo(t)
+	reviewsDirIsAFile(t, repo)
+	abs := filepath.Join(repo, ".abcd", ".work.local", "reviews")
+	redacted := "~/" + filepath.Base(repo) + "/.abcd/.work.local/reviews"
+
+	text, _, err := runCLISplit(t, "intent", "audit", "--owed", "--max", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, abs) || !strings.Contains(text, redacted) {
+		t.Fatalf("the text row must carry %s, not %s:\n%s", redacted, abs, text)
+	}
+	stdout, _, err := runCLISplit(t, "intent", "audit", "--owed", "--max", "1", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Queue []struct {
+			EmitError string `json:"emit_error"`
+		} `json:"queue"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if len(got.Queue) != 1 || strings.Contains(got.Queue[0].EmitError, abs) || !strings.Contains(got.Queue[0].EmitError, redacted) {
+		t.Fatalf("the JSON emit_error must carry %s, not %s:\n%s", redacted, abs, stdout)
+	}
+
+	_, _, err = runCLISplit(t, "intent", "audit", "itd-21")
+	if exitCodeOf(err) != 2 {
+		t.Fatalf("the single audit must refuse with exit 2, got %v", err)
+	}
+	if strings.Contains(err.Error(), abs) || !strings.Contains(err.Error(), redacted) {
+		t.Fatalf("the single audit's refusal must carry %s, not %s: %v", redacted, abs, err)
+	}
+}

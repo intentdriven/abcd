@@ -2482,7 +2482,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 			if err != nil {
 				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
-					&exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()})
+					&exitError{Code: 2, Msg: "abcd intent audit: " + fsutil.RedactHome(err.Error())})
 			}
 			// Only a receipt still owed has a request for the host to act on; a
 			// terminal one is reported as it stands, with no request block.
