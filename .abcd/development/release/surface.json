@@ -1725,6 +1725,65 @@
       "flags": []
     },
     {
+      "path": "abcd scribe",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd scribe assemble",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd scribe ingest",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "context",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "scribe-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd site",
       "hidden": false,
       "flags": [

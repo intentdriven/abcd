@@ -1,0 +1,125 @@
+---
+name: scribe
+description: Build the ledger scribe's context from the ledger alone and ingest what the scribe transcribed, by invoking the abcd binary. assemble parks the context and a hashed manifest in the local tier and touches nothing durable; ingest validates the scribe's output, refuses anything the scribe authored, writes dispositions, admissions and surprises through the capture verbs, and promotes the manifest beside the run.
+argument-hint: "assemble --run <rdg-N> --dispositions <path> [--out <dir>] [--dry-run] | ingest --scribe-json <path> [--context <path>]"
+---
+
+# `/abcd:scribe` — the ledger scribe's context and ingest
+
+The scribe (the `abcd:scribe` agent) transcribes a reading run's records and the
+researcher's dispositions into the ledger's declared shapes, and authors
+nothing. Its access rule is the reading assembler's exact inverse: a reading is
+handed a slice of the shipped repository and no ledger; the scribe is handed the
+ledger and no shipped tree. This verb holds that rule by construction. It builds
+the scribe's context from the issue ledger's own directories and nothing else,
+writes a manifest naming every path it passed, and refuses a returned payload
+that authored anything.
+
+Two things this surface does not do. It never runs the scribe: it produces the
+context a scribe session is handed, and dispatching that session is host work.
+And it never judges what it transcribes: a state, a ground or a resolution the
+researcher's text does not carry is refused, never supplied.
+
+## The host obligation
+
+**Hand the scribe session the context file and nothing else.** No repository
+access, no reading bundle, no transcript, no other file. The session is not the
+reading session and never becomes one: a session that held a reading bundle may
+not be handed a scribe context, and the reverse. The verb cannot enforce what a
+host gives a session; `abcd history separation` reports afterwards whether any
+retained transcript carries both a reading stamp and a scribe stamp of one run.
+
+## Assemble
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" scribe assemble --run <rdg-N> --dispositions ./dispositions.md --json
+```
+
+`--run` names an ingested reading run: its commit marker must exist, because the
+scribe transcribes dispositions against records the ledger already holds, read
+from the store rather than from a raw reading output handed over again.
+`--dispositions` names the researcher's dispositions text in whatever form they
+wrote it; it is read whole and carried verbatim, with the home directory and the
+repository root taken out of it.
+
+The context carries every record under the issue ledger's own directories — the
+reading records, dispositions, admissions, surprises and reframes, and the open,
+resolved and won't-fix issues — derived from the ledger's directory list, so a
+record family the ledger declares later is included the day it is declared.
+Nothing outside those directories is walked, a symlink inside them is refused,
+and an item outside them is refused whatever route it arrived by.
+
+Report from the JSON: `run`, `item_count`, `context_stamp`, `context_sha256`
+(the scribe's output cites it), `out_dir` and `artefacts`. The context and the
+manifest are parked in `.abcd/.work.local/scratch/scribe-runs/<rdg-N>/`, or
+under `--out`, which must be empty or absent and may not be a directory a
+reading's include table reaches. The durable record is untouched: a session
+assembled and never ingested leaves no trace beside the run. `--dry-run` writes
+nothing unless `--out` names somewhere to write. A second assembly into an
+occupied directory is refused: one directory holds one session's evidence.
+
+Every refusal exits 2: a run id that is not one, a run that was never ingested,
+a missing `--dispositions`, an out directory a reading can reach, and a
+symlinked ledger directory.
+
+## What the scribe returns
+
+One JSON document, which the scribe definition states for the session:
+
+```json
+{
+  "_type": "abcd.scribe.output/1",
+  "run": "rdg-N",
+  "context_sha256": "<the context_sha256 assemble reported>",
+  "dispositions": [{"item": "rdi-N", "state": "accepted", "grounds": "…",
+                    "exit_condition": "", "supersedes": "", "recurs": []}],
+  "admissions": [{"item": "rdi-N", "grounds": "…"}],
+  "surprises": [{"occasioned_by": "rdi-N", "text": "…"}],
+  "fidelity_flags": [{"first": "…", "second": "…"}],
+  "outstanding": ["rdi-N"],
+  "refusals": [{"subject": "…", "reason": "…"}]
+}
+```
+
+The scribe cannot compute `context_sha256`; the host puts the value
+`assemble` reported into the payload, or hands it to the session with the
+context.
+
+## Ingest
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" scribe ingest --scribe-json ./scribe-output.json --json
+```
+
+`--context` names the context when `assemble` wrote it under `--out`; the
+manifest is read from beside it. Nothing is written until all of the following
+hold, and any failure exits 2 naming the field and the item:
+
+- **The context is proven**: it hashes to its parked manifest, and the payload
+  cites that hash. A payload from another session is refused.
+- **Nothing is authored**: a key outside the shapes above (a `resolution`, a
+  `pattern`, a `position`, anything) is refused by name; a disposition or an
+  admission for an item the supplied dispositions never name is refused; a
+  `grounds`, an `exit_condition` or a surprise `text` that does not stand
+  verbatim in the supplied text once whitespace is folded is refused. The scribe
+  reformats; it never adds a word.
+- **Every answer is the run's**: a disposition, admission or outstanding item
+  that is not one of the run's items is refused, and one item takes one answer.
+- **Nothing is passed over in silence**: every item of the run with no standing
+  disposition is answered, listed as outstanding, or named in a refusal.
+- **The run has no promoted scribe manifest yet**: the durable tier is
+  write-once, so a later answer to the run is written with the capture verbs.
+
+Then the dispositions, the admissions and the surprises are written, in that
+order, through the capture verbs' own functions, each with its own redaction and
+refusals. At the widening position that includes the ordering gate: no
+disposition and no admission lands until a committed comparative run names the
+widening run. The first refusal stops the ingest, the render names what landed
+before it, and the manifest stays parked, so a rerun drops what landed rather
+than minting it twice.
+
+Report from the JSON: the `dispositions`, `admissions` and `surprises` written,
+each with its id; `outstanding`; every `fidelity_flags` entry, **unresolved** —
+never pick one side of a flag, it is the researcher's to resolve; every
+`refusals` entry; and `manifest`, the promoted manifest beside the run. Flags
+and refusals are never written into a record.

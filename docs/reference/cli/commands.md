@@ -1530,6 +1530,89 @@ its rules replaced, its state changed, or a custom domain declared — renders a
 diagnostic, and carries "source": "repo" in --json; an untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.
 
+### `abcd scribe`
+
+Ledger scribe: assemble its context from the ledger alone, and ingest what it transcribed
+
+**Usage:** `abcd scribe`
+
+Build the ledger scribe's context and ingest what the scribe returns.
+
+The scribe transcribes a reading run's records and the researcher's dispositions into the
+ledger's declared shapes, and authors nothing. Its context is the reading assembler's exact
+inverse: ledger content only, drawn from the issue ledger's own directories, and the
+researcher's supplied text. `assemble` builds it with a manifest of every path passed;
+`ingest` validates the scribe's output and refuses anything the scribe authored.
+
+#### `abcd scribe assemble`
+
+Build a scribe session's context from the ledger and the supplied dispositions
+
+**Usage:** `abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]`
+
+Build the context one scribe session is handed, for one ingested reading run.
+
+The context is positive inclusion at directory grain: the issue ledger's own directories
+(its reading records, dispositions, admissions, surprises and reframes, and its three status
+directories), derived from the ledger's directory list, and the researcher's dispositions
+text read whole. Nothing else is walked, and an item outside that list is refused whatever
+route it arrived by. The run must be ingested: its records come from the store, never from
+a raw reading output handed over again.
+
+The context and a manifest naming every path passed, by hash, are parked in the local tier
+(or under --out, which may not be a directory a reading's include table reaches). Nothing in
+the durable record is touched. Both carry the scribe's per-run context stamp.
+
+**Flags:**
+
+```
+      --dispositions string   the researcher's dispositions text, read whole and carried verbatim
+      --dry-run               write nothing; with --out the two artefacts still land in that directory
+      --out string            an empty or absent directory the context and the manifest are written to
+                              (default: the local-tier scribe run directory)
+      --run string            the ingested reading run the session transcribes for (rdg-N)
+```
+
+**Example:**
+
+```
+abcd scribe assemble --run rdg-2609250000000001 --dispositions ./dispositions.md --json
+```
+
+#### `abcd scribe ingest`
+
+Validate a scribe session's output and write what it transcribed
+
+**Usage:** `abcd scribe ingest --scribe-json <path> [flags]`
+
+Validate the JSON a scribe session returned and write its records through the capture verbs.
+
+The context the session was handed is proven first: it must hash to its parked manifest, and
+the output must cite that hash. Then the output is refused if the scribe authored anything —
+a field outside the declared shapes, an item the supplied dispositions never name, or a ground,
+exit condition or surprise that does not stand verbatim in the supplied text once whitespace
+is folded — or if it passes over an unanswered item of the run in silence. Nothing is written
+until all of that holds.
+
+Dispositions, admissions and surprises are then written in that order through the capture verbs,
+which apply their own redaction and refusals, the ordering gate included; the first refusal stops
+the ingest and names what landed before it. Fidelity flags and refusals are reported and never
+written. Once every write has landed the manifest is promoted beside the run, write-once.
+
+**Flags:**
+
+```
+      --context string       the context the session was handed, when assemble wrote it under --out
+                             (default: the local-tier scribe run directory of the output's run)
+      --scribe-json string   path to the JSON the scribe session returned
+```
+
+**Example:**
+
+```
+abcd scribe ingest --scribe-json ./scribe-output.json --json
+```
+
 ### `abcd site`
 
 The website rendered from this repository: what is declared, and what was built (read-only)

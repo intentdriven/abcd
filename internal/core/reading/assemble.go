@@ -812,6 +812,17 @@ func requireEmptyDir(named, dir string) error {
 // Only a directory inside the repository can be reached, so an output path that
 // resolves outside it is always fine.
 func refuseSelfAdmittingOutDir(repoRoot, outDir, label string) error {
+	return RefuseReachableOutDir(repoRoot, outDir, label, BundleFileName, ManifestFileName)
+}
+
+// RefuseReachableOutDir refuses an output directory where any of the named
+// files would be admitted by the include table at some position. It is the
+// check refuseSelfAdmittingOutDir makes for this assembler's own two artefacts,
+// exported for the one other assembler whose output must never become a
+// reading's input: the scribe's context carries ledger content, and a context
+// parked where the table reaches it is the next reading handed the ledger
+// (spc-2609020626045177, brief invariant 15).
+func RefuseReachableOutDir(repoRoot, outDir, label string, names ...string) error {
 	if outDir == "" {
 		return nil
 	}
@@ -836,7 +847,7 @@ func refuseSelfAdmittingOutDir(repoRoot, outDir, label string) error {
 	if rel == ".." || strings.HasPrefix(rel, "../") {
 		return nil
 	}
-	for _, name := range []string{BundleFileName, ManifestFileName} {
+	for _, name := range names {
 		candidate := path.Join(rel, name)
 		for _, p := range Positions() {
 			if Admits(p, candidate) {

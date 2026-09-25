@@ -43,6 +43,7 @@ are wiring rather than user-facing surface are listed separately under
 | 28 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
 | 29 | `/abcd:report` | shipped | Tell abcd about a defect or propose an enhancement from a repository it manages, into an inbox in your own account | [`29-report.md`](29-report.md) |
 | 30 | `/abcd:inbox` | shipped | Read the reports managed repositories filed, and promote one to a capture that names the sender only by its root-commit key | [`30-inbox.md`](30-inbox.md) |
+| 31 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`31-scribe.md`](31-scribe.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -124,8 +125,8 @@ read-only render of their own state, and close on the next move where there is
 one to name.
 
 It is a convention rather than a universal, and the exceptions are where the
-tree does not yet meet its own discipline. Six parents print usage with no state
-at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
+tree does not yet meet its own discipline. Seven parents print usage with no state
+at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, and `scribe`. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
 because its one operand is the quoted title it mints a record from. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
@@ -175,7 +176,8 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `ahoy`, `banlist`, `capture`, `consult`, `decide`, `disembark`, `docs`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `report`, `site`, `update`, `version`.
+`prepare-this-repo`, `reading`, `report`, `scribe`, `site`, `update`,
+`version`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
