@@ -7,6 +7,10 @@ category: "security"
 source: "agent-finding"
 found_during: "bughunt-round-1"
 found_at: ".github/workflows/external-review.yml"
+resolution: "role_of fails the check on a failed or empty lookup and names the login, instead of folding into none; the current token reads the endpoint (run 36127849738 resolved role admin), so no permission change. TestExternalReviewRoleLookupFailsLoud covers the author and a reviewer."
+impact: internal
+resolved_by:
+  commit: "c7b3c18552fb0f2c498809ebcc5fef8bb860bebb"
 ---
 
 external-review.yml's role_of() folds every 'gh api collaborators/<u>/permission' non-zero exit into the string 'none' via '2>/dev/null || echo none', indistinguishable from a legitimate no-role answer, so a transient/permission failure silently misclassifies authors and drops approvals; the job grants only contents:read + pull-requests:read while that endpoint needs push access (or an App members permission), so it likely 403s for every lookup and wedges the gate red for all human PRs with no diagnostic. Not fixed autonomously: required-check workflow, and the permission behaviour needs a real Actions run to confirm
@@ -30,3 +34,7 @@ endpoint access, which needs a real Actions run to confirm. Proposed fix (NOT ap
 round): fail loud on a genuine API error, and either add the endpoint's permission or derive
 role from `author_association` (which the existing token can read). Left open: required-check
 workflow, unverifiable here.
+
+## Grounds
+
+- pursued: an API error in a role lookup turns the check red with a message naming the lookup, never a misclassified author or a silently dropped approval; shown wrong by an external-review log reporting role none for a login whose permission call failed

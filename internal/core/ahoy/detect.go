@@ -461,6 +461,13 @@ func detectMarkerDrift(cwd string) []Gap {
 				Title: name + " marker block outdated", Detail: name + " marker block differs from the template.",
 				FixHint: "ahoy install rewrites it to canonical (silent overwrite).", Required: true, Resolvable: true,
 			})
+		case markerUnplaceable:
+			gaps = append(gaps, Gap{
+				ID: "marker.unplaceable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " marker block cannot be placed",
+				Detail:  name + " has no frontmatter or live H1 and ends inside a fenced block or HTML comment nothing closes, so the block would be written where no reader sees it.",
+				FixHint: "Close the open fence or comment (or add an H1 above it); ahoy install then plants the block.", Required: true, Resolvable: false,
+			})
 		}
 	}
 	return gaps

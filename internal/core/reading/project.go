@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/site"
 )
 
@@ -147,14 +148,21 @@ var (
 	// setextRuleRe matches the underline that turns the line above it into a
 	// heading. The section scan does not model setext at all.
 	setextRuleRe = regexp.MustCompile(`^\s{0,3}(=+|-+)\s*$`)
-	// indentedATXRe matches an ATX heading carrying the one-to-three-space indent
-	// CommonMark allows. The section scan anchors its pattern at column 0, so it
-	// reads such a line as prose — while every renderer, and every human, reads
-	// it as the heading it is. Four spaces would make it an indented code block,
-	// which is why the bound is three.
-	// The indent is SPACES, one to three. A tab makes an indented code block,
-	// not a heading, so `\s` would refuse a line no renderer treats as one.
-	indentedATXRe = regexp.MustCompile(`^[ ]{1,3}#{1,6}\s+(.*)$`)
+	// floorATXRe matches an ATX heading at the zero-to-three-space indent
+	// CommonMark allows, capturing the indent and the title. The section scan
+	// anchors its pattern at column 0, so it reads an indented heading as prose —
+	// while every renderer, and every human, reads it as the heading it is. Four
+	// spaces would make it an indented code block, which is why the bound is
+	// three. The indent is SPACES: a tab makes an indented code block, not a
+	// heading, so `\s` would refuse a line no renderer treats as one.
+	floorATXRe = regexp.MustCompile(`^([ ]{0,3})#{1,6}\s+(.*)$`)
+	// nestedHeadingRe matches an ATX heading behind any run of indentation,
+	// blockquote markers and list markers: `- ## X`, `> ## X`, `1. ## X`, and a
+	// heading at a list item's content indent. Each renders as a heading and
+	// none has a span in the section walk. It also matches a heading in an
+	// indented code block, which is the fail-closed direction: such a line is
+	// refused only when it names an excluded heading.
+	nestedHeadingRe = regexp.MustCompile(`^[ \t]*(?:(?:>|[-*+][ \t]|[0-9]{1,9}[.)][ \t])[ \t]*)*#{1,6}[ \t]+(.*)$`)
 	// rawHeadingOpenRe matches an element that OPENS a heading: an h1-h6 tag, or
 	// any element carrying a heading role, which renders and is announced as a
 	// heading while no h-tag appears. Matching the opening tag alone, rather
@@ -185,9 +193,11 @@ var (
 	// class, because a carriage return between the key and its colon is a break
 	// to a YAML reader and nothing at all to a scan over spaces and tabs.
 	doubleQuotedKeyRe = regexp.MustCompile(`^\s*"([^"]*)"\s*:`)
-	// fenceOpenRe matches a fenced code block's delimiter, on the section scan's
-	// own rule so the two agree about what is inside a fence.
-	fenceOpenRe = regexp.MustCompile("^[ \t]*```")
+	// fenceDelimiterRe matches a line a reader of the bundle could take for a
+	// fence delimiter, backtick or tilde, at any indent. It judges one line of a
+	// frontmatter block and tracks nothing: which lines a fence covers is
+	// mdrecord's answer (floorFences).
+	fenceDelimiterRe = regexp.MustCompile("^[ \t]*(```|~~~)")
 	// rawHeadingBoundRe matches every candidate end of a raw heading's text: a
 	// closing tag of ANY element, the next heading open, or a blank line. The
 	// element name is CAPTURED so one static pattern serves every element — the
@@ -209,12 +219,12 @@ var (
 	flowExplicitKeyRe = regexp.MustCompile(`[{,]\s*\?`)
 )
 
-// Two shapes this floor does NOT see, disclosed rather than claimed. A heading
-// nested inside a blockquote or a list item is indented and prefixed, so neither
-// the section scan nor the raw-line patterns read it as a heading. And a title
+// One shape this floor does NOT see, disclosed rather than claimed: a title
 // reaching the excluded one through a homoglyph or an invisible format character
-// slugs differently by construction, because the slug compares code points. Both
-// are residue; neither is caught.
+// slugs differently by construction, because the slug compares code points. It
+// is residue and is not caught. A heading nested in a blockquote or a list item
+// IS caught: the section scan cannot span it, so the verifier refuses it
+// (nestedHeadingRe, iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
 // ones, under the ONE equality this floor uses: a case fold, or the same
@@ -329,6 +339,17 @@ func unfencedBody(lines []string, fenced []bool) string {
 // quietly walk through is a disclosure, not a gate — so a file that still
 // carries an excluded shape after redaction refuses the run and names the shape.
 func verifyRedaction(rel, original, redacted string, keys, headings map[string]bool) error {
+	// A lone carriage return is a line ending to a renderer (CommonMark 2.1) and
+	// nothing to this floor, which splits on newline: a CR-only document is one
+	// line here and many on the page, so a heading after a lone CR is read as
+	// prose. Refused rather than split a second way (iss-2609251507443137).
+	if len(keys)+len(headings) > 0 {
+		if k := strings.Index(strings.ReplaceAll(redacted, "\r\n", "\n\n"), "\r"); k >= 0 {
+			return fmt.Errorf("reading: %s ends line %d with a lone carriage return, which a renderer "+
+				"reads as a line ending and this floor does not; the floor refuses rather than read "+
+				"the document two ways", rel, strings.Count(redacted[:k], "\n")+1)
+		}
+	}
 	lines := strings.Split(redacted, "\n")
 
 	// The block is located BEFORE any mask is computed, and the fence mask then
@@ -340,7 +361,7 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// resolve.
 	unmasked := make([]bool, len(lines))
 	fmOpen, fmClose, hasBlock := firstBlockRange(lines, unmasked)
-	fenced := bodyFenceMask(lines, hasBlock, fmClose)
+	fenced, unclosedAt, unclosed := floorFences(lines, hasBlock, fmClose)
 
 	if len(keys) > 0 {
 		for _, dup := range frontmatter.Duplicates(strings.Split(original, "\n")) {
@@ -371,51 +392,81 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		return nil
 	}
 
-	// The heading check runs over the SAME fence-aware scan the redactor spans
-	// by. Reading raw lines instead made this floor fire on a fenced example of
-	// the record template — a heading inside a code block is an example, not a
-	// field, and the redactor rightly left it alone while this refused the run.
-	// `offset` is what the stripper reports as the first body line. The raw-HTML
-	// scan uses it as a floor; the setext scan does NOT, because that offset can
-	// overshoot a block the stripper did not recognise the close of, and a scan
-	// that trusts it then skips real body lines. Setext bounds itself by shape
-	// instead — see below.
-	body, offset := site.StripFrontmatter(redacted)
-	sections, err := site.Sections(rel, body, offset)
-	if err != nil {
-		return fmt.Errorf("reading: re-reading the sections of %s: %w", rel, err)
-	}
-	for _, sec := range sections {
-		if sec.Level == 0 {
-			continue
-		}
-		if want, ok := namesExcludedHeading(normaliseHeadingTitle(sec.Title), headings); ok {
-			return fmt.Errorf("reading: %s still carries the excluded heading %q at line %d after "+
-				"redaction; the floor names %q, and a heading is excluded however it is spelled",
-				rel, sec.Title, sec.Line, want)
-		}
+	// An unclosed fence runs to the end of the document, and every line below
+	// its opener would be judged as code. Whether it was meant to is exactly
+	// the ambiguity a floor may not resolve by guessing, so it refuses.
+	if unclosed {
+		return fmt.Errorf("reading: %s opens a fenced code block at line %d that nothing closes; "+
+			"every line below it would be judged as code, so the floor refuses rather than guess "+
+			"whether an excluded heading sits there", rel, unclosedAt+1)
 	}
 
-	// An indented ATX heading is refused for the same reason, and in the same
-	// place. The section scan does not see one, so the redactor has no span to
-	// delete and the section travels whole; widening that scan is not this
-	// package's call to make, because the site renderer's own output turns on it.
-	// A refusal here costs an edit and names the line; the alternative is a leak
-	// under a manifest asserting the opposite.
-	for i := offset; i < len(lines); i++ {
-		line := lines[i]
+	// A fence opener written inside an HTML block is raw HTML to a renderer —
+	// the block runs to the first blank line and swallows the delimiter — so
+	// the lines mdrecord masks as an example are live on the page. The floor
+	// cannot know which reading a reader of the bundle takes, so it refuses
+	// (iss-2609251503459090).
+	if at, ok := fenceInHTMLBlock(lines, bodyStart(hasBlock, fmClose, len(lines))); ok {
+		return fmt.Errorf("reading: %s opens a fenced code block at line %d inside an HTML block, "+
+			"which a renderer reads as raw HTML running to the next blank line; the lines below it "+
+			"are code to one reader and live to another, so the floor refuses rather than guess "+
+			"whether an excluded heading sits there", rel, at+1)
+	}
+
+	// The heading check does NOT reuse the redactor's reading. The redactor
+	// spans sections by the site walk; a verifier that re-read the same walk
+	// would agree with it by construction, which is how an excluded section
+	// once travelled with both halves reporting nothing (iss-2609250955207041).
+	// This scan is the stricter reader: every line from the end of the
+	// frontmatter block is read, a line is code only where every mdrecord
+	// reading agrees it is fenced, an HTML comment hides nothing (its text
+	// travels in the bundle), and an ATX heading at up to three spaces of indent
+	// counts. A heading inside a fence every reading agrees on is an example,
+	// not a field, and is left alone — reading raw lines made this floor refuse
+	// a fenced example of the record template.
+	headStart := 0
+	if hasBlock && fmClose >= 0 {
+		headStart = fmClose + 1
+	}
+	for i := headStart; i < len(lines); i++ {
 		if fenced[i] {
 			continue
 		}
-		m := indentedATXRe.FindStringSubmatch(line)
+		line := strings.TrimRight(lines[i], "\r")
+		// A byte-order mark is not part of the first line to a renderer, so a
+		// heading behind one is live (iss-2609251507443137).
+		if i == 0 {
+			line = frontmatter.TrimBOM(line)
+		}
+		m := floorATXRe.FindStringSubmatch(line)
 		if m == nil {
+			if n := nestedHeadingRe.FindStringSubmatch(line); n != nil {
+				if want, ok := namesExcludedHeading(normaliseHeadingTitle(n[1]), headings); ok {
+					return fmt.Errorf("reading: %s nests the excluded heading %q in a list item, a "+
+						"blockquote or an indent at line %d; the section scan cannot span it, the floor "+
+						"names %q, and a heading is excluded however it is spelled",
+						rel, strings.TrimSpace(line), i+1, want)
+				}
+			}
 			continue
 		}
-		if want, ok := namesExcludedHeading(normaliseHeadingTitle(m[1]), headings); ok {
-			return fmt.Errorf("reading: %s indents the excluded heading %q at line %d; the floor "+
-				"names %q, and a heading is excluded however it is spelled", rel, strings.TrimSpace(line), i+1, want)
+		want, ok := namesExcludedHeading(normaliseHeadingTitle(m[2]), headings)
+		if !ok {
+			continue
 		}
+		// An indented heading has no span in the site walk, which reads column
+		// 0 alone, so the redactor never had anything to delete; widening that
+		// walk is not this package's call, because the site renderer's own
+		// output turns on it. A refusal costs an edit and names the line.
+		if m[1] != "" {
+			return fmt.Errorf("reading: %s indents the excluded heading %q at line %d; the floor "+
+				"names %q, and a heading is excluded however it is spelled", rel, strings.TrimSpace(lines[i]), i+1, want)
+		}
+		return fmt.Errorf("reading: %s still carries the excluded heading %q at line %d after "+
+			"redaction; the floor names %q, and a heading is excluded however it is spelled",
+			rel, normaliseHeadingTitle(m[2]), i+1, want)
 	}
+	_, offset := site.StripFrontmatter(redacted)
 
 	// The markup mask declines silently on one shape, and it is refused before
 	// the heading scan that depends on the mask runs: a value whose opening
@@ -1029,7 +1080,7 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 		// tolerated, because a delimiter inside a frontmatter block is a
 		// document this binary and a reader of the bundle read differently
 		// (iss-2608301350533102).
-		case fenceOpenRe.MatchString(lines[i]):
+		case fenceDelimiterRe.MatchString(lines[i]):
 			return i + 1, "a fence delimiter inside the frontmatter block", true
 		case strings.HasPrefix(trimmed, "!"):
 			return i + 1, "a YAML tag", true
@@ -1046,41 +1097,131 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 	return 0, "", false
 }
 
-// bodyFenceMask reports, per line, whether that line sits inside a fenced code
-// block in the document's BODY — the region after the frontmatter block closes.
+// floorFences reports, per line, whether that line is code to the floor's
+// verifier, and the opener of a fence left unclosed in the document's BODY —
+// the region after the frontmatter block closes.
 //
-// It exists because the mask and the block bounds used to be computed in the
-// wrong order. The mask ran over the whole document, so a fence delimiter
-// written inside the frontmatter toggled the mask and every line after it in
-// the block was reported as fenced; excludedKeyInFirstBlock skips fenced lines,
-// so the key scan was switched off from inside the very block it exists to read
-// (iss-2608301350533102). The block is located first, over an unmasked
-// document, and the toggle starts after it — so a document cannot decide
-// whether its own frontmatter is scanned.
+// The fences are mdrecord's, and a line is code only where every one of its
+// readings agrees it is fenced (mdrecord.FencedUnderEveryRule), so a line that
+// any reader of the bundle could render as live is judged as live. A fence
+// either exported rule leaves open is reported, and the caller refuses on it.
 //
-// A document with no frontmatter block is masked from line 0, exactly as before.
-// A block that never closes leaves no body to mask, and the never-closed shape
-// is itself refused.
-func bodyFenceMask(lines []string, hasBlock bool, closeAt int) []bool {
-	start := 0
-	if hasBlock {
-		if closeAt < 0 {
-			start = len(lines)
-		} else {
-			start = closeAt + 1
+// The block is located first, over an unmasked document, and the reading starts
+// after it — so a document cannot decide whether its own frontmatter is
+// scanned: a fence delimiter written inside the frontmatter once toggled the
+// mask and switched off the excluded-key scan from inside the very block it
+// exists to read (iss-2608301350533102). A document with no frontmatter block is
+// read from line 0. A block that never closes leaves no body to read, and the
+// never-closed shape is itself refused.
+func floorFences(lines []string, hasBlock bool, closeAt int) (fenced []bool, unclosedAt int, unclosed bool) {
+	start := bodyStart(hasBlock, closeAt, len(lines))
+	fenced = make([]bool, len(lines))
+	body := lines[start:]
+	copy(fenced[start:], mdrecord.FencedUnderEveryRule(body))
+	for _, rule := range []mdrecord.Rule{mdrecord.TopLevel, mdrecord.ListNested} {
+		if at, flag, ok := mdrecord.Read(body, rule).Unclosed(); ok && flag == mdrecord.MaskFence {
+			return fenced, start + at, true
 		}
 	}
-	mask := make([]bool, len(lines))
-	inside := false
-	for i := start; i < len(lines); i++ {
-		if fenceOpenRe.MatchString(lines[i]) {
-			inside = !inside
-			mask[i] = true // the delimiter itself belongs to the block
+	return fenced, 0, false
+}
+
+// bodyStart is the first line after the frontmatter block, the line every body
+// reading starts from. A block that never closes leaves no body to read.
+func bodyStart(hasBlock bool, closeAt, n int) int {
+	switch {
+	case !hasBlock:
+		return 0
+	case closeAt < 0:
+		return n
+	}
+	return closeAt + 1
+}
+
+// htmlBlockStartRe matches a line a renderer may read as the start of an HTML
+// block (CommonMark 4.6): a tag or closing tag, a declaration, a comment, a
+// processing instruction or a CDATA section. Any indent is accepted, because an
+// HTML block also opens at a list item's content indent; reading an indented
+// line as one more candidate is the fail-closed direction.
+var htmlBlockStartRe = regexp.MustCompile(`^[ \t]*(<!--|<\?|<!\[CDATA\[|<![A-Za-z]|</?[A-Za-z])`)
+
+// htmlRawTextRe matches the four elements whose HTML block runs to their own
+// closing tag rather than to a blank line (CommonMark type 1).
+var htmlRawTextRe = regexp.MustCompile(`(?i)^[ \t]*<(script|pre|style|textarea)(\s|>|$)`)
+
+// htmlBlockEnd reports how the HTML block a line opens ends: at the first line
+// holding the returned terminator (from the start of the opening line), or,
+// when the terminator is empty, at the next blank line.
+func htmlBlockEnd(line string) (terminator string, raw bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	if m := htmlRawTextRe.FindStringSubmatch(line); m != nil {
+		return "</" + strings.ToLower(m[1]) + ">", true
+	}
+	switch {
+	case strings.HasPrefix(trimmed, "<!--"):
+		return "-->", false
+	case strings.HasPrefix(trimmed, "<?"):
+		return "?>", false
+	case strings.HasPrefix(trimmed, "<![CDATA["):
+		return "]]>", false
+	case strings.HasPrefix(trimmed, "<!"):
+		return ">", false
+	}
+	return "", false
+}
+
+// fenceInHTMLBlock reports the first fence opener, under either exported
+// mdrecord rule, that sits inside an HTML block — the block a renderer reads as
+// raw HTML up to its end condition, delimiter and all. The fences are
+// mdrecord's; what this adds is only where an HTML block ends, which no fence
+// reader models. A line every mdrecord reading agrees is code updates nothing,
+// and every other line may open or end a block, which is the fail-closed
+// direction: a line one reading calls code and another calls live can still
+// open a block that swallows the next opener.
+func fenceInHTMLBlock(lines []string, start int) (int, bool) {
+	if start >= len(lines) {
+		return 0, false
+	}
+	body := lines[start:]
+	opener := make([]bool, len(body))
+	for _, rule := range []mdrecord.Rule{mdrecord.TopLevel, mdrecord.ListNested} {
+		for _, sp := range mdrecord.Read(body, rule).Fences {
+			opener[sp.Start] = true
+		}
+	}
+	code := mdrecord.FencedUnderEveryRule(body)
+	open, terminator, raw := false, "", false
+	for i, rawLine := range body {
+		ln := strings.TrimRight(rawLine, "\r")
+		if opener[i] && open {
+			return start + i, true
+		}
+		if code[i] {
 			continue
 		}
-		mask[i] = inside
+		switch {
+		case open && terminator == "":
+			open = strings.TrimSpace(ln) != ""
+		case open:
+			hay := ln
+			if raw {
+				hay = strings.ToLower(ln)
+			}
+			open = !strings.Contains(hay, terminator)
+		case htmlBlockStartRe.MatchString(ln):
+			terminator, raw = htmlBlockEnd(ln)
+			hay := strings.TrimLeft(ln, " \t")
+			if raw {
+				hay = strings.ToLower(hay)
+			}
+			// A block whose end condition is met on its own opening line ends
+			// there: `<!-- note -->` hides nothing below it. The search starts
+			// past the `<` and the character after it, which no terminator
+			// can share.
+			open = terminator == "" || !strings.Contains(hay[min(len(hay), 2):], terminator)
+		}
 	}
-	return mask
+	return 0, false
 }
 
 // displacedFrontmatter reports a delimited block that does not open at line 0
@@ -1100,42 +1241,20 @@ func bodyFenceMask(lines []string, hasBlock bool, closeAt int) []bool {
 // closed stays closed. What is refused is exactly the document the two readers
 // disagree about.
 func displacedFrontmatter(lines []string) (int, string, bool) {
-	inComment := false
-	for i, raw := range lines {
-		line := raw
-		if i == 0 {
-			line = frontmatter.TrimBOM(line)
-		}
-		trimmed := strings.TrimSpace(line)
-		if inComment {
-			if idx := strings.Index(trimmed, "-->"); idx >= 0 {
-				inComment = false
-				trimmed = strings.TrimSpace(trimmed[idx+len("-->"):])
-			} else {
-				continue
-			}
-		}
-		for strings.HasPrefix(trimmed, "<!--") {
-			idx := strings.Index(trimmed, "-->")
-			if idx < 0 {
-				inComment = true
-				trimmed = ""
-				break
-			}
-			trimmed = strings.TrimSpace(trimmed[idx+len("-->"):])
-		}
-		if trimmed == "" {
-			continue
-		}
-		if i == 0 || !strings.HasPrefix(trimmed, "---") {
-			// Either the block opens where this package already reads it, or the
-			// document's first content is not a delimiter and there is nothing
-			// here two readers can disagree about.
-			return 0, "", false
-		}
-		return i + 1, fmt.Sprintf("a frontmatter block displaced from line 0 by %d line(s)", i), true
+	// The comments are mdrecord's to locate (iss-2609251518418878). Content
+	// after a comment's closer on the same line is content, so a delimiter
+	// there is judged like one standing alone.
+	i, col := mdrecord.FirstContent(lines)
+	if i >= len(lines) {
+		return 0, "", false
 	}
-	return 0, "", false
+	if i == 0 || !strings.HasPrefix(strings.TrimSpace(lines[i][col:]), "---") {
+		// Either the block opens where this package already reads it, or the
+		// document's first content is not a delimiter and there is nothing
+		// here two readers can disagree about.
+		return 0, "", false
+	}
+	return i + 1, fmt.Sprintf("a frontmatter block displaced from line 0 by %d line(s)", i), true
 }
 
 // unboundedRawHeading reports a raw heading opener whose title reaches the end

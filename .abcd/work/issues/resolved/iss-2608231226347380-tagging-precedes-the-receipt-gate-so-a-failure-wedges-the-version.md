@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "v0.6.2 release failure post-mortem 2026-08-23"
 found_at: ".github/workflows/auto-release.yml"
+resolution: "The tag is made by release.yml's own tag job, which needs verify and runs only on auto-release's fresh-tag path (create_tag). Order is detect -> verify -> tag -> build -> publish, in the committed workflows and both scaffold profiles; TestTheTagWaitsOnTheVerifyGate pins it. Also answers the duplicate iss-2609100513521322's first acceptance; its hand-pushed-tag heal loop and git-revert trailer points are not addressed here."
+impact: fix
+resolved_by:
+  commit: "9092a7b036cf1a2d64101c9f4ae7b9f0f617b754"
 ---
 
 `auto-release.yml` runs `detect` -> `tag` -> `release`, and the semantic
@@ -40,3 +44,7 @@ the heal path safe. Related: iss-2608231226342272 (the preview is silent about
 this gate) and iss-2608231226274000 (the surface never documents the step).
 
 **Decision (adr-52, accepted 2026-08-28): arm the receipt gate in `verify`.** Partially implemented: the gate now runs in `verify` (refusing before build/publish) and the content-commit derivation is receipts-dir based (iss-355). RESIDUAL: the auto-release path's `tag` job still pushes the tag before invoking `release.yml`/`verify`, so to fully stop a version being consumed the `tag` job must also be gated on the semantic verify. That is a maintainer-verified release-workflow change (CI cannot exercise it outside a real release); this record stays open for it.
+
+## Grounds
+
+- pursued: a refused verify (deterministic or semantic) on the auto-release path leaves no tag; shown wrong by any auto-release run that pushes a tag while its release.yml verify job is red, or by a workflow edit that lets the tag job run without verify success
