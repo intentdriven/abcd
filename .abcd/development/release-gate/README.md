@@ -104,7 +104,14 @@ tip, iss-355). The entry must also belong to THIS release: the commit it names
 carries the released tree's own newest dated CHANGELOG version, or the derivation
 fails closed — the nearest entry on a release that recorded no receipts of its
 own is the previous release's, whose valid receipts would otherwise admit it
-unreviewed (iss-2609251755386183). `subject.digest.gitCommit` therefore still
+unreviewed (iss-2609251755386183). Entries carrying another version are passed
+over before the nearest is taken, so a co-batched pull request's own sha-keyed
+entry cannot tie with or shadow the roll's (iss-2609251939460232), and an entry
+must be named by the full sha (iss-2609251939466588). The released tree's newest
+release heading is read strictly: a pre-release or undated head, or a tree that
+names no dated release, refuses, because there is no version to bind the receipts
+to (iss-2609251939468296, iss-2609251939461459) — which is why the rehearsal
+rolls a plain `## [0.0.0]` heading. `subject.digest.gitCommit` therefore still
 matches the armed commit exactly and the gate stays strict. (Before this, the gate armed with the tagged merge commit, whose
 tree can never hold a receipt naming itself — an unsatisfiable self-reference.
 Dormant while the repo was private, it surfaced at the first public release and

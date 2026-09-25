@@ -766,6 +766,13 @@ real release — it arms the full gate against a simulated changelog roll and
 reviewed-content commit, proves the gate admits, and publishes nothing (no tag,
 Release, or attestation).
 
+abcd's own tests audit every workflow profile it renders for duplicate keys and
+template injection. That audit is not a full zizmor stand-in for the bare
+profile a managed repo receives: action pinning, job permissions and credential
+handling are not checked there. Only abcd's own workflows run under zizmor in
+its CI. The scaffolded runbook says so. Tell the operator to run their workflow
+auditor over the written files.
+
 It is idempotent and fail-safe. Exit codes gate the flow:
 
 - **0** — every file written, or already current (a no-op re-run). Report the

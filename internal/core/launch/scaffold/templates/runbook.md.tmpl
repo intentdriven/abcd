@@ -51,6 +51,15 @@ release roll's merge. Add a CI workflow for pull requests, require its checks on
 them here and in `release.yml`.
 <%- end %>
 
+## Workflow audit — what abcd checked, and what it did not
+
+abcd audits the workflows it writes for two finding classes: duplicate keys,
+and template injection (no `${{ }}` expression inside a run script, and none
+anywhere that a pull request can write). That is not a full zizmor audit.
+Action pinning, job permissions and credential handling are not checked here.
+Run zizmor, or the workflow auditor this repository already uses, over
+`.github/workflows/` after every scaffold.
+
 <% end -%>
 ## Deterministic gates (CI-enforced)
 
