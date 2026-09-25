@@ -505,3 +505,35 @@ func TestRouteSettingValuesKeepTheirJSONType(t *testing.T) {
 		t.Fatalf("settings %s, want %s", dump(routes[0].Row.Settings), dump(want))
 	}
 }
+
+// TestBoardMarksTheWinnerPerAgent is the board's core half of AC 6: one row
+// per agent in the roster, every layer that holds a row listed highest first,
+// and the winner named. Nothing accepted gives no rows.
+func TestBoardMarksTheWinnerPerAgent(t *testing.T) {
+	empty := newFx(t).load()
+	if rows, err := empty.Board(); err != nil || rows != nil {
+		t.Fatalf("nothing accepted: rows %v, %v", rows, err)
+	}
+	f := newFx(t)
+	f.repo(`{"scribe":{"tier":"frontier"}}`)
+	f.machine(`{"scribe":{"tier":"local"}}`)
+	rows, err := f.load().Board()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(Roster()) {
+		t.Fatalf("%d rows, want one per agent (%d)", len(rows), len(Roster()))
+	}
+	for _, r := range rows {
+		switch r.Agent {
+		case "scribe":
+			if r.Winner != "repo" || len(r.Layers) != 3 || r.Layers[1].Tier != Local || r.Layers[2].Layer != "bundled" {
+				t.Fatalf("scribe = %+v", r)
+			}
+		case "intent-auditor":
+			if r.Winner != "bundled" || len(r.Layers) != 1 || r.Layers[0].Tier != Frontier {
+				t.Fatalf("intent-auditor = %+v", r)
+			}
+		}
+	}
+}

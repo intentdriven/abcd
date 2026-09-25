@@ -20,10 +20,11 @@
 //
 // Staged, loudly (the loud-staging rule): spc-2609180535002478 part 1 lands the
 // types, the proposal and its roster test, the store readers, the --route
-// parser and Resolve. The --route flag on the delegating verbs, the
-// request-block and receipt fields, the ahoy consent step and the board lines
-// are the spec's steps 3 to 6, listed in the spec's Progress note; no verb
-// calls this package until they land.
+// parser, Resolve and the bare board's oracle lines, which are this package's
+// one caller. The --route flag on the delegating verbs, the request-block and
+// receipt fields and the ahoy consent step are the spec's steps 3 to 5, listed
+// in the spec's Progress note; until they land no delegating verb resolves a
+// route, and every step runs through the harness as before.
 package oracle
 
 import (
