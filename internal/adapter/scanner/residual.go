@@ -106,15 +106,43 @@ func homeStandsAsPath(text string, at, end int) bool {
 }
 
 // homeSweepable is homeStandsAsPath with the leading half of the anchor
-// waived inside a URL span: behind a URL host the byte before the home is the
-// host's last letter, which is a path-segment byte, yet the path IS the
-// caller's home ("https://ci.example.com/Users/me/build.log"). The trailing abcd-audit:allow
-// half still holds there, so a longer name behind a host is not swept either.
+// waived where the home is a URL's PATH ROOT: behind a URL host the byte
+// before the home is the host's last letter, which is a path-segment byte, yet
+// the path IS the caller's home ("https://ci.example.com/Users/me/build.log"). abcd-audit:allow
+// The trailing half still holds there, so a longer name behind a host is not
+// swept either. Deeper in a URL's path the ordinary anchor applies: the
+// waiver used to hold anywhere inside the span, so under HOME=/root a
+// "/root" segment anywhere in a URL path ("git@github.com:acme/root/tool.git",
+// a module path ending in /root) was rewritten and hard-failed as the
+// caller's home (iss-2608292005445725). A home of two or more segments is
+// unaffected, since homeStandsAsPath never asks its leading anchor.
 func homeSweepable(text string, at, end int, urls []span) bool {
-	if inAnySpan(at, urls) {
+	if atURLPathRoot(text, at, urls) {
 		return !nameContinues(text, end)
 	}
 	return homeStandsAsPath(text, at, end)
+}
+
+// atURLPathRoot reports whether offset at is the first byte of the path of a
+// URL span on text: the first '/' after "scheme://" and the authority, or the
+// byte after the ':' of an scp-style "git@host:" remote.
+func atURLPathRoot(text string, at int, urls []span) bool {
+	for _, s := range urls {
+		if at < s.start || at >= s.end {
+			continue
+		}
+		u := text[s.start:s.end]
+		if i := strings.Index(u, "://"); i >= 0 {
+			p := strings.IndexByte(u[i+3:], '/')
+			return p >= 0 && s.start+i+3+p == at
+		}
+		if strings.HasPrefix(u, "git@") {
+			c := strings.IndexByte(u, ':')
+			return c >= 0 && s.start+c+1 == at
+		}
+		return false
+	}
+	return false
 }
 
 // nameContinues is the ONE rule the home-path anchor uses for "the name goes
