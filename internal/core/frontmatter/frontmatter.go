@@ -27,6 +27,11 @@ var keyRe = regexp.MustCompile(`^([A-Za-z0-9_]+)[ \t]*:(.*)$`)
 type Field struct {
 	Value string
 	Line  int
+	// SpacedKey is true when whitespace sits between the key and its colon
+	// (`held :`). The key is normalised either way and every reader honours it;
+	// the raw spelling is exposed for the rules that judge a command-written key
+	// against the one spelling the command writes (iss-2609210748122003).
+	SpacedKey bool
 }
 
 // IsDelimiter reports whether a line is a frontmatter `---` delimiter.
@@ -96,7 +101,8 @@ func Fields(lines []string) map[string]Field {
 		}
 		key := m[1]
 		if _, exists := fields[key]; !exists {
-			fields[key] = Field{Value: strings.TrimSpace(StripComment(m[2])), Line: i + 1}
+			fields[key] = Field{Value: strings.TrimSpace(StripComment(m[2])), Line: i + 1,
+				SpacedKey: line[len(key)] != ':'}
 		}
 	}
 	// Contract: the block is delimited by the first TWO `---` lines. Without a

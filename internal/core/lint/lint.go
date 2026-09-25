@@ -2692,6 +2692,8 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 type fmField struct {
 	value string
 	line  int
+	// spaced is frontmatter.Field.SpacedKey: whitespace before the colon.
+	spaced bool
 }
 
 // frontmatterFields returns the top-level keys of the leading YAML frontmatter
@@ -2714,7 +2716,7 @@ func frontmatterFields(lines []string) map[string]fmField {
 		lines = lines[start:]
 	}
 	for key, f := range frontmatter.Fields(lines) {
-		fields[key] = fmField{value: f.Value, line: f.Line + offset}
+		fields[key] = fmField{value: f.Value, line: f.Line + offset, spaced: f.SpacedKey}
 	}
 	return fields
 }
