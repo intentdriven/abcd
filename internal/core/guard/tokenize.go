@@ -1953,24 +1953,56 @@ func heredocBlockSignal() payloadSignal {
 // the line as unchecked "body" text would swallow real commands with no
 // signal; the caller flags the opening command so Check fails CLOSED on it,
 // never an error, which the hook would turn into a fail-open.
+//
+// A body line is the LOGICAL line bash compares with the delimiter. In a body
+// whose delimiter is unquoted, bash reads each line with its backslash-newline
+// splice on (read_secondary_line with remove_quoted_newline): a physical line
+// ending in an ODD number of backslashes loses its last backslash and the
+// newline, and joins the next physical line before the compare, so `x\` then
+// `EOF` is the one body line `xEOF` and the body goes on (review5-guard
+// finding 1). An even count ends in an escaped backslash and joins nothing,
+// and a quoted delimiter's body is literal, so it never joins. The joined text
+// is also what bash expands, which rebuilds a `$\`-newline-`(` into `$(`. A
+// `<<-` body loses the leading tabs of the logical line only, as bash strips
+// them after the join. Ending the body at the first physical line instead was
+// not an over-read: what followed was read as COMMAND text, where a quote or a
+// `#` hid a substitution the body runs, and that is an under-read.
 func skipHeredocBodies(line string, pos int, pending []heredoc, collect bool) (int, []string, bool) {
 	var expanded []string
+	var joined []byte
 	for _, hd := range pending {
 		found := false
 		var body strings.Builder
 		for pos < len(line) {
-			end := pos
-			for end < len(line) && line[end] != '\n' {
-				end++
+			text, spliced := "", false
+			joined = joined[:0]
+			for {
+				end := pos
+				for end < len(line) && line[end] != '\n' {
+					end++
+				}
+				physical := line[pos:end]
+				more := end < len(line)
+				if more {
+					pos = end + 1
+				} else {
+					pos = end
+				}
+				if !hd.quoted && more && oddTrailingBackslashes(physical) {
+					joined = append(joined, physical[:len(physical)-1]...)
+					spliced = true
+					continue
+				}
+				if spliced {
+					joined = append(joined, physical...)
+					text = string(joined)
+				} else {
+					text = physical
+				}
+				break
 			}
-			text := line[pos:end]
 			if hd.stripTabs {
 				text = strings.TrimLeft(text, "\t")
-			}
-			if end < len(line) {
-				pos = end + 1
-			} else {
-				pos = end
 			}
 			if text == hd.delim {
 				found = true
@@ -1989,4 +2021,15 @@ func skipHeredocBodies(line string, pos int, pending []heredoc, collect bool) (i
 		}
 	}
 	return pos, expanded, true
+}
+
+// oddTrailingBackslashes reports whether text ends in an odd number of
+// backslashes: its last backslash is unescaped, so before a newline it is a
+// line continuation.
+func oddTrailingBackslashes(text string) bool {
+	n := 0
+	for i := len(text) - 1; i >= 0 && text[i] == '\\'; i-- {
+		n++
+	}
+	return n%2 == 1
 }

@@ -22,6 +22,21 @@ func TestExpandedHeredocBodyStaysLinear(t *testing.T) {
 		"documents nested in substitutions": func(n int) string {
 			return strings.Repeat("x=$(cat <<EOF\n$(cat <<IN\n$(a)\nIN\n)\nEOF\n)\n", n)
 		},
+		// review5-guard finding 1: a body line ending in an odd number of
+		// backslashes joins the next, so one logical line can span the whole
+		// body; the join copies each byte once.
+		"one body line joined across every physical line": func(n int) string {
+			return "cat <<EOF\n" + strings.Repeat("$(a) x\\\n", n) + "\nEOF"
+		},
+		"lone backslash lines": func(n int) string {
+			return "cat <<EOF\n" + strings.Repeat("\\\n", n) + "x\nEOF"
+		},
+		"backslash runs, odd and even": func(n int) string {
+			return "cat <<-EOF\n" + strings.Repeat("\t\\\\\\\n\t\\\\\n", n) + "\tEOF"
+		},
+		"joined lines in a closing scan": func(n int) string {
+			return "x=$(cat <<EOF\n" + strings.Repeat("y\\\n", n) + "\nEOF\n)"
+		},
 	}
 	for name, build := range shapes {
 		build := build
@@ -100,4 +115,44 @@ func TestEverydayHeredocsAllow(t *testing.T) {
 		cases = append(cases, verdictCase{cmd, VerdictAllow, ""})
 	}
 	runVerdictCases(t, cases)
+}
+
+// TestUnquotedHeredocBodyJoinsBackslashNewline — review5-guard finding 1. In a
+// body whose delimiter is unquoted, bash joins a line ending in an ODD number
+// of backslashes with the next line BEFORE it compares the line with the
+// delimiter, so `x\` then `EOF` is one body line, `xEOF`, and the body goes
+// on. Ending the body there read what follows as command text, where a quote
+// or a `#` hides a substitution the body runs. An even count escapes the last
+// backslash and does not join; a quoted delimiter's body is literal and never
+// joins.
+func TestUnquotedHeredocBodyJoinsBackslashNewline(t *testing.T) {
+	const push = "git push --force origin main"
+	runVerdictCases(t, []verdictCase{
+		{"cat <<EOF\nx\\\nEOF\n'$(" + push + ")'\nEOF", VerdictBlock, "git-push-force"},
+		{"cat <<EOF\nx\\\nEOF\n# $(" + push + ")\nEOF", VerdictBlock, "git-push-force"},
+		{"cat <<-EOF\n\tx\\\n\tEOF\n\t'$(" + push + ")'\n\tEOF", VerdictBlock, "git-push-force"},
+		{"cat <<EOF\nx\\\\\\\nEOF\n'$(" + push + ")'\nEOF", VerdictBlock, "git-push-force"},
+		{"cat <<EOF\nx\\\ny\\\nEOF\n# $(" + push + ")\nEOF", VerdictBlock, "git-push-force"},
+		{"cat <<EOF && echo ok\nx\\\nEOF\n'$(" + push + ")'\nEOF", VerdictBlock, "git-push-force"},
+		{"x=$(cat <<EOF\nx\\\nEOF\n'$(" + push + ")'\nEOF\n)", VerdictBlock, "git-push-force"},
+		// The join also rebuilds a substitution split across the newline.
+		{"cat <<EOF\n$\\\n(" + push + ")\nEOF", VerdictBlock, "git-push-force"},
+		// A body whose last line joins into the end of the input never met
+		// its delimiter.
+		{"cat <<EOF\nx\\\nEOF", VerdictBlock, heredocEntryID},
+
+		// Two backslashes escape each other: no join, the body ends at the
+		// delimiter, and what follows is a command.
+		{"cat <<EOF\nx\\\\\nEOF\n" + push + "\nEOF", VerdictBlock, "git-push-force"},
+		// A lone backslash joins INTO the delimiter: the logical line is the
+		// delimiter, and a `<<-` body strips the joined line's leading tabs.
+		{"cat <<EOF\n\\\nEOF\n" + push + "\nEOF", VerdictBlock, "git-push-force"},
+		{"cat <<-EOF\n\t\t\\\n\tEOF\n" + push + "\nEOF", VerdictBlock, "git-push-force"},
+		// A quoted delimiter's body is literal: no join.
+		{"cat <<'EOF'\nx\\\nEOF\n" + push + "\nEOF", VerdictBlock, "git-push-force"},
+		{"cat <<\\EOF\nx\\\nEOF\n" + push + "\nEOF", VerdictBlock, "git-push-force"},
+		// The joined text is data.
+		{"cat <<EOF\nx\\\nEOF\n" + push + "\nEOF", VerdictAllow, ""},
+		{"cat <<'EOF'\nx\\\nEOF\n'$(" + push + ")'", VerdictAllow, ""},
+	})
 }
