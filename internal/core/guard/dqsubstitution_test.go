@@ -1,6 +1,9 @@
 package guard
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestDoubleQuotedSubstitutionIsFollowed — iss-2609251144159533. A command
 // substitution inside double quotes runs exactly as an unquoted one does, and
@@ -42,15 +45,20 @@ func TestDoubleQuotedSubstitutionIsFollowed(t *testing.T) {
 
 // TestDoubleQuotedSubstitutionKeepsTheWord pins the tokenizer shape: the inner
 // command is emitted first, in the enclosing command's chain, and the quoted
-// word stays one argument of the enclosing command, its text unchanged. An unterminated
-// substitution inside the quotes is left as the literal text it was.
+// word stays one argument of the enclosing command, its text unchanged. Its
+// vanish reading follows directly after it, in the same chain, with the
+// substitution removed from the word and the word itself kept, since a quoted
+// substitution always leaves one (iss-2609251640353993). An unterminated
+// substitution inside the quotes is left as the literal text it was, and has
+// no shadow.
 func TestDoubleQuotedSubstitutionKeepsTheWord(t *testing.T) {
 	cases := []struct {
 		line string
 		want []string
 	}{
-		{`git commit -m "at $(date) ok"`, []string{"0:date", "0:git|commit|-m|at $(date) ok"}},
-		{`echo "$(a)" b`, []string{"0:a", "0:echo|$(a)|b"}},
+		{`git commit -m "at $(date) ok"`, []string{"0:date", "0:git|commit|-m|at $(date) ok", "0:git|commit|-m|at  ok"}},
+		{`echo "$(a)" b`, []string{"0:a", "0:echo|$(a)|b", "0:echo||b"}},
+		{"cd s && rm \"$(a)\"-rf x\necho \"`b`\"", []string{"0:cd|s", "0:a", "0:rm|$(a)-rf|x", "0:rm|-rf|x", "1:b", "1:echo|`b`", "1:echo|"}},
 		{`echo "$(unterminated"`, []string{"0:echo|$(unterminated"}},
 	}
 	for _, tc := range cases {
@@ -69,5 +77,92 @@ func TestDoubleQuotedSubstitutionKeepsTheWord(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// TestFollowedQuotedSubstitutionGluesNoText — review-guard finding 1. bash
+// joins a double-quoted substitution's output onto the text beside it in the
+// same word, and an empty output leaves exactly that text: a flag glued after,
+// or split around, an empty quoted substitution is the flag. The quoted word
+// kept the substitution's literal text instead, so the flag compare saw
+// `$(true)--force` and every blocker allowed, while the unquoted twin and an
+// empty single-quoted pair blocked. The vanish reading the unquoted branch
+// takes is now taken here too, in a shadow reading beside the literal one.
+func TestFollowedQuotedSubstitutionGluesNoText(t *testing.T) {
+	cases := []struct {
+		cmd   string
+		want  Verdict
+		entry string
+	}{
+		{`git push "$(true)"--force origin main`, VerdictBlock, "git-push-force"},
+		{`git push --for"$(:)"ce origin main`, VerdictBlock, "git-push-force"},
+		{`git push "$(true)"-f`, VerdictBlock, "git-push-force"},
+		{`git push "$(true)--force" origin main`, VerdictBlock, "git-push-force"},
+		{"git push \"`true`\"--force origin main", VerdictBlock, "git-push-force"},
+		{`gh repo "$(true)"delete o/r`, VerdictBlock, "gh-repo-delete"},
+		{`cd s && rm "$(true)"-rf *`, VerdictBlock, "rm-rf-after-cd-chain"},
+		{`git commit -m x "$(true)"--no-verify`, VerdictBlock, "git-commit-no-verify"},
+		{`git push origin "$(true)"+main:main`, VerdictBlock, "git-push-force-refspec"},
+		{`sh -c "echo $(date); git push --force origin main"`, VerdictBlock, "git-push-force"},
+		{`sh -c "$(echo hi)"`, VerdictWarn, syntheticEntryID},
+
+		{`git commit -m "at $(date) ok"`, VerdictAllow, ""},
+		{`echo "$(date)"--force`, VerdictAllow, ""},
+		{`git push origin "$(git branch --show-current)"`, VerdictAllow, ""},
+		{`git push origin "$(git branch --show-current)":main`, VerdictAllow, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.cmd, func(t *testing.T) {
+			d := verdictOf(t, tc.cmd)
+			if d.Verdict != tc.want || (tc.entry != "" && d.EntryID != tc.entry) {
+				t.Errorf("verdict = %q via %q, want %q via %q", d.Verdict, d.EntryID, tc.want, tc.entry)
+			}
+		})
+	}
+}
+
+// TestQuotedSubstitutionShadowStaysLinear pins the cost of the second pass
+// shadowSegments takes: each double-quote level reads its own text twice at
+// most, so a line of many quoted substitutions, each nested to the depth
+// budget, still costs work linear in its length.
+func TestQuotedSubstitutionShadowStaysLinear(t *testing.T) {
+	build := func(n int) string {
+		return strings.Repeat(`x "$(a)"b `+nestQuoted("y", maxQuotedSubstitutionDepth)+"; ", n)
+	}
+	assertWorkGrowth(t, build, 1<<9, "the shadow pass reads each quoted level's text once more, never once per substitution")
+}
+
+// nestQuoted wraps inner in n levels of `echo "$( … )"`.
+func nestQuoted(inner string, n int) string {
+	return strings.Repeat(`echo "$(`, n) + inner + strings.Repeat(`)"`, n)
+}
+
+// TestQuotedSubstitutionPastTheDepthFailsClosed — review-guard finding 2.
+// Past maxQuotedSubstitutionDepth the tokenizer stops following substitutions
+// nested inside double quotes, and the text it stopped at was left literal:
+// nine nested levels around a force push allowed while eight blocked, and bash
+// runs the innermost command either way. What the guard stops reading is now a
+// fail-closed block under a reserved id, the brace-group and here-document
+// precedent; within the depth nothing changes.
+func TestQuotedSubstitutionPastTheDepthFailsClosed(t *testing.T) {
+	hazard := `git push --force origin main`
+	for _, n := range []int{maxQuotedSubstitutionDepth + 1, maxQuotedSubstitutionDepth + 4} {
+		d := verdictOf(t, nestQuoted(hazard, n))
+		if d.Verdict != VerdictBlock {
+			t.Errorf("%d nested levels around a force push: verdict %q via %q, want block", n, d.Verdict, d.EntryID)
+		}
+		d = verdictOf(t, nestQuoted("echo hi", n))
+		if d.Verdict != VerdictBlock || d.EntryID != substitutionEntryID {
+			t.Errorf("%d nested levels: verdict %q via %q, want the fail-closed block via %q", n, d.Verdict, d.EntryID, substitutionEntryID)
+		}
+	}
+	if d := verdictOf(t, nestQuoted(hazard, maxQuotedSubstitutionDepth)); d.Verdict != VerdictBlock || d.EntryID != "git-push-force" {
+		t.Errorf("at the depth: verdict %q via %q, want block via git-push-force", d.Verdict, d.EntryID)
+	}
+	if d := verdictOf(t, nestQuoted("echo hi", maxQuotedSubstitutionDepth)); d.Verdict != VerdictAllow {
+		t.Errorf("a harmless nest within the depth: verdict %q via %q, want allow", d.Verdict, d.EntryID)
+	}
+	if _, isEntry := Defaults().Entries[substitutionEntryID]; isEntry {
+		t.Errorf("the reserved id %q must never be a registry entry", substitutionEntryID)
 	}
 }

@@ -31,6 +31,21 @@ type segment struct {
 	// classifier misread has swallowed every later command. Check turns the
 	// flag into a fail-closed block, the braceGroup precedent.
 	heredocUnterminated bool
+	// substitutionUnread records a command substitution the tokenizer did not
+	// read: one nested inside double quotes past maxQuotedSubstitutionDepth, or
+	// one whose own text does not tokenize. bash runs its command all the same,
+	// so Check turns the flag into a fail-closed block, the braceGroup
+	// precedent. It rides on an empty segment of its own, the way an
+	// unterminated here-document with no command to hang on does.
+	substitutionUnread bool
+	// subWords records, in ascending order, the token indexes at which an
+	// unquoted command substitution stood as a word of its own. The vanish
+	// reading drops such a word — right at a flag or subcommand position, where
+	// an empty output leaves nothing — but bash hands the command whatever the
+	// substitution prints, so an operand COUNT reads each one back as an operand
+	// of unknown text (substitutedOperandCount). An index equal to len(tokens)
+	// is a substitution after the last token. nil in nearly every segment.
+	subWords []int
 	// globbed is parallel to tokens and records, per token, that it carried an
 	// UNQUOTED, unescaped `*`, `?` or `[` — a word bash expands against the
 	// working directory before the command runs, so the bytes here are a
@@ -45,6 +60,19 @@ type segment struct {
 // globAt reports whether token i carried an unquoted glob metacharacter.
 func (s segment) globAt(i int) bool {
 	return i >= 0 && i < len(s.globbed) && s.globbed[i]
+}
+
+// subWordSlice returns the subWords record for tokens[lo:hi], re-based on lo,
+// or nil when no substituted word stands in the range — what a sub-segment
+// built from a token window (Tier 2) carries forward beside globSlice.
+func (s segment) subWordSlice(lo, hi int) []int {
+	var out []int
+	for _, w := range s.subWords {
+		if w >= lo && w <= hi {
+			out = append(out, w-lo)
+		}
+	}
+	return out
 }
 
 // globSlice returns the globbed record for tokens[lo:hi], or nil when nothing in
@@ -82,26 +110,42 @@ func (s segment) globSlice(lo, hi int) []bool {
 // (payload.go), never in this splitter — so a hazard hidden there is matched
 // (iss-200), while an uninspectable payload takes the family's posture.
 func tokenize(line string) ([]segment, error) {
-	return tokenizeAt(line, 0)
+	return tokenizeAt(line, 0, false)
 }
 
 // maxQuotedSubstitutionDepth bounds how deeply substitutions nested inside
 // double quotes are followed. Each level re-tokenizes its own text, so the
-// bound keeps the cost linear in the line; a substitution nested deeper is left
-// as the literal text it was, the reading every depth had before
-// iss-2609251144159533.
+// bound keeps the cost linear in the line. A substitution nested deeper is not
+// read, and its command runs all the same, so reaching one raises the
+// fail-closed substitutionUnread flag (iss-2609251640353405).
 const maxQuotedSubstitutionDepth = 8
 
-// tokenizeAt is tokenize at a double-quoted substitution depth.
-func tokenizeAt(line string, depth int) ([]segment, error) {
+// tokenizeAt is tokenize at a double-quoted substitution depth. shadow marks
+// the second pass that reads a line with its followed double-quoted
+// substitutions removed (shadowSegments): that pass follows no substitution
+// inside double quotes and raises no flag for one, because the first pass
+// already has.
+func tokenizeAt(line string, depth int, shadow bool) ([]segment, error) {
 	tally(len(line))
 	var (
-		segs    []segment
-		toks    []string
-		cur     []byte
-		hasCur  bool
-		chain   int
-		pending []heredoc
+		segs []segment
+		// dqSpans are the [start, end) offsets of every double-quoted
+		// substitution this call followed, and extra marks the segments the
+		// double-quote branch added that are not this line's own commands (a
+		// substitution's inner commands, an unread-substitution flag). Both
+		// feed shadowSegments.
+		dqSpans [][2]int
+		extra   []bool
+		// curSub records that a command substitution closed inside the word
+		// being built; when the word ends with no text of its own, the
+		// substitution stood as a word by itself and subWords records where.
+		curSub   bool
+		subWords []int
+		toks     []string
+		cur      []byte
+		hasCur   bool
+		chain    int
+		pending  []heredoc
 		// braceGroup rides with the segment being built: an unquoted brace group
 		// anywhere in it makes the whole command unexpandable, so the flag is
 		// raised once and lands on the segment flushSegment emits.
@@ -178,8 +222,16 @@ func tokenizeAt(line string, depth int) ([]segment, error) {
 	}
 	flushToken := func() {
 		if !hasCur {
+			// A command substitution that closed with no text beside it stood
+			// as a word of its own: recorded where it stood, so an operand
+			// count can read it back (iss-2609251640353017).
+			if curSub {
+				subWords = append(subWords, len(toks))
+				curSub = false
+			}
 			return
 		}
+		curSub = false
 		// A word holding a brace group is expanded into the words bash would
 		// produce, each checked as an argument in its own right
 		// (iss-2608282026038930). An assignment in assignment position is the one
@@ -203,11 +255,22 @@ func tokenizeAt(line string, depth int) ([]segment, error) {
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
-			segs = append(segs, segment{tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs)})
+			segs = append(segs, segment{tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs), subWords: subWords})
 			toks = nil
 			globs = nil
 			braceGroup = false
 		}
+		subWords = nil
+	}
+	// addExtra appends a segment the double-quote branch produced that is not
+	// one of this line's own commands, and marks it so shadowSegments pairs the
+	// line's commands with their shadows past it.
+	addExtra := func(s segment) {
+		for len(extra) < len(segs) {
+			extra = append(extra, false)
+		}
+		segs = append(segs, s)
+		extra = append(extra, true)
 	}
 	// openSubstitution suspends the command being built when a command or
 	// process substitution opens inside it. The substitution's own command is
@@ -219,23 +282,30 @@ func tokenizeAt(line string, depth int) ([]segment, error) {
 		saved := &enclosing{
 			toks: toks, globs: globs, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
+			curSub: curSub, subWords: subWords,
 		}
 		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, false, false, false, false
+		curSub, subWords = false, nil
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
 	// closeSubstitution resumes a suspended enclosing command. What the
 	// substitution contributes to the word it sat in is unknowable here, so a
 	// command substitution contributes nothing — the reading under which an
 	// unquoted one that expands to nothing (`$(true)`) leaves no word at all,
-	// and a leading-position substitution never becomes argv[0]. A process
-	// substitution always contributes exactly one word, the /dev/fd path the
-	// shell hands the command, so the operands after it keep their positions.
+	// and a leading-position substitution never becomes argv[0]. One that
+	// stands as a word of its own is still recorded (curSub, subWords), because
+	// an operand count cannot take the vanish reading. A process substitution
+	// always contributes exactly one word, the /dev/fd path the shell hands the
+	// command, so the operands after it keep their positions.
 	closeSubstitution := func(e *enclosing) {
 		flushSegment()
 		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
+		curSub, subWords = e.curSub, e.subWords
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
+		} else {
+			curSub = true
 		}
 		lastList = false
 	}
@@ -283,14 +353,28 @@ func tokenizeAt(line string, depth int) ([]segment, error) {
 			// and double quotes are its idiomatic spelling, so its command is
 			// read as a segment of its own, emitted now because it runs first,
 			// in this command's chain (iss-2609251144159533). The quoted word
-			// keeps the substitution's text, as it always has: an
-			// execute-a-string payload carrying one is uninspectable, and the
-			// payload reading needs to see it there. One
-			// whose end cannot be found stays literal text, and the scan stops
-			// looking for more in this string, which keeps it linear.
-			followSubs := depth < maxQuotedSubstitutionDepth
+			// keeps the substitution's text: an execute-a-string payload
+			// carrying one is uninspectable, and the payload reading needs to
+			// see it there. What bash puts in the word is the substitution's
+			// OUTPUT, though, joined onto the text beside it, so the span is
+			// recorded and shadowSegments reads the line a second time with it
+			// removed — the vanish reading the unquoted branch takes, under
+			// which a flag glued to an empty substitution is the flag
+			// (iss-2609251640353993). One whose end cannot be found stays
+			// literal text, and the scan stops looking for more in this string,
+			// which keeps it linear; that one is a syntax error bash refuses.
+			//
+			// Past the depth budget a substitution is not read, and its command
+			// runs all the same, so it raises the fail-closed flag
+			// (iss-2609251640353405); so does one whose text does not tokenize.
+			followSubs := !shadow
 			for j < len(line) {
 				if followSubs && (line[j] == '`' || (line[j] == '$' && j+1 < len(line) && line[j+1] == '(')) {
+					if depth >= maxQuotedSubstitutionDepth {
+						addExtra(segment{chain: chain, substitutionUnread: true})
+						followSubs = false
+						continue
+					}
 					open, inner := j+2, -1
 					if line[j] == '`' {
 						open = j + 1
@@ -302,12 +386,15 @@ func tokenizeAt(line string, depth int) ([]segment, error) {
 						followSubs = false
 						continue
 					}
-					if isegs, err := tokenizeAt(line[open:inner], depth+1); err == nil {
-						for _, is := range isegs {
-							is.chain = chain
-							segs = append(segs, is)
-						}
+					isegs, err := tokenizeAt(line[open:inner], depth+1, false)
+					if err != nil {
+						isegs = []segment{{substitutionUnread: true}}
 					}
+					for _, is := range isegs {
+						is.chain = chain
+						addExtra(is)
+					}
+					dqSpans = append(dqSpans, [2]int{j, inner + 1})
 					addCur([]byte(line[j:inner+1]), 0)
 					j = inner + 1
 					continue
@@ -654,7 +741,87 @@ func tokenizeAt(line string, depth int) ([]segment, error) {
 	if len(pending) > 0 {
 		markHeredocUnterminated(&segs, chain)
 	}
+	if len(dqSpans) > 0 {
+		return shadowSegments(line, depth, segs, extra, dqSpans), nil
+	}
 	return segs, nil
+}
+
+// shadowSegments adds the vanish reading of every command that carried a
+// followed double-quoted substitution. bash joins the substitution's output
+// onto the text beside it in the same word, and the output is unknowable here,
+// so the reading taken is the one the unquoted branch takes: the substitution
+// contributes nothing, which is exactly the reading under which a flag glued to
+// an empty one (`"$(true)"--force`) is the flag (iss-2609251640353993). The
+// literal reading stays — the execute-a-string family needs to see a
+// substitution in its payload to call it uninspectable — and the vanish
+// reading is added beside it, so it can only ever add a match.
+//
+// The line is read a second time with every followed span removed. Removing
+// text from inside double quotes moves no operator, newline or unquoted
+// substitution, so the second pass holds this line's own commands in the same
+// order, and each shadow that differs is placed directly after the command it
+// shadows, keeping its chain: an `after_cd` entry then reads it where the
+// original stood. Should the two passes ever disagree on the count, every
+// shadow is appended instead, where an `after_cd` entry can only over-read,
+// never miss; and a second pass that cannot tokenize at all raises
+// the fail-closed flag rather than dropping the reading.
+func shadowSegments(line string, depth int, segs []segment, extra []bool, spans [][2]int) []segment {
+	var b strings.Builder
+	b.Grow(len(line))
+	last := 0
+	for _, sp := range spans {
+		b.WriteString(line[last:sp[0]])
+		last = sp[1]
+	}
+	b.WriteString(line[last:])
+	shadow, err := tokenizeAt(b.String(), depth, true)
+	chainOf := func() int {
+		if len(segs) == 0 {
+			return 0
+		}
+		return segs[len(segs)-1].chain
+	}
+	if err != nil {
+		return append(segs, segment{chain: chainOf(), substitutionUnread: true})
+	}
+	isExtra := func(i int) bool { return i < len(extra) && extra[i] }
+	own := 0
+	for i := range segs {
+		if !isExtra(i) {
+			own++
+		}
+	}
+	if own != len(shadow) {
+		return append(segs, shadow...)
+	}
+	out := make([]segment, 0, len(segs)+len(shadow))
+	k := 0
+	for i, s := range segs {
+		out = append(out, s)
+		if isExtra(i) {
+			continue
+		}
+		if sh := shadow[k]; !sameTokens(sh.tokens, s.tokens) {
+			sh.chain = s.chain
+			out = append(out, sh)
+		}
+		k++
+	}
+	return out
+}
+
+// sameTokens reports whether two token lists are identical.
+func sameTokens(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // closingParen returns the index of the `)` that closes a `$(` whose body
@@ -793,6 +960,10 @@ type enclosing struct {
 	// procSub records that the substitution is a process substitution, which
 	// leaves one /dev/fd operand in the word it sat in.
 	procSub bool
+	// curSub and subWords are the enclosing command's own substituted-word
+	// record (tokenizeAt), suspended with the rest of it.
+	curSub   bool
+	subWords []int
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing
@@ -828,6 +999,15 @@ const (
 	heredocEntryID = "heredoc-unterminated"
 
 	familyHeredoc = "here-document"
+
+	// substitutionEntryID is the reserved id a command substitution the guard
+	// stopped reading is reported under: one nested inside double quotes past
+	// maxQuotedSubstitutionDepth, or one whose text does not tokenize. Its
+	// command runs all the same, so the verdict is another the Pattern language
+	// cannot express, and no registry entry may claim the id.
+	substitutionEntryID = "substitution-unread"
+
+	familySubstitution = "command substitution"
 
 	// braceScanBudget bounds the TOTAL look-ahead braceExpansionAt may spend
 	// across one tokenize call. The scan reads forward from every structural
@@ -1312,6 +1492,23 @@ func markHeredocUnterminated(segs *[]segment, chain int) {
 		return
 	}
 	*segs = append(*segs, segment{chain: chain, heredocUnterminated: true})
+}
+
+// substitutionBlockSignal is the fail-closed verdict for a command substitution
+// the tokenizer did not read. It is a BLOCK rather than a warn because the
+// substitution's command runs before the command around it, whatever it is,
+// and the guard has not seen it.
+func substitutionBlockSignal() payloadSignal {
+	return payloadSignal{
+		id:      substitutionEntryID,
+		verdict: VerdictBlock,
+		family:  familySubstitution,
+		reason: "This command nests command substitutions inside double quotes deeper than the guard reads (" +
+			strconv.Itoa(maxQuotedSubstitutionDepth) + " levels), or carries one whose text it cannot split, " +
+			"so a command that runs first is one it has not checked.",
+		successor: "Run the inner command on its own and keep its output in a variable, " +
+			"so each command the shell runs is one the guard checks.",
+	}
 }
 
 // heredocBlockSignal is the fail-closed verdict for a here-document whose

@@ -425,6 +425,14 @@ func (r Registry) Check(command string) (Decision, error) {
 			break
 		}
 	}
+	// And a command substitution the tokenizer stopped reading: past the
+	// double-quote depth, or one whose text did not split (iss-2609251640353405).
+	for _, s := range segs {
+		if s.substitutionUnread {
+			signals = append(signals, substitutionBlockSignal())
+			break
+		}
+	}
 
 	ids := make([]string, 0, len(r.Entries))
 	for id := range r.Entries {

@@ -105,7 +105,7 @@ type speculationBudget struct {
 // claiming one would be indexed out of Registry.Entries by a synthetic winner
 // (yielding a blank message), and would let a repo dress an ordinary entry up as
 // the guard's own verdict.
-var reservedEntryIDs = []string{syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, gitConfigEntryID, stashEntryID}
+var reservedEntryIDs = []string{syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID, gitConfigEntryID, stashEntryID}
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at
 // most one signal per segment (the first hit wins; there is nothing to gain from
@@ -172,7 +172,7 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 		}
 		// The glob record travels with the window: a globbed flag behind an
 		// unrecognised launcher is still a pattern bash expands.
-		cand := segment{tokens: tokens, chain: s.chain}
+		cand := segment{tokens: tokens, chain: s.chain, subWords: s.subWordSlice(start, start+len(tokens))}
 		if !noglob {
 			cand.globbed = s.globSlice(start, start+len(tokens))
 		}

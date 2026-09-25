@@ -41,6 +41,48 @@ func TestKillByPatternIsBlocked(t *testing.T) {
 	}
 }
 
+// TestSubstitutedOperandCountsForMinOperands — review-guard finding 3. An
+// unquoted substitution contributes no word under the vanish reading, which is
+// right at a flag or subcommand position and wrong at an operand count: bash
+// hands pkill whatever the substitution prints, so `pkill $(cat p)` kills by
+// the pattern in p, but the count read zero operands and the kill entries,
+// which require one, never fired. A substitution standing as a word of its own
+// now counts as one operand of unknown text; a value flag still consumes it,
+// so the group and parent selectors stay allowed, and the vanish reading still
+// decides every position an entry names.
+func TestSubstitutedOperandCountsForMinOperands(t *testing.T) {
+	cases := []struct {
+		cmd   string
+		want  Verdict
+		entry string
+	}{
+		{`pkill $(cat p)`, VerdictBlock, "pkill-by-pattern"},
+		{`pkill -f $(cat p)`, VerdictBlock, "pkill-by-pattern"},
+		{`pkill -9 $(cat p)`, VerdictBlock, "pkill-by-pattern"},
+		{"pkill `cat p`", VerdictBlock, "pkill-by-pattern"},
+		{`pkill $(cat p) > /dev/null`, VerdictBlock, "pkill-by-pattern"},
+		{`sudo pkill -f $(cat p)`, VerdictBlock, "pkill-by-pattern"},
+		{`killall -9 $(cat n)`, VerdictBlock, "killall-by-name"},
+		{`killall $((1+2))`, VerdictBlock, "killall-by-name"},
+		{`pkill "$(cat p)"`, VerdictBlock, "pkill-by-pattern"},
+		{`myrunner pkill $(cat p)`, VerdictWarn, speculativeEntryID},
+
+		{`pkill -g $(cat pgid)`, VerdictAllow, ""},
+		{`pkill -P $(cat ppid)`, VerdictAllow, ""},
+		{`kill $(cat pidfile)`, VerdictAllow, ""},
+		{`echo $(cat p)`, VerdictAllow, ""},
+		{`git $(true) push --force origin main`, VerdictBlock, "git-push-force"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.cmd, func(t *testing.T) {
+			d := verdictOf(t, tc.cmd)
+			if d.Verdict != tc.want || d.EntryID != tc.entry {
+				t.Errorf("verdict = %q via %q, want %q via %q", d.Verdict, d.EntryID, tc.want, tc.entry)
+			}
+		})
+	}
+}
+
 // TestMinOperandsConstraint pins the pattern field the kill entries use: an
 // entry that requires N operands does not fire on a command carrying fewer,
 // with the entry's value flags stepped over first.

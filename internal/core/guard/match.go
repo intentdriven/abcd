@@ -353,7 +353,7 @@ func matchSegment(p Pattern, s segment) bool {
 	// glob reports, per ARGUMENT index, whether bash would expand that token.
 	glob := func(i int) bool { return !noglob && s.globAt(ci+1+i) }
 	opIdx := operandIndexes(args, p.ValueFlags)
-	if len(opIdx) < p.MinOperands {
+	if len(opIdx) < p.MinOperands && substitutedOperandCount(s, ci, p.ValueFlags) < p.MinOperands {
 		return false
 	}
 	ops := make([]string, len(opIdx))
@@ -413,6 +413,42 @@ func operandIndexes(args []string, valueFlags []string) []int {
 	}
 	return idx
 }
+
+// substitutedOperandCount counts the operands after command position ci with
+// every command substitution that stood as a word of its own read back as one
+// operand of unknown text (segment.subWords). The vanish reading drops such a
+// word, which is right where an entry names a position and wrong where it
+// counts: `pkill $(cat p)` kills by whatever p holds, and read as zero operands
+// it slipped past the kill entries' min_operands (iss-2609251640353017). The
+// stand-in is inserted before the flag walk, so a value flag still consumes it
+// — `pkill -g $(cat pgid)` is a group kill, and stays one. Only the count reads
+// it; every positional compare keeps the vanish reading.
+func substitutedOperandCount(s segment, ci int, valueFlags []string) int {
+	args := s.tokens[ci+1:]
+	var view []string
+	w := 0
+	for w < len(s.subWords) && s.subWords[w] <= ci {
+		w++
+	}
+	if w == len(s.subWords) {
+		return len(operandIndexes(args, valueFlags))
+	}
+	view = make([]string, 0, len(args)+len(s.subWords)-w)
+	for i := 0; i <= len(args); i++ {
+		for w < len(s.subWords) && s.subWords[w] == ci+1+i {
+			view = append(view, substitutedOperand)
+			w++
+		}
+		if i < len(args) {
+			view = append(view, args[i])
+		}
+	}
+	return len(operandIndexes(view, valueFlags))
+}
+
+// substitutedOperand stands in for a substitution's unknown output when an
+// operand count reads it back. Any word that does not begin with `-` would do.
+const substitutedOperand = "$(…)"
 
 // operandMatches reports whether the n-th operand is want — literally, or as a
 // word its glob pattern can produce.

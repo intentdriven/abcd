@@ -528,7 +528,14 @@ of it to teach, never in place of it.
 An allow means no registry entry matched — it is never a statement that a
 command is safe. A hazard behind a launcher the guard does not recognise is
 a WARN naming the entry it matched, rather than an allow, because the guard
-cannot tell whether that program runs the rest of the line. What an
+cannot tell whether that program runs the rest of the line. A `$(…)`,
+backtick, `<(…)` or `>(…)`, quoted or not, IS followed into command
+position, and the words written after one stay the enclosing command's,
+so `rm $(true) -rf *` is read as `rm -rf *`; text beside a quoted one in
+the same word is read as bash leaves it when the output is empty, and one
+nested more than eight double-quoted substitutions deep is blocked,
+because the guard has stopped reading it. An unquoted brace group IS
+expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
 all: one launched through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
@@ -539,11 +546,6 @@ under a prefix (a GitHub Enterprise Server install mounts the same endpoints
 under `/api/v3/`; the api.github.com URL form IS read), a bare `$VAR` inside
 an interpreter payload (an execute-a-string payload IS read — `sh -c`,
 `env -S`; one the guard cannot read is warned or, for `env -S`, blocked),
-a hazard nested more than eight double-quoted substitutions deep (a
-`$(…)`, backtick, `<(…)` or `>(…)`, quoted or not, IS followed into
-command position, and the words written after one stay the enclosing
-command's, so `rm $(true) -rf *` is read as `rm -rf *`; an unquoted brace
-group IS expanded as bash expands it, and one past 4096 words is blocked),
 a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),

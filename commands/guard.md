@@ -143,7 +143,12 @@ A command or process substitution (`$(…)`, a backtick pair, `<(…)`, `>(…)`
 unquoted or inside double quotes, runs its own command, which is checked like
 any other, and the words
 written after it still belong to the command it sits in: `rm $(true) -rf *` is
-read as `rm -rf *`, and `git push >(cat) --force` as a force push.
+read as `rm -rf *`, and `git push >(cat) --force` as a force push. Text written
+beside a quoted substitution in the same word is read as bash leaves it when the
+output is empty, so a flag glued to one is still the flag. A substitution nested
+more than eight double-quoted substitutions deep is a **block**
+(`substitution-unread`), because the guard has stopped reading it and its
+command runs all the same.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
@@ -172,8 +177,7 @@ guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 whose API path an entry names by its ROOT
 segment but the host serves under a prefix (a GitHub Enterprise Server install
 mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
-form **is** read), a hazard nested more than eight double-quoted substitutions
-deep, a hazard inside a non-shell interpreter's payload (`python -c`,
+form **is** read), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes.

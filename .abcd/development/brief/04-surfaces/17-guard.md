@@ -175,7 +175,10 @@ literal it could produce, at every position an entry constrains, so a force push
 spelled `git pus? --force` blocks. A command or process substitution, unquoted
 or inside double quotes, is followed into command position, and the words
 written after one stay the
-enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. An unquoted
+enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`; text beside
+a quoted one in the same word is read as bash leaves it when the output is
+empty, and one nested past the depth the guard reads is refused rather than
+left unread. An unquoted
 brace group is expanded as bash expands it and every word it produces is
 checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A
@@ -191,7 +194,7 @@ path an entry names by its root segment when the host serves that API under a
 prefix; a bare `$VAR` standing where the hazard would be inside a payload the
 guard does read, because the guard sees the variable and not what the shell will
 expand it to, and warning on every variable would bury the warnings that matter;
-a hazard nested more than eight double-quoted substitutions deep; a payload inside a non-shell interpreter such as `python -c`, which is one
+a payload inside a non-shell interpreter such as `python -c`, which is one
 opaque token and today a silent allow; and any dangerous form no entry
 describes. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
