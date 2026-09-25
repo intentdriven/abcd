@@ -123,3 +123,14 @@ each with its id; `outstanding`; every `fidelity_flags` entry, **unresolved** �
 never pick one side of a flag, it is the researcher's to resolve; every
 `refusals` entry; and `manifest`, the promoted manifest beside the run. Flags
 and refusals are never written into a record.
+
+**Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
+provisions the binary into the plugin root, so this is the rung that fires for a
+plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
+too, you are in a source checkout of this repo, where — and only there —
+`go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
+binary on `PATH`, run `ahoy install` through whichever rung just resolved:
+`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
+`go run ./cmd/abcd ahoy install` in a source checkout.
+
+**User input:** $ARGUMENTS
