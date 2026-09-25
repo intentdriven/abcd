@@ -572,10 +572,47 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			//
 			// An arithmetic expansion is read as one: its output is a number,
 			// and only a command substitution inside it runs a command.
-			followSubs := true
+			//
+			// A `${` opens a parameter expansion, which ends at its own `}`
+			// (closingDolBrace), and inside it a `"` opens a nested string
+			// instead of closing this one (review5-guard finding 2). The text
+			// up to that `}` is read once more here for the substitutions the
+			// expansion runs, with each nested quote removed, and no close is
+			// looked for past the `}`.
+			followSubs, braces := true, true
+			braceEnd := -1
 			for j < len(line) {
+				if braceEnd >= 0 && j >= braceEnd {
+					if j == braceEnd {
+						addCur([]byte{'}'}, 0)
+						j++
+					}
+					braceEnd = -1
+					continue
+				}
+				if braces && braceEnd < 0 && line[j] == '$' && j+1 < len(line) && line[j+1] == '{' {
+					switch end := closingDolBrace(line, j+2, budget); {
+					case end >= 0:
+						braceEnd = end
+					case end == closeUnread:
+						unread()
+						followSubs, braces = false, false
+					default:
+						// No shell parses this string, so its `${` is left as
+						// the text it was, and no later one is looked for:
+						// each would scan to the end of the line again.
+						braces = false
+					}
+					addCur([]byte("${"), 0)
+					j += 2
+					continue
+				}
+				scan := line
+				if braceEnd >= 0 {
+					scan = line[:braceEnd]
+				}
 				if followSubs && line[j] == '$' && j+2 < len(line) && line[j+1] == '(' && line[j+2] == '(' {
-					end := arithmeticEnd(line, j, budget)
+					end := arithmeticEnd(scan, j, budget)
 					if end == closeUnread {
 						unread()
 						followSubs = false
@@ -592,9 +629,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					open, inner := j+2, closeNone
 					if line[j] == '`' {
 						open = j + 1
-						inner = closingBacktick(line, open, budget)
+						inner = closingBacktick(scan, open, budget)
 					} else {
-						inner = closingParen(line, open, budget)
+						inner = closingParen(scan, open, budget)
 					}
 					if inner < 0 {
 						if inner == closeUnread {
@@ -622,6 +659,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					continue
 				}
 				if line[j] == '"' {
+					if braceEnd >= 0 {
+						// A nested string's quote, removed as bash removes it.
+						j++
+						continue
+					}
 					closed = true
 					break
 				}
@@ -1225,9 +1267,11 @@ func keywordAt(line string, start, i int, kw string) bool {
 }
 
 // closingDoubleQuote returns the index of the `"` that closes a double-quoted
-// string whose body starts at i, stepping over escapes and the substitutions
-// inside it, or one of closeNone and closeUnread.
+// string whose body starts at i, stepping over escapes, the substitutions
+// inside it and each `${…}` to its own `}` (closingDolBrace), whose nested
+// quotes do not close the string, or one of closeNone and closeUnread.
 func closingDoubleQuote(line string, i int, budget *int) int {
+	braces := true
 	for i < len(line) {
 		if !charge(budget, 1) {
 			return closeUnread
@@ -1245,8 +1289,99 @@ func closingDoubleQuote(line string, i int, budget *int) int {
 			}
 			i = k + 1
 			continue
+		case braces && line[i] == '$' && i+1 < len(line) && line[i+1] == '{':
+			k := closingDolBrace(line, i+2, budget)
+			if k == closeUnread {
+				return k
+			}
+			if k >= 0 {
+				i = k + 1
+				continue
+			}
+			// As in the tokenizer's own double-quote branch: text, and no
+			// later `${` in this string is scanned for.
+			braces = false
+			i += 2
+			continue
 		case line[i] == '`':
 			k := closingBacktick(line, i+1, budget)
+			if k < 0 {
+				return k
+			}
+			i = k + 1
+			continue
+		}
+		i++
+	}
+	return closeNone
+}
+
+// closingDolBrace returns the index of the `}` that closes a `${` standing
+// inside double quotes, whose body starts at i, or one of closeNone and
+// closeUnread. It reads the body as bash's parser does (parse_matched_pair
+// with P_FIRSTCLOSE|P_DOLBRACE|P_DQUOTE): a backslash passes the next byte, a
+// `"` opens a nested double-quoted string with its own substitutions and
+// expansions, a `'` pairs with the next `'` (a `$'` string with escapes), a
+// backtick, a `$(` and a nested `${` each end at their own close, and the
+// first other `}` ends the expansion — a bare `{` opens nothing. The single
+// quotes pair for the parse only: the expansion still runs the substitutions
+// between them, so the caller reads that text for them (review5-guard
+// finding 2).
+func closingDolBrace(line string, i int, budget *int) int {
+	for i < len(line) {
+		if !charge(budget, 1) {
+			return closeUnread
+		}
+		c := line[i]
+		switch {
+		case c == '\\':
+			i += 2
+			continue
+		case c == '}':
+			return i
+		case c == '\'' || (c == '$' && i+1 < len(line) && line[i+1] == '\''):
+			escapes := c == '$'
+			if escapes {
+				i++
+			}
+			k := i + 1
+			for k < len(line) && line[k] != '\'' {
+				if escapes && line[k] == '\\' {
+					k++
+				}
+				k++
+			}
+			if k >= len(line) {
+				return closeNone
+			}
+			if !charge(budget, k-i) {
+				return closeUnread
+			}
+			i = k + 1
+			continue
+		case c == '"':
+			k := closingDoubleQuote(line, i+1, budget)
+			if k < 0 {
+				return k
+			}
+			i = k + 1
+			continue
+		case c == '`':
+			k := closingBacktick(line, i+1, budget)
+			if k < 0 {
+				return k
+			}
+			i = k + 1
+			continue
+		case c == '$' && i+1 < len(line) && line[i+1] == '(':
+			k := closingParen(line, i+2, budget)
+			if k < 0 {
+				return k
+			}
+			i = k + 1
+			continue
+		case c == '$' && i+1 < len(line) && line[i+1] == '{':
+			k := closingDolBrace(line, i+2, budget)
 			if k < 0 {
 				return k
 			}

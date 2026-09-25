@@ -168,6 +168,24 @@ func TestGuardHookBlocksAnUnparsableLine(t *testing.T) {
 	}
 }
 
+// TestGuardHookRunsANestedQuoteInABraceExpansion — review5-guard finding 2,
+// the other side of the block above. A double-quoted `${…}` whose word carries
+// double quotes of its own is valid bash, and an apostrophe in the nested
+// quotes is data, so the line runs; it is not one the tokenizer cannot split.
+func TestGuardHookRunsANestedQuoteInABraceExpansion(t *testing.T) {
+	dir := guardRepo(t)
+	for _, line := range []string{
+		`echo "${MSG:-"don't"}"`,
+		`printf '%s\n' "${NAME:-"O'Brien"}"`,
+		`echo "${X//"'"/x}"`,
+	} {
+		_, stderr, code := runGuard(preToolUse(t, "Bash", line, dir), "guard", "hook")
+		if code != 0 || strings.Contains(stderr, "command-unparsable") {
+			t.Errorf("%s is valid bash and must run: want exit 0, got %d (stderr %q)", line, code, stderr)
+		}
+	}
+}
+
 // TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed pins the fail-SAFE
 // doctrine of iss-2608261551087492. A malformed repo .abcd/guard.json must NOT
 // disable the whole guard: the repo's own overrides are dropped, but the bundled
