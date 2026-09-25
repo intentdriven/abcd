@@ -499,3 +499,28 @@ func TestRenderPathDocAuditRowSaysItWasNotMeasured(t *testing.T) {
 		t.Errorf("the render path's doc-auditor row = %+v, want not_measured and no claim about the config", row)
 	}
 }
+
+// TestProseLinesReadsAnUnclosedOpeningRuleAsProse is iss-2609251827296447: a
+// document that opens with a "---" rule and never closes it has no frontmatter,
+// so both content gates read all of it; closed frontmatter is still metadata.
+func TestProseLinesReadsAnUnclosedOpeningRuleAsProse(t *testing.T) {
+	root := docsFixture(t)
+	writeFile(t, root, "docs/ruled.md", "---\n\nThe verb no longer writes a receipt.\n\n<!-- BEGIN ABCD -->\n")
+	writeFile(t, root, "docs/front.md", "---\ntitle: The verb no longer writes a receipt.\n---\n\n# Front\n\nThe tool reads the record.\n")
+
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	for _, want := range [][]string{
+		{"change-narration", "docs/ruled.md:3", "no longer"},
+		{"marker-block", "docs/ruled.md:5", "never closed"},
+	} {
+		if !anyContains(report.WouldRefuseOn, want...) {
+			t.Errorf("a document opening with an unclosed rule was not read; missing %v:\n%s", want, strings.Join(report.WouldRefuseOn, "\n"))
+		}
+	}
+	if anyContains(report.WouldRefuseOn, "docs/front.md") {
+		t.Errorf("closed frontmatter must stay metadata:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
+	}
+}

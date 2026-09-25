@@ -242,17 +242,24 @@ type proseLine struct {
 // proseLines splits a Markdown document into its prose lines: fenced code
 // blocks are dropped and inline code spans blanked, so a construct quoted as an
 // example never reads as an assertion. A leading YAML frontmatter block is
-// dropped too, since it is metadata rather than a body.
+// dropped too, since it is metadata rather than a body — but only a block that
+// closes: a document that opens with a "---" rule and never repeats it has no
+// frontmatter, and is read whole rather than dropped (iss-2609251827296447).
 func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
 	inFence := false
-	inFront := len(lines) > 0 && strings.TrimSpace(lines[0]) == "---"
-	for i, line := range lines {
-		if inFront {
-			if i > 0 && strings.TrimSpace(line) == "---" {
-				inFront = false
+	frontEnd := -1 // index of the closing "---"; -1 when there is no frontmatter
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				frontEnd = i
+				break
 			}
+		}
+	}
+	for i, line := range lines {
+		if i <= frontEnd {
 			continue
 		}
 		if fenceRe.MatchString(line) {
