@@ -118,6 +118,20 @@ the JSON an `inbox` object with `reports` and `senders`. It is the same count th
 session-start greeting says ([`29-report.md`](29-report.md)); it names no sender,
 and it is absent when nothing waits.
 
+**The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
+model-tier routing once a table is accepted, at the repository
+(`.abcd/config/oracle-routing.json`) or the machine (`~/.abcd/oracle-routing.json`).
+The text render carries an `oracle:` heading and one line per agent in the
+roster, listing every layer that holds a row for it as `layer=tier`, flag over
+repo over machine over bundled, with the row that applies marked `*`; the JSON
+carries an `oracle` array of `{agent, winner, layers}`. The winner is the
+resolver's own (`internal/core/oracle`, read through `internal/core/layered`),
+so the board and a step cannot disagree. With no table accepted the lines are
+absent and every delegated step runs through the harness at `host-decides`. An
+orphan row and a clamped fan-out are reported on stderr, and a routing file that
+cannot be read omits the lines with its reason there; the board itself never
+fails on one.
+
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in

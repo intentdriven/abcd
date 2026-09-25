@@ -1083,6 +1083,21 @@ Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
       --verdict-json string   path to the intent-audit verdict JSON
 ```
 
+#### `abcd intent condition`
+
+Read a shipped intent's scope-condition standing, or disposition one condition from a reading item or a delivered intent
+
+**Usage:** `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
+
+**Flags:**
+
+```
+      --disposition string     the condition's disposition: survived|narrowed|falsified|untested
+      --grounds string         why: held to the grounds substance floor, redacted before it is written
+      --narrowing string       what now holds: required on narrowed and refused on every other value
+      --occasioned-by string   what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)
+```
+
 #### `abcd intent hold`
 
 Hold a draft or planned intent (writes `held: "<reason>"`; `intent plan` refuses it until `intent unhold`)
@@ -1527,7 +1542,7 @@ Close a spec (open/ -> closed/); ship its linked intent when no open spec is lef
 ```
       --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)
+      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed
 ```
 
 ### `abcd statusline`

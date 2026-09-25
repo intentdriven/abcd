@@ -21,10 +21,11 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/relink"
 )
 
 // LedgerRelPath is the ledger root relative to the repo worktree.
-const LedgerRelPath = ".abcd/work/issues"
+const LedgerRelPath = recordid.IssuesRelDir
 
 // issFamily is the ledger's record family, the argument this package hands
 // recordid.SplitRecordFilename. Ledger filenames are split by that ONE shared
@@ -264,6 +265,13 @@ type TransitionResult struct {
 	// same redactor and reports the same way.
 	Redacted int    `json:"redacted,omitempty"`
 	Degraded string `json:"redaction_degraded,omitempty"`
+	// Relinked lists every relative markdown link the transition repointed
+	// because it named the issue's old path in open/ (iss-2609250846525896).
+	Relinked []relink.Rewrite `json:"relinked,omitempty"`
+	// RelinkError is a NON-FATAL report of a repoint that failed part-way: the
+	// issue has moved and the transition stands, so the surface prints it
+	// loudly, and record-lint's links_resolve names any link left behind.
+	RelinkError string `json:"relink_error,omitempty"`
 }
 
 // ListRequest queries one state (or "all").

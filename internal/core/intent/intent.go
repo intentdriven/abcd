@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
@@ -247,6 +248,10 @@ type PlanResult struct {
 	// empty when it wrote none — because no --impact was supplied, or because the
 	// record already carried the same value.
 	ImpactStamped string `json:"impact_stamped"`
+	// Relinked and RelinkError report the repoint of links that named the
+	// draft's old path, as ReconcileResult's do for a close.
+	Relinked    []relink.Rewrite `json:"relinked,omitempty"`
+	RelinkError string           `json:"relink_error,omitempty"`
 }
 
 // LinkResult reports a completed Link: the updated intent and the spec it now
@@ -281,6 +286,12 @@ type ReconcileResult struct {
 	// previous attempt left behind — so without this the surface reports a record
 	// it did not write as one it just wrote.
 	RemainderMinted bool `json:"remainder_minted,omitempty"`
+	// RemainderSteps are the steps of the closing spec that were not marked
+	// landed, which this close carried into the remainder it minted, in order
+	// and renumbered from one (itd-2609212103565953). Empty when the closing
+	// spec lists no steps, when every step it lists has landed, and when the
+	// remainder was reused rather than minted: a reused spec is left as found.
+	RemainderSteps []spec.Step `json:"remainder_steps,omitempty"`
 	// ReceiptID is the deterministic fidelity-review receipt parked in the
 	// shipped intent's Audit Notes (empty if the emit failed).
 	ReceiptID string `json:"receipt_id,omitempty"`
@@ -294,6 +305,16 @@ type ReconcileResult struct {
 	// AuditEmitError is a NON-FATAL report of a failed review emit. The review is
 	// report-only, so the intent still ships; the surface prints this loudly.
 	AuditEmitError string `json:"audit_emit_error,omitempty"`
+	// Relinked lists every relative markdown link this close repointed because
+	// it named the old path of a record the close moved — the spec leaving
+	// open/, the intent leaving planned/ (iss-2609091732329046). Empty when no
+	// link named either.
+	Relinked []relink.Rewrite `json:"relinked,omitempty"`
+	// RelinkError is a NON-FATAL report of a repoint that failed part-way: the
+	// records have moved and the close stands, so the surface prints it loudly
+	// and a re-run of the close repoints the links other files still hold. The
+	// moved records' own links it leaves as written, for links_resolve to name.
+	RelinkError string `json:"relink_error,omitempty"`
 }
 
 // RemainderRequest asks a close to mint a follow-on spec for the part of the
