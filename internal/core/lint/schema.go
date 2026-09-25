@@ -583,7 +583,11 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// speak store-wide, must leave the consequence to the leg that established it
 		// (iss-2608301308369559). The content legs therefore run FIRST and mark what
 		// they spoke about, so nobody has to keep a second list of which fields those
-		// are, and a leg added later is covered by having said something.
+		// are, and a leg added later is covered by having said something. Every leg
+		// marks what it reported even where another leg also covers the field:
+		// `id: ""` is present to the filename leg and blank to the required-fields
+		// leg, so the id mark is what keeps one value to one finding, and
+		// TestFilenameLegsMarkWhatTheyJudged pins both marks (iss-2608301634520703).
 		judged := map[string]bool{}
 		out = append(out, checkRecordFilename(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordFilenameSlug(r, cfg.Severity, judged)...)
