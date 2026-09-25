@@ -82,6 +82,18 @@ func (s segment) globSlice(lo, hi int) []bool {
 // (payload.go), never in this splitter — so a hazard hidden there is matched
 // (iss-200), while an uninspectable payload takes the family's posture.
 func tokenize(line string) ([]segment, error) {
+	return tokenizeAt(line, 0)
+}
+
+// maxQuotedSubstitutionDepth bounds how deeply substitutions nested inside
+// double quotes are followed. Each level re-tokenizes its own text, so the
+// bound keeps the cost linear in the line; a substitution nested deeper is left
+// as the literal text it was, the reading every depth had before
+// iss-2609251144159533.
+const maxQuotedSubstitutionDepth = 8
+
+// tokenizeAt is tokenize at a double-quoted substitution depth.
+func tokenizeAt(line string, depth int) ([]segment, error) {
 	tally(len(line))
 	var (
 		segs    []segment
@@ -267,7 +279,39 @@ func tokenize(line string) ([]segment, error) {
 		case c == '"':
 			j := i + 1
 			closed := false
+			// A substitution inside double quotes runs as an unquoted one does,
+			// and double quotes are its idiomatic spelling, so its command is
+			// read as a segment of its own, emitted now because it runs first,
+			// in this command's chain (iss-2609251144159533). The quoted word
+			// keeps the substitution's text, as it always has: an
+			// execute-a-string payload carrying one is uninspectable, and the
+			// payload reading needs to see it there. One
+			// whose end cannot be found stays literal text, and the scan stops
+			// looking for more in this string, which keeps it linear.
+			followSubs := depth < maxQuotedSubstitutionDepth
 			for j < len(line) {
+				if followSubs && (line[j] == '`' || (line[j] == '$' && j+1 < len(line) && line[j+1] == '(')) {
+					open, inner := j+2, -1
+					if line[j] == '`' {
+						open = j + 1
+						inner = closingBacktick(line, open)
+					} else {
+						inner = closingParen(line, open)
+					}
+					if inner < 0 {
+						followSubs = false
+						continue
+					}
+					if isegs, err := tokenizeAt(line[open:inner], depth+1); err == nil {
+						for _, is := range isegs {
+							is.chain = chain
+							segs = append(segs, is)
+						}
+					}
+					addCur([]byte(line[j:inner+1]), 0)
+					j = inner + 1
+					continue
+				}
 				if line[j] == '\\' && j+1 < len(line) {
 					switch line[j+1] {
 					case '"', '\\', '$', '`':
@@ -611,6 +655,97 @@ func tokenize(line string) ([]segment, error) {
 		markHeredocUnterminated(&segs, chain)
 	}
 	return segs, nil
+}
+
+// closingParen returns the index of the `)` that closes a `$(` whose body
+// starts at i, or -1 when none does. It reads the body's own quoting — single
+// quotes, double quotes with their own substitutions, backticks and
+// backslashes — so a `)` inside any of them is not the close.
+func closingParen(line string, i int) int {
+	depth := 1
+	for i < len(line) {
+		switch line[i] {
+		case '\\':
+			i += 2
+			continue
+		case '\'':
+			k := strings.IndexByte(line[i+1:], '\'')
+			if k < 0 {
+				return -1
+			}
+			i += k + 2
+			continue
+		case '"':
+			k := closingDoubleQuote(line, i+1)
+			if k < 0 {
+				return -1
+			}
+			i = k + 1
+			continue
+		case '`':
+			k := closingBacktick(line, i+1)
+			if k < 0 {
+				return -1
+			}
+			i = k + 1
+			continue
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 0 {
+				return i
+			}
+		}
+		i++
+	}
+	return -1
+}
+
+// closingDoubleQuote returns the index of the `"` that closes a double-quoted
+// string whose body starts at i, stepping over escapes and the substitutions
+// inside it, or -1.
+func closingDoubleQuote(line string, i int) int {
+	for i < len(line) {
+		switch {
+		case line[i] == '\\':
+			i += 2
+			continue
+		case line[i] == '"':
+			return i
+		case line[i] == '$' && i+1 < len(line) && line[i+1] == '(':
+			k := closingParen(line, i+2)
+			if k < 0 {
+				return -1
+			}
+			i = k + 1
+			continue
+		case line[i] == '`':
+			k := closingBacktick(line, i+1)
+			if k < 0 {
+				return -1
+			}
+			i = k + 1
+			continue
+		}
+		i++
+	}
+	return -1
+}
+
+// closingBacktick returns the index of the unescaped backtick that closes one
+// whose body starts at i, or -1.
+func closingBacktick(line string, i int) int {
+	for i < len(line) {
+		switch line[i] {
+		case '\\':
+			i += 2
+			continue
+		case '`':
+			return i
+		}
+		i++
+	}
+	return -1
 }
 
 // parenKind names what an unclosed `(` opened, to the one precision the

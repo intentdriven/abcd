@@ -139,8 +139,9 @@ command runs, so a spelling the pattern *can* produce (`git pus? --force`,
 `git push --forc?`) is treated as produced and blocks. A glob anywhere else
 (`ls *`, `git add *.md`) changes nothing, and a quoted one is literal.
 
-An unquoted command or process substitution (`$(…)`, a backtick pair, `<(…)`,
-`>(…)`) runs its own command, which is checked like any other, and the words
+A command or process substitution (`$(…)`, a backtick pair, `<(…)`, `>(…)`),
+unquoted or inside double quotes, runs its own command, which is checked like
+any other, and the words
 written after it still belong to the command it sits in: `rm $(true) -rf *` is
 read as `rm -rf *`, and `git push >(cat) --force` as a force push.
 
@@ -171,8 +172,8 @@ guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 whose API path an entry names by its ROOT
 segment but the host serves under a prefix (a GitHub Enterprise Server install
 mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
-form **is** read), a hazard inside a double-quoted command substitution
-(`"$(…)"`), a hazard inside a non-shell interpreter's payload (`python -c`,
+form **is** read), a hazard nested more than eight double-quoted substitutions
+deep, a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes.
