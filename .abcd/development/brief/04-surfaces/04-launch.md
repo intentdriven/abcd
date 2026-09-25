@@ -114,8 +114,17 @@ version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
 
 **The scaffold writes the release machinery into a managed repo that lacks
-it**: the two release workflows and the adr-37 release runbook, wired to the
-repo's own default branch and Go version, token-scoped and injection-safe. The
+it**: the two release workflows, the adr-37 release runbook and a reviews-charter
+check, wired to the repo's own default branch and Go version and to the check
+names its own pull-request CI reports, token-scoped and injection-safe. The check
+names are read from the repo's pull-request and merge-queue workflows — a name
+only a run knows (a matrix job, an expression-named job, a reusable-workflow
+call) is omitted rather than guessed, and every name is held to an injection-safe
+allowlist — and written into the runbook as the contexts to require on the default
+branch and into the release workflow's verify header as its merge gate. The
+reviews-charter check holds dated review directories to their shape and exempts
+the sha-keyed receipt directories, and the scaffolded verify job runs it as a
+deterministic gate, so a release's own receipts never fail the charter. The
 workflows ship from a single embedded template that abcd's own release workflows
 are regenerated from, proved byte-exact by a test, so a scaffolded repo and this
 one cannot drift. The scaffolded workflow carries a **rehearsal** that arms the

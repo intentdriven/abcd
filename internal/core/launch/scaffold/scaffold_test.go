@@ -101,7 +101,7 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 	// The abcd-specific detectors and steps must be gone.
 	for _, needle := range []string{
 		"record-lint", "docs-currency-reviewer", "iss35-brief-surface-crosscheck",
-		"check-reviews.sh", "make smoke", "make build", "make fmt-check", "abcd docs lint",
+		"scripts/check-reviews.sh", "make smoke", "make build", "make fmt-check", "abcd docs lint",
 		"semantic-release-gate", "Cross-compile the four binaries",
 		"./internal/...",
 	} {
@@ -132,15 +132,15 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 
 // TestBareRunbookGateListMatchesWorkflow is the in-template gate_lockstep
 // property: the runbook's numbered deterministic-gate list must be exactly the
-// generic five when no extra gate is configured, so a managed repo's own lockstep
-// check stays green.
+// generic five plus the scaffolded reviews-charter shape, the one extra gate a
+// managed repo inherits, so a managed repo's own lockstep check stays green.
 func TestBareRunbookGateListMatchesWorkflow(t *testing.T) {
 	rendered, err := Render(BareSubstitutions("main"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	book := string(rendered.Runbook)
-	for _, g := range []string{"1. Format (gofmt)", "5. Test (race)"} {
+	for _, g := range []string{"1. Format (gofmt)", "5. Test (race)", "6. Reviews-charter shape (RD001)"} {
 		if !strings.Contains(book, g) {
 			t.Errorf("bare runbook must list deterministic gate %q", g)
 		}
@@ -150,8 +150,8 @@ func TestBareRunbookGateListMatchesWorkflow(t *testing.T) {
 	if strings.Contains(book, "Test (race, internal)") {
 		t.Error("bare runbook must not name the abcd-specific internal race leg")
 	}
-	if strings.Contains(book, "6. ") {
-		t.Error("bare runbook must not number a sixth gate (no extra gates configured)")
+	if strings.Contains(book, "7. Plugin") || strings.Contains(book, "\n7. ") {
+		t.Error("bare runbook must not number a seventh gate (the charter is the only extra gate)")
 	}
 }
 
@@ -297,13 +297,14 @@ func TestScaffoldIdempotentAndRefusesHandEdit(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "go.mod"), "module example.com/x\n\ngo 1.22\n")
 	gitInit(t, dir, "release-line")
 
-	// First run: three files written.
+	// First run: four files written — the two workflows, the runbook and the
+	// reviews-charter check.
 	rep, err := Scaffold(Request{RepoRoot: dir})
 	if err != nil {
 		t.Fatalf("first scaffold: %v", err)
 	}
-	if rep.Wrote != 3 || rep.NoOp {
-		t.Fatalf("first run should write 3 files, got wrote=%d noop=%v", rep.Wrote, rep.NoOp)
+	if rep.Wrote != 4 || rep.NoOp {
+		t.Fatalf("first run should write 4 files, got wrote=%d noop=%v", rep.Wrote, rep.NoOp)
 	}
 	// Wired to the repo's own facts.
 	if rep.DefaultBranch != "release-line" || rep.GoVersion != "1.22" {

@@ -66,10 +66,13 @@ type Report struct {
 	// into them: they point setup-go at go.mod, so this reports the go directive
 	// the run read. It is reported because an adopter should see which toolchain
 	// their release lane is about to use, and see it before the first tag.
-	GoVersion string        `json:"go_version"`
-	Files     []FileOutcome `json:"files"`
-	Wrote     int           `json:"wrote"`
-	Refused   int           `json:"refused"`
+	GoVersion string `json:"go_version"`
+	// CIChecks are the managed repo's own pull-request check names the
+	// scaffolded files were wired to (DeriveCIChecks); empty when none was found.
+	CIChecks []string      `json:"ci_checks"`
+	Files    []FileOutcome `json:"files"`
+	Wrote    int           `json:"wrote"`
+	Refused  int           `json:"refused"`
 	// NoOp is true when every file was already current (the idempotent re-run).
 	NoOp bool `json:"no_op"`
 }
@@ -84,8 +87,9 @@ type Request struct {
 }
 
 // Scaffold writes the changelog-driven release machinery into RepoRoot: a
-// generic (bare-repo) release.yml, auto-release.yml, and the adr-37 runbook, each
-// wired to the repo's own default branch. The Go toolchain is not wired in: the
+// generic (bare-repo) release.yml, auto-release.yml, the adr-37 runbook and the
+// reviews-charter check, wired to the repo's own default branch and to the check
+// names its own pull-request CI reports. The Go toolchain is not wired in: the
 // workflows point setup-go at the repo's go.mod, so they follow its go directive
 // with no re-scaffold. It is idempotent and fail-safe:
 //
@@ -99,12 +103,13 @@ type Request struct {
 func Scaffold(req Request) (Report, error) {
 	branch, goVersion := DeriveRepoFacts(req.RepoRoot)
 	subs := BareSubstitutions(branch)
+	subs.CIChecks = DeriveCIChecks(req.RepoRoot)
 	rendered, err := Render(subs)
 	if err != nil {
 		return Report{}, err
 	}
 
-	report := Report{Substitutions: subs, DefaultBranch: branch, GoVersion: goVersion}
+	report := Report{Substitutions: subs, DefaultBranch: branch, GoVersion: goVersion, CIChecks: subs.CIChecks}
 	planned := []struct {
 		rel  string
 		data []byte
@@ -112,6 +117,7 @@ func Scaffold(req Request) (Report, error) {
 		{ReleaseYMLPath, rendered.ReleaseYML},
 		{AutoReleaseYMLPath, rendered.AutoReleaseYML},
 		{RunbookPath, rendered.Runbook},
+		{CheckReviewsPath, rendered.CheckReviews},
 	}
 
 	// First pass: classify every file WITHOUT writing. A refusal on any file with

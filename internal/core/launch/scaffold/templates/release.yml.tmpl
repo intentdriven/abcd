@@ -99,6 +99,16 @@ jobs:
   # is built or published. Checked out at github.sha — the commit the pushed tag
   # pointed at, never the default-branch tip or the re-resolvable tag name — so the
   # gate exercises exactly the commit that will ship.
+  #
+  # The MERGE gate is this repository's own pull-request CI: merging the release
+  # roll is the release decision, so these checks decide whether it lands at all.
+  # Require them on <% .DefaultBranch %> (derived from its workflows when this file
+  # was scaffolded; the release-gate runbook lists them with the how-to):
+<%- range .CIChecks %>
+  #   - <% . %>
+<%- else %>
+  #   (none found: no pull-request CI workflow existed; see the runbook)
+<%- end %>
 <%- end %>
   verify:
     timeout-minutes: 15

@@ -715,7 +715,8 @@ already has the machinery). It **never publishes**.
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch scaffold --json
 ```
 
-It writes three files, wired to the repo's own default branch and Go version:
+It writes four files, wired to the repo's own default branch and Go version and
+to the check names its own pull-request CI reports:
 
 - `.github/workflows/release.yml` — verify → build → publish, the verify gate
   armed against the reviewed **content** commit (`HEAD^2^` on the auto-release
@@ -723,7 +724,19 @@ It writes three files, wired to the repo's own default branch and Go version:
   receipt-vs-tag self-reference.
 - `.github/workflows/auto-release.yml` — newest dated CHANGELOG heading → tag that
   commit → call `release.yml`. `GITHUB_TOKEN`-only, no personal access token.
-- `.abcd/development/release-gate/README.md` — the adr-37 runbook.
+- `.abcd/development/release-gate/README.md` — the adr-37 runbook, including the
+  merge gate: the repo's own pull-request check names, to require on the default
+  branch.
+- `.abcd/development/release-gate/check-reviews.sh` — the reviews charter (RD001):
+  dated review directories keep their shape, and the sha-keyed receipt
+  directories are exempt. The scaffolded `verify` job runs it.
+
+The check names come from the repo's workflows triggered by `pull_request` or
+`merge_group`; a name only a run knows (a matrix job, an expression-named job, a
+reusable-workflow call) is left out rather than guessed. Relay `ci_checks` and tell
+the operator to require them on the default branch — the scaffold holds no token
+and sets no branch protection. An empty `ci_checks` means no pull-request CI was
+found, and the runbook says so.
 
 The workflows come from one embedded template that abcd-cli's own release
 workflows are regenerated from (self-scaffold parity), so every abcd release

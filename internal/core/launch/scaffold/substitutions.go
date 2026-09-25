@@ -34,16 +34,25 @@ func AbcdSubstitutions() Substitutions {
 	}
 }
 
+// bareExtraGates are the deterministic verify steps a managed repo inherits
+// beyond the generic Go leg: the reviews-charter shape (RD001) the scaffold
+// writes beside the runbook, so a release's sha-keyed receipt directories are
+// held exempt by the same file that holds the dated reviews to their shape.
+var bareExtraGates = []Gate{
+	{Name: "Reviews-charter shape (RD001)", Run: "bash " + CheckReviewsPath},
+}
+
 // BareSubstitutions is the degraded fact set a managed repo with no semantic
-// detectors receives: the deterministic Go gates alone, a generic build, and no
-// host-run semantic gate (spc-14 clean degradation). DefaultBranch is the repo's
+// detectors receives: the deterministic Go gates and the reviews-charter shape,
+// a generic build, and no host-run semantic gate (spc-14 clean degradation).
+// CIChecks is the caller's to set from DeriveCIChecks. DefaultBranch is the repo's
 // own fact, derived by the caller; the Go toolchain is not a substitution at all,
 // because the rendered workflows read it out of the adopter's go.mod.
 func BareSubstitutions(defaultBranch string) Substitutions {
 	return Substitutions{
 		DefaultBranch: defaultBranch,
 		Abcd:          false,
-		ExtraGates:    nil,
+		ExtraGates:    bareExtraGates,
 		SemanticGates: nil,
 	}
 }

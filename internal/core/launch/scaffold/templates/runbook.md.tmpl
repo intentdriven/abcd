@@ -26,6 +26,32 @@ precondition for trusting the gate with a real tag: it proves the gate can be
 satisfied before the repo goes public, closing the private→public activation gap
 that otherwise surfaces only at the first real release.
 
+<%- if not .Abcd %>
+## Merge gate — this repository's CI checks
+
+Merging the release pull request is the release decision, so the checks that
+gate that merge gate the release.
+<%- if .CIChecks %> `abcd launch scaffold` read this repository's
+pull-request workflows and found these checks. Require each of them on
+`<% .DefaultBranch %>` — in a branch ruleset or a branch protection rule — so the
+release roll merges only green:
+<% range .CIChecks %>
+- `<% . %>`
+<%- end %>
+
+A job whose check name GitHub computes at run time — a matrix job, a job named
+by an expression, a call to a reusable workflow — is not listed; add its
+contexts by hand. When the CI changes, re-run `abcd launch scaffold`: it
+refuses the files this list no longer matches and names them, and `--confirm`
+rewrites them with the new list.
+<%- else %> `abcd launch scaffold` found no workflow in this repository
+triggered by `pull_request` or `merge_group`, so nothing but review gates the
+release roll's merge. Add a CI workflow for pull requests, require its checks on
+`<% .DefaultBranch %>`, and re-run `abcd launch scaffold --confirm` to record
+them here and in `release.yml`.
+<%- end %>
+
+<% end -%>
 ## Deterministic gates (CI-enforced)
 
 The `release.yml` `verify` job runs these, in order, on the released commit.
@@ -55,8 +81,8 @@ next push to `<% .DefaultBranch %>` retries. A hand-pushed tag exists before
 
 ## Semantic gates (host-run, before the tag)
 <% if .SemanticGates %>
-CI cannot run these — they spawn host-side LLM agents. Run each against the exact
-commit to be tagged and record its verdict as a receipt:
+CI cannot run these — they spawn host-side LLM agents. Run each against the
+release's CHANGELOG roll commit and record its verdict as a receipt:
 <% range .SemanticGates %>
 - `<% . %>`
 <%- end %>
@@ -65,15 +91,19 @@ A receipt names the commit its reviewer **read**, and lives in a **later**
 commit — it can never sit in the tree of the commit it names (adding it would
 change that commit's sha). So the release branch is two commits: the CHANGELOG
 roll (the reviewed content commit), then the receipts naming it. On merge,
-`release.yml` arms the gate with the **content** commit (`<merge>^2^` for an
-auto-release merge, `<tag>^` for a manual tag), whose receipts are present in the
-released tree, so the receipt-vs-tag self-reference never blocks the release.
+`release.yml` arms the gate with the **content** commit, derived from the
+receipts directory of the released tree — the nearest commit a
+`.abcd/work/reviews/<sha>/` entry names, which must carry this release's own
+CHANGELOG version — so the receipt-vs-tag self-reference never blocks the
+release, and an earlier release's receipts never stand in for this one's.
 
 Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.json`. A receipt is
 bound to its gate by its `policy.detector` value, not its filename, so one
 PROMOTE receipt cannot be copied across every gate. A missing, mismatched, HOLD,
 or wrong-detector receipt **blocks** the release (fail-closed — an un-run
-semantic pass is never a silent pass).
+semantic pass is never a silent pass). `abcd launch receipts` runs the same gate
+on the release branch before the merge and names each missing or non-PROMOTE
+receipt and the commit it must name.
 <%- else %>
 No semantic detector is configured for this repo, so the deterministic gates
 alone admit a release and the receipt gate requires nothing — no host-run pass is
@@ -82,23 +112,38 @@ gate; until then the release publishes on the deterministic gates.
 <%- end %>
 
 ## Reviews charter — sha-keyed receipt directories
-
-Should this repo adopt a dated-review-dir discipline, the sha-keyed receipt
-directories under `.abcd/work/reviews/<commit-sha>/` are **exempt** from the
-dated-directory shape: they are keyed by commit, not date, so the two review
-conventions do not collide.
+<% if .Abcd %>
+The sha-keyed receipt directories under `.abcd/work/reviews/<commit-sha>/` are
+**exempt** from the dated-directory shape: they are keyed by commit, not date, so
+the two review conventions do not collide.
+<%- else %>
+`.abcd/development/release-gate/check-reviews.sh` holds `.abcd/work/reviews/` to
+the dated-review shape (RD001): each directory is `<YYYY-MM-DD>-<kebab-scope>/`
+and carries a `00-summary.md`. The `verify` job runs it as a deterministic gate.
+The sha-keyed receipt directories under `.abcd/work/reviews/<commit-sha>/` are
+**exempt**: they are keyed by the full sha of the commit they gate, not by date,
+and the receipt gate checks them, so the two review conventions do not collide
+and a release's own receipts never fail the charter.
+<%- end %>
 
 ## Procedure
 
-1. Land all work; open the release the normal way (branch → PR → merge). The
-   `verify` job gates the merge.
 <% if .SemanticGates -%>
-2. On the merged commit, run the semantic gates above and record each verdict as
-   a receipt keyed to that commit's sha.
-3. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
-   commit and publish. Once the fail-closed gate is armed, no tag is made unless
-   every semantic receipt is present and PROMOTE.
+1. On a release branch, roll `## [Unreleased]` into the dated heading and commit
+   it. That commit is the content commit.
+2. Run the semantic gates above against it and record each verdict as a receipt
+   keyed to its full sha; commit the receipts on top. The branch is exactly two
+   commits.
+3. Run `abcd launch receipts`; it exits 0 only when the release job's receipt
+   gate would admit the branch.
+4. Open the pull request and merge it once the merge gate is green.
+5. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
+   commit and publish. No tag is made unless every semantic receipt is present
+   and PROMOTE.
 <%- else -%>
+1. Land all work; open the release the normal way (branch → PR → merge), rolling
+   `## [Unreleased]` into the dated heading. The merge gate above gates the
+   merge.
 2. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
    commit and publish; the tag and the Release are gated on the deterministic
    `verify` job alone.
