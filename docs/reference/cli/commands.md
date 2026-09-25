@@ -294,6 +294,128 @@ Preview the next release cut — derived version, records, guardrail (read-only,
 
 **Usage:** `abcd changelog`
 
+### `abcd completion`
+
+Generate the autocompletion script for the specified shell
+
+**Usage:** `abcd completion`
+
+Generate the autocompletion script for abcd for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+#### `abcd completion bash`
+
+Generate the autocompletion script for bash
+
+**Usage:** `abcd completion bash`
+
+Generate the autocompletion script for the bash shell.
+
+This script depends on the 'bash-completion' package.
+If it is not installed already, you can install it via your OS's package manager.
+
+To load completions in your current shell session:
+
+	source <(abcd completion bash)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	abcd completion bash > /etc/bash_completion.d/abcd
+
+#### macOS:
+
+	abcd completion bash > $(brew --prefix)/etc/bash_completion.d/abcd
+
+You will need to start a new shell for this setup to take effect.
+
+**Flags:**
+
+```
+      --no-descriptions   disable completion descriptions
+```
+
+#### `abcd completion fish`
+
+Generate the autocompletion script for fish
+
+**Usage:** `abcd completion fish [flags]`
+
+Generate the autocompletion script for the fish shell.
+
+To load completions in your current shell session:
+
+	abcd completion fish | source
+
+To load completions for every new session, execute once:
+
+	abcd completion fish > ~/.config/fish/completions/abcd.fish
+
+You will need to start a new shell for this setup to take effect.
+
+**Flags:**
+
+```
+      --no-descriptions   disable completion descriptions
+```
+
+#### `abcd completion powershell`
+
+Generate the autocompletion script for powershell
+
+**Usage:** `abcd completion powershell [flags]`
+
+Generate the autocompletion script for powershell.
+
+To load completions in your current shell session:
+
+	abcd completion powershell | Out-String | Invoke-Expression
+
+To load completions for every new session, add the output of the above command
+to your powershell profile.
+
+**Flags:**
+
+```
+      --no-descriptions   disable completion descriptions
+```
+
+#### `abcd completion zsh`
+
+Generate the autocompletion script for zsh
+
+**Usage:** `abcd completion zsh [flags]`
+
+Generate the autocompletion script for the zsh shell.
+
+If shell completion is not already enabled in your environment you will need
+to enable it.  You can execute the following once:
+
+	echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+To load completions in your current shell session:
+
+	source <(abcd completion zsh)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	abcd completion zsh > "${fpath[1]}/_abcd"
+
+#### macOS:
+
+	abcd completion zsh > $(brew --prefix)/share/zsh/site-functions/_abcd
+
+You will need to start a new shell for this setup to take effect.
+
+**Flags:**
+
+```
+      --no-descriptions   disable completion descriptions
+```
+
 ### `abcd decide`
 
 Mint a decision record (ADR) and lay its skeleton
@@ -591,6 +713,15 @@ field fails the call when the directory is missing, so no failed-cd hazard
 exists. A workdir that is not a string, or holds a NUL byte, a control
 character or invalid UTF-8, or is over 4096 bytes, is refused with the
 blocking status and the reason.
+
+### `abcd help`
+
+Help about any command
+
+**Usage:** `abcd help [command]`
+
+Help provides help for any command in the application.
+Simply type abcd help [path to command] for full details.
 
 ### `abcd history`
 

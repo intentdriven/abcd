@@ -42,7 +42,15 @@ const referenceIntro = "# CLI command reference\n\n" +
 func GenerateReference() string {
 	var b strings.Builder
 	b.WriteString(referenceIntro)
-	writeCommandRef(&b, NewRootCommand())
+	root := NewRootCommand()
+	// Cobra attaches its own `completion` and `help` commands only when the
+	// root executes, so a tree walked straight from NewRootCommand omits two
+	// commands the binary answers to, and the page's "every user-facing
+	// command" would be false (iss-304). Attach them here exactly as Execute
+	// does.
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
+	writeCommandRef(&b, root)
 	// Uniform spacing and a single trailing newline, so the page is stable no
 	// matter which optional blocks each command emitted.
 	return strings.TrimRight(blankRuns.ReplaceAllString(b.String(), "\n\n"), "\n") + "\n"
