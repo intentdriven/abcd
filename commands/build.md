@@ -25,7 +25,10 @@ pass:
   is not built yet.
 - `ready` — the intent is READY: planned, its criteria written, its spec linked
   and written (the same gate `/abcd:intent` reports).
-- `open_questions` — no list item under `## Open Questions`.
+- `open_questions` — no open question under `## Open Questions`: every list
+  item there counts unless the section opens with an italic `_All resolved …_`
+  line or the item is explicitly marked resolved or deferred (`**Deferred**`,
+  `resolved:`, `**explicitly deferred**`).
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.

@@ -35,10 +35,16 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its
   advisory rows stay advisory.
-- **open questions** — no list item under the record's `## Open Questions`. The
-  reader is deliberately literal: an item is a question whatever it says, and a
-  record that has answered its questions says so in prose and keeps the answers
-  in `## Decisions`.
+- **open questions** — no open question under the record's `## Open Questions`.
+  The reader fails closed and knows the record's two settled markers: a section
+  that opens with an italic `_All resolved …_` line (or `_All four resolved …_`)
+  is settled whole, and an item explicitly marked resolved or deferred — a bold
+  span opening with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
+  deferred**`, `**explicit deferral**`) or the word as a label (`resolved:`,
+  `Deferred:`) — is not a question. Every other list item is a question
+  whatever it says: one led `**Open`, one that only points to another record,
+  and one that merely mentions deferral all count (the 2026-09-25 entry in
+  `.abcd/work/DECISIONS.md`).
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to

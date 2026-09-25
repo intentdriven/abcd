@@ -82,7 +82,8 @@ const maxIntentBytes = 256 * 1024
 //     of the spec admits with drain's eligibility rule.
 //   - ready: the implement-readiness gate (intent.Ready) — planned, criteria,
 //     the spec linked and written. Its advisory rows stay advisory here.
-//   - open_questions: no list item under `## Open Questions`.
+//   - open_questions: no open question under `## Open Questions`
+//     (intent.OpenQuestions: every list item, less the settled markers).
 //   - claim_sections: no unanswered claim section — the mechanism prompt
 //     answered or the section absent, the scope conditions recorded.
 //   - hold: no `held:` on the record (iss-2609200830076665).
@@ -196,7 +197,7 @@ func openQuestionsRow(id, content string) CheckRow {
 		return row
 	}
 	row.Detail = fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), strings.Join(qs, " | "))
-	row.Remedy = "answer each in the record's `## Decisions` and mark `## Open Questions` settled, through the planning interview (/abcd:intent)"
+	row.Remedy = "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)"
 	return row
 }
 
