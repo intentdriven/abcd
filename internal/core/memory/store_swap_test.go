@@ -100,6 +100,28 @@ func TestLintReadsOnlyThroughTheStoreHandle(t *testing.T) {
 	}
 }
 
+// TestCoverageLintWritesOnlyThroughTheStoreHandle pins iss-2609252100150846:
+// the coverage index was written by path after the handle vetted the store,
+// with no lock or writer check behind it, so a swap in between landed the
+// index outside the repository.
+func TestCoverageLintWritesOnlyThroughTheStoreHandle(t *testing.T) {
+	repo := t.TempDir()
+	quotingStore(t, repo)
+	outside := plantOutside(t)
+	vetted := swapStoreOnOpen(t, repo, outside)
+
+	if _, err := Lint(LintRequest{RepoRoot: repo, Now: fixedNow}); err != nil {
+		t.Fatalf("lint: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(outside, coverageIndexName))
+	if err != nil || !strings.Contains(string(raw), "planted-outside") {
+		t.Errorf("coverage lint wrote its index beyond the swap: %q (%v)", raw, err)
+	}
+	if _, err := os.Stat(filepath.Join(vetted, coverageIndexName)); err != nil {
+		t.Errorf("coverage lint did not write its index into the store it opened: %v", err)
+	}
+}
+
 // TestBareHeadroomReadsOnlyThroughTheStoreHandle: the headroom lines read the
 // quotation budget by path, so a budget beyond the swap changed the fingerprint
 // and reported a current coverage index as stale.

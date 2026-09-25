@@ -475,11 +475,12 @@ func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[
 		"new_fingerprint": nil,
 		"written":         false,
 	}
-	// The caller's store handle refused a symlinked store DIRECTORY before the
-	// coverage index is written (GHSA-72rp): writeCoverageIndex would otherwise
-	// MkdirAll + write into the symlink target, escaping the repo. The crawl
-	// reads through it (iss-2608291814572914), the same handle the page lint
-	// read through, so one Lint never opens the store twice.
+	// The caller's store handle refused a symlinked store DIRECTORY when it was
+	// opened (GHSA-72rp), and every read below and the index write resolve
+	// inside the directory it vetted (iss-2608291814572914,
+	// iss-2609252100150846), so a store swapped after the open can neither feed
+	// the coverage nor receive the index. It is the handle the page lint read
+	// through: one Lint opens the store once.
 	if !store.present() {
 		return nil, report, nil
 	}
@@ -493,7 +494,7 @@ func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[
 	result := buildCoverage(pages, registry, budget)
 
 	oldFP := readStoredFingerprint(store)
-	if _, err := writeCoverageIndex(indexPath, result, budget); err != nil {
+	if _, err := writeCoverageIndex(store, result, budget); err != nil {
 		return nil, report, err
 	}
 	report["stale"] = oldFP != "" && oldFP != result.fingerprint

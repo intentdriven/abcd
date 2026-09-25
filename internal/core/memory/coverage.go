@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // coverage.go — quotation-budget math + the regenerable coverage index (fn-39):
@@ -543,7 +544,11 @@ func readStoredFingerprint(store *storeHandle) string {
 	return ""
 }
 
-func writeCoverageIndex(path string, result coverageResult, budget quotationBudget) (map[string]any, error) {
+// writeCoverageIndex writes the index through the store handle's root, so the
+// write resolves inside the directory the handle vetted: a store swapped for a
+// symlink after the open cannot land it outside the repository
+// (iss-2609252100150846). The caller holds a present store.
+func writeCoverageIndex(store *storeHandle, result coverageResult, budget quotationBudget) (map[string]any, error) {
 	sourcesOut := map[string]any{}
 	for sh, cov := range result.sources {
 		sourcesOut[sh] = map[string]any{
@@ -567,20 +572,10 @@ func writeCoverageIndex(path string, result coverageResult, budget quotationBudg
 		"sources":                     sourcesOut,
 		"unavailable":                 unavailableOut,
 	}
-	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
-		return nil, err
-	}
-	if err := writeStringAtomic(path, marshalIndentNoEscape(payload)); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(store.root, coverageIndexName, []byte(marshalIndentNoEscape(payload)), 0o644); err != nil {
 		return nil, err
 	}
 	return payload, nil
-}
-
-func dirOf(path string) string {
-	if i := strings.LastIndexByte(path, os.PathSeparator); i >= 0 {
-		return path[:i]
-	}
-	return "."
 }
 
 func uniqueSorted(ss []string) []string {
