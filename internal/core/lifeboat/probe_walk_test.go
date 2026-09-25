@@ -402,3 +402,57 @@ func TestWalkFilesStartBoundaryMatchesTheWholeWalk(t *testing.T) {
 		}
 	}
 }
+
+// TestReadDirBoundedContract pins what readDirBounded promises and no more
+// (iss-134): at or under the bound it returns the whole directory, sorted, and
+// says nothing is missing; above it, it returns exactly bound distinct entries
+// of that directory, sorted, and says more remain. Which entries survive above
+// the bound is the filesystem's readdir order and is deliberately not asserted.
+func TestReadDirBoundedContract(t *testing.T) {
+	dir := t.TempDir()
+	all := map[string]bool{}
+	files := map[string]string{}
+	for i := 0; i < 12; i++ {
+		name := fmt.Sprintf("f%02d.txt", i)
+		files[name] = "x\n"
+		all[name] = true
+	}
+	writeTree(t, dir, files)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	names := func(es []fs.DirEntry) []string {
+		out := make([]string, 0, len(es))
+		for _, e := range es {
+			out = append(out, e.Name())
+		}
+		return out
+	}
+
+	for _, bound := range []int{12, 20} {
+		entries, more := readDirBounded(root, bound)
+		got := names(entries)
+		if more || len(got) != 12 || !sort.StringsAreSorted(got) {
+			t.Errorf("bound %d over 12 entries = %v (more=%v), want all 12 sorted and nothing more", bound, got, more)
+		}
+	}
+
+	entries, more := readDirBounded(root, 5)
+	got := names(entries)
+	if !more {
+		t.Error("a 12-entry directory under a 5-entry bound must report more")
+	}
+	if len(got) != 5 || !sort.StringsAreSorted(got) {
+		t.Errorf("bound 5 = %v, want exactly 5 names, sorted", got)
+	}
+	seen := map[string]bool{}
+	for _, n := range got {
+		if !all[n] || seen[n] {
+			t.Errorf("bound 5 returned %q, which is not a distinct entry of the directory", n)
+		}
+		seen[n] = true
+	}
+}

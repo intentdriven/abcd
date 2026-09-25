@@ -664,10 +664,20 @@ func (c *SourceContext) pathIsIgnored(rel string) bool {
 func (c *SourceContext) IgnoredAreIncluded() bool { return c.includeIgnored }
 
 // readDirBounded reads at most bound entries from the directory dirRoot points
-// at, sorted by name for a deterministic walk, and reports whether the directory
-// held more than bound. It materialises at most bound+1 entries, so a directory
-// of millions cannot balloon memory here — the shared per-directory guard ListDir
-// applies with ReadDir(maxDirEntries).
+// at, returns them sorted by name, and reports whether the directory held more
+// than bound. It materialises at most bound+1 entries, so a directory of millions
+// cannot balloon memory here — the shared per-directory guard ListDir applies
+// with ReadDir(maxDirEntries).
+//
+// Determinism holds only at or under the bound (iss-134). There the entries are
+// the whole directory and the walk over it is reproducible. Above it, WHICH bound
+// entries come back is the filesystem's readdir order, which differs between
+// filesystems and is not promised stable between runs; only their order is
+// fixed. The caller learns this from more and must say so: the probe walk names
+// the directory in its truncation note, and embark refuses the lifeboat.
+// Selecting the bound smallest names instead would mean reading the whole
+// listing — the unbounded pass over a hostile directory this guard exists to
+// avoid.
 func readDirBounded(dirRoot *os.Root, bound int) (entries []fs.DirEntry, more bool) {
 	f, err := dirRoot.Open(".")
 	if err != nil {
