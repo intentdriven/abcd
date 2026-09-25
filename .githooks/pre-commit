@@ -59,10 +59,35 @@ case $- in *x*) set +x ;; esac
 # does nothing against `BASH_FUNC_grep%%=() { return 1; }` in the environment: a
 # function wins over PATH lookup, so the guard would report a clean check for ever
 # while announcing its entry count. Same class as the PATH prepend, different route.
-unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command 2>/dev/null || true
+# `read` and `echo` are on the list because they are the two most load-bearing
+# names here: with either shadowed, the store parse loop reads zero entries and
+# every diagnostic goes quiet — the silent pass this pin exists to prevent.
+# `exit`, `test` and `[` are on it because the sweep below can be neutered by a
+# shadowed `declare`, and a surviving `exit` function turns every refusal into a
+# printed BLOCK that does not block. This list is expansion-free and runs before
+# `declare` is ever consulted, so it holds even then.
+unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ 2>/dev/null || true
 # A field separator the caller cannot choose: an inherited IFS changes how every
-# unquoted expansion below splits.
+# unquoted expansion below splits — including the sweep loop's, so it is pinned
+# before the sweep runs.
 IFS=$' \t\n'
+# Then sweep EVERY function that survives: the list above pins the names this hook
+# runs today, but any inherited function left standing is a name a future edit might
+# call. Word-splitting `declare -F` output ("declare -f NAME" or "declare -fx NAME"
+# per line) under the pinned IFS needs no `read`; globbing is off around the loop so
+# a function named with a glob metacharacter cannot dodge it via pathname expansion.
+# The sweep is best-effort on top of the fixed list, not a substitute for it: a
+# shadowed `declare` silences the sweep entirely, which is exactly why every name
+# the refusal paths depend on sits on the expansion-free list above. A shadowed
+# `unset` or `builtin` has no in-script remedy (the same capability class as
+# running with SHELLOPTS=noexec).
+set -f
+for _fn in $(declare -F); do
+  case "$_fn" in declare|-f|-fx) continue ;; esac
+  unset -f "$_fn" 2>/dev/null || true
+done
+set +f
+unset _fn 2>/dev/null || true
 # C locale so the byte classes below and grep's case folding do not depend on the
 # committer's environment. The Go parser pins the same ASCII-only reading.
 LC_ALL=C
@@ -303,7 +328,12 @@ declares_format() {
 # Windows) `.ABCD/.WORK.LOCAL/Private-Names.txt` is the same file, and a case-exact
 # test would let the store be staged under a differently-cased path.
 refuse_tier_path() {
-  _p="$1"
+  # Control bytes are stripped before the path is matched or printed: a staged
+  # path is attacker-authored on the merge half, and a raw escape sequence echoed
+  # to the terminal can redraw or forge the refusal text around it. Stripping
+  # before the match can only ever ADD a refusal (the tier's real path carries no
+  # control bytes), so the scrub fails closed.
+  _p=$(printf '%s' "$1" | tr -d '[:cntrl:]')
   [ -n "$_p" ] || return 0
   _lc=$(printf '%s' "$_p" | tr '[:upper:]' '[:lower:]')
   _dir_lc=$(printf '%s' "$banlist_dir" | tr '[:upper:]' '[:lower:]')
@@ -329,7 +359,9 @@ refuse_tier_path() {
 # Exempt when the blob's SECOND line is the example marker. Content scanning is not
 # affected: an exempt blob is still matched against every entry.
 refuse_store_copy() {
-  _p="$1"
+  # Same control-byte scrub as refuse_tier_path, for the same reason: this path is
+  # printed. Scrubbing before the basename test can only add a refusal.
+  _p=$(printf '%s' "$1" | tr -d '[:cntrl:]')
   _first="$2"
   _second="$3"
   if [ "$(normalise_decl "$_second")" = "$example_marker" ]; then
@@ -774,8 +806,16 @@ while IFS= read -r -d '' meta; do
   refuse_tier_path "$staged_path"
   refuse_tier_path "$src_path"
 
+  # The staged PATH itself is scanned like content: a banned name in a FILENAME
+  # (widgetworks-notes.md) enters history just as surely as one in a file's bytes, so
+  # a path matching a private pattern refuses by key exactly as content does.
+  # Appended BEFORE the gitlink skip below: a gitlink has no blob, but its path
+  # still enters history.
+  printf '%s\n' "$staged_path" >>"$candidate"
+
   # A gitlink has no blob here; skip it rather than fail-close on a `git show` that
-  # cannot succeed. Every OTHER git-show failure still refuses (fail closed).
+  # cannot succeed. Every OTHER git-show failure still refuses (fail closed). Its
+  # path was already appended above, so a banned name as a submodule path refuses.
   case "$dstmode" in
     160000) continue ;;
   esac
@@ -802,10 +842,6 @@ while IFS= read -r -d '' meta; do
   cat "$blob" >>"$candidate"
   # A separator, so a pattern cannot match across the join between two files.
   printf '\n' >>"$candidate"
-  # The staged PATH itself is scanned like content: a banned name in a FILENAME
-  # (widgetworks-notes.md) enters history just as surely as one in a file's bytes, so
-  # a path matching a private pattern refuses by key exactly as content does.
-  printf '%s\n' "$staged_path" >>"$candidate"
 done <"$staged_paths"
 
 # Nothing staged to check. Any refusal already recorded above still stands: a store

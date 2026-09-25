@@ -27,8 +27,18 @@ case $- in *x*) set +x ;; esac
 # does nothing against `BASH_FUNC_grep%%=() { return 1; }` in the environment: a
 # function wins over PATH lookup, so the guard would report a clean check for ever
 # while announcing its entry count. Same class as the PATH prepend, different route.
-unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command 2>/dev/null || true
+# `read`, `echo`, `exit`, `test` and `[` are pinned for the delegate's sake, and
+# every surviving function is swept after the fixed list — see the pre-commit
+# half for why, including why the fixed list must carry `exit`.
+unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ 2>/dev/null || true
 IFS=$' \t\n'
+set -f
+for _fn in $(declare -F); do
+  case "$_fn" in declare|-f|-fx) continue ;; esac
+  unset -f "$_fn" 2>/dev/null || true
+done
+set +f
+unset _fn 2>/dev/null || true
 LC_ALL=C
 export LC_ALL
 PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin

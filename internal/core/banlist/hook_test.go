@@ -1320,3 +1320,94 @@ func TestPreCommitHook_AMirrorInsideAnotherCheckoutDoesNotInheritItsStore(t *tes
 		})
 	}
 }
+
+// TestPreCommitHook_ResistsInheritedShellState holds this repository's own guard to
+// the hardening the scaffolded template received on 2026-08-26 and this copy never
+// did. Four ways hostile inherited state, or an attacker-authored staged path, got a
+// banned name past the guard or forged its output; each is driven through BASH_ENV,
+// which bash reads at startup whatever its version.
+func TestPreCommitHook_ResistsInheritedShellState(t *testing.T) {
+	const banned = "the widgetworks deal closes friday\n"
+	bashEnv := func(t *testing.T, body string) string {
+		p := filepath.Join(t.TempDir(), "hostile.sh")
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return "BASH_ENV=" + p
+	}
+	withEnv := func(r *hookRepo, extra string) *hookRepo {
+		return &hookRepo{t: r.t, dir: r.dir, env: append(append([]string{}, r.env...), extra)}
+	}
+
+	// read and echo shadowed: the parse loop read zero entries, every diagnostic went
+	// quiet, and the banned name was committed.
+	t.Run("read and echo shadowed", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("a.md", banned)
+		r.git("add", "a.md")
+		blocked, out := withEnv(r, bashEnv(t, "read() { :; }\necho() { :; }\n")).commit()
+		if !blocked {
+			t.Fatalf("the guard passed a banned name under a read/echo shadow\n%s", out)
+		}
+		if !strings.Contains(out, "widget-partner") {
+			t.Errorf("the refusal does not name the key\n%s", out)
+		}
+	})
+
+	// declare and exit shadowed: a surviving exit function turned every refusal into
+	// a printed BLOCKED that committed anyway.
+	t.Run("declare and exit shadowed", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("seed.md", "nothing sensitive here\n")
+		r.git("add", "seed.md")
+		if blocked, out := r.commit(); blocked {
+			t.Fatalf("seed refused\n%s", out)
+		}
+		r.write("b.md", banned)
+		r.git("add", "b.md")
+		withEnv(r, bashEnv(t, "declare() { return 0; }\nexit() { return 0; }\n")).commit()
+		if tree := r.git("ls-tree", "-r", "--name-only", "HEAD"); strings.Contains(tree, "b.md") {
+			t.Fatalf("the banned commit landed in history despite the refusal\n%s", tree)
+		}
+	})
+
+	// A gitlink whose PATH is a banned name: the path was appended after the gitlink
+	// skip, so a submodule path was never scanned.
+	t.Run("gitlink path", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("seed.md", "nothing sensitive here\n")
+		r.git("add", "seed.md")
+		if blocked, out := r.commit(); blocked {
+			t.Fatalf("seed refused\n%s", out)
+		}
+		head := strings.TrimSpace(r.git("rev-parse", "HEAD"))
+		if out, err := r.tryGit("update-index", "--add", "--cacheinfo", "160000,"+head+",widgetworks-vendored"); err != nil {
+			t.Skipf("cannot stage a gitlink in this sandbox: %v\n%s", err, out)
+		}
+		blocked, out := r.commit()
+		if !blocked {
+			t.Fatalf("the guard passed a gitlink named with a banned path\n%s", out)
+		}
+		if !strings.Contains(out, "widget-partner") {
+			t.Errorf("the refusal does not name the key\n%s", out)
+		}
+	})
+
+	// A refused path carrying control bytes was echoed raw, so an escape sequence could
+	// redraw or forge the refusal text around it.
+	t.Run("control bytes scrubbed", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		evil := ".abcd/.work.local/\x1b[2Kevil.txt"
+		r.write(evil, "x\n")
+		if out, err := r.tryGit("add", "-f", evil); err != nil {
+			t.Skipf("cannot stage a control-byte path here: %v\n%s", err, out)
+		}
+		blocked, out := r.commit()
+		if !blocked {
+			t.Fatalf("a file inside the gitignored local tier was committed\n%s", out)
+		}
+		if strings.ContainsRune(out, '\x1b') {
+			t.Errorf("a raw ESC byte from the staged path reached the output\n%q", out)
+		}
+	})
+}
