@@ -2562,6 +2562,15 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 						verb = "reused existing remainder"
 					}
 					fmt.Fprintf(w, "  %s %s for %s\n  %s\n", verb, res.Remainder.ID, res.Remainder.Intent, termsafe.Sanitize(res.Remainder.Path))
+					// The steps not marked landed travel with the remainder
+					// (itd-2609212103565953); name them, renumbered as the
+					// remainder now lists them. Titles are an author's prose.
+					if n := len(res.RemainderSteps); n > 0 {
+						fmt.Fprintf(w, "  carried %d unlanded step(s) into %s:\n", n, res.Remainder.ID)
+						for _, st := range res.RemainderSteps {
+							fmt.Fprintf(w, "    %d. %s\n", st.Number, termsafe.Sanitize(st.Title))
+						}
+					}
 				}
 				switch {
 				case res.IntentMoved:
@@ -2599,7 +2608,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent")
-	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)")
+	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed")
 	closeCmd.Flags().StringVar(&closeMode, "production-mode", "", productionModeFlagHelp)
 	specCmd.AddCommand(closeCmd)
 
