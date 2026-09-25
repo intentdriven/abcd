@@ -4707,14 +4707,21 @@ func readSourceCapped(cmd *cobra.Command, spec string, limit int64) ([]byte, err
 // capture honours the per-repo redaction override (the scanner resolves it at
 // <root>/.abcd/config/pii.json, without walking up). Without this, a capture run
 // from a subdirectory hands the subdirectory to scanner.New, which finds no
-// override there and silently redacts with defaults only (B12). It falls back to
-// cwd when git cannot answer (not a repo, git absent) — the scanner then behaves
-// exactly as before, so the fallback never regresses a non-git use.
+// override there and silently redacts with defaults only (B12).
+//
+// Three states, not two (iss-2609020224230967): git's toplevel when git
+// answers; else, for a repository git will not answer for (an ownership
+// refusal under the isolated env, git absent from PATH, a corrupt .git), the
+// checkout the .git marker names, through the rules root's resolution, which
+// admits a marker only when it is a plausible repository the caller owns (or
+// has declared trusted) and otherwise stays at cwd; else cwd, where there is
+// no repository at all and the scanner behaves exactly as before. Collapsing
+// the middle state onto cwd treated a real working tree as no repository.
 func captureRoot(cwd string) string {
 	if top, err := gitutil.Toplevel(cwd); err == nil {
 		return top
 	}
-	return cwd
+	return rules.ResolveRoot(cwd)
 }
 
 // historyStore is the shared front-door step for every `history` verb: resolve
