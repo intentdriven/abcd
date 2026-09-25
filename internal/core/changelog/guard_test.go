@@ -509,8 +509,8 @@ func TestGuardSurfaceNamesARewordedSentence(t *testing.T) {
 
 // TestGuardSurfaceReadsAVersionOneBaseline pins the schema bump's compatibility
 // half end to end: the last release tag carries a version-1 snapshot (no
-// placement fields), HEAD carries version 2, and the cut is guarded rather than
-// failing to decode its own baseline.
+// placement fields), HEAD carries the current version, and the cut is guarded
+// rather than failing to decode its own baseline.
 func TestGuardSurfaceReadsAVersionOneBaseline(t *testing.T) {
 	r := newFixtureRepo(t)
 	r.write(surface.SnapshotPath, `{"schema_version":1,"commands":[{"path":"abcd","hidden":false,"flags":[]}],"manifest":[]}`+"\n")

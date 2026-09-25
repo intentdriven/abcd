@@ -151,9 +151,10 @@ func TestEncodeRecordsTheSentence(t *testing.T) {
 	}
 }
 
-// TestDecodeReadsTheVersionTwoShape keeps the last released shape readable: the
-// release guardrail reads its baseline out of the last tag, which carries a
-// version-2 file with no sentence recorded.
+// TestDecodeReadsTheVersionTwoShape keeps the version-2 shape readable. No
+// release tag carries one (v0.10.0 carries version 1, which
+// TestDecodeReadsTheReleasedVersionOneShape reads), but a tree between itd-146
+// and this intent does, and every version from 1 to 3 is readable.
 func TestDecodeReadsTheVersionTwoShape(t *testing.T) {
 	v2 := `{"schema_version":2,"commands":[{"path":"abcd capture","hidden":false,` +
 		`"group":"records","block":"people","flags":[]}],"manifest":[]}`
