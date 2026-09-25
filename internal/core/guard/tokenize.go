@@ -390,6 +390,55 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 		}
 	}
+	// expandedBody reads the body of a here-document whose delimiter is
+	// unquoted. bash expands it as it expands a double-quoted string — a
+	// backslash escapes `$`, a backtick, a backslash and a newline, and a quote
+	// is text — so every command substitution in it runs, the ones inside an
+	// arithmetic expansion too (review4-guard finding 1). Each is followed as
+	// commands of their own, as the double-quote branch follows its own; the
+	// body text is data and leaves no word. One whose end cannot be found is
+	// an expansion error bash refuses, and the scan stops there, as the
+	// double-quote branch's does.
+	expandedBody := func(body string) {
+		tally(len(body))
+		for j := 0; j < len(body); {
+			switch {
+			case body[j] == '\\':
+				j += 2
+				continue
+			case body[j] == '$' && j+2 < len(body) && body[j+1] == '(' && body[j+2] == '(':
+				end := arithmeticEnd(body, j, budget)
+				if end == closeUnread {
+					unread()
+					return
+				}
+				if end >= 0 {
+					arithmetic(body[j+3 : end-1])
+					j = end + 1
+					continue
+				}
+			}
+			if body[j] != '`' && !(body[j] == '$' && j+1 < len(body) && body[j+1] == '(') {
+				j++
+				continue
+			}
+			open, inner := j+2, closeNone
+			if body[j] == '`' {
+				open = j + 1
+				inner = closingBacktick(body, open, budget)
+			} else {
+				inner = closingParen(body, open, budget)
+			}
+			if inner < 0 {
+				if inner == closeUnread {
+					unread()
+				}
+				return
+			}
+			follow(body[open:inner])
+			j = inner + 1
+		}
+	}
 	// openSubstitution suspends the command being built when a command or
 	// process substitution opens inside it. The substitution's own command is
 	// read as a fresh segment, and closeSubstitution resumes the enclosing one
@@ -603,7 +652,14 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// hook maps to fail-OPEN, and a delimiter line reached early
 			// swallowed the real commands that followed it as body.
 			if len(pending) > 0 {
-				next, ok := skipHeredocBodies(line, i, pending)
+				next, bodies, ok := skipHeredocBodies(line, i, pending, true)
+				// A body whose delimiter is unquoted is expanded before the
+				// command reads it, and every command substitution in it runs
+				// (review4-guard finding 1). Its text stays data; what runs is
+				// read as commands of this command's chain.
+				for _, body := range bodies {
+					expandedBody(body)
+				}
 				if !ok {
 					// The delimiter line never came. bash RUNS this (it recovers
 					// silently, taking input-to-EOF as the body), so an error is
@@ -1112,7 +1168,7 @@ func closingParenMode(line string, i int, budget *int, arith bool) int {
 			i = next
 			continue
 		case c == '\n' && len(pending) > 0:
-			next, ok := skipHeredocBodies(line, i+1, pending)
+			next, _, ok := skipHeredocBodies(line, i+1, pending, false)
 			if !ok {
 				return closeNone
 			}
@@ -1731,8 +1787,10 @@ func skipRedirectTarget(line string, pos int) int {
 type heredoc struct {
 	delim     string
 	stripTabs bool
-	// quoted records that the delimiter word carried quotes, which makes it a
-	// delimiter beyond doubt however exotic it looks (`<<'---'`).
+	// quoted records that the delimiter word carried quotes or a backslash
+	// (`<<'EOF'`, `<<"EOF"`, `<<\EOF`, `<<E\OF`), which makes it a delimiter
+	// beyond doubt however exotic it looks (`<<'---'`), and keeps the body
+	// literal: bash expands only a body whose delimiter is wholly unquoted.
 	quoted bool
 }
 
@@ -1799,6 +1857,7 @@ func readHeredocDelim(line string, pos int) (heredoc, int, error) {
 				return hd, pos + 1, nil
 			}
 			w = append(w, line[pos+1])
+			hd.quoted = true
 			pos += 2
 			continue
 		case ' ', '\t', '\n', ';', '&', '|', '(', ')', '<', '>':
@@ -1861,7 +1920,11 @@ func heredocBlockSignal() payloadSignal {
 
 // skipHeredocBodies consumes the body of every pending here-document, starting
 // at pos (the first byte after the newline that ended the command line), and
-// returns the position just past the last body. The second return is false if
+// returns the position just past the last body, together with — when collect
+// is set — the text of each body the shell EXPANDS, one whose delimiter is
+// unquoted, with a `<<-` body's leading tabs stripped as bash strips them. A
+// closing scan, which only steps over a body, does not collect. The last
+// return is false if
 // any body never finds its terminating delimiter line before the input ends —
 // which is either a genuinely truncated heredoc, or a `<<` that isDelimStart
 // mistook for one (an identifier-operand arithmetic shift, `$((1<<shift))`,
@@ -1869,9 +1932,11 @@ func heredocBlockSignal() payloadSignal {
 // the line as unchecked "body" text would swallow real commands with no
 // signal; the caller flags the opening command so Check fails CLOSED on it,
 // never an error, which the hook would turn into a fail-open.
-func skipHeredocBodies(line string, pos int, pending []heredoc) (int, bool) {
+func skipHeredocBodies(line string, pos int, pending []heredoc, collect bool) (int, []string, bool) {
+	var expanded []string
 	for _, hd := range pending {
 		found := false
+		var body strings.Builder
 		for pos < len(line) {
 			end := pos
 			for end < len(line) && line[end] != '\n' {
@@ -1890,10 +1955,17 @@ func skipHeredocBodies(line string, pos int, pending []heredoc) (int, bool) {
 				found = true
 				break
 			}
+			if collect && !hd.quoted {
+				body.WriteString(text)
+				body.WriteByte('\n')
+			}
 		}
 		if !found {
-			return pos, false
+			return pos, expanded, false
+		}
+		if !hd.quoted && body.Len() > 0 {
+			expanded = append(expanded, body.String())
 		}
 	}
-	return pos, true
+	return pos, expanded, true
 }
