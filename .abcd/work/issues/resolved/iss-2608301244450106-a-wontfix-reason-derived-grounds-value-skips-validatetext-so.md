@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-round-3-builder"
 found_at: "internal/core/capture/grounds.go"
+resolution: "The grounds a wontfix derives from its reason go through grounds.NewDerived, which applies the control-character check ValidateText applies to supplied grounds (held once as validateControl) and leaves only the substance floor off, so a control character in a wontfix_reason is refused at the grounds boundary before any write."
+impact: fix
+resolved_by:
+  commit: "166d35ac"
 ---
 
 a wontfix reason-derived grounds value skips ValidateText so a control character in wontfix_reason still reaches yamlScalar
@@ -27,3 +31,7 @@ its site and its message differ.
 Left open for the facilitator. Closing it would mean routing derived grounds
 through the same validator as supplied grounds, which is a small consolidation
 in the direction the one-canonical-primitive rule already points.
+
+## Grounds
+
+- pursued: a wontfix reason carrying a control character is refused as a grounds refusal naming the rune; a refusal arriving from the frontmatter serialiser instead would show it wrong
