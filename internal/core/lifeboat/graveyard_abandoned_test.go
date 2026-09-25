@@ -66,6 +66,16 @@ func gvEvidenceContains(f Finding, sub string) bool {
 	return false
 }
 
+// gvNoticesContain is gvEvidenceContains for the binary's own notices channel.
+func gvNoticesContain(f Finding, sub string) bool {
+	for _, e := range f.Notices {
+		if strings.Contains(e, sub) {
+			return true
+		}
+	}
+	return false
+}
+
 // --- 1. superseded intents ---------------------------------------------------
 
 func TestAbandonedSupersededIntent(t *testing.T) {
@@ -464,10 +474,10 @@ func TestAbandonedSupersededADRCapNotesTruncation(t *testing.T) {
 		t.Fatalf("findings = %d, want the cap %d", len(fs), maxGraveyardFindingsPerSignal)
 	}
 	last := fs[len(fs)-1]
-	want := fmt.Sprintf("(+2 further findings omitted; capped at %d)", maxGraveyardFindingsPerSignal)
-	if !gvEvidenceContains(last, want) {
-		t.Errorf("truncated signal did not note the cap: last finding %s evidence = %v, want a line containing %q",
-			last.ID, last.Evidence, want)
+	want := fmt.Sprintf("+2 further findings omitted; capped at %d", maxGraveyardFindingsPerSignal)
+	if !gvNoticesContain(last, want) {
+		t.Errorf("truncated signal did not note the cap: last finding %s notices = %v, want a line containing %q",
+			last.ID, last.Notices, want)
 	}
 }
 
@@ -492,8 +502,8 @@ func TestAbandonedSupersededADRDuplicateNumberAnnouncesShadow(t *testing.T) {
 	if !ok {
 		t.Fatalf("want adr-7, got %v", fs)
 	}
-	if !gvEvidenceContains(f, "docs/adr/0007-use-rabbitmq.md") {
-		t.Errorf("the shadowed claimant was dropped silently: evidence = %v", f.Evidence)
+	if !gvNoticesContain(f, "docs/adr/0007-use-rabbitmq.md") {
+		t.Errorf("the shadowed claimant was dropped silently: notices = %v", f.Notices)
 	}
 }
 
@@ -533,8 +543,8 @@ func TestAbandonedAlternativesConsideredDuplicateNumberAnnouncesShadow(t *testin
 	if gvCountSignal(fs, SignalAlternativesConsidered) != 1 {
 		t.Fatalf("two records claiming one ADR number must yield one finding, got %d (%v)", len(fs), fs)
 	}
-	if !gvEvidenceContains(fs[0], "docs/adr/20200926-use-markdown-adrs.md") {
-		t.Errorf("the shadowed claimant was dropped silently: evidence = %v", fs[0].Evidence)
+	if !gvNoticesContain(fs[0], "docs/adr/20200926-use-markdown-adrs.md") {
+		t.Errorf("the shadowed claimant was dropped silently: notices = %v", fs[0].Notices)
 	}
 }
 
@@ -646,8 +656,8 @@ func TestAbandonedSupersededIntentPaddedIDDedupes(t *testing.T) {
 	if !ok {
 		t.Fatalf("want the canonical id itd-7, got %v", fs)
 	}
-	if !gvEvidenceContains(f, "shadowed") {
-		t.Errorf("the dropped duplicate must be announced as a shadow: evidence = %v", f.Evidence)
+	if !gvNoticesContain(f, "shadowed") {
+		t.Errorf("the dropped duplicate must be announced as a shadow: notices = %v", f.Notices)
 	}
 }
 
@@ -664,8 +674,8 @@ func TestAbandonedWontfixIssuePaddedIDDedupes(t *testing.T) {
 	if !ok {
 		t.Fatalf("want the canonical id iss-7, got %v", fs)
 	}
-	if !gvEvidenceContains(f, "shadowed") {
-		t.Errorf("the dropped duplicate must be announced as a shadow: evidence = %v", f.Evidence)
+	if !gvNoticesContain(f, "shadowed") {
+		t.Errorf("the dropped duplicate must be announced as a shadow: notices = %v", f.Notices)
 	}
 }
 
@@ -753,7 +763,7 @@ func TestAbandonedSupersededADROversizeOrdinalKeepsIdentity(t *testing.T) {
 	if !ok {
 		t.Fatalf("want the canonical id adr-%s, got %v", huge, fs)
 	}
-	if !gvEvidenceContains(f, "docs/adr/b-bare.md") {
-		t.Errorf("the shadowed claimant was dropped silently: evidence = %v", f.Evidence)
+	if !gvNoticesContain(f, "docs/adr/b-bare.md") {
+		t.Errorf("the shadowed claimant was dropped silently: notices = %v", f.Notices)
 	}
 }
