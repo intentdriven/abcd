@@ -148,3 +148,31 @@ func TestBoardReportsAnOrphanRowAndAMalformedTableOnStderr(t *testing.T) {
 		t.Fatalf("stderr %q / stdout:\n%s", stderr, stdout)
 	}
 }
+
+// TestBoardReadsTheRoutingTableFromTheRulesRoot is review-tier1 F2 at the
+// board: a monorepo member with its own .abcd/ governs its subtree, so the
+// board run inside it reads the member's routing table, the same root the
+// member's rules and guard are read from, not git's toplevel.
+func TestBoardReadsTheRoutingTableFromTheRulesRoot(t *testing.T) {
+	oracleBoardCheckout(t, "", "")
+	top, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := filepath.Join(top, "member")
+	table := filepath.Join(member, ".abcd", "config", "oracle-routing.json")
+	if err := os.MkdirAll(filepath.Dir(table), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(table, []byte(`{"schema_version":1,"agents":{"scribe":{"tier":"local"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(member)
+	stdout, stderr, err := runCLISplit(t)
+	if err != nil {
+		t.Fatalf("board: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "repo=local*") {
+		t.Fatalf("the board inside the member did not read the member's routing table:\n%s\nstderr: %s", stdout, stderr)
+	}
+}

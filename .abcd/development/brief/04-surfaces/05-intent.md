@@ -604,6 +604,36 @@ The later-phase review/audit verbs write their per-run receipts under the local 
 `chain` and `lifeboat` are later-phase sub-verbs of the reserved `/abcd:audit` (their backing intents itd-16 and itd-35 sit in `intents/drafts/`); the read-only working-conventions conformance check is `abcd lint`. The audit is a shipped sub-verb of `/abcd:intent`;
  `consistency` and `shape` are later phases. Bare `/abcd:intent` is status+help per the common (not universal) bare-command-as-help convention.
 
+**Model-tier routing.** The audit's emit and its verdict ingest dispatch the
+intent auditor, and each resolves the model-tier route (itd-2609170822093401,
+spc-2609180535002478) of the agent it dispatches before anything else runs,
+through the shared resolver (`internal/core/oracle` over
+`internal/core/layered`): the invocation's routing override, which the appendix
+lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
+over the repository's `.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+once a table is accepted. The emit writes the request block into the request
+document as a `## Routing` section after the provenance block, outside the
+hashed prompt, so the verdict's `prompt_hash` does not move with the machine's
+routing, and returns it as a `routing` member while the review is still owed.
+The request emitted when a spec's close ships its intent carries the same
+section. The close is a record move whose emit is report-only, so a routing
+table that cannot be read leaves that request without the section, one stderr
+warning names the re-emit through the audit that adds it, and the close stands.
+The ingest's result carries the receipt. The issue-drift check dispatches no
+agent and refuses the override. A step no configured provider can serve at its
+tier goes to the harness with the tier named in its request, and one stderr line
+says so. The receipt is a `route` member in the JSON and a `route:` line in the
+text, carrying `tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent` and `model_reported`, the last
+read from the payload's own `model` field (a reading's `instrument.model`) and
+empty when the payload names none. A routing table that cannot be read, an
+override naming an agent this invocation does not dispatch, a tier outside
+`local`, `economy`, `frontier` and `host-decides`, or a connection this machine
+has not configured exits 2 before anything is written. With no table accepted
+and no override, the step asks for `host-decides` on the harness and nothing is
+printed.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface
@@ -629,6 +659,7 @@ Sub-verbs: `abcd intent audit ingest`.
 | `--issue-drift` | bool |
 | `--max` | int |
 | `--owed` | bool |
+| `--route` | stringArray |
 | `--strict` | bool |
 
 ### `abcd intent audit ingest`
@@ -637,6 +668,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--route` | stringArray |
 | `--verdict-json` | string |
 
 ### `abcd intent condition`

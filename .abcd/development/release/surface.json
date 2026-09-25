@@ -570,6 +570,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -609,6 +616,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -620,6 +634,13 @@
           "name": "principles-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -646,6 +667,13 @@
           "name": "review-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -1287,6 +1315,13 @@
           "hidden": false
         },
         {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "strict",
           "shorthand": "",
           "type": "bool",
@@ -1299,6 +1334,13 @@
       "path": "abcd intent audit ingest",
       "hidden": false,
       "flags": [
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -1480,6 +1522,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -1630,6 +1679,13 @@
           "name": "reading-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }

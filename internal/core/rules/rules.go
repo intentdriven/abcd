@@ -5,7 +5,9 @@
 // the hook entrypoint marshal these results for their transport.
 //
 // The model is a small set of binary-bundled default domains (embedded below)
-// merged with an optional per-repo <repoRoot>/.abcd/rules.json override. Each
+// merged with two optional override layers, in order: the user scope's
+// ~/.abcd/rules.json (one per machine, spc-23) and then the per-repo
+// <repoRoot>/.abcd/rules.json, so the repo wins a field both set. Each
 // domain carries recall keywords + aliases and a list of rules; a prompt is
 // recall-matched against the active domains and only the matching rules are
 // rendered for injection. A leading *<DOMAIN> star-command activates a domain
@@ -25,12 +27,14 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"syscall"
 )
@@ -38,7 +42,19 @@ import (
 // RepoRelPath is the per-repo override file, relative to the repo worktree.
 const RepoRelPath = ".abcd/rules.json"
 
-// maxRulesFileBytes caps the per-repo rules.json (trust boundary).
+// UserRelPath is the user-scope override file, relative to the home directory:
+// the machine's own conventions, layered between the bundled defaults and every
+// repo's override (itd-117, spc-23).
+const UserRelPath = ".abcd/rules.json"
+
+// UserDisplayPath is how the user-scope file is NAMED in a diagnostic: the tilde
+// form, never the expanded path, so no message carries the developer-identity
+// home path (iss-81, fsutil.RedactHome) and a refusal a user pastes still names
+// the file.
+const UserDisplayPath = "~/" + UserRelPath
+
+// maxRulesFileBytes caps each rules.json, user scope and repo alike (trust
+// boundary).
 const maxRulesFileBytes = 256 * 1024
 
 // Domain state values. An empty string is treated as active.
@@ -63,11 +79,16 @@ type RuleSet struct {
 	Disabled      bool              `json:"disabled"`
 	Domains       map[string]Domain `json:"domains"`
 	// origins records, per domain name, the layer whose override last named
-	// it (SourceRepo today; a user layer would add its own label). It is
-	// derived by Merge, never declared in rules.json, and absent means the
-	// bundled default is untouched. Unexported so the on-disk schema does not
-	// grow a field a file could forge.
+	// it (SourceUser or SourceRepo). It is derived by the merge, never
+	// declared in rules.json, and absent means the bundled default is
+	// untouched. Unexported so the on-disk schema does not grow a field a file
+	// could forge.
 	origins map[string]string
+	// killedBy records, in layer order, every layer whose file set the kill
+	// switch, so a front door reporting "disabled" names the file to edit
+	// rather than guessing. Derived like origins, and read through
+	// KillSwitchSources.
+	killedBy []string
 	// notes carries the load-time diagnostics a front door must surface: one
 	// line per domain Load dropped rather than failing the whole file over.
 	// Unexported and non-serialized for the same reason as origins — it is
@@ -82,14 +103,34 @@ type RuleSet struct {
 // normal case.
 func (rs RuleSet) Notes() []string { return append([]string(nil), rs.notes...) }
 
+// KillSwitchSources returns the layers whose file set the kill switch, in layer
+// order (SourceUser before SourceRepo); empty when the set is not disabled. The
+// switch is sticky, so every layer named here has to clear it before anything
+// injects again.
+func (rs RuleSet) KillSwitchSources() []string { return append([]string(nil), rs.killedBy...) }
+
+// LayerPath is the display path of the file a layer's source label names:
+// UserDisplayPath for SourceUser, RepoRelPath for SourceRepo, and "" for the
+// bundled defaults, which have no file.
+func LayerPath(source string) string {
+	switch source {
+	case SourceUser:
+		return UserDisplayPath
+	case SourceRepo:
+		return RepoRelPath
+	}
+	return ""
+}
+
 // Source labels for ResolvedDomain.Source: where a domain's effective content
-// came from. A repo override that names a domain — replacing its rules,
-// changing its state, or declaring it outright — makes the domain SourceRepo,
-// conservatively: the effective behaviour is repo-chosen even when only the
-// state moved. The label set is open so a user layer (spc-23) can add its own
-// without renaming these.
+// came from. An override that names a domain — replacing its rules, changing
+// its state, or declaring it outright — makes the domain that override's layer,
+// conservatively: the effective behaviour is that layer's choice even when only
+// the state moved. The LAST layer to name a domain labels it, so a domain the
+// user scope and the repo both name is SourceRepo.
 const (
 	SourceBundled = "bundled"
+	SourceUser    = "user"
 	SourceRepo    = "repo"
 )
 
@@ -179,52 +220,193 @@ func readGuarded(path string, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-// Load returns the defaults merged with <repoRoot>/.abcd/rules.json when that
-// file exists. An absent file yields the defaults unchanged; a present file
-// that cannot be parsed or fails validation is a fail-closed error.
+// Load returns the bundled defaults merged with the user scope's
+// ~/.abcd/rules.json and then with <repoRoot>/.abcd/rules.json — bundled, then
+// user, then repo, each layer overriding per field (itd-117, spc-23). An absent
+// file contributes nothing, so a machine with neither file gets the defaults
+// unchanged; a present file that cannot be read, parsed or validated is a
+// fail-closed error naming that file, and no partial set is returned with it.
 func Load(repoRoot string) (RuleSet, error) {
+	home, _ := userHomeDir()
+	user, haveUser, err := readUserLayer(home)
+	if err != nil {
+		return RuleSet{}, err
+	}
+	repo, haveRepo, err := readRepoLayer(repoRoot)
+	if err != nil {
+		return RuleSet{}, err
+	}
+	if !haveUser && !haveRepo {
+		return Defaults(), nil
+	}
+	merged := Defaults()
+	if haveUser {
+		merged = mergeFrom(merged, user, SourceUser)
+		// The user layer is validated on its own before the repo layer lands,
+		// so a defect in it is reported against ITS file — never blamed on the
+		// repo's — and is refused even where a repo override would have
+		// replaced the offending field. The rules-present check is left to the
+		// final set: a domain one layer declares without rules may gain them
+		// from the next, and a ruleless survivor is skipped with a note below.
+		if err := validate(merged, false); err != nil {
+			return RuleSet{}, fmt.Errorf("rules: %s: %w", UserDisplayPath, err)
+		}
+	}
+	if haveRepo {
+		merged = Merge(merged, repo)
+	}
+	merged = dropRulelessDomains(merged)
+	if err := Validate(merged); err != nil {
+		// The user layer passed on its own, so what fails here arrived with the
+		// repo's file.
+		return RuleSet{}, fmt.Errorf("rules: %s: %w", RepoRelPath, err)
+	}
+	return merged, nil
+}
+
+// userHomeDir is the package's view of os.UserHomeDir, held as a var for the
+// same reason fsutil keeps its owner lookup: a test suite must be able to keep
+// the developer's own ~/.abcd/rules.json out of every test that did not lay one
+// out, and only a substitution can do that for tests that never set HOME.
+var userHomeDir = os.UserHomeDir
+
+// SwapUserHomeForTest substitutes the home lookup Load reads the user layer
+// through and returns the restore. It is exported because the front-door tests
+// that load rules live in another package. Tests only; never called in
+// production code, and never safe to call from a parallel test.
+func SwapUserHomeForTest(fn func() (string, error)) (restore func()) {
+	prev := userHomeDir
+	userHomeDir = fn
+	return func() { userHomeDir = prev }
+}
+
+// readRepoLayer reads and parses <repoRoot>/.abcd/rules.json. ok is false when
+// the file is absent; every other failure is an error naming the file.
+func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 	// Refuse a symlinked .abcd directory component before touching the leaf, so a
 	// swapped .abcd cannot redirect the read (trust boundary).
 	if di, err := os.Lstat(filepath.Join(repoRoot, ".abcd")); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return RuleSet{}, fmt.Errorf("rules: .abcd is a symlink (refusing to follow)")
+		return RuleSet{}, false, fmt.Errorf("rules: .abcd is a symlink (refusing to follow)")
 	}
 	path := filepath.Join(repoRoot, ".abcd", "rules.json")
 	data, err := readGuarded(path, maxRulesFileBytes)
 	if err != nil {
 		switch {
 		case os.IsNotExist(err):
-			return Defaults(), nil
+			return RuleSet{}, false, nil
 		case errors.Is(err, syscall.ELOOP):
-			return RuleSet{}, fmt.Errorf("rules: %s is a symlink (refusing to follow)", RepoRelPath)
+			return RuleSet{}, false, fmt.Errorf("rules: %s is a symlink (refusing to follow)", RepoRelPath)
 		case errors.Is(err, errNotRegular):
-			return RuleSet{}, fmt.Errorf("rules: %s is not a regular file", RepoRelPath)
+			return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file", RepoRelPath)
 		case errors.Is(err, errTooBig):
-			return RuleSet{}, fmt.Errorf("rules: %s exceeds the %d-byte cap", RepoRelPath, maxRulesFileBytes)
+			return RuleSet{}, false, fmt.Errorf("rules: %s exceeds the %d-byte cap", RepoRelPath, maxRulesFileBytes)
 		default:
-			return RuleSet{}, fmt.Errorf("rules: reading %s: %w", RepoRelPath, err)
+			return RuleSet{}, false, fmt.Errorf("rules: reading %s: %w", RepoRelPath, err)
 		}
 	}
+	over, err = parseLayer(data, RepoRelPath)
+	if err != nil {
+		return RuleSet{}, false, err
+	}
+	return over, true, nil
+}
+
+// readUserLayer reads and parses the user scope's ~/.abcd/rules.json. ok is
+// false when there is no such file — or no home to hold one — which is the
+// ordinary case and costs nothing: nothing is created, nothing is reported.
+//
+// The file injects text into every session on the machine, so it is read as the
+// caller's WORD, through the same primitive as the other home-scoped
+// declarations (fsutil.ReadDeclaration): a regular file — never a symlink,
+// FIFO or device — within the size cap, owned by this session's uid and
+// writable by nobody else. That is the ownership rule the repo root's trust
+// bound applies to a foreign-uid checkout (root.go, foreignOwnerRefusal): a
+// file another account could have written is not this account's convention.
+// And the ~/.abcd directory itself must not be a symlink when a rules.json sits
+// behind it, the pre-check the repo's .abcd gets — checked only once a file is
+// there, because a machine whose ~/.abcd is a dotfiles symlink holding no
+// rules.json reads nothing and must keep behaving exactly as it did.
+//
+// Every refusal is an error naming the file in tilde form, never a silent
+// fallback to the defaults: an unreadable user layer that degraded to a partial
+// injection is the silent shape loud-staging exists to prevent.
+func readUserLayer(home string) (over RuleSet, ok bool, err error) {
+	// No home, or a relative one, names no user scope: a relative HOME would
+	// resolve ~/.abcd against whatever directory the session happens to start
+	// in, which is not the machine's scope but a guess at one.
+	if home == "" || !filepath.IsAbs(home) {
+		return RuleSet{}, false, nil
+	}
+	dir := filepath.Join(home, ".abcd")
+	path := filepath.Join(home, filepath.FromSlash(UserRelPath))
+	data, refusal, err := fsutil.ReadDeclaration(path, maxRulesFileBytes)
+	// Absent is the lstat's answer, so a permission error here is a HOME or
+	// ~/.abcd this uid cannot search, never the file's own mode: that reads as
+	// no user layer, as it does for the sibling home-scoped declarations
+	// (trusted-roots, local-transcript-roots), so a sandboxed or foreign HOME
+	// does not warn on every prompt about a file nobody can see. A rules.json
+	// that is there and cannot be opened is DeclarationUnreadable, and loud.
+	if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission)) {
+		return RuleSet{}, false, nil
+	}
+	if di, lerr := os.Lstat(dir); lerr == nil && di.Mode()&os.ModeSymlink != 0 {
+		return RuleSet{}, false, fmt.Errorf("rules: ~/.abcd is a symlink (refusing to follow it to %s)", UserDisplayPath)
+	}
+	switch refusal {
+	case fsutil.DeclarationOK:
+	case fsutil.DeclarationNotRegular:
+		return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
+	case fsutil.DeclarationWritableByOthers:
+		return RuleSet{}, false, fmt.Errorf("rules: %s is writable by others, so its rules are not necessarily yours (chmod go-w it): %w", UserDisplayPath, err)
+	case fsutil.DeclarationForeignOwner:
+		return RuleSet{}, false, fmt.Errorf("rules: %s is not owned by this session's uid, so its rules are not this account's: %w", UserDisplayPath, err)
+	default:
+		if errors.Is(err, fsutil.ErrTooBig) {
+			return RuleSet{}, false, fmt.Errorf("rules: %s exceeds the %d-byte cap", UserDisplayPath, maxRulesFileBytes)
+		}
+		if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) {
+			return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
+		}
+		// The raw error can carry the expanded path; the message names the
+		// file in tilde form and keeps only the reason.
+		why := "unknown error"
+		var pe *os.PathError
+		switch {
+		case errors.As(err, &pe):
+			why = pe.Err.Error()
+		case err != nil:
+			why = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		}
+		return RuleSet{}, false, fmt.Errorf("rules: %s could not be read (%s)", UserDisplayPath, why)
+	}
+	over, err = parseLayer(data, UserDisplayPath)
+	if err != nil {
+		return RuleSet{}, false, err
+	}
+	return over, true, nil
+}
+
+// parseLayer turns one rules.json's bytes into its override set, naming the
+// file (display) in every refusal.
+func parseLayer(data []byte, display string) (RuleSet, error) {
 	// encoding/json silently resolves a duplicate object key last-wins, so two
 	// blocks for the same domain in rules.json would drop the first with no
 	// diagnostic — an easy state to reach after a merge (iss-2608261550498779).
 	// A token-level scan before the unmarshal refuses it loudly, mirroring
 	// capture/parse.go's duplicate-key refusal (adapted to JSON's token stream).
 	if err := checkNoDuplicateKeys(data); err != nil {
-		return RuleSet{}, fmt.Errorf("rules: %s: %w", RepoRelPath, err)
+		return RuleSet{}, fmt.Errorf("rules: %s: %w", display, err)
 	}
 	var over RuleSet
 	if err := json.Unmarshal(data, &over); err != nil {
-		return RuleSet{}, fmt.Errorf("rules: %s is not valid JSON: %w", RepoRelPath, err)
+		return RuleSet{}, fmt.Errorf("rules: %s is not valid JSON: %w", display, err)
 	}
-	merged := dropRulelessDomains(Merge(Defaults(), over))
-	if err := Validate(merged); err != nil {
-		return RuleSet{}, fmt.Errorf("rules: %s: %w", RepoRelPath, err)
-	}
-	return merged, nil
+	return over, nil
 }
 
 // dropRulelessDomains removes every domain whose merged rules are empty and
-// records one note per removal.
+// records one note per removal, naming the file of the layer that last named
+// the domain (the user scope's or the repo's).
 //
 // A domain with no rules renders as a heading-only "## NAME" block —
 // suppression wearing the domain's name, which an agent reads as a domain that
@@ -252,11 +434,15 @@ func dropRulelessDomains(rs RuleSet) RuleSet {
 	}
 	sort.Strings(dropped) // deterministic diagnostics
 	for _, name := range dropped {
+		file := LayerPath(rs.origins[name])
+		if file == "" {
+			file = RepoRelPath
+		}
 		delete(rs.Domains, name)
 		delete(rs.origins, name)
 		rs.notes = append(rs.notes, fmt.Sprintf(
 			"rules: %s: domain %q has no rules and was SKIPPED (it would inject a heading-only block, which reads as a domain that says nothing); "+
-				"give it at least one rule, or set \"state\": \"dormant\" to silence a domain deliberately", RepoRelPath, name))
+				"give it at least one rule, or set \"state\": \"dormant\" to silence a domain deliberately", file, name))
 	}
 	return rs
 }
@@ -339,14 +525,18 @@ func Merge(base, over RuleSet) RuleSet {
 	return mergeFrom(base, over, SourceRepo)
 }
 
-// mergeFrom is Merge with the label the override's layer carries; a later user
-// layer merges with its own label without touching the per-field rules.
+// mergeFrom is Merge with the label the override's layer carries: the user
+// layer merges with SourceUser and the repo layer with SourceRepo, through the
+// same per-field rules.
 func mergeFrom(base, over RuleSet, source string) RuleSet {
 	out := cloneRuleSet(base)
 	if over.SchemaVersion != 0 {
 		out.SchemaVersion = over.SchemaVersion
 	}
 	out.Disabled = base.Disabled || over.Disabled
+	if over.Disabled {
+		out.killedBy = append(out.killedBy, source)
+	}
 	if out.Domains == nil && len(over.Domains) > 0 {
 		out.Domains = make(map[string]Domain, len(over.Domains))
 	}
@@ -404,7 +594,12 @@ func mergeDomain(base, over Domain) Domain {
 // domains already dropped and a note naming each (see dropRulelessDomains),
 // because failing a repo's whole file — every domain, on an upgrade — is not
 // proportionate to one malformed entry.
-func Validate(rs RuleSet) error {
+func Validate(rs RuleSet) error { return validate(rs, true) }
+
+// validate is Validate with the rules-present check optional: Load checks a
+// layer before the next lands with it off, because a domain one layer declares
+// without rules may take them from the next.
+func validate(rs RuleSet, requireRules bool) error {
 	if rs.SchemaVersion != 1 {
 		return fmt.Errorf("schema_version must be 1, got %d", rs.SchemaVersion)
 	}
@@ -417,7 +612,7 @@ func Validate(rs RuleSet) error {
 		default:
 			return fmt.Errorf("domain %q: unknown state %q", name, d.State)
 		}
-		if len(d.Rules) == 0 {
+		if requireRules && len(d.Rules) == 0 {
 			return fmt.Errorf("domain %q: has no rules (it would inject a heading-only block; set \"state\": \"dormant\" to silence a domain)", name)
 		}
 		for i, r := range d.Rules {
@@ -699,17 +894,14 @@ func Render(domains []ResolvedDomain) string {
 // renderDomain renders one domain's block deterministically. Signature hashes
 // exactly this, so the format is the dedup unit — the provenance marker
 // included, by design: a repo-sourced domain reads "## NAME (repo override)"
-// in the agent's context and in `abcd rules`, so whose words these are is
-// never invisible (GHSA-22f8-qf5r-gjgq), and the one-time signature move on
-// upgrade re-injects overridden domains once. The heading keeps its "## "
-// line start, the split key host-side parsers rely on.
+// and a user-scope one "## NAME (user override)" in the agent's context and in
+// `abcd rules`, so whose words these are is never invisible
+// (GHSA-22f8-qf5r-gjgq), and the one-time signature move on upgrade re-injects
+// overridden domains once. The heading keeps its "## " line start, the split
+// key host-side parsers rely on.
 func renderDomain(d ResolvedDomain) string {
 	var b strings.Builder
-	if d.Source == SourceRepo {
-		fmt.Fprintf(&b, "## %s (repo override)\n", d.Name)
-	} else {
-		fmt.Fprintf(&b, "## %s\n", d.Name)
-	}
+	fmt.Fprintf(&b, "## %s\n", Label(d.Name, d.Source))
 	for _, r := range d.Rules {
 		body := sanitizeRuleBody(r)
 		// Defence behind Validate's loud refusal: a body that sanitises to
@@ -779,6 +971,18 @@ func sanitizeRuleBody(r string) string {
 	return strings.Join(lines, "\n")
 }
 
+// Label is a domain name as every provenance surface prints it: bare for a
+// bundled domain, "NAME (user override)" or "NAME (repo override)" for one an
+// override layer named. The rendered heading and the hook's diagnostic both use
+// it, so the two agree byte for byte.
+func Label(name, source string) string {
+	switch source {
+	case SourceUser, SourceRepo:
+		return name + " (" + source + " override)"
+	}
+	return name
+}
+
 // Signature is the per-domain dedup key: an FNV-1a hash of the rendered block,
 // so identical rendered content (defaults or override) dedups and any content
 // drift invalidates. FNV is sufficient — this is dedup, not security.
@@ -791,6 +995,7 @@ func Signature(d ResolvedDomain) string {
 func cloneRuleSet(rs RuleSet) RuleSet {
 	out := RuleSet{SchemaVersion: rs.SchemaVersion, Disabled: rs.Disabled}
 	out.notes = append([]string(nil), rs.notes...)
+	out.killedBy = append([]string(nil), rs.killedBy...)
 	if rs.origins != nil {
 		out.origins = make(map[string]string, len(rs.origins))
 		for name, src := range rs.origins {
