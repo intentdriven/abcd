@@ -352,6 +352,9 @@ func matchSegment(p Pattern, s segment) bool {
 	// glob reports, per ARGUMENT index, whether bash would expand that token.
 	glob := func(i int) bool { return !noglob && s.globAt(ci+1+i) }
 	opIdx := operandIndexes(args, p.ValueFlags)
+	if len(opIdx) < p.MinOperands {
+		return false
+	}
 	ops := make([]string, len(opIdx))
 	for n, i := range opIdx {
 		ops[n] = args[i]

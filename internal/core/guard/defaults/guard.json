@@ -264,6 +264,56 @@
           "abcd capture \"git clean -fd wiped my scratch notes\""
         ]
       }
+    },
+    "pkill-by-pattern": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "pkill",
+        "value_flags": ["-P", "--parent", "-g", "--pgroup", "-G", "--group", "-s", "--session", "-u", "--euid", "-U", "--uid", "-t", "--terminal", "-F", "--pidfile", "--signal", "--ns", "--nslist", "-j", "-M", "-N"],
+        "min_operands": 1
+      },
+      "why": "`pkill` signals every process on the machine whose name matches the pattern — with `-f`, whose whole command line does — so a pattern meant for your own run also stops every other session's run of the same command.",
+      "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
+      "fixtures": {
+        "known_bad": [
+          "pkill -f 'make preflight'",
+          "pkill make",
+          "pkill -9 -f 'go test'",
+          "sudo pkill -f node"
+        ],
+        "known_good": [
+          "pkill -g 4242",
+          "pkill -P $$",
+          "kill 4242",
+          "kill -- -4242",
+          "pgrep -f 'make preflight'",
+          "abcd capture \"pkill -f make stopped a peer's gate\""
+        ]
+      }
+    },
+    "killall-by-name": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "killall",
+        "value_flags": ["-s", "--signal", "-u", "--user", "-o", "--older-than", "-y", "--younger-than", "-n", "--ns", "-t", "-c"],
+        "min_operands": 1
+      },
+      "why": "`killall` signals every process on the machine with that name, other sessions' and other people's included, so stopping your own run of a command also stops everyone else's.",
+      "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
+      "fixtures": {
+        "known_bad": [
+          "killall make",
+          "killall -9 node",
+          "sudo killall -KILL go"
+        ],
+        "known_good": [
+          "killall -l",
+          "kill 4242",
+          "kill -- -4242",
+          "pgrep -x make",
+          "abcd capture \"killall make stopped every session's build\""
+        ]
+      }
     }
   }
 }

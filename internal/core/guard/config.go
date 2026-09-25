@@ -258,6 +258,9 @@ func mergePattern(base, over Pattern) Pattern {
 	if over.ArgPaths != nil {
 		r.ArgPaths = append([]PathArg(nil), over.ArgPaths...)
 	}
+	if over.MinOperands != 0 {
+		r.MinOperands = over.MinOperands
+	}
 	// AfterCD is a pointer precisely so an override can set it to false — a
 	// bool field could only ever tighten the requirement, never lift it.
 	if over.AfterCD != nil {

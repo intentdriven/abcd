@@ -78,6 +78,11 @@ type Pattern struct {
 	// leading `+` on the refspec is a force push by another name and Flags has
 	// nothing to look at.
 	ArgPrefixes []string `json:"arg_prefixes,omitempty"`
+	// MinOperands, when set, requires at least that many non-flag arguments
+	// (value_flags stepped over). It is what separates a kill BY PATTERN —
+	// `pkill make`, whose operand is the pattern — from `pkill -g 4242`, which
+	// names a process group and carries no pattern at all.
+	MinOperands int `json:"min_operands,omitempty"`
 	// AfterCD, when true, additionally requires that some EARLIER command in the
 	// same chain is a `cd` — the cd-chain structure (`cd scratch && rm -rf *`)
 	// whose hazard is that a failed cd silently redirects the command. A nil
@@ -298,6 +303,10 @@ func Validate(r Registry) error {
 			if !hasAnyValue(fv.Values) {
 				return fmt.Errorf("%w: entry %s flag-value constraint %d accepts no value and could never match", ErrInvalidEntry, id, i)
 			}
+		}
+		// A negative operand count describes nothing a command line can hold.
+		if e.Pattern.MinOperands < 0 {
+			return fmt.Errorf("%w: entry %s min_operands %d is negative", ErrInvalidEntry, id, e.Pattern.MinOperands)
 		}
 		// A path constraint with no root would depth-limit every operand that
 		// happened to look like a path, and one with no depth describes no path
