@@ -248,7 +248,9 @@ func NetworkPatterns() []Pattern {
 			Name: "net_device_hostname", Kind: kindNetDeviceHost, Label: "device hostname",
 			Re: deviceHostRe, Severity: SeverityWarn,
 			Skip:       func(m string) bool { return personaDerivedHost(m) },
-			SkipAt:     commonNounPhrase,
+			SkipAt: func(line string, start, end int) bool {
+				return commonNounPhrase(line, start, end) || proseSlug(line, start, end)
+			},
 			Suggestion: "replace with a persona fixture host spelled <persona>-<noun> in lower case (alice-laptop, bob-macbook; no possessive, no capitals)",
 		},
 	}
@@ -667,6 +669,34 @@ var determiners = map[string]bool{
 	"these": true, "those": true, "my": true, "our": true, "your": true,
 	"their": true, "its": true, "every": true, "each": true, "some": true,
 	"any": true, "no": true,
+}
+
+// slugFunctionWords are the English function words a prose slug strings
+// between its hyphens and a machine's name does not carry.
+var slugFunctionWords = map[string]bool{
+	"a": true, "an": true, "the": true, "to": true, "of": true, "for": true,
+	"on": true, "onto": true, "in": true, "into": true, "from": true,
+	"with": true, "without": true, "off": true, "over": true, "via": true,
+	"and": true, "or": true, "my": true, "our": true, "your": true,
+	"their": true, "this": true, "that": true,
+}
+
+// proseSlug reports whether a device-hostname match is a hyphenated prose
+// slug — a page or file named in words ("migrating-to-the-nas") — rather than
+// a machine's name: one of the tokens before its device word is a function
+// word. A machine is named <owner>-<device> or <place>-<device>, and a real
+// host name built from a sentence is rare enough that sparing it costs less
+// than rewriting every slug that ends in a device word, which left a record's
+// reproduction step unfollowable (iss-2609240646532741). The token sequence is
+// the match's own; a determiner BEFORE the match is commonNounPhrase's case.
+func proseSlug(line string, start, end int) bool {
+	toks := strings.Split(strings.ToLower(line[start:end]), "-")
+	for _, t := range toks[:len(toks)-1] {
+		if slugFunctionWords[t] {
+			return true
+		}
+	}
+	return false
 }
 
 // commonNounPhrase reports whether a device-hostname match is preceded by a
