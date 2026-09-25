@@ -177,6 +177,16 @@ func receiptDirNames(root, released string) ([]string, error) {
 	return names, nil
 }
 
+// ReleasedVersion is the version the released tree at rev names, read by the
+// same strict reader the derivation binds the receipts with. The release gate
+// compares it with the pushed tag (iss-2609251945586202), so the tag and the
+// receipts are bound to one reading of the tree and never to two. It refuses
+// exactly where the derivation does: no CHANGELOG.md, no dated release, or a
+// newest release heading the reader cannot parse.
+func ReleasedVersion(root, rev string) (string, error) {
+	return releasedVersionAt(root, rev)
+}
+
 // releasedVersionAt reads the version the released tree names, strictly:
 // the tree must carry a CHANGELOG.md whose newest release heading is a dated
 // vX.Y.Z heading (changelog.ReleasedVersionIn). A missing file, no release

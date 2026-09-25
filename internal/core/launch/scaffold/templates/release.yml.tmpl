@@ -232,6 +232,30 @@ jobs:
 <%- end %>
 <%- if .SemanticGates %>
 
+      # --- The release tag names the released version (iss-2609251945586202) ---
+      # The receipts gate below binds the receipts to the version the released
+      # tree's CHANGELOG names, not to the tag. A hand-pushed tag naming another
+      # version (v0.9.1 on a tree whose newest dated heading is 0.9.0, or a
+      # v0.9.0-rc.1) would otherwise publish under a version nobody reviewed,
+      # admitted by the receipts of the CHANGELOG's. So the tag must be exactly
+      # "v" plus that version, read by record-lint's strict reader, the one the
+      # receipts are bound with; this step compares the two and reads no heading
+      # itself. It refuses before the receipts gate and before the tag job, so
+      # nothing is built, tagged or published. Skipped on the rehearsal path,
+      # where TAG is the branch name. TAG reaches the script through the
+      # workflow env (injection-safe).
+      - name: The release tag names the released CHANGELOG version (fail-closed)
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          released="$(go run ./cmd/record-lint --released-version)"
+          test -n "$released"   # never compare against an empty version (fail closed)
+          if [ "$TAG" != "v$released" ]; then
+            printf "refusing to release '%s': the released tree's CHANGELOG names %s, so its release tag is v%s\n" "$TAG" "$released" "$released" >&2
+            exit 1
+          fi
+          echo "release tag $TAG names the released version $released"
+
       # --- Semantic release gate, armed BEFORE the tag (adr-52, Alternative 1) ---
       # The semantic gate (the LLM passes CI cannot run) refuses HERE, in verify,
       # alongside the deterministic gates — not in the `release` publish job below.

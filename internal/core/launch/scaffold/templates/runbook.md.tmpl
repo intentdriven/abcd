@@ -108,7 +108,10 @@ blocks the release, an earlier release's receipts never stand in for this
 one's, and a batch-mate's receipts never shadow them. The released tree's
 newest release heading must be a dated `## [X.Y.Z] - <date>` heading; a
 pre-release or undated head refuses, because there is no version to bind the
-receipts to.
+receipts to. On a tag push, `verify` first requires the tag to be `v` plus that
+same version, read by the same reader (`record-lint --released-version`), so a
+hand-pushed tag naming another version refuses before the receipt gate runs and
+cannot publish under the receipts of the CHANGELOG's version.
 
 Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.json`. A receipt is
 bound to its gate by its `policy.detector` value, not its filename, so one

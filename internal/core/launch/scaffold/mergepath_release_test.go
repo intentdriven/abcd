@@ -67,21 +67,7 @@ func cutFirstRelease(t *testing.T, semantic bool) {
 	r.Write(".github/workflows/ci.yml", "name: ci\non: [pull_request]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go build ./...\n")
 
 	if semantic {
-		// The semantic profile, rendered through the same templates the
-		// scaffold uses, with one required detector.
-		subs := BareSubstitutions("main")
-		subs.CIChecks = DeriveCIChecks(r.Root())
-		subs.SemanticGates = []string{"docs-currency-reviewer"}
-		rendered, err := Render(subs)
-		if err != nil {
-			t.Fatal(err)
-		}
-		r.Write(ReleaseYMLPath, string(rendered.ReleaseYML))
-		r.Write(AutoReleaseYMLPath, string(rendered.AutoReleaseYML))
-		r.Write(RunbookPath, string(rendered.Runbook))
-		r.Write(CheckReviewsPath, string(rendered.CheckReviews))
-		r.Write(".abcd/record-lint.json", `{"rules":{"receipt_gate":{"enabled":false,"severity":"blocker","receipts_dir":".abcd/work/reviews","required_gates":[]}}}`+"\n")
-		f.recordLint = buildRecordLint(t, goEnv)
+		adoptSemanticProfile(t, f, goEnv)
 	} else {
 		rep, err := Scaffold(Request{RepoRoot: r.Root()})
 		if err != nil {
@@ -158,6 +144,105 @@ func cutFirstRelease(t *testing.T, semantic bool) {
 		if !f.attested(".abcd/work/reviews/" + content + "/docs-currency-reviewer.json") {
 			t.Error("the release did not attest the receipts of the commit the gate admitted")
 		}
+	}
+}
+
+// adoptSemanticProfile writes the semantic profile into the forge's working
+// repository, rendered through the same templates the scaffold uses, with one
+// required detector, and builds the record-lint its receipt gate runs.
+func adoptSemanticProfile(t *testing.T, f *fakeForge, goEnv []string) {
+	t.Helper()
+	r := f.work
+	subs := BareSubstitutions("main")
+	subs.CIChecks = DeriveCIChecks(r.Root())
+	subs.SemanticGates = []string{"docs-currency-reviewer"}
+	rendered, err := Render(subs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Write(ReleaseYMLPath, string(rendered.ReleaseYML))
+	r.Write(AutoReleaseYMLPath, string(rendered.AutoReleaseYML))
+	r.Write(RunbookPath, string(rendered.Runbook))
+	r.Write(CheckReviewsPath, string(rendered.CheckReviews))
+	r.Write(".abcd/record-lint.json", `{"rules":{"receipt_gate":{"enabled":false,"severity":"blocker","receipts_dir":".abcd/work/reviews","required_gates":[]}}}`+"\n")
+	f.recordLint = buildRecordLint(t, goEnv)
+}
+
+// TestScaffoldedGateRefusesATagNamingAnotherVersion is iss-2609251945586202 on a
+// scaffolded profile: a hand-pushed tag naming a version other than the released
+// tree's newest dated CHANGELOG heading must not publish under the receipts of
+// the CHANGELOG's version. The rendered release.yml runs on the tag push; verify
+// refuses at the tag binding, BEFORE the receipts gate, and nothing publishes.
+// The tag the tree names publishes from the same commit, so the refusal is the
+// binding and not a broken fixture.
+func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
+	if testing.Short() {
+		t.Skip("drives the release workflows end to end")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash is required to run the workflow scripts")
+	}
+	goEnv := hostGoEnv(t)
+	f := newFakeForge(t, goEnv)
+	r := f.work
+	r.Write("go.mod", "module example.com/fixture\n\ngo "+strings.TrimPrefix(runtime.Version(), "go")+"\n")
+	r.Write("main.go", "package main\n\nfunc main() {}\n")
+	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n")
+	r.Write(".github/workflows/ci.yml", "name: ci\non: [pull_request]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: go build ./...\n")
+	adoptSemanticProfile(t, f, goEnv)
+	r.Commit("adopt the scaffolded release gate")
+
+	// The 0.1.0 roll and its PROMOTE receipts, on main.
+	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-09-25\n\n### Added\n\n- the first release.\n")
+	r.Commit("release: roll the changelog to 0.1.0")
+	content := r.Git("rev-parse", "HEAD")
+	r.Write(".abcd/work/reviews/"+content+"/docs-currency-reviewer.json",
+		`{"subject":{"digest":{"gitCommit":"`+content+`"}},"verificationResult":"PROMOTE",`+
+			`"policy":{"detector":"docs-currency-reviewer"},"judgeModel":"claude-opus-4-8"}`+"\n")
+	r.Commit("release: receipts for the roll")
+	r.Git("push", "-q", "origin", "main")
+	released := r.Git("rev-parse", "HEAD")
+
+	const (
+		bindStep     = "The release tag names the released CHANGELOG version (fail-closed)"
+		receiptsStep = "Semantic-gate receipts (fail-closed, before tag)"
+	)
+	for _, tag := range []string{"v0.1.1", "v0.2.0", "v0.1.0-rc.1"} {
+		r.Git("tag", "-a", tag, "-m", "hand-pushed "+tag, released)
+		r.Git("push", "-q", "origin", "refs/tags/"+tag)
+		f.log.Reset()
+		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: tag})
+		if got := runs["verify"].result; got != "failure" {
+			t.Fatalf("tag %s on a 0.1.0 tree: verify = %s, want failure\n%s", tag, got, f.log.String())
+		}
+		if got := runs["release"].result; got != "skipped" {
+			t.Errorf("tag %s: release = %s, want skipped", tag, got)
+		}
+		log := f.log.String()
+		if !strings.Contains(log, fmt.Sprintf("%q: ok=false", bindStep)) {
+			t.Errorf("tag %s: the tag binding step did not refuse\n%s", tag, log)
+		}
+		if !strings.Contains(log, fmt.Sprintf("%q: skipped", receiptsStep)) {
+			t.Errorf("tag %s: the receipts gate ran; the binding must refuse before it\n%s", tag, log)
+		}
+		if !strings.Contains(log, "refusing to release '"+tag+"': the released tree's CHANGELOG names 0.1.0") {
+			t.Errorf("tag %s: the refusal does not name the released version 0.1.0\n%s", tag, log)
+		}
+	}
+	if rel := f.releases(); len(rel) != 0 {
+		t.Fatalf("a mismatched tag published %v", rel)
+	}
+
+	// The tag the released tree names passes the binding and publishes.
+	r.Git("tag", "-a", "v0.1.0", "-m", "v0.1.0", released)
+	r.Git("push", "-q", "origin", "refs/tags/v0.1.0")
+	f.log.Reset()
+	runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: "v0.1.0"})
+	if runs["verify"].result != "success" || runs["release"].result != "success" {
+		t.Fatalf("v0.1.0 on a 0.1.0 tree: verify=%s release=%s\n%s", runs["verify"].result, runs["release"].result, f.log.String())
+	}
+	if got := f.releases()["v0.1.0"]; got != released {
+		t.Errorf("published releases %v: want v0.1.0 from %s", f.releases(), released)
 	}
 }
 

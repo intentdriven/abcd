@@ -215,7 +215,13 @@ semantic refusal blocks the release without the version-consuming wedge of a gat
 that sat in the publish path (iss-2608231226347380). `verify` supplies the
 content commit and the required-gate list from the workflow (the trust root), not
 the in-tree config: `record-lint --release-gate <sha> --require-gate <name>…`,
-where `<sha>` is `record-lint --derive-content-sha`. The rule is skipped on the
+where `<sha>` is `record-lint --derive-content-sha`. Before it, on a tag push,
+`verify` requires the tag to be `v` plus the version `record-lint
+--released-version` reads from the released tree — the strict reader the
+receipts are bound with — so a hand-pushed tag naming another version cannot
+publish under the receipts of the CHANGELOG's version (iss-2609251945586202).
+On abcd's own profile `launch archive --tag` refuses such a tag earlier still.
+The rule is skipped on the
 rehearsal path (`workflow_dispatch`), where no real receipts exist. Once `verify`
 has admitted the release, `release.yml`'s publish job signs the receipts with
 `actions/attest` (predicate `.../semantic-release-gate/v1`) and verifies the

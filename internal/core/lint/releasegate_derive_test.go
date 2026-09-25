@@ -348,3 +348,47 @@ func TestDeriveReleaseContentSha_IgnoresAnAbbreviatedReceiptsDir(t *testing.T) {
 		t.Errorf("derived %s, want %s", got, content)
 	}
 }
+
+// TestReleasedVersion_ReadsTheStrictHead is iss-2609251945586202: the release
+// gate binds the pushed tag to the version the released tree names, through the
+// same strict reader the derivation binds the receipts with, so the two can
+// never disagree about which release a tree is. A v-prefixed head reads as its
+// core; a pre-release head, an undated head and a missing CHANGELOG refuse.
+func TestReleasedVersion_ReadsTheStrictHead(t *testing.T) {
+	for name, c := range map[string]struct {
+		changelog string // "" removes CHANGELOG.md
+		want      string
+		refusal   string
+	}{
+		"dated head":       {changelog: "## [Unreleased]\n\n## [0.2.0] - 2026-02-01\n\n## [0.1.0] - 2026-01-01\n", want: "0.2.0"},
+		"v-prefixed head":  {changelog: "## [Unreleased]\n\n## [v1.4.2] - 2026-02-01\n", want: "1.4.2"},
+		"pre-release head": {changelog: "## [Unreleased]\n\n## [1.0.0-rc.1] - 2026-02-01\n\n## [0.9.0] - 2026-01-01\n", refusal: "1.0.0-rc.1"},
+		"unreleased only":  {changelog: "## [Unreleased]\n\n- work\n", refusal: "names no dated release"},
+		"no CHANGELOG.md":  {refusal: "carries no CHANGELOG.md"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := gittest.NewRepo(t)
+			r.Write("README.md", "fixture\n")
+			if c.changelog != "" {
+				r.Write("CHANGELOG.md", c.changelog)
+			}
+			r.Commit("the released tree")
+			got, err := lint.ReleasedVersion(r.Root(), r.Git("rev-parse", "HEAD"))
+			if c.refusal != "" {
+				if err == nil {
+					t.Fatalf("read %q; must fail closed", got)
+				}
+				if !strings.Contains(err.Error(), c.refusal) || !strings.Contains(err.Error(), "fail-closed") {
+					t.Errorf("error = %q, want it to name %q and fail closed", err, c.refusal)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("read: %v", err)
+			}
+			if got != c.want {
+				t.Errorf("released version = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
