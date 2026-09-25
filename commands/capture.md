@@ -397,11 +397,12 @@ The two are never one write, so the ledger can always show that a finding
 existed before it was answered. Report the `id`, `item`, `state`, `position` and
 `path` from the JSON.
 
-**Where an `rdi-N` comes from.** This surface answers and promotes reading items;
-it does not produce them. The one writer of the `rdi-N` family is the
-cold-reading ingest verb, which owns the output contract a reading is validated
-against — until that verb lands there is no reading item to answer, and these two
-sub-verbs have nothing to act on.
+**Where an `rdi-N` comes from.** This surface answers, admits, promotes and
+records surprises about reading items; it does not produce them. The one writer
+of the `rdi-N` family is the cold-reading ingest verb (`/abcd:reading`, `reading
+ingest`), which owns the output contract a reading is validated against. Until a
+reading has been ingested there is no reading item to answer, and `disposition`,
+`admit`, `surprise` and `promote <rdi-N>` have nothing to act on.
 
 Four states ship: `accepted` (at the widening position, acceptance IS
 admission), `rejected` (asserts a purpose a later run tests), `declined` (the
