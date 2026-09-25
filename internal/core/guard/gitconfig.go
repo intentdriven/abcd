@@ -46,6 +46,14 @@ const (
 	// and a cycle must not be able to spend it (a repeated name also breaks the
 	// loop, so the cap is a second floor rather than the only one).
 	maxAliasHops = 4
+
+	// maxBangAliasDepth bounds how many `!`-alias bodies deep the pre-pass
+	// re-enters itself. A bang body is a fresh command string that may declare
+	// an alias of its own, so its segments come back through the pre-pass
+	// (iss-2609020348038749); past this depth the guard has lost the thread, and
+	// an alias rewrite it would have had to follow is a fail-closed block, the
+	// execute-a-string family's depth posture (maxPayloadDepth).
+	maxBangAliasDepth = maxPayloadDepth
 )
 
 // aliasPrefix is the config section a subcommand rewrite can come from. git
@@ -63,10 +71,18 @@ const aliasPrefix = "alias."
 // It runs AFTER expandPayloads, so a git command inside an `sh -c` payload is
 // reached too. A `!`-prefixed alias body is not a subcommand at all — git hands
 // it to a shell — so it is read as an execute-a-string payload: tokenised
-// through shellInspect, and the resulting segments run through expandPayloads in
-// their own right, since a body may nest further.
+// through shellInspect, the resulting segments run through expandPayloads in
+// their own right, since a body may nest further, and then back through this
+// pre-pass, since the body may be a git command declaring an alias of its own.
+// That re-entry carries a depth budget (maxBangAliasDepth) and a repeat guard:
+// a body already inspected on this line is not inspected again.
 func (r Registry) expandGitAliases(segs []segment) ([]segment, []payloadSignal) {
-	valueFlags := r.gitValueFlags()
+	return r.expandGitAliasesAt(segs, r.gitValueFlags(), 0, map[string]bool{})
+}
+
+// expandGitAliasesAt is the pre-pass at one bang-body depth. seen is shared by
+// every depth of one Check, so a repeated body costs nothing twice.
+func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth int, seen map[string]bool) ([]segment, []payloadSignal) {
 	out := make([]segment, 0, len(segs))
 	var signals []payloadSignal
 	var bang []segment
@@ -116,6 +132,10 @@ func (r Registry) expandGitAliases(segs []segment) ([]segment, []payloadSignal) 
 			continue
 		}
 		if shell != "" {
+			if seen[shell] {
+				continue
+			}
+			seen[shell] = true
 			sig, psegs, inspectable := shellInspect(shell)
 			if !inspectable {
 				signals = append(signals, sig)
@@ -133,6 +153,18 @@ func (r Registry) expandGitAliases(segs []segment) ([]segment, []payloadSignal) 
 			// this body takes is never handed out again.
 			for i := range psegs {
 				psegs[i].chain += chainMax + 1
+			}
+			// The body re-enters the pre-pass one level deeper. At the budget it
+			// is still checked as written, and an alias rewrite in it — one the
+			// guard would have had to follow — is refused instead.
+			if depth+1 > maxBangAliasDepth {
+				if r.anyAliasRewrite(psegs, valueFlags) {
+					signals = append(signals, bangAliasDepthBlockSignal())
+				}
+			} else {
+				var bsigs []payloadSignal
+				psegs, bsigs = r.expandGitAliasesAt(psegs, valueFlags, depth+1, seen)
+				signals = append(signals, bsigs...)
 			}
 			for _, ps := range psegs {
 				if ps.chain > chainMax {
@@ -159,6 +191,47 @@ func (r Registry) expandGitAliases(segs []segment) ([]segment, []payloadSignal) 
 	}
 
 	return append(out, bang...), signals
+}
+
+// anyAliasRewrite reports whether some segment is a git command whose operand 0
+// names an alias the segment itself declares — a rewrite the pre-pass would
+// follow if it were allowed to.
+func (r Registry) anyAliasRewrite(segs []segment, valueFlags []string) bool {
+	for _, s := range segs {
+		ci, noglob := commandIndex(s)
+		if ci < 0 {
+			continue
+		}
+		base := path.Base(s.tokens[ci])
+		if !strings.EqualFold(base, "git") &&
+			!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(base), "git")) {
+			continue
+		}
+		args := s.tokens[ci+1:]
+		decls, _ := gitConfigDeclarations(s.tokens[:ci], args, valueFlags)
+		if len(decls) == 0 {
+			continue
+		}
+		if _, _, _, ok := rewriteGitAlias(args, s.globSlice(ci+1, len(s.tokens)), decls, valueFlags); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// bangAliasDepthBlockSignal is the fail-closed verdict for an alias declared in
+// a `!`-alias body nested past maxBangAliasDepth: the command git would run is
+// one the guard stopped following.
+func bangAliasDepthBlockSignal() payloadSignal {
+	return payloadSignal{
+		id:      gitConfigEntryID,
+		verdict: VerdictBlock,
+		family:  familyGitConfig,
+		reason: "This git command nests `!` aliases deeper than the guard follows, and the innermost declares an alias of its own, " +
+			"so the command git would finally run is one the guard has not checked.",
+		successor: "Spell the git command out, or flatten the aliases into one `git -c alias.x='<body>' x`, " +
+			"so the guard checks the command that actually runs.",
+	}
 }
 
 // gitValueFlags is the union of the value_flags the registry's git entries

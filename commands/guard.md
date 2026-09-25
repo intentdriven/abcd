@@ -150,7 +150,10 @@ the words it would pass are ones the guard has not read.
 A git alias declared in the command line is expanded before the match, because
 git resolves it before it runs: `git -c alias.p='push --force' p origin main` is
 a force push, and so are its `--config-env`, `GIT_CONFIG_KEY_n`/`VALUE_n` and
-`GIT_CONFIG_PARAMETERS` spellings. A `!` body is read as a shell command. Two
+`GIT_CONFIG_PARAMETERS` spellings. A `!` body is read as a shell command, and
+an alias that command declares is resolved in turn, two `!` bodies deep; an alias
+nested deeper than that is a **block**, because the guard has stopped following
+it. Two
 consequences to report accurately: an alias that shadows a git builtin
 (`-c alias.push='push --force' push`) is refused even though git would ignore
 it — an accepted over-block — and configuration delivered from a FILE
