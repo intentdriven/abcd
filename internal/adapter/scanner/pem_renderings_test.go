@@ -138,3 +138,56 @@ func TestPEMRFC4716ArmourIsABlock(t *testing.T) {
 		t.Errorf("one-line RFC 4716 block not masked through its END marker: %q", out)
 	}
 }
+
+// TestRedactPEMMoreOneLineRenderings holds the renderings the separator did not
+// admit (iss-2609251553082721): a JSON array serialised inside a JSON string,
+// whose elements are joined by escaped quotes, and the HTML renderings that
+// join the lines with a <br> element or a newline entity.
+func TestRedactPEMMoreOneLineRenderings(t *testing.T) {
+	header, body1, body2, tail, end := pemFixture()
+	join := func(sep string) string {
+		return strings.Join([]string{header, body1, body2, tail, end}, sep)
+	}
+	cases := map[string]string{
+		"json array inside a json string": `"key": "[\"` + join(`\",\"`) + `\"]",`,
+		"json array escaped twice":        `"key": "[\\\"` + join(`\\\",\\\"`) + `\\\"]",`,
+		"html br":                         `"key": "` + join("<br>") + `",`,
+		"html self-closing br":            `"key": "` + join("<br />") + `",`,
+		"html newline entity":             `"key": "` + join("&#10;") + `",`,
+		"html carriage-return entity":     `"key": "` + join("&#13;&#10;") + `",`,
+	}
+	for name, text := range cases {
+		t.Run(name, func(t *testing.T) {
+			out := redactAll(t, text)
+			for _, leak := range []string{body1, body2, tail, "END "} {
+				if strings.Contains(out, leak) {
+					t.Errorf("%q… survived on the header's line:\n%s", leak[:4], out)
+				}
+			}
+			if !strings.HasPrefix(out, `"key": `) {
+				t.Errorf("the text before the key was disturbed: %q", out)
+			}
+		})
+	}
+}
+
+// TestRedactPEMLowerCasedBlock: a tool that lowers case writes the armour
+// markers in lower case, and the block is the same key; the header is detected
+// and the body consumed through its END line, on one line and on many.
+func TestRedactPEMLowerCasedBlock(t *testing.T) {
+	header, body1, body2, tail, end := pemFixture()
+	lh, le := strings.ToLower(header), strings.ToLower(end)
+	for name, text := range map[string]string{
+		"block":    "before\n" + lh + "\n" + body1 + "\n" + body2 + "\n" + tail + "\n" + le + "\nafter",
+		"one line": `"key": "` + lh + `\n` + body1 + `\n` + body2 + `\n` + tail + `\n` + le + `",`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := redactAll(t, text)
+			for _, leak := range []string{body1, body2, tail} {
+				if strings.Contains(out, leak) {
+					t.Errorf("%q… survived under a lower-cased header:\n%s", leak[:4], out)
+				}
+			}
+		})
+	}
+}

@@ -139,8 +139,10 @@ const (
 	// pemBegin and pemEnd are the two armour markers: the five-dash form of
 	// RFC 7468, OpenSSH and PGP, and the four-dash form of RFC 4716, which an
 	// SSH2 private key carries — the same pair the bundled pattern opens on.
-	pemBegin = `(?:-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
-	pemEnd   = `(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- END (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
+	// Case-insensitive: a tool that lowers case writes the markers in lower
+	// case, and the block is the same key (iss-2609251553082721).
+	pemBegin = `(?i:-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
+	pemEnd   = `(?i:-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- END (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
 )
 
 var (

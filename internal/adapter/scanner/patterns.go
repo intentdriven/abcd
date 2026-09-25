@@ -46,8 +46,12 @@ const kindPEMPrivateKey = "token:pem_private_key"
 //
 // The separator is a blank or a tab, the literal \n or \r escape of a JSON or
 // YAML dump — escaped once or twice, since a string serialised inside another
-// string doubles its backslashes — or the quote-and-comma run between the
-// elements of a JSON array that holds one body line per element.
+// string doubles its backslashes — the quote-and-comma run between the
+// elements of a JSON array that holds one body line per element, with its
+// quotes escaped where that array was itself serialised into a string
+// (iss-2609251553082721), or the <br> element or newline entity an HTML
+// rendering joins lines with. The armour markers are pem.go's pemBegin and
+// pemEnd, so the pattern and the block consumer open on the same headers.
 //
 // The three alternatives are ordered so a CLOSED block wins: only there is a
 // short final chunk safe unconditionally, because the END marker after it is
@@ -61,9 +65,9 @@ const kindPEMPrivateKey = "token:pem_private_key"
 // rule could tell from a word (iss-96).
 func pemPrivateKeyPattern() string {
 	const (
-		begin = `(?:-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
-		end   = `(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- END (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
-		sep   = `(?:[ \t,"']|\\{1,2}[nr])`
+		begin = pemBegin
+		end   = pemEnd
+		sep   = `(?:[ \t,"']|\\{1,3}["']|\\{1,2}[nr]|<br\s*/?>|&#(?:1[03]|x0?[aAdD]);)`
 		chunk = `[A-Za-z0-9+/=]{16,}`
 		short = `[A-Za-z0-9+/=]{1,15}`
 		// A short chunk that is not a word: letters around at least one
