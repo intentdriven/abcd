@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +77,31 @@ func TestRepoNameRootsCoverThePublicSurface(t *testing.T) {
 		if !have[want] {
 			t.Errorf("the name gate does not reach %s (roots %q, name_roots %q)", want, cfg.Roots, cfg.NameRoots)
 		}
+	}
+}
+
+// TestNameRootsRefuseAFileTheyCannotExamine: a file the walk lists but cannot
+// stat (under a directory that can be listed but not searched) was skipped
+// silently, so the leak gate passed a file it never read (iss-2609252251320497).
+// It fails loud instead, naming the file, as an unreadable file already does.
+func TestNameRootsRefuseAFileTheyCannotExamine(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root searches any directory, so the unexaminable file cannot be built")
+	}
+	root := t.TempDir()
+	writeFile(t, root, "docs/page.md", "# Page\n")
+	writeFile(t, root, "scripts/locked/run.sh", "echo moonbeam\n")
+	locked := filepath.Join(root, "scripts", "locked")
+	if err := os.Chmod(locked, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	cfg := Config{Roots: []string{"docs"}, BannedTokens: []BannedToken{nameToken()}, NameRoots: []string{"scripts"}}
+	fs, err := Lint(cfg, root)
+	if err == nil {
+		t.Fatalf("a file the name gate could not examine passed silently: %+v", fs)
+	}
+	if !strings.Contains(err.Error(), filepath.Join("scripts", "locked", "run.sh")) {
+		t.Fatalf("the refusal does not name the file: %v", err)
 	}
 }

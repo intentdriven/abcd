@@ -3127,7 +3127,18 @@ func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Find
 				return nil, &configError{"file " + quote(rel) + " " + err.Error() +
 					"; the lint reads only inside the repository"}
 			}
-			if st, err := os.Stat(realPath); err != nil || !st.Mode().IsRegular() {
+			// A file the walk listed but cannot examine fails loud: a leak gate
+			// that passes a file it never read reports a tree it did not check
+			// (iss-2609252251320497). A non-regular leaf (a FIFO, a socket, a
+			// symlink resolving to a directory) is not a text file: git commits
+			// no FIFO or socket, and a symlinked directory publishes only its
+			// link, its target being read wherever a root reaches it.
+			st, err := os.Stat(realPath)
+			if err != nil {
+				return nil, errors.New("name_roots file " + quote(rel) + " cannot be examined (" + bareCause(err) +
+					"); the name gate refuses to pass a file it could not read")
+			}
+			if !st.Mode().IsRegular() {
 				continue
 			}
 			content, err := fsutil.ReadGuarded(realPath, citationPageSizeLimit)
