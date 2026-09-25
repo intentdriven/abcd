@@ -681,23 +681,26 @@ var coverage = []coverageRow{
 		Caught:    caughtLeak,
 		Classes:   []string{"EXHAUST"},
 	},
+	// The four derived family rows below are caught by PATH: an include row for
+	// a family at comparative leaks nothing on this corpus, because the
+	// comparative preset selects only the discipline kind and the candidate set,
+	// so no plant can die there. What the derived row's removal does move is the
+	// manifest, and the family-absence oracle's comparative rows name the
+	// assertion that went missing (iss-2609251812216267).
 	{
-		Rule:      "dispositions never reach the comparative reading",
-		Falsifier: "delete the derived dispositions row and add an include row for it",
-		Caught:    caughtLeak,
-		Classes:   []string{"FATE"},
+		Rule:      "dispositions never reach the comparative reading, and its manifest says so",
+		Falsifier: "drop the dispositions directory from issueschema.LedgerDirs, so the derived row disappears",
+		Caught:    caughtFamily,
 	},
 	{
-		Rule:      "admissions never reach the comparative reading",
-		Falsifier: "delete the derived admissions row and add an include row for it",
-		Caught:    caughtLeak,
-		Classes:   []string{"GROUNDS"},
+		Rule:      "admissions never reach the comparative reading, and its manifest says so",
+		Falsifier: "drop the admissions directory from issueschema.LedgerDirs, so the derived row disappears",
+		Caught:    caughtFamily,
 	},
 	{
-		Rule:      "surprises never reach the comparative reading",
-		Falsifier: "delete the derived surprises row and add an include row for it",
-		Caught:    caughtLeak,
-		Classes:   []string{"FATE"},
+		Rule:      "surprises never reach the comparative reading, and its manifest says so",
+		Falsifier: "drop the surprises directory from issueschema.LedgerDirs, so the derived row disappears",
+		Caught:    caughtFamily,
 	},
 	{
 		// Caught by path, not by plant, and watched: with the derived row gone the
