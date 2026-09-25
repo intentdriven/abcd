@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"os"
 	"path"
 	"regexp"
@@ -226,9 +227,6 @@ func isMarkdown(rel string) bool {
 	return strings.EqualFold(path.Ext(rel), ".md")
 }
 
-// fenceRe opens or closes a fenced code block (up to three spaces of indent).
-var fenceRe = regexp.MustCompile("^ {0,3}(```|~~~)")
-
 // inlineCodeRe is an inline code span. Quoting a construct in code is the one
 // sanctioned way to mention it in prose without asserting it.
 var inlineCodeRe = regexp.MustCompile("`[^`]*`")
@@ -250,7 +248,6 @@ type proseLine struct {
 func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
-	inFence := false
 	frontEnd := -1 // index of the closing "---"; -1 when there is no frontmatter
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
@@ -262,15 +259,15 @@ func proseLines(data []byte) []proseLine {
 			}
 		}
 	}
+	// Fenced code is read through the tree's one fence rule (mdrecord), so a
+	// longer run, a mismatched closer or an unclosed fence reads here exactly
+	// as every other reader of the record sees it.
+	mask := mdrecord.Mask(lines)
 	for i, line := range lines {
 		if i <= frontEnd {
 			continue
 		}
-		if fenceRe.MatchString(line) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
+		if mask[i]&mdrecord.MaskFence != 0 {
 			continue
 		}
 		out = append(out, proseLine{n: i + 1, text: inlineCodeRe.ReplaceAllString(line, "")})
