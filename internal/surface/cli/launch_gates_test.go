@@ -132,3 +132,41 @@ func TestLaunchShipAllowDirtyNeedsTheRenderPath(t *testing.T) {
 		})
 	}
 }
+
+// TestLaunchDryRunPlainRenderStagesEveryUnranRow is iss-2608231226342272's rule
+// applied to every row (iss-2609251827290265): a gate row that did not run —
+// here the documentation audit in a repository with no .abcd/docs-lint.json —
+// is printed by the plain preview, with its status and why, never left to
+// --json and the report file.
+func TestLaunchDryRunPlainRenderStagesEveryUnranRow(t *testing.T) {
+	r := shipRenderableRepo(t)
+	if _, err := os.Stat(filepath.Join(r.Root(), ".abcd", "docs-lint.json")); err == nil {
+		t.Fatal("the fixture arms docs lint; this test needs it unarmed")
+	}
+
+	out, err := shipIn(t, r, "launch", "--dry-run", "--json")
+	if err != nil {
+		t.Fatalf("dry-run: %v\n%s", err, out)
+	}
+	var rep launch.DryRunReport
+	if err := json.Unmarshal(out, &rep); err != nil {
+		t.Fatalf("dry-run JSON: %v\n%s", err, out)
+	}
+	plain, err := shipIn(t, r, "launch", "--dry-run")
+	if err != nil {
+		t.Fatalf("dry-run: %v\n%s", err, plain)
+	}
+	unran := 0
+	for _, g := range rep.Gates {
+		if g.Status == "ran" {
+			continue
+		}
+		unran++
+		if !strings.Contains(string(plain), g.Name) || !strings.Contains(string(plain), g.Status) {
+			t.Errorf("the plain preview does not stage the %s row (%s):\n%s", g.Name, g.Status, plain)
+		}
+	}
+	if unran == 0 || !strings.Contains(string(plain), "documentation-auditor") {
+		t.Fatalf("the fixture must carry an unarmed documentation-auditor row to stage:\n%s", plain)
+	}
+}

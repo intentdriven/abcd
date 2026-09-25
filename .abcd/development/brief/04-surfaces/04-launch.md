@@ -179,7 +179,9 @@ one-commit release branch reach a tag and fail-close there
 (iss-2608231226342272).
 
 The plain-text preview prints the version, the file count bundled, scan
-hard-fails, citations, receipts and whether it would publish, then a
+hard-fails, citations, a line for every gate row that did not run (its name,
+its status — `host-run`, `not_armed`, `not_implemented` — and why; the
+semantic-receipts row is always one) and whether it would publish, then a
 would-refuse-on line per refusal, a warning line per warn-tier concern, and
 where its report landed. The JSON carries the gate detail.
 
