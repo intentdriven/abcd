@@ -108,6 +108,11 @@ func releaseRenderRequest(repoRoot, dest string, cut release.Cut, at time.Time) 
 		RepoRoot: repoRoot,
 		Dest:     dest,
 		Version:  next.String(),
+		// The cut renders AFTER its own writes (the dated heading, the release
+		// page, the archive pin), so the tree is dirty by construction with the
+		// cut's expected output; the cut ran the dirty-tree gate in its
+		// pre-flight, before any of them.
+		Dirty: launch.DirtySkip,
 		Entry: launch.ChangelogEntry{
 			Tier:      launch.BumpTier(prev, next),
 			Reason:    bumpReason(cut),

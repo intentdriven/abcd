@@ -202,7 +202,7 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 		// A shallow checkout's listing SUCCEEDS but holds only the tags that
 		// were fetched, so it is not the release set either
 		// (iss-2609251238184553).
-		if shallow, err := gitutil.Run(req.RepoRoot, "rev-parse", "--is-shallow-repository"); err != nil || shallow != "false" {
+		if shallow, err := ShallowCheckout(req.RepoRoot); err != nil || shallow {
 			reason := "the checkout is shallow, so its tag listing may hold only the tags that were fetched"
 			if err != nil {
 				reason = "whether the checkout is shallow could not be read: " + err.Error()
@@ -215,6 +215,19 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 		existing = tags
 	}
 	return ComputeRetention(pub, existing)
+}
+
+// ShallowCheckout reports whether the checkout at repoRoot is a shallow clone.
+// A shallow clone's tag listing succeeds while holding only the tags that were
+// fetched, so neither the retention plan nor the parity diff's baseline may
+// read that listing as the release set. An error is a checkout whose shallowness
+// git could not report, which a caller treats as shallow.
+func ShallowCheckout(repoRoot string) (bool, error) {
+	out, err := gitutil.Run(repoRoot, "rev-parse", "--is-shallow-repository")
+	if err != nil {
+		return true, err
+	}
+	return out != "false", nil
 }
 
 // scanRefusals collects the secret/PII scan gate's refusals: scanner

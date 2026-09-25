@@ -3,6 +3,7 @@ package update
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -51,5 +52,42 @@ func TestNewReleaseAssetsPinsAGitHubOrigin(t *testing.T) {
 		if _, err := NewReleaseAssets(bad); err == nil {
 			t.Errorf("%s must be refused", bad)
 		}
+	}
+}
+
+// TestReleaseAssetsScopesTheScrubToItsOwnClient: the launch parity fetcher
+// ignores the proxy and CA overrides, as the updater does, but only for its own
+// client: the process environment is left as it was found, and the names it
+// ignored are returned so the preview can say so (iss-2609251902444497). The
+// fetch still connects directly: a proxy at an unroutable address is never
+// dialled.
+func TestReleaseAssetsScopesTheScrubToItsOwnClient(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("sums\n"))
+	}))
+	defer srv.Close()
+	set := map[string]string{
+		"HTTPS_PROXY":   "http://192.0.2.1:3128",
+		"http_proxy":    "http://192.0.2.1:3128",
+		"SSL_CERT_FILE": "/nonexistent/ca.pem",
+	}
+	for k, v := range set {
+		t.Setenv(k, v)
+	}
+
+	a := newReleaseAssets(srv.URL, nil, true)
+	for k, v := range set {
+		if got, ok := os.LookupEnv(k); !ok || got != v {
+			t.Errorf("%s must be left in the process environment, got %q (set %v)", k, got, ok)
+		}
+	}
+	ignored := strings.Join(a.EnvIgnored(), ",")
+	for k := range set {
+		if !strings.Contains(ignored, k) {
+			t.Errorf("the fetcher must name %s as ignored, got %q", k, ignored)
+		}
+	}
+	if data, _, found, err := a.FetchReleaseAsset("v1.2.3", "checksums.txt"); err != nil || !found || string(data) != "sums\n" {
+		t.Fatalf("the fetch must connect directly, whatever the proxy variables say: %q %v %v", data, found, err)
 	}
 }

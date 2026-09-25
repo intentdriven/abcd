@@ -119,6 +119,14 @@ func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
 		"previously":   "Reports previously went to the log, and now they go to the record.",
 		"renamed":      "The flag was renamed from --out to --dest.",
 		"used to":      "The tool used to print a banner.",
+		// The narrowed constructs keep their true positives
+		// (iss-2609251827286563): a pronoun subject, a subject naming abcd,
+		// an active rename, and a past-tense copula beside "previously".
+		"used to, pronoun":         "It used to print a banner, which was noisy.",
+		"no longer, abcd":          "abcd no longer writes a receipt.",
+		"renamed, active":          "We renamed the flag to --dest.",
+		"previously, same clause":  "The default was previously JSON; it is now YAML.",
+		"used to, relative clause": "The gate skips the classes that used to drift.",
 	}
 	for name, sentence := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -136,21 +144,33 @@ func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
 			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", strings.TrimSuffix(sentence, ".")) {
 				t.Errorf("would_refuse_on does not name the file, line and sentence:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
 			}
+			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", "<!-- docs-lint: allow -->") {
+				t.Errorf("the finding must name the escape marker:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
+			}
 		})
 	}
 }
 
 // TestNarrationGatePassesPresentTense is AC10's first half and the gate's scope:
-// bare present-tense "now" and "previously", a construct inside code, a line
+// bare present-tense "now" and "previously" — apart, and together in one
+// sentence with no change verb beside either — a construct inside code, a line
 // carrying the docs-lint escape, and the release records (a changelog is
 // narration by definition) do not hard-fail; nor does a file outside the doc
-// bodies (commands/ is plugin surface, not a doc body).
+// bodies (commands/ is plugin surface, not a doc body). The four sentences a
+// review found refused (iss-2609251827286563) state present state: a
+// participle "used to", a "no longer" whose subject is not abcd, a present
+// "renamed", and "previously" beside "now" with nothing changing.
 func TestNarrationGatePassesPresentTense(t *testing.T) {
 	root := docsFixture(t)
 	writeFile(t, root, "docs/present.md", "# Present\n\n"+
 		"The command now accepts a path.\n"+
 		"Run the previously saved query with `--replay`.\n"+
 		"A passive key is used to sign the archive.\n\n"+
+		"The token used to authenticate the request is read from the environment.\n"+
+		"Files that are no longer present in the tree are skipped.\n"+
+		"The output is renamed to match the tag.\n"+
+		"Now, as previously noted, the report lists every gate.\n"+
+		"Set the token used to authenticate the request.\n\n"+
 		"```\nthe verb no longer writes\n```\n\n"+
 		"Use `no longer` sparingly.\n"+
 		"The page lists what changed from one release to the next. <!-- docs-lint: allow -->\n")
@@ -412,5 +432,95 @@ func TestWritePreflightReportLandsInTheLocalTier(t *testing.T) {
 		if !strings.Contains(string(data), "marker-block") {
 			t.Errorf("%s does not carry the gate rows:\n%s", name, data)
 		}
+	}
+}
+
+// TestHookRowFindsAnUnparseableHooksConfig is iss-2609251827104081: a hooks
+// config the host cannot parse registers no hook on any install, so it is a
+// finding of the hook-compliance row (AC5: the concern is surfaced) and the
+// installability smoke refuses it, as it refuses an unparseable plugin
+// manifest. Neither may read it as a clean pass.
+func TestHookRowFindsAnUnparseableHooksConfig(t *testing.T) {
+	root := docsFixture(t)
+	writeFile(t, root, ".abcd/config/launch-payload.json",
+		`{"includes": [".claude-plugin", "docs", "hooks", "README.md"]}`)
+	writeFile(t, root, "hooks/hooks.json", "{not json at all")
+
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	hook := gateRow(t, report.Gates, "hook-compliance")
+	if len(hook.Findings) == 0 || !anyContains(report.Warnings, "hook-compliance", "hooks/hooks.json") {
+		t.Errorf("an unparseable hooks config must be a finding of the hook row naming it; row = %+v, warnings = %v", hook, report.Warnings)
+	}
+
+	if report.Smoke.OK || !anyContains(report.WouldRefuseOn, "hooks/hooks.json", "does not parse") {
+		t.Errorf("the smoke must refuse an unparseable hooks config, naming it; smoke = %+v, would_refuse_on = %v",
+			report.Smoke, report.WouldRefuseOn)
+	}
+}
+
+// TestRenderPayloadRefusesADirtyTreeByDefault is iss-2609251827294854: the
+// dirty-tree policy is the render caller's to state, and a caller that states
+// none fails closed. A render request with no policy refuses a dirty tree; the
+// cut's post-write render, which states DirtySkip, renders it.
+func TestRenderPayloadRefusesADirtyTreeByDefault(t *testing.T) {
+	r := dirtyRepo(t)
+	r.Write("notes.txt", "scratch\n")
+	req := PayloadRenderRequest{
+		RepoRoot: r.Root(), Dest: filepath.Join(t.TempDir(), "payload"),
+		Version: "0.4.0", Entry: sampleEntry(),
+	}
+	if _, err := RenderPayload(req); !errors.Is(err, ErrDirtyTree) {
+		t.Fatalf("a render that states no dirty-tree policy must refuse a dirty tree, got %v", err)
+	}
+
+	req.Dest = filepath.Join(t.TempDir(), "payload")
+	req.Dirty = DirtySkip
+	if _, err := RenderPayload(req); err != nil {
+		t.Fatalf("a render that states DirtySkip must render: %v", err)
+	}
+}
+
+// TestRenderPathDocAuditRowSaysItWasNotMeasured keeps the render path honest
+// (iss-2609251827294854): it does not measure the documentation audit, so its
+// row says so rather than claiming the repository has no docs-lint config.
+func TestRenderPathDocAuditRowSaysItWasNotMeasured(t *testing.T) {
+	root := renderFixture(t)
+	writeFile(t, root, ".abcd/docs-lint.json", `{"roots": ["docs"], "banned_tokens": [], "rules": {}}`+"\n")
+	pre, err := PrecheckPayload(root, filepath.Join(t.TempDir(), "payload"),
+		PrecheckOptions{Dirty: DirtySkip, DocAudit: renderPathDocAudit})
+	if err != nil {
+		t.Fatalf("PrecheckPayload: %v", err)
+	}
+	row := gateRow(t, pre.Gates, "documentation-auditor")
+	if row.Status != "not_measured" || strings.Contains(row.Detail, "no .abcd/docs-lint.json") {
+		t.Errorf("the render path's doc-auditor row = %+v, want not_measured and no claim about the config", row)
+	}
+}
+
+// TestProseLinesReadsAnUnclosedOpeningRuleAsProse is iss-2609251827296447: a
+// document that opens with a "---" rule and never closes it has no frontmatter,
+// so both content gates read all of it; closed frontmatter is still metadata.
+func TestProseLinesReadsAnUnclosedOpeningRuleAsProse(t *testing.T) {
+	root := docsFixture(t)
+	writeFile(t, root, "docs/ruled.md", "---\n\nThe verb no longer writes a receipt.\n\n<!-- BEGIN ABCD -->\n")
+	writeFile(t, root, "docs/front.md", "---\ntitle: The verb no longer writes a receipt.\n---\n\n# Front\n\nThe tool reads the record.\n")
+
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	for _, want := range [][]string{
+		{"change-narration", "docs/ruled.md:3", "no longer"},
+		{"marker-block", "docs/ruled.md:5", "never closed"},
+	} {
+		if !anyContains(report.WouldRefuseOn, want...) {
+			t.Errorf("a document opening with an unclosed rule was not read; missing %v:\n%s", want, strings.Join(report.WouldRefuseOn, "\n"))
+		}
+	}
+	if anyContains(report.WouldRefuseOn, "docs/front.md") {
+		t.Errorf("closed frontmatter must stay metadata:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
 	}
 }

@@ -24,7 +24,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -77,17 +76,18 @@ type DeepSmokeReport struct {
 	Findings []SmokeFinding `json:"findings,omitempty"`
 }
 
-// yamlKeyRe is a top-level YAML mapping key as a page's frontmatter carries it:
-// hyphens are legal (`argument-hint`), and the colon ends the key only when a
-// space, a tab or the end of the line follows it.
-var yamlKeyRe = regexp.MustCompile(`^([A-Za-z0-9_][A-Za-z0-9_.-]*)[ \t]*:([ \t].*)?$`)
-
 // RenderPageHelp renders one page's help from the tree at root, the way the
 // deep tier's subprocess does. A page loads when it is readable UTF-8, any
 // frontmatter block it opens is closed and is a mapping with no duplicated key,
 // and it renders some help: a description, or for a command or an agent the
 // first line of its body. A skill needs a name and a description in its
 // frontmatter.
+//
+// The tier reads frontmatter only to judge whether a harness would load the
+// page, so it must never be stricter than the YAML it judges: every shape a
+// YAML reader loads as a top-level mapping loads here too — a scalar continued
+// on indented lines, a quoted or non-ASCII key, a block closed by YAML's own
+// document end (iss-2609251902438821).
 func RenderPageHelp(root string, ref PageRef) PageHelp {
 	help := PageHelp{Kind: ref.Kind, Path: ref.Path}
 	fail := func(format string, args ...any) PageHelp {
@@ -107,14 +107,14 @@ func RenderPageHelp(root string, ref PageRef) PageHelp {
 	text := frontmatter.TrimBOM(string(data))
 	body := text
 	fields := map[string]string{}
-	if lines := strings.Split(text, "\n"); len(lines) > 0 && frontmatter.IsDelimiter(lines[0]) {
-		head, rest := frontmatter.Split(text)
-		if head == "" {
+	if lines := strings.SplitN(text, "\n", 2); frontmatter.IsDelimiter(lines[0]) {
+		inner, rest, closed := pageFrontmatter(text)
+		if !closed {
 			return fail("opens a frontmatter block that is never closed")
 		}
 		body = rest
 		var reason string
-		fields, reason = pageFields(strings.Split(strings.TrimSuffix(head, "\n"), "\n"))
+		fields, reason = pageFields(inner)
 		if reason != "" {
 			return fail("%s", reason)
 		}
@@ -142,59 +142,197 @@ func RenderPageHelp(root string, ref PageRef) PageHelp {
 	return help
 }
 
+// pageFrontmatter splits a page that opens a frontmatter block into the
+// block's interior lines, line endings removed, and the body after it. The
+// block closes at the first column-0 `---` (frontmatter.IsDelimiter, the one
+// delimiter rule) or at YAML's document-end marker `...`, which a YAML reader
+// accepts in its place. closed is false when neither closes it.
+func pageFrontmatter(text string) (inner []string, body string, closed bool) {
+	lines := strings.SplitAfter(text, "\n")
+	n := len(lines[0])
+	for i := 1; i < len(lines); i++ {
+		ln := lines[i]
+		column0 := !strings.HasPrefix(ln, " ") && !strings.HasPrefix(ln, "\t")
+		if column0 && (frontmatter.IsDelimiter(ln) || strings.TrimRight(ln, " \t\r\n") == "...") {
+			for _, l := range lines[1:i] {
+				inner = append(inner, strings.TrimRight(l, "\r\n"))
+			}
+			return inner, text[n+len(ln):], true
+		}
+		n += len(ln)
+	}
+	return nil, text, false
+}
+
+// How a key's value is spelled, which decides what its indented lines are.
+const (
+	valueScalar     = iota // a same-line scalar, which indented lines continue
+	valueBlock             // a block scalar (`>` or `|`): the indented lines are its text
+	valueOpen              // nothing on the key's line: the first indented line decides
+	valueCollection        // a nested mapping or sequence, which help never reads
+)
+
 // pageFields reads a closed frontmatter block's top-level mapping, refusing a
-// line no YAML mapping holds at column 0 and a duplicated key. A block scalar
-// (`>` or `|`) is folded into one line, which is all help needs.
-func pageFields(head []string) (map[string]string, string) {
+// column-0 line no YAML mapping holds and a duplicated key. A scalar continued
+// on indented lines (plain or quoted) is folded into one line, and so is a
+// block scalar: one line is all help needs. inner is the block's interior, so
+// its first line is the file's second.
+func pageFields(inner []string) (map[string]string, string) {
 	fields := map[string]string{}
 	seen := map[string]int{}
-	var blockKey string
-	var block []string
+	var key string
+	kind := valueCollection
+	var parts []string
 	flush := func() {
-		if blockKey != "" {
-			fields[blockKey] = strings.Join(block, " ")
-		}
-		blockKey, block = "", nil
-	}
-	// head[0] and head[len-1] are the delimiters; file line numbers are 1-based.
-	for i := 1; i < len(head)-1; i++ {
-		line := strings.TrimRight(head[i], "\r")
-		trimmed := strings.TrimSpace(line)
 		switch {
-		case strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t"):
-			if blockKey != "" && trimmed != "" {
-				block = append(block, trimmed)
+		case key == "":
+		case kind == valueScalar:
+			v := strings.TrimSpace(frontmatter.StripComment(strings.Join(parts, " ")))
+			if scalar, ok := frontmatter.ScalarString(v); ok {
+				v = scalar
+			}
+			fields[key] = v
+		case kind == valueBlock:
+			fields[key] = strings.Join(parts, " ")
+		default:
+			fields[key] = ""
+		}
+		key, kind, parts = "", valueCollection, nil
+	}
+	for i, raw := range inner {
+		lineNo := i + 2
+		line := strings.TrimRight(raw, "\r")
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			switch {
+			case kind == valueBlock:
+				parts = append(parts, trimmed)
+			case strings.HasPrefix(trimmed, "#"):
+				// A comment line, inside no block scalar.
+			case kind == valueOpen && opensCollection(trimmed):
+				kind = valueCollection
+			case kind == valueOpen:
+				kind, parts = valueScalar, []string{trimmed}
+			case kind == valueScalar:
+				parts = append(parts, trimmed)
 			}
 			continue
-		case trimmed == "" || strings.HasPrefix(trimmed, "#"):
+		}
+		if strings.HasPrefix(trimmed, "#") {
 			continue
-		case line == "-" || strings.HasPrefix(line, "- "):
+		}
+		if line == "-" || strings.HasPrefix(line, "- ") {
 			// A block sequence at the key's own indentation is legal YAML.
-			flush()
+			if kind == valueOpen {
+				kind = valueCollection
+			}
 			continue
 		}
 		flush()
-		m := yamlKeyRe.FindStringSubmatch(line)
-		if m == nil {
-			return nil, fmt.Sprintf("frontmatter line %d is not a YAML mapping entry: %q", i+1, trimmed)
+		k, rest, ok := mappingKey(line)
+		if !ok {
+			return nil, fmt.Sprintf("frontmatter line %d is not a YAML mapping entry: %q", lineNo, trimmed)
 		}
-		key := m[1]
-		if first, dup := seen[key]; dup {
-			return nil, fmt.Sprintf("frontmatter key %q is a duplicate (lines %d and %d)", key, first, i+1)
+		if first, dup := seen[k]; dup {
+			return nil, fmt.Sprintf("frontmatter key %q is a duplicate (lines %d and %d)", k, first, lineNo)
 		}
-		seen[key] = i + 1
-		value := strings.TrimSpace(frontmatter.StripComment(m[2]))
-		if frontmatter.BlockScalarHeaderRe.MatchString(value) {
-			blockKey = key
-			continue
+		seen[k] = lineNo
+		key = k
+		switch value := strings.TrimSpace(frontmatter.StripComment(rest)); {
+		case value == "":
+			kind = valueOpen
+		case frontmatter.BlockScalarHeaderRe.MatchString(value):
+			kind = valueBlock
+		default:
+			kind, parts = valueScalar, []string{strings.TrimSpace(rest)}
 		}
-		if scalar, ok := frontmatter.ScalarString(value); ok {
-			value = scalar
-		}
-		fields[key] = value
 	}
 	flush()
 	return fields, ""
+}
+
+// opensCollection reports whether the first indented line under a key with no
+// same-line value starts a nested collection rather than a plain scalar: a
+// sequence entry, or a mapping entry.
+func opensCollection(trimmed string) bool {
+	if trimmed == "-" || strings.HasPrefix(trimmed, "- ") {
+		return true
+	}
+	_, _, ok := mappingKey(trimmed)
+	return ok
+}
+
+// plainKeyIndicators are the characters a plain (unquoted) YAML key cannot
+// start with; `-`, `?` and `:` join them only when a space follows.
+const plainKeyIndicators = "[]{},#&*!|>'\"%@`"
+
+// mappingKey reads a column-0 block mapping entry: a plain, double-quoted or
+// single-quoted key, then a colon that a space, a tab or the end of the line
+// follows. rest is what follows the colon. A plain key may hold any character
+// YAML allows there, non-ASCII included.
+func mappingKey(line string) (key, rest string, ok bool) {
+	if line == "" {
+		return "", "", false
+	}
+	colonAt := func(after string) (string, bool) {
+		after = strings.TrimLeft(after, " \t")
+		if !strings.HasPrefix(after, ":") {
+			return "", false
+		}
+		if tail := after[1:]; tail == "" || tail[0] == ' ' || tail[0] == '\t' {
+			return tail, true
+		}
+		return "", false
+	}
+	switch line[0] {
+	case '"':
+		for i := 1; i < len(line); i++ {
+			switch line[i] {
+			case '\\':
+				i++
+			case '"':
+				r, ok := colonAt(line[i+1:])
+				return frontmatter.Unquote(line[1:i]), r, ok
+			}
+		}
+		return "", "", false
+	case '\'':
+		for i := 1; i < len(line); i++ {
+			if line[i] != '\'' {
+				continue
+			}
+			if i+1 < len(line) && line[i+1] == '\'' {
+				i++
+				continue
+			}
+			r, ok := colonAt(line[i+1:])
+			return strings.ReplaceAll(line[1:i], "''", "'"), r, ok
+		}
+		return "", "", false
+	}
+	if strings.ContainsRune(plainKeyIndicators, rune(line[0])) {
+		return "", "", false
+	}
+	if strings.ContainsRune("-?:", rune(line[0])) && (len(line) == 1 || line[1] == ' ' || line[1] == '\t') {
+		return "", "", false
+	}
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '#':
+			if i > 0 && (line[i-1] == ' ' || line[i-1] == '\t') {
+				return "", "", false // a comment starts before any colon
+			}
+		case ':':
+			if i+1 == len(line) || line[i+1] == ' ' || line[i+1] == '\t' {
+				k := strings.TrimRight(line[:i], " \t")
+				return k, line[i+1:], k != ""
+			}
+		}
+	}
+	return "", "", false
 }
 
 // firstBodyLine is the first non-blank line of a page's body.
@@ -285,13 +423,13 @@ func smokeDeepOverBundle(bundle Bundle, run PageRunner) DeepSmokeReport {
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	dir := filepath.Join(tmp, "payload")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return deepUnavailable(err)
+	}
 	for _, f := range bundle.Included {
 		if err := copyPayloadFile(dir, f); err != nil {
 			return deepUnavailable(fmt.Errorf("materialising %s: %w", f.LogicalPath, pathFreeError(err)))
 		}
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return deepUnavailable(err)
 	}
 	return SmokeDeep(dir, run)
 }

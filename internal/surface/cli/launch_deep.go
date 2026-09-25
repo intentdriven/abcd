@@ -26,14 +26,15 @@ import (
 )
 
 // newReleaseAssetFetcher builds the fetcher a --fetch-baseline run reads the
-// previous release's assets through. It is a package var so a test can serve
-// the assets from memory: no test reaches the network.
-var newReleaseAssetFetcher = func(origin string) (launch.ReleaseAssetFetcher, error) {
+// previous release's assets through, and names the proxy and CA variables its
+// client does not honour. It is a package var so a test can serve the assets
+// from memory: no test reaches the network.
+var newReleaseAssetFetcher = func(origin string) (launch.ReleaseAssetFetcher, []string, error) {
 	a, err := update.NewReleaseAssets(origin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return a, nil
+	return a, a.EnvIgnored(), nil
 }
 
 // loudFetcher announces every fetch on stderr before it is made and says what
@@ -74,11 +75,10 @@ func launchParityInput(cwd, configured string, fetch bool, stderr io.Writer) (*l
 		in.Baseline = configured
 	} else {
 		tag, found, err := changelog.LatestReleaseTag(cwd)
-		switch {
-		case err != nil:
+		if err != nil {
 			in.BaselineError = "the release tags could not be listed: " + scrubPaths(err)
-		case found:
-			in.Baseline = tag.Tag()
+		} else {
+			in.Baseline, in.Unanchored, in.BaselineError = unanchoredBaseline(cwd, tag, found)
 		}
 	}
 	if fetch {
@@ -86,13 +86,55 @@ func launchParityInput(cwd, configured string, fetch bool, stderr io.Writer) (*l
 		if err != nil {
 			return nil, err
 		}
-		f, err := newReleaseAssetFetcher(origin)
+		f, ignored, err := newReleaseAssetFetcher(origin)
 		if err != nil {
 			return nil, err
 		}
 		in.Fetch = loudFetcher{inner: f, w: stderr, origin: origin}
+		in.EnvIgnored = ignored
 	}
 	return in, nil
+}
+
+// unanchoredBaseline names the baseline when no operator named one. The newest
+// release tag is the baseline in a full checkout. A checkout whose tags cannot
+// be trusted to name the previous release — a shallow clone, whose listing
+// holds only the tags it fetched, or a clone with no release tag at all while
+// CHANGELOG.md dates a release — is unanchored: the baseline is the newest
+// release either source names, and why is said, so the diff refuses rather
+// than reading as a first launch (iss-2609251902439938). A tree whose
+// CHANGELOG.md dates no release and that holds no tag is a first launch.
+func unanchoredBaseline(cwd string, tag launch.Semver, found bool) (baseline, unanchored, failure string) {
+	shallow, err := launch.ShallowCheckout(cwd)
+	if err != nil {
+		return "", "", "whether the checkout is shallow could not be read: " + scrubPaths(err)
+	}
+	if found && !shallow {
+		return tag.Tag(), "", ""
+	}
+	dated, _, err := changelog.DatedReleases(cwd)
+	if err != nil {
+		return "", "", "CHANGELOG.md could not be read to tell a first launch from a checkout missing its release tags: " + scrubPaths(err)
+	}
+	newest, datedOK := launch.Semver{}, false
+	if len(dated) > 0 {
+		newest, err = launch.ParseSemver(strings.TrimPrefix(dated[0].Version, "v"))
+		datedOK = err == nil
+	}
+	switch {
+	case shallow && (found || datedOK):
+		if found && (!datedOK || launch.CoreGreater(tag, newest)) {
+			newest = tag
+		}
+		return newest.Tag(), "the checkout is shallow, so its tag listing may hold only the tags that were fetched", ""
+	case found:
+		return tag.Tag(), "", ""
+	case datedOK:
+		return newest.Tag(), "CHANGELOG.md dates release " + newest.String() + ", and this checkout holds no release tag, so this is not a first launch", ""
+	case len(dated) > 0:
+		return "", "", "CHANGELOG.md dates release " + termsafe.Sanitize(dated[0].Version) + ", which is not a release version, and this checkout holds no release tag"
+	}
+	return "", "", ""
 }
 
 // smokePagesTimeout bounds one deep-tier subprocess.
@@ -212,8 +254,16 @@ func renderParity(w io.Writer, p *launch.ParityReport) {
 	if baseline == "" {
 		baseline = "(no previous release)"
 	}
+	// The ignored variables are named on a refusal too: a direct connection is
+	// the likeliest reason a fetch behind a mandatory proxy fails.
+	ignored := func() {
+		if len(p.EnvIgnored) > 0 {
+			fmt.Fprintf(w, "    ignored from the environment: %s\n", termsafe.Sanitize(strings.Join(p.EnvIgnored, ", ")))
+		}
+	}
 	if p.Refused {
 		fmt.Fprintf(w, "  parity:         refused against %s — %s\n", termsafe.Sanitize(baseline), termsafe.Sanitize(p.RefusalReason))
+		ignored()
 		return
 	}
 	fmt.Fprintf(w, "  parity:         against %s (%s): %d added, %d changed, %d removed, %d unchanged\n",
@@ -221,6 +271,7 @@ func renderParity(w io.Writer, p *launch.ParityReport) {
 	for _, u := range p.Fetched {
 		fmt.Fprintf(w, "    fetched %s\n", termsafe.Sanitize(u))
 	}
+	ignored()
 	if p.Note != "" {
 		fmt.Fprintf(w, "    note: %s\n", termsafe.Sanitize(p.Note))
 	}

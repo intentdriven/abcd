@@ -197,9 +197,11 @@ Then summarise the JSON for the user:
   says whether every page loads; `deep_smoke.findings` names each page that
   resolves on disk and would not load — a frontmatter block never closed, a line
   that is not a YAML mapping entry, a duplicated key, bytes that are not UTF-8, a
-  skill with no name or description, a page with no help at all. The cut always
-  runs this tier; offer `--deep-smoke` when the user wants the preview to say
-  what the cut will.
+  skill with no name or description, a page with no help at all. Frontmatter is
+  read as YAML reads it: a value continued on indented lines, a quoted or
+  non-ASCII key, and a block closed by `...` all load. The tier costs a copy of
+  the payload and one child process. The cut always runs this tier; offer
+  `--deep-smoke` when the user wants the preview to say what the cut will.
 - `parity` — the file-level diff between this payload and the previous
   release's. `parity.baseline` is the tag it was measured against (the newest
   release tag, or the tag given with `--baseline <vX.Y.Z>`), `parity.source` how
@@ -207,21 +209,32 @@ Then summarise the JSON for the user:
   temporary clone, from this checkout's own git objects), `release-asset` (the
   tag's published plugin archive, fetched only with `--fetch-baseline`) or
   `none` (no previous release: a first launch, and every path is `added`, with
-  `parity.note` saying why). `parity.entries` lists every path `added`,
-  `changed` or `removed` with its `digest` and `baseline_digest` (SHA-256); report
-  the counts and the paths. The two stamped manifests are compared with their
+  `parity.note` saying why). A checkout missing the previous release's tag —
+  cloned without tags, or shallow — while `CHANGELOG.md` dates a release is not
+  a first launch: `parity.refused` names that release and the remedy (fetch the
+  tags and history, or `--fetch-baseline`, whose verified archive is then the
+  only baseline, since there is no tag to render at). `parity.entries` lists
+  every path `added`, `changed` or `removed` with its `digest` and
+  `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the
   catalog, which the archive omits by construction, is named in
-  `parity.not_compared`. A baseline that cannot be read sets `parity.refused`
-  with a `refusal_reason` and lands in `would_refuse_on`; it is never an empty
-  diff. A `--baseline` that is not a release tag in this checkout exits 2 by
+  `parity.not_compared`. A render at the tag is a shared clone of this checkout
+  checked out at the tag in a private temporary directory, removed afterwards:
+  a few seconds and a working tree the size of the tag's, on every preview and
+  on every cut that renders a payload, which has no opt-out. A baseline that
+  cannot be read sets `parity.refused` with a `refusal_reason` and lands in
+  `would_refuse_on`; it is never an empty diff. A `--baseline` that is not a release tag in this checkout exits 2 by
   name.
   `--fetch-baseline` is the one network read the preview makes, and only on that
   explicit ask: it fetches the tag's `checksums.txt` and plugin archive from the
   repository `plugin.json` names, announces each fetch on stderr, refuses an
   archive whose digest the release's own `checksums.txt` does not vouch for, and
   falls back to a render at the tag, saying so, when the release publishes no
-  archive. Never add the flag on the user's behalf.
+  archive. Its connection honours no proxy or CA variable (`HTTPS_PROXY`,
+  `SSL_CERT_FILE` and their kin), as `abcd update`'s does, and every one that was
+  set is named in `parity.env_ignored`, on the plain preview, and in the refusal
+  when the fetch fails; the environment itself is left as it is. Never add the
+  flag on the user's behalf.
 - `gates` — every release gate and its disposition. Report the whole array,
   not a summary. Each row carries a `status` (`ran`; `not_armed` where the
   repository has not adopted what the gate reads, such as the documentation
@@ -684,7 +697,9 @@ catalog is left out of it, because the catalog is what names its digest.
   in `detect`, before the tag is made; the release workflow runs it again on the
   tagged commit in `verify`, before anything is built, and once more in the
   publish job, where the verified archive is the file it checksums, attests and
-  uploads.
+  uploads. With `--verify` the pin is the dirty-tree gate, since a payload file
+  that differs from the commit changes the digest; without it, an uncommitted
+  change in the working tree refuses the render (exit 2).
 - `--repository <owner/name>` refuses unless the archive's download address lies
   under that repository's
   `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared

@@ -89,7 +89,9 @@ const (
 	// its own writes (the dated CHANGELOG heading, the release page, the
 	// archive pin): those writes are the cut's expected output, not dirt, and
 	// the gate already ran before any of them, at the cut's start. The ordering
-	// is the point — the cut's own staged changes must never read as dirt.
+	// is the point — the cut's own staged changes must never read as dirt. A
+	// render caller states it explicitly (PayloadRenderRequest.Dirty); nothing
+	// defaults to it.
 	DirtySkip
 )
 
@@ -103,6 +105,10 @@ type DocAuditPreflight struct {
 	Findings []GateFinding `json:"findings,omitempty"`
 	// Unreadable says why the audit could not be measured at all.
 	Unreadable string `json:"unreadable,omitempty"`
+	// NotMeasured says why the caller did not measure the audit on this
+	// path. The row then reports "not_measured" and makes no claim about the
+	// repository's configuration.
+	NotMeasured string `json:"not_measured,omitempty"`
 }
 
 // GatePolicy is the repository's configuration of the suite, read from the
@@ -236,17 +242,24 @@ type proseLine struct {
 // proseLines splits a Markdown document into its prose lines: fenced code
 // blocks are dropped and inline code spans blanked, so a construct quoted as an
 // example never reads as an assertion. A leading YAML frontmatter block is
-// dropped too, since it is metadata rather than a body.
+// dropped too, since it is metadata rather than a body — but only a block that
+// closes: a document that opens with a "---" rule and never repeats it has no
+// frontmatter, and is read whole rather than dropped (iss-2609251827296447).
 func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
 	inFence := false
-	inFront := len(lines) > 0 && strings.TrimSpace(lines[0]) == "---"
-	for i, line := range lines {
-		if inFront {
-			if i > 0 && strings.TrimSpace(line) == "---" {
-				inFront = false
+	frontEnd := -1 // index of the closing "---"; -1 when there is no frontmatter
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				frontEnd = i
+				break
 			}
+		}
+	}
+	for i, line := range lines {
+		if i <= frontEnd {
 			continue
 		}
 		if fenceRe.MatchString(line) {
@@ -336,30 +349,204 @@ func isDocBody(rel string) bool {
 var narrationEscapeRe = regexp.MustCompile(`(?i)<!--\s*docs-lint:\s*allow\b`)
 
 // narrationConstructs are the deterministic constructs that narrate a change,
-// each judged within ONE sentence. Bare "now" and bare "previously" are not
-// among them: both describe present state as often as they narrate (itd-65
-// AC10), and the present-tense warning docs lint carries is where they belong.
+// each judged within ONE sentence. A construct that also reads as present
+// state carries a check that only its narrating reading passes
+// (iss-2609251827286563): "used to" only as the past habit, "no longer" and
+// "renamed" only beside a change subject naming abcd or its behaviour, and
+// "previously"/"now" only beside a change verb. Bare "now" and bare
+// "previously" are not constructs at all (itd-65 AC10); the present-tense
+// warning docs lint carries is where they belong.
 var narrationConstructs = []struct {
-	name string
-	re   *regexp.Regexp
+	name  string
+	re    *regexp.Regexp
+	holds func(sentence string, at []int) bool // nil: the match alone narrates
 }{
-	{"changed from", regexp.MustCompile(`(?i)\bchanged\s+from\b.*\bto\b`)},
-	{"no longer", regexp.MustCompile(`(?i)\bno\s+longer\b`)},
-	{"migrated from", regexp.MustCompile(`(?i)\bmigrated\s+from\b`)},
-	{"renamed", regexp.MustCompile(`(?i)\brenamed\b.*\bto\b`)},
-	{"previously … now", regexp.MustCompile(`(?i)\bpreviously\b.*\bnow\b|\bnow\b.*\bpreviously\b`)},
-	{"used to", regexp.MustCompile(`(?i)\bused\s+to\b`)},
+	{"changed from", regexp.MustCompile(`(?i)\bchanged\s+from\b.*\bto\b`), nil},
+	{"no longer", regexp.MustCompile(`(?i)\bno\s+longer\b`), changeSubjectBefore},
+	{"migrated from", regexp.MustCompile(`(?i)\bmigrated\s+from\b`), nil},
+	{"renamed", regexp.MustCompile(`(?i)\brenamed\b.*\bto\b`), changeSubjectBefore},
+	{"previously … now", regexp.MustCompile(`(?i)\bpreviously\b.*\bnow\b|\bnow\b.*\bpreviously\b`), changeVerbBesideEither},
+	{"used to", regexp.MustCompile(`(?i)\bused\s+to\b`), pastHabitUsedTo},
 }
 
-// passiveUsedToRe is "used to" as a passive or an adjective ("is used to sign",
-// "gets used to"): present-state prose, not a narrated habit.
-var passiveUsedToRe = regexp.MustCompile(`(?i)\b(is|are|was|were|be|been|being|get|gets|got|getting)\s+used\s+to\b`)
+// narrationEscapeHint names the escape in every narration finding, so a
+// sentence that states present state and still trips a construct is one
+// marker away from passing, never a rewrite of correct prose.
+const narrationEscapeHint = "docs describe present state and the changelog records the change; a sentence that states present state takes <!-- docs-lint: allow --> on its line"
 
-// sentenceEndRe ends a sentence: terminal punctuation followed by space.
-var sentenceEndRe = regexp.MustCompile(`[.!?]["')\]]*\s+`)
+// narrationWordRe is one word of a sentence, or one clause-breaking mark.
+var narrationWordRe = regexp.MustCompile(`[\p{L}\p{N}][\p{L}\p{N}'’_.-]*|[,;:()—–"“”]`)
 
-// listItemRe starts a list item, which starts a new sentence whatever precedes it.
-var listItemRe = regexp.MustCompile(`^\s*([-*+]|\d+[.)])\s`)
+// clauseBreaks end a clause: punctuation, and the words that open a relative
+// or subordinate clause, whose subject is not the main clause's.
+var clauseBreaks = wordSet(",", ";", ":", "(", ")", "—", "–", "\"", "“", "”",
+	"that", "which", "who", "whose", "where", "when", "whenever", "if", "because", "while", "what", "and", "but", "or")
+
+// changeSubjects are the nouns that name abcd or its behaviour. A "no longer"
+// or a "renamed" whose clause subject is one of them narrates a change to the
+// product; any other subject ("files that are no longer present", "the output
+// is renamed") states the present state of something the product handles.
+var changeSubjects = wordSet("abcd", "we", "tool", "tools", "verb", "verbs", "command", "commands",
+	"subcommand", "subcommands", "flag", "flags", "option", "options", "binary", "plugin", "cli",
+	"hook", "hooks", "gate", "gates", "default", "defaults", "behaviour", "behavior", "api",
+	"endpoint", "endpoints", "setting", "settings", "feature", "features")
+
+// changeVerbs are the past-tense verbs that make "previously … now" a
+// narration ("reports previously went to the log", "the default was
+// previously JSON"). A participle used as an adjective ("as previously
+// noted", "the previously saved query") is none of them.
+var changeVerbs = wordSet("was", "were", "had", "used", "went", "came", "changed", "became", "moved",
+	"switched", "replaced", "migrated", "renamed", "removed", "dropped", "defaulted", "lived",
+	"wrote", "printed", "returned", "required", "accepted", "stored", "sent", "ran", "pointed")
+
+// subjectPronouns before "used to" make it the finite verb of its clause: the
+// past habit ("it used to print", "the classes that used to drift").
+var subjectPronouns = wordSet("i", "it", "they", "we", "you", "he", "she", "who", "which", "that", "abcd")
+
+// determiners open a noun phrase that can be a clause's subject.
+var determiners = wordSet("the", "a", "an", "this", "that", "these", "those", "its", "their", "our", "his", "her", "each", "every", "some")
+
+// finiteVerbs after a "used to" phrase show the phrase was a participle
+// modifying a noun ("the token used to authenticate the request IS read"),
+// not the clause's own verb.
+var finiteVerbs = wordSet("is", "are", "was", "were", "has", "have", "had", "does", "do", "did", "can", "cannot",
+	"could", "must", "will", "would", "should", "may", "might", "shall", "stays", "remains")
+
+func wordSet(words ...string) map[string]struct{} {
+	m := make(map[string]struct{}, len(words))
+	for _, w := range words {
+		m[w] = struct{}{}
+	}
+	return m
+}
+
+// narrationWords splits text into lower-cased words and clause marks.
+func narrationWords(text string) []string {
+	out := narrationWordRe.FindAllString(strings.ToLower(text), -1)
+	for i, w := range out {
+		out[i] = strings.TrimRight(w, ".")
+	}
+	return out
+}
+
+// clauseBefore is the words of the clause that runs up to byte offset at.
+func clauseBefore(sentence string, at int) []string {
+	words := narrationWords(sentence[:at])
+	for i := len(words) - 1; i >= 0; i-- {
+		if _, stop := clauseBreaks[words[i]]; stop {
+			return words[i+1:]
+		}
+	}
+	return words
+}
+
+// clauseAfter is the words of the clause that runs on from byte offset at.
+func clauseAfter(sentence string, at int) []string {
+	words := narrationWords(sentence[at:])
+	for i, w := range words {
+		if _, stop := clauseBreaks[w]; stop {
+			return words[:i]
+		}
+	}
+	return words
+}
+
+// anyIn reports whether some word is in the set.
+func anyIn(words []string, set map[string]struct{}) bool {
+	for _, w := range words {
+		if _, ok := set[w]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// changeSubjectBefore reports whether the clause leading up to the match names
+// abcd or its behaviour.
+func changeSubjectBefore(sentence string, at []int) bool {
+	return anyIn(clauseBefore(sentence, at[0]), changeSubjects)
+}
+
+// changeVerbBesideEither reports whether a change verb stands within three
+// words of some "previously" or "now" in the sentence. Beside a "previously"
+// that modifies a verb, any past-tense "-ed" verb within two words counts too
+// ("it previously lacked", "the rule previously existed"); a "previously"
+// after "as" or a determiner qualifies a participle ("as previously noted",
+// "the previously saved query") and brings no verb of its own.
+func changeVerbBesideEither(sentence string, _ []int) bool {
+	words := narrationWords(sentence)
+	for i, w := range words {
+		if w != "previously" && w != "now" {
+			continue
+		}
+		for j := max(0, i-3); j <= min(len(words)-1, i+3); j++ {
+			if _, ok := changeVerbs[words[j]]; ok {
+				return true
+			}
+		}
+		if w != "previously" || (i > 0 && (words[i-1] == "as" || isDeterminer(words[i-1]))) {
+			continue
+		}
+		for j := max(0, i-2); j <= min(len(words)-1, i+2); j++ {
+			if j != i && len(words[j]) > 3 && strings.HasSuffix(words[j], "ed") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isDeterminer reports whether a word opens a noun phrase.
+func isDeterminer(w string) bool {
+	_, ok := determiners[w]
+	return ok
+}
+
+// pastHabitUsedTo reports whether a "used to" is the past-habit construction:
+// the finite verb of its clause, after a subject pronoun ("it used to print")
+// or after a bare subject noun phrase that opens the clause ("the tool used to
+// print") when no finite verb follows in the clause. A passive or adjectival
+// "used to" ("is used to sign", "gets used to") and a participle modifying a
+// noun ("the token used to authenticate the request is read", "set the token
+// used to authenticate") are present state.
+func pastHabitUsedTo(sentence string, at []int) bool {
+	// The word before "used" is read across a clause break: a relative
+	// pronoun ("the classes that used to drift") is the clause's subject.
+	preceding := narrationWords(sentence[:at[0]])
+	if len(preceding) == 0 {
+		return false
+	}
+	last := preceding[len(preceding)-1]
+	if _, aux := passiveAuxiliaries[last]; aux {
+		return false
+	}
+	if _, ok := subjectPronouns[last]; ok {
+		return true
+	}
+	before := clauseBefore(sentence, at[0])
+	if len(before) == 0 {
+		return false
+	}
+	det := isDeterminer(before[0])
+	subject := len(before) == 1 || (det && len(before) <= 4)
+	if !subject {
+		return false
+	}
+	// The phrase's own complement runs until a new subject pronoun opens a
+	// clause of its own ("used to die on the laptop they were generated on").
+	after := clauseAfter(sentence, at[1])
+	for i, w := range after {
+		if _, pronoun := subjectPronouns[w]; pronoun {
+			after = after[:i]
+			break
+		}
+	}
+	return !anyIn(after, finiteVerbs)
+}
+
+// passiveAuxiliaries before "used to" make it a passive or an adjective ("is
+// used to sign", "gets used to"): present-state prose, not a narrated habit.
+var passiveAuxiliaries = wordSet("is", "are", "was", "were", "be", "been", "being", "get", "gets", "got", "getting")
 
 // narrationFindings scans the shipped doc bodies for a sentence narrating a
 // change, and names each one with its file, line and text.
@@ -377,7 +564,7 @@ func narrationFindings(bundle Bundle) []GateFinding {
 		for _, s := range docSentences(proseLines(data)) {
 			if name := narrationConstruct(s.text); name != "" {
 				out = append(out, GateFinding{File: f.LogicalPath, Line: s.line,
-					Detail: "narrates a change (" + name + "): \"" + clip(s.text, 200) + "\" — docs describe present state; the changelog records the change"})
+					Detail: "narrates a change (" + name + "): \"" + clip(s.text, 200) + "\" — " + narrationEscapeHint})
 			}
 		}
 	}
@@ -387,23 +574,20 @@ func narrationFindings(bundle Bundle) []GateFinding {
 // narrationConstruct returns the first construct a sentence carries, or "".
 func narrationConstruct(sentence string) string {
 	for _, c := range narrationConstructs {
-		if !c.re.MatchString(sentence) {
-			continue
+		for _, at := range c.re.FindAllStringIndex(sentence, -1) {
+			if c.holds == nil || c.holds(sentence, at) {
+				return c.name
+			}
 		}
-		if c.name == "used to" && !activeUsedTo(sentence) {
-			continue
-		}
-		return c.name
 	}
 	return ""
 }
 
-// activeUsedTo reports whether some "used to" in the sentence is not passive.
-func activeUsedTo(sentence string) bool {
-	all := len(narrationConstructs[len(narrationConstructs)-1].re.FindAllStringIndex(sentence, -1))
-	passive := len(passiveUsedToRe.FindAllStringIndex(sentence, -1))
-	return all > passive
-}
+// sentenceEndRe ends a sentence: terminal punctuation followed by space.
+var sentenceEndRe = regexp.MustCompile(`[.!?]["')\]]*\s+`)
+
+// listItemRe starts a list item, which starts a new sentence whatever precedes it.
+var listItemRe = regexp.MustCompile(`^\s*([-*+]|\d+[.)])\s`)
 
 // docSentence is one sentence of prose, located at the line it starts on.
 type docSentence struct {
@@ -556,6 +740,9 @@ func docAuditGate(pre *DocAuditPreflight) GateSummary {
 	case pre == nil:
 		row.Status = "not_armed"
 		row.Detail = "no .abcd/docs-lint.json: the documentation audit (the docs-lint engine over the configured doc roots) has nothing to run"
+	case pre.NotMeasured != "":
+		row.Status = "not_measured"
+		row.Detail = pre.NotMeasured
 	case pre.Unreadable != "":
 		row.Detail = "could not be measured"
 		row.Findings = []GateFinding{{Detail: "the documentation audit could not be measured: " + pre.Unreadable}}
@@ -604,16 +791,15 @@ func hookComplianceGate(bundle Bundle) GateSummary {
 			Detail: "is invoked by a hook command but is not executable in the payload (mode " + mode + "), so the hook cannot run it"})
 	}
 	for _, e := range surface.Entries {
-		if e.Kind != SurfaceHook || e.Origin == OriginHookCommand || e.Requirement != RequirePayload || !tree.Has(e.Path) {
+		if !isHookConfig(e) || !tree.Has(e.Path) {
 			continue
 		}
-		data, err := tree.Read(e.Path)
+		// The resolver above already refuses a config that does not read or
+		// parse; the row still fails closed rather than trusting that.
+		doc, err := readHookConfig(tree, e.Path)
 		if err != nil {
+			row.Findings = append(row.Findings, GateFinding{File: e.Path, Detail: err.Error()})
 			continue
-		}
-		var doc any
-		if json.Unmarshal(data, &doc) != nil {
-			continue // an unparseable hook config is the smoke's refusal
 		}
 		row.Findings = append(row.Findings, hookHandlerFindings(e.Path, doc)...)
 	}

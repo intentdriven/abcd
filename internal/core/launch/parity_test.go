@@ -333,6 +333,78 @@ func TestParityBaselineErrorFromTheFrontDoorRefuses(t *testing.T) {
 	}
 }
 
+// TestParityUnanchoredBaselineRefusesUnlessTheAssetAnswers: a baseline the
+// front door named from CHANGELOG.md because this checkout cannot read it from
+// its own tags (a tagless or shallow clone) is never a first launch and never
+// a render at a tag the checkout does not hold. Without --fetch-baseline it
+// refuses, naming the release and both remedies; with it, the verified release
+// asset is the baseline, and an asset that does not answer refuses too
+// (iss-2609251902439938).
+func TestParityUnanchoredBaselineRefusesUnlessTheAssetAnswers(t *testing.T) {
+	repo := parityRepo(t)
+	root := repo.Root()
+	repo.Git("tag", "-d", "v0.1.0")
+	const why = "CHANGELOG.md dates release 0.1.0, and this checkout holds no release tag"
+
+	rep := PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", Unanchored: why})
+	if !rep.Refused || rep.Baseline != "v0.1.0" || len(rep.Entries) != 0 || rep.Source == ParitySourceNone {
+		t.Fatalf("an unanchored baseline without a fetch must refuse against the named release, got %+v", rep)
+	}
+	for _, want := range []string{"v0.1.0", why, "git fetch --tags", "--fetch-baseline"} {
+		if !strings.Contains(rep.RefusalReason, want) {
+			t.Errorf("the refusal must name %q, got %q", want, rep.RefusalReason)
+		}
+	}
+
+	zipBytes := releaseZip(t, map[string]string{
+		".claude-plugin/plugin.json": "{\n  \"name\": \"abcd\",\n  \"version\": \"0.1.0\"\n}\n",
+		"README.md":                  "readme at the tag\n",
+		"commands/a.md":              "---\ndescription: a\n---\nA\n",
+		"commands/b.md":              "---\ndescription: b\n---\nB\n",
+	})
+	name := PluginArchiveName("abcd", "0.1.0")
+	served := &fakeAssets{assets: map[string][]byte{
+		"checksums.txt": []byte(sha256Hex(string(zipBytes)) + "  " + name + "\n"),
+		name:            zipBytes,
+	}}
+	rep = PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", Unanchored: why, Fetch: served})
+	if rep.Refused || rep.Source != ParitySourceReleaseAsset || rep.Added != 1 || rep.Changed != 1 || rep.Removed != 1 {
+		t.Fatalf("a verified asset is the unanchored baseline, got %+v", rep)
+	}
+
+	rep = PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", Unanchored: why, Fetch: &fakeAssets{assets: map[string][]byte{}}})
+	if !rep.Refused || rep.Source == ParitySourceRenderAtTag || !strings.Contains(rep.RefusalReason, why) {
+		t.Fatalf("an asset that does not answer must refuse, never render a tag this checkout lacks, got %+v", rep)
+	}
+}
+
+// TestParityNamesTheTransportOverridesTheFetchIgnored: a fetch that ignored
+// proxy or CA variables says so in the report and its markdown, and a fetch
+// that then fails in transport says so in the refusal, so an operator behind a
+// mandatory proxy reads why the dial failed (iss-2609251902444497).
+func TestParityNamesTheTransportOverridesTheFetchIgnored(t *testing.T) {
+	repo := parityRepo(t)
+	root := repo.Root()
+	ignored := []string{"HTTPS_PROXY", "SSL_CERT_FILE"}
+	rep := PayloadParity(root, resolveOrFatal(t, root), ParityInput{
+		Baseline: "v0.1.0", Fetch: &fakeAssets{err: errors.New("dial tcp 192.0.2.1:443: i/o timeout")}, EnvIgnored: ignored,
+	})
+	if !rep.Refused || !strings.Contains(rep.RefusalReason, "HTTPS_PROXY, SSL_CERT_FILE") {
+		t.Fatalf("a failed fetch must name the overrides it ignored, got %+v", rep)
+	}
+	if strings.Join(rep.EnvIgnored, ",") != "HTTPS_PROXY,SSL_CERT_FILE" || !strings.Contains(rep.Markdown(), "HTTPS_PROXY, SSL_CERT_FILE") {
+		t.Errorf("the report and its markdown must carry the ignored names, got %v\n%s", rep.EnvIgnored, rep.Markdown())
+	}
+
+	rep = PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", Fetch: &fakeAssets{assets: map[string][]byte{}}, EnvIgnored: ignored})
+	if rep.Refused || len(rep.EnvIgnored) != 2 {
+		t.Errorf("a fetch that answered still carries the ignored names, got %+v", rep)
+	}
+	if rep := PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", EnvIgnored: ignored}); len(rep.EnvIgnored) != 0 {
+		t.Errorf("no fetch, nothing ignored: got %v", rep.EnvIgnored)
+	}
+}
+
 // TestDryRunCarriesTheParityDiff: the preview reports the diff, and a refused
 // one is on its would-refuse list.
 func TestDryRunCarriesTheParityDiff(t *testing.T) {
