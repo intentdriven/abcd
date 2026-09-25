@@ -9,6 +9,10 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli (help output)"
+resolution: "Every verb whose Use line declares a required operand or flag carries one worked example in its --help and the CLI reference, from internal/core/surface/examples.go, held by a test to its command's path, flags and required flags."
+impact: additive
+resolved_by:
+  commit: "08837c8c61b8b4efd681187f17db40dfe0c3a98e"
 ---
 
 A verb's required arguments are learned from its first refusal, not from its help, because the bare help carries no worked example.
@@ -20,3 +24,7 @@ The same shape recurs across the record verbs, whose calls carry several interde
 Wanted: one worked example per verb in its own `--help` output — the shortest legal invocation, with the required flags filled in. It is a line of text per verb and it removes the refusal-as-documentation loop entirely.
 
 Distinct from the sibling finding that abcd does not name its own adjacent capabilities: that one is about a verb the operator never learns exists, this one is about a verb they have found and cannot call. The remedies differ — a worked example in the verb's own help, versus a cross-pointer between verbs — so they are filed apart.
+
+## Grounds
+
+- pursued: a caller assembles a legal call from the help without a refusal; a verb with a required input and no example, or an example missing a required flag, would show it wrong
