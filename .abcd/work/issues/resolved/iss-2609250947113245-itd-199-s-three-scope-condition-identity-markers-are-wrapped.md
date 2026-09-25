@@ -9,6 +9,14 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-199-a-reading-is-about-something-narrower-than-everything-its.md"
+resolution: "unwrapped the three markers; the claim reader now reads all three identities and the condition verb's read form reports each with its verdict disposition"
+impact: fix
+resolved_by:
+  commit: "e5346b928eb5aabe60c9c5b476978df0598a7545"
 ---
 
 itd-199's three scope-condition identity markers are wrapped in backticks in its shipped record, so the claim reader treats each as documentation of the marker grammar rather than an identity: ParseClaims reports zero conditions, the verdict dispositions keyed to cond-2608312031029678, cond-2608312031028702 and cond-2608312031020321 key to nothing the record carries, and abcd intent condition refuses to re-disposition cond-2608312031028702, the worked example its own spec names
+
+## Grounds
+
+- pursued: we expect itd-199 to carry three readable condition identities; a read of intent condition itd-199 reporting fewer than three would show it wrong
