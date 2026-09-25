@@ -642,6 +642,18 @@ func redactedSource(source string) string {
 		return maskUserinfo(source)
 	}
 	dropCredentialQuery(u)
+	// url.Parse decodes the userinfo and splits it at the first LITERAL colon,
+	// so `user%3Apw@host` parses as a username "user:pw" with no password, and
+	// Redacted — which masks only a parsed password — would echo it whole
+	// (iss-2609020630232658). Split the decoded username the way the transport
+	// will read it.
+	if u.User != nil {
+		if _, has := u.User.Password(); !has {
+			if login, _, found := strings.Cut(u.User.Username(), ":"); found {
+				u.User = url.UserPassword(login, "xxxxx")
+			}
+		}
+	}
 	return u.Redacted()
 }
 
@@ -663,11 +675,18 @@ func maskUserinfo(source string) string {
 	if slash := strings.IndexByte(rest, '/'); slash >= 0 && slash < at {
 		return source
 	}
-	user := rest[:at]
-	if colon := strings.IndexByte(user, ':'); colon >= 0 {
-		user = user[:colon]
+	// The login ends at the first colon of the DECODED userinfo, since the
+	// transport decodes before it splits: `user%3Apw` is the login "user" and
+	// the password "pw" (iss-2609020630232658). A userinfo that does not
+	// decode cannot be split safely, so none of it is kept.
+	user, err := url.PathUnescape(rest[:at])
+	if err != nil {
+		user = ""
 	}
-	return source[:i+3] + user + ":xxxxx@" + rest[at+1:]
+	if login, _, found := strings.Cut(user, ":"); found {
+		user = login
+	}
+	return source[:i+3] + url.PathEscape(user) + ":xxxxx@" + rest[at+1:]
 }
 
 // transportCause renders the CAUSE of a failed fetch without the transport's
