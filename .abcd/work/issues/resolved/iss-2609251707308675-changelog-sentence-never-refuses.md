@@ -9,6 +9,14 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/surface/sentences.go"
+resolution: "The changelog sentence says it refuses outside a checkout and exits 0 on a cut the gates would stop."
+impact: fix
+resolved_by:
+  commit: "0cd55018"
 ---
 
 The abcd changelog sentence says it never refuses, but the verb exits 2 outside a checkout or on an unreadable ledger (emitCut error in ship.go)
+
+## Grounds
+
+- pursued: the sentence matches ship.go's exit 2 on an emitCut error; shown wrong by abcd changelog outside a checkout exiting 0
