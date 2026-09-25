@@ -321,6 +321,12 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: --payload-dir needs --changelog-json — " +
 					"the release payload is staged by the ingest step, which the deterministic emit step does not run"}
 			}
+			// The cut is a fact about the repository, not about the directory
+			// the operator stands in (iss-2609251713073532).
+			root, err := gitutil.CheckoutRoot(cwd, "the release record")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
 			// Read the payload before anything else: it is untrusted host input,
 			// and reading it through the shared guarded-operand path keeps the
 			// ingest seam behind exactly the trust boundary the other delegated
@@ -330,10 +336,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, cwd, raw, payloadDir, *asJSON)
+				return runShipIngest(cmd, root, raw, payloadDir, *asJSON)
 			}
 
-			cut, err := emitCut(cwd)
+			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
@@ -514,7 +520,12 @@ func newChangelogCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			cut, err := emitCut(cwd)
+			// The same root the ship verb reads, from wherever it is run.
+			root, err := gitutil.CheckoutRoot(cwd, "the release record")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
+			}
+			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
 			}
