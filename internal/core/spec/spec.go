@@ -237,9 +237,48 @@ func BodyIsStub(content string) bool {
 	return strings.Contains(content, stubMarker)
 }
 
+// stubSection is one section of the minted spec stub: a heading and its body.
+type stubSection struct {
+	heading string
+	body    string
+}
+
+// stepsPlaceholder is the guidance the minted `## Steps` section carries. It is
+// a whole-line italic paragraph, the shape ParseSteps skips before the first
+// step, so the minted section lists no step and the spec is built as one.
+const stepsPlaceholder = "_No steps listed: the spec is built as one step. To split it, list the steps " +
+	"in order as `1. <title>`, each with `- packages:` and `- tests:` indented beneath it; " +
+	"`- landed: <pull request or commit>` marks a step that has landed._"
+
+// stubSections is the ONE list of sections a minted spec carries, in order. A
+// section the stub gains is one entry here, never a second hand-edit of the
+// renderer; `## Steps` stays last, so a section added before it reads above
+// the list of steps. steps seeds the Steps section (a remainder's unlanded
+// steps); none seeds the placeholder.
+func stubSections(id, intentID string, steps []Step) []stubSection {
+	// A clear author-guidance placeholder, not a bare "TODO" that reads as drift:
+	// the spec body is the design record the intent's fidelity review audits against.
+	summary := fmt.Sprintf("%s%s delivers for %s — scope, approach, and how "+
+		"it satisfies the intent's Acceptance Criteria. This spec is the design record "+
+		"the fidelity review audits against._", stubMarker, id, intentID)
+	stepsBody := stepsPlaceholder
+	if listed := RenderSteps(steps); listed != "" {
+		stepsBody = strings.TrimRight(listed, "\n")
+	}
+	return []stubSection{
+		{heading: "## Summary", body: summary},
+		{heading: StepsHeading, body: stepsBody},
+	}
+}
+
 // renderSpec is the minimal spec-file body: frontmatter carrying the id, slug,
-// and the load-bearing intent link, plus a title and a Summary placeholder.
+// and the load-bearing intent link, a title, and the stub sections.
 func renderSpec(id, slug, intentID string, stamp provenance.Stamp) string {
+	return renderSpecWithSteps(id, slug, intentID, stamp, nil)
+}
+
+// renderSpecWithSteps is renderSpec with the Steps section seeded from steps.
+func renderSpecWithSteps(id, slug, intentID string, stamp provenance.Stamp, steps []Step) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "id: %s\n", id)
@@ -250,12 +289,9 @@ func renderSpec(id, slug, intentID string, stamp provenance.Stamp) string {
 	fmt.Fprintf(&b, "%s: %s\n", provenance.KeyOrigin, stamp.OriginValue())
 	fmt.Fprintf(&b, "%s: %s\n", provenance.KeyProductionMode, stamp.ModeValue())
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "# %s\n\n", slug)
-	b.WriteString("## Summary\n\n")
-	// A clear author-guidance placeholder, not a bare "TODO" that reads as drift:
-	// the spec body is the design record the intent's fidelity review audits against.
-	fmt.Fprintf(&b, "%s%s delivers for %s — scope, approach, and how "+
-		"it satisfies the intent's Acceptance Criteria. This spec is the design record "+
-		"the fidelity review audits against._\n", stubMarker, id, intentID)
+	fmt.Fprintf(&b, "# %s\n", slug)
+	for _, sec := range stubSections(id, intentID, steps) {
+		fmt.Fprintf(&b, "\n%s\n\n%s\n", sec.heading, sec.body)
+	}
 	return b.String()
 }

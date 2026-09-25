@@ -1,6 +1,7 @@
 package intent
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -20,18 +21,20 @@ const (
 	CheckScopeConditions    = "scope_conditions"
 	CheckSpecLink           = "spec_link"
 	CheckSpecBody           = "spec_body"
+	CheckSteps              = "steps"
 	CheckGrounds            = "grounds"
 )
 
 // ReadyCheck is one finding of the implement-readiness gate.
 type ReadyCheck struct {
-	Name string `json:"name"` // bucket | acceptance_criteria | mechanism_claim | scope_conditions | spec_link | spec_body | grounds
+	Name string `json:"name"` // bucket | acceptance_criteria | mechanism_claim | scope_conditions | spec_link | spec_body | steps | grounds
 	OK   bool   `json:"ok"`
 	// Advisory marks a check that REPORTS and never gates: its verdict and its
 	// remedy are shown, and Ready ignores it. The two claim checks and the
 	// grounds check are advisory until the rethink of the reading work settles
-	// what a human is asked for at this gate (iss-2609091009111294); the four
-	// structural checks are not.
+	// what a human is asked for at this gate (iss-2609091009111294), and the
+	// steps check is advisory by design (a spec with no steps is one step); the
+	// four structural checks are not.
 	Advisory bool   `json:"advisory,omitempty"`
 	Detail   string `json:"detail"`           // why it passed or failed
 	Remedy   string `json:"remedy,omitempty"` // the exact next command/action when !OK
@@ -49,7 +52,7 @@ type ReadyResult struct {
 	// open spec that realises the remainder (adr-2609151513118583).
 	SpecID string       `json:"spec_id"`
 	Ready  bool         `json:"ready"`
-	Checks []ReadyCheck `json:"checks"` // always exactly 7, fixed order
+	Checks []ReadyCheck `json:"checks"` // always exactly 8, fixed order
 	// Conditions is the record's scope conditions with their minted identities —
 	// the observable surface the identity criteria assert against. Empty for a
 	// record whose conditions are absent, or recorded as the nullity token.
@@ -117,6 +120,11 @@ func Ready(repoRoot, intentID string) (ReadyResult, error) {
 		return ReadyResult{}, err
 	}
 	res.Checks = append(res.Checks, bodyCheck)
+	stepsRow, err := stepsCheck(repoRoot, linked, linkOK.OK)
+	if err != nil {
+		return ReadyResult{}, err
+	}
+	res.Checks = append(res.Checks, stepsRow)
 	res.Checks = append(res.Checks, groundsCheck(it, content))
 
 	res.Ready = true
@@ -468,5 +476,41 @@ func specBodyCheck(repoRoot string, it Intent, sp spec.Spec, linkOK bool) (Ready
 	}
 	c.OK = true
 	c.Detail = fmt.Sprintf("spec body at %s is written", sp.Path)
+	return c, nil
+}
+
+// stepsCheck reports the shape of the linked spec's `## Steps` section
+// (itd-2609212103565953, spec scope 1): a numbered list of steps, or none — in
+// which case the spec is built as one step. It is ADVISORY by design: a spec
+// with no steps is a complete spec, so the row informs and never gates, and a
+// section the parser cannot read is named with the list shape it expects. A
+// read failure on the linked spec is a structural fault, as in specBodyCheck.
+func stepsCheck(repoRoot string, sp spec.Spec, linkOK bool) (ReadyCheck, error) {
+	c := ReadyCheck{Name: CheckSteps, Advisory: true}
+	if !linkOK {
+		c.Detail = "unchecked — no linked spec"
+		return c, nil
+	}
+	data, err := readRepoFile(filepath.Join(repoRoot, sp.Path), sp.Path)
+	if err != nil {
+		return ReadyCheck{}, err
+	}
+	steps, perr := spec.ParseSteps(string(data))
+	if perr != nil {
+		c.Detail = perr.Error()
+		if errors.Is(perr, spec.ErrUnclosedSpan) {
+			c.Remedy = fmt.Sprintf("close or remove the unclosed opener the detail names in %s, then re-run", sp.Path)
+			return c, nil
+		}
+		c.Remedy = fmt.Sprintf("rewrite %s in %s as a numbered list — `1. <title>`, with `- packages:`, `- tests:` and, once it lands, `- landed:` indented beneath each step — or empty it to build the spec as one step",
+			spec.StepsHeading, sp.Path)
+		return c, nil
+	}
+	c.OK = true
+	if len(steps) == 0 {
+		c.Detail = fmt.Sprintf("%s lists no steps — it is built as one step", sp.ID)
+		return c, nil
+	}
+	c.Detail = fmt.Sprintf("%s: %d step(s) listed, %d landed", sp.ID, len(steps), len(steps)-len(spec.Unlanded(steps)))
 	return c, nil
 }

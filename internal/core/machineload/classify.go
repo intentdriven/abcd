@@ -12,9 +12,22 @@ type Self struct {
 	UID uint32
 }
 
-// NearFullShare is the lifetime CPU share, in cores, at which a process is at a
-// near-full core.
+// NearFullShare is the part of its fair share (FairShare) at which a process is
+// using nearly all the CPU it could get: on a machine loaded no higher than its
+// cores, 0.9 of a core.
 const NearFullShare = 0.9
+
+// FairShare is the CPU, in cores, one runnable process can get on the machine as
+// the snapshot finds it loaded: the online cores divided by the one-minute load,
+// the runnable demand, and never more than one core. With no load reading, no
+// core count, or a load no higher than the cores, it is one core. Forty busy
+// loops on 16 cores each get 0.4 of a core, and each uses all of it.
+func FairShare(snap Snapshot) float64 {
+	if !snap.HasLoad || snap.Cores <= 0 || snap.Load1 <= float64(snap.Cores) {
+		return 1
+	}
+	return float64(snap.Cores) / snap.Load1
+}
 
 // MaxOwnNamed caps how many of the caller's own strays a warning names; the rest
 // are counted.
@@ -89,8 +102,13 @@ type Verdict struct {
 // self. It is a pure function.
 //
 // A process is a stray when it is older than the stray limit, its lifetime share
-// is at least NearFullShare, and it is not the invocation or one of its
-// ancestors. Nothing is exempt by name: abcd's own lanes are exempt by time,
+// is at least NearFullShare of its FairShare, and it is not the invocation or
+// one of its ancestors: busy for its share, it uses nearly all the CPU it could
+// get on the machine as loaded, so forty loops each at a fortieth of the machine
+// are all strays, as one loop at a full core of an idle machine is (the product
+// thinker's ruling H1 of 2026-09-25). The one snapshot decides; there is no
+// second sample. The share test applies before the uid split, so the caller's
+// own processes and every other account's are judged alike. Nothing is exempt by name: abcd's own lanes are exempt by time,
 // because everything they start (go, compile, link, vet, the package test
 // binaries) lives for seconds to minutes, so a hung test binary reads as a stray,
 // as the intent's third scope condition says it must. A stray whose effective uid
@@ -123,12 +141,13 @@ func Classify(snap Snapshot, lim Limits, self Self) Verdict {
 	var own []OwnStray
 	if snap.HasProcs {
 		limit := time.Duration(lim.StrayMinutes) * time.Minute
+		threshold := NearFullShare * FairShare(snap)
 		for _, p := range snap.Procs {
 			if ancestry[p.PID] || p.Age <= limit {
 				continue
 			}
 			share := p.Share()
-			if share < NearFullShare {
+			if share < threshold {
 				continue
 			}
 			if p.UID == self.UID {

@@ -24,7 +24,7 @@ What was never settled is where the worktree goes, and the answer by default
 is git's: a sibling directory, next to the checkout, in whatever directory the
 user keeps their projects in. On 2026-09-01 twenty-one spent worktrees
 (1.4 GB) were removed by hand from the maintainer's project directory
-([iss-2609020721142452](../../../work/issues/open/iss-2609020721142452-worktrees-for-parallel-lanes-are-created-one-directory-above.md)).
+([iss-2609020721142452](../../../work/issues/resolved/iss-2609020721142452-worktrees-for-parallel-lanes-are-created-one-directory-above.md)).
 On 2026-09-06 a single session created twenty-two more, beside four projects
 that have nothing to do with abcd, and `git worktree list` on that checkout
 names twenty-seven. The maintainer's objection, verbatim: "I don't want a user

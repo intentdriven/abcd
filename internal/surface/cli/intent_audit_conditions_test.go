@@ -142,3 +142,31 @@ func TestIntentAuditIngestRendersTheDispositionSplit(t *testing.T) {
 		t.Fatalf("the human render must report the disposition split:\n%s", text)
 	}
 }
+
+// TestIntentAuditReingestReportsTheReplacement is the front door for a re-ingest
+// for the same receipt: a payload that renders differently replaces the ingested
+// verdict and says so, and the identical payload again is a noop.
+func TestIntentAuditReingestReportsTheReplacement(t *testing.T) {
+	root, vp := conditionedRepo(t)
+	runCLI(t, "intent", "audit", "ingest", "--verdict-json", vp)
+	raw, err := os.ReadFile(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := writeVerdict(t, strings.Replace(string(raw), "bounded tighter than the design assumed",
+		"bounded tighter than the design assumed, weighed again", 1))
+	text := string(runCLI(t, "intent", "audit", "ingest", "--verdict-json", changed))
+	if !strings.Contains(text, "— ingested") || !strings.Contains(text, "replaced the verdict already ingested") {
+		t.Fatalf("re-ingest render does not report the replacement:\n%s", text)
+	}
+	body, err := os.ReadFile(filepath.Join(root, ".abcd", "development", "intents", "shipped", "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(body), "abcd-review: INGESTED") != 1 || !strings.Contains(string(body), "weighed again") {
+		t.Fatalf("the record must carry the one replaced verdict:\n%s", body)
+	}
+	if text := string(runCLI(t, "intent", "audit", "ingest", "--verdict-json", changed)); !strings.Contains(text, "— noop") {
+		t.Fatalf("an identical re-ingest must be a noop:\n%s", text)
+	}
+}

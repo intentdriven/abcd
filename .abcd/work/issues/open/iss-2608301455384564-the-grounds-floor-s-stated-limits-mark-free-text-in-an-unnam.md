@@ -7,8 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-179-round-4-recheck"
 found_at: "internal/core/grounds/grounds.go"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: accept the grounds floor's scriptio-continua and CJK letter asymmetry as a stated limit or re-weight MinTextLetters). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Accept the grounds floor's scriptio-continua/CJK letter asymmetry as a stated limit, or re-weight MinTextLetters?"
 ---
 
 the grounds floor's stated limits: mark-free text in an unnamed scriptio-continua script is refused, and the letter floor is far heavier for CJK than for English

@@ -55,6 +55,9 @@
 # is a REFUSAL naming its line number — never a silent skip, and never an echo of
 # the line's content. A store that exists but yields NO entries warns as loudly as
 # an absent one: it checks exactly as much.
+# `set` is dropped before its first use: a shadowed one would leave errexit off for
+# the whole hook. The fixed list below drops it again with the rest.
+unset -f set 2>/dev/null || true
 set -euo pipefail
 # --- environment pin: the FIRST statements, before anything is read or run -------
 # Turn OFF xtrace however it was inherited (a caller's `set -x`, SHELLOPTS, BASH_ENV):
@@ -73,7 +76,12 @@ case $- in *x*) set +x ;; esac
 # shadowed `declare`, and a surviving `exit` function turns every refusal into a
 # printed BLOCK that does not block. This list is expansion-free and runs before
 # `declare` is ever consulted, so it holds even then.
-unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ 2>/dev/null || true
+# `declare`, `continue`, `break`, `return`, `local`, `export`, `set` and `true` are the
+# builtins this hook steers on; a shadowed `continue` or `break` changes which lines
+# a loop reads or never ends it, so they are pinned with the tools (parity with
+# .githooks/commit-msg, where a no-op `continue` once cut the judged message to nothing).
+unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ \
+  declare continue break return local export set true 2>/dev/null || true
 # A field separator the caller cannot choose: an inherited IFS changes how every
 # unquoted expansion below splits — including the sweep loop's, so it is pinned
 # before the sweep runs.
@@ -440,6 +448,7 @@ fi
 
 rc=0
 entries=0
+notice=""
 keys=()
 pats=()
 lines=()
@@ -464,7 +473,7 @@ load_store() {
   _inherited="$3" # 1 when this is the primary checkout's store, read as a fallback
   _tag=""
   if [ "$_inherited" -eq 1 ]; then
-    _tag=" (inherited from the primary checkout)"
+    _tag=" (inherited from $_label)"
   fi
   # Refusals raised while parsing THIS store belong to it. Compared against the
   # entering value, so the zero-entry warning below is not suppressed by a refusal
@@ -514,14 +523,12 @@ load_store() {
     fi
   fi
 
-  # Announce the FORMAT before any line is read, so a refusal below carries the one
-  # piece of context that decides what every other line means. The count follows the
-  # loop, because it is not known until then.
-  if [ "$_keyed" -eq 1 ]; then
-    echo "pre-commit: abcd name-guard: reading a keyed store$_tag" >&2
-  else
-    echo "pre-commit: abcd name-guard: reading a legacy store$_tag" >&2
-  fi
+  # The format is NOT announced here, before the loop. Every refusal the loop raises
+  # already names the reading it applies (a keyed line that does not parse says it is
+  # not a KEY<space-or-tab>PATTERN entry), and a notice per store per phase is what
+  # made one clean commit from a linked worktree print up to five lines, which reads
+  # as the hook running five times. The format and the count are announced
+  # together, once per commit, after every store has been read.
 
   _lineno=0
   _count=0
@@ -613,20 +620,18 @@ load_store() {
     stores+=("$_label")
   done < "$_store"
 
-  # Announce the entry count actually read, BEFORE the scan; the format was announced
-  # before the loop, so a refusal raised inside it already carried the one fact that
-  # decides what every other line means. A silent downgrade — a stripped
-  # `# abcd-banlist: keyed` first line — turns every keyed entry into a non-matching
-  # whole-line pattern while the count stays >=1, so the zero-entry warning below never
-  # fires. The announced pair makes what the guard actually read visible at commit
-  # time, so a downgrade cannot be silent. No line content is printed here — only the
-  # count and the format.
+  # Record the format and the entry count actually read, for the one notice printed
+  # BEFORE the scan. A silent downgrade — a stripped `# abcd-banlist: keyed` first
+  # line — turns every keyed entry into a non-matching whole-line pattern while the
+  # count stays >=1, so the zero-entry warning below never fires. The announced pair
+  # makes what the guard actually read visible at commit time, so a downgrade cannot
+  # be silent. No line content is recorded here — only the count and the format.
   if [ "$_keyed" -eq 1 ]; then
     if [ "$_count" -eq 1 ]; then noun="entry"; else noun="entries"; fi
-    echo "pre-commit: abcd name-guard: keyed store$_tag, $_count $noun" >&2
+    notice="${notice:+$notice; }keyed store$_tag, $_count $noun"
   else
     if [ "$_count" -eq 1 ]; then noun="pattern"; else noun="patterns"; fi
-    echo "pre-commit: abcd name-guard: legacy store$_tag, $_count $noun" >&2
+    notice="${notice:+$notice; }legacy store$_tag, $_count $noun"
   fi
 
   # A store that parsed to NOTHING checks exactly as much as an absent one, so it is
@@ -648,15 +653,19 @@ load_store() {
 }
 
 # The inherited store is read FIRST, so a developer standing in the linked worktree
-# sees what they inherit before what they declared. Its path is named once, here: a
-# refusal below names the entry's key, and the key alone is a phantom in a checkout
-# whose own store does not carry it.
+# sees what they inherit before what they declared. Its path is named once, in the
+# notice: a refusal below names the entry's key, and the key alone is a phantom in a
+# checkout whose own store does not carry it.
 if [ "$primary_present" -eq 1 ]; then
-  echo "pre-commit: abcd name-guard: inheriting $primary_label" >&2
   load_store "$primary_banlist" "$primary_label" 1
 fi
 if [ "$local_present" -eq 1 ]; then
   load_store "$banlist" "$banlist" 0
+fi
+# ONE notice line per commit, naming every store read: its format, its count, and
+# where an inherited one lives.
+if [ -n "$notice" ]; then
+  echo "pre-commit: abcd name-guard: $notice" >&2
 fi
 
 
