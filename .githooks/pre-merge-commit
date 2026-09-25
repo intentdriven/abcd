@@ -16,6 +16,9 @@
 # `git commit --no-verify` and a server-side push bypass both by construction. This
 # layer covers the commits git asks a hook about, on machines that have opted in —
 # nothing more, and the reach every abcd surface states says exactly that.
+# `set` is dropped before its first use: a shadowed one would leave errexit off for
+# the whole hook. The fixed list below drops it again with the rest.
+unset -f set 2>/dev/null || true
 set -euo pipefail
 # --- environment pin: the FIRST statements, matching the guard this delegates to ---
 # Without them this half is the soft way in: it would exec the delegate under an
@@ -27,8 +30,23 @@ case $- in *x*) set +x ;; esac
 # does nothing against `BASH_FUNC_grep%%=() { return 1; }` in the environment: a
 # function wins over PATH lookup, so the guard would report a clean check for ever
 # while announcing its entry count. Same class as the PATH prepend, different route.
-unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command 2>/dev/null || true
+# `read`, `echo`, `exit`, `test` and `[` are pinned for the delegate's sake, and
+# every surviving function is swept after the fixed list — see the pre-commit
+# half for why, including why the fixed list must carry `exit`.
+# `declare`, `continue`, `break`, `return`, `local`, `export`, `set` and `true` are the
+# builtins this hook steers on; a shadowed `continue` or `break` changes which lines
+# a loop reads or never ends it, so they are pinned with the tools (parity with
+# .githooks/commit-msg, where a no-op `continue` once cut the judged message to nothing).
+unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ \
+  declare continue break return local export set true 2>/dev/null || true
 IFS=$' \t\n'
+set -f
+for _fn in $(declare -F); do
+  case "$_fn" in declare|-f|-fx) continue ;; esac
+  unset -f "$_fn" 2>/dev/null || true
+done
+set +f
+unset _fn 2>/dev/null || true
 LC_ALL=C
 export LC_ALL
 PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin

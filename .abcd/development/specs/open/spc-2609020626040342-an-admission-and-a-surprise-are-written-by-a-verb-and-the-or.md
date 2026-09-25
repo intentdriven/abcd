@@ -206,7 +206,7 @@ reasons for one act by any path. The refusal writes nothing and says so.
 `SurpriseRequest{RepoRoot, IssuesRoot, OccasionedBy, Text string}` and
 `SurpriseResult{ID, OccasionedBy, Path string; Redacted int; Degraded string}`.
 The occasion is resolved before anything is minted through
-`readingitem.ResolveOccasion(issuesRoot, id, families)` with the families
+`readingitem.ResolveOccasion(repoRoot, id, families)` with the families
 `rdi`, `adm` and `dsp`, the one occasion resolver spc-2609020626046252
 introduces and spc-2609020626048705 also calls; an id outside those families,
 or one that resolves to nothing, refuses naming it. The text is redacted

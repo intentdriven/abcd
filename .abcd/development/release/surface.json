@@ -1295,6 +1295,40 @@
       ]
     },
     {
+      "path": "abcd intent condition",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "disposition",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "narrowing",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "occasioned-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent hold",
       "hidden": false,
       "flags": [
