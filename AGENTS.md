@@ -37,7 +37,10 @@ A prompt that matches no domain injects nothing (zero added tokens).
   user layer. The file is read only when it is a regular file this account owns
   that no one else can write, within 256 KiB; a file failing that, or failing to
   parse or validate, fails the load loudly and the hook injects nothing. Absent,
-  it costs nothing and nothing is created.
+  it costs nothing and nothing is created; a `HOME` or `~/.abcd` this account
+  cannot search reads as absent. A dotfiles-symlinked `~/.abcd` can never host
+  a `rules.json`: the file is refused behind a symlinked `~/.abcd`, and only a
+  symlinked `~/.abcd` with no `rules.json` in it is spared, reading as absent.
 - Provenance: a domain an override names (rules replaced, state changed, or a
   custom domain) renders as `## NAME (user override)` or
   `## NAME (repo override)`, after the last layer that named it, wherever it

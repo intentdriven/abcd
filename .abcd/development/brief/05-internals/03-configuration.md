@@ -321,13 +321,22 @@ could override is not a kill switch.
 
 **Absence costs nothing.** A machine with no `~/.abcd/rules.json` loads exactly
 the set it would without the layer, and abcd never creates the file or its
-directory: it is hand-edited, and `abcd rules` is its read-only render.
+directory: it is hand-edited, and `abcd rules` is its read-only render. A `HOME`
+or `~/.abcd` this account cannot search reads as absent too, as it does for the
+other home-scoped declarations, so a sandboxed or foreign `HOME` never warns on
+every prompt about a file nobody can see; a `rules.json` that is there and
+cannot be read is refused.
 
 **The user file is read as the caller's word.** It injects text into every
 session on the machine, so it is read through the same guard as the home-scoped
 declarations: a regular file — never a symlink, FIFO or device — of at most
 256 KiB, owned by this account and writable by no one else, with `~/.abcd`
-itself refused as a symlink once a `rules.json` sits behind it. A file failing
+itself refused as a symlink once a `rules.json` sits behind it. A
+dotfiles-symlinked `~/.abcd` can therefore never host a `rules.json`: the file
+is refused behind a symlinked `~/.abcd`, and only a symlinked `~/.abcd` with no
+`rules.json` in it is spared, so that a machine whose `~/.abcd` lives in a
+dotfiles checkout keeps injecting exactly what it did. The repo layer's `.abcd`
+has no such exemption and is refused as a symlink unconditionally. A file failing
 any of those, or failing to parse or validate, fails the whole load: the hook
 injects nothing and names the file on stderr, and `abcd rules` exits non-zero.
 It never degrades to a partial set built from the layers that did load

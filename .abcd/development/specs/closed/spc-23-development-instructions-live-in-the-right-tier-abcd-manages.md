@@ -51,6 +51,18 @@ composition rather than new machinery:
   (`~/.abcd/`), which the brief already blesses for machine-local shared state
   — no new path concept is introduced.
 
+**Correction (2026-09-25).** The first bullet above says the `.abcd` symlink
+pre-check applies to `~/.abcd` *exactly as it is to the repo's*. It does not,
+and deliberately: the repo layer refuses a symlinked `.abcd` unconditionally,
+while the user layer refuses a symlinked `~/.abcd` only when a `rules.json`
+sits behind it, and spares a symlinked `~/.abcd` with no file, which reads as
+absent. An unconditional refusal would change what a machine whose `~/.abcd` is
+a dotfiles symlink injects, against AC1. The consequence is that a
+dotfiles-symlinked `~/.abcd` can never host a `rules.json`. The user file is
+read through `fsutil.ReadDeclaration` rather than the repo's `readGuarded`, and
+a `HOME` or `~/.abcd` this account cannot search reads as absent, as it does for
+the other home-scoped declarations.
+
 ## Acceptance-criteria satisfaction
 
 - **AC1 (absence is free)** — the `os.IsNotExist` branch returns the prior
