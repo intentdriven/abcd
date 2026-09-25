@@ -73,7 +73,12 @@ import (
 // ledger rows gain `.abcd/work/issues/reframes` from the ledger's directory
 // list. Both are refusals a reader can now check, which is MINOR by this
 // constant's own rule (spc-2609020626048705).
-const AssemblerVersionCore = "1.9.0"
+// It goes 1.9.0 to 1.10.0 with the per-run context stamp: the bundle gains
+// `context_stamp`, and the bundle shape is part of the contract a reader is
+// PROMISED — it now carries a token naming its kind and its run — which is
+// MINOR by this constant's own rule (adr-2609021016275803,
+// spc-2609020626045177).
+const AssemblerVersionCore = "1.10.0"
 
 // AssemblerVersion is the core semver with the rendered include table's digest
 // as semver build metadata. The digest is computed, not declared, so a table

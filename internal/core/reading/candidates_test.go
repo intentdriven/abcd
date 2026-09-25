@@ -669,15 +669,7 @@ func TestTwoComparativeAssembliesAreByteIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second assembly: %v", err)
 	}
-	a, err := EncodeBundle(first.Bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := EncodeBundle(second.Bundle)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(a) != string(b) {
+	if !identicalButForRun(t, first.Bundle, second.Bundle) {
 		t.Error("two comparative assemblies of one repository state produced different bundles")
 	}
 }

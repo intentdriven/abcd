@@ -5,7 +5,67 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 )
+
+// identicalButForRun reports whether two bundles of one repository state are
+// the same bundle, which since the per-run context stamp means byte-identical
+// with the stamp set aside AND stamped for one kind over one digest. The run
+// segment is the one value a run id reaches, and it is the only thing allowed
+// to differ (adr-2609021016275803).
+func identicalButForRun(t *testing.T, a, b Bundle) bool {
+	t.Helper()
+	sa, okA := sessionkind.Parse(a.ContextStamp)
+	sb, okB := sessionkind.Parse(b.ContextStamp)
+	if !okA || !okB {
+		t.Fatalf("a bundle carries no stamp: %q, %q", a.ContextStamp, b.ContextStamp)
+	}
+	if sa.Kind != sb.Kind || sa.Digest != sb.Digest {
+		t.Errorf("two assemblies of one state are stamped %q and %q; only the run may differ",
+			a.ContextStamp, b.ContextStamp)
+		return false
+	}
+	a.ContextStamp, b.ContextStamp = "", ""
+	return string(mustEncodeBundle(t, a)) == string(mustEncodeBundle(t, b))
+}
+
+// TestBundleCarriesTheReadingStampOfItsRun is the reading half of
+// adr-2609021016275803: every bundle carries the per-run context stamp of the
+// run it was assembled for — the reading kind, that run's id, and the first
+// twelve hex digits of the sha256 over its own item set — so a transcript that
+// retained the bundle retains the stamp, and the separation check can tell which
+// run the session held.
+func TestBundleCarriesTheReadingStampOfItsRun(t *testing.T) {
+	root := fixtureRepo(t)
+	for _, p := range AssemblingPositions() {
+		res := assembleFixture(t, root, p)
+		got, ok := sessionkind.Parse(res.Bundle.ContextStamp)
+		if !ok {
+			t.Fatalf("position %s: the bundle's context_stamp %q is not a stamp", p, res.Bundle.ContextStamp)
+		}
+		if got.Kind != sessionkind.Reading {
+			t.Errorf("position %s: the bundle is stamped for a %s session, want reading", p, got.Kind)
+		}
+		if got.Run != res.RunID {
+			t.Errorf("position %s: the bundle is stamped for run %s and the assembly minted %s", p, got.Run, res.RunID)
+		}
+		items, err := encode(res.Bundle.Items)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := sha256Hex(items)[:sessionkind.DigestLen]; got.Digest != want {
+			t.Errorf("position %s: the stamp's digest is %s, and the bundle's items hash to %s", p, got.Digest, want)
+		}
+		raw, err := EncodeBundle(res.Bundle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found := sessionkind.Find(raw); len(found) != 1 || found[0] != res.Bundle.ContextStamp {
+			t.Errorf("position %s: the encoded bundle carries the stamps %q, want exactly its own", p, found)
+		}
+	}
+}
 
 // TestManifestCoversEveryBundleItem is itd-183's fourth criterion: every item
 // passed appears in the manifest with its path, its field where projection
