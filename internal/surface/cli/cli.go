@@ -1263,7 +1263,7 @@ func newHookCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%v); injecting nothing\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			cwd := in.Cwd
@@ -1298,7 +1298,7 @@ func newHookCommand() *cobra.Command {
 				// rules.Load errors already carry their own "rules:" prefix, so
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %v; injecting nothing\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
@@ -1312,7 +1312,7 @@ func newHookCommand() *cobra.Command {
 			// unset); event-driven reset is the primary refresh (D1).
 			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root))
 			if err := rules.SaveState(session, res.State); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%v)\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
 			}
 			// The names carry their layer ("PII (repo override)"), the same
 			// label the injected heading bears, so the out-of-band log says
@@ -1335,12 +1335,12 @@ func newHookCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable reset payload (%v)\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable reset payload (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			session := hookSession(in)
 			if err := rules.ResetState(session); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset failed (%v)\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset failed (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			// SessionStart is a natural sweep point for stale ledgers.
@@ -2734,7 +2734,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			// The fidelity-review emit is report-only: a failure does NOT fail the
 			// close (the intent already shipped), but it is surfaced loudly on stderr.
 			if res.AuditEmitError != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
+				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, termsafe.Sanitize(res.AuditEmitError))
 			}
 			routeCloseRequest(cmd, repoRoot, res)
 			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to repoint the links other files hold; record-lint's links_resolve names each link left behind")
@@ -4814,6 +4814,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if note := staleUsageNote(root, args, msg); note != "" {
 			msg += "\nabcd: " + note
 		}
+		// Masked once, here, for every verb: a refusal that echoes an operand or
+		// repository text must not carry ESC, C1 or bidi runes to the terminal or
+		// into the envelope (iss-2609012037438844). SanitizeBlock, not Sanitize,
+		// because the refusal's own line breaks (the note above, joined errors)
+		// are its structure.
+		msg = termsafe.SanitizeBlock(msg)
 		// Honour --json for the error surface too: a caller that asked for
 		// machine output must get a JSON envelope, never raw Go text (iss-29) —
 		// and it goes to STDOUT, where a machine-readable consumer reads
