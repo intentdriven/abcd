@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (ahoy gitignore policy, banlist public layer)"
 related_intents: [itd-2609151516525843]
-deferred_after: "v0.9.0"
-deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M27: fold itd-2609151516525843 into the older draft itd-159 and plan them as one intent carrying both halves ruled 2026-09-15; the switch-value-or-exception ruling is taken in that planning interview). Earlier deferral: The public banned-names list cannot be created on a fresh public repository, and the cause is a bootstrap paradox rather than a bug: the visibility fence is narrowed only on positive evidence that the record directory is committed, and the fence prevents that evidence from ever existing. Every route runs through what public visibility is declared to mean, which is a documented contract pinned as a literal. An earlier record already ends with three candidate reconciliations for a maintainer to pick between, and the intent it was promoted into is still an unfilled draft. Picking one is the product thinker's call."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): In the merged itd-159 planning interview: is the committed-record declaration a switch value or an exception to the public-visibility fence?"
 ---
 
 On a fresh PUBLIC repo the committed banned-names layer cannot be created, and the window in which it cannot is exactly the window in which a repo is being set up to ban a name.
