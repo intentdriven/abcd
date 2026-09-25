@@ -221,7 +221,10 @@ no record, one not committed or committed after the rewrite, a degenerate
 ground, uncommitted surface changes outside a first half, a frame with no distinct
 prior state within its fingerprintable history (named with how far back that
 history reaches), a second open record, a completion in which nothing moved, and a
-before state the history no longer holds within 64 commits touching the frame.
+before state the history no longer holds within 64 commits touching the frame. The
+readings keep the record out by its store's path, so record-lint's
+`cross_store_id_claim` refuses a reframe-shaped file (an `rfm-N` name, an
+`rfm-N` id, or `occasioned_by` beside a before fingerprint) anywhere else.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with
