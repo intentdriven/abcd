@@ -2168,7 +2168,57 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 		}
 		out = append(out, validateSpec(spec.Path, spec.fields, knownIntent, intentSpecID, backLinkResolves, spec.preamble, cfg.Severity)...)
 	}
+	out = append(out, checkBucketAgreement(idx, cfg.Severity)...)
 	return out, nil
+}
+
+// checkBucketAgreement holds an intent's bucket and its specs' buckets to one
+// account of the same work (iss-2609181121522692): a planned intent has an open
+// spec to build against (a --remainder close mints the next one, so a planned
+// intent whose specs are all closed is a mis-filed record, not a partial
+// delivery), and a shipped intent has no spec left open (spec close moves the
+// intent to shipped/ only as its close-hook). Every other rule reads one record
+// at a time, so a merge whose rename detection filed a new planned intent's
+// spec into closed/, or the intent into shipped/ beside its open spec, passed
+// them all. The finding sits on the intent, the record whose folder is the
+// claim; an intent with no spec at all is intent_lifecycle's concern.
+func checkBucketAgreement(idx SpecLinkIndex, severity string) []Finding {
+	var out []Finding
+	for _, it := range idx.Intents {
+		if it.Bucket != "planned" && it.Bucket != "shipped" {
+			continue
+		}
+		specs := idx.SpecsForIntent(it.ID)
+		if len(specs) == 0 {
+			continue
+		}
+		var open, closed []string
+		for _, s := range specs {
+			id := s.ID
+			if id == "" {
+				id = filepath.Base(s.Path)
+			}
+			switch s.Bucket {
+			case "open":
+				open = append(open, id)
+			case "closed":
+				closed = append(closed, id)
+			}
+		}
+		sort.Strings(open)
+		sort.Strings(closed)
+		switch {
+		case it.Bucket == "planned" && len(open) == 0 && len(closed) > 0:
+			out = append(out, Finding{File: it.Path, Line: 1, RuleID: "spec_lifecycle", Severity: severity,
+				Message: "planned intent '" + it.ID + "' has no open spec: " + strings.Join(closed, ", ") +
+					" sit in closed/; a planned intent is built against an open spec, so either the spec was filed into closed/ by mistake or the intent belongs in shipped/"})
+		case it.Bucket == "shipped" && len(open) > 0:
+			out = append(out, Finding{File: it.Path, Line: 1, RuleID: "spec_lifecycle", Severity: severity,
+				Message: "shipped intent '" + it.ID + "' has a spec still open: " + strings.Join(open, ", ") +
+					"; spec close ships the intent, so either the spec belongs in closed/ or the intent in planned/"})
+		}
+	}
+	return out
 }
 
 // checkSpecIDUnique flags any spc-N id claimed by two or more spec-store files
