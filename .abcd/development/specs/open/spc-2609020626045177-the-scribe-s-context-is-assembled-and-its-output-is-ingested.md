@@ -213,7 +213,7 @@ because silence is not one of the scribe's options.
 Writes go through the verbs' own functions, in payload order:
 `capture.Disposition`, then `capture.Admit`, then `capture.Surprise` (the
 last two delivered by
-[spc-2609020626040342](spc-2609020626040342-an-admission-and-a-surprise-are-written-by-a-verb-and-the-or.md)),
+[spc-2609020626040342](../closed/spc-2609020626040342-an-admission-and-a-surprise-are-written-by-a-verb-and-the-or.md)),
 each under the ledger lock it takes for itself, each inheriting the redaction
 and the refusals it already applies. The verb adds no validation path of its
 own. Two inherited refusals are named here because a scribe payload meets
