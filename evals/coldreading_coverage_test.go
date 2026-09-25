@@ -681,36 +681,63 @@ var coverage = []coverageRow{
 		Caught:    caughtLeak,
 		Classes:   []string{"EXHAUST"},
 	},
-	// The four derived family rows below are caught by PATH: an include row for
-	// a family at comparative leaks nothing on this corpus, because the
-	// comparative preset selects only the discipline kind and the candidate set,
-	// so no plant can die there. What the derived row's removal does move is the
-	// manifest, and the family-absence oracle's comparative rows name the
-	// assertion that went missing (iss-2609251812216267).
+	// The four derived families at comparative are two rules each, and only one
+	// of them is falsifiable here. The manifest half is caught by PATH: with the
+	// derived row gone the comparative manifest stops asserting the family's
+	// exclusion, and the family-absence oracle's comparative row names it
+	// (iss-2609251812216267). The leak half is a declared gap: an include row
+	// for the family at comparative leaks nothing on this corpus, because the
+	// comparative preset selects only the discipline kind and the candidate
+	// set, so no plant can die there (iss-2609252243299568).
 	{
-		Rule:      "dispositions never reach the comparative reading, and its manifest says so",
-		Falsifier: "drop the dispositions directory from issueschema.LedgerDirs, so the derived row disappears",
+		Rule:      "dispositions never reach the comparative reading",
+		Falsifier: "add an include row for the dispositions directory at comparative",
+		Gap: "unfalsifiable on this corpus: the comparative preset selects only the " +
+			"discipline kind and the candidate set, so an include row for the family at " +
+			"comparative admits nothing a plant could die at. The manifest half of the " +
+			"rule is the row below, and it is caught",
+	},
+	{
+		Rule:      "the comparative manifest asserts that dispositions are excluded",
+		Falsifier: "drop the dispositions directory from issueschema.LedgerDirs, so the derived dispositions row disappears",
 		Caught:    caughtFamily,
 	},
 	{
-		Rule:      "admissions never reach the comparative reading, and its manifest says so",
-		Falsifier: "drop the admissions directory from issueschema.LedgerDirs, so the derived row disappears",
+		Rule:      "admissions never reach the comparative reading",
+		Falsifier: "add an include row for the admissions directory at comparative",
+		Gap: "unfalsifiable on this corpus: the comparative preset selects only the " +
+			"discipline kind and the candidate set, so an include row for the family at " +
+			"comparative admits nothing a plant could die at. The manifest half of the " +
+			"rule is the row below, and it is caught",
+	},
+	{
+		Rule:      "the comparative manifest asserts that admissions are excluded",
+		Falsifier: "drop the admissions directory from issueschema.LedgerDirs, so the derived admissions row disappears",
 		Caught:    caughtFamily,
 	},
 	{
-		Rule:      "surprises never reach the comparative reading, and its manifest says so",
-		Falsifier: "drop the surprises directory from issueschema.LedgerDirs, so the derived row disappears",
+		Rule:      "surprises never reach the comparative reading",
+		Falsifier: "add an include row for the surprises directory at comparative",
+		Gap: "unfalsifiable on this corpus: the comparative preset selects only the " +
+			"discipline kind and the candidate set, so an include row for the family at " +
+			"comparative admits nothing a plant could die at. The manifest half of the " +
+			"rule is the row below, and it is caught",
+	},
+	{
+		Rule:      "the comparative manifest asserts that surprises are excluded",
+		Falsifier: "drop the surprises directory from issueschema.LedgerDirs, so the derived surprises row disappears",
 		Caught:    caughtFamily,
 	},
 	{
-		// Caught by path, not by plant, and watched: with the derived row gone the
-		// comparative manifest stops asserting the family's exclusion, and the
-		// family-absence oracle's comparative row for reframes names it. An
-		// include row added at comparative leaks nothing on this corpus, because
-		// the comparative preset selects only the discipline kind and the
-		// candidate set, so the leak half of this rule has no plant that reaches
-		// it (spc-2609020626048705).
-		Rule:      "reframe records never reach the comparative reading, and its manifest says so (spc-2609020626048705)",
+		Rule:      "reframe records never reach the comparative reading (spc-2609020626048705)",
+		Falsifier: "add an include row for the reframes directory at comparative",
+		Gap: "unfalsifiable on this corpus: the comparative preset selects only the " +
+			"discipline kind and the candidate set, so an include row for the family at " +
+			"comparative admits nothing a plant could die at. The manifest half of the " +
+			"rule is the row below, and it is caught",
+	},
+	{
+		Rule:      "the comparative manifest asserts that reframe records are excluded (spc-2609020626048705)",
 		Falsifier: "drop ReframesDir from issueschema.LedgerDirs, so the derived reframes row disappears",
 		Caught:    caughtFamily,
 	},
@@ -832,7 +859,7 @@ func TestEveryAssemblerRuleHasAFalsifier(t *testing.T) {
 
 	// The gap count is declared, so a row silently becoming unfalsifiable — the
 	// exact way this eval would decay — has to be an explicit edit.
-	const declaredGaps = 7
+	const declaredGaps = 11
 	if gaps != declaredGaps {
 		t.Errorf("the matrix declares %d unfalsifiable row(s) and holds %d; a rule sliding "+
 			"into or out of unfalsifiable coverage is the change this eval most needs said "+
