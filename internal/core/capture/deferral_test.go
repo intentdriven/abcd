@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -96,5 +97,33 @@ func TestDeferRefusesWhatTheCutWouldNotHonour(t *testing.T) {
 	}
 	if _, err := Defer(DeferRequest{RepoRoot: repo, IssuesRoot: ir, ID: "iss-1", After: "v0.1.0", Reason: "a reason that is long enough"}); !errors.Is(err, ErrUnknownIssueID) {
 		t.Fatalf("an unknown id: want ErrUnknownIssueID, got %v", err)
+	}
+}
+
+// TestADeferralTheVerbWritesIsOneTheCutHonours closes the loop against the
+// reader: the release cut's finding guard, run over the committed record the
+// verb wrote, waives it with the stated reason instead of blocking.
+func TestADeferralTheVerbWritesIsOneTheCutHonours(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("root")
+	r.Git("tag", "v0.1.0")
+	repo := r.Root()
+	ir := filepath.Join(repo, LedgerRelPath)
+	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding the cut would block",
+		Severity: SeverityMajor, Category: "bug", Source: "manual-test", Slug: "blocker", FoundDuring: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Defer(DeferRequest{RepoRoot: repo, IssuesRoot: ir, ID: res.ID, After: "v0.1.0",
+		Reason: "carried to the next cycle with the schema change"}); err != nil {
+		t.Fatal(err)
+	}
+	r.Commit("file and defer")
+	g, err := changelog.GuardFindings(repo, "v0.1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Status != changelog.FindingGuardPassed || len(g.Waived) != 1 || g.Waived[0].ID != res.ID {
+		t.Fatalf("the cut did not honour the verb's deferral: %+v", g)
 	}
 }
