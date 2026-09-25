@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -1519,18 +1520,33 @@ func skipSubstitution(line string, j, end int) (next int, alt bool) {
 // an escape — so `\'` does not end the string — and the common escapes are
 // resolved so an encoded spelling of a hazard (`$'\x2d\x2dforce'`) tokenises to
 // the same bytes bash would hand the child (`--force`).
+//
+// bash ends the string at the first byte an escape decodes to NUL (`\x00`,
+// `\0`, `\u0000`, `\c@`, …): what follows up to the closing quote is read and
+// dropped, so `$'\x00'git` is `git`. The guard reads it the same way, and that
+// is also what keeps unknownMark unforgeable (unknown.go): no decoded byte is
+// ever a NUL.
 func readAnsiCQuote(line string, start int) ([]byte, int, error) {
 	var out []byte
+	ended := false
 	for i := start; i < len(line); {
 		switch {
 		case line[i] == '\'':
 			return out, i + 1, nil
 		case line[i] == '\\' && i+1 < len(line):
 			decoded, next := decodeAnsiCEscape(line, i+1)
-			out = append(out, decoded...)
+			if nul := bytes.IndexByte(decoded, 0); nul >= 0 && !ended {
+				out = append(out, decoded[:nul]...)
+				ended = true
+			}
+			if !ended {
+				out = append(out, decoded...)
+			}
 			i = next
 		default:
-			out = append(out, line[i])
+			if !ended {
+				out = append(out, line[i])
+			}
 			i++
 		}
 	}
