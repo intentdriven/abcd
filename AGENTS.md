@@ -103,6 +103,17 @@ go test ./internal/core/                 # a single package
 go test -run TestStatus ./internal/core/ # a single test
 ```
 
+**A push is gated before it connects.** The committed `.githooks/pre-push` hook
+never runs the preflight: git opens a push's connection before it runs the hook,
+and a preflight inside it outlasted the transport's idle timeout, so the push
+reported success and moved nothing. `make preflight` ends by minting a receipt
+for HEAD instead, and only when the working tree matched HEAD — nothing staged,
+unstaged or untracked — both when the run began and when it ended, so the gates
+read exactly the tree CI checks out. The hook refuses a push whose new commit has
+no receipt. The sequence is: commit everything, `make preflight`, then a plain
+`git push`. A receipt minted in any worktree of the checkout counts, and a commit
+the remote already holds (a tag on a merged commit) needs none.
+
 **In a source checkout of abcd, every abcd invocation is `go run ./cmd/abcd
 <verb>` from the repo root** — never the plugin-root binary and never an `abcd`
 on PATH. Both are whatever version was last published, and in this repository
