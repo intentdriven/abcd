@@ -383,6 +383,18 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 			"whether an excluded heading sits there", rel, unclosedAt+1)
 	}
 
+	// A fence opener written inside an HTML block is raw HTML to a renderer —
+	// the block runs to the first blank line and swallows the delimiter — so
+	// the lines mdrecord masks as an example are live on the page. The floor
+	// cannot know which reading a reader of the bundle takes, so it refuses
+	// (iss-2609251503459090).
+	if at, ok := fenceInHTMLBlock(lines, bodyStart(hasBlock, fmClose, len(lines))); ok {
+		return fmt.Errorf("reading: %s opens a fenced code block at line %d inside an HTML block, "+
+			"which a renderer reads as raw HTML running to the next blank line; the lines below it "+
+			"are code to one reader and live to another, so the floor refuses rather than guess "+
+			"whether an excluded heading sits there", rel, at+1)
+	}
+
 	// The heading check does NOT reuse the redactor's reading. The redactor
 	// spans sections by the site walk; a verifier that re-read the same walk
 	// would agree with it by construction, which is how an excluded section
@@ -1070,14 +1082,7 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 // read from line 0. A block that never closes leaves no body to read, and the
 // never-closed shape is itself refused.
 func floorFences(lines []string, hasBlock bool, closeAt int) (fenced []bool, unclosedAt int, unclosed bool) {
-	start := 0
-	if hasBlock {
-		if closeAt < 0 {
-			start = len(lines)
-		} else {
-			start = closeAt + 1
-		}
-	}
+	start := bodyStart(hasBlock, closeAt, len(lines))
 	fenced = make([]bool, len(lines))
 	body := lines[start:]
 	copy(fenced[start:], mdrecord.FencedUnderEveryRule(body))
@@ -1087,6 +1092,104 @@ func floorFences(lines []string, hasBlock bool, closeAt int) (fenced []bool, unc
 		}
 	}
 	return fenced, 0, false
+}
+
+// bodyStart is the first line after the frontmatter block, the line every body
+// reading starts from. A block that never closes leaves no body to read.
+func bodyStart(hasBlock bool, closeAt, n int) int {
+	switch {
+	case !hasBlock:
+		return 0
+	case closeAt < 0:
+		return n
+	}
+	return closeAt + 1
+}
+
+// htmlBlockStartRe matches a line a renderer may read as the start of an HTML
+// block (CommonMark 4.6): a tag or closing tag, a declaration, a comment, a
+// processing instruction or a CDATA section. Any indent is accepted, because an
+// HTML block also opens at a list item's content indent; reading an indented
+// line as one more candidate is the fail-closed direction.
+var htmlBlockStartRe = regexp.MustCompile(`^[ \t]*(<!--|<\?|<!\[CDATA\[|<![A-Za-z]|</?[A-Za-z])`)
+
+// htmlRawTextRe matches the four elements whose HTML block runs to their own
+// closing tag rather than to a blank line (CommonMark type 1).
+var htmlRawTextRe = regexp.MustCompile(`(?i)^[ \t]*<(script|pre|style|textarea)(\s|>|$)`)
+
+// htmlBlockEnd reports how the HTML block a line opens ends: at the first line
+// holding the returned terminator (from the start of the opening line), or,
+// when the terminator is empty, at the next blank line.
+func htmlBlockEnd(line string) (terminator string, raw bool) {
+	trimmed := strings.TrimLeft(line, " \t")
+	if m := htmlRawTextRe.FindStringSubmatch(line); m != nil {
+		return "</" + strings.ToLower(m[1]) + ">", true
+	}
+	switch {
+	case strings.HasPrefix(trimmed, "<!--"):
+		return "-->", false
+	case strings.HasPrefix(trimmed, "<?"):
+		return "?>", false
+	case strings.HasPrefix(trimmed, "<![CDATA["):
+		return "]]>", false
+	case strings.HasPrefix(trimmed, "<!"):
+		return ">", false
+	}
+	return "", false
+}
+
+// fenceInHTMLBlock reports the first fence opener, under either exported
+// mdrecord rule, that sits inside an HTML block — the block a renderer reads as
+// raw HTML up to its end condition, delimiter and all. The fences are
+// mdrecord's; what this adds is only where an HTML block ends, which no fence
+// reader models. A line every mdrecord reading agrees is code updates nothing,
+// and every other line may open or end a block, which is the fail-closed
+// direction: a line one reading calls code and another calls live can still
+// open a block that swallows the next opener.
+func fenceInHTMLBlock(lines []string, start int) (int, bool) {
+	if start >= len(lines) {
+		return 0, false
+	}
+	body := lines[start:]
+	opener := make([]bool, len(body))
+	for _, rule := range []mdrecord.Rule{mdrecord.TopLevel, mdrecord.ListNested} {
+		for _, sp := range mdrecord.Read(body, rule).Fences {
+			opener[sp.Start] = true
+		}
+	}
+	code := mdrecord.FencedUnderEveryRule(body)
+	open, terminator, raw := false, "", false
+	for i, rawLine := range body {
+		ln := strings.TrimRight(rawLine, "\r")
+		if opener[i] && open {
+			return start + i, true
+		}
+		if code[i] {
+			continue
+		}
+		switch {
+		case open && terminator == "":
+			open = strings.TrimSpace(ln) != ""
+		case open:
+			hay := ln
+			if raw {
+				hay = strings.ToLower(ln)
+			}
+			open = !strings.Contains(hay, terminator)
+		case htmlBlockStartRe.MatchString(ln):
+			terminator, raw = htmlBlockEnd(ln)
+			hay := strings.TrimLeft(ln, " \t")
+			if raw {
+				hay = strings.ToLower(hay)
+			}
+			// A block whose end condition is met on its own opening line ends
+			// there: `<!-- note -->` hides nothing below it. The search starts
+			// past the `<` and the character after it, which no terminator
+			// can share.
+			open = terminator == "" || !strings.Contains(hay[min(len(hay), 2):], terminator)
+		}
+	}
+	return 0, false
 }
 
 // displacedFrontmatter reports a delimited block that does not open at line 0

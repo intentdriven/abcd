@@ -69,3 +69,51 @@ func TestVerifyRedactionStillAdmitsAFencedExample(t *testing.T) {
 		}
 	}
 }
+
+// An HTML block swallows a fence opener written directly under it: to a
+// CommonMark renderer the block runs to the first blank line, so the delimiter
+// is raw HTML text and the heading after that blank line is LIVE — while every
+// mdrecord reading sees a fence and masks the heading as an example. Both halves
+// of the floor agreed on the wrong answer and the section travelled. Which reading
+// a reader of the bundle takes is exactly the ambiguity the floor may not guess
+// at, so it refuses and names the opener.
+func TestVerifyRedactionRefusesAFenceAnHTMLBlockSwallows(t *testing.T) {
+	for name, tc := range map[string]struct {
+		doc  string
+		line string
+	}{
+		"a div block over a backtick fence": {"# A spec\n\n<div>\n```\n\n## Private Notes\n\nsecret\n```\n", "line 4"},
+		"a span block over a tilde fence":   {"# A spec\n\n<span>\n~~~\n\n## Private Notes\n\nsecret\n~~~\n", "line 4"},
+		"a block continued above the fence": {"# A spec\n\n<div class=\"x\">\ntext\n```\n\n## Private Notes\n\nsecret\n```\n", "line 5"},
+		"a declaration left open":           {"# A spec\n\n<!DOCTYPE html\n```\n\n## Private Notes\n\nsecret\n```\n", "line 4"},
+		"a processing instruction":          {"# A spec\n\n<?php\n```\n\n## Private Notes\n\nsecret\n```\n", "line 4"},
+		"a closing tag over the fence":      {"# A spec\n\n</div>\n```\n\n## Private Notes\n\nsecret\n```\n", "line 4"},
+	} {
+		out, err := redactExcluded("spc-x.md", tc.doc, privateNotes)
+		if err == nil {
+			t.Errorf("%s: admitted (secret travelled: %v):\n%s", name, strings.Contains(out, "secret"), out)
+			continue
+		}
+		if !strings.Contains(err.Error(), tc.line) {
+			t.Errorf("%s: the refusal does not name the opener (%s): %v", name, tc.line, err)
+		}
+	}
+}
+
+// The anti-vacuity half: a blank line ends the HTML block, so a fence below it
+// is a fence to every reader, and a fenced example there is still admitted.
+func TestVerifyRedactionAdmitsAFenceAfterAClosedHTMLBlock(t *testing.T) {
+	for name, doc := range map[string]string{
+		"a blank line after the block":   "# A spec\n\n<div>\n\n```md\n## Private Notes\n```\n\nprose\n",
+		"prose that only mentions a tag": "# A spec\n\nsee the <div> element\n\n```md\n## Private Notes\n```\n",
+		// These blocks end on their own line (CommonMark types 2 and 4), so the
+		// fence directly below is a fence to every reader.
+		"a one-line comment above":   "# A spec\n\n<!-- note -->\n```md\n## Private Notes\n```\n",
+		"a one-line declaration":     "# A spec\n\n<!DOCTYPE html>\n```md\n## Private Notes\n```\n",
+		"a multi-line comment above": "# A spec\n\n<!--\nnote\n-->\n```md\n## Private Notes\n```\n",
+	} {
+		if _, err := redactExcluded("spc-x.md", doc, privateNotes); err != nil {
+			t.Errorf("%s: a fenced example below a closed HTML block was refused: %v", name, err)
+		}
+	}
+}
