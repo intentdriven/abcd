@@ -31,7 +31,22 @@ import (
 // into every encoded snapshot and checked on decode, so a guardrail can never
 // silently compare two snapshots written to different shapes — a mismatch there
 // would report phantom breaks or, worse, miss real ones.
-const SchemaVersion = 1
+//
+// Version 2 added each command's help placement (Command.Group and
+// Command.Block, itd-146); version 3 added each command's sentence
+// (Command.Sentence, itd-2609212113220149); version 4 added the successor of a
+// moved spelling (Command.MovedTo, itd-2609212130136102).
+const SchemaVersion = 4
+
+// readableVersions is every shape Decode accepts. Version 1 stays readable
+// because the release guardrail reads its baseline out of the last release tag,
+// and every tag cut before version 2 carries a version-1 file. Version 1 is
+// version 2 with no placement recorded, and Diff compares no placement, so
+// reading one as the other loses nothing the guardrail judges. Version 2 stays
+// readable for the same reason: it is version 3 with no sentence recorded, and
+// Diff compares no sentence. Version 3 is version 4 with no successor recorded,
+// and Diff compares no successor either.
+var readableVersions = map[int]bool{1: true, 2: true, 3: true, SchemaVersion: true}
 
 // SnapshotPath is where the committed snapshot lives, repo-relative and
 // slash-separated.
@@ -73,7 +88,40 @@ type Snapshot struct {
 type Command struct {
 	Path   string `json:"path"`
 	Hidden bool   `json:"hidden"`
-	Flags  []Flag `json:"flags"`
+	// Group is the help group a visible top-level verb is listed under
+	// (itd-146): "set-up", "records", "checks", "portability", "release", or
+	// "agents" for the agents-and-hosts block. Empty for a sub-command and for
+	// a hidden command, and omitted from the encoding when empty.
+	Group string `json:"group,omitempty"`
+	// Block is which of the two help blocks lists the command: "people" or
+	// "agents". A visible top-level verb always carries one; a sub-command
+	// carries one only when it is listed in its own right, which today means a
+	// sub-verb of the agents block (`guard hook`). Omitted when empty.
+	//
+	// Neither field is a compatibility claim. Diff never reads them, because a
+	// regroup changes no invocation; they are here so that a regroup is VISIBLE
+	// in the committed tree, its drift test and the release gate's stale-surface
+	// refusal, which is where PlacementChanges names it.
+	Block string `json:"block,omitempty"`
+	// Sentence is the command's one sentence (itd-2609212113220149): what it
+	// does, what it writes, and when it refuses, as the manifest in
+	// sentences.go declares it and the help, the agents block and the plugin
+	// page render it. Omitted when the command has none, which is every hidden
+	// command. Like the placement it is no compatibility claim: Diff never
+	// reads it, because rewording a sentence changes no invocation.
+	Sentence string `json:"sentence,omitempty"`
+	// MovedTo is where a moved spelling went (itd-2609212130136102): the
+	// invocation that does what this one did, such as "abcd lint docs" for
+	// "abcd docs lint" or "abcd ahoy --dry-run" for "abcd ahoy dry-run". The
+	// old spelling stays in the tree for one release as a stub that answers
+	// with its successor and exits non-zero, so it is still surface a script
+	// may bind to, and the record of the move is what tells a reader of the
+	// snapshot where to go. A command with sub-verbs of its own records it when
+	// its BARE form moved and its sub-verbs did not (`abcd identity`). Empty,
+	// and omitted from the encoding, for every command that did not move.
+	// Like the sentence it is no compatibility claim: Diff never reads it.
+	MovedTo string `json:"moved_to,omitempty"`
+	Flags   []Flag `json:"flags"`
 }
 
 // Flag is one flag declared ON a command — its own flags plus the persistent
@@ -206,8 +254,50 @@ func Decode(data []byte) (Snapshot, error) {
 	if dec.More() {
 		return Snapshot{}, fmt.Errorf("decoding surface snapshot: trailing content after the snapshot")
 	}
-	if s.SchemaVersion != SchemaVersion {
-		return Snapshot{}, fmt.Errorf("surface snapshot schema version %d, want %d", s.SchemaVersion, SchemaVersion)
+	if !readableVersions[s.SchemaVersion] {
+		return Snapshot{}, fmt.Errorf("surface snapshot schema version %d, want %d (or 3, the shape before successors, 2, the shape before sentences, or 1, the shape before help placement)",
+			s.SchemaVersion, SchemaVersion)
 	}
 	return canonical(s), nil
+}
+
+// PlacementChanges names every command whose help group or block differs
+// between committed and current, one line each in canonical path order:
+// "abcd capture: group records → checks".
+//
+// It exists because a byte comparison of two snapshots can say only THAT they
+// differ. The drift test and the release gate's stale-surface refusal both call
+// it, so a verb moved between groups without regenerating the snapshot is named
+// rather than left for the operator to find in a file of several thousand
+// lines (itd-146 criterion 4). A command present on one side only is an
+// addition or a removal, which Diff and the drift test already report; it is
+// not a placement change and is not listed.
+func PlacementChanges(committed, current Snapshot) []string {
+	committed, current = canonical(committed), canonical(current)
+	was := make(map[string]Command, len(committed.Commands))
+	for _, c := range committed.Commands {
+		was[c.Path] = c
+	}
+	var out []string
+	for _, now := range current.Commands {
+		before, ok := was[now.Path]
+		if !ok {
+			continue
+		}
+		if before.Group != now.Group {
+			out = append(out, fmt.Sprintf("%s: group %s → %s", now.Path, placementName(before.Group), placementName(now.Group)))
+		}
+		if before.Block != now.Block {
+			out = append(out, fmt.Sprintf("%s: block %s → %s", now.Path, placementName(before.Block), placementName(now.Block)))
+		}
+	}
+	return out
+}
+
+// placementName spells an empty placement so a line never reads "group  → x".
+func placementName(v string) string {
+	if v == "" {
+		return "(none)"
+	}
+	return v
 }

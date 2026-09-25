@@ -76,10 +76,10 @@ func TestEveryCommandHelpRenders(t *testing.T) {
 func TestReadOnlyVerbsRun(t *testing.T) {
 	cases := []struct {
 		args     []string
-		wantZero bool // version/help must be 0; the bare status board may report non-zero
+		wantZero bool // --version/help must be 0; the bare status board may report non-zero
 	}{
 		{[]string{"--help"}, true},
-		{[]string{"version"}, true},
+		{[]string{"--version"}, true},
 		{[]string{}, false}, // bare status board: no panic, any exit
 	}
 	for _, tc := range cases {
@@ -97,7 +97,7 @@ func TestReadOnlyVerbsRun(t *testing.T) {
 // TestUnknownFlagIsGraceful proves an unknown flag is a clean non-zero error, not
 // a panic — flag parsing must degrade gracefully on bad input.
 func TestUnknownFlagIsGraceful(t *testing.T) {
-	out, code := run(t, "version", "--definitely-not-a-real-flag")
+	out, code := run(t, "lint", "--definitely-not-a-real-flag")
 	if panicked(out) {
 		t.Fatalf("unknown flag panicked:\n%s", out)
 	}

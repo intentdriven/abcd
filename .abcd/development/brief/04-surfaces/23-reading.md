@@ -254,6 +254,29 @@ record make that visible after the fact rather than preventing it. Prose-borne
 warmth inside an admitted chapter has no structural signal: the chapter-level
 include bound and the glossary discipline carry it, and it is disclosed as residue.
 
+**Model-tier routing.** The ingest dispatches the cold-reading agent of the
+position the output names, and resolves the model-tier route
+(itd-2609170822093401, spc-2609180535002478) of that agent before anything else
+runs, through the shared resolver (`internal/core/oracle` over
+`internal/core/layered`): the invocation's routing override, which the appendix
+lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
+over the repository's `.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+once a table is accepted. The assembler takes no routing operand: its invocation
+is a position and a target and nothing else, and routing is the host's concern
+at dispatch, recorded on the ingest's receipt. A step no configured provider can
+serve at its tier goes to the harness with the tier named in its request, and
+one stderr line says so. The receipt is a `route` member in the JSON and a
+`route:` line in the text, carrying `tier_asked`, `connection_tried`,
+`connection_used`, `fallback_reason`, `override`, `settings_sent` and
+`model_reported`, the last read from the payload's own `model` field (a
+reading's `instrument.model`) and empty when the payload names none. A routing
+table that cannot be read, an override naming an agent this invocation does not
+dispatch, a tier outside `local`, `economy`, `frontier` and `host-decides`, or a
+connection this machine has not configured exits 2 before anything is written.
+With no table accepted and no override, the step asks for `host-decides` on the
+harness and nothing is printed.
+
 ## References
 
 - Plugin command: [`commands/reading.md`](../../../../commands/reading.md)
@@ -293,5 +316,6 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--reading-json` | string |
+| `--route` | stringArray |
 
 <!-- surface-appendix:end -->

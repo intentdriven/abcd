@@ -1,10 +1,15 @@
 ---
 name: launch
-description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, render and verify the release's pinned plugin archive, run the release job's semantic-receipt gate locally before the merge, and scaffold the changelog-driven release gate into a managed repo. The preview writes only its pre-flight report, to the gitignored local tier; `ship` writes the dated CHANGELOG heading, the RELEASE.md page and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `receipts` writes nothing; `scaffold` writes the release workflows and never publishes.
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | receipts | scaffold [--confirm]"
+description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+block: people
 ---
 
 # `/abcd:launch` release preview and release cut
+
+`abcd --help` lists `launch` in the person's release group. `changelog`, the
+read-only preview of the same cut, is in the agents-and-hosts block of
+`abcd --help --agent`, and its line there names this page.
 
 Two flows over the abcd binary, kept apart on purpose:
 
@@ -108,7 +113,7 @@ plugin — the update downloads the pinned archive of the release you just cut,
 which needs Claude Code v2.1.224 or later), then start a new session and check:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" version
+"${CLAUDE_PLUGIN_ROOT}/abcd" --version
 ```
 
 It should report the version you just released. If it still reports `dev` or the
@@ -185,6 +190,8 @@ Then summarise the JSON for the user:
 - `version` — the version the release would carry.
 - `bundle.files` — the files the bundle would include (an array; report its length as the count).
 - `scan.hard_fails` — secret/PII findings that would block the release.
+  `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
+  present, counts the rest, and `scan.hard_fails` counts every one.
 - `smoke.ok` — whether the payload would install: both plugin manifests parse,
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.
@@ -210,10 +217,16 @@ Then summarise the JSON for the user:
   tag's published plugin archive, fetched only with `--fetch-baseline`) or
   `none` (no previous release: a first launch, and every path is `added`, with
   `parity.note` saying why). A checkout missing the previous release's tag —
-  cloned without tags, or shallow — while `CHANGELOG.md` dates a release is not
-  a first launch: `parity.refused` names that release and the remedy (fetch the
-  tags and history, or `--fetch-baseline`, whose verified archive is then the
-  only baseline, since there is no tag to render at). `parity.entries` lists
+  cloned without tags, shallow, or a fork or mirror whose newest tag is older
+  than the release `CHANGELOG.md` dates newest — is not a first launch and is
+  not measured against an older release: `parity.refused` names the release
+  `CHANGELOG.md` dates and the remedy (fetch the tags and history, or
+  `--fetch-baseline`, whose verified archive is then the only baseline, since
+  there is no tag to render at). Between a cut and its tag the checkout reads
+  the same way — `CHANGELOG.md` dates the release just cut, which has no tag
+  yet — so the preview refuses there too, naming the release as not tagged yet
+  and `--baseline <newest tag>`, which measures against the release before it;
+  the cut itself diffs before it writes its heading. `parity.entries` lists
   every path `added`, `changed` or `removed` with its `digest` and
   `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the
@@ -381,6 +394,29 @@ ignored. The whole verdict is on the cut's `findings` JSON key.
 Never delete the record to clear the gate — the cut refuses under
 `deleted-finding` when you do — and never hand-edit `CHANGELOG.md` to route
 around a refusal.
+
+**Model-tier routing.** Both steps of `launch ship` dispatch the
+`release-changelog-composer` agent, and each resolves that agent's model tier
+before anything else runs: an invocation override, over the repository's
+`.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone. A
+ready cut's `--json` result carries the request block as a `routing` member
+(`agent`, `tier`, `fan_out`, `source`, `origin`, `override`, `connection`,
+`fallback`) and its text a `routing:` line: run the composer at that tier where
+the harness lets you choose one, and pass the same `--route` to the ingest step
+so its receipt records the override. The ingest's `--json` result carries a
+`route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent`, `model_reported`) and its text a
+`route:` line; relay it with the result. When no configured provider can serve
+the tier, one stderr line says the step goes through the harness instead. A
+`--route` naming an agent this invocation does not dispatch, a tier outside the
+set, a connection this machine has not configured, or a routing table that
+cannot be read exits 2 before anything is written. With no table accepted and no
+`--route`, the step asks for `host-decides` and nothing is printed.
 
 ### 2. Compose the prose (host-delegated)
 

@@ -42,6 +42,25 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   normalised modes, stored uncompressed), because its digest is committed by the
   ship and must be reproduced from the tagged commit before the release can
   publish (adr-2609231048308186).
+- **The grouped command lists of kubectl and Terraform** — kubectl's help lists
+  its commands under labelled sections (beginner, intermediate, deploy, cluster
+  management) and Terraform's separates its main commands from all the others.
+  abcd's help takes the same shape (itd-146, `internal/surface/cli/helpgroups.go`):
+  the person's verbs under five labelled groups, and the verbs agents and hosts
+  call in a second block behind one flag. The mechanism is the command groups
+  of the CLI framework abcd already uses, so the pattern arrives with no new
+  dependency.
+- **The Command Line Interface Guidelines (<https://clig.dev>)** — their advice
+  that a command's help opens with a concise description of what the command
+  does. abcd holds that line to one form (itd-2609212113220149,
+  `internal/core/surface/sentences.go`): what the verb does, what it writes, and
+  when it refuses, declared once and rendered on the command list, the verb's
+  `--help` and its plugin page, so the line an agent chooses a verb by answers
+  the questions it asks before the call. Their standard flag names and their
+  advice to warn before removing a spelling shape the verb consolidation
+  (itd-2609212130136102): the version is the root's `--version`, a mode of one
+  action is a flag rather than a sub-verb, and every moved spelling answers
+  with its successor for one release before it goes.
 - **The NO_COLOR convention (<https://no-color.org>)** — the environment
   variable that asks a program to emit no colour, and specifically its rule
   that the variable counts when *present and not empty*, whatever its value.

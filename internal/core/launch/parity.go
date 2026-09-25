@@ -27,9 +27,11 @@ package launch
 // says why. A baseline that cannot be read is a named refusal, never an empty
 // diff, because an empty diff is the one answer that reads as "nothing changed".
 // A checkout that cannot read the previous release from its own tags — tagless,
-// or shallow, while CHANGELOG.md dates a release — is not a first launch
-// either: the front door names the release and says why, and the diff refuses
-// unless the release's verified asset answers instead.
+// or shallow, while CHANGELOG.md dates a release, or holding only tags older
+// than the release CHANGELOG.md dates newest — is not a first launch and is not
+// measured against an older release: the front door names the release and
+// says why, and the diff refuses unless the release's verified asset answers
+// instead.
 //
 // # What a digest is taken over
 //
@@ -144,8 +146,9 @@ type ParityInput struct {
 	BaselineError string
 	// Unanchored is set when this checkout cannot name or read the previous
 	// release from its own tags — a tagless clone of a tree whose CHANGELOG.md
-	// dates a release, or a shallow one — and says why. Baseline then names the
-	// release CHANGELOG.md dates newest. The diff never reads it as a first
+	// dates a release, a shallow one, or one whose newest tag is older than the
+	// release CHANGELOG.md dates newest — and says why. Baseline then names the
+	// newest release either source names. The diff never reads it as a first
 	// launch and never renders it at a tag: it refuses, unless Fetch reads the
 	// release's verified asset.
 	Unanchored string
@@ -213,7 +216,7 @@ func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport 
 	// published asset or not at all: rendering it would need the tag's objects,
 	// and an empty diff would read as "nothing changed".
 	if in.Unanchored != "" {
-		unreadable := fmt.Sprintf("the previous release %s cannot be read in this checkout: %s", in.Baseline, in.Unanchored)
+		unreadable := fmt.Sprintf("release %s cannot be read in this checkout: %s", in.Baseline, in.Unanchored)
 		if in.Fetch == nil {
 			return refuse(unreadable + " — fetch the release tags and history (git fetch --tags, with --unshallow in a shallow clone), " +
 				"or read the baseline from the published release (--fetch-baseline)")

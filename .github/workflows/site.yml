@@ -430,7 +430,7 @@ jobs:
           commit="$(git rev-parse --verify HEAD)"
           # --version takes the tag WITHOUT its leading v. The page renders the
           # stamp as "v" prepended to this value, so passing v0.6.1 yields
-          # "vv0.6.1" on the page, and `site check`'s provenance gate refuses it:
+          # "vv0.6.1" on the page, and the site gate's provenance check refuses it:
           # that gate admits a version token matching ^v?\d+(\.\d+)*$ and nothing
           # else. Measured both ways against a binary built from main — bare
           # passes every gate, v-prefixed fails two.
@@ -474,7 +474,17 @@ jobs:
             echo "::error::this binary has no site verb (released before the site slice); refusing — see PR #421"
             exit 1
           }
-          ./abcd site check --out site
+          # The gate is `lint site` from itd-2609212130136102 on, and the binary
+          # here is the RELEASED one of whichever tag this run names, so a tag cut
+          # before that release carries it as `site check`. The lint's own
+          # listing names its targets, and is a probe for the same reasons the
+          # root listing is: no side effects, and it names `site` exactly when
+          # the target is registered.
+          if ./abcd lint --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]'; then
+            ./abcd lint site --out site
+          else
+            ./abcd site check --out site
+          fi
 
       - name: Re-check that the release is still not a pre-release
         # `resolve` read this state minutes ago and the render is slow. A maintainer
@@ -782,7 +792,7 @@ jobs:
             echo "::error::this binary has no site verb (built from a commit before the site slice); refusing — see PR #421"
             exit 1
           }
-          ./abcd site check --out site
+          ./abcd lint site --out site
 
       - name: Upload a non-production Worker version
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0

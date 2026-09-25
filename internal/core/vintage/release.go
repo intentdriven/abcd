@@ -13,16 +13,16 @@ import (
 
 // latestReleaseURL is GitHub's stable "latest release" redirector: it answers a
 // 302 to /releases/tag/<tag>. Reading the tag off that redirect is exactly how
-// hooks/bootstrap.sh discovers the release to pin, so `version --check` and the
+// hooks/bootstrap.sh discovers the release to pin, so `update --check` and the
 // provisioner agree on what "latest" means.
 const latestReleaseURL = "https://github.com/intentdriven/abcd/releases/latest"
 
-// releaseCheckTimeout bounds the one attempt version --check makes.
+// releaseCheckTimeout bounds the one attempt update --check makes.
 const releaseCheckTimeout = 15 * time.Second
 
 // ReleaseFetcher fetches the latest published release tag. It is the seam behind
 // the network provider — the one network touch itd-111 adds (adr-38 tier 2),
-// reached only by an explicit `abcd version --check`. A disk path never
+// reached only by an explicit `abcd update --check`. A disk path never
 // constructs one.
 type ReleaseFetcher interface {
 	LatestTag() (string, error)

@@ -32,8 +32,7 @@ import (
 // render — a gauntlet is a run, not a store.
 func newIdeateCommand(asJSON *bool) *cobra.Command {
 	ideateCmd := &cobra.Command{
-		Use:   "ideate",
-		Short: "Idea-admission protocol: record the verdict of the three-leg gauntlet",
+		Use: "ideate",
 		Long: "Record the verdict of abcd's idea-admission protocol — primary-source research, a grill\n" +
 			"against the existing record, and an independent adversarial review.\n\n" +
 			"The legs are host work; `/abcd:ideate` orchestrates them. This verb validates what they\n" +
@@ -45,8 +44,7 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 
 	var verdictJSON string
 	recordCmd := &cobra.Command{
-		Use:   "record <idea-slug> --verdict-json <file|->",
-		Short: "Validate a host-composed verdict and write the dated research record",
+		Use: "record <idea-slug> --verdict-json <file|->",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) != 1 {
 				return &exitError{Code: 2, Msg: "ideate record: <idea-slug> is required"}

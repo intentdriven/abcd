@@ -51,7 +51,6 @@ judgement no verb makes.
 |---|---|---|
 | `hold` | — | shipped |
 | `link` | — | shipped |
-| `new` | — | shipped |
 | `plan` | — | shipped |
 | `unhold` | — | shipped |
 | `ready` | gate | shipped |
@@ -275,7 +274,6 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 |---|---|---|
 | `/abcd:intent` (no args) | Read-only status: bucket counts (drafts / planned / shipped / disciplines / superseded), open/closed spec counts, the itd↔spc links, a ledger-routing hint (`abcd capture "…"` for an observation, `abcd intent "…"` for a user-facing change), and an ideate-routing line (a big, unproven idea? `abcd ideate` runs the optional admission gauntlet and records the verdict either way) | — |
 | `/abcd:intent "<free-text>"` | **Canonical create** (spc-30 (predecessor store)/itd-46): a leading quoted seed is the canonical create entry. Seeds a draft skeleton whose `## Press Release` is the quoted text as prose, under an H1 derived from the text's first sentence (cut on a word boundary at the slug cap) or given as a title — one line, non-empty, redacted like the text — with Why This Matters and Acceptance Criteria seeded as prompts for the human to fill; assigns `itd-N` and derives the slug from the text; writes `suggested_kind: null`. An optional impact (additive, breaking or fix) stamps the draft's product impact at create time, and an optional production mode (hand-written, dictated-and-formatted or scribe-transcribed) stamps how its text was produced (itd-178); the draft's `origin` carries no flag and is derived from the verb that ran. A leading quote always creates — never falls through to bare render | writes to `drafts/itd-N-<slug>.md` (no spec created) |
-| Deprecated create alias | Deprecated alias for the quoted-text create (`abcd intent "<text>"`); files a draft from the text | writes to `drafts/itd-N-<slug>.md` (no spec created) |
 | The grill step, on one intent id | Socratic adversarial interview that stress-tests an intent for vagueness, missing acceptance, hidden assumptions before planning. Glossary-aware once `terminology/` exists. A brief-section mode would stress-test a brief section instead. (per itd-27, `intents/planned/` — a later phase; no grill sub-verb ships yet) | (stays in current state) |
 | Plan (one intent id) | Plans a draft: mints its native spec, injects the bidirectional link (intent `spec_id` ↔ spec `intent`), stamps an identity onto every unmarked scope condition, and moves the file `drafts/` → `planned/`. An impact given at planning stamps the INTENT's product-impact judgement, because the planning interview is where that judgement is made: validated at the create path's bar (never `internal`), written as the bare scalar the create path writes, refused before anything moves when it disagrees with a judgement the record already carries, and a no-op when it agrees; without one the field is left as found and the judgement stays owed to the close (iss-2609170726457256). A production mode given at planning stamps the MINTED SPEC's disclosure pair; the intent's own stamp was written at create time and is never rewritten. On an intent already in `planned/` it does the identity step alone (no spec, no move), takes an impact under the same rules, and refuses when nothing is unmarked and no judgement is added. Single intent ID. | `drafts/` → `planned/` (stamp step: no move) |
 | Readiness gate (one intent id, optionally with grounds) | **Implement-readiness gate**: reports whether an intent is ready to implement — eight checks, four of which gate: in `planned/`, with acceptance criteria, a bidirectional spec link, and a written spec body. The two claim rows (mechanism prompted-and-nullable, scope conditions with each condition identified) and the grounds row (a discipline record is exempt: it carries no conjecture of its own) are reported as advisory and never withhold readiness, their refusals parked by iss-2609091009111294 until the rethink of the reading work. The steps row is advisory by design: it reports the linked spec's `## Steps` shape — the steps listed and how many have landed, or none and so one step — and names a section that is not a numbered list with the shape it expects (itd-2609212103565953). Exit 0 ready / 1 not ready / 2 fault. Recording grounds, in the form `<pursued\|deferred\|declined>: <conjecture>`, is the gate's one write: it appends the conjecture behind this decision — what is expected, and what would show it wrong — to the intent's `## Grounds` section, append-only ([adr-57](../../decisions/adrs/0057-grounds-accumulate-as-an-append-only-section.md)), and then reports; a shipped or superseded record is never backfilled. | (no move; recorded grounds append to `## Grounds`) |
@@ -599,6 +597,36 @@ The later-phase review/audit verbs write their per-run receipts under the local 
 `chain` and `lifeboat` are later-phase sub-verbs of the reserved `/abcd:audit` (their backing intents itd-16 and itd-35 sit in `intents/drafts/`); the read-only working-conventions conformance check is `abcd lint`. The audit is a shipped sub-verb of `/abcd:intent`;
  `consistency` and `shape` are later phases. Bare `/abcd:intent` is status+help per the common (not universal) bare-command-as-help convention.
 
+**Model-tier routing.** The audit's emit and its verdict ingest dispatch the
+intent auditor, and each resolves the model-tier route (itd-2609170822093401,
+spc-2609180535002478) of the agent it dispatches before anything else runs,
+through the shared resolver (`internal/core/oracle` over
+`internal/core/layered`): the invocation's routing override, which the appendix
+lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
+over the repository's `.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+once a table is accepted. The emit writes the request block into the request
+document as a `## Routing` section after the provenance block, outside the
+hashed prompt, so the verdict's `prompt_hash` does not move with the machine's
+routing, and returns it as a `routing` member while the review is still owed.
+The request emitted when a spec's close ships its intent carries the same
+section. The close is a record move whose emit is report-only, so a routing
+table that cannot be read leaves that request without the section, one stderr
+warning names the re-emit through the audit that adds it, and the close stands.
+The ingest's result carries the receipt. The issue-drift check dispatches no
+agent and refuses the override. A step no configured provider can serve at its
+tier goes to the harness with the tier named in its request, and one stderr line
+says so. The receipt is a `route` member in the JSON and a `route:` line in the
+text, carrying `tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent` and `model_reported`, the last
+read from the payload's own `model` field (a reading's `instrument.model`) and
+empty when the payload names none. A routing table that cannot be read, an
+override naming an agent this invocation does not dispatch, a tier outside
+`local`, `economy`, `frontier` and `host-decides`, or a connection this machine
+has not configured exits 2 before anything is written. With no table accepted
+and no override, the step asks for `host-decides` on the harness and nothing is
+printed.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface
@@ -607,7 +635,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent hold`, `abcd intent link`, `abcd intent new`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -622,6 +650,7 @@ Sub-verbs: `abcd intent audit ingest`.
 | Flag | Type |
 |---|---|
 | `--issue-drift` | bool |
+| `--route` | stringArray |
 | `--strict` | bool |
 
 ### `abcd intent audit ingest`
@@ -630,6 +659,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--route` | stringArray |
 | `--verdict-json` | string |
 
 ### `abcd intent condition`
@@ -652,12 +682,6 @@ Sub-verbs: none.
 | `--reason` | string |
 
 ### `abcd intent link`
-
-Sub-verbs: none.
-
-Flags: none.
-
-### `abcd intent new`
 
 Sub-verbs: none.
 

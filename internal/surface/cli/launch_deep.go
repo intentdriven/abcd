@@ -97,24 +97,29 @@ func launchParityInput(cwd, configured string, fetch bool, stderr io.Writer) (*l
 }
 
 // unanchoredBaseline names the baseline when no operator named one. The newest
-// release tag is the baseline in a full checkout. A checkout whose tags cannot
-// be trusted to name the previous release — a shallow clone, whose listing
-// holds only the tags it fetched, or a clone with no release tag at all while
-// CHANGELOG.md dates a release — is unanchored: the baseline is the newest
-// release either source names, and why is said, so the diff refuses rather
-// than reading as a first launch (iss-2609251902439938). A tree whose
-// CHANGELOG.md dates no release and that holds no tag is a first launch.
+// release tag is the baseline in a full checkout whose CHANGELOG.md dates no
+// newer release. A checkout whose tags cannot be trusted to name the previous
+// release is unanchored: a shallow clone, whose listing holds only the tags it
+// fetched; a clone with no release tag at all while CHANGELOG.md dates a
+// release; and a full clone whose newest tag is older than the release
+// CHANGELOG.md dates newest — a fork or mirror whose tags stopped at an older
+// release. Its baseline is the newest release either source names, and why is
+// said, so the diff refuses rather than reading as a first launch
+// (iss-2609251902439938) or measuring against an older release
+// (iss-2609252001486609). The last shape is also the window between a cut and
+// its tag, where the dated release is the one just cut and the tag is the
+// right baseline: the reason says so and names --baseline, the explicit
+// escape, and a cut is not blocked by it, because the cut diffs before it
+// writes its heading. A tree whose CHANGELOG.md dates no release and that
+// holds no tag is a first launch.
 func unanchoredBaseline(cwd string, tag launch.Semver, found bool) (baseline, unanchored, failure string) {
 	shallow, err := launch.ShallowCheckout(cwd)
 	if err != nil {
 		return "", "", "whether the checkout is shallow could not be read: " + scrubPaths(err)
 	}
-	if found && !shallow {
-		return tag.Tag(), "", ""
-	}
 	dated, _, err := changelog.DatedReleases(cwd)
 	if err != nil {
-		return "", "", "CHANGELOG.md could not be read to tell a first launch from a checkout missing its release tags: " + scrubPaths(err)
+		return "", "", "CHANGELOG.md could not be read to check the release tags against the releases it dates: " + scrubPaths(err)
 	}
 	newest, datedOK := launch.Semver{}, false
 	if len(dated) > 0 {
@@ -127,6 +132,11 @@ func unanchoredBaseline(cwd string, tag launch.Semver, found bool) (baseline, un
 			newest = tag
 		}
 		return newest.Tag(), "the checkout is shallow, so its tag listing may hold only the tags that were fetched", ""
+	case found && datedOK && launch.CoreGreater(newest, tag):
+		return newest.Tag(), fmt.Sprintf("CHANGELOG.md dates release %s, and the newest release tag in this checkout is %s: "+
+			"either the %s tag is missing here (a fork or mirror whose tags stop at an older release), "+
+			"or %s is cut and not tagged yet, when --baseline %s measures against the release before it",
+			newest, tag.Tag(), newest.Tag(), newest, tag.Tag()), ""
 	case found:
 		return tag.Tag(), "", ""
 	case datedOK:

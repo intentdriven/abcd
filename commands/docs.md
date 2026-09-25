@@ -1,59 +1,15 @@
 ---
 name: docs
-description: Lint this repo's documentation for currency — change-narration ("previously", "formerly", …), broken relative links, stray root markdown, and citation health — by invoking the abcd binary. `lint` is read-only; `cite refresh` and `cite confirm` maintain the citation baseline.
-argument-hint: "[lint | cite refresh | cite confirm <url>...]"
+description: "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb."
+argument-hint: "[cite refresh | cite confirm <url>...]"
+block: agents
 ---
 
 # `/abcd:docs` documentation currency and citations
 
-Two jobs live here. `lint` grades the documentation and writes nothing. `cite`
-maintains the committed citation baseline that the lint then enforces offline.
-
-## `lint` — the currency gate (zero writes, zero network)
-
-Run:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" docs lint --json
-```
-
-Then summarise the JSON for the user:
-
-- `nothing_checked` and `warning` — when `nothing_checked` is `true` the lint
-  checked nothing and still exited 0: relay `warning` (it says why), tell the
-  user nothing was checked, never that the docs are clean, and point them at
-  `.abcd/docs-lint.json`. The same warning is printed on stderr.
-- `checks` — how many checks the configuration armed (banned tokens plus enabled
-  rules). `0` means no rule ran.
-- `documents` — how many markdown documents the configured roots hold for the
-  per-document rules. `0` means those rules read nothing: the roots are empty or
-  hold no markdown.
-- `blockers` — how many blocker findings exist; any blocker fails the gate.
-- `findings` — for each, its `File`, `Line`, `RuleID`, `Severity`, and
-  `Message`; group them so the user sees what to fix.
-
-The lint enforces present-tense docs: unambiguous change-narration (`previously`,
-`formerly`, `renamed from`, `has been replaced`, `we switched`, `to be
-implemented`) blocks, while phrases that also describe present state
-(`deprecated`, `no longer`, `migrated from`) warn advisorily rather than block.
-It also checks that relative links resolve and that no stray markdown sits at the
-repo root (it belongs under `docs/`). Point the user at the offending file and
-line for each finding, and note whether it is a blocker or a warning.
-
-Where a repo arms them, the citation rules add: footnote markers and definitions
-in bijection, every crosswalk table row carrying a footnote, well-formed URLs and
-DOIs, refused source domains, and the committed baseline — no cited URL without a
-receipt, none recorded broken, none whose recorded final address has drifted from
-what the page cites, and a staleness warning past 180 days. Every one of these
-reads committed files only; nothing dials out.
-
-`--release-gate` runs the same lint with one difference: a citation past the
-365-day threshold blocks instead of warning. It is for release machinery only —
-`release.yml`'s `verify` job runs it on every release, and an ordinary commit is
-never blocked by the calendar.
-
-If `nothing_checked` is `false` and `blockers` is zero, the docs are
-currency-clean.
+One job lives here: `cite` maintains the committed citation baseline that the
+docs lint enforces offline. The lint itself, which grades the documentation and
+writes nothing, is `/abcd:lint docs` — run `abcd lint docs`.
 
 ## `cite refresh` — the one verb that reaches the network
 

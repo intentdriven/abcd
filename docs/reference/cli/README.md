@@ -1,7 +1,10 @@
 # CLI reference
 
 The full command reference lives in [`commands.md`](commands.md): every
-user-facing `abcd` command with its usage line, summary, and flags.
+user-facing `abcd` command with its sentence, usage line, and flags. The
+sentence says what the command does, what it writes, and when it refuses, and
+it is the same line the command's `--help` opens with and its command list
+shows.
 
 That page is generated from the Cobra command tree in `internal/surface/cli`, so
 it always matches the binary. A drift test regenerates the tree on every `go test`

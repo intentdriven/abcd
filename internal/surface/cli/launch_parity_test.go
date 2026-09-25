@@ -243,6 +243,95 @@ func TestLaunchDryRunTaglessOrShallowCheckoutIsNotAFirstLaunch(t *testing.T) {
 	}
 }
 
+// datedParityCLIRepo is parityCLIRepo with each tag's CHANGELOG.md dating the
+// release it tags: v0.4.0 dates 0.4.0, v0.5.0 dates 0.5.0, and a command page
+// is added after the v0.5.0 tag.
+func datedParityCLIRepo(t *testing.T) *gittest.Repo {
+	t.Helper()
+	r := shipRenderableRepo(t)
+	r.Write(".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "CHANGELOG.md", "commands"]}`+"\n")
+	r.Write("commands/one.md", "---\nname: one\ndescription: the first command\n---\n# one\n")
+	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.5.0] - 2026-08-01\n\n### Added\n\n- the first command.\n\n"+
+		"## [0.4.0] - 2026-07-01\n\n### Added\n\n- the base.\n")
+	r.Commit("release 0.5.0")
+	r.Git("tag", "v0.5.0")
+	r.Write("commands/two.md", "---\nname: two\ndescription: the second command\n---\n# two\n")
+	r.Commit("a second command")
+	return r
+}
+
+// TestLaunchDryRunStaleMirrorIsNotMeasuredAgainstAnOlderTag: a full clone
+// whose newest release tag is missing while CHANGELOG.md dates that release —
+// a fork whose tags froze at fork time — refuses the parity diff naming the
+// dated release, the same refusal as a tagless clone, rather than diffing
+// against the older tag it does hold. The ship-to-tag window carries the same
+// evidence (CHANGELOG.md dates the release just cut, not yet tagged): it
+// refuses without calling that release the previous one, and --baseline
+// names the release before it. A full clone holding the tag diffs against it
+// (iss-2609252001486609).
+func TestLaunchDryRunStaleMirrorIsNotMeasuredAgainstAnOlderTag(t *testing.T) {
+	// A full clone holding every tag diffs against the newest.
+	full := datedParityCLIRepo(t)
+	rep, _ := dryRunJSON(t, full)
+	if rep.Parity == nil || rep.Parity.Refused || rep.Parity.Baseline != "v0.5.0" || rep.Parity.Source != launch.ParitySourceRenderAtTag {
+		t.Fatalf("a full clone must diff against v0.5.0 rendered at the tag, got %+v", rep.Parity)
+	}
+	if rep.Parity.Added != 1 || rep.Parity.Entries[0].Path != "commands/two.md" {
+		t.Errorf("only the command added since v0.5.0 differs, got %+v", rep.Parity.Entries)
+	}
+
+	// The stale mirror: v0.5.0 is missing, v0.4.0 is not, CHANGELOG.md dates 0.5.0.
+	mirror := datedParityCLIRepo(t)
+	mirror.Git("tag", "-d", "v0.5.0")
+	rep, _ = dryRunJSON(t, mirror)
+	if rep.Parity == nil || !rep.Parity.Refused || rep.Parity.Baseline != "v0.5.0" {
+		t.Fatalf("a mirror missing v0.5.0 while CHANGELOG.md dates it must refuse against v0.5.0, got %+v", rep.Parity)
+	}
+	for _, want := range []string{"CHANGELOG.md dates release 0.5.0", "v0.4.0", "git fetch --tags", "--fetch-baseline", "--baseline v0.4.0"} {
+		if !strings.Contains(rep.Parity.RefusalReason, want) {
+			t.Errorf("the stale mirror's refusal must say %q, got %q", want, rep.Parity.RefusalReason)
+		}
+	}
+	if !containsPrefix(rep.WouldRefuseOn, "payload parity: ") {
+		t.Errorf("the refusal must be on the preview's would-refuse list, got %v", rep.WouldRefuseOn)
+	}
+	plain, err := shipIn(t, mirror, "launch", "--dry-run")
+	if err != nil || !strings.Contains(string(plain), "CHANGELOG.md dates release 0.5.0") {
+		t.Errorf("the plain preview must carry the refusal, got %v:\n%s", err, plain)
+	}
+
+	// A tagless clone of the same tree refuses the same way.
+	tagless := datedParityCLIRepo(t)
+	tagless.Git("tag", "-d", "v0.4.0", "v0.5.0")
+	if rep, _ := dryRunJSON(t, tagless); rep.Parity == nil || !rep.Parity.Refused || rep.Parity.Baseline != "v0.5.0" {
+		t.Errorf("a tagless clone must refuse against v0.5.0, got %+v", rep.Parity)
+	}
+
+	// The ship-to-tag window: 0.6.0 is dated, v0.5.0 is the newest tag and the
+	// right baseline. The preview refuses without calling 0.6.0 the previous
+	// release, and --baseline v0.5.0 measures against it.
+	window := datedParityCLIRepo(t)
+	window.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.6.0] - 2026-09-01\n\n### Added\n\n- the second command.\n\n"+
+		"## [0.5.0] - 2026-08-01\n\n### Added\n\n- the first command.\n\n## [0.4.0] - 2026-07-01\n\n### Added\n\n- the base.\n")
+	window.Commit("cut 0.6.0")
+	rep, _ = dryRunJSON(t, window)
+	if rep.Parity == nil || !rep.Parity.Refused || rep.Parity.Baseline != "v0.6.0" {
+		t.Fatalf("the untagged cut must refuse against v0.6.0, got %+v", rep.Parity)
+	}
+	if strings.Contains(rep.Parity.RefusalReason, "previous release") {
+		t.Errorf("0.6.0 may be the release just cut, so the refusal must not call it the previous release: %q", rep.Parity.RefusalReason)
+	}
+	for _, want := range []string{"not tagged yet", "--baseline v0.5.0"} {
+		if !strings.Contains(rep.Parity.RefusalReason, want) {
+			t.Errorf("the window's refusal must say %q, got %q", want, rep.Parity.RefusalReason)
+		}
+	}
+	rep, _ = dryRunJSON(t, window, "--baseline", "v0.5.0")
+	if rep.Parity == nil || rep.Parity.Refused || rep.Parity.Baseline != "v0.5.0" || rep.Parity.Source != launch.ParitySourceRenderAtTag {
+		t.Fatalf("--baseline v0.5.0 must measure against the release before the cut, got %+v", rep.Parity)
+	}
+}
+
 func containsPrefix(lines []string, prefix string) bool {
 	for _, l := range lines {
 		if strings.HasPrefix(l, prefix) {

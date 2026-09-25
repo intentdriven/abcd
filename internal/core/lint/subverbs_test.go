@@ -413,3 +413,37 @@ func TestSubVerbFindingsCarryTheRowLevelLabel(t *testing.T) {
 		}
 	}
 }
+
+// movedCmd is a snapshot command recording the successor of a moved spelling
+// (itd-2609212130136102).
+func movedCmd(path, to string) map[string]any {
+	return map[string]any{"path": path, "hidden": false, "moved_to": to}
+}
+
+// TestSubVerbMovedSpellingsNeedNoRowAndMayHaveNone is itd-2609212130136102
+// criterion 4 on the brief: a moved spelling stays in the tree for one release
+// as a stub, but the chapters say the new forms only, so it needs no row, and a
+// row that still names it is a finding that names its successor. A parent whose
+// bare form moved keeps its live sub-verbs, which still need rows.
+func TestSubVerbMovedSpellingsNeedNoRowAndMayHaveNone(t *testing.T) {
+	commands := []map[string]any{
+		cmd("abcd", false), cmd("abcd ahoy", false), cmd("abcd ahoy doctor", false),
+		movedCmd("abcd ahoy dry-run", "abcd ahoy --dry-run"),
+		movedCmd("abcd ahoy remote", "abcd ahoy --remote"),
+		cmd("abcd ahoy remote apply", false),
+	}
+	clean := newSubverbFixture(t, commands)
+	clean.writeSurface(t, "01-ahoy.md", "# ahoy\n\n## Sub-verbs\n\n| Verb | Bucket | Status |\n|---|---|---|\n"+
+		"| `doctor` | — | shipped |\n| `remote apply` | gate | shipped |\n")
+	if out := runSubverbCheck(t, clean); len(out) != 0 {
+		t.Fatalf("a table naming the current forms only must pass, got:\n%s", messages(out))
+	}
+
+	stale := newSubverbFixture(t, commands)
+	stale.writeSurface(t, "01-ahoy.md", "# ahoy\n\n## Sub-verbs\n\n| Verb | Bucket | Status |\n|---|---|---|\n"+
+		"| `doctor` | — | shipped |\n| `dry-run` | — | shipped |\n| `remote apply` | gate | shipped |\n")
+	got := messages(runSubverbCheck(t, stale))
+	if !strings.Contains(got, "'dry-run'") || !strings.Contains(got, "abcd ahoy --dry-run") {
+		t.Fatalf("a row naming a moved spelling must be a finding naming its successor, got:\n%s", got)
+	}
+}

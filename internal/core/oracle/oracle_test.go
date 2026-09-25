@@ -466,8 +466,8 @@ func TestRouteFlagRefusals(t *testing.T) {
 	s := &spy{named: map[string]Connection{"desk": {Name: "desk"}}}
 	dispatched := []string{"scribe", "intent-auditor"}
 	cases := []struct{ name, route, want string }{
-		{"agent the verb does not dispatch", "security-reviewer=frontier", "does not dispatch"},
-		{"agent not in the roster", "ghost=frontier", "does not dispatch"},
+		{"agent the invocation does not dispatch", "security-reviewer=frontier", `this invocation dispatches scribe, intent-auditor, not "security-reviewer"`},
+		{"agent not in the roster", "ghost=frontier", `this invocation dispatches scribe, intent-auditor, not "ghost"`},
 		{"tier outside the enum", "scribe=cheap", "host-decides"},
 		{"connection not configured", "scribe=local@elsewhere", "elsewhere"},
 		{"no tier", "scribe", "<agent>=<tier>"},

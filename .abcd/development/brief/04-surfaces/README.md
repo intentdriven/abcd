@@ -116,6 +116,67 @@ snapshot and every appendix. Keep flags and sub-verb spellings out of the prose:
 say what the surface is for, and let the appendix say how it is spelled.
 
 
+## How the help lists the verbs
+
+`abcd --help` lists the verbs a person runs under five labelled groups, with one
+line above them saying that `abcd --help --agent` expands the list. With
+`--agent` the help renders two blocks: the person's groups, then the verbs agents
+and hosts call, each line naming the command page an agent reads next (itd-146).
+Every other command's help is the framework's own, except that it opens with
+the command's sentence (the section below).
+
+| Block | Group | Verbs |
+|---|---|---|
+| people | set-up | `ahoy`, `rules`, `update`, and the framework's `help` and `completion` |
+| people | records | `capture`, `decide`, `intent`, `memory`, `spec` |
+| people | checks | `lint` |
+| people | portability | `disembark`, `embark` |
+| people | release | `launch` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `site`, `statusline` |
+
+The placement is presentation. No verb is hidden, renamed, moved or nested by
+it, every verb runs the same whichever block lists it, and the group titles
+carry no adr-40 bucket meaning. A spelling that moved (itd-2609212130136102) is
+listed in neither block: `version` became the root's `--version` flag, and the
+stub it leaves for one release is deprecated, which keeps it out of every list
+and out of the person's count, held by a test at fourteen verbs at most. The
+product thinker placed the people's verbs
+and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
+[`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
+
+It is gated like every other surface claim. The committed command-tree snapshot
+records each visible top-level verb's group and each listed entry's block, so a
+regroup shows in its diff; the drift test and the release gate's stale-surface
+refusal name every verb whose placement moved without a regeneration. A test in
+`internal/surface/cli` fails on a visible top-level verb registered with no
+group, and another holds each command page's `block:` frontmatter to the tree.
+A regroup is not a break: the surface diff never reads the placement, because it
+changes no invocation.
+
+## The sentence every verb opens with
+
+Every visible verb and sub-verb carries one sentence naming what it does, what
+it writes (or that it writes nothing), and when it refuses, in that order: the
+doing clause, a colon, a writing clause opening with "Writes", a semicolon, and
+a refusing clause opening with "refuses" or "never refuses", at most 160
+characters, under the [writing-style guide](../../../../docs/reference/writing-style.md)
+(itd-2609212113220149). The sentence is declared once, in the surface manifest
+(`internal/core/surface/sentences.go`), and rendered from there byte for byte:
+it is the line every command list prints (a parent's list, the root's groups
+and the agents block), the first line of the verb's own `--help`, and, for a
+top-level verb with a plugin page, that page's `description:`. The committed
+command-tree snapshot records it, `go generate ./internal/surface/cli` writes
+the pages' descriptions from it, and the generated CLI reference carries it,
+which puts it under the docs lint.
+
+It is gated. A test in `internal/surface/cli` walks every visible command and
+fails naming the verb and the defect when a sentence is missing, lacks a clause,
+runs past the cap, or differs between the manifest, the command list, the help
+and the page; a synthetic tree proves it names each defect. A reworded sentence
+is not a break: the surface diff never reads it, because it changes no
+invocation. Adding a verb therefore adds its sentence to the manifest in the
+same change, and the regeneration carries it to every place it appears.
+
 ## Bare invocation
 
 Typing a verb with no arguments is how a person finds out where they stand
@@ -127,7 +188,10 @@ It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Six parents print usage with no state
 at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
-because its one operand is the quoted title it mints a record from. And `abcd
+because its one operand is the quoted title it mints a record from. Bare `abcd
+identity` and bare `abcd ahoy remote` answer with the invocation their report
+moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
+release, because their sub-verbs stay. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
 rather than restating it.

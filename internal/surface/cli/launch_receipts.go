@@ -33,9 +33,8 @@ import (
 //   - 2 — a structural fault (the repository or its workflow could not be read).
 func newLaunchReceiptsCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "receipts",
-		Short: "Run the release job's semantic-receipt gate locally, before the merge (exit 1 when it would refuse)",
-		Args:  cobra.NoArgs,
+		Use:  "receipts",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

@@ -636,10 +636,8 @@ func (convInternalsSource) probeLimited(ctx *SourceContext, walkLimit int) Evide
 	// Loud staging: a walk the bounds cut short saw only part of the tree, so a
 	// rescuer never mistakes a partial layout for the whole one — and the note is
 	// owed whether or not the truncated walk happened to reach a package first.
-	truncatedNote := ""
-	if truncated {
-		truncatedNote = fmt.Sprintf("walk cap (%d entries, %d levels deep) cut the layout scan short", walkLimit, maxWalkDepth)
-	}
+	// Each note names the bound that fired and what it cut (iss-133).
+	truncatedNotes := truncated.notes()
 
 	if docPath == "" && docDir == "" && len(pkgs) == 0 {
 		searched := []string{
@@ -651,8 +649,8 @@ func (convInternalsSource) probeLimited(ctx *SourceContext, walkLimit int) Evide
 		// so a scan that never reached the source roots says so rather than
 		// claiming there are none.
 		question := "How is this system built internally? No architecture document and no recognisable package layout."
-		if truncated {
-			searched = append(searched, truncatedNote+"; the rest of the tree was not walked")
+		if truncated.Any() {
+			searched = append(searched, truncatedNotes...)
 			question = "How is this system built internally? No architecture document, and no package layout in the part of the tree the scan reached — it did not reach all of it."
 		}
 		return blank(searched, question)
@@ -677,9 +675,7 @@ func (convInternalsSource) probeLimited(ctx *SourceContext, walkLimit int) Evide
 		confidence = ConfidenceMedium
 	}
 
-	if truncated {
-		sources = append(sources, truncatedNote+"; packages beyond it were not seen")
-	}
+	sources = append(sources, truncatedNotes...)
 	if len(pkgs) > 0 {
 		if len(pkgs) > maxLayoutCitations {
 			sources = append(sources, fmt.Sprintf("%d further package(s) counted but not cited (citation cap %d)", len(pkgs)-maxLayoutCitations, maxLayoutCitations))
@@ -870,10 +866,8 @@ func (convOpenQuestionsSource) probeLimited(ctx *SourceContext, budget int) Evid
 		// were never opened. A blank is a first-class result only while it is
 		// trustworthy (adr-35), so it says what it did not read.
 		question := "What did this project know was unfinished? Its source carries no work markers."
-		if truncated || unread > 0 {
-			if truncated {
-				searched = append(searched, fmt.Sprintf("stopped at the walk cap (%d entries, %d levels deep); the rest of the tree was not walked", maxWalkFiles, maxWalkDepth))
-			}
+		if truncated.Any() || unread > 0 {
+			searched = append(searched, truncated.notes()...)
 			if unread > 0 {
 				searched = append(searched, fmt.Sprintf("stopped at the %d-byte read budget; %d further file(s) were not read", budget, unread))
 			}
@@ -884,10 +878,9 @@ func (convOpenQuestionsSource) probeLimited(ctx *SourceContext, budget int) Evid
 
 	sources := []string{fmt.Sprintf("%d work marker(s) across %d file(s)", markers, files)}
 	// Loud staging: a partial scan says so in its own evidence, so a rescuer
-	// never mistakes a truncated count for the whole tree.
-	if truncated {
-		sources = append(sources, fmt.Sprintf("scan truncated at the walk cap (%d entries, %d levels deep); markers beyond it were not read", maxWalkFiles, maxWalkDepth))
-	}
+	// never mistakes a truncated count for the whole tree — naming which bound
+	// cut it and what it cut (iss-133).
+	sources = append(sources, truncated.notes()...)
 	if unread > 0 {
 		sources = append(sources, fmt.Sprintf("scan stopped at the %d-byte read budget; %d further file(s) were not read", budget, unread))
 	}

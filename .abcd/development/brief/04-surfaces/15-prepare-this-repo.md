@@ -146,7 +146,7 @@ then ratified ADRs, then everything else read for understanding only.
   layout is fully migrated or fully left alone.
 - **Given** sign-off, **when** it adopts, **then** one identity block is
   recorded and registered, adopted where the repo already had one and
-  interviewed only where it did not, and `abcd identity` reports every rendered
+  interviewed only where it did not, and the lint's identity report shows every rendered
   surface against it.
 - **Given** the adoption completes, **then** nothing from `private-names.txt`
   and no abcd-internal content appears in any committed artefact, with one

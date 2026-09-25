@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"os"
 	"path"
 	"regexp"
@@ -226,9 +227,6 @@ func isMarkdown(rel string) bool {
 	return strings.EqualFold(path.Ext(rel), ".md")
 }
 
-// fenceRe opens or closes a fenced code block (up to three spaces of indent).
-var fenceRe = regexp.MustCompile("^ {0,3}(```|~~~)")
-
 // inlineCodeRe is an inline code span. Quoting a construct in code is the one
 // sanctioned way to mention it in prose without asserting it.
 var inlineCodeRe = regexp.MustCompile("`[^`]*`")
@@ -243,35 +241,61 @@ type proseLine struct {
 // blocks are dropped and inline code spans blanked, so a construct quoted as an
 // example never reads as an assertion. A leading YAML frontmatter block is
 // dropped too, since it is metadata rather than a body — but only a block that
-// closes: a document that opens with a "---" rule and never repeats it has no
-// frontmatter, and is read whole rather than dropped (iss-2609251827296447).
+// closes and reads as YAML: a document that opens with a "---" rule and never
+// repeats it (iss-2609251827296447), or whose block up to the next rule holds
+// prose (iss-2609251940383450), has no frontmatter, and is read whole rather
+// than dropped.
 func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
-	inFence := false
 	frontEnd := -1 // index of the closing "---"; -1 when there is no frontmatter
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
-				frontEnd = i
+				if isFrontmatter(lines[1:i]) {
+					frontEnd = i
+				}
 				break
 			}
 		}
 	}
+	// Fenced code is read through the tree's one fence rule (mdrecord), so a
+	// longer run, a mismatched closer or an unclosed fence reads here exactly
+	// as every other reader of the record sees it.
+	mask := mdrecord.Mask(lines)
 	for i, line := range lines {
 		if i <= frontEnd {
 			continue
 		}
-		if fenceRe.MatchString(line) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
+		if mask[i]&mdrecord.MaskFence != 0 {
 			continue
 		}
 		out = append(out, proseLine{n: i + 1, text: inlineCodeRe.ReplaceAllString(line, "")})
 	}
 	return out
+}
+
+// frontmatterKeyRe opens a YAML mapping entry ("title: x", "tags:").
+var frontmatterKeyRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*\s*:(\s|$)`)
+
+// isFrontmatter reports whether the lines between two "---" rules read as a
+// YAML frontmatter block: at least one "key:" entry, and every other line an
+// indented continuation, a list item, a comment, or blank. A block holding a
+// line of prose is the body between two horizontal rules.
+func isFrontmatter(block []string) bool {
+	keys := 0
+	for _, line := range block {
+		t := strings.TrimSpace(line)
+		switch {
+		case t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "- ") || t == "-":
+		case line[0] == ' ' || line[0] == '\t':
+		case frontmatterKeyRe.MatchString(line):
+			keys++
+		default:
+			return false
+		}
+	}
+	return keys > 0
 }
 
 // markerBlockFindings checks every shipped Markdown file's marker blocks: a
@@ -349,23 +373,32 @@ func isDocBody(rel string) bool {
 var narrationEscapeRe = regexp.MustCompile(`(?i)<!--\s*docs-lint:\s*allow\b`)
 
 // narrationConstructs are the deterministic constructs that narrate a change,
-// each judged within ONE sentence. A construct that also reads as present
-// state carries a check that only its narrating reading passes
-// (iss-2609251827286563): "used to" only as the past habit, "no longer" and
-// "renamed" only beside a change subject naming abcd or its behaviour, and
-// "previously"/"now" only beside a change verb. Bare "now" and bare
-// "previously" are not constructs at all (itd-65 AC10); the present-tense
-// warning docs lint carries is where they belong.
+// each judged within ONE sentence; narrations adds the one pair judged
+// across a sentence end, "previously" opening a sentence and "now" the next
+// (iss-2609252045147575). A construct that also reads as present state
+// carries a check that exempts only its present-state reading, and refuses
+// every other (iss-2609251827286563, iss-2609251940304726,
+// iss-2609252045148890): "no longer" except in a relative clause over a
+// copula ("files that are no longer present"), in a clause a subordinator
+// opens ("retry until the error no longer appears") and as a comparative ("no
+// longer than"); "renamed … to" except the present purpose form ("is renamed
+// to match"); "previously … now" only beside a change verb or with
+// "previously" opening its clause; "used to" only as the past habit. Bare
+// "now" and bare "previously" are not constructs at all
+// (itd-65 AC10); the present-tense warning docs lint carries is where they
+// belong. The gate's specification is narrationSpecification in
+// gates_test.go, and the pairs it cannot tell apart lexically are refused
+// (the escape marker exists for them), a trade recorded in DECISIONS.md.
 var narrationConstructs = []struct {
 	name  string
 	re    *regexp.Regexp
 	holds func(sentence string, at []int) bool // nil: the match alone narrates
 }{
 	{"changed from", regexp.MustCompile(`(?i)\bchanged\s+from\b.*\bto\b`), nil},
-	{"no longer", regexp.MustCompile(`(?i)\bno\s+longer\b`), changeSubjectBefore},
+	{"no longer", regexp.MustCompile(`(?i)\bno\s+longer\b`), noLongerNarrates},
 	{"migrated from", regexp.MustCompile(`(?i)\bmigrated\s+from\b`), nil},
-	{"renamed", regexp.MustCompile(`(?i)\brenamed\b.*\bto\b`), changeSubjectBefore},
-	{"previously … now", regexp.MustCompile(`(?i)\bpreviously\b.*\bnow\b|\bnow\b.*\bpreviously\b`), changeVerbBesideEither},
+	{"renamed … to", regexp.MustCompile(`(?i)\brenamed\b`), renamedNarrates},
+	{"previously … now", regexp.MustCompile(`(?i)\bpreviously\b.*\bnow\b|\bnow\b.*\bpreviously\b`), previouslyNowNarrates},
 	{"used to", regexp.MustCompile(`(?i)\bused\s+to\b`), pastHabitUsedTo},
 }
 
@@ -377,19 +410,37 @@ const narrationEscapeHint = "docs describe present state and the changelog recor
 // narrationWordRe is one word of a sentence, or one clause-breaking mark.
 var narrationWordRe = regexp.MustCompile(`[\p{L}\p{N}][\p{L}\p{N}'’_.-]*|[,;:()—–"“”]`)
 
+// clauseMarks are the punctuation marks narrationWords yields: they end a
+// clause, and they are not words.
+var clauseMarks = wordSet(",", ";", ":", "(", ")", "—", "–", "\"", "“", "”")
+
+// adverbOpeners are the marks after which a sentence adverb opens a clause,
+// and quoteMarks the marks that quote a word to name it rather than use it.
+var (
+	adverbOpeners = wordSet(",", ";", ":", "(", "—", "–")
+	quoteMarks    = wordSet("\"", "“", "”")
+)
+
 // clauseBreaks end a clause: punctuation, and the words that open a relative
 // or subordinate clause, whose subject is not the main clause's.
 var clauseBreaks = wordSet(",", ";", ":", "(", ")", "—", "–", "\"", "“", "”",
 	"that", "which", "who", "whose", "where", "when", "whenever", "if", "because", "while", "what", "and", "but", "or")
 
-// changeSubjects are the nouns that name abcd or its behaviour. A "no longer"
-// or a "renamed" whose clause subject is one of them narrates a change to the
-// product; any other subject ("files that are no longer present", "the output
-// is renamed") states the present state of something the product handles.
-var changeSubjects = wordSet("abcd", "we", "tool", "tools", "verb", "verbs", "command", "commands",
-	"subcommand", "subcommands", "flag", "flags", "option", "options", "binary", "plugin", "cli",
-	"hook", "hooks", "gate", "gates", "default", "defaults", "behaviour", "behavior", "api",
-	"endpoint", "endpoints", "setting", "settings", "feature", "features")
+// subordinators open a subordinate clause whose "no longer" states a
+// condition or a time, not a change ("retry until the error no longer
+// appears", "branches whose upstream no longer exists"). They end a clause
+// for the "no longer" reading alone: "until" and "before" also open a time
+// adverbial ("until v0.6 the dry-run used to skip the tags"), which the
+// "used to" reading must read through.
+var subordinators = wordSet("until", "once", "when", "whenever", "if", "unless", "after", "before", "while", "whose")
+
+// relativePronouns open a relative clause, and presentCopulas are the present
+// "be" a state-describing relative clause runs on ("files that are no longer
+// present", "records which are no longer open").
+var (
+	relativePronouns = wordSet("that", "which", "who")
+	presentCopulas   = wordSet("is", "are")
+)
 
 // changeVerbs are the past-tense verbs that make "previously … now" a
 // narration ("reports previously went to the log", "the default was
@@ -412,12 +463,34 @@ var determiners = wordSet("the", "a", "an", "this", "that", "these", "those", "i
 var finiteVerbs = wordSet("is", "are", "was", "were", "has", "have", "had", "does", "do", "did", "can", "cannot",
 	"could", "must", "will", "would", "should", "may", "might", "shall", "stays", "remains")
 
+// timePrepositions open an adverbial that places a clause in time on their
+// own ("until v0.6", "before the split"); spanPrepositions do so only over a
+// temporal noun ("in earlier releases", "during the first version"), since
+// "in the config" places nothing in time. timeAdverbs place a clause in time
+// as one word ("originally the tool used to print").
+var (
+	timePrepositions = wordSet("until", "till", "before", "since", "prior")
+	spanPrepositions = wordSet("in", "during", "through", "throughout")
+	temporalWords    = wordSet("earlier", "older", "early", "previous", "past", "prior", "former", "first",
+		"initial", "original", "release", "releases", "version", "versions")
+	timeAdverbs = wordSet("originally", "formerly", "earlier")
+)
+
+// versionWordRe is a version number standing as a word ("v0.6", "1.2").
+var versionWordRe = regexp.MustCompile(`^v?\d+(\.\d+)*$`)
+
 func wordSet(words ...string) map[string]struct{} {
 	m := make(map[string]struct{}, len(words))
 	for _, w := range words {
 		m[w] = struct{}{}
 	}
 	return m
+}
+
+// in reports whether a word is in the set.
+func inSet(set map[string]struct{}, w string) bool {
+	_, ok := set[w]
+	return ok
 }
 
 // narrationWords splits text into lower-cased words and clause marks.
@@ -429,22 +502,28 @@ func narrationWords(text string) []string {
 	return out
 }
 
+// clauseStart is the index of the first word of the clause that ends at the
+// end of words: one past the last clause break, or 0.
+func clauseStart(words []string) int {
+	for i := len(words) - 1; i >= 0; i-- {
+		if inSet(clauseBreaks, words[i]) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
 // clauseBefore is the words of the clause that runs up to byte offset at.
 func clauseBefore(sentence string, at int) []string {
 	words := narrationWords(sentence[:at])
-	for i := len(words) - 1; i >= 0; i-- {
-		if _, stop := clauseBreaks[words[i]]; stop {
-			return words[i+1:]
-		}
-	}
-	return words
+	return words[clauseStart(words):]
 }
 
 // clauseAfter is the words of the clause that runs on from byte offset at.
 func clauseAfter(sentence string, at int) []string {
 	words := narrationWords(sentence[at:])
 	for i, w := range words {
-		if _, stop := clauseBreaks[w]; stop {
+		if inSet(clauseBreaks, w) {
 			return words[:i]
 		}
 	}
@@ -454,37 +533,119 @@ func clauseAfter(sentence string, at int) []string {
 // anyIn reports whether some word is in the set.
 func anyIn(words []string, set map[string]struct{}) bool {
 	for _, w := range words {
-		if _, ok := set[w]; ok {
+		if inSet(set, w) {
 			return true
 		}
 	}
 	return false
 }
 
-// changeSubjectBefore reports whether the clause leading up to the match names
-// abcd or its behaviour.
-func changeSubjectBefore(sentence string, at []int) bool {
-	return anyIn(clauseBefore(sentence, at[0]), changeSubjects)
+// noLongerNarrates reports whether a "no longer" narrates a change. It does,
+// whatever its subject ("the registry can no longer be edited", "the scanner,
+// which no longer skips fenced blocks"), except in its three present-state
+// forms: a comparative ("no longer than one screen"); a relative clause over
+// a present copula, which describes the state of the thing it qualifies
+// ("files that are no longer present"); and a clause a subordinator opens,
+// which states a condition or a time ("retry until the error no longer
+// appears", "if the path no longer exists", "branches whose upstream no
+// longer exists").
+func noLongerNarrates(sentence string, at []int) bool {
+	if after := narrationWords(sentence[at[1]:]); len(after) > 0 && after[0] == "than" {
+		return false
+	}
+	words := narrationWords(sentence[:at[0]])
+	k := clauseStart(words)
+	if k > 0 && inSet(relativePronouns, words[k-1]) && len(words)-k == 1 && inSet(presentCopulas, words[k]) {
+		return false
+	}
+	for i := len(words) - 1; i >= 0; i-- {
+		if inSet(subordinators, words[i]) {
+			return false
+		}
+		if inSet(clauseBreaks, words[i]) {
+			break
+		}
+	}
+	return true
+}
+
+// renamedNarrates reports whether a "renamed" narrates a change: a "to"
+// follows it before the next punctuation mark ("it was renamed to abcd lint",
+// "we renamed the flag to --dest", "renamed from --out to --dest"), except in
+// the present purpose form, where a present passive renames something so that
+// it matches another ("the output is renamed to match the tag"). A "renamed"
+// with no "to" in its stretch ("names that must not be renamed, and …")
+// renames nothing into anything.
+func renamedNarrates(sentence string, at []int) bool {
+	after := narrationWords(sentence[at[1]:])
+	to := -1
+	for i, w := range after {
+		if inSet(clauseMarks, w) {
+			break
+		}
+		if w == "to" {
+			to = i
+			break
+		}
+	}
+	if to < 0 {
+		return false
+	}
+	before := narrationWords(sentence[:at[0]])
+	if to == 0 && len(after) > 1 && after[1] == "match" &&
+		len(before) > 0 && inSet(presentCopulas, before[len(before)-1]) {
+		return false
+	}
+	return true
+}
+
+// previouslyNowNarrates reports whether a sentence carrying both "previously"
+// and "now" narrates a change: when "previously" opens its clause as a
+// sentence adverb ("Previously, the ledger was a flat file; now it is a
+// folder", "Previously the gate read JSON, now it reads YAML"), or when a
+// change verb stands beside either word.
+// A word quoted to name it ('bare "now" and bare "previously"') opens nothing.
+func previouslyNowNarrates(sentence string, at []int) bool {
+	words := narrationWords(sentence)
+	for i, w := range words {
+		if w == "previously" && (i == 0 || inSet(adverbOpeners, words[i-1])) &&
+			(i+1 == len(words) || !inSet(quoteMarks, words[i+1])) {
+			return true
+		}
+	}
+	return changeVerbBesideEither(sentence, at)
 }
 
 // changeVerbBesideEither reports whether a change verb stands within three
-// words of some "previously" or "now" in the sentence. Beside a "previously"
-// that modifies a verb, any past-tense "-ed" verb within two words counts too
-// ("it previously lacked", "the rule previously existed"); a "previously"
-// after "as" or a determiner qualifies a participle ("as previously noted",
-// "the previously saved query") and brings no verb of its own.
+// words of some "previously" or "now" in the sentence, counting words only:
+// clause marks and determiners are not words the distance runs over, so
+// "previously, the ledger was" puts "was" two words away. Beside a
+// "previously" that modifies a verb, any past-tense "-ed" verb within two
+// words counts too ("it previously lacked", "the rule previously existed"); a
+// "previously" after "as" or a determiner qualifies a participle ("as
+// previously noted", "the previously saved query") and brings no verb of its
+// own.
 func changeVerbBesideEither(sentence string, _ []int) bool {
-	words := narrationWords(sentence)
+	all := narrationWords(sentence)
+	var words []string
+	var qualifies []bool // words[i] is a "previously" after "as" or a determiner
+	for i, w := range all {
+		if inSet(clauseMarks, w) || isDeterminer(w) {
+			continue
+		}
+		words = append(words, w)
+		qualifies = append(qualifies, i > 0 && (all[i-1] == "as" || isDeterminer(all[i-1])))
+	}
 	for i, w := range words {
 		if w != "previously" && w != "now" {
 			continue
 		}
 		for j := max(0, i-3); j <= min(len(words)-1, i+3); j++ {
-			if _, ok := changeVerbs[words[j]]; ok {
+			if inSet(changeVerbs, words[j]) {
 				return true
 			}
 		}
-		if w != "previously" || (i > 0 && (words[i-1] == "as" || isDeterminer(words[i-1]))) {
+		if w != "previously" || qualifies[i] {
 			continue
 		}
 		for j := max(0, i-2); j <= min(len(words)-1, i+2); j++ {
@@ -498,17 +659,43 @@ func changeVerbBesideEither(sentence string, _ []int) bool {
 
 // isDeterminer reports whether a word opens a noun phrase.
 func isDeterminer(w string) bool {
-	_, ok := determiners[w]
-	return ok
+	return inSet(determiners, w)
+}
+
+// timeAdverbial reports whether words place a clause in time: a time
+// preposition ("until v0.6"), a span preposition over a temporal noun or a
+// version ("in earlier releases", "in v0.5"), or a lone time adverb
+// ("originally").
+func timeAdverbial(words []string) bool {
+	if len(words) == 0 {
+		return false
+	}
+	if inSet(timePrepositions, words[0]) {
+		return true
+	}
+	if len(words) == 1 && inSet(timeAdverbs, words[0]) {
+		return true
+	}
+	if !inSet(spanPrepositions, words[0]) {
+		return false
+	}
+	for _, w := range words[1:] {
+		if inSet(temporalWords, w) || versionWordRe.MatchString(w) {
+			return true
+		}
+	}
+	return false
 }
 
 // pastHabitUsedTo reports whether a "used to" is the past-habit construction:
 // the finite verb of its clause, after a subject pronoun ("it used to print")
-// or after a bare subject noun phrase that opens the clause ("the tool used to
-// print") when no finite verb follows in the clause. A passive or adjectival
-// "used to" ("is used to sign", "gets used to") and a participle modifying a
-// noun ("the token used to authenticate the request is read", "set the token
-// used to authenticate") are present state.
+// or after a bare subject noun phrase when no finite verb follows in the
+// clause. The subject phrase opens the clause ("the tool used to print") or
+// follows a time adverbial that does ("until v0.6 the dry-run used to skip
+// the tags"). A passive or adjectival "used to" ("is used to sign", "gets
+// used to") and a participle modifying a noun ("the token used to
+// authenticate the request is read", "set the token used to authenticate")
+// are present state.
 func pastHabitUsedTo(sentence string, at []int) bool {
 	// The word before "used" is read across a clause break: a relative
 	// pronoun ("the classes that used to drift") is the clause's subject.
@@ -517,18 +704,27 @@ func pastHabitUsedTo(sentence string, at []int) bool {
 		return false
 	}
 	last := preceding[len(preceding)-1]
-	if _, aux := passiveAuxiliaries[last]; aux {
+	if inSet(passiveAuxiliaries, last) {
 		return false
 	}
-	if _, ok := subjectPronouns[last]; ok {
+	if inSet(subjectPronouns, last) {
 		return true
 	}
 	before := clauseBefore(sentence, at[0])
 	if len(before) == 0 {
 		return false
 	}
-	det := isDeterminer(before[0])
-	subject := len(before) == 1 || (det && len(before) <= 4)
+	subject := len(before) == 1 || (isDeterminer(before[0]) && len(before) <= 4)
+	if !subject {
+		// A subject phrase after a time adverbial: the last determiner in
+		// the clause opens it, and everything before that places it in time.
+		for k := len(before) - 1; k > 0; k-- {
+			if isDeterminer(before[k]) {
+				subject = len(before)-k <= 4 && timeAdverbial(before[:k])
+				break
+			}
+		}
+	}
 	if !subject {
 		return false
 	}
@@ -536,7 +732,7 @@ func pastHabitUsedTo(sentence string, at []int) bool {
 	// clause of its own ("used to die on the laptop they were generated on").
 	after := clauseAfter(sentence, at[1])
 	for i, w := range after {
-		if _, pronoun := subjectPronouns[w]; pronoun {
+		if inSet(subjectPronouns, w) {
 			after = after[:i]
 			break
 		}
@@ -561,14 +757,50 @@ func narrationFindings(bundle Bundle) []GateFinding {
 			out = append(out, GateFinding{File: f.LogicalPath, Detail: "could not be read to check it for change narration: " + err.Error()})
 			continue
 		}
-		for _, s := range docSentences(proseLines(data)) {
-			if name := narrationConstruct(s.text); name != "" {
-				out = append(out, GateFinding{File: f.LogicalPath, Line: s.line,
-					Detail: "narrates a change (" + name + "): \"" + clip(s.text, 200) + "\" — " + narrationEscapeHint})
-			}
+		for _, n := range narrations(docSentences(proseLines(data))) {
+			out = append(out, GateFinding{File: f.LogicalPath, Line: n.line,
+				Detail: "narrates a change (" + n.construct + "): \"" + clip(n.text, 200) + "\" — " + narrationEscapeHint})
 		}
 	}
 	return out
+}
+
+// narration is a sentence, or a pair of adjacent sentences, that narrates a
+// change: the line it starts on, its text and the construct it carries.
+type narration struct {
+	line      int
+	text      string
+	construct string
+}
+
+// narrations returns every sentence that carries a construct, and every pair
+// that splits "previously … now" at a sentence end: a sentence opening with
+// "now" whose predecessor in the same run of text opens with "previously"
+// ("Previously, the ledger was a flat file. Now it is a folder."). The pair
+// is located at its first sentence and named whole.
+func narrations(sentences []docSentence) []narration {
+	var out []narration
+	for i, s := range sentences {
+		if name := narrationConstruct(s.text); name != "" {
+			out = append(out, narration{line: s.line, text: s.text, construct: name})
+			continue
+		}
+		if i == 0 || !opensWith(s.text, "now") {
+			continue
+		}
+		prev := sentences[i-1]
+		if prev.run == s.run && opensWith(prev.text, "previously") && narrationConstruct(prev.text) == "" {
+			out = append(out, narration{line: prev.line, text: prev.text + " " + s.text, construct: "previously … now"})
+		}
+	}
+	return out
+}
+
+// opensWith reports whether a sentence's first word is w, used rather than
+// quoted to name it.
+func opensWith(sentence, w string) bool {
+	words := narrationWords(sentence)
+	return len(words) > 0 && words[0] == w && (len(words) == 1 || !inSet(quoteMarks, words[1]))
 }
 
 // narrationConstruct returns the first construct a sentence carries, or "".
@@ -589,9 +821,11 @@ var sentenceEndRe = regexp.MustCompile(`[.!?]["')\]]*\s+`)
 // listItemRe starts a list item, which starts a new sentence whatever precedes it.
 var listItemRe = regexp.MustCompile(`^\s*([-*+]|\d+[.)])\s`)
 
-// docSentence is one sentence of prose, located at the line it starts on.
+// docSentence is one sentence of prose, located at the line it starts on,
+// and the run of text (a paragraph, a heading, a list item) it belongs to.
 type docSentence struct {
 	line int
+	run  int
 	text string
 }
 
@@ -604,16 +838,18 @@ func docSentences(lines []proseLine) []docSentence {
 	var buf strings.Builder
 	// starts[i] is the offset in buf where the text of line lineAt[i] begins.
 	var starts, lineAt []int
+	run := 0
 	flush := func() {
 		text := buf.String()
 		pos := 0
 		for _, loc := range append(sentenceEndRe.FindAllStringIndex(text, -1), []int{len(text), len(text)}) {
 			sentence := strings.TrimSpace(text[pos:loc[1]])
 			if sentence != "" {
-				out = append(out, docSentence{line: lineOf(pos, starts, lineAt), text: sentence})
+				out = append(out, docSentence{line: lineOf(pos, starts, lineAt), run: run, text: sentence})
 			}
 			pos = loc[1]
 		}
+		run++
 		buf.Reset()
 		starts, lineAt = starts[:0], lineAt[:0]
 	}

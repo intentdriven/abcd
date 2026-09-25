@@ -109,29 +109,86 @@ func TestMarkerBlockGatePassesBalancedAndQuotedMarkers(t *testing.T) {
 	}
 }
 
+// narrationSpecification is the change-narration gate's specification: every
+// sentence the hard tier must refuse, and every sentence it must pass. It is
+// one table so the two sets are read against each other — a rule widened for
+// recall is checked against the passes, and one narrowed for precision against
+// the refusals. itd-65 AC3 and AC10 are the promise: "previously X, now Y" and
+// a genuine "changed from X to Y" / "no longer" hard-fail, and bare
+// present-tense "now"/"previously" does not. The passes include the four
+// present-state sentences the first review found refused
+// (iss-2609251827286563); the refusals include the genuine narration the
+// second review found passed (iss-2609251940304726); the third review added
+// the subordinate-clause "no longer" passes (iss-2609252045148890) and the
+// "previously … now" split at a sentence end (iss-2609252045147575), which a
+// row carries as two sentences on one line. Where a pair cannot be
+// told apart lexically the gate refuses (the escape marker is one comment
+// away and every finding names it); the residual trade is recorded in
+// .abcd/work/DECISIONS.md.
+var narrationSpecification = []struct {
+	sentence string
+	refuse   bool
+}{
+	// Must refuse.
+	{"The default changed from JSON to YAML in this release.", true},
+	{"The store migrated from SQLite to flat files.", true},
+	{"Previously, the ledger was a flat file; now it is a folder.", true},
+	{"Previously the gate read JSON, now it reads YAML.", true},
+	{"Reports previously went to the log, and now they go to the record.", true},
+	{"The default was previously JSON; it is now YAML.", true},
+	{"The verb no longer writes a receipt.", true},
+	{"abcd no longer writes a receipt.", true},
+	{"The registry can no longer be edited by hand.", true},
+	{"The scanner no longer skips fenced blocks.", true},
+	{"The record no longer carries a grounds scalar.", true},
+	{"The scanner, which no longer skips fenced blocks, reads every line.", true},
+	{"The flag was renamed from --out to --dest.", true},
+	{"We renamed the flag to --dest.", true},
+	{"It was renamed to `abcd lint`.", true},
+	{"The loader was renamed to abcd rules.", true},
+	{"The tool used to print a banner.", true},
+	{"It used to print a banner, which was noisy.", true},
+	{"The gate skips the classes that used to drift.", true},
+	{"Until v0.6 the dry-run used to skip the tags.", true},
+	{"In earlier releases the archive used to include the record.", true},
+	{"Previously, the ledger was a flat file. Now it is a folder.", true},
+	{"Previously the gate read JSON. Now it reads YAML.", true},
+	// Must pass.
+	{"The command now accepts a path.", false},
+	{"Run the previously saved query with `--replay`.", false},
+	{"Now, as previously noted, the report lists every gate.", false},
+	{"A passive key is used to sign the archive.", false},
+	{"The token used to authenticate the request is read from the environment.", false},
+	{"Set the token used to authenticate the request.", false},
+	{"In the config used to sign releases, set the key path.", false},
+	{"Files that are no longer present in the tree are skipped.", false},
+	{"Records which are no longer open move to resolved/.", false},
+	{"The gate is no longer than one screen.", false},
+	{"Keep each summary no longer than one line.", false},
+	{"The output is renamed to match the tag.", false},
+	{"Keep the names that must not be renamed, and link each to the glossary.", false},
+	{"The words \"now\" and \"previously\" are fine on their own.", false},
+	{"Retry until the error no longer appears.", false},
+	{"Stop when the gate no longer reports a finding.", false},
+	{"If the path no longer exists, the loader skips it.", false},
+	{"Delete the copy once it is no longer needed.", false},
+	{"Cached entries are dropped once they are no longer referenced.", false},
+	{"Once a record is resolved it is no longer open.", false},
+	{"Branches whose upstream no longer exists are pruned.", false},
+	{"Run the previously saved query. Now run the gate.", false},
+}
+
 // TestNarrationGateHardFailsOnAChangeConstruct is itd-65 AC3 and the second half
-// of AC10: a shipped doc body narrating a change hard-fails, naming the sentence.
+// of AC10: a shipped doc body narrating a change hard-fails, naming the
+// sentence and the escape — every refusal in narrationSpecification.
 func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
-	cases := map[string]string{
-		"changed from": "The default changed from JSON to YAML in this release.",
-		"no longer":    "The verb no longer writes a receipt.",
-		"migrated":     "The store migrated from SQLite to flat files.",
-		"previously":   "Reports previously went to the log, and now they go to the record.",
-		"renamed":      "The flag was renamed from --out to --dest.",
-		"used to":      "The tool used to print a banner.",
-		// The narrowed constructs keep their true positives
-		// (iss-2609251827286563): a pronoun subject, a subject naming abcd,
-		// an active rename, and a past-tense copula beside "previously".
-		"used to, pronoun":         "It used to print a banner, which was noisy.",
-		"no longer, abcd":          "abcd no longer writes a receipt.",
-		"renamed, active":          "We renamed the flag to --dest.",
-		"previously, same clause":  "The default was previously JSON; it is now YAML.",
-		"used to, relative clause": "The gate skips the classes that used to drift.",
-	}
-	for name, sentence := range cases {
-		t.Run(name, func(t *testing.T) {
+	for _, c := range narrationSpecification {
+		if !c.refuse {
+			continue
+		}
+		t.Run(c.sentence, func(t *testing.T) {
 			root := docsFixture(t)
-			writeFile(t, root, "docs/guide.md", "# Guide\n\nIntro line.\n"+sentence+"\n")
+			writeFile(t, root, "docs/guide.md", "# Guide\n\nIntro line.\n"+c.sentence+"\n")
 
 			report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
 			if err != nil {
@@ -141,7 +198,9 @@ func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
 			if row.Tier != TierHardFail || len(row.Findings) != 1 {
 				t.Fatalf("change-narration row = %+v, want one hard-fail finding", row)
 			}
-			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", strings.TrimSuffix(sentence, ".")) {
+			// Inline code is blanked before the gate reads a line.
+			shown := strings.TrimSuffix(inlineCodeRe.ReplaceAllString(c.sentence, ""), ".")
+			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", shown) {
 				t.Errorf("would_refuse_on does not name the file, line and sentence:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
 			}
 			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", "<!-- docs-lint: allow -->") {
@@ -152,28 +211,26 @@ func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
 }
 
 // TestNarrationGatePassesPresentTense is AC10's first half and the gate's scope:
-// bare present-tense "now" and "previously" — apart, and together in one
-// sentence with no change verb beside either — a construct inside code, a line
-// carrying the docs-lint escape, and the release records (a changelog is
-// narration by definition) do not hard-fail; nor does a file outside the doc
-// bodies (commands/ is plugin surface, not a doc body). The four sentences a
-// review found refused (iss-2609251827286563) state present state: a
-// participle "used to", a "no longer" whose subject is not abcd, a present
-// "renamed", and "previously" beside "now" with nothing changing.
+// every pass in narrationSpecification — bare present-tense "now" and
+// "previously", apart and together with no change construct, and the
+// present-state readings of "used to", "no longer" and "renamed to" — does
+// not hard-fail; nor does a construct inside code, a line carrying the
+// docs-lint escape, the release records (a changelog is narration by
+// definition), or a file outside the doc bodies (commands/ is plugin surface,
+// not a doc body).
 func TestNarrationGatePassesPresentTense(t *testing.T) {
 	root := docsFixture(t)
-	writeFile(t, root, "docs/present.md", "# Present\n\n"+
-		"The command now accepts a path.\n"+
-		"Run the previously saved query with `--replay`.\n"+
-		"A passive key is used to sign the archive.\n\n"+
-		"The token used to authenticate the request is read from the environment.\n"+
-		"Files that are no longer present in the tree are skipped.\n"+
-		"The output is renamed to match the tag.\n"+
-		"Now, as previously noted, the report lists every gate.\n"+
-		"Set the token used to authenticate the request.\n\n"+
-		"```\nthe verb no longer writes\n```\n\n"+
-		"Use `no longer` sparingly.\n"+
+	var doc strings.Builder
+	doc.WriteString("# Present\n\n")
+	for _, c := range narrationSpecification {
+		if !c.refuse {
+			doc.WriteString(c.sentence + "\n\n")
+		}
+	}
+	doc.WriteString("```\nthe verb no longer writes\n```\n\n" +
+		"Use `no longer` sparingly.\n" +
 		"The page lists what changed from one release to the next. <!-- docs-lint: allow -->\n")
+	writeFile(t, root, "docs/present.md", doc.String())
 	writeFile(t, root, "docs/CHANGELOG.md", "# Changelog\n\nThe verb no longer writes a receipt.\n")
 	writeFile(t, root, "commands/x.md", "The verb no longer writes a receipt.\n")
 
@@ -182,8 +239,8 @@ func TestNarrationGatePassesPresentTense(t *testing.T) {
 		t.Fatalf("DryRun: %v", err)
 	}
 	row := gateRow(t, report.Gates, "change-narration")
-	if len(row.Findings) != 0 {
-		t.Fatalf("present-tense prose was flagged: %+v", row.Findings)
+	for _, f := range row.Findings {
+		t.Errorf("present-tense prose was flagged: %s:%d %s", f.File, f.Line, f.Detail)
 	}
 }
 
@@ -522,5 +579,32 @@ func TestProseLinesReadsAnUnclosedOpeningRuleAsProse(t *testing.T) {
 	}
 	if anyContains(report.WouldRefuseOn, "docs/front.md") {
 		t.Errorf("closed frontmatter must stay metadata:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
+	}
+}
+
+// TestProseLinesReadsARuledDocumentWhole: a document that opens with a "---"
+// rule and repeats one later has no frontmatter unless the block between the
+// two reads as YAML (iss-2609251940383450), so its prose is read, not dropped
+// up to the later rule. Frontmatter with list items, continuations, comments
+// and a blank line stays metadata.
+func TestProseLinesReadsARuledDocumentWhole(t *testing.T) {
+	root := docsFixture(t)
+	writeFile(t, root, "docs/ruled.md", "---\n\nThe verb no longer writes a receipt.\n\n<!-- BEGIN ABCD -->\n\n---\n\nAfter the rule.\n")
+	writeFile(t, root, "docs/front.md", "---\n# metadata\ntitle: Front\ntags:\n  - one\n- two\n\ndescription: >\n  The verb no longer writes a receipt.\n---\n\n# Front\n\nThe tool reads the record.\n")
+
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	for _, want := range [][]string{
+		{"change-narration", "docs/ruled.md:3", "no longer"},
+		{"marker-block", "docs/ruled.md:5", "never closed"},
+	} {
+		if !anyContains(report.WouldRefuseOn, want...) {
+			t.Errorf("a ruled document was dropped up to its later rule; missing %v:\n%s", want, strings.Join(report.WouldRefuseOn, "\n"))
+		}
+	}
+	if anyContains(report.WouldRefuseOn, "docs/front.md") {
+		t.Errorf("YAML frontmatter must stay metadata:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
 	}
 }

@@ -49,7 +49,8 @@ form stays inside the naming discipline.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
-refused that way, and `abcd help` prints the framework's usage text and exits 0.
+refused that way, and `abcd help` prints the grouped verb list the
+[register](README.md#how-the-help-lists-the-verbs) describes and exits 0.
 A shape-matching record id found in no store is a structural fault: the command
 exits non-zero with a diagnostic naming the store it searched, never a silent
 fall-through to the snapshot. When the id is in no store here but a peer holds
@@ -222,8 +223,10 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 | Flag | Type |
 |---|---|
+| `--agent` | bool |
 | `--json` | bool |
 | `--no-color` | bool |
+| `--version` | bool |
 
 ### `abcd mode`
 

@@ -25,11 +25,13 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 | `cite` | — | shipped |
 | `cite confirm` | — | shipped |
 | `cite refresh` | — | shipped |
-| `lint` | lint | shipped |
 
 
-- **The lint** reports the findings and writes nothing. The plugin command
-  invokes its JSON form and summarises the result. The result carries
+- **The lint** is the docs target of the one lint
+  ([`16-lint.md`](16-lint.md), itd-2609212130136102); its contract stays in this
+  chapter beside the citation baseline it enforces. It reports the findings and
+  writes nothing. The lint's plugin command invokes its JSON form and summarises
+  the result. The result carries
   `checks`, the number of banned tokens and enabled rules the configuration
   armed, and `documents`, the number of markdown documents its roots hold for
   the per-document rules to read. A lint that checked nothing (no rule armed,
@@ -144,7 +146,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd docs`
 
-Sub-verbs: `abcd docs cite`, `abcd docs lint`.
+Sub-verbs: `abcd docs cite`.
 
 Flags: none.
 
@@ -171,16 +173,6 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--config` | string |
-| `--root` | string |
-
-### `abcd docs lint`
-
-Sub-verbs: none.
-
-| Flag | Type |
-|---|---|
-| `--config` | string |
-| `--release-gate` | bool |
 | `--root` | string |
 
 <!-- surface-appendix:end -->

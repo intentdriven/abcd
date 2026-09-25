@@ -19,12 +19,12 @@ import (
 // declared (the composition manifest, the interface-string allowlist, the
 // reference baseline) and what the last build left in the output directory.
 // `site build` renders: the landing page and record.json from repository text
-// and committed assets, into a directory the repository does not track.
+// and committed assets, into a directory the repository does not track. The
+// gate over what it rendered is `abcd lint site`.
 func newSiteCommand(asJSON *bool) *cobra.Command {
 	siteCmd := &cobra.Command{
-		Use:   "site",
-		Short: "The website rendered from this repository: what is declared, and what was built (read-only)",
-		Args:  cobra.NoArgs,
+		Use:  "site",
+		Args: cobra.NoArgs,
 	}
 
 	var statusOut string
@@ -47,9 +47,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	var version, commit, stampDate string
 	var preview bool
 	buildCmd := &cobra.Command{
-		Use:   "build",
-		Short: "Render the site into the output directory (writes nothing outside it)",
-		Args:  cobra.NoArgs,
+		Use:  "build",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -76,11 +75,21 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	buildCmd.MarkFlagsMutuallyExclusive("preview", "version")
 	siteCmd.AddCommand(buildCmd)
 
+	// The gate over the built site is `abcd lint site` (itd-2609212130136102);
+	// `site check` answers with it for one release.
+	siteCmd.AddCommand(movedStub("check", "abcd lint site"))
+
+	return siteCmd
+}
+
+// newLintSiteCommand builds `lint site`: the gates adr-47 decision 3 arms, run
+// over a built output directory, rendering it first when it holds no
+// index.html. It exits 1 when any gate fails, so a release job can stop on it.
+func newLintSiteCommand(asJSON *bool) *cobra.Command {
 	var checkOut string
 	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "Gate the built site: provenance, hero drift, banned tokens, snippets, the reference ratchet, mobile and figure labels",
-		Args:  cobra.NoArgs,
+		Use:  "site",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -88,7 +97,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := site.Check(site.CheckRequest{RepoRoot: cwd, OutDir: checkOut})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd site check: " + scrubPaths(err)}
+				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				renderSiteCheck(w, res)
@@ -102,15 +111,14 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	checkCmd.Flags().StringVar(&checkOut, "out", site.DefaultOutDir, "built output directory to check (rendered first if absent)")
-	siteCmd.AddCommand(checkCmd)
 
-	return siteCmd
+	return checkCmd
 }
 
 // renderSiteCheck prints every failure, grouped by the gate that raised it, and
 // the shrink invitations that are news rather than failures.
 func renderSiteCheck(w io.Writer, res site.CheckResult) {
-	fmt.Fprintf(w, "abcd site check — %s\n", termsafe.Sanitize(res.OutDir))
+	fmt.Fprintf(w, "abcd lint site — %s\n", termsafe.Sanitize(res.OutDir))
 	if res.Built {
 		fmt.Fprintf(w, "  (rendered first: the output directory held no index.html)\n")
 	}

@@ -35,8 +35,7 @@ type peersOutput struct {
 // does not, before a session captures, fixes or files anything.
 func newPeersCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "peers",
-		Short: "List the records this checkout's sibling worktrees and local branches hold that it does not (read-only)",
+		Use: "peers",
 		Long: "List what this checkout's peers hold that it does not, before capturing, fixing or\n" +
 			"filing anything. A peer is a linked worktree sharing this repository's git\n" +
 			"common dir, read off its disk so an uncommitted capture is seen, or a local\n" +
