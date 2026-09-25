@@ -70,7 +70,14 @@ func writeCommandRef(b *strings.Builder, cmd *cobra.Command) {
 	if short := strings.TrimSpace(cmd.Short); short != "" {
 		fmt.Fprintf(b, "%s\n\n", short)
 	}
-	fmt.Fprintf(b, "**Usage:** `%s`\n\n", cmd.UseLine())
+	if successor := movedTo(cmd); successor != "" {
+		// A command whose bare form moved while its sub-verbs stayed: the bare
+		// spelling only refuses, so the usage offers the sub-verb form and the
+		// invocation that does the bare form's work (iss-2609251734069878).
+		fmt.Fprintf(b, "**Usage:** `%s [command]` (the bare form's work is `%s`)\n\n", cmd.CommandPath(), successor)
+	} else {
+		fmt.Fprintf(b, "**Usage:** `%s`\n\n", cmd.UseLine())
+	}
 
 	if long := strings.TrimSpace(cmd.Long); long != "" && long != strings.TrimSpace(cmd.Short) {
 		fmt.Fprintf(b, "%s\n\n", long)

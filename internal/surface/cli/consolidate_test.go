@@ -462,3 +462,35 @@ func TestReferenceNamesTheNewFormsOnly(t *testing.T) {
 		}
 	}
 }
+
+// TestReferenceUsageNeverOffersAMovedBareForm: a command whose bare form moved
+// while its sub-verbs stayed keeps its section, and its Usage line offers the
+// sub-verb form and the bare form's successor, never the bare spelling that
+// only refuses (iss-2609251734069878).
+func TestReferenceUsageNeverOffersAMovedBareForm(t *testing.T) {
+	ref := GenerateReference()
+	var moved []*cobra.Command
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		if movedTo(c) != "" && c.Deprecated == "" {
+			moved = append(moved, c)
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(NewRootCommand())
+	if len(moved) < 2 {
+		t.Fatalf("found %d commands whose bare form moved; `ahoy remote` and `identity` are two", len(moved))
+	}
+	for _, c := range moved {
+		path := c.CommandPath()
+		if strings.Contains(ref, "**Usage:** `"+path+"`\n") {
+			t.Errorf("the reference offers the refused bare form as %s's usage", path)
+		}
+		want := "**Usage:** `" + path + " [command]` (the bare form's work is `" + movedTo(c) + "`)"
+		if !strings.Contains(ref, want) {
+			t.Errorf("the reference's usage for %s is not %q", path, want)
+		}
+	}
+}

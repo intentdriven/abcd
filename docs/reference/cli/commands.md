@@ -80,7 +80,7 @@ Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the n
 
 Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.
 
-**Usage:** `abcd ahoy remote`
+**Usage:** `abcd ahoy remote [command]` (the bare form's work is `abcd ahoy --remote`)
 
 ##### `abcd ahoy remote apply`
 
@@ -714,7 +714,7 @@ Validate a host-composed gauntlet verdict: Writes the dated research record; ref
 
 Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.
 
-**Usage:** `abcd identity`
+**Usage:** `abcd identity [command]` (the bare form's work is `abcd lint identity`)
 
 #### `abcd identity init`
 
