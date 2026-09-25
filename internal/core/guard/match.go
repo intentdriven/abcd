@@ -333,6 +333,7 @@ func isAssignment(tok string) bool {
 // left to the literal compare, the same floor `flagMatches` names below.
 // `--forc?` and `--force*` spell the dash and still fire.
 func matchSegment(p Pattern, s segment) bool {
+	tally(len(s.tokens))
 	ci, noglob := commandIndex(s)
 	if ci < 0 {
 		return false

@@ -82,6 +82,7 @@ func (s segment) globSlice(lo, hi int) []bool {
 // (payload.go), never in this splitter — so a hazard hidden there is matched
 // (iss-200), while an uninspectable payload takes the family's posture.
 func tokenize(line string) ([]segment, error) {
+	tally(len(line))
 	var (
 		segs    []segment
 		toks    []string
@@ -758,7 +759,7 @@ func braceExpansionAt(line string, i int, budget *int) (group, exhausted bool) {
 		end, truncated = i+*budget, true
 	}
 	j := i
-	defer func() { *budget -= j - i }()
+	defer func() { *budget -= j - i; tally(j - i) }()
 
 	depth, expands := 0, false
 	for j < end {

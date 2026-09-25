@@ -3,7 +3,6 @@ package guard
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestUnquotedBraceGroupIsRefused is the repro for iss-2608221457227161. Bash
@@ -177,22 +176,19 @@ func TestBraceGroupIsRecordedOnTheSegment(t *testing.T) {
 // minutes on a 1 MiB command, which is inside the guard's own stdin cap. That is
 // a hang on the PreToolUse path, reachable by any command the agent is asked to
 // run. A shared budget bounds the total look-ahead per tokenize call, and
-// exhausting it is fail-closed.
+// exhausting it is fail-closed. The guard is a count of the bytes scanned, not a
+// wall-clock ceiling (iss-2609240046582859).
 func TestBraceScanStaysLinear(t *testing.T) {
-	line := "echo " + strings.Repeat("{", 1<<20)
-	start := time.Now()
-	segs, err := tokenize(line)
-	elapsed := time.Since(start)
+	build := func(n int) string { return "echo " + strings.Repeat("{", n) }
+	assertWorkGrowth(t, build, 1<<18, "the brace look-ahead's shared braceScanBudget")
+	segs, err := tokenize(build(1 << 20))
 	if err != nil {
 		t.Fatalf("tokenize: %v", err)
 	}
-	if elapsed > 5*time.Second {
-		t.Errorf("tokenizing a %d-byte word of braces took %v, want well under 5s (quadratic-scan regression)", len(line), elapsed)
-	}
 	// Exhausting the budget means the scan can no longer tell a group from a
-	// literal, and a guard that cannot tell says group.
+	// literal, and a guard that cannot tell refuses the segment.
 	if len(segs) == 0 || !segs[0].braceGroup {
-		t.Errorf("a brace word past the scan budget must be refused, not waved through: %+v", segs)
+		t.Errorf("a brace word past the scan budget must be refused, not waved through: %d segments", len(segs))
 	}
 }
 
