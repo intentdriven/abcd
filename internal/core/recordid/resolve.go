@@ -154,6 +154,11 @@ func canonADRNum(re *regexp.Regexp, s string) string {
 // because the caller fails closed on the error.
 const maxScanEntries = 20000
 
+// IssuesRelDir is the issue ledger's root under a repository, repo-relative and
+// slash-separated. It is the one spelling: every package that reaches the ledger
+// names it through this constant, so a move of the ledger is one edit.
+const IssuesRelDir = ".abcd/work/issues"
+
 // familyRoots names each id-bearing family's store, repo-relative and
 // slash-separated. Written once, in the order a reader expects them.
 var familyRoots = []struct {
@@ -162,7 +167,7 @@ var familyRoots = []struct {
 }{
 	{"itd", ".abcd/development/intents"},
 	{"spc", ".abcd/development/specs"},
-	{"iss", ".abcd/work/issues"},
+	{"iss", IssuesRelDir},
 	{"adr", ".abcd/development/decisions/adrs"},
 }
 

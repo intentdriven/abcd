@@ -48,7 +48,7 @@ const (
 // ledgerRelDir is where the issues root sits under a repository, so
 // ResolveOccasion reaches the reading ledger from the repository root it is
 // handed.
-const ledgerRelDir = ".abcd/work/issues"
+const ledgerRelDir = recordid.IssuesRelDir
 
 // Paths returns every file in the ledger that claims item, across all run
 // directories. Zero matches means the id is free; one is the ordinary case;

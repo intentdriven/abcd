@@ -3,6 +3,7 @@ package recordid
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -244,5 +245,39 @@ func TestLookupOneReadsOnlyTheIdsFamily(t *testing.T) {
 		if _, ok, err := LookupOne(root, id); ok || err != nil {
 			t.Errorf("LookupOne(%q) = %v %v, want an id outside every family to resolve to nothing", id, ok, err)
 		}
+	}
+}
+
+// TestIssuesLedgerRootIsSpelledOnce: the issue ledger's repo-relative root is
+// the one constant IssuesRelDir, and no other non-test source under internal/
+// spells it as a literal, so a move of the ledger is one edit.
+func TestIssuesLedgerRootIsSpelledOnce(t *testing.T) {
+	if IssuesRelDir != ".abcd/work/issues" {
+		t.Fatalf("IssuesRelDir = %q", IssuesRelDir)
+	}
+	literal := `"` + IssuesRelDir + `"`
+	internalRoot := filepath.Join("..", "..")
+	var spelled []string
+	err := filepath.WalkDir(internalRoot, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), literal) && filepath.ToSlash(p) != "../../core/recordid/resolve.go" {
+			spelled = append(spelled, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spelled) != 0 {
+		t.Errorf("the ledger root is spelled as a literal outside recordid.IssuesRelDir in %v", spelled)
 	}
 }
