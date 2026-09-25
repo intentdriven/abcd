@@ -36,7 +36,6 @@ import (
 const (
 	routeDashboard    = "record/"
 	routeGraph        = "record/graph/"
-	routeTimeline     = "record/timeline/"
 	routeFoundations  = "record/foundations/"
 	routeDevelopment  = "record/development/"
 	routeHealth       = "record/health/"

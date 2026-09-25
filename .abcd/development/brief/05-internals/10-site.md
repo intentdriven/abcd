@@ -51,8 +51,9 @@ intents:
   the body verbatim, typed links phrased from that record's own side, and the
   forge links to the file and to its commit history), `/record/graph/` (the
   chart's stage and its list twin, driven by `site-src/record.js`, reading
-  `?focus=<id>`), `/record/timeline/` (the five-lane genealogy as one static SVG
-  emitted in Go), `/record/foundations/` (principles and disciplines as cards
+  `?focus=<id>`), the genealogy (one static SVG emitted in Go, folded shut into
+  the `/record/` dashboard rather than served as a page of its own),
+  `/record/foundations/` (principles and disciplines as cards
   that list and link), `/contributors/` and `/references/`. The bibliography is
   rendered by a stdlib CSL-JSON formatter and numbered identically to
   `ACKNOWLEDGEMENTS.md`, with a build check that the two agree entry for entry.
