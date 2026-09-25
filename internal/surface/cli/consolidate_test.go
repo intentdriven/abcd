@@ -12,6 +12,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/repolint"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // consolidate_test.go holds itd-2609212130136102: ahoy's three modes become
@@ -199,12 +201,73 @@ func TestAhoyRemoteFlagReportsTheRemoteSettings(t *testing.T) {
 }
 
 // TestAhoyModeFlagsAreExclusive: the modes are one act each, so two at once is
-// a usage error rather than one silently winning.
+// a usage error rather than one silently winning, and it exits 2 like every
+// usage error, so a gate reading exit 1 as a finding never mistakes a mis-spelt
+// invocation for one (iss-2609251734057081).
 func TestAhoyModeFlagsAreExclusive(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
-	if out, err := runCLIErr(t, "ahoy", "--dry-run", "--remote"); err == nil {
-		t.Fatalf("`abcd ahoy --dry-run --remote` must refuse:\n%s", out)
+	for _, pair := range [][]string{{"--dry-run", "--remote"}, {"--dry-run", "--identity"}, {"--identity", "--remote"}} {
+		args := append([]string{"ahoy"}, pair...)
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code != 2 {
+			t.Errorf("`abcd %s` exited %d, want the usage-error 2:\n%s%s", strings.Join(args, " "), code, stdout.String(), stderr.String())
+		}
+	}
+}
+
+// TestEveryExclusiveFlagGroupRefusesAsAUsageError walks the executed tree for
+// every mutually exclusive flag group and sets two of its flags at once: each
+// refusal is cobra's group refusal and exits 2, in both renders, whichever verb
+// declared the group (iss-2609251734057081).
+func TestEveryExclusiveFlagGroupRefusesAsAUsageError(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	type group struct {
+		path  []string
+		flags []string
+	}
+	var groups []group
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		seen := map[string]bool{}
+		c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			for _, g := range f.Annotations["cobra_annotation_mutually_exclusive"] {
+				if !seen[g] {
+					seen[g] = true
+					path := strings.Fields(c.CommandPath())[1:]
+					groups = append(groups, group{path: path, flags: strings.Fields(g)})
+				}
+			}
+		})
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(NewRootCommand())
+	if len(groups) < 3 {
+		t.Fatalf("found %d exclusive flag groups; ahoy, update and site build declare one each", len(groups))
+	}
+	root := NewRootCommand()
+	for _, g := range groups {
+		args := append([]string{}, g.path...)
+		for _, name := range g.flags[:2] {
+			args = append(args, "--"+name)
+			if f := findByPath(root, g.path).Flags().Lookup(name); f.Value.Type() != "bool" {
+				args = append(args, "v0.0.0")
+			}
+		}
+		for _, render := range [][]string{nil, {"--json"}} {
+			argv := append(append([]string{}, args...), render...)
+			var stdout, stderr bytes.Buffer
+			code := Run(argv, &stdout, &stderr)
+			if code != 2 {
+				t.Errorf("`abcd %s` exited %d, want the usage-error 2", strings.Join(argv, " "), code)
+			}
+			if out := stdout.String() + stderr.String(); !strings.Contains(out, "none of the others can be") {
+				t.Errorf("`abcd %s` did not refuse on the flag group:\n%s", strings.Join(argv, " "), out)
+			}
+		}
 	}
 }
 

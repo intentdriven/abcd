@@ -437,6 +437,10 @@ func NewRootCommand() *cobra.Command {
 // are routed through FlagErrorFunc (inherited by children, but set on each for
 // clarity); argument-validation errors (cobra.NoArgs violations, unknown
 // subcommands) surface from each command's Args validator, which is wrapped.
+// Flag-group errors (two flags of a mutually exclusive group set at once) come
+// from neither: cobra checks the groups after PreRunE and returns a plain
+// error, so each command's PreRunE runs that same check first and tags its
+// refusal (iss-2609251734057081).
 //
 // A validator that ALREADY chose an exit code keeps it. Exit 2 is the right
 // default for a usage error, but it is not universal: on the hook plane 2 is the
@@ -458,6 +462,21 @@ func markUsageErrorsExitTwo(c *cobra.Command) {
 			}
 			return nil
 		}
+	}
+	preRunE, preRun := c.PreRunE, c.PreRun
+	c.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return &exitError{Code: 2, Msg: err.Error()}
+		}
+		if preRunE != nil {
+			return preRunE(cmd, args)
+		}
+		if preRun != nil {
+			// cobra runs PreRun only when PreRunE is unset, so the one this
+			// wrapper replaces is called here.
+			preRun(cmd, args)
+		}
+		return nil
 	}
 	for _, sub := range c.Commands() {
 		markUsageErrorsExitTwo(sub)
