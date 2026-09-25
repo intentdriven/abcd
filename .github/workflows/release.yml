@@ -645,12 +645,15 @@ jobs:
           date="$(date -u +%Y-%m-%d)"
           # Content commit on a scratch branch: simulate rolling [Unreleased] into a
           # dated heading — the reviewed content commit a real release names.
+          # The heading is a plain vX.Y.Z (0.0.0, below every real release): the
+          # gate's reader refuses a newest heading it cannot parse, so a
+          # pre-release spelling here would refuse the rehearsal.
           git switch -q -c rehearsal-sim
           if grep -q '^## \[Unreleased\]' CHANGELOG.md 2>/dev/null; then
-            awk -v d="$date" '1; /^## \[Unreleased\]/ && !done {print ""; print "## [0.0.0-rehearsal] - " d; done=1}' CHANGELOG.md > CHANGELOG.rehearsal
+            awk -v d="$date" '1; /^## \[Unreleased\]/ && !done {print ""; print "## [0.0.0] - " d; done=1}' CHANGELOG.md > CHANGELOG.rehearsal
             mv CHANGELOG.rehearsal CHANGELOG.md
           else
-            printf '\n## [0.0.0-rehearsal] - %s\n' "$date" >> CHANGELOG.md
+            printf '\n## [0.0.0] - %s\n' "$date" >> CHANGELOG.md
           fi
           git add -A
           git commit -q -m 'rehearsal: simulated changelog roll (content commit)'

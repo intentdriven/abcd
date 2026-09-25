@@ -75,12 +75,30 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 		return "", fmt.Errorf("release-gate: no receipts directory under %s names a commit on the released lineage; the semantic gate has nothing to arm (fail-closed)", reviewsSubdir)
 	}
 
-	// Nearest ancestor wins: the fewest commits between a candidate and the
-	// released commit is this release's content commit; every earlier release's
-	// receipts sit further back on the shared first-parent history. Two candidates
-	// equidistant from `released` make the content commit ambiguous — fail closed
-	// rather than pick one.
+	// The receipts must be THIS release's, and the content commit a release's
+	// receipts name is the commit that rolled the CHANGELOG to this release's
+	// version, so it carries the released tree's own newest release version. The
+	// released tree must name one, strictly read: with no version to bind, an
+	// earlier commit's receipts (which carry none either) would match on two
+	// empty strings (iss-2609251939461459), and a head the reader skips — a
+	// pre-release, say — would bind to the PREVIOUS release, whose PROMOTE
+	// receipts would then admit this one (iss-2609251939468296).
+	want, err := releasedVersionAt(root, released)
+	if err != nil {
+		return "", err
+	}
+
+	// Filter by version FIRST, then take the nearest (iss-2609251939460232). A
+	// receipts directory carrying another version is not this release's, however
+	// near it sits: a co-batched pull request branched before the roll carries
+	// its own commit-keyed directory at the previous version, and judging only
+	// the nearest candidate would let it tie with, or shadow, the roll's own
+	// receipts and wedge a correct cut. Among the candidates that carry this
+	// release's version, the fewest commits between a candidate and the released
+	// commit wins; two equidistant ones make the content commit ambiguous, and
+	// the derivation fails closed rather than pick one.
 	best, bestCount, tie := "", -1, false
+	nearest, nearestCount, nearestVersion := "", -1, ""
 	for _, c := range candidates {
 		out, err := gitutil.Run(root, "rev-list", "--count", c+".."+released)
 		if err != nil {
@@ -90,6 +108,16 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("release-gate: parsing distance from receipt commit %s: %w", c, err)
 		}
+		got, err := candidateVersionAt(root, c)
+		if err != nil {
+			return "", err
+		}
+		if nearestCount == -1 || n < nearestCount {
+			nearest, nearestCount, nearestVersion = c, n, got
+		}
+		if got != want {
+			continue
+		}
 		switch {
 		case bestCount == -1 || n < bestCount:
 			best, bestCount, tie = c, n, false
@@ -97,29 +125,15 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 			tie = true
 		}
 	}
-	if tie {
-		return "", fmt.Errorf("release-gate: two receipts directories are equidistant from the released commit; the content commit is ambiguous (fail-closed)")
-	}
-
-	// Nearest is not enough: the nearest receipts directory can be an EARLIER
-	// release's, when this release recorded none of its own, and its PROMOTE
-	// receipts would then admit a release nobody reviewed (iss-2609251755386183).
-	// The content commit a release's receipts name is the commit that rolled the
-	// CHANGELOG to this release's version, so it carries the released tree's own
-	// newest dated version. A candidate carrying any other version is not this
-	// release's content commit, and the derivation fails closed on it.
-	want, err := releaseVersionAt(root, released)
-	if err != nil {
-		return "", err
-	}
-	got, err := releaseVersionAt(root, best)
-	if err != nil {
-		return "", err
-	}
-	if got != want {
+	if best == "" {
+		// The nearest receipts directory can be an EARLIER release's, when this
+		// release recorded none of its own (iss-2609251755386183); name it.
 		return "", fmt.Errorf("release-gate: the nearest receipts directory names %s, whose newest CHANGELOG version is %s, "+
 			"not this release's %s; no receipts directory names this release's content commit (fail-closed)",
-			best, versionOrNone(got), versionOrNone(want))
+			nearest, versionOrNone(nearestVersion), want)
+	}
+	if tie {
+		return "", fmt.Errorf("release-gate: two receipts directories carrying %s are equidistant from the released commit; the content commit is ambiguous (fail-closed)", want)
 	}
 
 	// Return the full 40/64-hex sha so the armed gate's receiptShaRe check and the
@@ -163,26 +177,58 @@ func receiptDirNames(root, released string) ([]string, error) {
 	return names, nil
 }
 
-// releaseVersionAt reads the newest dated CHANGELOG version out of rev's tree
-// — the version auto-release tags when rev is released. "" means rev carries no
-// CHANGELOG.md or no dated heading in it; an unreadable blob or a malformed
-// heading is an error, never a silent "".
-func releaseVersionAt(root, rev string) (string, error) {
-	if _, err := gitutil.Run(root, "cat-file", "-e", rev+":CHANGELOG.md"); err != nil {
-		return "", nil
-	}
-	blob, err := gitutil.Run(root, "cat-file", "blob", rev+":CHANGELOG.md")
+// releasedVersionAt reads the version the released tree names, strictly:
+// the tree must carry a CHANGELOG.md whose newest release heading is a dated
+// vX.Y.Z heading (changelog.ReleasedVersionIn). A missing file, no release
+// heading, or a head the reader cannot parse each refuses — never a silent "",
+// which would bind the receipts to nothing.
+func releasedVersionAt(root, released string) (string, error) {
+	blob, present, err := changelogAt(root, released)
 	if err != nil {
-		return "", fmt.Errorf("release-gate: reading CHANGELOG.md at %s: %w", rev, err)
+		return "", err
 	}
-	v, found, err := changelog.LatestVersionIn([]byte(blob))
+	if !present {
+		return "", fmt.Errorf("release-gate: the released tree %s carries no CHANGELOG.md, so it names no release version to bind receipts to (fail-closed)", released)
+	}
+	v, found, err := changelog.ReleasedVersionIn([]byte(blob))
 	if err != nil {
-		return "", fmt.Errorf("release-gate: CHANGELOG.md at %s: %w", rev, err)
+		return "", fmt.Errorf("release-gate: CHANGELOG.md at %s: %w; the receipts cannot be bound to a version the tagger never reads (fail-closed)", released, err)
 	}
 	if !found {
+		return "", fmt.Errorf("release-gate: CHANGELOG.md at %s names no dated release, so there is no release version to bind receipts to (fail-closed)", released)
+	}
+	return v.String(), nil
+}
+
+// candidateVersionAt reads the version a receipts candidate carries, by the
+// same strict reader. A candidate that names no readable release version cannot
+// be this release's content commit, so absence and an unreadable head are both
+// "" — a non-match against the released version, which is never empty — rather
+// than an error that would let one stray commit wedge every later cut. Only a
+// git failure is returned.
+func candidateVersionAt(root, rev string) (string, error) {
+	blob, present, err := changelogAt(root, rev)
+	if err != nil || !present {
+		return "", err
+	}
+	v, found, err := changelog.ReleasedVersionIn([]byte(blob))
+	if err != nil || !found {
 		return "", nil
 	}
 	return v.String(), nil
+}
+
+// changelogAt reads CHANGELOG.md out of rev's tree. present=false means rev
+// carries no such file; an unreadable blob is an error.
+func changelogAt(root, rev string) (string, bool, error) {
+	if _, err := gitutil.Run(root, "cat-file", "-e", rev+":CHANGELOG.md"); err != nil {
+		return "", false, nil
+	}
+	blob, err := gitutil.Run(root, "cat-file", "blob", rev+":CHANGELOG.md")
+	if err != nil {
+		return "", false, fmt.Errorf("release-gate: reading CHANGELOG.md at %s: %w", rev, err)
+	}
+	return blob, true, nil
 }
 
 // versionOrNone renders a release version for a refusal, naming its absence.

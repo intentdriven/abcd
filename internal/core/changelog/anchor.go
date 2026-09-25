@@ -1,6 +1,8 @@
 package changelog
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -154,6 +156,42 @@ func LatestVersionIn(data []byte) (launch.Semver, bool, error) {
 			return launch.Semver{}, false, err
 		}
 		return v, true, nil
+	}
+	return launch.Semver{}, false, nil
+}
+
+// releaseHeadingPrefix opens every Keep-a-Changelog version heading, dated or
+// not, and unreleasedHeading is the one such heading that names no release.
+const (
+	releaseHeadingPrefix = "## ["
+	unreleasedHeading    = "## [Unreleased]"
+)
+
+// ErrUnreadableReleaseHeading is returned by ReleasedVersionIn when the newest
+// release heading is one the dated-heading reader does not parse.
+var ErrUnreadableReleaseHeading = errors.New("the newest CHANGELOG release heading is not a dated vX.Y.Z heading")
+
+// ReleasedVersionIn is the strict reading of the version a released tree names,
+// for a caller that BINDS something to that version rather than merely reports
+// it. LatestVersionIn skips every heading datedHeadingRe does not match, which is
+// right for a preview but wrong for a binding: a pre-release head ("## [1.0.0-rc.1]
+// - …"), a build-metadata head or an undated version head would be skipped, and
+// the reader would answer with the PREVIOUS release's version.
+//
+// So this reader takes the newest "## [" heading other than "## [Unreleased]"
+// and requires it to be a dated heading LatestVersionIn parses; anything else is
+// ErrUnreadableReleaseHeading, naming the line. found=false means the file names
+// no release heading at all, which the caller decides about.
+func ReleasedVersionIn(data []byte) (launch.Semver, bool, error) {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if !strings.HasPrefix(line, releaseHeadingPrefix) || strings.HasPrefix(line, unreleasedHeading) {
+			continue
+		}
+		if !datedHeadingRe.MatchString(line) {
+			return launch.Semver{}, false, fmt.Errorf("%w: %q", ErrUnreadableReleaseHeading, line)
+		}
+		return LatestVersionIn([]byte(line))
 	}
 	return launch.Semver{}, false, nil
 }

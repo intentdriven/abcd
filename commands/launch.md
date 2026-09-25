@@ -621,9 +621,14 @@ the commit it names, because adding it would change that commit's sha. So:
 2. **The receipts** — a commit recording the semantic verdicts that name commit 1.
 
 On merge, `release.yml` derives the content commit from the receipts directory
-of the released tree: the nearest commit on the released lineage that a
-`.abcd/work/reviews/<sha>/` directory names, which must carry this release's own
-CHANGELOG version — an earlier release's receipts never stand in for this one's.
+of the released tree: of the commits on the released lineage that a
+`.abcd/work/reviews/<full-sha>/` directory names, the nearest one carrying this
+release's own CHANGELOG version. A directory carrying another version is passed
+over, so an earlier release's receipts never stand in for this one's and a
+batch-mate's receipts never shadow them. The released tree's newest release
+heading must be a dated `## [X.Y.Z] - <date>` heading: a pre-release or undated
+head, or a tree with no dated release, refuses, because there is no version to
+bind the receipts to.
 A one-commit branch breaks this: no receipt can name the commit that carries it,
 so the release has no receipts for its content and the gate refuses.
 

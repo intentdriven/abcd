@@ -93,9 +93,13 @@ change that commit's sha). So the release branch is two commits: the CHANGELOG
 roll (the reviewed content commit), then the receipts naming it. On merge,
 `release.yml` arms the gate with the **content** commit, derived from the
 receipts directory of the released tree — the nearest commit a
-`.abcd/work/reviews/<sha>/` entry names, which must carry this release's own
-CHANGELOG version — so the receipt-vs-tag self-reference never blocks the
-release, and an earlier release's receipts never stand in for this one's.
+`.abcd/work/reviews/<full-sha>/` entry names among those carrying this
+release's own CHANGELOG version — so the receipt-vs-tag self-reference never
+blocks the release, an earlier release's receipts never stand in for this
+one's, and a batch-mate's receipts never shadow them. The released tree's
+newest release heading must be a dated `## [X.Y.Z] - <date>` heading; a
+pre-release or undated head refuses, because there is no version to bind the
+receipts to.
 
 Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.json`. A receipt is
 bound to its gate by its `policy.detector` value, not its filename, so one
