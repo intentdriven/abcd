@@ -27,6 +27,7 @@ package reading
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -34,6 +35,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 )
 
 // PresetConfigPath is the committed preset configuration. It is the ONE place a
@@ -497,7 +500,7 @@ func joinVersions() string {
 // naming them, because nothing at the invocation can choose between them and
 // the design admits no operand that could (cond-2609021004074586).
 func decodeV1(raw []byte) (PresetFile, error) {
-	if err := refuseDuplicateKeys(raw, "presets"); err != nil {
+	if err := refuseDuplicateKeys(raw); err != nil {
 		return PresetFile{}, err
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
@@ -538,7 +541,7 @@ func decodeV1(raw []byte) (PresetFile, error) {
 
 // decodeV2 reads the current shape: one entry per position at the top level.
 func decodeV2(raw []byte) (PresetFile, error) {
-	if err := refuseDuplicateKeys(raw, "positions"); err != nil {
+	if err := refuseDuplicateKeys(raw); err != nil {
 		return PresetFile{}, err
 	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
@@ -603,58 +606,33 @@ func validPresetName(name string) error {
 	return nil
 }
 
-// refuseDuplicateKeys refuses the named top-level object naming one key twice.
+// refuseDuplicateKeys refuses a preset file naming one key twice, at any depth.
 //
 // Go's JSON decoder takes the LAST duplicate silently, and DisallowUnknownFields
 // says nothing about duplicates. Against the one file whose entire safety
 // argument is that a human reviewed it, silent last-wins is a review-evasion
 // vector: a second `"detection"` block low in the file replaces the reviewed
-// one, and a reviewer reading top-down sees the first.
-//
-// The container is named by the caller because the two schema versions put the
-// keys in different places — `presets` at version 1, `positions` at version 2 —
-// and one check over whichever container the version uses is better than two
-// that can drift apart.
-func refuseDuplicateKeys(raw []byte, container string) error {
-	if !json.Valid(raw) {
-		return nil // the strict decode below reports the real parse error
+// one, a second `"kinds"` inside a reviewed entry replaces its kinds, and a
+// reviewer reading top-down sees the first. The check is the canonical one
+// (jsonstrict), so a repeat is judged the way encoding/json binds a key: a case
+// twin (`"Kinds"` after `"kinds"`) is the same field to the decoder, and is
+// refused as a repeat. Both schema versions go through it, whichever container
+// holds their entries.
+func refuseDuplicateKeys(raw []byte) error {
+	var dk *jsonstrict.DuplicateKeyError
+	if err := jsonstrict.NoDuplicateKeys(raw); !errors.As(err, &dk) {
+		return err
 	}
-	seen := map[string]int{}
-	dec := json.NewDecoder(strings.NewReader(string(raw)))
-	depth := 0
-	inside := false
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			break
-		}
-		switch t := tok.(type) {
-		case json.Delim:
-			switch t {
-			case '{':
-				depth++
-			case '}':
-				depth--
-				if depth <= 1 {
-					inside = false
-				}
-			}
-		case string:
-			if depth == 1 && t == container {
-				inside = true
-				continue
-			}
-			if inside && depth == 2 {
-				seen[t]++
-				if seen[t] > 1 {
-					return fmt.Errorf("%s names %q more than once under %q; the last would win "+
-						"silently, so a reviewed block could be replaced by one further down the file",
-						PresetConfigPath, t, container)
-				}
-			}
-		}
+	where := "at the top level"
+	if len(dk.Path) > 0 {
+		where = fmt.Sprintf("under %q", strings.Join(dk.Path, "."))
 	}
-	return nil
+	spelt := ""
+	if dk.Key != dk.First {
+		spelt = fmt.Sprintf(", the second time as %q, a spelling encoding/json binds to the same key", dk.Key)
+	}
+	return fmt.Errorf("%s names %q more than once %s%s; the last would win silently, so a reviewed "+
+		"block could be replaced by one further down the file", PresetConfigPath, dk.First, where, spelt)
 }
 
 // validateEntries refuses a configuration that could not mean one thing. It

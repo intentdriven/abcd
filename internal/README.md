@@ -94,6 +94,14 @@ plugin surface, and a future MCP server share one engine.
   the root the rules loader resolves, so rules, guard and configuration never
   come from two directories. A present file it cannot read, or a key nobody
   claims inside a claimed namespace, is an error, never a quiet default.
+- **`core/jsonstrict/`** — the one duplicate-key check for JSON a trust
+  boundary reads: the rules overlay, the release-gate receipts, the layered
+  configuration files and the reading presets all refuse a repeated object key
+  through it before they unmarshal, rather than reading it last-wins. A repeat
+  is judged the way `encoding/json` binds a key to a struct field, after
+  unescaping and case-insensitively under Unicode simple folding, so a case twin
+  counts; the refusal names both spellings and where they sit, and each caller
+  phrases its own message from those fields.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier
