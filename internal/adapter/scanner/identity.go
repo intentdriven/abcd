@@ -767,12 +767,121 @@ func standsAsAccountName(line string, start, end int, homes []string) bool {
 	if start > 0 && line[start-1] == '~' {
 		return true
 	}
+	if afterBareHomeRoot(line, start) || afterAccountKey(line, start) || afterAccountCommand(line, start) {
+		return true
+	}
 	hi := end
 	for hi < len(line) && hi-end < maxLocalPart && isLocalPartByte(line[hi]) {
 		hi++
 	}
 	scanMeter.charge(stageIdentity, hi-end)
 	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
+}
+
+// bareHomeRoots are the home roots an archive listing or a relative path
+// writes without the leading separator ("Users/<login>/Desktop" in a tar
+// listing, "home/<login>/.config").
+var bareHomeRoots = []string{"users/", "home/"}
+
+// afterBareHomeRoot reports whether a bare home root ends at start and itself
+// begins a token: at the line's start or after a byte that cannot continue a
+// path. Deeper in a path the leading-slash spellings in accountRootPrefixes
+// already answer.
+func afterBareHomeRoot(line string, start int) bool {
+	for _, p := range bareHomeRoots {
+		if endsWithFold(line[:start], p) {
+			at := start - len(p)
+			return at == 0 || !isPathSegmentByte(line[at-1])
+		}
+	}
+	return false
+}
+
+// accountKeys are the keys a shell environment, a config file or a JSON
+// object names a login under.
+var accountKeys = map[string]bool{"user": true, "username": true, "login": true, "logname": true}
+
+// maxKeyGap bounds the blanks afterAccountKey and afterAccountCommand read
+// between the tokens they look for, so the walk back from a match stays a
+// constant.
+const maxKeyGap = 8
+
+// afterAccountKey reports whether the match is the value of a key that names a
+// login: USER=<login>, LOGNAME=<login>, "username: <login>", "login: <login>",
+// a JSON "user": "<login>", a --user=<login> flag — the key, optionally
+// quoted, then ':' or '=', blanks, and an optional quote before the value.
+func afterAccountKey(line string, start int) bool {
+	i := start
+	if i > 0 && (line[i-1] == '"' || line[i-1] == '\'') {
+		i--
+	}
+	i = skipBlanksBack(line, i)
+	if i == 0 || (line[i-1] != ':' && line[i-1] != '=') {
+		return false
+	}
+	i = skipBlanksBack(line, i-1)
+	if i > 0 && (line[i-1] == '"' || line[i-1] == '\'') {
+		i--
+	}
+	j := i
+	for j > 0 && i-j < len("username") && isAlnumByte(line[j-1]) {
+		j--
+	}
+	scanMeter.charge(stageIdentity, start-j)
+	if j > 0 && isWordByte(line[j-1]) {
+		return false // the key is the tail of a longer word ("superuser: …")
+	}
+	return accountKeys[strings.ToLower(line[j:i])]
+}
+
+// accountCommands take an account as their first operand: su switches to it,
+// chown gives a file to it.
+var accountCommands = map[string]bool{"su": true, "chown": true}
+
+// maxCommandOptions bounds the option tokens afterAccountCommand steps over
+// between the command and the match ("chown -R", "su -l", "su -").
+const maxCommandOptions = 3
+
+// afterAccountCommand reports whether the match is the first operand of an
+// account command: the command word, any options, and the match — "su - <login>",
+// "su -l <login>", "chown -R <login>:staff". Only a whole command word counts,
+// and each step of the walk back is bounded.
+func afterAccountCommand(line string, start int) bool {
+	i := start
+	for n := 0; n <= maxCommandOptions; n++ {
+		k := skipBlanksBack(line, i)
+		if k == i || k == 0 {
+			return false // the operand must follow a blank, and something must precede it
+		}
+		j := k
+		for j > 0 && k-j < 32 && line[j-1] != ' ' && line[j-1] != '\t' {
+			j--
+		}
+		scanMeter.charge(stageIdentity, i-j)
+		tok := line[j:k]
+		if tok[0] == '-' {
+			i = j
+			continue // an option; the command is further back
+		}
+		if j > 0 && line[j-1] != ' ' && line[j-1] != '\t' {
+			return false // the token ran past the bound: not a command word
+		}
+		// A command word may carry the shell punctuation it is quoted in
+		// ("`su", "(chown", "$ su").
+		tok = strings.TrimLeft(tok, "`($")
+		return accountCommands[strings.ToLower(tok)]
+	}
+	return false
+}
+
+// skipBlanksBack returns the offset before the run of at most maxKeyGap
+// spaces and tabs that ends at i.
+func skipBlanksBack(line string, i int) int {
+	j := i
+	for j > 0 && i-j < maxKeyGap && (line[j-1] == ' ' || line[j-1] == '\t') {
+		j--
+	}
+	return j
 }
 
 // maxLocalPart is the longest local part an address can carry (RFC 5321

@@ -179,3 +179,48 @@ func TestLocalUsernameGenericAccountNameCaughtUnderAJSONEscapedWindowsRoot(t *te
 		t.Errorf("a word after an escaped separator was flagged as the account name: %+v", got)
 	}
 }
+
+// The positions a shell session or a config dump puts a login in are account
+// positions too (iss-2609251547568307): a home root with no leading slash, a
+// key/value pair naming the user, and the argument of a command that takes an
+// account. A generic login there is reported; the same word elsewhere stays
+// vocabulary.
+func TestLocalUsernameGenericAccountNameCaughtInShellAndConfigPositions(t *testing.T) {
+	pats := DefaultPatterns()
+	sev := DefaultIdentitySeverities()
+	id := Identity{HomeUser: "dev"}
+	for _, line := range []string{
+		"Users/dev/Desktop/notes.txt",      // abcd-audit:allow
+		"x  Users/dev/Library/Caches/a.db", // abcd-audit:allow
+		`"home/dev/.config/app.toml"`,      // abcd-audit:allow
+		"USER=dev",
+		"LOGNAME=dev",
+		"export USER='dev'",
+		"username: dev",
+		"login: dev",
+		`{"user": "dev", "shell": "/bin/zsh"}`,
+		"docker run --user=dev image",
+		"su - dev",
+		"su dev",
+		"sudo su -l dev",
+		"chown dev notes.txt",
+		"chown dev:staff notes.txt",
+		"chown -R dev:staff build/",
+	} {
+		got := ScanText(line, id, pats, sev, "f")
+		if !hasKind(got, kindLocalUser) {
+			t.Errorf("the account name in %q was not flagged: %+v", line, got)
+		}
+	}
+	for _, line := range []string{
+		"the user dev builds are unsigned",
+		"a sudo dev build",
+		"chown the dev tree later",
+		"superuser: developer",
+		"dev: the source build",
+	} {
+		if got := ScanText(line, id, pats, sev, "f"); hasKind(got, kindLocalUser) {
+			t.Errorf("ordinary vocabulary in %q flagged as the account name: %+v", line, got)
+		}
+	}
+}
