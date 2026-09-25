@@ -7,6 +7,10 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-189-fix-delta-ruthless"
 found_at: "internal/core/lint/schema_test.go"
+resolution: "The duplicate-key negative loop reads only that finding, capture.md's alias wording and spellings list are corrected, and items 1 and 4 left with the test removed in 3eb4b549."
+impact: internal
+resolved_by:
+  commit: "6eed91a6"
 ---
 
 four nits from the itd-189 fix delta review including an inverted test failure message and an over broad negative loop
@@ -37,3 +41,6 @@ Four nits from the itd-189 fix-delta ruthless review, settled at the ship commit
    pass -- and the doc's category framing ("a YAML null", "whitespace")
    arguably covers them. Folded here rather than given an id.
 
+## Grounds
+
+- pursued: an unrelated record_schema message on those paths no longer trips the loop, and every spelling capture.md lists is one the gate refuses; a listed spelling that passes would show it wrong
