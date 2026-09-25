@@ -1872,7 +1872,7 @@ type issueLedger struct {
 // and two rules configured alike scan one ledger, not two.
 func issuesDirOf(cfg RuleConfig) string {
 	if cfg.IssuesDir == "" {
-		return ".abcd/work/issues"
+		return recordid.IssuesRelDir
 	}
 	return cfg.IssuesDir
 }
