@@ -8,7 +8,7 @@ import (
 
 // A store declaring a bucketField is a bucketed store: checkRecordBucketField
 // compares the field with the bucket the record is filed under, and a flat
-// store declaring one would report "filed under ''" with nothing red
+// store declaring one would report "filed under ”" with nothing red
 // (iss-2608301634527391).
 func TestEveryStoreDeclaringABucketFieldDeclaresBuckets(t *testing.T) {
 	for _, s := range recordStores {
