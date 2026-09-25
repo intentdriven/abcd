@@ -163,6 +163,18 @@ func duplicateKeyReaderRows() []readerRow {
 		reader: "record.Describe → describeReframe → readRecordHead → frontmatter.Fields",
 		want:   keepsFirst,
 		probe:  probeReframeDescribe,
+	}, {
+		// The principles family (spc-2609020626042471). The rules that read a
+		// principle's claims read it through this package's own scan, which keeps
+		// the first value. The reading assembler, the family's other reader,
+		// refuses a file carrying an EXCLUDED key twice — the four claim keys are
+		// excluded — and that refusal is established where the assembler lives
+		// (reading's TestDuplicateExcludedKeyRefusesTheFile), since this package
+		// cannot build the repository an assembly needs.
+		store:  "prn",
+		reader: "lint principle_claims → scanRecordStores → frontmatter.Fields",
+		want:   keepsFirst,
+		probe:  probePrincipleClaims,
 	}}
 }
 
@@ -211,6 +223,7 @@ func TestThisRulesOwnScannerKeepsTheFirstValueInEveryStore(t *testing.T) {
 		"work/issues/admissions/rdg-1/adm-3.md":   "---\nschema_version: 1\nid: adm-3\nid: adm-404\nrun: rdg-1\nproposal: rdi-2\ngrounds: it widens the frame\n---\n\n",
 		"work/issues/surprises/srp-6.md":          "---\nschema_version: 1\nid: srp-6\nid: srp-404\noccasioned_by: rdi-2\n---\n\n",
 		"work/issues/reframes/rfm-6.md":           dupReframe("id: rfm-6\nid: rfm-404"),
+		"rec/principles/a-thing.md":               "---\nid: prn-a-thing\nid: prn-404\n---\n\n# A thing\n",
 	}
 	writeRel(t, root, "rec/.keep", "")
 	for rel, body := range files {
@@ -565,6 +578,33 @@ func probeReframeDescribe(t *testing.T) answer {
 	return which(t, d.Links["occasioned_by"], "FIRST-MARKER", "SECOND-MARKER")
 }
 
+// probePrincipleClaims reads a typed principle whose claim_type is written
+// twice through the principle rules, whose finding quotes the value they kept.
+func probePrincipleClaims(t *testing.T) answer {
+	root := t.TempDir()
+	writeRel(t, root, "rec/principles/p.md", "---\nid: prn-p\nclaim_type: FIRST-MARKER\nclaim_type: SECOND-MARKER\n"+
+		"reference: null\ncomparison: null\nevidence: [adr-1]\n---\n\n# P\n\n**The rule.** A rule.\n")
+	cfg := everyStoreConfig()
+	cfg.Rules["principle_claims"] = lint.RuleConfig{Enabled: true, Severity: "blocker"}
+	fs, err := lint.Lint(cfg, root)
+	if err != nil {
+		return refuses
+	}
+	// The rule quotes the value it judged; which marker that is, is the answer.
+	kept := ""
+	for _, f := range fs {
+		if f.RuleID != "principle_claims" {
+			continue
+		}
+		for _, m := range []string{"FIRST-MARKER", "SECOND-MARKER"} {
+			if strings.Contains(f.Message, "'"+m+"'") {
+				kept = m
+			}
+		}
+	}
+	return which(t, kept, "FIRST-MARKER", "SECOND-MARKER")
+}
+
 func probeUnread(t *testing.T, rel, body string) answer {
 	root, _ := readingLedger(t, detectionItem)
 	writeRel(t, root, rel, body)
@@ -737,6 +777,7 @@ func everyStoreConfig() lint.Config {
 				"adm": "work/issues/admissions",
 				"srp": "work/issues/surprises",
 				"rfm": "work/issues/reframes",
+				"prn": "rec/principles",
 			}},
 		},
 	}
