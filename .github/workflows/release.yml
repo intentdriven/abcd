@@ -86,6 +86,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # The reviewed content commit the semantic gate below admitted, handed to
+    # the release job so it signs the receipts of exactly the commit that was
+    # gated rather than re-deriving it (iss-2608291814573570). Empty when the
+    # gate step is skipped (private repo, rehearsal), where nothing reads it.
+    outputs:
+      content_sha: ${{ steps.receipts.outputs.content_sha }}
     steps:
       - name: Check out the pushed commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,7 +194,10 @@ jobs:
       # .abcd/work/reviews/<sha>/, which names the content commit and rides in the
       # released tree regardless of batch position, and fails closed on a wrong or
       # absent directory. No ${{ }} interpolation in the script (injection-safe).
+      # The admitted sha is exported as the job's content_sha output, written
+      # only after the gate passes, for the release job's provenance steps.
       - name: Semantic-gate receipts (fail-closed, before tag)
+        id: receipts
         if: ${{ !github.event.repository.private && github.event_name != 'workflow_dispatch' }}
         run: |
           set -euo pipefail
@@ -198,6 +207,7 @@ jobs:
           go run ./cmd/record-lint --release-gate "$content" \
             --require-gate docs-currency-reviewer \
             --require-gate iss35-brief-surface-crosscheck
+          echo "content_sha=$content" >> "$GITHUB_OUTPUT"
 
   # Create and push the annotated tag with the GITHUB_TOKEN — AFTER verify, so a
   # refused gate leaves no tag and the version stays free (iss-2608231226347380;
@@ -271,9 +281,8 @@ jobs:
           # commit verify gated. inputs.ref (resolved SHA) overrides on the
           # workflow_call re-release path, exactly as in verify.
           ref: ${{ inputs.ref || github.sha }}
-          # Full history: the content-commit derivation below checks commit
-          # ancestry (git merge-base / rev-list) over the receipts directory, which
-          # a shallow (depth-1) clone cannot answer — it would fail-close.
+          # Full history, the same checkout shape verify gated, so every step
+          # here reads the repository the gate judged.
           fetch-depth: 0
           persist-credentials: false
 
@@ -323,8 +332,9 @@ jobs:
 
       # --- Semantic-gate provenance (iss-35; dormant until the public flip) ------
       # The gate that can REFUSE the release now runs in `verify`, before the tag
-      # (adr-52). What remains here is provenance: re-derive the reviewed content
-      # commit and SIGN its receipts for an auditable release attestation. By the
+      # (adr-52). What remains here is provenance: take the reviewed content
+      # commit verify gated and SIGN its receipts for an auditable release
+      # attestation. By the
       # time this job runs, verify has already proved the receipts exist and are
       # PROMOTE, so these steps record what passed rather than deciding it. Gated on
       # repo visibility exactly like the binary attestation below — dormant on a
@@ -332,22 +342,28 @@ jobs:
       # evidence, not committer-forgery-proof (a forged committed receipt would be
       # signed too); that residual is bounded by the identity gate + branch
       # protection.
-      - name: Resolve the reviewed content commit (the receipt subject)
+      - name: Receive the reviewed content commit verify gated (the receipt subject)
         if: ${{ !github.event.repository.private }}
-        # Re-derive CONTENT_SHA in this job (a $GITHUB_ENV export does not cross
-        # jobs). The receipts name the commit they gate, so the content commit is
-        # read from the RECEIPTS DIRECTORY of the released tree
-        # (record-lint --derive-content-sha), not HEAD^2^/HEAD^ ancestry: a batched
-        # merge-queue push makes github.sha the batch tip, and HEAD^2^ can then
-        # resolve an unrelated PR's commit (iss-355). The derivation reads HEAD —
-        # the exact commit this job checked out (inputs.ref on the re-release heal
-        # path, else github.sha) — and fails closed on a wrong or absent directory.
+        # The sha verify's semantic gate admitted, received as its job output
+        # rather than re-derived here: one derivation, so the receipts signed
+        # below are those of the commit the gate judged (iss-2608291814573570).
+        # verify checked out the same commit this job did (inputs.ref on the
+        # re-release heal path, else github.sha). The value is shape-checked
+        # before it reaches $GITHUB_ENV, a file path and the signed predicate —
+        # [[ =~ ]], not grep, so an embedded newline cannot forge a second env
+        # line — and an empty value fails closed. It arrives through env
+        # (injection-safe).
+        env:
+          CONTENT_SHA_FROM_VERIFY: ${{ needs.verify.outputs.content_sha }}
         run: |
           set -euo pipefail
-          content="$(go run ./cmd/record-lint --derive-content-sha)"
-          test -n "$content"
-          echo "CONTENT_SHA=$content" >> "$GITHUB_ENV"
-          echo "reviewed content commit: $content"
+          sha_re='^[0-9a-f]{40}([0-9a-f]{24})?$'
+          if [[ ! $CONTENT_SHA_FROM_VERIFY =~ $sha_re ]]; then
+            echo "refusing: verify handed no well-formed content sha (got '${CONTENT_SHA_FROM_VERIFY}')" >&2
+            exit 1
+          fi
+          echo "CONTENT_SHA=$CONTENT_SHA_FROM_VERIFY" >> "$GITHUB_ENV"
+          echo "reviewed content commit: $CONTENT_SHA_FROM_VERIFY"
 
       - name: Attest the semantic-gate receipts (signed release provenance)
         if: ${{ !github.event.repository.private }}
@@ -362,7 +378,7 @@ jobs:
 
       - name: Verify the semantic-gate receipt attestation
         if: ${{ !github.event.repository.private }}
-        # CONTENT_SHA reaches this step via $GITHUB_ENV (resolve step above).
+        # CONTENT_SHA reaches this step via $GITHUB_ENV (receive step above).
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
