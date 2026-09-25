@@ -621,3 +621,21 @@ func TestPlanRefusesSupersededNamingAhoyInstall(t *testing.T) {
 		t.Errorf("the foreign remedy must not be offered for abcd's own pin: %+v", r)
 	}
 }
+
+// TestPlanForeignRefusalNamesWhatItExamined is iss-2608230943260391: `abcd
+// version` says "dev" and `abcd update` calls the same entry foreign, both
+// correctly, because they describe unrelated properties. The foreign refusal
+// must say what it examined (the entry, where it leads, and that no provenance
+// record names it) and that a dev version string is a build label, not the
+// dev-shim install shape, so the two words stop colliding.
+func TestPlanForeignRefusalNamesWhatItExamined(t *testing.T) {
+	r := Plan(ahoy.UpdateTarget{Path: "/x/abcd", ResolvedPath: "/src/bin/abcd-darwin-arm64", Kind: ahoy.UpdateTargetForeign})
+	if r == nil {
+		t.Fatal("foreign target must refuse")
+	}
+	for _, want := range []string{"/src/bin/abcd-darwin-arm64", "provenance record", "build label"} {
+		if !strings.Contains(r.Detail, want) {
+			t.Errorf("the foreign refusal does not say %q: %q", want, r.Detail)
+		}
+	}
+}
