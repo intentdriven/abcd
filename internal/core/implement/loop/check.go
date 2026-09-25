@@ -302,14 +302,12 @@ func peersCheck(repoRoot string, r intent.ReadyResult) (CheckRow, error) {
 		if l.Folder == r.Bucket {
 			continue
 		}
-		who := "branch " + l.Branch
-		if l.Source == peers.SourceWorktree {
-			who = "the worktree at " + fsutil.RedactHome(l.Path)
-			if l.Branch != "" {
-				who += " (branch " + l.Branch + ")"
-			}
-		}
-		holders = append(holders, who+" holds it in "+l.Folder+"/")
+		holders = append(holders, peerName(l.Source, l.Branch, l.Path)+" holds it in "+l.Folder+"/")
+	}
+	// A peer the listing names and cannot read may hold the record; the check
+	// fails closed on it, as it does on an unreadable claim below.
+	for _, p := range rep.Unjudged() {
+		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.RedactHome(p.NotRead)+")")
 	}
 	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
 		run, err := implement.Peek(sha)
@@ -337,6 +335,18 @@ func peersCheck(repoRoot string, r intent.ReadyResult) (CheckRow, error) {
 	}
 	row.contention = true
 	row.Detail = r.IntentID + " is held by a peer: " + strings.Join(holders, "; ")
-	row.Remedy = "take other work, or coordinate with the peer; `abcd peers` and `abcd implement` show what each holds"
+	row.Remedy = "take other work, or coordinate with the peer; `abcd peers` and `abcd implement` show what each holds, and name why a peer is not read"
 	return row, nil
+}
+
+// peerName names a peer for a refusal.
+func peerName(src peers.Source, branch, path string) string {
+	if src != peers.SourceWorktree {
+		return "branch " + branch
+	}
+	who := "the worktree at " + fsutil.RedactHome(path)
+	if branch != "" {
+		who += " (branch " + branch + ")"
+	}
+	return who
 }

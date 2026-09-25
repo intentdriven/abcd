@@ -84,7 +84,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, its spec leaves a step to\n" +
 			"build, and no peer holds it (no sibling worktree or local branch holds it in another\n" +
-			"bucket, and no session holds a live claim on it). A refusal names the check, the reason\n" +
+			"bucket, and no session holds a live claim on it; a peer or claim that cannot be read\n" +
+			"counts as holding it). A refusal names the check, the reason\n" +
 			"and the remedy, and writes nothing.\n\n" +
 			"When the checks pass, the run is created in this checkout's local tier,\n" +
 			"`.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,\n" +

@@ -352,6 +352,34 @@ func TestAForeignOrRefusedWorktreeIsNamedNotRead(t *testing.T) {
 	}
 }
 
+// Unjudged names the peers not read whose holding is unknown — git refused
+// to answer for it, or its ledger is split — and not the peer of another
+// repository, which holds nothing of this one's.
+func TestUnjudgedNamesThePeersWhoseHoldingIsUnknown(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktree("split", "feat/split")
+	f.write(s, ".abcd/work/issues/resolved/iss-1-the-first-finding.md", issue("iss-1", "The first finding"))
+	foreign := f.worktree("foreign", "feat/foreign")
+	if err := os.Remove(filepath.Join(foreign, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	f.git(foreign, "init", "-q")
+	refused := f.worktree("refused", "feat/refused")
+	if err := os.WriteFile(filepath.Join(refused, ".git"), []byte("gitdir: "+filepath.Join(f.home, "nowhere")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]bool{}
+	for _, p := range f.read().Unjudged() {
+		if p.Source == peers.SourceWorktree {
+			got[p.Branch] = true
+		}
+	}
+	if !got["feat/split"] || !got["feat/refused"] || got["feat/foreign"] {
+		t.Fatalf("Unjudged worktrees = %v, want feat/split and feat/refused, not feat/foreign", got)
+	}
+}
+
 // Criterion 9: a checkout with no peers reports none.
 func TestACheckoutWithNoPeersReportsNone(t *testing.T) {
 	f := newFixture(t)

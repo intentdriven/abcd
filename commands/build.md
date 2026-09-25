@@ -31,7 +31,9 @@ pass:
 - `hold` — the intent carries no `held:`.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
-  it in another bucket, and no session holds a live claim on it.
+  it in another bucket, and no session holds a live claim on it. A peer that
+  cannot be read (a worktree git will not answer for, a ledger holding one id
+  twice) and an unreadable claim count as holding it: what they hold is unknown.
 
 A refusal writes nothing. It exits 2, or 3 when a peer holds the intent (back
 off and take other work). Under `--json` the refusal comes as its own document

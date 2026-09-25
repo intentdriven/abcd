@@ -247,6 +247,45 @@ func TestStartAgainResumesTheRunItsOwnLaneChanged(t *testing.T) {
 	})
 }
 
+// TestStartRefusesAPeerItCannotRead: a peer the listing names and cannot read
+// holds what nobody can say, so the peers check fails closed on it, as it does
+// on an unreadable claim, naming the peer and why; a peer of the shape that
+// holds nothing at the committed layout is not a holding.
+func TestStartRefusesAPeerItCannotRead(t *testing.T) {
+	t.Run("a branch whose ledger holds one id twice", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		repo.Git("checkout", "-q", "-b", "lane-beta")
+		beta := "---\nid: itd-20\nslug: beta\n---\n# beta\n"
+		repo.Write(".abcd/development/intents/drafts/itd-20-beta.md", beta)
+		repo.Write(".abcd/development/intents/planned/itd-20-beta.md", beta)
+		repo.Commit("split beta")
+		repo.Git("checkout", "-q", "main")
+
+		_, err := Start(repo.Root(), "itd-10", Options{})
+		r := mustRefusal(t, err)
+		if r.Check != CheckPeers || !r.Contention {
+			t.Fatalf("want the peers check as contention: %+v", r)
+		}
+		if !strings.Contains(r.Reason, "lane-beta") || !strings.Contains(r.Reason, "could not be read") {
+			t.Fatalf("the refusal names the unread peer: %q", r.Reason)
+		}
+		runTierAbsent(t, repo.Root())
+	})
+	t.Run("a branch from before the record layout", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		repo.Git("checkout", "-q", "--orphan", "old-layout")
+		repo.Git("rm", "-rq", "--cached", ".")
+		repo.Write("README.md", "an old tree\n")
+		repo.Git("add", "README.md")
+		repo.Git("commit", "-q", "-m", "old")
+		repo.Git("checkout", "-q", "-f", "main")
+
+		if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+			t.Fatalf("a peer holding no records at the layout holds nothing: %v", err)
+		}
+	})
+}
+
 // TestStartRefusesWithoutTheLocalTier: the tier is never created, so a
 // repository abcd does not manage has no run.
 func TestStartRefusesWithoutTheLocalTier(t *testing.T) {

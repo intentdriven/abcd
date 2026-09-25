@@ -164,7 +164,8 @@ A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, its spec leaves a step to
 build, and no peer holds it (no sibling worktree or local branch holds it in another
-bucket, and no session holds a live claim on it). A refusal names the check, the reason
+bucket, and no session holds a live claim on it; a peer or claim that cannot be read
+counts as holding it). A refusal names the check, the reason
 and the remedy, and writes nothing.
 
 When the checks pass, the run is created in this checkout's local tier,

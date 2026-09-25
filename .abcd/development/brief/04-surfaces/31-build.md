@@ -52,7 +52,14 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   holds it in a bucket other than this checkout's (a lane that shipped or
   re-drafted it), read through the peer listing, and no session holds a live
   claim on it in the shared run state. A copy in the same bucket is not a
-  holding: every branch cut from the default branch carries one.
+  holding: every branch cut from the default branch carries one. The check
+  fails closed on what it cannot see into, on both sides: a peer the listing
+  names and cannot read (git or the filesystem will not answer for it, or its
+  ledger holds one id in two folders) and an unreadable claim file each count
+  as a holding, naming why. A peer of another repository, or one holding no
+  records at the committed layout, holds nothing of this checkout's and does
+  not count. A lane that has neither moved nor claimed the intent is invisible
+  to both sources (iss-2609252050506863).
 
 A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the
