@@ -262,3 +262,20 @@ Approach steps 3, 4 and 5 and closes this spec with a remainder.
   needs the implement loop's state file.
 - AC 11: a provider route only on that provider's allowlist. It needs the API
   adapter (itd-2609081951381895) and adr-2609221009491186's allowlist.
+- AC 3's dispatch half and AC 8's adapter half. The resolution of a provider
+  leg and the settings merge shipped here; sending a step to the provider and
+  refusing a setting the adapter does not accept both rest on the same API
+  adapter as AC 11, so the remainder holds them and names that adapter in its
+  Blocked on. AC 3 and AC 8 are met when it lands, not before.
+
+Fix round 1 on the same branch (autonomous run A, 2026-09-25), after review:
+
+- AC 7 is ruled, not met as written. It says a second `--route` for a
+  different agent "applies alongside" the first. Every delegating invocation
+  dispatches exactly one agent, so the surface refuses a `--route` naming any
+  other agent, before anything runs, rather than merging or ignoring it. The
+  refusal names the invocation, not the verb. The plan's "a second flag for
+  another agent merges" (item 7 above) is superseded; the ruling is in
+  `.abcd/work/DECISIONS.md` (2026-09-25).
+- The request `spec close` emits when it ships an intent carries the
+  `## Routing` section, as `intent audit <itd-N>` does.
