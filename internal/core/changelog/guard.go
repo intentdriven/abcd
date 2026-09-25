@@ -192,10 +192,17 @@ func currentMatchesHead(root string, current surface.Snapshot) (bool, string, er
 		return false, "", err
 	}
 	if !bytes.Equal(wantBytes, gotBytes) {
-		return false, fmt.Sprintf("the surface this binary reports does not match %s at HEAD, so the guardrail "+
+		reason := fmt.Sprintf("the surface this binary reports does not match %s at HEAD, so the guardrail "+
 			"would compare the wrong tree and cannot answer whether the release breaks anything. Either the "+
 			"binary predates the tree being released — rebuild it from this tree — or the snapshot is stale (%s).",
-			surface.SnapshotPath, regenerateRemedy), nil
+			surface.SnapshotPath, regenerateRemedy)
+		// A regroup changes no invocation, so nothing but this comparison sees
+		// it; naming each moved verb is what makes the refusal actionable
+		// (itd-146 criterion 4).
+		if moved := surface.PlacementChanges(head, current); len(moved) > 0 {
+			reason += "\nhelp placement differs from HEAD's snapshot:\n  - " + strings.Join(moved, "\n  - ")
+		}
+		return false, reason, nil
 	}
 	return true, "", nil
 }

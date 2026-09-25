@@ -2,6 +2,7 @@
 name: banlist
 description: Maintain the two banned-names layers — the committed CI-enforced public list and the gitignored per-machine private list — by invoking the abcd binary. Bare invocation is a read-only render; add/remove act on one named layer.
 argument-hint: "[list --private|--public] | add --private|--public <key> <pattern> [--severity blocker|warn] [--successor <text>] | remove --private|--public <key>"
+block: agents
 ---
 
 # `/abcd:banlist` — banned names, two layers

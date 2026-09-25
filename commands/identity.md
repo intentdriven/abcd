@@ -2,6 +2,7 @@
 name: identity
 description: Show this repo's canonical identity block — title, tagline, pitch — and every rendered surface held to it, and print the proposed correction for any that drifted, by invoking the abcd binary. The bare and render forms perform zero writes; init records the block and the pointer to it.
 argument-hint: "[render|init]"
+block: agents
 ---
 
 # `/abcd:identity` repo positioning

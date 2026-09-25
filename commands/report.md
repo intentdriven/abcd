@@ -2,6 +2,7 @@
 name: report
 description: Tell abcd about a defect or propose an enhancement from a repository it manages — fill the abcd-issued template and file it into the inbox in the user account, by invoking the abcd binary. `--template` writes nothing; filing writes only to ~/.abcd/inbox/, never to either repository.
 argument-hint: "[--template | <file> | -]"
+block: agents
 ---
 
 # `/abcd:report` — report back to abcd

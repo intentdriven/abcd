@@ -2,6 +2,7 @@
 name: disembark
 description: Pack a lifeboat from a repository into a destination directory — read-only over the source, behind a destination safety gate, secret-scanned before any write. Point it at any repo (including a dead or archived one) and write the lifeboat elsewhere.
 argument-hint: "<source-repo> <dest> | plan <source-repo> | probe <source-repo>"
+block: people
 ---
 
 # `/abcd:disembark` — pack a lifeboat

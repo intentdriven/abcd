@@ -1,6 +1,7 @@
 ---
 name: peers
 description: List the records this checkout's sibling worktrees and local branches hold that it does not — before capturing, fixing or filing anything — by invoking the abcd binary. Strictly read-only.
+block: agents
 ---
 
 # `/abcd:peers`

@@ -2,6 +2,7 @@
 name: lint
 description: Check whether the current repo conforms to the working conventions — the three-tier .abcd/ layout, an AGENTS.md router, durable decisions, current docs, privacy hygiene, and identity positioning — by invoking the abcd binary. Strictly read-only; performs zero writes.
 argument-hint: ""
+block: people
 ---
 
 # `/abcd:lint` repo-conformance check

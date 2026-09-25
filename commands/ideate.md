@@ -2,6 +2,7 @@
 name: ideate
 description: Put a big, unproven idea through the three-leg admission gauntlet — primary-source research, a grill against the existing record, and an independent adversarial review — then record the verdict, whether the idea survives or dies.
 argument-hint: "<the idea, in one or two sentences>"
+block: agents
 ---
 
 # `/abcd:ideate` — the idea-admission gauntlet

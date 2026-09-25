@@ -2,9 +2,14 @@
 name: ahoy
 description: Detect and repair abcd's install/update state for the current repo — folder kind, plugin-root status, and outstanding gaps — by invoking the abcd binary. Bare invocation performs zero writes.
 argument-hint: "[install | uninstall | doctor | dry-run | remote]"
+block: people
 ---
 
 # `/abcd:ahoy` install/update detector
+
+`abcd --help` lists `ahoy` in the person's set-up group. `statusline`, the
+harness-invoked row that `install` wires, is in the agents-and-hosts block of
+`abcd --help --agent`, and its line there names this page.
 
 Run abcd's install/update engine for the current repo and present the result.
 Bare invocation and the `doctor`, `dry-run` and `remote` sub-verbs perform **zero

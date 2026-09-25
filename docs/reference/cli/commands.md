@@ -26,6 +26,7 @@ positional is refused as an unknown command.
 **Flags:**
 
 ```
+      --agent      with --help, list the verbs agents and hosts call as well, each naming the page to read next
       --json       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
       --no-color   render the banner without color
 ```

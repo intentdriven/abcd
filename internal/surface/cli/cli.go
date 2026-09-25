@@ -185,6 +185,7 @@ func failOpenNoArgs(cmd *cobra.Command, args []string) error {
 func NewRootCommand() *cobra.Command {
 	var asJSON bool
 	var noColor bool
+	var agentHelp bool
 
 	root := &cobra.Command{
 		Use:   "abcd [<record-id>]",
@@ -209,6 +210,11 @@ func NewRootCommand() *cobra.Command {
 			return cobra.NoArgs(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --agent modifies the help and nothing else; on the board it would
+			// be a flag that silently does nothing (itd-146).
+			if agentHelp {
+				return &exitError{Code: 2, Msg: "--agent expands the help listing; run `abcd --help --agent`"}
+			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
@@ -273,6 +279,9 @@ func NewRootCommand() *cobra.Command {
 	// Root-local by design: colour exists only on the bare invocation, so a
 	// persistent flag would be dead surface on every subcommand (itd-112).
 	root.Flags().BoolVar(&noColor, "no-color", false, "render the banner without color")
+	// Root-local for the same reason: only the root's help has blocks (itd-146).
+	root.Flags().BoolVar(&agentHelp, "agent", false,
+		"with --help, list the verbs agents and hosts call as well, each naming the page to read next")
 
 	root.AddCommand(newVersionCommand(&asJSON))
 	root.AddCommand(newUpdateCommand(&asJSON))
@@ -373,6 +382,10 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newEmbarkCommand(&asJSON))
 	root.AddCommand(newSiteCommand(&asJSON))
 	root.AddCommand(newReadingCommand(&asJSON))
+
+	// The grouped help (itd-146): every visible verb filed under a group, and
+	// the root's help rendering the person's groups, or both blocks with --agent.
+	applyHelpPlacement(root, &agentHelp)
 
 	// A cobra usage error (unknown flag, unknown subcommand, stray positional
 	// argument) is a plain error with no ExitCode(), so Run() would map it to
