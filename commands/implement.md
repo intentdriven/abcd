@@ -149,10 +149,14 @@ Relay any `unparsed` lines; they are counted nowhere.
 `make preflight` runs this first and the eval harness runs it once at its
 start, so it rarely needs calling by hand. It reads the machine's load and
 process table once and warns about two things: a program outside the running
-work that has held a near-full core for longer than the stray limit (30 minutes
-by default), and a one-minute load average above the extreme limit (four times
-the online core count by default). It never refuses, never waits and never
-stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
+work that has used nearly all the CPU it could get for longer than the stray
+limit (30 minutes by default), and a one-minute load average above the extreme
+limit (four times the online core count by default). What a program could get
+is its fair share: the online cores divided by the one-minute load, never more
+than one core. So on a loaded machine a stray can show well under 100% of a
+core: forty busy loops on 16 cores each show about 40%, and all forty are
+strays. The person's programs and other accounts' are judged alike. It never
+refuses, never waits and never stops anything; it exits 0 on every `status`: `ok`, `warning`, `skipped` (in CI, with
 the `reason`) and `unchecked` (a platform other than macOS and
 Linux, or a read that failed, with the `reason`).
 

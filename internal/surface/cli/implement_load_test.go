@@ -74,7 +74,7 @@ func TestImplementLoadNamesOwnStraysWithTheRemedy(t *testing.T) {
 	}
 	for _, want := range []string{
 		"LOAD WARNING (preflight): programs that are not abcd's tests are keeping this machine busy.",
-		"Your programs at a near-full core for over 30 min:",
+		"Your programs at nearly all the CPU they can get, for over 30 min:",
 		"yes     pid 41233  group 41230  running 2d 07h  CPU 99% of a core",
 		"spin    pid 41250  group 41249  running 2h 00m  CPU 100% of a core",
 		"pgrep -g 41230",
@@ -121,7 +121,7 @@ func TestImplementLoadKeepsOtherAccountsAnonymous(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !strings.Contains(out, "Other accounts: 38 programs at a near-full core for over 30 min, using about 36.1 cores.") {
+	if !strings.Contains(out, "Other accounts: 38 programs at nearly all the CPU they can get, for over 30 min, using about 36.1 cores.") {
 		t.Fatalf("no anonymous count:\n%s", out)
 	}
 	code, js, _ := implementCLI(t, "implement", "load", "--site", "preflight", "--json")
@@ -148,6 +148,46 @@ func TestImplementLoadKeepsOtherAccountsAnonymous(t *testing.T) {
 	slices.Sort(keys)
 	if !slices.Equal(keys, []string{"cores", "count"}) {
 		t.Fatalf("other_strays keys = %v, want exactly count and cores", keys)
+	}
+}
+
+// TestImplementLoadWarnsInTheOversubscribedBand: at a load of 40 on 16 cores
+// every two-day busy loop gets about 0.4 of a core and uses all of it, so each is
+// a stray (ruling H1, iss-2609231947544298): the caller's own are named and the
+// other account's counted, and the warning says what a program can get at that
+// load, so a stray at 40% of a core reads as the whole of its share.
+func TestImplementLoadWarnsInTheOversubscribedBand(t *testing.T) {
+	var procs []machineload.Proc
+	for i := 0; i < 4; i++ {
+		procs = append(procs, stray(41300+i, 41300, 501, "spin", 48*time.Hour, 0.4))
+	}
+	for i := 0; i < 36; i++ {
+		procs = append(procs, stray(70000+i, 70000, 7777, "zsh", 48*time.Hour, 0.4))
+	}
+	loadFixture(t, machine(40, 40, 40, procs...), nil)
+	code, out, _ := implementCLI(t, "implement", "load", "--site", "preflight")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	for _, want := range []string{
+		"LOAD WARNING (preflight): programs that are not abcd's tests are keeping this machine busy.",
+		"Your programs at nearly all the CPU they can get, for over 30 min:",
+		"spin    pid 41300  group 41300  running 2d 00h  CPU 40% of a core",
+		"lists only 41300 41301 41302 41303, then:  kill -- -41300",
+		"Other accounts: 36 programs at nearly all the CPU they can get, for over 30 min, using about 14.4 cores.",
+		"Load 40.0 on 16 online cores: a program can get about 40% of a core.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q\n%s", want, out)
+		}
+	}
+
+	// Above the extreme limit the share line follows the load line.
+	loadFixture(t, machine(440.2, 431, 425.7, stray(41300, 41300, 501, "spin", 48*time.Hour, 0.04)), nil)
+	_, out, _ = implementCLI(t, "implement", "load", "--site", "preflight")
+	if want := "  Load 440.2 over 1 min (431.0 over 5, 425.7 over 15) is above the extreme limit of 64 (4 x 16 online cores).\n" +
+		"  At that load a program can get about 4% of a core.\n"; !strings.Contains(out, want) {
+		t.Errorf("output lacks %q\n%s", want, out)
 	}
 }
 
