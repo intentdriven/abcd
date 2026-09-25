@@ -119,6 +119,14 @@ func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
 		"previously":   "Reports previously went to the log, and now they go to the record.",
 		"renamed":      "The flag was renamed from --out to --dest.",
 		"used to":      "The tool used to print a banner.",
+		// The narrowed constructs keep their true positives
+		// (iss-2609251827286563): a pronoun subject, a subject naming abcd,
+		// an active rename, and a past-tense copula beside "previously".
+		"used to, pronoun":         "It used to print a banner, which was noisy.",
+		"no longer, abcd":          "abcd no longer writes a receipt.",
+		"renamed, active":          "We renamed the flag to --dest.",
+		"previously, same clause":  "The default was previously JSON; it is now YAML.",
+		"used to, relative clause": "The gate skips the classes that used to drift.",
 	}
 	for name, sentence := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -136,21 +144,33 @@ func TestNarrationGateHardFailsOnAChangeConstruct(t *testing.T) {
 			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", strings.TrimSuffix(sentence, ".")) {
 				t.Errorf("would_refuse_on does not name the file, line and sentence:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
 			}
+			if !anyContains(report.WouldRefuseOn, "docs/guide.md:4", "<!-- docs-lint: allow -->") {
+				t.Errorf("the finding must name the escape marker:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
+			}
 		})
 	}
 }
 
 // TestNarrationGatePassesPresentTense is AC10's first half and the gate's scope:
-// bare present-tense "now" and "previously", a construct inside code, a line
+// bare present-tense "now" and "previously" — apart, and together in one
+// sentence with no change verb beside either — a construct inside code, a line
 // carrying the docs-lint escape, and the release records (a changelog is
 // narration by definition) do not hard-fail; nor does a file outside the doc
-// bodies (commands/ is plugin surface, not a doc body).
+// bodies (commands/ is plugin surface, not a doc body). The four sentences a
+// review found refused (iss-2609251827286563) state present state: a
+// participle "used to", a "no longer" whose subject is not abcd, a present
+// "renamed", and "previously" beside "now" with nothing changing.
 func TestNarrationGatePassesPresentTense(t *testing.T) {
 	root := docsFixture(t)
 	writeFile(t, root, "docs/present.md", "# Present\n\n"+
 		"The command now accepts a path.\n"+
 		"Run the previously saved query with `--replay`.\n"+
 		"A passive key is used to sign the archive.\n\n"+
+		"The token used to authenticate the request is read from the environment.\n"+
+		"Files that are no longer present in the tree are skipped.\n"+
+		"The output is renamed to match the tag.\n"+
+		"Now, as previously noted, the report lists every gate.\n"+
+		"Set the token used to authenticate the request.\n\n"+
 		"```\nthe verb no longer writes\n```\n\n"+
 		"Use `no longer` sparingly.\n"+
 		"The page lists what changed from one release to the next. <!-- docs-lint: allow -->\n")

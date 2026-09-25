@@ -135,10 +135,17 @@ The **hard-fail** gates refuse the release:
   is not a marker.
 - **Change narration** over the shipped doc bodies — Markdown under `docs/` and
   at the payload root, the changelog and the release page excepted: a sentence
-  carrying "changed from … to", "no longer", "migrated from", "renamed … to",
-  "previously … now" or an active "used to" is named with its file, line and
-  text. Bare "now" and bare "previously" are present-tense prose and pass; a
-  construct inside code, or on a line carrying the docs-lint escape, is exempt.
+  carrying "changed from … to" or "migrated from" is named with its file, line
+  and text, and so is one carrying a construct that reads as narration only in
+  one of its uses: "used to" as the past habit ("the tool used to print"), not
+  as a passive or a participle ("the token used to authenticate the request is
+  read"); "no longer" and "renamed … to" beside a subject naming abcd or its
+  behaviour (a command, a flag, a hook, the default), not beside anything else
+  ("files that are no longer present"); and "previously … now" beside a
+  past-tense change verb, not "as previously noted". Bare "now" and bare
+  "previously" are present-tense prose and pass, alone or together; a
+  construct inside code, or on a line carrying the docs-lint escape, is exempt,
+  and every finding names that escape.
   The changelog is derived from the records
   ([adr-37](../../decisions/adrs/0037-changelog-driven-releases.md)), so the
   remedy is to rephrase the doc, not to move the sentence into the changelog.
