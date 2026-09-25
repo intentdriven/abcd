@@ -490,18 +490,6 @@ func (r Registry) check(command string) (Decision, error) {
 		}
 	}
 
-	// Every segment is final here, and the ones the alias and hooks-path
-	// passes added are walked now. A walk that met more words of unknown name
-	// than it follows is refused, like a substitution the tokenizer stopped
-	// reading.
-	walkSegments(segs)
-	for _, s := range segs {
-		if s.walkCapped {
-			signals = append(signals, unknownSitesBlockSignal())
-			break
-		}
-	}
-
 	// Tier 1: the registry match at command position. matchedSeg records WHICH
 	// segments fired, because Tier 2's gate is per segment — a line-wide gate would
 	// let one warn-tier command disarm the fail-safe for everything after it
