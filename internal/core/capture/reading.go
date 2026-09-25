@@ -21,6 +21,7 @@ package capture
 // content, and saying so is better than letting the header claim cover for it.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -709,68 +711,61 @@ func readingItemPosition(issuesRoot, item string) (string, error) {
 
 // findReadingItem locates a reading record by id across the run directories.
 //
+// It is a thin wrapper over readingitem.Locate, the one locator core/capture and
+// core/intent share (spc-2609020626046252); capture keeps the name, its
+// sentinels and its messages until every caller has moved to the leaf.
+//
 // The search needs no run argument: an id is unique to the LEDGER, not to the run
 // that minted it, so a caller dispositioning an item does not have to know which
 // run returned it. That uniqueness is enforced, not assumed — the mint probes the
-// whole tree before it claims an id (mintUnusedItemID) — and the
-// more-than-one-run arm below is what says so if it ever stops holding.
+// whole tree before it claims an id (mintUnusedItemID) — and the leaf's
+// more-than-one-run refusal is what says so if it ever stops holding.
 func findReadingItem(issuesRoot, item string) (string, error) {
-	matches, err := readingItemPaths(issuesRoot, item)
+	_, path, err := readingitem.Locate(issuesRoot, item)
 	if err != nil {
-		return "", err
+		return "", wrapLocatorErr(err)
 	}
-	switch len(matches) {
-	case 0:
-		return "", fmt.Errorf("%w: %s is not a reading item this ledger holds", ErrUnknownIssueID, item)
-	case 1:
-		return matches[0], nil
-	default:
-		return "", fmt.Errorf("%w: %s is present in more than one run directory", ErrDuplicateIssueID, item)
-	}
+	return path, nil
 }
 
 // readingItemPaths returns every file in the ledger that claims item, across all
-// run directories. Zero matches means the id is free, which is what the mint
-// asks; one is the ordinary case; more is a ledger fault findReadingItem names.
-// An absent readings tree is no matches, not an error — a repository that has
-// commissioned no reading is in a state, not a fault.
+// run directories — readingitem.Paths under capture's sentinels. Zero matches
+// means the id is free, which is what the mint asks; one is the ordinary case;
+// more is a ledger fault findReadingItem names.
 func readingItemPaths(issuesRoot, item string) ([]string, error) {
-	if !recordid.ValidReadingItemID(item) {
-		return nil, fmt.Errorf("invalid %s-N identifier: %q", issueschema.ReadingItemFamily, item)
-	}
-	readingsRoot := filepath.Join(issuesRoot, issueschema.ReadingsDir)
-	if err := refuseSymlinkedDir(readingsRoot); err != nil {
-		return nil, err
-	}
-	runs, err := os.ReadDir(readingsRoot)
+	paths, err := readingitem.Paths(issuesRoot, item)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, wrapLocatorErr(err)
 	}
-	var matches []string
-	for _, run := range runs {
-		if !recordid.ValidReadingRunID(run.Name()) {
-			continue
-		}
-		// Every run directory is checked, not only the ones a walk would descend
-		// into: a symlink IS a directory to ReadDir, and following one is how a
-		// read — or promote's stamp, which writes back to whatever this returns —
-		// leaves the tree that is supposed to contain it.
-		runDir := filepath.Join(readingsRoot, run.Name())
-		if err := refuseSymlinkedDir(runDir); err != nil {
-			return nil, err
-		}
-		if !run.IsDir() {
-			continue
-		}
-		cand := filepath.Join(runDir, item+".md")
-		if fi, err := os.Lstat(cand); err == nil && fi.Mode().IsRegular() {
-			matches = append(matches, cand)
+	return paths, nil
+}
+
+// locatorError is a leaf refusal carried under capture's own sentinel: it reads
+// as capture's error, message included, and still satisfies errors.Is for the
+// leaf's sentinel, so a caller on either side of the move reads it the same way.
+type locatorError struct {
+	sentinel, cause error
+	msg             string
+}
+
+func (e *locatorError) Error() string   { return e.msg }
+func (e *locatorError) Unwrap() []error { return []error{e.sentinel, e.cause} }
+
+// wrapLocatorErr maps the leaf's sentinels onto capture's: ErrUnknown onto
+// ErrUnknownIssueID, ErrDuplicate onto ErrDuplicateIssueID and ErrPathUnsafe
+// onto ErrPathUnsafe, keeping the detail the leaf wrote after its sentinel.
+func wrapLocatorErr(err error) error {
+	for _, m := range []struct{ leaf, ours error }{
+		{readingitem.ErrUnknown, ErrUnknownIssueID},
+		{readingitem.ErrDuplicate, ErrDuplicateIssueID},
+		{readingitem.ErrPathUnsafe, ErrPathUnsafe},
+	} {
+		if errors.Is(err, m.leaf) {
+			detail := strings.TrimPrefix(err.Error(), m.leaf.Error())
+			return &locatorError{sentinel: m.ours, cause: err, msg: m.ours.Error() + detail}
 		}
 	}
-	return matches, nil
+	return err
 }
 
 // refuseSymlinkedDir is safeMkdirLeaf's guard without the mkdir: it refuses a
@@ -779,19 +774,10 @@ func readingItemPaths(issuesRoot, item string) ([]string, error) {
 // read here is not read-only in consequence — promote stamps back into whatever
 // findReadingItem returns, so a symlinked readings root or run directory sent
 // that write outside the ledger. An absent path is not a fault: an unpopulated
-// tree is a state.
+// tree is a state. The judgement is the leaf's one primitive,
+// readingitem.RefuseSymlinkedDir, carried under capture's ErrPathUnsafe.
 func refuseSymlinkedDir(dir string) error {
-	fi, err := os.Lstat(dir)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("%w: lstat failed for %s: %v", ErrPathUnsafe, dir, err)
-	}
-	if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
-		return fmt.Errorf("%w: not a real directory: %s", ErrPathUnsafe, dir)
-	}
-	return nil
+	return wrapLocatorErr(readingitem.RefuseSymlinkedDir(dir))
 }
 
 // standingDispositions lists the dispositions of one item that no sibling
