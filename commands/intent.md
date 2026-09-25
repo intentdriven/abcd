@@ -23,7 +23,12 @@ invocation **performs zero writes**.
 ```
 
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
-and the intent↔spec links. Nothing is created or moved by this invocation.
+and the intent↔spec links. The `intents` array lists every intent with its
+`id`, `title`, `bucket`, `ac_state` (`real` when its Acceptance Criteria hold
+at least one bullet, `seeded` when they are still the placeholder, so it cannot
+be planned yet) and `filed` (the date a timestamp id encodes; null for an
+ordinal id): a planning sweep reads it rather than opening the files. Nothing
+is created or moved by this invocation.
 
 **Every `intent` verb addresses the checkout's store, from anywhere in the
 tree.** The verb resolves the repository root before it reads or writes, so the

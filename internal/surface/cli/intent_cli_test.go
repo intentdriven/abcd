@@ -888,3 +888,27 @@ func TestIntentPlanLinksASpecForAPlannedRecordWithNone(t *testing.T) {
 		t.Fatalf("render = %s", out)
 	}
 }
+
+// TestIntentJSONListsEveryIntent is the front door of iss-242: the status JSON
+// carries one entry per intent with its title, bucket and AC state.
+func TestIntentJSONListsEveryIntent(t *testing.T) {
+	repo := intentTestRepo(t)
+	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: null\n---\n# Alpha title\n\n## Acceptance Criteria\n\n- ok\n")
+	var v struct {
+		Intents []struct {
+			ID      string  `json:"id"`
+			Title   string  `json:"title"`
+			Bucket  string  `json:"bucket"`
+			ACState string  `json:"ac_state"`
+			Filed   *string `json:"filed"`
+		} `json:"intents"`
+	}
+	if err := json.Unmarshal(runCLI(t, "intent", "--json"), &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Intents) != 1 || v.Intents[0].ID != "itd-10" || v.Intents[0].Title != "Alpha title" ||
+		v.Intents[0].Bucket != "drafts" || v.Intents[0].ACState != "real" || v.Intents[0].Filed != nil {
+		t.Fatalf("intents = %+v", v.Intents)
+	}
+}

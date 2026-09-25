@@ -350,4 +350,29 @@ type StatusView struct {
 	SpecsOpen   int            `json:"specs_open"`
 	SpecsClosed int            `json:"specs_closed"`
 	Linked      []LinkedPair   `json:"linked"`
+	// Intents lists every intent, one entry each, ordered by bucket then id
+	// (iss-242): what a planning sweep asks of each record without opening it.
+	Intents []IntentListing `json:"intents"`
+}
+
+// The two values of IntentListing.ACState.
+const (
+	// ACStateReal is an Acceptance Criteria section holding at least one
+	// top-level bullet: the bar plan checks.
+	ACStateReal = "real"
+	// ACStateSeeded is a section holding no bullet — the placeholder the create
+	// path seeds, or nothing — so the intent cannot be planned yet.
+	ACStateSeeded = "seeded"
+)
+
+// IntentListing is one intent as the status view lists it.
+type IntentListing struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Bucket string `json:"bucket"`
+	// ACState is ACStateReal or ACStateSeeded, judged by the bar plan applies.
+	ACState string `json:"ac_state"`
+	// Filed is the date a timestamp id encodes (adr-45), as YYYY-MM-DD, and
+	// null for an ordinal id, which encodes none: the view reads no git history.
+	Filed *string `json:"filed"`
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Load discovers intent files across every lifecycle bucket, parses their
@@ -1266,7 +1268,7 @@ func Status(repoRoot string) (StatusView, error) {
 		return StatusView{}, err
 	}
 
-	v := StatusView{Buckets: map[string]int{}, Linked: []LinkedPair{}}
+	v := StatusView{Buckets: map[string]int{}, Linked: []LinkedPair{}, Intents: []IntentListing{}}
 	for _, b := range Buckets {
 		v.Buckets[b] = 0
 	}
@@ -1275,7 +1277,23 @@ func Status(repoRoot string) (StatusView, error) {
 		if !frontmatter.IsNull(it.SpecID) {
 			v.Linked = append(v.Linked, LinkedPair{Intent: it.ID, Spec: it.SpecID})
 		}
+		l, err := listIntent(repoRoot, it)
+		if err != nil {
+			return StatusView{}, err
+		}
+		v.Intents = append(v.Intents, l)
 	}
+	bucketRank := map[string]int{}
+	for i, b := range Buckets {
+		bucketRank[b] = i
+	}
+	sort.SliceStable(v.Intents, func(i, j int) bool {
+		a, b := v.Intents[i], v.Intents[j]
+		if a.Bucket != b.Bucket {
+			return bucketRank[a.Bucket] < bucketRank[b.Bucket]
+		}
+		return a.ID < b.ID
+	})
 	for _, sp := range store.Specs {
 		if sp.Status == spec.StatusClosed {
 			v.SpecsClosed++
@@ -1284,6 +1302,39 @@ func Status(repoRoot string) (StatusView, error) {
 		}
 	}
 	return v, nil
+}
+
+// listIntent reads one intent for the status listing (iss-242): its H1 title,
+// masked for the terminal a JSON consumer may print it to; whether its
+// Acceptance Criteria clear the bar plan applies; and the date its id encodes.
+func listIntent(repoRoot string, it Intent) (IntentListing, error) {
+	data, err := readRepoFile(filepath.Join(repoRoot, it.Path), it.Path)
+	if err != nil {
+		return IntentListing{}, err
+	}
+	content := string(data)
+	l := IntentListing{ID: it.ID, Bucket: it.Bucket, ACState: ACStateSeeded, Filed: filedFromID(it.ID)}
+	if hasAcceptanceCriteria(content) {
+		l.ACState = ACStateReal
+	}
+	for _, ln := range strings.Split(content, "\n") {
+		if t, ok := strings.CutPrefix(strings.TrimRight(ln, "\r"), "# "); ok {
+			l.Title = termsafe.Sanitize(strings.TrimSpace(t))
+			break
+		}
+	}
+	return l, nil
+}
+
+// filedFromID is the YYYY-MM-DD a timestamp intent id encodes in its
+// yymmdd head (adr-45: itd-<yymmddHHMMSS><rrrr>), or nil for an ordinal id.
+func filedFromID(id string) *string {
+	num := strings.TrimPrefix(id, "itd-")
+	if len(num) != 16 {
+		return nil
+	}
+	d := "20" + num[0:2] + "-" + num[2:4] + "-" + num[4:6]
+	return &d
 }
 
 // readRepoFile reads a repo file behind the trust-boundary guards: refuse a
