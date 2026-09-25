@@ -39,3 +39,32 @@ func TestRecordLintRegistersTheLedgerReader(t *testing.T) {
 	}
 	t.Fatalf("the reader-parity leg did not run in record-lint: %+v", fs)
 }
+
+// record-lint registers the site renderer's body check: an issue record whose
+// body carries an indented code block, which the site render refuses, is a
+// finding at the record gate (iss-2608301350287219).
+func TestRecordLintRegistersTheSiteBodyCheck(t *testing.T) {
+	root := t.TempDir()
+	rel := filepath.Join("work", "issues", "open", "iss-5-a-slug.md")
+	if err := os.MkdirAll(filepath.Join(root, filepath.Dir(rel)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nschema_version: 1\nid: iss-5\nslug: a-slug\nseverity: minor\ncategory: bug\n" +
+		"source: user-observation\nfound_during: t\n---\n\nan issue\n\n    indented code\n"
+	if err := os.WriteFile(filepath.Join(root, rel), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := lint.Config{Rules: map[string]lint.RuleConfig{
+		"record_schema": {Enabled: true, Severity: "blocker", RecordStores: map[string]string{"iss": "work/issues"}},
+	}}
+	fs, err := lint.Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fs {
+		if strings.Contains(f.Message, "site renderer refuses") && strings.Contains(f.Message, "indented code") {
+			return
+		}
+	}
+	t.Fatalf("the site body check did not run in record-lint: %+v", fs)
+}

@@ -607,6 +607,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		if len(out) == before {
 			out = append(out, checkIssueReaderParity(r, cfg.Severity)...)
 		}
+		out = append(out, checkIssueBodyRenders(r, cfg.Severity)...)
 
 		// Cross-references: a named record must be in the corpus, or declared
 		// retired by the record that replaced it.
@@ -2021,4 +2022,36 @@ var issueReadRefusal func(content, status, path string) error
 // reader-parity leg. Pass capture.ReadRefusal.
 func SetIssueReader(fn func(content, status, path string) error) {
 	issueReadRefusal = fn
+}
+
+// recordBodyCheck is the site renderer's verdict on one record body: the
+// construct it refuses, or nil. It is site.CheckRecordBody, registered by the
+// front doors for the reason issueReadRefusal is: core/site imports this package.
+var recordBodyCheck func(rel, content string) error
+
+// SetRecordBodyCheck registers the site renderer's body check for the
+// record_schema body leg. Pass site.CheckRecordBody.
+func SetRecordBodyCheck(fn func(rel, content string) error) {
+	recordBodyCheck = fn
+}
+
+// checkIssueBodyRenders refuses an issue record whose body the site renderer
+// cannot render. The record is a site input, and the first gate that read a body
+// as markdown was site-render, at the far end of preflight: `abcd capture`
+// accepts any body, so a construct the renderer refuses (an indented code block,
+// raw HTML) was committed and found by whoever next ran the whole gate rather than
+// by its author (iss-2608301350287219). The renderer is asked, not re-derived.
+func checkIssueBodyRenders(r schemaRecord, severity string) []Finding {
+	if r.store.prefix != "iss" || recordBodyCheck == nil {
+		return nil
+	}
+	err := recordBodyCheck(filepath.ToSlash(r.rel), r.content)
+	if err == nil {
+		return nil
+	}
+	return []Finding{{
+		File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: severity,
+		Message: "the record body carries markdown the site renderer refuses (" + err.Error() +
+			"); site-render fails on it — rewrite the construct inside the renderer's subset (a fenced block for code)",
+	}}
 }
