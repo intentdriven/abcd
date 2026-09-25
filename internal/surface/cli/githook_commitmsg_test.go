@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -421,8 +422,9 @@ func TestCommitMsgHookRefusesAGOFLAGSThatSwapsTheSource(t *testing.T) {
 		}
 	}
 
-	t.Run("overlay", func(t *testing.T) {
-		c := newCommitMsgHookCase(t)
+	// writeOverlay writes an overlay that replaces cmd/abcd/main.go by a no-op.
+	writeOverlay := func(t *testing.T, c *commitMsgHookCase) string {
+		t.Helper()
 		dir := t.TempDir()
 		noop := filepath.Join(dir, "main.go")
 		if err := os.WriteFile(noop, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
@@ -434,10 +436,31 @@ func TestCommitMsgHookRefusesAGOFLAGSThatSwapsTheSource(t *testing.T) {
 		if err := os.WriteFile(overlay, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		h := c.withEnv("GOFLAGS=-mod=mod -overlay=" + overlay)
+		return overlay
+	}
+
+	t.Run("overlay", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		h := c.withEnv("GOFLAGS=-mod=mod -overlay=" + writeOverlay(t, c))
 		refused, out := h.commitWith("a.txt", msg)
 		assertRefusedUnjudged(t, h, "-overlay", refused, out)
 	})
+
+	// go splits GOFLAGS with its own tokeniser, which honours quotes and treats a
+	// carriage return as a separator, so a flag the shell's word split does not
+	// isolate still reaches the build.
+	for name, goflags := range map[string]string{
+		"single-quoted overlay": "-mod=mod '-overlay=%s'",
+		"double-quoted overlay": "\"-overlay=%s\"",
+		"CR-separated overlay":  "-mod=mod\r-overlay=%s",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newCommitMsgHookCase(t)
+			h := c.withEnv("GOFLAGS=" + fmt.Sprintf(goflags, writeOverlay(t, c)))
+			refused, out := h.commitWith("a.txt", msg)
+			assertRefusedUnjudged(t, h, "-overlay", refused, out)
+		})
+	}
 
 	t.Run("toolexec", func(t *testing.T) {
 		c := newCommitMsgHookCase(t)

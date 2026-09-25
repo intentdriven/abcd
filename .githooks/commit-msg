@@ -86,7 +86,8 @@ export LC_ALL
 # caller's choosing — so the hook refuses either before it builds. Short of those,
 # a real `go` builds this checkout's own source and judges the message the same
 # way, so an accidental substitute cannot pass what the policy refuses; a fake `go`,
-# a doctored GOROOT or a poisoned build cache that forges a pass is a deliberate
+# a -modfile naming another module file, a doctored GOROOT or a poisoned build
+# cache that forges a pass is a deliberate
 # act, the class of `--no-verify`, which CI's check over the pull request is the
 # backstop for.
 go_bin=$(command -v go 2>/dev/null || true)
@@ -178,11 +179,20 @@ if [ "$rc" -ne 0 ]; then
   echo "            nothing in the message was found wrong; fix the Go environment and commit again." >&2
   exit 1
 fi
+# go splits GOFLAGS with its own tokeniser (space, tab, newline and carriage
+# return separate fields; a field may be wrapped in single or double quotes), so
+# the words are taken the same way here: quotes become separators, and the split
+# is on all four blanks, never on the inherited IFS.
+goflags_words=${goflags//[\"\']/ }
+goflags_words=${goflags_words//$'\r'/ }
 set -f
-for flag in $goflags; do
+old_ifs=$IFS
+IFS=$' \t\n'
+for flag in $goflags_words; do
   case "$flag" in
     -overlay | -overlay=* | --overlay | --overlay=* | -toolexec | -toolexec=* | --toolexec | --toolexec=*)
       set +f
+      IFS=$old_ifs
       echo "commit-msg: BLOCKED — GOFLAGS carries ${flag%%=*}, so \`go build ./cmd/abcd\` would not build" >&2
       echo "            this checkout's own source (-overlay swaps source files, -toolexec runs every" >&2
       echo "            compile step through another program), and the outbound check cannot judge" >&2
@@ -192,6 +202,7 @@ for flag in $goflags; do
       ;;
   esac
 done
+IFS=$old_ifs
 set +f
 
 # The text git will record. git discards what follows its scissors line only when it
