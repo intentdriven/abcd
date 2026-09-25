@@ -49,7 +49,8 @@ reads committed files only; nothing dials out.
 
 `--release-gate` runs the same lint with one difference: a citation past the
 365-day threshold blocks instead of warning. It is for release machinery only —
-an ordinary commit is never blocked by the calendar.
+`release.yml`'s `verify` job runs it on every release, and an ordinary commit is
+never blocked by the calendar.
 
 If `nothing_checked` is `false` and `blockers` is zero, the docs are
 currency-clean.
