@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -566,7 +566,39 @@ sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
 peer's branch, path and bucket instead of answering not found.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
-or `noop`) and, for `dead_letter`, the reason.
+or `noop`) and, for `dead_letter`, the reason. A second ingest for a receipt
+already ingested is a `noop` when its payload renders to the block on the record,
+replaces that block in place when it renders differently (`ingested`, reported
+as `replaced`), and is refused with nothing written when it does not validate:
+a bad re-ingest never dead-letters a verdict already ingested.
+
+**Model-tier routing.** Both `intent audit <itd-N>` and `intent audit ingest`
+dispatch the `intent-auditor` agent, and each resolves that agent's model tier
+before anything else runs: an invocation override, over the repository's
+`.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone. The
+emit's `--json` result carries the request block as a `routing` member (`agent`,
+`tier`, `fan_out`, `source`, `origin`, `override`, `connection`, `fallback`),
+its text a `routing:` line, and the request file a `## Routing` section after
+the provenance block: run the auditor at that tier where the harness lets you
+choose one. The section sits outside the hashed prompt, so it never moves
+`prompt_hash`. The request `spec close` emits when it ships an intent carries
+the same section; a routing table that cannot be read leaves that request
+without one, one stderr warning names `intent audit <itd-N>` as the re-emit that
+adds it, and the close stands. `--issue-drift` dispatches no agent and refuses `--route`. The
+ingest's `--json` result carries a `route` receipt (`tier_asked`,
+`connection_tried`, `connection_used`, `fallback_reason`, `override`,
+`settings_sent`, `model_reported`) and its text a `route:` line; relay it with
+the result. When no configured provider can serve the tier, one stderr line says
+the step goes through the harness instead. A `--route` naming an agent this
+invocation does not dispatch, a tier outside the set, a connection this machine
+has not configured, or a routing table that cannot be read exits 2 before
+anything is written. With no table accepted and no `--route`, the step asks for
+`host-decides` and nothing is printed.
 
 **Hand the auditor the whole request file.** `intent audit` writes it to the
 reported `request_path`, and its `## Provenance` block states the
@@ -583,6 +615,50 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+## Condition: disposition one scope condition from a reading or a delivery
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent condition <itd-N> --json          # read-only: each condition's standing
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent condition <itd-N> <cond-id> \
+    --disposition <survived|narrowed|falsified|untested> \
+    --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"] --json
+```
+
+The verdict ingest above is one writer into a shipped intent's scope-condition
+dispositions; this is the second. It records that a reading item, or a later
+delivery, changed an assumption's standing, keyed to the `cond-…` identity the
+condition carries rather than to its wording, and joined to what occasioned it.
+
+- **With the intent alone** it writes nothing. Report every condition's standing
+  disposition and the block it came from (`from verdict rcp-…` or
+  `from condition <occasion>, <date>`), or `untested (no block)`. `--json`
+  carries the whole history under `dispositions` and the fold under `standing`.
+- **With a condition id** it appends one dated block to `## Audit Notes`:
+  the identity, the value, the occasion and the grounds, with the narrowing
+  under a `narrowed` value. The occasion is a reading item at any position, or
+  an intent in `shipped/` whose delivery changed the condition's standing. Ask
+  the researcher for the value and the grounds; the reading names the tension
+  and never marks the condition itself.
+
+A condition's standing is its latest reading-occasioned block where it has one,
+and otherwise its latest verdict: a fidelity verdict leaves a reading-occasioned
+block standing unless the verdict's rationale names that block's occasion,
+wherever the two sit in `## Audit Notes`. The verdict ingest reports each block
+it leaves standing (`still standing: …`); an auditor who meant to override one
+names its occasion in the rationale and ingests again for the same receipt,
+which replaces the ingested verdict (reported as `replaced`).
+
+Every refusal exits 2 with nothing written: an intent not in `shipped/` (the
+refusal names its bucket), a condition id the intent does not carry or carries
+twice, a value outside the four, grounds below the substance floor, `narrowed`
+without `--narrowing` or `--narrowing` with any other value, an occasion that
+does not resolve (an absent reading item, or an intent that is absent or not in
+`shipped/`), and the intent named as its own occasion. The grounds and the
+narrowing are redacted before the write; report a `redacted` count when there
+is one. When the reading item's `constraint_in_play` cites a different
+condition's identity, the result carries `occasion_citation` and the render a
+`note:` line: report it as a question for the researcher, never as a refusal.
 
 ## Issue drift: does every promote join read from both ends?
 

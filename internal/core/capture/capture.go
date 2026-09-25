@@ -24,7 +24,7 @@ import (
 )
 
 // LedgerRelPath is the ledger root relative to the repo worktree.
-const LedgerRelPath = ".abcd/work/issues"
+const LedgerRelPath = recordid.IssuesRelDir
 
 // issFamily is the ledger's record family, the argument this package hands
 // recordid.SplitRecordFilename. Ledger filenames are split by that ONE shared

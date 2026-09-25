@@ -57,6 +57,7 @@ judgement no verb makes.
 | `ready` | gate | shipped |
 | `audit` | audit | shipped |
 | `audit ingest` | audit | shipped |
+| `condition` | — | shipped |
 
 
 ## 1. Intent IDs, kinds, and lifecycle
@@ -280,7 +281,8 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 | Readiness gate (one intent id, optionally with grounds) | **Implement-readiness gate**: reports whether an intent is ready to implement — eight checks, four of which gate: in `planned/`, with acceptance criteria, a bidirectional spec link, and a written spec body. The two claim rows (mechanism prompted-and-nullable, scope conditions with each condition identified) and the grounds row (a discipline record is exempt: it carries no conjecture of its own) are reported as advisory and never withhold readiness, their refusals parked by iss-2609091009111294 until the rethink of the reading work. The steps row is advisory by design: it reports the linked spec's `## Steps` shape — the steps listed and how many have landed, or none and so one step — and names a section that is not a numbered list with the shape it expects (itd-2609212103565953). Exit 0 ready / 1 not ready / 2 fault. Recording grounds, in the form `<pursued\|deferred\|declined>: <conjecture>`, is the gate's one write: it appends the conjecture behind this decision — what is expected, and what would show it wrong — to the intent's `## Grounds` section, append-only ([adr-57](../../decisions/adrs/0057-grounds-accumulate-as-an-append-only-section.md)), and then reports; a shipped or superseded record is never backfilled. | (no move; recorded grounds append to `## Grounds`) |
 | Audit (one intent id) | **Role 1 — single-document fidelity.** Takes a **shipped** intent and nothing else: a record still in `drafts/`, `planned/`, `disciplines/` or `superseded/` is refused by name, because only a shipped intent has a delivered reality to be judged against. Compares the intent's press release + acceptance criteria against delivered reality (code, configs, docs, tests). Per-criterion verdicts (`MET` / `MET_WITH_CONCERNS` / `NOT_MET` / `INCONCLUSIVE`) appended to the intent's `## Audit Notes`. Aligns with the spec store's `plan-review` / `impl-review` / `completion-review` vocabulary — same operation shape (adversarial second opinion), different opponent (press release vs engineering spec). spc-12 (predecessor store) ships this **manual** verb; spc-28 (predecessor store) ships the on-close hook (move `planned → shipped` + queue a review), but auto-running the reviewer off that queue is still deferred (no spec currently owns it; spc-6 (predecessor store) disowned auto-firing). | (stays) |
 | Issue drift (the whole corpus, optionally strict) | **The promote join's drift check** (itd-4 AC3, in the predecessor store's spc-23 shape): walks the intent store and the issue ledger, readings included, and reports every join that does not read the same from both ends — an intent naming a record in `related_issues` that does not name it back in `related_intents` (from an issue's end a one-way `related_intents` is a loose relation and stays silent; a reading item carries none, so from its end it is reported), either end naming a record the tree does not hold, a shipped intent naming an issue that is not in `resolved/`, and a record still carrying a retired back-link key. Each finding is a warning on stderr and the run exits 0; the strict form exits 1 on any finding, for a CI gate. Findings land in `.abcd/.work.local/logs/audit/issue-drift-<ts>/report.json`. | (no move; writes only its receipt) |
-| Audit ingest (a verdict JSON path) | Ingests a host-delegated intent-fidelity verdict JSON, validated fail-closed against the schema and the parked review request, and writes its per-criterion verdict into the shipped intent's `## Audit Notes` (or quarantines a bad payload). | (no move; updates `## Audit Notes`) |
+| Audit ingest (a verdict JSON path) | Ingests a host-delegated intent-fidelity verdict JSON, validated fail-closed against the schema and the parked review request, and writes its per-criterion verdict into the shipped intent's `## Audit Notes` (or quarantines a bad payload). A second ingest for the same receipt is a no-op when its payload renders to the block on the record, replaces that block in place when it renders differently, and is refused with nothing written when it does not validate. | (no move; updates `## Audit Notes`) |
+| Condition disposition (one shipped intent id, optionally one condition id) | **The second writer into the scope-condition disposition surface.** With the intent alone it is read-only: every scope condition the intent carries, with its standing disposition and the block that disposition came from, or `untested (no block)`; the machine-readable form carries the whole history and the fold. With a condition identity it writes one disposition against a **shipped** intent — `survived`, `narrowed`, `falsified` or `untested` — joined to what occasioned it: a reading item at any position, or a delivered intent in `shipped/` whose delivery changed the condition's standing. It appends one dated block to `## Audit Notes`, beside the fidelity verdict's blocks and in the same bullet shape. A condition's standing is its latest reading-occasioned block where it has one, and otherwise its latest verdict block: a verdict overrides a reading-occasioned block only where its rationale names that block's occasion, wherever the two sit in the section; the verdict ingest reports what it leaves standing, and a re-ingest for the same receipt that names the occasion replaces the ingested verdict. Refused, with nothing written: an intent not in `shipped/` (naming its bucket), an identity the intent does not carry or carries twice, a value outside the four, grounds below the substance floor, `narrowed` without a narrowing or a narrowing on any other value, an occasion that does not resolve, and the intent itself as its own occasion. Grounds and narrowing are redacted before the write. When a reading item's `constraint_in_play` cites a different condition's identity, the mismatch is reported and never refused: the reading names the tension and the researcher marks the condition. The block sits under the heading every reading's assembler withholds, so no disposition reaches a reading. | (no move; appends to `## Audit Notes`) |
 | `/abcd:intent consistency [<itd-N>]` | **Role 2 — cross-document fidelity.** Surfaces five judgement categories (terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts) across briefs + intents. **Bare** scans the whole corpus; **with `<itd-N>`** narrows to one intent's relationship with the rest. Findings land in `.abcd/.work.local/logs/audit/consistency-<ts>/report.{json,md}`. The judgement half + on-demand verb are the predecessor's spc-29 (a later phase); mechanical-half categories and pre-commit hook are deferred follow-ups. | (stays) |
 | `/abcd:intent shape [<itd-N>]` | **Role 3 — kind classification.** Examines whether an intent's declared `kind` (the noun) still fits the corpus. Surfaces *suggested* reclassifications across three live types: `kind_change`, `bundle`, `supersession`. **Bare** scans the corpus; **with `<itd-N>`** checks one intent. Pairs with the reclassify step (action verb that commits a `shape` finding). On-demand only per spc-29 (predecessor store; a later phase); findings land in `.abcd/.work.local/logs/audit/shape-<ts>/report.{json,md}`. Concurrency via `flock(2)` on `.abcd/coordination/shape.lock` (see § 7). Scheduled / continuous invocation is a deferred follow-up. | (stays) |
 | The reclassify step, on one intent id | **A later phase — no reclassify sub-verb ships yet.** Late reclassification (e.g., a standalone intent realised to be a bundle-member; a draft realised to be a discipline; a shipped intent superseded by a later one). Records `reclassification_history` entry; moves the file between directories as the new kind dictates. Reclassifying to superseded, naming the successor handle, is the supersession path: the file moves to `superseded/`, frontmatter records `superseded_by: <handle>` — the record that formally supersedes this intent, either an intent (`itd-M`) or an ADR (`adr-M`) when a decision redecided the question — AND `kind_at_supersession: <original-kind>` so future readers know what shape the intent had when retired. | varies by destination kind |
@@ -597,6 +599,36 @@ The later-phase review/audit verbs write their per-run receipts under the local 
 `chain` and `lifeboat` are later-phase sub-verbs of the reserved `/abcd:audit` (their backing intents itd-16 and itd-35 sit in `intents/drafts/`); the read-only working-conventions conformance check is `abcd lint`. The audit is a shipped sub-verb of `/abcd:intent`;
  `consistency` and `shape` are later phases. Bare `/abcd:intent` is status+help per the common (not universal) bare-command-as-help convention.
 
+**Model-tier routing.** The audit's emit and its verdict ingest dispatch the
+intent auditor, and each resolves the model-tier route (itd-2609170822093401,
+spc-2609180535002478) of the agent it dispatches before anything else runs,
+through the shared resolver (`internal/core/oracle` over
+`internal/core/layered`): the invocation's routing override, which the appendix
+lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
+over the repository's `.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+once a table is accepted. The emit writes the request block into the request
+document as a `## Routing` section after the provenance block, outside the
+hashed prompt, so the verdict's `prompt_hash` does not move with the machine's
+routing, and returns it as a `routing` member while the review is still owed.
+The request emitted when a spec's close ships its intent carries the same
+section. The close is a record move whose emit is report-only, so a routing
+table that cannot be read leaves that request without the section, one stderr
+warning names the re-emit through the audit that adds it, and the close stands.
+The ingest's result carries the receipt. The issue-drift check dispatches no
+agent and refuses the override. A step no configured provider can serve at its
+tier goes to the harness with the tier named in its request, and one stderr line
+says so. The receipt is a `route` member in the JSON and a `route:` line in the
+text, carrying `tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent` and `model_reported`, the last
+read from the payload's own `model` field (a reading's `instrument.model`) and
+empty when the payload names none. A routing table that cannot be read, an
+override naming an agent this invocation does not dispatch, a tier outside
+`local`, `economy`, `frontier` and `host-decides`, or a connection this machine
+has not configured exits 2 before anything is written. With no table accepted
+and no override, the step asks for `host-decides` on the harness and nothing is
+printed.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface
@@ -605,7 +637,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent hold`, `abcd intent link`, `abcd intent new`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent hold`, `abcd intent link`, `abcd intent new`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -620,6 +652,7 @@ Sub-verbs: `abcd intent audit ingest`.
 | Flag | Type |
 |---|---|
 | `--issue-drift` | bool |
+| `--route` | stringArray |
 | `--strict` | bool |
 
 ### `abcd intent audit ingest`
@@ -628,7 +661,19 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--route` | stringArray |
 | `--verdict-json` | string |
+
+### `abcd intent condition`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--disposition` | string |
+| `--grounds` | string |
+| `--narrowing` | string |
+| `--occasioned-by` | string |
 
 ### `abcd intent hold`
 

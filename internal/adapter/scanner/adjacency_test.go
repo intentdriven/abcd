@@ -678,7 +678,12 @@ func probeWork(line string) int {
 	for i, cp := range patterns {
 		probes[i] = tallyMatcher{adjacencyProbe(cp.Re), &n}
 	}
-	scanAllPatterns(patterns, probes, tallyMatcher{junctionProbe(patterns), &n}, line)
+	js := newJunctionSet(patterns)
+	js.all = tallyMatcher{js.all.(*regexp.Regexp), &n}
+	if js.secret != nil {
+		js.secret = tallyMatcher{js.secret.(*regexp.Regexp), &n}
+	}
+	scanAllPatterns(patterns, probes, js, line)
 	return n
 }
 

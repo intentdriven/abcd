@@ -3,6 +3,7 @@ package recordid
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -199,5 +200,84 @@ func TestADRFileIDIsTheOneDerivation(t *testing.T) {
 		if got := ADRFileID(name); got != want {
 			t.Errorf("ADRFileID(%q) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// TestLookupOneReadsOnlyTheIdsFamily: resolving one id reads that id's family
+// store alone, so a fault in another family's store is not this lookup's
+// refusal, while a fault in its own still is.
+func TestLookupOneReadsOnlyTheIdsFamily(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(".abcd/development/intents/shipped/itd-7-a-delivery.md")
+	mk(".abcd/development/specs/open/spc-3-a-spec.md")
+	specs := filepath.Join(root, ".abcd", "development", "specs")
+	if err := os.Chmod(specs, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(specs, 0o755) })
+	if _, err := os.ReadDir(specs); err == nil {
+		t.Skip("the store stays readable at mode 000 (running as root)")
+	}
+	if _, err := NewResolver(root); err == nil {
+		t.Fatal("fixture: the full resolver must fail on the unreadable spec store")
+	}
+	rel, ok, err := LookupOne(root, "itd-7")
+	if err != nil || !ok || rel != ".abcd/development/intents/shipped/itd-7-a-delivery.md" {
+		t.Fatalf("LookupOne(itd-7) = %q %v %v", rel, ok, err)
+	}
+	if _, ok, err := LookupOne(root, "itd-8"); err != nil || ok {
+		t.Errorf("an absent intent: ok=%v err=%v", ok, err)
+	}
+	if _, _, err := LookupOne(root, "spc-3"); err == nil {
+		t.Error("a fault in the id's own family store must still refuse")
+	}
+	for _, id := range []string{"", "itd", "rdi-1", "../x"} {
+		if _, ok, err := LookupOne(root, id); ok || err != nil {
+			t.Errorf("LookupOne(%q) = %v %v, want an id outside every family to resolve to nothing", id, ok, err)
+		}
+	}
+}
+
+// TestIssuesLedgerRootIsSpelledOnce: the issue ledger's repo-relative root is
+// the one constant IssuesRelDir, and no other non-test source under internal/
+// spells it as a literal, so a move of the ledger is one edit.
+func TestIssuesLedgerRootIsSpelledOnce(t *testing.T) {
+	if IssuesRelDir != ".abcd/work/issues" {
+		t.Fatalf("IssuesRelDir = %q", IssuesRelDir)
+	}
+	literal := `"` + IssuesRelDir + `"`
+	internalRoot := filepath.Join("..", "..")
+	var spelled []string
+	err := filepath.WalkDir(internalRoot, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), literal) && filepath.ToSlash(p) != "../../core/recordid/resolve.go" {
+			spelled = append(spelled, p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spelled) != 0 {
+		t.Errorf("the ledger root is spelled as a literal outside recordid.IssuesRelDir in %v", spelled)
 	}
 }

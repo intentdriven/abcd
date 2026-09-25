@@ -143,11 +143,30 @@ func (r *Renderer) RenderBlocks(path string, blocks []Block) (string, error) {
 	return b.String(), nil
 }
 
+// unrenderedFenceRe matches a fence opener the renderer does not render: a
+// tilde run, or a backtick run longer than three, at any indent.
+var unrenderedFenceRe = regexp.MustCompile("^[ \t]*(~{3,}|`{4,})")
+
 // RenderBlock renders one top-level block.
 func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	at := Source{Path: path, Line: blk.Line}
 	lines := strings.Split(blk.Text, "\n")
 	first := lines[0]
+
+	// The walk that cut this block reads fences by mdrecord's rule, tildes and
+	// longer backtick runs included, and this renderer renders one form: a
+	// three-backtick run at column 0. Any other form arriving here would render
+	// as a paragraph, delimiters and code inlined into prose, with no error, so
+	// it is refused. A three-backtick fence's own body is code and is not read
+	// (iss-2609251514129841).
+	if !strings.HasPrefix(first, "```") || strings.HasPrefix(first, "````") {
+		for i, ln := range lines {
+			if unrenderedFenceRe.MatchString(ln) {
+				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block opened by a tilde or a run of four or more backticks",
+					"only a three-backtick fence renders; any other opener renders as a paragraph"}
+			}
+		}
+	}
 
 	// A fence must open its own block. Without a blank line before it the block
 	// walk never sees it start, so the whole run — prose, backticks and code —

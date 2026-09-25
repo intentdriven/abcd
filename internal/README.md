@@ -46,6 +46,21 @@ plugin surface, and a future MCP server share one engine.
   reader spelled twice is one the two can disagree about, which is how a bullet
   one writer appends becomes a bullet the other cannot find. It owns no heading's
   meaning: a caller supplies the pattern it is looking for.
+- **`core/condition/`** — the scope-condition disposition vocabulary: the four
+  values, the `cond-…` identity marker, the two block grammars a disposition is
+  written under (the fidelity verdict's review marker and the condition verb's
+  dated block), and the one reader that folds them into a condition's standing
+  disposition. A leaf on the `core/grounds` precedent: two writers in
+  `core/intent` and the record lint in `core/lint` read one vocabulary, and
+  `core/intent`'s tests import `core/lint`, so a lint importing intent back is
+  an import cycle. It imports `core/mdrecord` for the one notion of a section,
+  and nothing else beyond the standard library.
+- **`core/readingitem/`** — the reading ledger's locator: a reading item or a
+  disposition found by id across every run, symlink-refusing at each level, and
+  the one occasion resolver the verbs that name an occasion share, each naming
+  the families it admits. A leaf because `core/capture` imports `core/intent`
+  and both need it; `core/capture` keeps its historical locator names as thin
+  wrappers over it.
 - **`core/relink/`** — the one link-repoint primitive. A record's folder is its
   status, so every lifecycle transition is a rename, and a rename strands every
   relative link that named the file where it was. The verbs that move a record
@@ -75,8 +90,10 @@ plugin surface, and a future MCP server share one engine.
   origin that supplied it. Any configuration more than one party may set reads
   through it (the routing table in `core/oracle`, and the pace, runner, review
   and match keys in `.abcd/config.json`), so the precedence, the guarded reads
-  and the refusals are spelled once. A present file it cannot read, or a key
-  nobody claims inside a claimed namespace, is an error, never a quiet default.
+  and the refusals are spelled once. `RootsFor` reads the repository layer from
+  the root the rules loader resolves, so rules, guard and configuration never
+  come from two directories. A present file it cannot read, or a key nobody
+  claims inside a claimed namespace, is an error, never a quiet default.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier

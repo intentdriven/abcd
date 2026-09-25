@@ -683,6 +683,11 @@ const retiredFourthConditionSentence = "Items come back unordered and unweighted
 // to the blindness core: all four gain the brief's surfaces, internals,
 // delivery and meta chapters, and widening loses the shipped intents.
 //
+// The detection definition moved PATCH alone with itd-2609020625405251: its item
+// shape gains the one sentence on citing a scope condition's identity in
+// `constraint_in_play`, which no other position's shape carries, so the
+// three others did not move.
+//
 // The comparative definition is one PATCH ahead of the other three from
 // iss-2609021833302981, which moved nothing they share: its object section
 // states the derivation rule — the only one of the four that has one to state —
@@ -692,7 +697,27 @@ var promptVersions = map[Position]string{
 	PositionWidening:    "0.2.2",
 	PositionEntailment:  "0.1.2",
 	PositionComparative: "0.1.3",
-	PositionDetection:   "0.1.2",
+	PositionDetection:   "0.1.3",
+}
+
+// TestDetectionItemShapeCitesAConditionIdentity is spc-2609020626046252's
+// detection guidance: where the constraint in play is a scope condition, the
+// item cites the condition's identity in constraint_in_play, which is the join
+// the condition verb reads back as its occasion's citation. The other three
+// positions carry no such field and say nothing of it.
+func TestDetectionItemShapeCitesAConditionIdentity(t *testing.T) {
+	root := repoRoot(t)
+	for _, p := range Positions() {
+		shape := flatten(section(t, p, definitionText(t, root, p), "Item shape"))
+		says := strings.Contains(shape, "scope condition") && strings.Contains(shape, "`cond-`") &&
+			strings.Contains(shape, "sixteen digits") && strings.Contains(shape, "`constraint_in_play`")
+		if p == PositionDetection && !says {
+			t.Errorf("the detection item shape does not tell the reading to cite a scope condition's `cond-` identity in `constraint_in_play`:\n%s", shape)
+		}
+		if p != PositionDetection && strings.Contains(shape, "`cond-`") {
+			t.Errorf("the %s item shape carries the detection position's citation guidance", p)
+		}
+	}
 }
 
 // TestTheFourthConditionTakesTheCompanionsSentence is itd-2609021003095168 ac-7
