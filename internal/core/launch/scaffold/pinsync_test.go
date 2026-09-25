@@ -156,7 +156,8 @@ func TestSyncRepoPinsPropagatesABumpIntoTheTemplate(t *testing.T) {
 		copyInto(t, realRoot, root, rel)
 	}
 
-	// Bump actions/attest in the workflow alone, the way dependabot would.
+	// Bump actions/attest in the workflow alone, the way dependabot would: every
+	// occurrence at once, since the workflow calls it more than once (iss-273).
 	//
 	// The pin is READ from the tree rather than written here on purpose: hard-coding
 	// the current SHA would make this test fail on the very first dependabot bump —
@@ -169,7 +170,8 @@ func TestSyncRepoPinsPropagatesABumpIntoTheTemplate(t *testing.T) {
 		t.Fatal("release.yml no longer pins actions/attest; pick another action for this test")
 	}
 	const bumpedPin = "actions/attest@1111111111111111111111111111111111111111 # v9.9.9"
-	bumped := strings.Replace(before, current, bumpedPin, 1)
+	occurrences := strings.Count(before, current)
+	bumped := strings.ReplaceAll(before, current, bumpedPin)
 	if bumped == before {
 		t.Fatalf("failed to rewrite the actions/attest pin %q in release.yml", current)
 	}
@@ -196,13 +198,13 @@ func TestSyncRepoPinsPropagatesABumpIntoTheTemplate(t *testing.T) {
 	}
 	tmplNow := readFile(t, filepath.Join(root, filepath.FromSlash(releaseTemplateRel)))
 
-	// EXACTLY one line moves. TestSelfScaffoldParity compares bytes, so a sync that
-	// also normalised whitespace, reordered a key or touched a second pin would
-	// leave the template unrenderable to the committed workflow — and this test,
-	// working on a copy, cannot see that. Bounding the edit to one line is the
-	// substitute for the byte-comparison it cannot make.
-	if n := changedLineCount(t, tmplBefore, tmplNow); n != 1 {
-		t.Errorf("sync changed %d lines in the template; want exactly 1 (the attest pin)", n)
+	// EXACTLY the attest pin lines move. TestSelfScaffoldParity compares bytes, so a
+	// sync that also normalised whitespace, reordered a key or touched another pin
+	// would leave the template unrenderable to the committed workflow — and this
+	// test, working on a copy, cannot see that. Bounding the edit to the bumped
+	// lines is the substitute for the byte-comparison it cannot make.
+	if n := changedLineCount(t, tmplBefore, tmplNow); n != occurrences {
+		t.Errorf("sync changed %d lines in the template; want exactly %d (the attest pins)", n, occurrences)
 	}
 	if !strings.Contains(tmplNow, bumpedPin) {
 		t.Errorf("the bumped attest pin %q was not propagated into the template", bumpedPin)

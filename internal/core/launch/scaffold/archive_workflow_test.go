@@ -78,7 +78,7 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	// 404s for every install.
 	render := indexOf(t, rel, `go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify`+repositoryBinding, "release")
 	sums := indexOf(t, rel, "sha256sum abcd-* > checksums.txt", "release")
-	attest := indexOf(t, rel, "actions/attest-build-provenance@", "release")
+	attest := indexOf(t, rel, "- name: Attest build provenance for the binaries", "release")
 	create := indexOf(t, rel, `gh release create "${TAG}" bin/abcd-* bin/checksums.txt`, "release")
 	if !(stamp < render && render < sums && sums < attest && attest < create) {
 		t.Errorf("release job order: vcs-stamp %d < archive %d < checksums %d < attest %d < create %d must hold",
