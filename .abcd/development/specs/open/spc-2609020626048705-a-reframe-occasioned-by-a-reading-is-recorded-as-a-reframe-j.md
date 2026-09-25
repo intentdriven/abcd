@@ -176,7 +176,7 @@ what the gate would refuse.
 
 ### Resolving the occasion, and the one check on the join
 
-The occasion is resolved through `readingitem.ResolveOccasion(issuesRoot, id, issueschema.ReframeOccasionFamilies...)`
+The occasion is resolved through `readingitem.ResolveOccasion(repoRoot, id, issueschema.ReframeOccasionFamilies...)`
 in the `internal/core/readingitem` leaf, the one resolver the admission,
 reframe and condition verbs share; it refuses an id outside the families it is
 handed by shape before any path is built. An `rdi-N` resolves through

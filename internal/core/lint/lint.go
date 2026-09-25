@@ -1556,7 +1556,10 @@ func checkLinks(rel, fileAbs, repoRoot string, lines []string, mask []bool, cfg 
 		if mask[i] {
 			continue
 		}
-		for _, m := range linkRe.FindAllStringSubmatch(line, -1) {
+		// A code span takes precedence over link syntax, so `Get[T](raw)` is
+		// code rather than a link (iss-2609250915305413); the span is blanked
+		// before matching, and a link beside it or around it is still read.
+		for _, m := range linkRe.FindAllStringSubmatch(stripInlineCode(line), -1) {
 			target := strings.TrimSpace(m[1])
 			if target == "" || strings.HasPrefix(target, "#") ||
 				strings.HasPrefix(target, "//") || schemeRe.MatchString(target) {
@@ -1870,7 +1873,7 @@ type issueLedger struct {
 // and two rules configured alike scan one ledger, not two.
 func issuesDirOf(cfg RuleConfig) string {
 	if cfg.IssuesDir == "" {
-		return ".abcd/work/issues"
+		return recordid.IssuesRelDir
 	}
 	return cfg.IssuesDir
 }

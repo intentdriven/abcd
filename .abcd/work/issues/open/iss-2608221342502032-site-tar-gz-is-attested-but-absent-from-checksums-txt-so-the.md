@@ -7,8 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "agent-finding"
 found_at: ".github/workflows/site.yml"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: site.tar.gz is attested but absent from checksums.txt; decide the manifest's coverage deliberately). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Should checksums.txt cover site.tar.gz, or is the manifest binaries-only by design?"
 ---
 
 site.tar.gz is attested but absent from checksums.txt, so the release manifest no longer covers every asset; wants a deliberate decision rather than a silent gap

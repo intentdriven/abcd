@@ -10,6 +10,22 @@ release exactly once, compares, and names the source it consulted. That is this
 surface's only network touch, and abcd never fetches implicitly
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty: the verb registers no sub-command. The online check is a
+flag on the verb, not a sub-verb.
+
 ## Behaviour
 
 Bare `abcd version` prints a short block: the version line, then `install:`

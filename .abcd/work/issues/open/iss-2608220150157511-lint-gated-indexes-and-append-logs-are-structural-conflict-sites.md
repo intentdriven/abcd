@@ -7,8 +7,8 @@ category: "process"
 source: "user-observation"
 found_during: "abcdev-site session close-out 2026-08-22"
 found_at: ".abcd/development/brief/06-delivery/03-out-of-scope.md"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: generated-at-build indexes compared by lint instead of hand-edited regions, across five registers). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Plan generated-at-build indexes compared by lint for the five hand-edited registers?"
 ---
 
 Merge contention is structural in the shared registers, not the prose: append logs (.abcd/work/DECISIONS.md, 154 changes; the decomposition-calibration corpus, conflicted 2026-08-22) and the lint-gated indexes that index_drift forces every branch to co-edit (brief/06-delivery/03-out-of-scope.md drafts index, conflicted the same day; 04-surfaces/README.md; decisions/adrs/README.md; intents/README.md; release/surface.json). The fix shape for the indexes is already written down: the enumeration command in out-of-scope.md derives the list from the filesystem, so the committed copy could become generated-at-build and the lint compare against the derivation instead of a hand-edited region. Append logs tolerate union merges; the indexes do not

@@ -75,11 +75,10 @@ func TestMechanismFlagsIncidentOne(t *testing.T) {
 // `zsh` loops left running since the Saturday. They are counted and their shares
 // summed, and nothing else about them is carried.
 //
-// The fixture's second half is the same incident oversubscribed: the incident's
-// load of about 440 on 16 cores means no loop can have held a near-full core, so
-// the stray rule cannot see them and the warning is the extreme trigger's. This
-// pins the limit of the lifetime-share rule rather than letting the first half
-// imply the stray trigger alone would have caught the incident.
+// The fixture's second half is the same incident oversubscribed: at the
+// incident's load of about 440 on 16 cores no loop can have held a near-full
+// core, but each has held all it could get, about 16/440 of a core, so the stray
+// rule still counts every one of them beside the extreme trigger.
 func TestMechanismFlagsIncidentTwo(t *testing.T) {
 	age := 4 * 24 * time.Hour
 	var procs []Proc
@@ -103,47 +102,111 @@ func TestMechanismFlagsIncidentTwo(t *testing.T) {
 		procs = append(procs, burner(70000+i, 70000, otherUID, "zsh", age, 16.0/440))
 	}
 	v = Classify(snapshot(440.2, procs...), DefaultLimits(16), caller)
-	if !slices.Equal(v.Triggers, []string{TriggerExtreme}) || v.Others.Count != 0 {
-		t.Fatalf("oversubscribed: triggers %v, others %+v; want the extreme trigger alone", v.Triggers, v.Others)
+	if !slices.Equal(v.Triggers, []string{TriggerStray, TriggerExtreme}) || v.Others.Count != 38 {
+		t.Fatalf("oversubscribed: triggers %v, others %+v; want both triggers and all 38 counted", v.Triggers, v.Others)
 	}
 }
 
-// TestStrayRuleSilentBand pins the band in which the check says nothing about
-// busy loops that have run for two days (iss-2609231947544298). On 16 cores, n
-// such loops at the load they cause (n) each hold their fair share, 16/n of a
-// core. At n = 17 that share is 0.94 and the stray trigger fires; from n = 18
-// (0.89) it is under NearFullShare, so no loop is a stray, and the extreme
-// trigger stays quiet until the load is strictly above 64. So 18 to 64 loops,
-// a load between 1.125 and 4 times the cores, raise no trigger. The band is a
-// known limit held open for the product thinker's ruling on the stray
-// definition; a fix turns this test red on purpose, and the issue is resolved
-// with it.
-func TestStrayRuleSilentBand(t *testing.T) {
+// TestStrayRuleCoversTheOversubscribedBand: busy loops that have run for two
+// days are strays at every load, because a stray is judged against its fair
+// share of the machine as loaded, cores divided by the one-minute load, not
+// against a fixed 0.9 of a core (the product thinker's ruling H1 of 2026-09-25,
+// iss-2609231947544298). On 16 cores, n such loops at the load they cause (n)
+// each hold 16/n of a core, which is all they can get; 18 to 64 loops, a load
+// between 1.125 and 4 times the cores, are the band the fixed rule left silent.
+// The caller's own loops and another account's are judged alike; only what the
+// warning says about them differs.
+func TestStrayRuleCoversTheOversubscribedBand(t *testing.T) {
 	age := 48 * time.Hour
 	cases := []struct {
 		loops int
 		want  []string
 	}{
 		{17, []string{TriggerStray}},
-		{18, nil},
-		{20, nil},
-		{40, nil},
-		{64, nil},
-		{65, []string{TriggerExtreme}},
+		{18, []string{TriggerStray}},
+		{20, []string{TriggerStray}},
+		{40, []string{TriggerStray}},
+		{64, []string{TriggerStray}},
+		{65, []string{TriggerStray, TriggerExtreme}},
+		{440, []string{TriggerStray, TriggerExtreme}},
 	}
 	for _, c := range cases {
-		var procs []Proc
-		for i := 0; i < c.loops; i++ {
-			procs = append(procs, burner(80000+i, 80000, otherUID, "zsh", age, 16.0/float64(c.loops)))
-		}
-		v := Classify(snapshot(float64(c.loops), procs...), DefaultLimits(16), caller)
-		if !slices.Equal(v.Triggers, c.want) {
-			t.Errorf("%d loops at load %d: triggers %v (others %+v), want %v", c.loops, c.loops, v.Triggers, v.Others, c.want)
+		for _, uid := range []uint32{otherUID, callerUID} {
+			var procs []Proc
+			for i := 0; i < c.loops; i++ {
+				procs = append(procs, burner(80000+i, 80000, uid, "zsh", age, 16.0/float64(c.loops)))
+			}
+			v := Classify(snapshot(float64(c.loops), procs...), DefaultLimits(16), caller)
+			if !slices.Equal(v.Triggers, c.want) {
+				t.Errorf("uid %d, %d loops at load %d: triggers %v (others %+v), want %v", uid, c.loops, c.loops, v.Triggers, v.Others, c.want)
+			}
+			counted := v.Others.Count
+			if uid == callerUID {
+				counted = len(v.Own) + v.OwnMore
+			}
+			if counted != c.loops {
+				t.Errorf("uid %d, %d loops at load %d: %d counted as strays, want all of them", uid, c.loops, c.loops, counted)
+			}
 		}
 	}
 }
 
-// TestStrayBoundaries: over the limit and at a share of at least 0.9.
+// TestStrayShareIsRelativeToTheFairShare: under an oversubscribed load a
+// process is a stray at 0.9 of its fair share or more, and under it is not; at a
+// load no higher than the cores its fair share is one core, so the rule is the
+// near-full core it was; with no load reading the fair share is one core too.
+func TestStrayShareIsRelativeToTheFairShare(t *testing.T) {
+	cases := []struct {
+		load  float64
+		share float64
+		stray bool
+	}{
+		{32, 0.46, true}, // fair share 0.5 of a core; 0.9 of it is 0.45
+		{32, 0.44, false},
+		{64, 0.23, true}, // fair share 0.25
+		{64, 0.22, false},
+		{8, 0.89, false}, // under the cores: a full core is the fair share
+		{8, 0.90, true},
+		{16, 0.89, false},
+	}
+	for _, c := range cases {
+		v := Classify(snapshot(c.load, burner(60000, 60000, callerUID, "spin", 2*time.Hour, c.share)), DefaultLimits(16), caller)
+		if got := len(v.Own) == 1; got != c.stray {
+			t.Errorf("load %v share %.2f: stray = %v, want %v", c.load, c.share, got, c.stray)
+		}
+	}
+	s := snapshot(64, burner(60000, 60000, callerUID, "spin", 2*time.Hour, 0.5))
+	s.HasLoad = false
+	if v := Classify(s, DefaultLimits(16), caller); len(v.Own) != 0 {
+		t.Fatalf("with no load reading a half-core process is a stray: %+v", v.Own)
+	}
+}
+
+// TestFairShare: cores over the one-minute load, capped at one core, and one
+// core when the load or the cores are unknown.
+func TestFairShare(t *testing.T) {
+	cases := []struct {
+		load    float64
+		hasLoad bool
+		cores   int
+		want    float64
+	}{
+		{40, true, 16, 0.4},
+		{16, true, 16, 1},
+		{3, true, 16, 1},
+		{0, true, 16, 1},
+		{440, false, 16, 1},
+		{440, true, 0, 1},
+	}
+	for _, c := range cases {
+		if got := FairShare(Snapshot{Load1: c.load, HasLoad: c.hasLoad, Cores: c.cores}); got != c.want {
+			t.Errorf("FairShare(load %v, has %v, cores %d) = %v, want %v", c.load, c.hasLoad, c.cores, got, c.want)
+		}
+	}
+}
+
+// TestStrayBoundaries: over the limit and, on a machine loaded no higher than
+// its cores, at a share of at least 0.9 of a core.
 func TestStrayBoundaries(t *testing.T) {
 	cases := []struct {
 		age   time.Duration
@@ -230,7 +293,8 @@ func TestOwnStraysAreCappedAtTwenty(t *testing.T) {
 // (14:59:13Z on 2026-09-23: load 41.91 on 16 cores, eight preflights, twelve
 // test binaries) as a process table: eight make, eight go, twelve test binaries
 // and their compilers, all younger than 15 minutes at a full core, beside the
-// machine's usual long-lived programs, none of which holds a near-full core.
+// machine's usual long-lived programs, none of which holds nearly all the 0.38
+// of a core a program can get at that load.
 func TestEightConcurrentPreflightsAreQuiet(t *testing.T) {
 	var procs []Proc
 	pid := 90000
