@@ -7,6 +7,10 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-189-round-4-builder"
 found_at: "internal/core/lint/schema.go"
+resolution: "Both marks are kept: the id mark is load-bearing (an empty quoted id is otherwise reported twice), the protocol is stated at the call site, and a test pins both."
+impact: internal
+resolved_by:
+  commit: "266c912a"
 ---
 
 mark judged on id and on slug are both unreachable in the case they guard so removing either alone repeats the shape the round was convened for
@@ -29,3 +33,7 @@ obviously right, which is why this is a record rather than a commit.
 
 The decision wants making once, for both, with the call-site protocol either
 honoured or rewritten. It is cosmetic in every case and blocks nothing.
+
+## Grounds
+
+- pursued: an empty quoted id or slug yields the filename leg's finding and no second required-property finding on the same line; removing the id mark turns the pin red
