@@ -111,7 +111,7 @@ category present — often several — and every line after the last one you sup
 reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
-safe-autocreate, config-change, status-line, user-state, plugin-owned), so a
+safe-autocreate, config-change, status-line, oracle-routing, user-state, plugin-owned), so a
 scripted stream of specific answers lines up with them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
@@ -132,8 +132,9 @@ that must not block and must not prompt, close stdin or pre-answer everything:
 
 `--yes` approves every resolvable category but never adopts the optional
 git-identity pin, because the pin records whatever git identity is currently
-configured, and never wires the status line (below), because that rewrites a
-harness-wide setting. When the result carries `optional_skipped`, report it and
+configured, never wires the status line (below), because that rewrites a
+harness-wide setting, and never accepts a model-tier routing table (below),
+because a table decides which model every delegated step asks for. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
 
 **The house-style question.** When the install seeds `.abcd/docs-lint.json`,
@@ -171,6 +172,24 @@ it under `optional_skipped`; `yes |` answers it (and keeps every element on). A
 does not parse, is refused with a note and nothing is written on either side.
 `ahoy uninstall` restores the previous command. The line can be switched off
 or reconfigured at any time in `~/.abcd/statusline.json`.
+
+**The model-tier routing offer.** abcd ships a proposal for the model tier and
+fan-out bound each of its agents deserves (`frontier` for the verdicts a person
+reads, `economy` for the rest), and none of it applies until it is accepted.
+While `~/.abcd/oracle-routing.json` is absent the install renders the proposal
+as a table, one row per agent with its tier and fan-out, in one question;
+consent writes it there, owner-only. A second, separate question offers the same
+table for the repository at `.abcd/config/oracle-routing.json`, which is
+committed, applies to everyone working in the repository, and wins over each
+machine's table. Present the table and relay the user's answer to each question;
+never answer them for the user. Declining writes nothing and records nothing, so
+the next install offers again; `--yes` skips both offers and reports
+`oracle_routing.machine_offered` and `oracle_routing.repo_offered` under
+`optional_skipped`; `yes |` accepts both. Either file can be edited row by row
+afterwards, and the bare `abcd` board shows which layer each agent's row comes
+from. With no provider configured every step still runs through the harness,
+which is asked for the tier. `ahoy uninstall` leaves both files, because they
+are the user's configuration.
 
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed

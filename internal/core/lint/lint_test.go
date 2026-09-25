@@ -1854,3 +1854,33 @@ func TestSpecLifecycleMissingDirIsSoft(t *testing.T) {
 		t.Fatalf("missing specs/ dir must be soft; got %+v", fs)
 	}
 }
+
+// TestLinksResolveReadsALinkBetweenEscapedBackticks: a backslash-escaped
+// backtick is a literal character in CommonMark and never a code-span
+// delimiter, so a link between two of them is read and a broken one reported
+// (iss-2609251004336500). An escaped backtick beside a real span leaves the
+// span blanked.
+func TestLinksResolveReadsALinkBetweenEscapedBackticks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/doc.md",
+		"literal \\` text [x](gone.md) \\` end\n"+
+			"escaped \\` then `code [y](gone2.md)` end\n"+
+			"double \\\\` then [z](gone3.md) ` end\n")
+	cfg := Config{
+		Roots: []string{"rec"},
+		Rules: map[string]RuleConfig{"links_resolve": {Enabled: true, Severity: "blocker"}},
+	}
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", 1) {
+		t.Errorf("a broken link between escaped backticks is not reported: %+v", fs)
+	}
+	if hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", 2) {
+		t.Errorf("a link inside a real code span beside an escaped backtick is reported: %+v", fs)
+	}
+	if hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", 3) {
+		t.Errorf("an escaped backslash does not escape the backtick after it, so the span is code: %+v", fs)
+	}
+}

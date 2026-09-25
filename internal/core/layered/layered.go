@@ -52,7 +52,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -117,14 +119,45 @@ var (
 func (f File) RepoOrigin() string    { return f.RepoRel }
 func (f File) MachineOrigin() string { return "~/.abcd/" + f.MachineRel }
 
-// Roots are the two places the layers are read from. Repo is the checkout root
-// the session resolved (rules.ResolveRoot), never a directory found by walking
-// above it; "" means the invocation is outside a checkout and the repo layer is
+// Roots are the two places the layers are read from. Repo is the directory the
+// repository layer is read at; "" means there is none and the repo layer is
 // absent. Home is the caller's home directory; "" is refused, because an
-// unresolved home would drop the machine layer without a word.
+// unresolved home would drop the machine layer without a word. A front door
+// builds Roots with RootsFor; a test builds them by hand.
 type Roots struct {
 	Repo string
 	Home string
+}
+
+// RootsFor is the one way a front door resolves Roots for a working directory,
+// so every consumer of a layered file (the bare board, the delegating verbs'
+// --route, and the pace, runner, review-route and match-threshold readers that
+// follow) reads the repository layer from the same place.
+//
+// The repository root is the rules loader's (rules.Resolve), not git's
+// toplevel, and that is the choice for a reason: .abcd/rules.json,
+// .abcd/guard.json and .abcd/config.json are already read from that root, so a
+// session's injected rules, its shell guard and its layered configuration can
+// never come from two different directories. The two answers differ in two
+// places, and the rules root is the right one in both: a nested .abcd/ inside
+// the working tree (a monorepo member governs its own subtree, as it already
+// does for its rules), and a repository git will not answer for, where the
+// rules root is bounded by the same shape check and ownership gate (a foreign-
+// uid checkout falls back to the working directory with a note, instead of
+// being read on git's say-so or dropped without one). Outside any repository it
+// is the working directory, walked no higher, exactly as the rules loader reads
+// it.
+//
+// notes are the resolution's refusals (a foreign-owned checkout declined), for
+// the front door to print on stderr; the home is left "" when it cannot be
+// resolved, which Load refuses loudly.
+func RootsFor(cwd string) (Roots, []string) {
+	res := rules.Resolve(cwd)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	return Roots{Repo: res.Root, Home: home}, res.Notes
 }
 
 // MaxFileBytes caps every layer's read. A configuration file is a few hundred
@@ -336,7 +369,7 @@ func refuseDuplicateKeys(raw []byte) error {
 				if top.keys[t] {
 					return fmt.Errorf("it names %q more than once; the last would win silently, "+
 						"so a block further down the file could replace the one a reader saw first",
-						joinKey(top.path, t))
+						BoundKey(joinKey(top.path, t)))
 				}
 				top.keys[t] = true
 				top.lastKey = t
@@ -581,7 +614,7 @@ func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, t
 			var child map[string]json.RawMessage
 			if err := json.Unmarshal(obj[n], &child); err != nil || child == nil {
 				return fmt.Errorf("%s (%s layer): %s is %s, not an object; it takes %s",
-					d.originFor(p), d.layer, p, compact(obj[n]), strings.Join(keys, ", "))
+					d.originFor(p), d.layer, BoundKey(p), compact(obj[n]), strings.Join(keys, ", "))
 			}
 			if err := claimIn(d, child, p, rest[1:], len(rest) == 1, allowed, keys); err != nil {
 				return err
@@ -599,16 +632,26 @@ func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, t
 		return nil
 	}
 	sort.Strings(unknown)
-	full := make([]string, len(unknown))
-	for i, k := range unknown {
-		full[i] = joinKey(at, k)
+	// Named bounded, and at most maxEchoKeys of them: a hostile file can hold
+	// tens of thousands of keys, each up to the file's size (review-tier1 F1).
+	shown := unknown
+	if len(shown) > maxEchoKeys {
+		shown = shown[:maxEchoKeys]
 	}
-	scope := at
+	full := make([]string, len(shown))
+	for i, k := range shown {
+		full[i] = BoundKey(joinKey(at, k))
+	}
+	list := strings.Join(full, ", ")
+	if more := len(unknown) - len(shown); more > 0 {
+		list += fmt.Sprintf(" and %d more", more)
+	}
+	scope := BoundKey(at)
 	if scope == "" {
 		scope = "the top level"
 	}
 	return fmt.Errorf("%s (%s layer): unknown key %s; nothing reads it, so it would change nothing. "+
-		"%s takes: %s", d.originFor(full[0]), d.layer, strings.Join(full, ", "), scope, strings.Join(keys, ", "))
+		"%s takes: %s", d.originFor(joinKey(at, unknown[0])), d.layer, list, scope, strings.Join(keys, ", "))
 }
 
 // Value is a resolved configuration value with its provenance.
@@ -671,6 +714,28 @@ func compact(raw json.RawMessage) string {
 		s = s[:77] + "..."
 	}
 	return s
+}
+
+// maxEcho is the most bytes of one key, name or value a message carries, and
+// maxEchoKeys the most keys one message lists.
+const (
+	maxEcho     = 80
+	maxEchoKeys = 5
+)
+
+// BoundKey renders a key or a name for a message, bounded like compact bounds a
+// value: a file may be MaxFileBytes long, and a key it carries must not reach a
+// refusal, a diagnostic or a stderr line whole (review-tier1 F1). It cuts on a
+// rune boundary, so the result stays valid UTF-8.
+func BoundKey(s string) string {
+	if len(s) <= maxEcho {
+		return s
+	}
+	cut := maxEcho - 3
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }
 
 // valid reports whether a File's two paths are clean relative slash paths, the

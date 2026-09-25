@@ -98,6 +98,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectMarkerDrift(abs)...)
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectStatusLine(harness)...)
+		gaps = append(gaps, detectOracleRouting(abs)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
 		// Guard health is computed for every managed or adoptable repo, so a

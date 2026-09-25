@@ -90,8 +90,10 @@ plugin surface, and a future MCP server share one engine.
   origin that supplied it. Any configuration more than one party may set reads
   through it (the routing table in `core/oracle`, and the pace, runner, review
   and match keys in `.abcd/config.json`), so the precedence, the guarded reads
-  and the refusals are spelled once. A present file it cannot read, or a key
-  nobody claims inside a claimed namespace, is an error, never a quiet default.
+  and the refusals are spelled once. `RootsFor` reads the repository layer from
+  the root the rules loader resolves, so rules, guard and configuration never
+  come from two directories. A present file it cannot read, or a key nobody
+  claims inside a claimed namespace, is an error, never a quiet default.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier

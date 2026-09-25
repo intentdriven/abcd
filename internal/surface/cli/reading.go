@@ -27,6 +27,7 @@ package cli
 // dirty included path, a free-text operand).
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -186,6 +188,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 		"write nothing; with --out the two artefacts still land in that directory")
 
 	var readingJSON string
+	var readingRoute *routeFlag
 	ingestCmd := &cobra.Command{
 		Use:   "ingest --reading-json <path>",
 		Short: "Validate one reading's returned output and write its records",
@@ -233,9 +236,24 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			if !filepath.IsAbs(resolved) {
 				resolved = filepath.Join(cwd, filepath.FromSlash(resolved))
 			}
+			// The agent is the cold-reading position the output names, so the
+			// output is read once, before the route is resolved, and the same
+			// bytes go to the ingest that validates them and to the receipt's
+			// model: what was routed and reported is what was ingested. A read
+			// that fails hands the ingest nothing, and its own read refuses the
+			// output with its own reason.
+			payload, rerr := reading.ReadOutput(resolved)
+			if rerr != nil {
+				payload = nil
+			}
+			route, err := readingIngestRoute(cmd, readingRoute, payload)
+			if err != nil {
+				return err
+			}
 			res, err := reading.Ingest(reading.IngestRequest{
 				RepoRoot:   captureRoot(cwd),
 				OutputPath: resolved,
+				Output:     payload,
 			})
 			if err != nil {
 				// A refusal that produced a durable record renders it before it
@@ -259,13 +277,19 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 				}
 				return readingRefusal("reading ingest", err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, payload), func(w io.Writer) {
 				renderIngestResult(w, res)
+				renderReceiptLine(w, route, payload)
 			})
 		},
 	}
 	ingestCmd.Flags().StringVar(&readingJSON, "reading-json", "",
 		"path to the JSON the cold reading returned")
+	var readingAgents []string
+	for _, p := range reading.Positions() {
+		readingAgents = append(readingAgents, readingAgentPrefix+string(p))
+	}
+	readingRoute = addRouteFlag(ingestCmd, readingAgents...)
 
 	readingCmd.AddCommand(assembleCmd)
 	readingCmd.AddCommand(ingestCmd)
@@ -617,4 +641,31 @@ func shortSha(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// readingIngestRoute resolves the route for the cold-reading agent a reading's
+// output came from: the agent is the position the output names. An output
+// that names no position this verb knows has no agent to route, so a --route
+// is refused, and without one the ingest runs and refuses the output on its
+// own terms.
+func readingIngestRoute(cmd *cobra.Command, rf *routeFlag, payload []byte) (*oracle.Route, error) {
+	var head struct {
+		Position string `json:"position"`
+	}
+	agent := ""
+	if json.Unmarshal(payload, &head) == nil {
+		for _, p := range reading.Positions() {
+			if head.Position == string(p) {
+				agent = readingAgentPrefix + string(p)
+			}
+		}
+	}
+	if agent == "" {
+		if len(rf.texts) > 0 {
+			return nil, &exitError{Code: 2, Msg: "reading ingest: --route routes the agent a reading's output came from, " +
+				"and this output names no reading position (" + positionTokens() + "), so there is no agent to route"}
+		}
+		return nil, nil
+	}
+	return rf.resolve(cmd, "reading ingest", agent)
 }

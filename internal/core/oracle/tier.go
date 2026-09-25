@@ -18,18 +18,21 @@
 // intent (itd-2609081951381895) implements Connections, NoConnections is the
 // only implementation, so every row resolves to the harness.
 //
-// Staged, loudly (the loud-staging rule): spc-2609180535002478 part 1 lands the
-// types, the proposal and its roster test, the store readers, the --route
-// parser, Resolve and the bare board's oracle lines, which are this package's
-// one caller. The --route flag on the delegating verbs, the request-block and
-// receipt fields and the ahoy consent step are the spec's steps 3 to 5, listed
-// in the spec's Progress note; until they land no delegating verb resolves a
-// route, and every step runs through the harness as before.
+// Staged, loudly (the loud-staging rule): spc-2609180535002478 lands the types,
+// the proposal and its roster test, the store readers, the --route parser,
+// Resolve, the bare board's oracle lines, the request block and receipt every
+// delegating verb carries (Route.Request, Route.Receipt), and the ahoy consent
+// step that writes an accepted table. Escalating a tier after a failed fix
+// round and the provider allowlist wait on the implement loop's state file and
+// the API adapter, and are the spec's remainder; until the adapter implements
+// Connections, every step resolves to the harness.
 package oracle
 
 import (
 	"fmt"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
 // Tier is a model tier: a class of model that survives model churn, not a
@@ -61,7 +64,7 @@ func ParseTier(s string) (Tier, error) {
 			return t, nil
 		}
 	}
-	return "", fmt.Errorf("tier %q is not one of %s", s, tierList())
+	return "", fmt.Errorf("tier %q is not one of %s", layered.BoundKey(s), tierList())
 }
 
 func tierList() string {

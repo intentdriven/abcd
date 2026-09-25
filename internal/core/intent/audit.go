@@ -248,6 +248,20 @@ func receiptFor(intentID, specID, content string) string {
 // receipt already exists (OWED/INGESTED/DEAD_LETTER) the Audit Notes are left
 // untouched. All ids are validated before any path is built.
 func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
+	return emitAuditWith(repoRoot, it, AuditEmitOptions{})
+}
+
+// AuditEmitOptions carries what a front door adds to an emitted request.
+type AuditEmitOptions struct {
+	// RoutingSection is the request block's routing section
+	// (itd-2609170822093401): the tier and fan-out bound the host is asked to
+	// run the auditor at, rendered by the front door from the resolved route.
+	// It lands after the provenance block, outside the hashed prompt, so the
+	// verdict's prompt_hash does not move with the machine's routing.
+	RoutingSection string
+}
+
+func emitAuditWith(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitResult, error) {
 	if !recordid.ValidIntentID(it.ID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", it.ID)
 	}
@@ -283,7 +297,7 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 			// Only an OWED receipt still awaits a verdict: ensure its ephemeral
 			// request still exists (it is gitignored and may have been swept). A
 			// terminal INGESTED/DEAD_LETTER receipt needs no request rewrite.
-			if err := writeAuditRequest(repoRoot, it, rcp, content); err != nil {
+			if err := writeAuditRequest(repoRoot, it, rcp, content, opts); err != nil {
 				return res, err
 			}
 		}
@@ -297,7 +311,7 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 	if err := writeIntentFile(abs, it.Path, updated); err != nil {
 		return AuditEmitResult{}, err
 	}
-	if err := writeAuditRequest(repoRoot, it, rcp, updated); err != nil {
+	if err := writeAuditRequest(repoRoot, it, rcp, updated, opts); err != nil {
 		return AuditEmitResult{}, err
 	}
 	res.Status = "owed"
@@ -314,6 +328,11 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 // discard the recorded audit), so the caller learns the review is already
 // resolved rather than silently receiving a fresh stub.
 func ReEmitAudit(repoRoot, intentID string) (AuditEmitResult, error) {
+	return ReEmitAuditWith(repoRoot, intentID, AuditEmitOptions{})
+}
+
+// ReEmitAuditWith is ReEmitAudit with what the front door adds to the request.
+func ReEmitAuditWith(repoRoot, intentID string, opts AuditEmitOptions) (AuditEmitResult, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
 	}
@@ -331,13 +350,13 @@ func ReEmitAudit(repoRoot, intentID string) (AuditEmitResult, error) {
 	if !spec.HasNum(it.SpecID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: %s has no well-formed spec_id (%q); refusing to emit a review", intentID, it.SpecID)
 	}
-	return emitAuditForIntent(repoRoot, it)
+	return emitAuditWith(repoRoot, it, opts)
 }
 
 // writeAuditRequest writes the ephemeral review request markdown. The request is
 // a prompt over the intent's Acceptance Criteria plus the receipt metadata; the
 // host reads it, runs the reviewer, and produces the verdict JSON.
-func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
+func writeAuditRequest(repoRoot string, it Intent, rcp, content string, opts AuditEmitOptions) error {
 	if !rcpIDRe.MatchString(rcp) {
 		return fmt.Errorf("intent: receipt id %q is malformed; refusing to build a request path", rcp)
 	}
@@ -351,6 +370,9 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 	}
 	body := auditPromptBody(it, rcp, content, realised)
 	doc := body + auditProvenanceBlock(auditPolicyFor(it, rcp, content, realised))
+	if opts.RoutingSection != "" {
+		doc += "\n## Routing\n\n" + opts.RoutingSection
+	}
 
 	path := filepath.Join(dir, rcp+".request.md")
 	if err := fsutil.WriteFileAtomic(path, []byte(doc), 0o644); err != nil {
@@ -573,6 +595,21 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	if err != nil {
 		return IngestVerdictResult{}, err
 	}
+	return IngestVerdictBytes(repoRoot, raw)
+}
+
+// ReadVerdict reads a verdict file the way IngestVerdict does (guarded, capped),
+// for a front door that needs the payload itself as well as its ingest.
+func ReadVerdict(verdictPath string) ([]byte, error) {
+	return readVerdictFile(verdictPath)
+}
+
+// IngestVerdictBytes is IngestVerdict over a payload a front door has already
+// read through ReadVerdict. The front door reads the verdict once and hands the
+// same bytes to the ingest and to whatever else it reports from the payload
+// (the receipt's model_reported), so the two can never describe different
+// reads of a file that changed between them.
+func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error) {
 
 	// Lenient first pass: recover _type + receipt id so we can classify and
 	// resolve the payload. A payload that is not a fidelity verdict at all, or that
