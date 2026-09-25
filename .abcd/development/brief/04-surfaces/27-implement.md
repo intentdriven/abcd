@@ -167,9 +167,16 @@ of `make preflight`, and once in the eval harness's
 `internal/core/machineload`, a standard-library-only leaf (macOS: the
 `vm.loadavg` and `hw.activecpu` sysctls and one `/bin/ps` run; Linux: `/proc`
 and `/sys/devices/system/cpu/online`), and warns on two triggers: a process
-outside the check's own parent chain older than the stray limit at a lifetime
-CPU share of at least 0.9, or a one-minute load average strictly above the
-extreme limit. Nothing is exempt by name: abcd's own lanes are exempt by time,
+outside the check's own parent chain older than the stray limit that uses
+nearly all the CPU it could get, or a one-minute load average strictly above
+the extreme limit. What a process could get is its fair share of the machine as
+the one snapshot finds it loaded, the online cores divided by the one-minute
+load and never more than one core (`machineload.FairShare`), and a lifetime CPU
+share of at least 0.9 of it makes a stray: forty busy loops on 16 cores, each
+at 0.4 of a core, are all strays, as one loop at a full core of an idle machine
+is (the product thinker's ruling of 2026-09-25 on iss-2609231947544298). The
+share test applies to the caller's own processes and to other accounts' alike.
+Nothing is exempt by name: abcd's own lanes are exempt by time,
 because everything they start lives for minutes. The caller's own strays are
 named (name, pid, process group, age, share), masked through the private
 banned-names layer's own engine, with commands that re-check each target before
