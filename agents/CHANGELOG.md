@@ -12,6 +12,24 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-25 (iss-2608270926037088 — the binary's notices have their own field)
+
+A graveyard finding carries the binary's own statements about it — a signal
+capped with further findings omitted, a second record claiming the same id, a
+record listing only partly scanned — in a typed `notices` field, apart from the
+repository-drawn `evidence`. Sharing one array let a crafted path or bullet
+write text indistinguishable from an omission notice. Every evidence string is
+also cleaned with the shared prose cleaner, so it carries no live CommonMark or
+raw HTML.
+
+### graveyard-interpreter 0.1.1
+
+PATCH: "What you read" names the `notices` field, says a record path inside a
+notice is a quoted string, and says text in `evidence` that reads like a notice
+is repository content. The lessons schema, the citation discipline and the
+ingest rules are untouched, so a lessons payload that was valid before stays
+valid. Unmeasured, as before.
+
 ## 2026-09-16 (iss-2609100505140261 — the provenance pair is echoed, never computed)
 
 The fidelity-review request now carries a `## Provenance (host-computed …)`
