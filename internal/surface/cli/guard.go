@@ -84,8 +84,11 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"leaves it when the output is empty. One nested more than eight\n" +
 			"double-quoted substitutions deep, holding a case command, or more than\n" +
 			"eight of them where the program name could be, is blocked, because the\n" +
-			"guard has stopped reading it. An ANSI-C string ends at its first NUL, as\n" +
-			"bash ends it. `$(( … ))` is an expression, not commands. A shell reading\n" +
+			"guard has stopped reading it. An ANSI-C string ends at its closing quote\n" +
+			"and its first NUL, as bash ends it. A `${…}` holding a substitution is\n" +
+			"unknown from its `${` on. A here-document body is data, but a substitution\n" +
+			"in one whose delimiter is unquoted runs, and is read as a command.\n" +
+			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
 			"or a process substitution is blocked, and so is a line over 64 KiB.\n" +
 			"An unquoted brace group IS\n" +
@@ -99,9 +102,12 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"only the warn, not the entry that names it),\n" +
 			"one whose API path an entry names by its ROOT segment but the host serves\n" +
 			"under a prefix (a GitHub Enterprise Server install mounts the same endpoints\n" +
-			"under `/api/v3/`; the api.github.com URL form IS read), a bare `$VAR` inside\n" +
-			"an interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
+			"under `/api/v3/`; the api.github.com URL form IS read), a parameter\n" +
+			"expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it\n" +
+			"stands — as the program's name, as a flag (`--$VAR`), or inside an\n" +
+			"interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
 			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
+			"because the guard sees the variable, not what the shell expands it to,\n" +
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +

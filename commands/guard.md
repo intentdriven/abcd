@@ -177,13 +177,20 @@ Text written beside one in the same word is also read as bash leaves it when the
 output is empty, so a flag glued to one is still the flag. A word that is wholly
 a substitution is read as an operand, not as a flag: that is how a commit
 message or a branch name is spelled every day (`git commit -m "$(cat msg)"`), so
-`git push $(printf -- --force)` is not seen. A substitution nested more than
+`git push $(printf -- --force)` is not seen. A parameter expansion holding a
+substitution (`${X:-$(…)}`) prints that substitution's output, so its word is
+unknown from the `${` on: `--${X:-$(…)}` is every long flag, and a wholly
+`${…}` word is read as a wholly-substituted one is. A here-document body is data,
+but where its delimiter is unquoted (`<<EOF`, not `<<'EOF'`, `<<"EOF"` or
+`<<\EOF`) the shell runs the command substitutions in it, and each is read as a
+command. A substitution nested more than
 eight double-quoted substitutions deep, or one holding a case command, is a
 **block** (`substitution-unread`), because the guard has stopped reading it and
 its command runs all the same. An arithmetic expansion `$(( … ))` is read as an
 expression, not as commands; a command substitution inside it is followed. An
-ANSI-C string ends at its first NUL byte (`$'\x00'`, `$'\0'`), as bash ends it,
-so `$'\x00'git` is `git`.
+ANSI-C string ends at its closing quote, found before any escape is decoded, so
+`$'\c'` is closed and the command after it is read; and it ends at its first
+NUL byte (`$'\x00'`, `$'\0'`), as bash ends it, so `$'\x00'git` is `git`.
 
 A shell reading its script from a pipe, a here-document or a here-string
 (`curl … | sh`, `bash <<'EOF'`) is a **block** (`interpreter-reads-stream`):
@@ -227,7 +234,10 @@ guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 whose API path an entry names by its ROOT
 segment but the host serves under a prefix (a GitHub Enterprise Server install
 mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
-form **is** read), a hazard inside a non-shell interpreter's payload (`python -c`,
+form **is** read), a parameter expansion that carries no substitution (`$VAR`,
+`${VAR:-git}`) wherever it stands — as the program's name, as a flag
+(`--$VAR`), or inside a payload the guard reads — because the guard sees the
+variable, not what the shell expands it to, a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes.

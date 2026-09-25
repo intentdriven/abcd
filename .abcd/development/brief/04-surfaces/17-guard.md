@@ -193,9 +193,12 @@ past is to spell the program's name. Every reader of a word goes through that on
 the package to it. Text beside one in the same word is also read as bash leaves
 it when the output is empty. One nested past the depth the guard reads, one
 holding a case command, or more of them where the program name could be than
-the guard follows, is refused rather than left unread. An ANSI-C string ends at
-its first NUL, as bash ends it. An arithmetic expansion is an expression, not
-commands. A shell reading its script from a pipe, a here-document or a
+the guard follows, is refused rather than left unread. A parameter expansion
+holding a substitution prints its output, so its word is unknown from the `${`
+on. A here-document body is data, but the substitutions the shell runs in a body
+whose delimiter is unquoted are read as commands. An ANSI-C string ends at its
+closing quote, found before any escape is decoded, and at its first NUL, as bash
+ends it. An arithmetic expansion is an expression, not commands. A shell reading its script from a pipe, a here-document or a
 here-string is refused, because what it runs is text the guard read as data, and
 so is one handed the stdin device behind a pipe or a process substitution as its
 script, a `source` of one, and a line longer than the guard reads. An unquoted
@@ -217,12 +220,14 @@ would be, which is read as an operand because that is how a commit message or a
 branch name is spelled every day; one behind a wrapper flag the per-wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
-prefix; a bare `$VAR` standing where the hazard would be inside a payload the
-guard does read, because the guard sees the variable and not what the shell will
-expand it to, and warning on every variable would bury the warnings that matter;
-a payload inside a non-shell interpreter such as `python -c`, which is one
-opaque token and today a silent allow; and any dangerous form no entry
-describes. The check's own help text is the fuller statement of the same list,
+prefix; a payload inside a non-shell interpreter such as `python -c`, which is
+one opaque token and today a silent allow; and any dangerous form no entry
+describes. Nor does an allow see through a parameter expansion that carries no
+substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's
+program name, as a flag, or inside a payload the guard does read — because the
+guard sees the variable and not what the shell will expand it to, and warning on
+every variable would bury the warnings that matter; so the obvious evasions above
+do not include a hazard spelled through a variable. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

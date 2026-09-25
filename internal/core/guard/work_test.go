@@ -15,8 +15,15 @@ const linearWorkBar = 6.0
 // constant, and the speculation bounds overlap, so dropping any one of them
 // leaves the cost linear with a constant tens of times larger — the 14.2s
 // regression was exactly that, 64 starts each walking the whole line. The
-// bounded shapes measure one to five units per byte; dropping one bound
-// measures well over a hundred.
+// shapes the cost tests assert measure one to about fourteen units per byte.
+// The bar is not a bound on every line: the costliest linear shape found so
+// far, unknown dash-words between unknown program names (`$(a) -$(b) c;`
+// repeated), measures about 27 units per byte at every length, and dash-words
+// glued to double-quoted substitutions (`"$(a)"-x ` repeated) pay a constant
+// floor of well over a million units to the bounded operand enumeration
+// (maxOperandStates), so their per-byte figure falls as the line grows — about
+// 89 at 18 KB and 28 at the 64 KB cap (review4-guard). Dropping one bound
+// measures well over a hundred on a line of any length.
 const workPerByteBar = 20.0
 
 // checkWork runs one check over line against the bundled registry and returns
