@@ -7,6 +7,10 @@ category: "process"
 source: "agent-finding"
 found_during: "bughunt-round-1"
 found_at: "internal/core/lint/lint.go"
+resolution: "The link_anchors rule checks each link's fragment against the target page's heading slugs and HTML anchors, armed at warn in both lint configs."
+impact: additive
+resolved_by:
+  commit: "57e3f44d"
 ---
 
 links_resolve (internal/core/lint/lint.go checkLinks) strips the #fragment before resolving and skips same-file # links, so no gate validates heading anchors even though both record-lint and docs-lint declare the rule blocking and the Makefile advertises it as catching a broken relative link; ~18 broken anchors sit on a green tree. Proposed: extend the rule to slug the target file's ATX headings and validate the fragment, landing warn-first
@@ -25,3 +29,7 @@ CONFIRMED as a feature gap (nitpick, ledger capture — not a code defect: the r
 file-level contract) by an independent refuter. Proposed: an `anchor`-validating extension to
 `links_resolve` that GitHub-slugs the target's fenced ATX headings, landed warn-first given
 the existing residue. A candidate acceptance-corpus entry for iss-46.
+
+## Grounds
+
+- pursued: a fragment naming no heading of its target (or of the linking page) is reported at warn while a correct slug, a duplicate's -1 and an HTML anchor pass; a broken anchor on a green tree would show it wrong
