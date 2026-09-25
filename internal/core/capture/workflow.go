@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -523,6 +524,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		}
 		result = TransitionResult{ID: issID, Path: dst, FromStatus: StateOpen, ToStatus: target,
 			Redacted: redacted, Degraded: degraded}
+		// Repoint every link that named the issue in open/, still under the
+		// ledger lock because the links it rewrites include other issues'. A
+		// failure is reported, not raised: the issue has moved.
+		result.Relinked, result.RelinkError = repointMovedIssue(rr, src, dst)
 		return nil
 	})
 	if err != nil {
@@ -532,6 +537,23 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 	// developer-identity path (iss-81).
 	result.Path = fsutil.RepoRel(rr, result.Path)
 	return result, nil
+}
+
+// repointMovedIssue repoints the links that named an issue's path before a
+// transition moved it, through the one primitive every record-moving verb
+// shares. A ledger outside the repository (a custom issues root) is linked from
+// nowhere the repository's links can reach, so there is nothing to repoint.
+func repointMovedIssue(repoRoot, src, dst string) ([]relink.Rewrite, string) {
+	from, err1 := filepath.Rel(repoRoot, src)
+	to, err2 := filepath.Rel(repoRoot, dst)
+	if err1 != nil || err2 != nil || !filepath.IsLocal(from) || !filepath.IsLocal(to) {
+		return nil, ""
+	}
+	rw, err := relink.Repoint(repoRoot, []relink.Move{{From: from, To: to}})
+	if err != nil {
+		return rw, err.Error()
+	}
+	return rw, ""
 }
 
 // removeSourceHook, when non-nil, replaces os.Remove(src) inside

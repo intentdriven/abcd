@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
@@ -247,6 +248,10 @@ type PlanResult struct {
 	// empty when it wrote none — because no --impact was supplied, or because the
 	// record already carried the same value.
 	ImpactStamped string `json:"impact_stamped"`
+	// Relinked and RelinkError report the repoint of links that named the
+	// draft's old path, as ReconcileResult's do for a close.
+	Relinked    []relink.Rewrite `json:"relinked,omitempty"`
+	RelinkError string           `json:"relink_error,omitempty"`
 }
 
 // LinkResult reports a completed Link: the updated intent and the spec it now
@@ -294,6 +299,15 @@ type ReconcileResult struct {
 	// AuditEmitError is a NON-FATAL report of a failed review emit. The review is
 	// report-only, so the intent still ships; the surface prints this loudly.
 	AuditEmitError string `json:"audit_emit_error,omitempty"`
+	// Relinked lists every relative markdown link this close repointed because
+	// it named the old path of a record the close moved — the spec leaving
+	// open/, the intent leaving planned/ (iss-2609091732329046). Empty when no
+	// link named either.
+	Relinked []relink.Rewrite `json:"relinked,omitempty"`
+	// RelinkError is a NON-FATAL report of a repoint that failed part-way: the
+	// records have moved and the close stands, so the surface prints it loudly
+	// and a re-run of the close completes the repoint.
+	RelinkError string `json:"relink_error,omitempty"`
 }
 
 // RemainderRequest asks a close to mint a follow-on spec for the part of the
