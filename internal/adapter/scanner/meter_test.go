@@ -66,6 +66,8 @@ var meterFixtures = []meterFixture{
 	{"generic_login_tilde_users", meterGenericID, rep("~dev ")},
 	{"generic_login_addresses", meterGenericID, rep("dev@h.example ")},
 	{"generic_login_home_segments", meterGenericID, rep("/home/dev/x ")}, // abcd-audit:allow
+	{"generic_login_key_values", meterGenericID, rep("USER=dev ")},
+	{"generic_login_commands", meterGenericID, rep("su - dev ")},
 	{"generic_login_padded_key_values", meterGenericID, rep("USER=" + strings.Repeat(" ", maxKeyGap) + "dev ")},
 	{"generic_login_escaped_windows_roots", meterWindowsID, rep(`C:\\\\Users\\\\dev\\\\x `)}, // abcd-audit:allow
 	{"generic_login_after_separator_runs", meterWindowsID, rep(strings.Repeat(`\`, 2*maxSeparatorRun) + "dev ")},
