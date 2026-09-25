@@ -103,7 +103,7 @@ interactive answers persisted),
 [iss-221](../../work/issues/open/iss-221-refounding-lineage-prompt-is-a-one-shot.md),
 [iss-222](../../work/issues/resolved/iss-222-install-dev-silent-noop-over-unowned-wrapper.md),
 [iss-227](../../work/issues/resolved/iss-227-installdevshim-silently-swallows-failures-the-os-remove-mkdi.md),
-[iss-228](../../work/issues/open/iss-228-the-plugin-root-binary-repo-root-abcd-bin-abcd-darwin-arm64.md).
+[iss-228](../../work/issues/resolved/iss-228-the-plugin-root-binary-repo-root-abcd-bin-abcd-darwin-arm64.md).
 
 ## Structural tier — designed, deliberately not next
 
