@@ -40,7 +40,12 @@ binary.
 wontfix counts, the most recent open issues, and a three-way routing hint that
 closes on the next move (capture it, shape it as an intent, or, for a big
 unproven idea, run the optional `abcd ideate` admission gauntlet). It creates,
-moves and mutates nothing.
+moves and mutates nothing. A file that claims to be a record and that the reader
+refuses is counted in none of the three totals, so the board counts it beside
+them and names, for each one, the reader layer that refused it: the filename,
+the guarded read, the frontmatter parse, the schema or the folder and filename
+invariants. The layer is what tells a reader whether the record or the reader is
+the side to fix (iss-2609120452071388).
 
 **`/abcd:capture "<text>"`** is the fast path: it appends a structured entry
 with an auto-assigned `iss-N` and writes it to `open/`. Provenance and taxonomy

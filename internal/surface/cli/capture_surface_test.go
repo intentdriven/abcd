@@ -477,6 +477,42 @@ func TestCaptureStatusBoardRendersSkipped(t *testing.T) {
 	}
 }
 
+// TestCaptureStatusBoardCountsWhatItSkippedAndNamesTheLayer is the surface half
+// of iss-2609120452071388: the board's totals exclude a refused record, so the
+// header must count what it excluded beside what it counted, and each skipped
+// line must name the reader layer that refused it — the difference between a
+// record abcd wrote wrongly and a record the schema has outgrown.
+func TestCaptureStatusBoardCountsWhatItSkippedAndNamesTheLayer(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	runCLI(t, "capture", "a well formed observation", "--slug", "fine", "--json")
+	bad := filepath.Join(repo, ".abcd", "work", "issues", "open", "iss-901-hunted.md")
+	if err := os.WriteFile(bad, []byte(
+		"---\nschema_version: 1\nid: iss-901\nslug: hunted\nseverity: minor\ncategory: bug\nsource: autonomous-hunt\nfound_during: t\n---\n\nan issue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	board := string(runCLI(t, "capture"))
+	if !strings.Contains(board, "open 1 · resolved 0 · wontfix 0 · skipped 1") {
+		t.Fatalf("the board header must count the skipped record beside the totals:\n%s", board)
+	}
+	if !strings.Contains(board, "skipped .abcd/work/issues/open/iss-901-hunted.md (refused by the schema layer)") {
+		t.Fatalf("the skipped line must name the layer that refused the record:\n%s", board)
+	}
+
+	var env struct {
+		SkippedCount int `json:"skipped_count"`
+		Skipped      []struct {
+			Layer string `json:"layer"`
+		} `json:"skipped"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "--json"), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.SkippedCount != 1 || len(env.Skipped) != 1 || env.Skipped[0].Layer != "schema" {
+		t.Fatalf("--json must carry skipped_count and each skip's layer, got %+v", env)
+	}
+}
+
 // TestCaptureLapsedAtWritesTheGivenInstant pins the flag half of spc-60: the
 // instant handed to --lapsed-at is the instant committed to the record. The
 // record id is minted from the wall clock, so a surface that dropped, rounded or

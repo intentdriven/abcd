@@ -33,6 +33,16 @@ Summarise the JSON for the user: `open_count` / `resolved_count` /
 `wontfix_count`, and for each entry in `recent_open` its `id`, `severity`, and
 `slug`. No `iss-*.md` file is created, moved, or mutated by this invocation.
 
+When `skipped_count` is non-zero, say so: those are files that claim to be
+records and that none of the three totals counts, because the reader refused
+them. Each entry in `skipped` carries its `path`, the `layer` that refused it
+and the `error`. The layer tells the user which side to fix: `filename` (the
+name is not a well-formed record name), `read` (the guarded read refused the
+file itself, such as a symlink or an oversize body), `frontmatter` (the bytes do
+not parse), `schema` (a key or value the issue schema does not accept) or
+`invariant` (the record disagrees with its filename or with the folder holding
+it).
+
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:

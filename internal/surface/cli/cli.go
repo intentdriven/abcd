@@ -3256,8 +3256,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					return err
 				}
 				return render(cmd.OutOrStdout(), *asJSON, board, func(w io.Writer) {
-					fmt.Fprintf(w, "abcd capture — open %d · resolved %d · wontfix %d\n",
-						st.OpenCount, st.ResolvedCount, st.WontfixCount)
+					// A refused record is in none of the three totals, so the header
+					// counts it beside them (iss-2609120452071388): the reader sees
+					// what the board excluded in the same line as what it counted.
+					fmt.Fprintf(w, "abcd capture — open %d · resolved %d · wontfix %d%s\n",
+						st.OpenCount, st.ResolvedCount, st.WontfixCount, skippedTally(st.SkippedCount))
 					if len(st.RecentOpen) > 0 {
 						fmt.Fprintf(w, "recent open:\n")
 						for _, iss := range st.RecentOpen {
@@ -3271,7 +3274,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					// the records it dropped. Path and Error echo the malformed file's
 					// own name and bytes, so both are sanitised before the terminal.
 					for _, sk := range st.Skipped {
-						fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+						fmt.Fprint(w, skippedLine(sk))
 					}
 					// Beside the skipped roster, and for the same reason it is
 					// there: a record the board does not name is one nobody is
@@ -3449,7 +3452,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				for _, sk := range res.Skipped {
 					// Path and Error echo a malformed issue file's own name and content
 					// (err.Error() carries offending bytes), so sanitise before the terminal.
-					fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+					fmt.Fprint(w, skippedLine(sk))
 				}
 			})
 		},
@@ -3493,7 +3496,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 						termsafe.Sanitize(top.Subject), moreEvidenceNote(len(row.Evidence)))
 				}
 				for _, sk := range res.Skipped {
-					fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+					fmt.Fprint(w, skippedLine(sk))
 				}
 				if len(res.Rows) > 0 {
 					fmt.Fprintf(w, "\nA mention is not a fix. Read the commit, then resolve what it fixed:\n"+
@@ -4162,6 +4165,28 @@ func parseRecurs(raw string) ([]string, error) {
 		ids = append(ids, tok)
 	}
 	return ids, nil
+}
+
+// skippedTally is the board header's count of records the reader refused, or
+// "" when it refused none, so an untroubled ledger's header is unchanged.
+func skippedTally(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" · skipped %d (refused by the reader, in none of the totals)", n)
+}
+
+// skippedLine renders one refused ledger file: its path, the reader layer that
+// refused it, and the refusal (iss-2609120452071388). The layer is what tells a
+// reader whether the file or the reader is the side to fix. Path and Error echo
+// the file's own name and bytes, so both are sanitised before the terminal.
+func skippedLine(sk capture.SkipRecord) string {
+	layer := "the reader"
+	if sk.Layer != "" {
+		layer = "the " + string(sk.Layer) + " layer"
+	}
+	return fmt.Sprintf("  skipped %s (refused by %s): %s\n",
+		termsafe.Sanitize(sk.Path), layer, termsafe.Sanitize(sk.Error))
 }
 
 // blockedNote renders the derived-priority annotation for a row: when the issue

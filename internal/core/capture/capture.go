@@ -257,10 +257,37 @@ type ListRequest struct {
 }
 
 // SkipRecord surfaces a corrupt/invalid ledger file without failing the scan.
+//
+// Layer names WHICH reader stage refused the file (iss-2609120452071388). A
+// skip reported as a bare error left the reader unable to tell whether the
+// writer or the validator was the side that was wrong: a name the grammar
+// refuses, a leaf the guarded read refuses, and a value the schema refuses are
+// three different defects with three different remedies.
 type SkipRecord struct {
-	Path  string `json:"path"`
-	Error string `json:"error"`
+	Path  string    `json:"path"`
+	Layer SkipLayer `json:"layer"`
+	Error string    `json:"error"`
 }
+
+// SkipLayer is the reader stage that refused a ledger file, in scan order.
+type SkipLayer string
+
+// The reader's stages, in the order a file meets them.
+const (
+	// SkipLayerName: the filename claims a record and is not a well-formed one.
+	SkipLayerName SkipLayer = "filename"
+	// SkipLayerRead: the guarded read refused the leaf (a FIFO, a symlink, an
+	// oversize body, an I/O error) — nothing about the record's content.
+	SkipLayerRead SkipLayer = "read"
+	// SkipLayerFrontmatter: the bytes do not parse as a frontmatter block.
+	SkipLayerFrontmatter SkipLayer = "frontmatter"
+	// SkipLayerSchema: the frontmatter parses and the issue schema refuses a
+	// key or value in it.
+	SkipLayerSchema SkipLayer = "schema"
+	// SkipLayerInvariant: schema-clean, and the record disagrees with where it
+	// sits — its filename, or the status folder holding it.
+	SkipLayerInvariant SkipLayer = "invariant"
+)
 
 // ListResult is Issues sorted ascending by numeric N plus a corrupt roster.
 type ListResult struct {
@@ -276,11 +303,16 @@ type StatusRequest struct {
 
 // StatusResult is the bare-invocation status snapshot (guaranteed no mutation).
 type StatusResult struct {
-	OpenCount     int          `json:"open_count"`
-	ResolvedCount int          `json:"resolved_count"`
-	WontfixCount  int          `json:"wontfix_count"`
-	RecentOpen    []Issue      `json:"recent_open"` // up to 10, newest first
-	Skipped       []SkipRecord `json:"skipped"`
+	OpenCount     int `json:"open_count"`
+	ResolvedCount int `json:"resolved_count"`
+	WontfixCount  int `json:"wontfix_count"`
+	// SkippedCount is the number of files that claim to be records and that
+	// none of the three totals counts, because the reader refused them. It is
+	// len(Skipped), carried as a count beside the others so the board states
+	// what it excluded next to what it counted (iss-2609120452071388).
+	SkippedCount int          `json:"skipped_count"`
+	RecentOpen   []Issue      `json:"recent_open"` // up to 10, newest first
+	Skipped      []SkipRecord `json:"skipped"`
 }
 
 // Sentinel errors the surface maps to exit codes and messages. Core never

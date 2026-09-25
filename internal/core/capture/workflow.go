@@ -646,6 +646,7 @@ func Status(req StatusRequest) (StatusResult, error) {
 	res.ResolvedCount = len(resolved)
 	res.WontfixCount = len(wontfix)
 	res.Skipped = append(append(append([]SkipRecord{}, skOpen...), skRes...), skWf...)
+	res.SkippedCount = len(res.Skipped)
 
 	// The same predicate List uses, over the scan already in hand: skOpen carries
 	// the records open/ holds and the reader refused, and they block too.
@@ -783,7 +784,7 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 				// frontmatter agreement, below in validateInvariants — but that is a
 				// judgement on a record, not the question of whether one exists.
 				if filepath.Ext(name) == ".md" && reIssNameClaim.MatchString(name) {
-					skipped = append(skipped, SkipRecord{Path: path, Error: fmt.Errorf(
+					skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerName, Error: fmt.Errorf(
 						"%w: filename %q is not a well-formed record name (iss-N[-slug].md)",
 						ErrInvariantViolation, name).Error()})
 				}
@@ -799,20 +800,20 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 			// surfaces already render, never a hang and never serialized.
 			content, err := readRecordGuarded(path)
 			if err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerRead, Error: err.Error()})
 				continue
 			}
 			fm, body, err := parseFrontmatterAndBody(content)
 			if err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerFrontmatter, Error: err.Error()})
 				continue
 			}
 			if err := validateStrict(fm); err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerSchema, Error: err.Error()})
 				continue
 			}
 			if err := validateInvariants(fm, sub, path); err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerInvariant, Error: err.Error()})
 				continue
 			}
 			issues = append(issues, issueFromFrontmatter(fm, sub, path, body))
