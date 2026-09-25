@@ -154,6 +154,11 @@ func canonADRNum(re *regexp.Regexp, s string) string {
 // because the caller fails closed on the error.
 const maxScanEntries = 20000
 
+// IssuesRelDir is the issue ledger's root under a repository, repo-relative and
+// slash-separated. It is the one spelling: every package that reaches the ledger
+// names it through this constant, so a move of the ledger is one edit.
+const IssuesRelDir = ".abcd/work/issues"
+
 // familyRoots names each id-bearing family's store, repo-relative and
 // slash-separated. Written once, in the order a reader expects them.
 var familyRoots = []struct {
@@ -162,7 +167,7 @@ var familyRoots = []struct {
 }{
 	{"itd", ".abcd/development/intents"},
 	{"spc", ".abcd/development/specs"},
-	{"iss", ".abcd/work/issues"},
+	{"iss", IssuesRelDir},
 	{"adr", ".abcd/development/decisions/adrs"},
 }
 
@@ -190,6 +195,31 @@ func NewResolver(repoRoot string) (*Resolver, error) {
 		}
 	}
 	return r, nil
+}
+
+// LookupOne resolves one id against its own family's store alone, for a caller
+// that needs a single record rather than a snapshot of the whole record: it
+// reads one family where NewResolver reads four, so a fault in another family's
+// store is not this lookup's refusal. An id whose prefix names no family
+// resolves to nothing, as Lookup would answer it.
+func LookupOne(repoRoot, id string) (string, bool, error) {
+	prefix, _, ok := strings.Cut(id, "-")
+	if !ok {
+		return "", false, nil
+	}
+	for _, fam := range familyRoots {
+		if fam.prefix != prefix {
+			continue
+		}
+		r := &Resolver{ids: map[string]string{}}
+		budget := maxScanEntries
+		if err := r.scanFamily(repoRoot, fam.prefix, fam.dir, &budget); err != nil {
+			return "", false, err
+		}
+		p, found := r.Lookup(id)
+		return p, found, nil
+	}
+	return "", false, nil
 }
 
 // Lookup returns the repo-relative path of the record id, and whether it exists.

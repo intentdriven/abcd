@@ -168,6 +168,8 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	// After stepPathEntry: the harness command names the entry the two steps
 	// above actually left on PATH.
 	ac.stepStatusLine()
+	// After the status line, the order the consent questions are asked in.
+	ac.stepOracleRouting()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	ac.stepIdentityPin()
@@ -1589,9 +1591,10 @@ const malformedConfigGapID = "config.malformed"
 const credentialAtRestGapID = "history.credential_at_rest"
 
 // optionalGapIDs are the advisory gaps install closes only against an answered
-// prompt, never under --yes: the identity pin (see stepIdentityPin) and the
-// status-line offer (see stepStatusLine). In the order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID}
+// prompt, never under --yes: the identity pin (see stepIdentityPin), the
+// status-line offer (see stepStatusLine) and the two model-tier routing offers
+// (see stepOracleRouting). In the order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID}
 
 // optionalSkipped lists the optional gaps a --yes run left un-applied. --yes
 // approves every resolvable category but never adopts the identity pin or
@@ -1665,6 +1668,7 @@ var categoryPromptOrder = []GapCategory{
 	SafeAutocreate,
 	ConfigChange,
 	StatusLine,
+	OracleRouting,
 	UserState,
 	PluginOwned,
 }

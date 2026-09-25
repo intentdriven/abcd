@@ -80,7 +80,7 @@ once. Human-paired (the §4 gate is manual by design).
    (major) — guard hook fails open past 1 MiB of stdin. Autonomous-eligible.
 5. **[iss-210](../../work/issues/resolved/iss-210-lone-token-subverb-guess-writes-a-record.md)**
    (major) — a lone mistyped token writes a ledger record. Autonomous-eligible.
-6. **[iss-195](../../work/issues/open/iss-195-scanner-openended-heuristic-cost-regression-on-network-patterns.md)**
+6. **[iss-195](../../work/issues/resolved/iss-195-scanner-openended-heuristic-cost-regression-on-network-patterns.md)**
    (minor) — the rigid/open-ended heuristic sends every IPv4/IPv6 match through
    the backward search. Fix-eligible by the 2026-08-08 ruling (it escaped the
    adjacency shelving: a cost bug, not a window-truncation bug).

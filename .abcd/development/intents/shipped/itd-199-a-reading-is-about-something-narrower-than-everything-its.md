@@ -66,9 +66,9 @@ A table that cannot say what a reading is about cannot distinguish four readings
 
 ## Scope Conditions
 
-- Whether a scope should be expressible as a set of record families rather than one target is unknown until several readings have run. The grammar starts closed and narrow; widening it is cheaper than retracting it. `<!-- cond: cond-2608312031029678 -->`
-- The comparative position's object is the widening reading's pre-admission output, which is not a subset of the repository and has no channel today. A scope operand does not supply one, and that absence stays open — which is why this intent makes the position refuse rather than quietly serve it the wrong corpus. `<!-- cond: cond-2608312031028702 -->`
-- **The impact stays `fix`, and the reasoning is stated rather than left to be reconstructed.** A required operand where none existed is the textbook breaking change, and two things make it a fix here instead. The verb's output cannot be handed to any reader at any position, so there is no working invocation to break; and the comparative position was returning a corpus that is not its object, so its every past run was already wrong. Calling this `breaking` would assert that something usable stopped working, which would be the more misleading of the two labels. `<!-- cond: cond-2608312031020321 -->`
+- Whether a scope should be expressible as a set of record families rather than one target is unknown until several readings have run. The grammar starts closed and narrow; widening it is cheaper than retracting it. <!-- cond: cond-2608312031029678 -->
+- The comparative position's object is the widening reading's pre-admission output, which is not a subset of the repository and has no channel today. A scope operand does not supply one, and that absence stays open — which is why this intent makes the position refuse rather than quietly serve it the wrong corpus. <!-- cond: cond-2608312031028702 -->
+- **The impact stays `fix`, and the reasoning is stated rather than left to be reconstructed.** A required operand where none existed is the textbook breaking change, and two things make it a fix here instead. The verb's output cannot be handed to any reader at any position, so there is no working invocation to break; and the comparative position was returning a corpus that is not its object, so its every past run was already wrong. Calling this `breaking` would assert that something usable stopped working, which would be the more misleading of the two labels. <!-- cond: cond-2608312031020321 -->
 
 ## Acceptance Criteria
 

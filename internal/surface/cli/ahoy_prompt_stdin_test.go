@@ -252,8 +252,14 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	if err := json.Unmarshal(jsonOut, &res); err != nil {
 		t.Fatalf("install output not JSON: %v\n%s", err, jsonOut)
 	}
-	if len(res.OptionalSkipped) != 1 || res.OptionalSkipped[0] != "git_identity.unpinned" {
-		t.Fatalf("optional_skipped = %v, want [git_identity.unpinned]\n%s", res.OptionalSkipped, jsonOut)
+	// The model-tier routing offers are optional too (itd-2609170822093401): a
+	// table is accepted only on an answer, so --yes names them as well.
+	want := "git_identity.unpinned oracle_routing.machine_offered oracle_routing.repo_offered"
+	if strings.Join(res.OptionalSkipped, " ") != want {
+		t.Fatalf("optional_skipped = %v, want [%s]\n%s", res.OptionalSkipped, want, jsonOut)
+	}
+	if !strings.Contains(text, "a routing table decides which model every delegated step asks for") {
+		t.Fatalf("the exclusion notice gives no reason for the routing offers:\n%s", text)
 	}
 }
 

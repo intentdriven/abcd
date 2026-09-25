@@ -59,6 +59,7 @@ func Env(t *testing.T) []string {
 		}
 		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 		t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+		turnGoTelemetryOff(t)
 		// Never block on a credential/terminal prompt in a test.
 		t.Setenv("GIT_TERMINAL_PROMPT", "0")
 		t.Setenv(isolatedSentinel, "1")
@@ -75,4 +76,24 @@ func testOwnedHome(home string) bool {
 	}
 	tmp := filepath.Clean(os.TempDir()) + string(os.PathSeparator)
 	return strings.HasPrefix(filepath.Clean(home)+string(os.PathSeparator), tmp)
+}
+
+// turnGoTelemetryOff writes Go's telemetry mode file under the test HOME's user
+// config directory. With the default mode the go command spawns a detached child
+// that keeps writing counters there after the command exits, so a test that runs
+// go (the commit hooks build abcd) loses its TempDir cleanup to "directory not
+// empty". The mode file is the setting `go telemetry off` writes.
+func turnGoTelemetryOff(t *testing.T) {
+	t.Helper()
+	cfg, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatalf("gittest: user config dir: %v", err)
+	}
+	dir := filepath.Join(cfg, "go", "telemetry")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("gittest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "mode"), []byte("off"), 0o644); err != nil {
+		t.Fatalf("gittest: %v", err)
+	}
 }

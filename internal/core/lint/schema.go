@@ -34,6 +34,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -1889,15 +1890,10 @@ func recordTitle(lines []string) string {
 // document opens one. It is the one place that skip is expressed, so recordTitle
 // and recordH1 can never disagree about where a document's prose begins.
 func recordBodyStart(lines []string) int {
-	i := 0
-	for i < len(lines) {
-		t := strings.TrimSpace(lines[i])
-		if t == "" || strings.HasPrefix(t, "<!--") {
-			i++
-			continue
-		}
-		break
-	}
+	// The leading comments are mdrecord's to locate: a private walk on a
+	// `<!--` prefix took a multi-line comment's second line for the body
+	// (iss-2609251517210637).
+	i, _ := mdrecord.FirstContent(lines)
 	if i < len(lines) && strings.TrimSpace(lines[i]) == "---" {
 		i++
 		for i < len(lines) && strings.TrimSpace(lines[i]) != "---" {

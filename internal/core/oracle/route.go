@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
 // RouteSyntax is the --route flag's grammar, as every refusal names it.
@@ -19,10 +21,13 @@ type FlagRoute struct {
 }
 
 // ParseRoutes parses every --route value and refuses, before any step runs, a
-// value that is malformed, names an agent the verb does not dispatch (one
-// outside the roster included), names a tier outside the vocabulary, names a
-// connection not configured on this machine, carries a malformed setting, or
-// repeats an agent. dispatched is the set of agents the verb can dispatch.
+// value that is malformed, names an agent this invocation does not dispatch
+// (one outside the roster included), names a tier outside the vocabulary,
+// names a connection not configured on this machine, carries a malformed
+// setting, or repeats an agent. dispatched is the set of agents this
+// invocation dispatches, which for every delegating verb is one agent, so a
+// second --route naming another agent is refused rather than merged (the
+// 2026-09-25 ruling on AC 7 in .abcd/work/DECISIONS.md).
 func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, error) {
 	can := map[string]bool{}
 	for _, a := range dispatched {
@@ -31,21 +36,26 @@ func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, er
 	seen := map[string]bool{}
 	var out []FlagRoute
 	for _, text := range texts {
+		shown := layered.BoundKey(text)
+		if len(text) > MaxRouteBytes {
+			return nil, fmt.Errorf("--route %s: it is %d bytes; a --route is at most %d, because a receipt carries it verbatim",
+				shown, len(text), MaxRouteBytes)
+		}
 		fr, err := parseRoute(text)
 		if err != nil {
-			return nil, fmt.Errorf("--route %s: %w", text, err)
+			return nil, fmt.Errorf("--route %s: %w", shown, err)
 		}
 		if !can[fr.Agent] || !inRoster(fr.Agent) {
-			return nil, fmt.Errorf("--route %s: this verb does not dispatch %q; it dispatches %s",
-				text, fr.Agent, strings.Join(dispatched, ", "))
+			return nil, fmt.Errorf("--route %s: this invocation dispatches %s, not %q; a --route naming any other agent is refused, never merged or ignored",
+				shown, dispatchList(dispatched), layered.BoundKey(fr.Agent))
 		}
 		if seen[fr.Agent] {
-			return nil, fmt.Errorf("--route %s: %s is routed more than once in this invocation", text, fr.Agent)
+			return nil, fmt.Errorf("--route %s: %s is routed more than once in this invocation", shown, fr.Agent)
 		}
 		seen[fr.Agent] = true
 		if fr.Connection != "" {
 			if _, ok := conns.Named(fr.Connection); !ok {
-				return nil, fmt.Errorf("--route %s: connection %q is not configured on this machine", text, fr.Connection)
+				return nil, fmt.Errorf("--route %s: connection %q is not configured on this machine", shown, layered.BoundKey(fr.Connection))
 			}
 		}
 		out = append(out, fr)
@@ -73,10 +83,10 @@ func parseRoute(text string) (FlagRoute, error) {
 		for _, pair := range strings.Split(query, ",") {
 			k, v, ok := strings.Cut(pair, "=")
 			if !ok || k == "" || v == "" {
-				return FlagRoute{}, fmt.Errorf("setting %q is not k=v; want %s", pair, RouteSyntax)
+				return FlagRoute{}, fmt.Errorf("setting %q is not k=v; want %s", layered.BoundKey(pair), RouteSyntax)
 			}
 			if _, dup := raw[k]; dup {
-				return FlagRoute{}, fmt.Errorf("setting %s is given more than once", k)
+				return FlagRoute{}, fmt.Errorf("setting %s is given more than once", layered.BoundKey(k))
 			}
 			raw[k] = settingValue(v)
 		}
@@ -110,4 +120,12 @@ func (l *Layered) Apply(routes []FlagRoute) error {
 		}
 	}
 	return nil
+}
+
+// dispatchList names the agents a verb dispatches, for a refusal.
+func dispatchList(dispatched []string) string {
+	if len(dispatched) == 0 {
+		return "no agent in the roster"
+	}
+	return strings.Join(dispatched, ", ")
 }

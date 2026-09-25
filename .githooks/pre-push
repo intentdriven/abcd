@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push gate, run on every clone via the global ~/.githooks dispatcher
-# (core.hooksPath). Two jobs:
+# (core.hooksPath). Two jobs, and neither runs the preflight:
 #
 #   1. Local branch protection — a fast local echo of the server-side rulesets
 #      (applied and mirrored under .abcd/work/rulesets/), so a bad push fails
@@ -8,26 +8,48 @@
 #      this layer only covers pushes that go through these hooks. It refuses:
 #      a direct push to the protected branch, a deletion of it, and any
 #      non-fast-forward (force) push to any branch.
-#   2. `make preflight` must pass natively before a push leaves this machine —
-#      the load check first (load-check, a warning, never a failure), then
-#      the six lint gates (lint-reviews, lint-issues, lint-decisions,
-#      record-lint, issue-drift, docs-lint),
-#      the site-render gate and both tagged eval lanes (smoke,
-#      evals-cold-reading), then build, vet, test and the race-enabled
-#      internal tests. The eval lanes are named because the untagged `go test`
-#      step cannot compile them, so a defect there would otherwise reach a push
-#      unopposed (iss-2608311632382737). CI's check job adds the `make fmt-check`
-#      format gate on top of those Go steps — run it before pushing, since this
-#      hook does not; the secret-scan, workflow-audit,
-#      dependency-review and govulncheck lanes run in Actions only, and the
-#      record-lint job there repeats the reviews-charter, issue-resolution and
-#      decisions-append gates preflight already ran here.
+#   2. A passing `make preflight` is REQUIRED for every commit a push would
+#      put on the remote for the first time, and this hook checks for its
+#      receipt rather than running it. git opens the push's connection BEFORE
+#      it runs this hook, so a preflight run here held the connection open for
+#      its whole length; one outlasted the transport's idle timeout, the server
+#      closed the connection, and the push reported success while moving
+#      nothing (iss-2608290810036869). The gate therefore runs first, as its own
+#      command: `make preflight` mints a receipt for HEAD when it passes on a
+#      tree that matches HEAD (scripts/preflight-receipt.sh), and this hook
+#      refuses a push whose new commit carries none, in milliseconds. A commit
+#      the remote already holds needs no receipt — a tag on a merged commit, a
+#      branch re-pushed at a published tip — because it leaves nothing new.
+#
+#      The receipt also closes the working-tree gap (iss-2608210738378295): the
+#      gates read the working tree, CI reads the commit, and a receipt is minted
+#      only when the two were the same for the whole run. A staged rename with
+#      its follow-up edit left unstaged passes every gate on the tree and fails
+#      CI on the commit; here it earns no receipt, so the push is refused.
+#
+#      What the preflight runs: the load check first (load-check, a warning,
+#      never a failure), then the six lint gates (lint-reviews, lint-issues,
+#      lint-decisions, record-lint, issue-drift, docs-lint), the site-render
+#      gate and both tagged eval lanes (smoke, evals-cold-reading), then build,
+#      vet, test and the race-enabled internal tests. The eval lanes are named
+#      because the untagged `go test` step cannot compile them, so a defect
+#      there would otherwise reach a push unopposed (iss-2608311632382737). CI's
+#      check job adds the `make fmt-check` format gate on top of those Go steps —
+#      run it before pushing, since the preflight does not; the secret-scan,
+#      workflow-audit, dependency-review and govulncheck lanes run in Actions
+#      only, and the record-lint job there repeats the reviews-charter,
+#      issue-resolution and decisions-append gates preflight already ran here.
+#
+# `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
+# every gate on the pushed commit and is the authority either way.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
 zero="0000000000000000000000000000000000000000"
+remote_name="${1:-}"
 
+missing=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   branch="${remote_ref#refs/heads/}"
 
@@ -40,8 +62,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 
+  # A deletion carries no commit to gate.
+  [ "$local_sha" != "$zero" ] || continue
+
   # Non-fast-forward (force) push guard on an existing remote branch.
-  if [ "$remote_sha" != "$zero" ] && [ "$local_sha" != "$zero" ]; then
+  if [ "$remote_sha" != "$zero" ]; then
     if git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null; then
       : # fast-forward — fine
     else
@@ -54,12 +79,28 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       fi
     fi
   fi
+
+  # The commit the ref will point at: a tag is peeled to the commit it names.
+  commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" 2>/dev/null || true)"
+  [ -n "$commit" ] || continue
+
+  # Already on a remote: pushing it moves no new commit off this machine.
+  if [ -n "$(git for-each-ref --count=1 --contains "$commit" refs/remotes 2>/dev/null)" ]; then
+    continue
+  fi
+
+  if ! scripts/preflight-receipt.sh check "$commit"; then
+    missing="$missing $commit:$local_ref"
+  fi
 done
 
-# Git exports its private environment (GIT_DIR et al.) to hooks; anything the
-# gate spawns that runs git — the test suite's throwaway repos above all —
-# would silently operate on THIS repository instead of its own (iss-28).
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-      GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
-
-make preflight
+if [ -n "$missing" ]; then
+  for entry in $missing; do
+    echo "pre-push: BLOCKED — no passing preflight for ${entry%%:*} (${entry#*:})." >&2
+  done
+  echo "          the gate runs BEFORE the push opens its connection, never inside it: run" >&2
+  echo "          \`make preflight\` with that commit checked out and nothing uncommitted beside it" >&2
+  echo "          (staged, unstaged and untracked changes all withhold the receipt), then push" >&2
+  echo "          again${remote_name:+ to $remote_name}." >&2
+  exit 1
+fi

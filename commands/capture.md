@@ -282,6 +282,15 @@ whenever it is non-zero: these paths redact the note exactly as `capture` does,
 but their human render stays silent, so the caller learns their wording was
 rewritten only if you relay it.
 
+Moving the issue repoints every relative markdown link in the tree that named
+it in `open/` — an ADR, a draft intent, a sibling issue — and the moved issue's
+own links, which were written from `open/`. The JSON lists each rewrite under
+`relinked` (`file`, `line`, `from`, `to`) and the text render prints them;
+report them, because they are files the verb changed beyond the issue. A link
+that never resolved is left as written. A repoint that fails part-way leaves
+the transition standing and warns on stderr; record-lint's `links_resolve`
+then names each link left behind.
+
 An id this checkout's ledger does not hold is refused. When a peer holds it —
 a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names
 the peer's branch, path and folder instead of answering not found: the record

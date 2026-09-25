@@ -1034,6 +1034,88 @@ func TestScaffoldedGuardHookInheritsThePrimaryStoreInAWorktree(t *testing.T) {
 	}
 }
 
+// TestScaffoldedGuardHookAnnouncesOncePerCommit is iss-2609181122202952 on the
+// SCAFFOLDED template, which is the copy the report came from: a managed repo's
+// commit from a linked worktree printed three name-guard notice lines (the
+// inheritance, then the format and the count of the one store it read), which reads
+// as the hook running three times. One commit, one notice line.
+func TestScaffoldedGuardHookAnnouncesOncePerCommit(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	setupHermetic(t)
+	repo := t.TempDir()
+	env := gittest.Env(t)
+	gitIn := func(dir string, args ...string) (string, error) {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.name", "Alice Example"},
+		{"config", "user.email", "alice@example.com"},
+	} {
+		if out, err := gitIn(repo, args...); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(GuardHookRelPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooksDir := filepath.Join(repo, ".git", "hooks")
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := filepath.Join(repo, filepath.FromSlash(banlist.PrivateRelPath))
+	if err := os.WriteFile(store, []byte("# abcd-banlist: keyed\nlab-host carol-server\\.example\\.net\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gitIn(repo, "add", "-A"); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if out, err := gitIn(repo, "-c", "core.hooksPath=/dev/null", "commit", "-m", "seed"); err != nil {
+		t.Fatalf("seed commit: %v\n%s", err, out)
+	}
+	linked := filepath.Join(t.TempDir(), "linked")
+	if out, err := gitIn(repo, "worktree", "add", "-b", "linked", linked); err != nil {
+		t.Skipf("git worktree add unavailable: %v\n%s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(linked, "notes.md"), []byte("nothing sensitive here\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gitIn(linked, "add", "notes.md"); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	out, err := gitIn(linked, "commit", "-m", "clean")
+	if err != nil {
+		t.Fatalf("clean content was refused:\n%s", out)
+	}
+	var notices []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "abcd name-guard:") {
+			notices = append(notices, l)
+		}
+	}
+	if len(notices) != 1 {
+		t.Fatalf("a clean commit from a linked worktree printed %d name-guard notice lines, want 1:\n%s", len(notices), out)
+	}
+	if !strings.Contains(notices[0], "primary checkout") || !strings.Contains(notices[0], "keyed store") {
+		t.Errorf("the one notice does not say which store was inherited and in what format:\n%s", notices[0])
+	}
+}
+
 // TestScaffoldedGuardHookRefusesAMirrorInsideAnotherCheckout is the worktree
 // resolution's confinement, pinned on the SCAFFOLDED template rather than on this
 // repo's dogfood copy — the two halves must stay in lockstep, and a fix applied to

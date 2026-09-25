@@ -16,7 +16,7 @@ import (
 //
 // It wraps the existing unexported classify/install machinery: dryRun maps
 // classifyMarker(path) → current→(false,nil), missing/outdated→(true,nil),
-// symlink→(false, err); a real run calls installMarkerFile(path) → ok==false→
+// symlink or unplaceable→(false, err); a real run calls installMarkerFile(path) → ok==false→
 // (false, err), else (wrote, nil).
 func EnsureMarker(path string, dryRun bool) (changed bool, err error) {
 	if dryRun {
@@ -27,6 +27,9 @@ func EnsureMarker(path string, dryRun bool) (changed bool, err error) {
 			return true, nil
 		case markerSymlink:
 			return false, fmt.Errorf("cannot write marker to %s: it is a symlink", filepath.Base(path))
+		case markerUnplaceable:
+			return false, fmt.Errorf("cannot write marker to %s: a fenced block or HTML comment is never closed, "+
+				"so the block would land inside it", filepath.Base(path))
 		default:
 			return false, fmt.Errorf("cannot classify marker at %s", filepath.Base(path))
 		}

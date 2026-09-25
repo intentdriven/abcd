@@ -97,6 +97,10 @@ type ScanResult struct {
 	// "zip" and is decoded as one, which the record names as the defect in the
 	// old name-keyed label.
 	ContentFormat map[string]string `json:"content_format,omitempty"`
+	// FindingsOmitted counts the findings dropped past maxBundleFindings. They
+	// are counted in HardFails all the same, so a truncated list never reads
+	// as a smaller verdict.
+	FindingsOmitted int `json:"findings_omitted,omitempty"`
 }
 
 // maxBinaryScanBytes caps how much of a skip-listed (binary) bundle file the
@@ -110,13 +114,27 @@ type ScanResult struct {
 // coverage stays honest.
 const maxBinaryScanBytes = 4 << 20
 
+// maxTextScanBytes caps a text bundle file the same way, and for the same
+// reason: the text branch runs the full rule set, whose percent-decode
+// pre-pass is the memory cost the binary cap was measured on. A text file over
+// it is an Unscanned gap with its reason, which the launch gate refuses on,
+// rather than an unbounded read (iss-2608291849371769).
+const maxTextScanBytes = maxBinaryScanBytes
+
+// maxBundleFindings caps the findings one ScanBundle keeps. Each finding
+// carries its source line, so an uncapped list grew with the payload's worst
+// file rather than with anything a reader could use; past the cap they are
+// counted (FindingsOmitted, and HardFails in full) and not kept.
+const maxBundleFindings = 10000
+
 // plaintextNames is the allow-list of skip-listed names known to carry no
 // compressed region, so a byte scan covers all of their content and they may
 // be reported as ScannedBinary. The polarity is deliberate: the byte branch
 // defaults to ContentUnverified, and only a name listed here is promoted.
 // Keyed on the final path element's extension as filepath.Ext reports it, so a
 // skip FILENAME such as .gitignore (a dotfile, whose Ext is the whole name)
-// qualifies. Nothing on defaultSkipExtensions qualifies: .ico can embed PNG,
+// qualifies when a repo's config skip-lists it; by default .gitignore is not
+// skip-listed and takes the full text rules. Nothing on defaultSkipExtensions qualifies: .ico can embed PNG,
 // .wav can carry a compressed codec, .tar holds compressed entries, .pyc is
 // marshalled bytecode, and .so/.dylib/.dll/.exe/.sqlite/.db can all hold
 // packed sections or blobs. A config-added skip extension (.jar, say) reaches
@@ -173,7 +191,9 @@ var (
 		".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe",
 		".sqlite", ".db",
 	}
-	defaultSkipFilenames = []string{".DS_Store", "Thumbs.db", ".gitignore"}
+	// .gitignore is text and is scanned as text: on this list it took the
+	// byte rules, which drop the prose identity rules (iss-2608291849371769).
+	defaultSkipFilenames = []string{".DS_Store", "Thumbs.db"}
 	defaultSkipFragments = []string{".abcd/.work.local/logs/pii-scan/", ".abcd/.work.local/logs/audit-history/"}
 	repoConfigRelPath    = filepath.Join(".abcd", "config", "pii.json")
 )
@@ -468,6 +488,52 @@ func junctionProbe(patterns []Pattern) *regexp.Regexp {
 	return combined
 }
 
+// junctionSet is the pair of candidate generators stolenJunctions draws from,
+// chosen by the kind of match it is searching behind (iss-195).
+//
+// Behind a SECRET match every pattern is a candidate: an open-ended token can
+// over-run the leading bytes of anything that abuts it, an address included.
+// Behind a NETWORK match only the secret patterns are. Network tokens do not
+// abut one another with no separator — an address, a MAC and a host name are
+// each delimited — so a network token "found" inside another is never a
+// second token: it is a suffix of the same one ("a9fe::" inside
+// "2001:db8:a9fe::"), which was reported as a duplicate finding per suffix,
+// and offering every hex run of a colon-hex line as a candidate made the
+// search the dominant cost of scanning one. A secret a network match over-ran
+// ("fe80::1" followed directly by an access key) is still sought there and
+// still recovered.
+type junctionSet struct {
+	all    matcher
+	secret matcher // nil when the pattern set has no secret pattern
+}
+
+// newJunctionSet builds both generators for a pattern set.
+func newJunctionSet(patterns []Pattern) junctionSet {
+	js := junctionSet{all: junctionProbe(patterns)}
+	var secret []Pattern
+	for _, p := range patterns {
+		if !isNetworkKind(p.Kind) {
+			secret = append(secret, p)
+		}
+	}
+	if len(secret) > 0 {
+		js.secret = junctionProbe(secret)
+	}
+	return js
+}
+
+// behind returns the generator for the backward search behind a match of
+// pattern p, or nil when nothing can start a token there.
+func (js junctionSet) behind(p Pattern) matcher {
+	if isNetworkKind(p.Kind) {
+		if js.secret == nil {
+			return nil
+		}
+		return js.secret
+	}
+	return js.all
+}
+
 // probeParts splits a compiled pattern's source into its leading inline flag
 // group (if any) and the rest with a leading \b stripped.
 func probeParts(re *regexp.Regexp) (flags, body string) {
@@ -576,6 +642,7 @@ func gallopingFind(re matcher, line string, at, base int, budget *int) []int {
 		if hi > len(line) {
 			hi = len(line)
 		}
+		scanMeter.charge(stageAdjacency, hi-at)
 		loc := re.FindStringIndex(line[at:hi])
 		if hi == len(line) || loc == nil || at+loc[1] < hi {
 			return loc
@@ -633,7 +700,7 @@ func gallopBudget(line string) int {
 // probe to run after; that is the same pre-existing \b-boundary limitation
 // every bundled pattern already accepts elsewhere in this package, not
 // something this function claims to close.
-func scanAllPatterns(patterns []Pattern, probes []matcher, junctions matcher, line string) []patMatch {
+func scanAllPatterns(patterns []Pattern, probes []matcher, junctions junctionSet, line string) []patMatch {
 	var all []patMatch
 	// One growth budget for the whole line, shared by every probe and the
 	// junction search: see gallopBudget.
@@ -658,6 +725,7 @@ func scanAllPatterns(patterns []Pattern, probes []matcher, junctions matcher, li
 		}
 	}
 	for i, cp := range patterns {
+		scanMeter.charge(stagePattern, len(line))
 		for _, loc := range cp.Re.FindAllStringIndex(line, -1) {
 			add(patMatch{i, loc[0], loc[1]})
 		}
@@ -668,7 +736,11 @@ func scanAllPatterns(patterns []Pattern, probes []matcher, junctions matcher, li
 	for qi := 0; qi < len(all); qi++ {
 		m := all[qi]
 		probeAt(m.end)
-		for _, cut := range stolenJunctions(probes[m.patIdx], junctions, line, m, &budget) {
+		behind := junctions.behind(patterns[m.patIdx])
+		if behind == nil {
+			continue
+		}
+		for _, cut := range stolenJunctions(probes[m.patIdx], behind, line, m, &budget) {
 			probeAt(cut)
 		}
 	}
@@ -743,6 +815,7 @@ func stolenJunctions(probe, junctions matcher, line string, m patMatch, budget *
 // boundary-free adjacencyProbe. The anchor makes the match start at 0, so only
 // its end has to reach the end of s.
 func wholeMatch(probe matcher, s string) bool {
+	scanMeter.charge(stageAdjacency, len(s))
 	loc := probe.FindStringIndex(s)
 	return loc != nil && loc[1] == len(s)
 }
@@ -767,7 +840,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 	for i, cp := range patterns {
 		probes[i] = adjacencyProbe(cp.Re)
 	}
-	junctions := junctionProbe(patterns)
+	junctions := newJunctionSet(patterns)
 	var findings []Finding
 	lineno := 0
 	for _, line := range strings.Split(text, "\n") {
@@ -777,6 +850,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		for _, m := range scanAllPatterns(patterns, probes, junctions, line) {
 			cp := patterns[m.patIdx]
 			matched := line[m.start:m.end]
+			scanMeter.charge(stageSkip, len(matched))
 			if cp.Skip != nil && cp.Skip(matched) {
 				continue
 			}
@@ -994,12 +1068,13 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 			res.ContentUnverifiedWhy[f.LogicalPath] = why
 			continue
 		}
-		data, err := os.ReadFile(f.ResolvedPath)
+		data, err := fsutil.ReadGuarded(f.ResolvedPath, maxTextScanBytes)
 		if err != nil {
-			// An unreadable file is skipped, not fatal — but surfaced in Unscanned
-			// with the same visibility as a binary-skipped file, so a read-skipped
-			// file cannot silently vanish from the bundle's coverage.
-			unscanned(f.LogicalPath, "unreadable")
+			// An unreadable, oversized or non-regular file is skipped, not
+			// fatal — but surfaced in Unscanned with its reason, the same
+			// visibility as a skip-listed file the byte branch could not read,
+			// so it cannot silently vanish from the bundle's coverage.
+			unscanned(f.LogicalPath, guardedReadWhy(err))
 			continue
 		}
 		if !isText(data) {
@@ -1015,6 +1090,16 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 		}
 	}
 	sortFindings(res.Findings)
+	if n := len(res.Findings); n > maxBundleFindings {
+		// The verdict is counted over every finding above; only the list is
+		// cut, hard fails first so the kept ones are the ones that refuse.
+		sort.SliceStable(res.Findings, func(i, j int) bool {
+			return res.Findings[i].Severity == SeverityHardFail && res.Findings[j].Severity != SeverityHardFail
+		})
+		res.FindingsOmitted = n - maxBundleFindings
+		res.Findings = res.Findings[:maxBundleFindings:maxBundleFindings]
+		sortFindings(res.Findings)
+	}
 	// Zero-coverage sentinel: a bundle with files but none scanned with the
 	// FULL rule set (every file skip-listed or unscannable, however that came
 	// about — an over-broad skip config, an all-binary tree) means the prose

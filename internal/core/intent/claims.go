@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/condition"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
@@ -65,7 +66,10 @@ var (
 	// of a line: an editor that rewraps an 80-column bullet moves the marker, and
 	// a positional read would orphan every disposition keyed on it and then mint a
 	// second identity for the same condition (iss-2608300235377731).
-	condMarkerRe = regexp.MustCompile(`<!-- cond: (cond-[0-9]{16}) -->`)
+	//
+	// The grammar is core/condition's MarkerRe, the one every disposition
+	// writer and reader keys on.
+	condMarkerRe = condition.MarkerRe
 	// spaceRunRe collapses the whitespace left behind when a marker is excised
 	// from the middle of a line, and by folding a wrapped bullet into one string.
 	spaceRunRe = regexp.MustCompile(`\s+`)

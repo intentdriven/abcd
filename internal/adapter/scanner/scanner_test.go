@@ -752,8 +752,10 @@ func TestIdentityLocalUsernameSystemPathSuppressed(t *testing.T) {
 	if got := ScanText(`backup written to /home/dev/data`, id, pats, sev, "f"); !hasKind(got, kindLocalUser) { // abcd-audit:allow
 		t.Errorf("nested username /home/dev not flagged (false negative): %+v", got) // abcd-audit:allow
 	}
-	if got := ScanText(`last commit authored by dev`, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
-		t.Errorf("bare username not flagged (false negative): %+v", got)
+	// "dev" is a generic account name, so the bare word is vocabulary
+	// (iss-236); where it stands as an account it is still the login.
+	if got := ScanText(`ssh dev@buildhost.example.com`, id, pats, sev, "f"); !hasKind(got, kindLocalUser) {
+		t.Errorf("login@host username not flagged (false negative): %+v", got)
 	}
 }
 
@@ -789,8 +791,9 @@ func TestIdentityLocalUsernameCaseInsensitive(t *testing.T) {
 // merely reported.
 //
 // It is deliberately NOT the ordinary-dictionary-word case
-// (iss-2609061504302157): a bare word in prose is still the caller's login and
-// still a hard_fail, and the closing assertions hold that line.
+// (iss-2609061504302157, answered by the generic-account floor): for a specific
+// account name a bare word in prose is still the caller's login and still a
+// hard_fail, and the closing assertions hold that line.
 func TestIdentityLocalUsernameDottedIdentifierSuppressed(t *testing.T) {
 	pats := DefaultPatterns()
 	sev := DefaultIdentitySeverities()
@@ -816,14 +819,16 @@ func TestIdentityLocalUsernameDottedIdentifierSuppressed(t *testing.T) {
 	}
 
 	// No false negatives. The suppression covers a whole component of a
-	// three-part dotted run and nothing else.
-	keep := Identity{HomeUser: "dev"}
+	// three-part dotted run and nothing else. The name is a specific one: a
+	// generic account name such as "dev" is not reported as a bare word at
+	// all (iss-236), which would hide what this loop measures.
+	keep := Identity{HomeUser: "zq8home"}
 	for _, line := range []string{
-		"last commit authored by dev",       // bare prose mention
-		"backup written to /home/dev/data",  // abcd-audit:allow
-		"the file is dev.log",               // two components: a filename, not a namespace
-		"the package is my-dev-tool.a.b",    // not a whole component
-		"mail to dev.smith@example.com now", // an address, not a namespace
+		"last commit authored by zq8home",       // bare prose mention
+		"backup written to /home/zq8home/data",  // abcd-audit:allow
+		"the file is zq8home.log",               // two components: a filename, not a namespace
+		"the package is my-zq8home-tool.a.b",    // not a whole component
+		"mail to zq8home.smith@example.com now", // an address, not a namespace
 	} {
 		if got := ScanText(line, keep, pats, sev, "f"); !hasKind(got, kindLocalUser) {
 			t.Errorf("username not flagged in %q (false negative): %+v", line, got)

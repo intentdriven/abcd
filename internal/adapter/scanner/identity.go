@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"math/bits"
 	"os"
 	"os/exec"
 	"regexp"
@@ -30,8 +31,12 @@ type Identity struct {
 	OtherGitUserNames  []string
 	OtherGitUserEmails []string
 	GitRemoteUsername  string
-	HomePath           string
-	HomeUser           string
+	// GitRemoteRepo is the repository name of the same remote. With the owner
+	// it spells the repository's own owner/repo slug, which is public by
+	// construction and is not a github_username finding.
+	GitRemoteRepo string
+	HomePath      string
+	HomeUser      string
 }
 
 // Built-in identity kinds.
@@ -107,9 +112,7 @@ func ProbeIdentity(repoRoot string) Identity {
 	id.OtherGitUserEmails = addIdentityValues(id.GitUserEmail, id.OtherGitUserEmails,
 		os.Getenv("GIT_AUTHOR_EMAIL"), os.Getenv("GIT_COMMITTER_EMAIL"))
 	if remote := git("config", "--get", "remote.origin.url"); remote != "" {
-		if m := githubRemoteRe.FindStringSubmatch(remote); m != nil {
-			id.GitRemoteUsername = m[1]
-		}
+		id.GitRemoteUsername, id.GitRemoteRepo = parseGitHubRemote(remote)
 	}
 	if home := CallerHome(); home != "" {
 		id.HomePath = home
@@ -248,7 +251,7 @@ var (
 	// GitHub username inside a remote URL (https or ssh form). Case-insensitive
 	// on the host: git stores the remote verbatim, so a hand-typed GitHub.com
 	// must still resolve the handle, or github_username redaction never arms.
-	githubRemoteRe = regexp.MustCompile(`(?i)github\.com[:/]([A-Za-z0-9-]+)/`)
+	githubRemoteRe = regexp.MustCompile(`(?i)github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9._-]*)`)
 	// Generic home path. Both boundaries are Go predicates: a leading RE2 \b is
 	// wrong here — it is an ASCII word boundary that requires a WORD character
 	// immediately before the '/', which never holds at line start or after a
@@ -256,7 +259,16 @@ var (
 	// realistic occurrence. leadingBoundaryOK enforces the real requirement (the
 	// '/' does not continue a longer path segment); the trailing boundary stays
 	// trailingBoundaryOK.
-	genericHomeRe = regexp.MustCompile(`(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+)`)
+	//
+	// Folded, like every other identity matcher on this boundary. macOS and
+	// Windows filesystems fold case, so /USERS/<name>/notes.md and
+	// /Home/<name>/notes.md name exactly the file the canonical spelling names
+	// — a working path to another person's home directory that a
+	// case-SENSITIVE matcher did not see (iss-2609251544556874). The segment
+	// class stays ASCII-cased on purpose: it is the USERNAME, which the boundary
+	// helpers and isHomeSegmentByte judge by the same class, and folding a class
+	// that already carries both cases changes nothing.
+	genericHomeRe = regexp.MustCompile(`(?i)(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+)`)
 	// Loose URL span (scheme to whitespace/quote/closing).
 	urlSpanRe = regexp.MustCompile(`(?:https?://|git@|ftp://|ssh://)[^\s"'` + "`" + `)>\]<]+`)
 	// A git noreply email is not a leak.
@@ -265,6 +277,36 @@ var (
 	// its forms ("id+login@..." and the legacy "login@...").
 	noreplyLoginRe = regexp.MustCompile(`(?i)^(?:[0-9]+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$`)
 )
+
+// parseGitHubRemote returns the owner and repository name of a GitHub remote
+// URL (https, ssh or scp form), or two empty strings for any other remote. The
+// owner is returned even where the repository name cannot be read.
+func parseGitHubRemote(remote string) (owner, repo string) {
+	m := githubRemoteRe.FindStringSubmatch(strings.TrimSpace(remote))
+	if m == nil {
+		return "", ""
+	}
+	return m[1], strings.TrimSuffix(m[2], ".git")
+}
+
+// isOwnRepoSlug reports whether the owner matched at line[start:end] is the
+// owner half of the repository's own owner/repo slug: followed by '/', the
+// repository name (case-insensitively, as the forge compares both), and a byte
+// that cannot continue the name.
+func isOwnRepoSlug(line string, end int, repo string) bool {
+	if repo == "" || end >= len(line) || line[end] != '/' {
+		return false
+	}
+	rest := line[end+1:]
+	if len(rest) < len(repo) || !strings.EqualFold(rest[:len(repo)], repo) {
+		return false
+	}
+	if len(rest) == len(repo) {
+		return true
+	}
+	b := rest[len(repo)]
+	return !(isAlnumByte(b) || b == '-' || b == '_')
+}
 
 // homeBoundary is the trailing-boundary set for a home-path match (ported from
 // the Python lookahead [/\s"'`)\]\}<,;:]).
@@ -292,6 +334,15 @@ type identityMatchers struct {
 	github       *regexp.Regexp
 	localBare    *regexp.Regexp
 	localEncoded string // path-encoded username (dots->hyphens); boundary checked in Go
+	// localGeneric says the account name identifies no person — a role or
+	// image default ("dev", "runner", "root") or a one- or two-rune name — so
+	// the bare word is ordinary vocabulary and only an occurrence where an
+	// account name stands is reported (isGenericAccountName, iss-236).
+	localGeneric bool
+	// homeLiterals are the caller's home as the generic-account check reads it
+	// closing a match: the home with every run of backslashes collapsed to
+	// one, which endsWithPathFold matches at any escaping depth.
+	homeLiterals []string
 }
 
 func newIdentityMatchers(id Identity) identityMatchers {
@@ -351,6 +402,10 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// resolves to the same account and must still trip the hard_fail
 		// local_username gate — not slip redaction while the home path is caught.
 		m.localBare = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomeUser))
+		m.localGeneric = isGenericAccountName(id.HomeUser)
+		if id.HomePath != "" {
+			m.homeLiterals = []string{collapseSeparatorRuns(id.HomePath)}
+		}
 		if enc := strings.ReplaceAll(id.HomeUser, ".", "-"); enc != id.HomeUser {
 			m.localEncoded = enc
 		}
@@ -361,23 +416,157 @@ func newIdentityMatchers(id Identity) identityMatchers {
 // span is a half-open byte interval on a line.
 type span struct{ start, end int }
 
+// inAnySpan reports whether pos falls inside one of spans, which are sorted by
+// start and disjoint (urlSet.spans, mergeSpans). The lookup is a binary search:
+// a scan of the list for every match made a line dense in both matches and
+// spans cost their product (iss-2609251535277823).
 func inAnySpan(pos int, spans []span) bool {
-	for _, s := range spans {
-		if s.start <= pos && pos < s.end {
-			return true
-		}
-	}
-	return false
+	i := sort.Search(len(spans), func(i int) bool { return spans[i].end > pos })
+	scanMeter.charge(stageIdentity, searchCost(len(spans)))
+	return i < len(spans) && spans[i].start <= pos
 }
 
-// urlSpans returns the URL-like spans on a line.
-func urlSpans(line string) []span {
-	var out []span
-	for _, loc := range urlSpanRe.FindAllStringIndex(line, -1) {
-		out = append(out, span{loc[0], loc[1]})
+// searchCost is what a binary search over n entries visits.
+func searchCost(n int) int { return bits.Len(uint(n)) + 1 }
+
+// mergeSpans sorts spans by start and merges the overlapping ones, which is the
+// shape inAnySpan searches: the same positions, as a sorted disjoint list.
+func mergeSpans(spans []span) []span {
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+	scanMeter.charge(stageIdentity, len(spans)*searchCost(len(spans)))
+	out := spans[:0]
+	for _, s := range spans {
+		if n := len(out); n > 0 && s.start <= out[n-1].end {
+			if s.end > out[n-1].end {
+				out[n-1].end = s.end
+			}
+			continue
+		}
+		out = append(out, s)
 	}
 	return out
 }
+
+// urlSpan is one URL-like span on a line with the offset its path begins at,
+// or -1 where it has none: the first '/' after "scheme://" and the authority,
+// or the byte after the ':' of an scp-style "git@host:" remote. The root is
+// found once per span, so asking it of every match inside the span is a
+// lookup rather than a search from the span's start (iss-2609251535277823).
+//
+// user is the span's userinfo — the account a "scheme://user[:password]@host"
+// URL names — or the zero span where it has none.
+type urlSpan struct {
+	span
+	root int
+	user span
+}
+
+// urlSet is a line's URL spans. They are the leftmost non-overlapping matches
+// of one regexp, so they come sorted by start and disjoint, and a position is
+// found by binary search.
+type urlSet []urlSpan
+
+// urlSpans returns the URL-like spans on a line.
+func urlSpans(line string) urlSet {
+	scanMeter.charge(stageIdentity, len(line))
+	var out urlSet
+	for _, loc := range urlSpanRe.FindAllStringIndex(line, -1) {
+		out = append(out, urlSpan{span{loc[0], loc[1]}, urlPathRoot(line, loc[0], loc[1]), urlUserinfo(line, loc[0], loc[1])})
+	}
+	return out
+}
+
+// urlPathRoot returns the offset at which the URL line[start:end] begins its
+// path, or -1.
+func urlPathRoot(line string, start, end int) int {
+	u := line[start:end]
+	scanMeter.charge(stageIdentity, len(u))
+	if i := strings.Index(u, "://"); i >= 0 {
+		if p := strings.IndexByte(u[i+3:], '/'); p >= 0 {
+			return start + i + 3 + p
+		}
+		return -1
+	}
+	if strings.HasPrefix(u, "git@") {
+		if c := strings.IndexByte(u, ':'); c >= 0 {
+			return start + c + 1
+		}
+	}
+	return -1
+}
+
+// forgeServiceUser is the account every forge's ssh remotes name
+// ("ssh://git@github.com/…"): a service, not the caller, so its userinfo is
+// left inside the URL's suppression.
+const forgeServiceUser = "git"
+
+// urlUserinfo returns the userinfo of the URL line[start:end] — the bytes
+// between "scheme://" and the last '@' of the authority — or the zero span. A
+// URL without "://" (the scp-style "git@host:" remote) has no userinfo here:
+// its user is the forge's service account.
+func urlUserinfo(line string, start, end int) span {
+	u := line[start:end]
+	i := strings.Index(u, "://")
+	if i < 0 {
+		return span{}
+	}
+	auth := u[i+3:]
+	if j := strings.IndexAny(auth, "/?#"); j >= 0 {
+		auth = auth[:j]
+	}
+	scanMeter.charge(stageIdentity, len(auth))
+	at := strings.LastIndexByte(auth, '@')
+	if at <= 0 {
+		return span{}
+	}
+	user := auth[:at]
+	if c := strings.IndexByte(user, ':'); c >= 0 {
+		user = user[:c]
+	}
+	if strings.EqualFold(user, forgeServiceUser) {
+		return span{}
+	}
+	return span{start + i + 3, start + i + 3 + at}
+}
+
+// inUserinfo reports whether line[start:end] lies inside a URL's userinfo.
+func (u urlSet) inUserinfo(start, end int) bool {
+	s := u.at(start)
+	return s != nil && s.user.end > s.user.start && start >= s.user.start && end <= s.user.end
+}
+
+// suppressing returns the URL spans as the username matcher's suppression
+// sees them: every URL byte except its userinfo, which names an account
+// rather than a resource (iss-2609251549447970). Sorted and disjoint.
+func (u urlSet) suppressing() []span {
+	out := make([]span, 0, len(u))
+	for _, s := range u {
+		if s.user.end <= s.user.start {
+			out = append(out, s.span)
+			continue
+		}
+		if s.user.start > s.start {
+			out = append(out, span{s.start, s.user.start})
+		}
+		if s.end > s.user.end {
+			out = append(out, span{s.user.end, s.end})
+		}
+	}
+	return out
+}
+
+// at returns the span containing pos, or nil.
+func (u urlSet) at(pos int) *urlSpan {
+	i := sort.Search(len(u), func(i int) bool { return u[i].end > pos })
+	scanMeter.charge(stageIdentity, searchCost(len(u)))
+	if i < len(u) && u[i].start <= pos {
+		return &u[i]
+	}
+	return nil
+}
+
+// contains reports whether pos falls inside a URL span.
+func (u urlSet) contains(pos int) bool { return u.at(pos) != nil }
 
 // findings scans one line for identity-derived matches, applying every ported
 // suppression, and returns findings tagged with the merged identity severities.
@@ -415,6 +604,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// still the caller's home, and no other detector reaches it — local_username
 	// is URL-suppressed and home_path_other stops at the same byte.
 	if m.homeSelf != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
 			stands := homeSweepable(line, loc[0], loc[1], urls)
 			if m.bytes {
@@ -430,8 +620,10 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 		}
 	}
 	// home_path_other — a generic /Users|/home path that is not the caller's own.
+	scanMeter.charge(stageIdentity, len(line))
+	homeTokens := pathTokens{line: line}
 	for _, loc := range genericHomeRe.FindAllStringIndex(line, -1) {
-		if !leadingBoundaryOK(line, loc[0]) || !trailingBoundaryOK(line, loc[1]) {
+		if !(leadingBoundaryOK(line, loc[0]) || underAbsoluteRoot(line, loc[0], &homeTokens)) || !trailingBoundaryOK(line, loc[1]) {
 			continue
 		}
 		matched := line[loc[0]:loc[1]]
@@ -472,6 +664,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	}
 	// real_email — skip the noreply form.
 	if m.email != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.email.FindAllStringIndex(line, -1) {
 			matched := line[loc[0]:loc[1]]
 			if noreplyRe.MatchString(matched) {
@@ -483,11 +676,12 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// real_name — suppress inside URL spans (a name that is the public handle
 	// was left out of the matcher: isPublicHandle).
 	if m.name != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.name.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
 			}
-			if inAnySpan(loc[0], urls) {
+			if urls.contains(loc[0]) {
 				continue
 			}
 			add(kindRealName, loc[0]+1, line[loc[0]:loc[1]], "(remove or replace with persona)")
@@ -495,11 +689,15 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	}
 	// github_username — suppress inside URL spans.
 	if m.github != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.github.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
 			}
-			if inAnySpan(loc[0], urls) {
+			if urls.contains(loc[0]) {
+				continue
+			}
+			if isOwnRepoSlug(line, loc[1], m.id.GitRemoteRepo) {
 				continue
 			}
 			add(kindGithubUser, loc[0]+1, line[loc[0]:loc[1]], "(review — may be intentional in repo URL contexts)")
@@ -508,6 +706,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// local_username — suppress inside home/generic-home/email/URL spans.
 	if m.localBare != nil {
 		supp := m.localSuppressionSpans(line, urls)
+		acctTokens := pathTokens{line: line}
 		emit := func(loc []int) {
 			if inAnySpan(loc[0], supp) {
 				return
@@ -524,9 +723,15 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			if isDottedNamespaceComponent(line, loc[0], loc[1]) {
 				return
 			}
+			// A generic account name is ordinary vocabulary wherever it does
+			// not stand as an account (iss-236, iss-2609061504302157).
+			if m.localGeneric && !urls.inUserinfo(loc[0], loc[1]) && !standsAsAccountName(line, loc[0], loc[1], m.homeLiterals, &acctTokens) {
+				return
+			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
-				"(local machine username; replace with [USERNAME] or remove)")
+				"(local machine username, the last segment of $HOME; replace with [USERNAME] or remove)")
 		}
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.localBare.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
@@ -542,9 +747,309 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	return out
 }
 
+// genericAccountNames are account names that identify no person: the default
+// accounts of hosted CI machines, container and cloud images and development
+// environments, and the role words a shared machine is named for. Each is also
+// ordinary vocabulary — a documented flag, a noun in the docs — so treating
+// every bare occurrence as the caller's login hard-failed the launch payload
+// on a pristine tree and rewrote prose in committed records (iss-236,
+// iss-2609061504302157). The list is built in and not configurable: the
+// per-repo pii.json is committed content, and a planted entry there would
+// disarm the username gate for a real person's login.
+var genericAccountNames = map[string]bool{
+	"admin": true, "administrator": true, "app": true, "build": true,
+	"builder": true, "ci": true, "codespace": true, "debian": true,
+	"deploy": true, "dev": true, "developer": true, "docker": true,
+	"ec2-user": true, "git": true, "gitpod": true, "guest": true,
+	"jenkins": true, "node": true, "root": true, "runner": true,
+	"test": true, "tester": true, "ubuntu": true, "user": true,
+	"vagrant": true, "vscode": true, "worker": true,
+}
+
+// maxGenericAccountRunes is the length floor under which an account name is too
+// short to identify anyone: a one- or two-rune word ("me", "io") collides with
+// prose everywhere and names no one.
+const maxGenericAccountRunes = 2
+
+// isGenericAccountName reports whether an account name is under the generic
+// floor (genericAccountNames, or maxGenericAccountRunes or shorter).
+func isGenericAccountName(name string) bool {
+	if name == "" {
+		return false
+	}
+	if utf8.RuneCountInString(name) <= maxGenericAccountRunes {
+		return true
+	}
+	return genericAccountNames[strings.ToLower(name)]
+}
+
+// accountRootPrefixes are the spellings that put the next segment in the
+// account-name position of a home directory: POSIX, Windows — read by
+// endsWithPathFold, so the single-backslash spelling stands for every escaped
+// one too: the doubled one a JSON encoder writes, which is how every Windows
+// path in a transcript line reaches the redactor (iss-2609251543293588), and
+// the quadrupled one a tool result that is itself JSON text reaches it in
+// (iss-2609251638574543) — and the dash-encoded form a harness uses to name a
+// per-project directory.
+var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-home-"}
+
+// standsAsAccountName reports whether line[start:end] stands where an account
+// name stands rather than as a word: the segment after a home root, a tilde
+// user ("~name"), or inside the local part of an address or login
+// ("name@host", "name.surname@example.com"), or closing the caller's own home
+// literal wherever it sits ("…0/root/deck.key" under HOME=/root, which
+// home_path_self's leading anchor declines) at any escaping depth (homes,
+// identityMatchers.homeLiterals). These are the positions a real
+// home path or login leaks from, so a generic account name is still reported
+// there, at its hard_fail floor.
+//
+// Every test reads a bounded window beside the match — the home literal's
+// length behind its end and each prefix's length behind its start, a
+// separator in either widened to at most maxSeparatorRun bytes of its run, and
+// at most maxLocalPart bytes ahead — and folds only that window. Lower-casing the
+// whole line prefix for every match made a line dense in a generic login cost
+// the square of its length (iss-2609251535090117).
+func standsAsAccountName(line string, start, end int, homes []string, toks *pathTokens) bool {
+	for _, home := range homes {
+		if endsWithPathFold(line[:end], home) && !deeperAbsoluteSegment(line, end-len(home), home, toks) {
+			return true
+		}
+	}
+	for _, p := range accountRootPrefixes {
+		if endsWithPathFold(line[:start], p) {
+			return true
+		}
+	}
+	if start > 0 && line[start-1] == '~' {
+		return true
+	}
+	if afterBareHomeRoot(line, start) || afterAccountKey(line, start) || afterAccountCommand(line, start) {
+		return true
+	}
+	hi := end
+	for hi < len(line) && hi-end < maxLocalPart && isLocalPartByte(line[hi]) {
+		hi++
+	}
+	scanMeter.charge(stageIdentity, hi-end)
+	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
+}
+
+// bareHomeRoots are the home roots an archive listing or a relative path
+// writes without the leading separator ("Users/<login>/Desktop" in a tar
+// listing, "home/<login>/.config").
+var bareHomeRoots = []string{"users/", "home/"}
+
+// afterBareHomeRoot reports whether a bare home root ends at start and itself
+// begins a token: at the line's start or after a byte that cannot continue a
+// path. Deeper in a path the leading-slash spellings in accountRootPrefixes
+// already answer.
+func afterBareHomeRoot(line string, start int) bool {
+	for _, p := range bareHomeRoots {
+		if endsWithFold(line[:start], p) {
+			at := start - len(p)
+			return at == 0 || !isPathSegmentByte(line[at-1])
+		}
+	}
+	return false
+}
+
+// accountKeys are the keys a shell environment, a config file or a JSON
+// object names a login under.
+var accountKeys = map[string]bool{"user": true, "username": true, "login": true, "logname": true}
+
+// maxKeyGap bounds the blanks afterAccountKey and afterAccountCommand read
+// between the tokens they look for, so the walk back from a match stays a
+// constant. A gap past it drops the position, so the bound is wide enough for
+// a column-aligned dump ("USER=" or "username:" padded out to a value column)
+// rather than a single space (iss-2609251639024615).
+const maxKeyGap = 32
+
+// afterAccountKey reports whether the match is the value of a key that names a
+// login: USER=<login>, LOGNAME=<login>, "username: <login>", "login: <login>",
+// a JSON "user": "<login>", a --user=<login> flag — the key, optionally
+// quoted, then ':' or '=', blanks, and an optional quote before the value.
+func afterAccountKey(line string, start int) bool {
+	i := start
+	if i > 0 && (line[i-1] == '"' || line[i-1] == '\'') {
+		i--
+	}
+	i = skipBlanksBack(line, i)
+	if i == 0 || (line[i-1] != ':' && line[i-1] != '=') {
+		return false
+	}
+	i = skipBlanksBack(line, i-1)
+	if i > 0 && (line[i-1] == '"' || line[i-1] == '\'') {
+		i--
+	}
+	j := i
+	for j > 0 && i-j < len("username") && isAlnumByte(line[j-1]) {
+		j--
+	}
+	scanMeter.charge(stageIdentity, start-j)
+	if j > 0 && isWordByte(line[j-1]) {
+		return false // the key is the tail of a longer word ("superuser: …")
+	}
+	return accountKeys[strings.ToLower(line[j:i])]
+}
+
+// accountCommands take an account as their first operand: su switches to it,
+// chown gives a file to it.
+var accountCommands = map[string]bool{"su": true, "chown": true}
+
+// maxCommandOptions bounds the option tokens afterAccountCommand steps over
+// between the command and the match ("chown -R", "su -l", "su -").
+const maxCommandOptions = 3
+
+// afterAccountCommand reports whether the match is the first operand of an
+// account command: the command word, any options, and the match — "su - <login>",
+// "su -l <login>", "chown -R <login>:staff". Only a whole command word counts,
+// and each step of the walk back is bounded.
+func afterAccountCommand(line string, start int) bool {
+	i := start
+	for n := 0; n <= maxCommandOptions; n++ {
+		k := skipBlanksBack(line, i)
+		if k == i || k == 0 {
+			return false // the operand must follow a blank, and something must precede it
+		}
+		j := k
+		for j > 0 && k-j < 32 && line[j-1] != ' ' && line[j-1] != '\t' {
+			j--
+		}
+		scanMeter.charge(stageIdentity, i-j)
+		if j == k {
+			return false // the blanks ran past maxKeyGap: nothing adjacent to read
+		}
+		tok := line[j:k]
+		if tok[0] == '-' {
+			i = j
+			continue // an option; the command is further back
+		}
+		if j > 0 && line[j-1] != ' ' && line[j-1] != '\t' {
+			return false // the token ran past the bound: not a command word
+		}
+		// A command word may carry the shell punctuation it is quoted in
+		// ("`su", "(chown", "$ su").
+		tok = strings.TrimLeft(tok, "`($")
+		return accountCommands[strings.ToLower(tok)]
+	}
+	return false
+}
+
+// skipBlanksBack returns the offset before the run of at most maxKeyGap
+// spaces and tabs that ends at i.
+func skipBlanksBack(line string, i int) int {
+	j := i
+	for j > 0 && i-j < maxKeyGap && (line[j-1] == ' ' || line[j-1] == '\t') {
+		j--
+	}
+	return j
+}
+
+// deeperAbsoluteSegment reports whether the single-segment home literal at
+// line[at:] is only a deeper segment of an ABSOLUTE path — "/sys/fs/cgroup/root"
+// or macOS root's own "/var/root" under HOME=/root — which is a directory that
+// shares the home's name, not the caller's home (iss-2609251551533470). A home
+// of two or more segments carries the caller's name inside it and is the
+// caller's home wherever it sits, and a literal whose path token does not
+// begin with '/' ("…0/root/deck.key" in a blob, "build/root") is kept: that is
+// the shape the home-literal clause exists to catch.
+func deeperAbsoluteSegment(line string, at int, home string, toks *pathTokens) bool {
+	single := len(home) > 1 && home[0] == '/' && strings.IndexAny(home[1:], `/\`) < 0
+	if !single || at == 0 || !isPathSegmentByte(line[at-1]) {
+		return false
+	}
+	return line[toks.startOf(at)] == '/'
+}
+
+// maxSeparatorRun bounds the run of backslashes endsWithPathFold reads as one
+// separator: 64 is a Windows separator escaped six times over.
+const maxSeparatorRun = 64
+
+// endsWithPathFold reports whether s ends with suffix under Unicode case
+// folding, where each backslash in suffix stands for a run of backslashes in
+// s: the separator as written, or escaped any number of times over. A JSON
+// encoder doubles a backslash, and a tool result that is itself JSON text is
+// encoded again by the transcript line that quotes it, so one Windows path
+// reaches the redactor at any depth (iss-2609251638574543). suffix carries
+// single backslashes (collapseSeparatorRuns).
+//
+// It reads only the window it compares: each segment of suffix, and at most
+// maxSeparatorRun bytes of each separator run behind one. A run that goes on
+// past that bound stops the read and reports true, so the bound costs an
+// over-report on a shape no encoder writes, never a finding. The leading
+// separator needs one backslash, not its whole run.
+func endsWithPathFold(s, suffix string) bool {
+	i, read := len(s), 0
+	ok := func(v bool) bool {
+		scanMeter.charge(stageIdentity, read)
+		return v
+	}
+	for j := len(suffix); ; {
+		k := strings.LastIndexByte(suffix[:j], '\\')
+		seg := suffix[k+1 : j]
+		read += len(seg)
+		if len(seg) > i || !strings.EqualFold(s[i-len(seg):i], seg) {
+			return ok(false)
+		}
+		i -= len(seg)
+		if k < 0 {
+			return ok(true)
+		}
+		read++
+		if k == 0 {
+			return ok(i > 0 && s[i-1] == '\\')
+		}
+		n := 0
+		for n < maxSeparatorRun && n < i && s[i-n-1] == '\\' {
+			n++
+		}
+		read += n
+		switch {
+		case n == 0:
+			return ok(false)
+		case n == maxSeparatorRun && n < i && s[i-n-1] == '\\':
+			return ok(true) // the run outlasts the window: keep the finding
+		}
+		i -= n
+		j = k
+	}
+}
+
+// collapseSeparatorRuns rewrites every run of backslashes in p as one, the
+// spelling endsWithPathFold takes its suffix in.
+func collapseSeparatorRuns(p string) string {
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		if p[i] == '\\' && i > 0 && p[i-1] == '\\' {
+			continue
+		}
+		b.WriteByte(p[i])
+	}
+	return b.String()
+}
+
+// maxLocalPart is the longest local part an address can carry (RFC 5321
+// section 4.5.3.1.1), and so the furthest standsAsAccountName looks ahead for
+// the '@' that makes a match a login.
+const maxLocalPart = 64
+
+// endsWithFold reports whether s ends with suffix under Unicode case folding,
+// reading only the len(suffix) bytes at the end of s.
+func endsWithFold(s, suffix string) bool {
+	scanMeter.charge(stageIdentity, len(suffix))
+	return len(s) >= len(suffix) && strings.EqualFold(s[len(s)-len(suffix):], suffix)
+}
+
+// isLocalPartByte is the byte class of an address's local part as it appears
+// in prose: letters, digits and the separators people put in one.
+func isLocalPartByte(b byte) bool {
+	return isAlnumByte(b) || b == '.' || b == '_' || b == '-' || b == '+' || b == '%'
+}
+
 // isNonUserHomeMatch reports whether a generic-home match's final segment is a
 // well-known non-user directory under a /Users root.
 func isNonUserHomeMatch(matched string) bool {
+	scanMeter.charge(stageIdentity, len(matched))
 	if !strings.HasPrefix(strings.ToLower(matched), "/users/") {
 		return false
 	}
@@ -567,6 +1072,7 @@ func isNonUserHomeMatch(matched string) bool {
 // genericHomeRe is POSIX-only, so '/' is the only separator that can reach here.
 func nextPathSegmentEnd(line string, pos int) (int, bool) {
 	traversed := false
+	from := pos
 	for pos < len(line) && line[pos] == '/' {
 		i, named := pos+1, false
 		for i < len(line) && isHomeSegmentByte(line[i]) {
@@ -576,6 +1082,7 @@ func nextPathSegmentEnd(line string, pos int) (int, bool) {
 			i++
 		}
 		if named {
+			scanMeter.charge(stageIdentity, i-from)
 			return i, traversed
 		}
 		// The segment names nothing: pure dots, or empty (two separators in a
@@ -583,6 +1090,7 @@ func nextPathSegmentEnd(line string, pos int) (int, bool) {
 		traversed = true
 		pos = i
 	}
+	scanMeter.charge(stageIdentity, pos-from)
 	return 0, false
 }
 
@@ -603,6 +1111,7 @@ func isHomeSegmentByte(b byte) bool {
 // anchored detector declines it as the caller's own, so the home_path_other
 // skip must decline it too, or nothing reports it at all.
 func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
+	scanMeter.charge(stageIdentity, len(matched))
 	for _, loc := range homeSelf.FindAllStringIndex(matched, -1) {
 		if homeStandsAsPath(matched, loc[0], loc[1]) {
 			return true
@@ -613,14 +1122,16 @@ func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 
 // localSuppressionSpans returns spans where a local-username match is not a
 // standalone leak: the caller's own home path (home_path_self, always redacted
-// hard_fail), the exact email, and URLs. home_path_other spans are deliberately
-// NOT included: home_path_other is only a WARN, so suppressing a hard_fail
+// hard_fail), the exact email, and URLs outside their userinfo
+// (urlSet.suppressing). home_path_other spans are deliberately NOT included:
+// home_path_other is only a WARN, so suppressing a hard_fail
 // local_username underneath one would downgrade a username leak (e.g. the
 // "<user>" in "/home/<user>/...") out of the ship-blocking gate. Letting both
 // findings fire keeps the hard_fail signal and still redacts the span.
-func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span {
-	spans := append([]span(nil), urls...)
+func (m identityMatchers) localSuppressionSpans(line string, urls urlSet) []span {
+	spans := urls.suppressing()
 	if m.homeSelf != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
 			if !homeSweepable(line, loc[0], loc[1], urls) {
 				continue // not reported as the home, so it must not suppress the username either
@@ -629,11 +1140,12 @@ func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span
 		}
 	}
 	if m.email != nil {
+		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.email.FindAllStringIndex(line, -1) {
 			spans = append(spans, span{loc[0], loc[1]})
 		}
 	}
-	return spans
+	return mergeSpans(spans)
 }
 
 // encodedMatches finds the path-encoded username with the ported custom
@@ -641,6 +1153,7 @@ func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span
 // lookbehind replacement) and followed by EOL or a non-[A-Za-z0-9.] rune.
 func encodedMatches(line, encoded string) [][]int {
 	var out [][]int
+	scanMeter.charge(stageIdentity, len(line))
 	// Case-insensitive, matching the folded m.localBare matcher: the encoded
 	// (dot->dash) spelling of the login must be redacted whatever its case. The
 	// window is compared with EqualFold rather than lower-casing the whole line,
@@ -719,14 +1232,22 @@ func isSystemPathSegment(line string, start, end int) bool {
 // two-label host are untouched; and a run followed by '@' is an address's local
 // part, where the mailbox is the identity, so that stays a leak too. A bare word
 // in prose has no dots at all and is unaffected — the ordinary-dictionary-word
-// over-redaction (iss-2609061504302157) is a different finding and stays open.
+// over-redaction (iss-2609061504302157) is a different finding, answered by
+// the generic-account floor (isGenericAccountName).
 func isDottedNamespaceComponent(line string, start, end int) bool {
 	lo, hi := start, end
-	for lo > 0 && isDottedIdentifierByte(line[lo-1]) {
+	for lo > 0 && start-lo < maxDottedIdentifier && isDottedIdentifierByte(line[lo-1]) {
 		lo--
 	}
-	for hi < len(line) && isDottedIdentifierByte(line[hi]) {
+	for hi < len(line) && hi-end < maxDottedIdentifier && isDottedIdentifierByte(line[hi]) {
 		hi++
+	}
+	scanMeter.charge(stageIdentity, 2*(hi-lo))
+	// A run longer than any identifier is not one, and walking it whole for
+	// every login inside it cost the run's length per match
+	// (iss-2609251535277823): the bound leaves the finding standing.
+	if (lo > 0 && isDottedIdentifierByte(line[lo-1])) || (hi < len(line) && isDottedIdentifierByte(line[hi])) {
+		return false
 	}
 	// A dotted local part is an address, not a namespace.
 	if hi < len(line) && line[hi] == '@' {
@@ -755,6 +1276,11 @@ func isDottedNamespaceComponent(line string, start, end int) bool {
 	}
 	return whole && components >= 3
 }
+
+// maxDottedIdentifier is the longest stretch either side of a match that
+// isDottedNamespaceComponent reads: a domain name is at most 253 bytes, and a
+// bundle id or package path is far shorter.
+const maxDottedIdentifier = 255
 
 // isDottedIdentifierByte reports whether b can be part of a dotted identifier —
 // the component bytes plus the '.' that separates them. It is deliberately
@@ -793,6 +1319,57 @@ func trailingBoundaryOK(line string, end int) bool {
 		return true
 	}
 	return homeBoundary(rune(line[end]))
+}
+
+// underAbsoluteRoot reports whether a /Users or /home segment at byte offset
+// start, which continues a longer path, sits in an ABSOLUTE local path: the
+// path token it belongs to begins with '/' — a backup volume or a mount
+// ("/Volumes/Backup/Users/<name>", "/mnt/data/home/<name>") — or is a file URL
+// with an empty authority ("file:///home/<name>"). Such a segment is a home
+// directory wherever it falls, and leadingBoundaryOK alone let every one of
+// them through every detector (iss-324, iss-2608291915432717). A RELATIVE
+// token ("docs/Users/guide.md") is not a home, and neither is the path of a
+// web URL ("https://docs.example.com/home/…"), whose authority is a host
+// rather than this machine: both stay declined, which is the false-positive
+// surface the '/'-bearing isPathSegmentByte was guarding.
+//
+// The token start comes from toks, which walks the line once for every match
+// on it: walking back from each match to its token's start cost the token's
+// length per match, so a path of nested homes cost the square of its length
+// (iss-2609251535090117).
+func underAbsoluteRoot(line string, start int, toks *pathTokens) bool {
+	i := toks.startOf(start)
+	if line[i] != '/' {
+		return false
+	}
+	if i > 0 && line[i-1] == ':' && strings.HasPrefix(line[i:], "//") {
+		return strings.HasPrefix(line[i:], "///")
+	}
+	return true
+}
+
+// pathTokens finds the start of the path token holding an offset — the first
+// byte of the run of isPathSegmentByte bytes that reaches it — for offsets
+// asked in increasing order, walking the line forward once across all of them.
+// An offset below the last one asked restarts the walk from the line's start.
+type pathTokens struct {
+	line       string
+	pos, start int
+}
+
+// startOf returns the start of the path token that position p continues: p
+// itself when the byte before it is not a path byte.
+func (t *pathTokens) startOf(p int) int {
+	if p < t.pos {
+		t.pos, t.start = 0, 0
+	}
+	scanMeter.charge(stageIdentity, p-t.pos+1)
+	for ; t.pos < p; t.pos++ {
+		if !isPathSegmentByte(t.line[t.pos]) {
+			t.start = t.pos + 1
+		}
+	}
+	return t.start
 }
 
 // leadingBoundaryOK reports whether byte offset start begins a home path rather

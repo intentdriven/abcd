@@ -67,10 +67,9 @@ const (
 // and inside a comment a fence delimiter is. An unclosed opener of either kind
 // runs to end of file — CommonMark's rule for a fence, and the only safe reading
 // of a comment nobody closed.
-func Mask(lines []string) []uint8 {
-	mask, _, _ := scan(lines)
-	return mask
-}
+//
+// Mask is Read under the TopLevel rule.
+func Mask(lines []string) []uint8 { return Read(lines, TopLevel).Mask }
 
 // Unclosed reports the line that opened a span nothing closes before the end of
 // the input, and which construct it is (MaskFence or MaskComment).
@@ -83,57 +82,207 @@ func Mask(lines []string) []uint8 {
 // refusal describes the symptom and sends the operator to rewrite whatever it
 // was appending — which is the one part of the record that is innocent
 // (iss-2608301803423101).
+//
+// Unclosed is Read under the TopLevel rule.
 func Unclosed(lines []string) (line int, flag uint8, ok bool) {
-	_, openLine, openFlag := scan(lines)
-	return openLine, openFlag, openLine >= 0
+	return Read(lines, TopLevel).Unclosed()
 }
 
-// scan is the single pass Mask and Unclosed share: the per-line mask, plus the
-// line that opened whatever span is still open at the end (-1 when none is).
-// Spelled twice, the two could disagree about which lines a span covers and
+// Rule is which fences a reading recognises. This package is the tree's one
+// notion of a fence and an HTML comment; the rule is the one place a reader may
+// ask for more than CommonMark's top level, and it may ask for exactly one thing
+// more.
+type Rule uint8
+
+const (
+	// TopLevel is CommonMark's fence rule at the top level of a document: a run
+	// of three or more backticks or tildes at up to three spaces of indent,
+	// closed by a run of the same character at least as long, at up to three
+	// spaces of indent, with nothing after it. A backtick opener's info string
+	// may not itself hold a backtick.
+	TopLevel Rule = iota
+	// ListNested is TopLevel plus a fence indented under a list item. The site
+	// renders fences written inside list items, where the fence sits at the
+	// item's content indent and that may be four columns or more; a reader that
+	// saw only the left margin would read the fence's own `#` lines as headings.
+	//
+	// A run at four or more columns cannot open a fence at the top level (it is
+	// indented code there), so under ListNested it opens a fence in the list
+	// item holding it. That fence closes on a run of the opener's character at
+	// least as long, with nothing after it, indented no more than three columns
+	// past the opener (further in is content: CommonMark's closer allowance,
+	// measured from the item). And because fenced code never continues lazily,
+	// a non-blank line at column 0 ends the item and the fence with it
+	// (CommonMark 5.2). A run at up to three columns is read exactly as TopLevel
+	// reads it, so the two rules differ only where TopLevel sees no fence at all.
+	ListNested
+
+	// listItem is the reading neither exported rule takes: a run at one to
+	// three columns opened inside a list item, which ends with the item at a
+	// column-0 line. Whether a run at that indent is nested or top-level turns on
+	// the list around it, which this package does not parse, so the exported
+	// rules take the top-level reading and FencedUnderEveryRule consults this
+	// one as well.
+	listItem
+)
+
+// Span is one fenced block as the half-open line range [Start, End), its
+// delimiter lines included. Closed is false when the fence runs to the end of
+// the input.
+type Span struct {
+	Start, End int
+	Closed     bool
+}
+
+// Reading is one pass over a body under one Rule: the per-line mask, every
+// fenced block as its own span (a per-line mask cannot say where one fence ends
+// and the next, written directly below it, begins), and the span still open at
+// the end, if any.
+type Reading struct {
+	Mask   []uint8
+	Fences []Span
+
+	openLine int
+	openFlag uint8
+}
+
+// Unclosed reports the line that opened the span still open at the end of the
+// input, and which construct it is — see the package-level Unclosed.
+func (r Reading) Unclosed() (line int, flag uint8, ok bool) {
+	return r.openLine, r.openFlag, r.openLine >= 0
+}
+
+// FencedUnderEveryRule reports, per line, whether EVERY reading reads that line
+// as inside a fence (its delimiters included): TopLevel, ListNested, and the
+// list-item reading of a run indented one to three columns. It is the reading for a reader that
+// must never hide live text behind a disagreement between the rules — a gate
+// whose missed finding is silent, a floor whose missed heading travels — so a
+// line either rule reads as live is live to it. HTML comments are not consulted:
+// what a comment hides is the caller's question, and the readers that ask this
+// one read commented text.
+func FencedUnderEveryRule(lines []string) []bool {
+	out := make([]bool, len(lines))
+	for i := range out {
+		out[i] = true
+	}
+	for _, rule := range []Rule{TopLevel, ListNested, listItem} {
+		for i, m := range Read(lines, rule).Mask {
+			out[i] = out[i] && m&MaskFence != 0
+		}
+	}
+	return out
+}
+
+// nestedFenceRe matches a fence delimiter at any indent, for the nested readings.
+var nestedFenceRe = regexp.MustCompile("^([ \t]*)(`{3,}|~{3,})(.*)$")
+
+// indentWidth is the column a line's first non-blank character sits at, a tab
+// advancing to the next multiple of four (CommonMark's tab stop).
+func indentWidth(ln string) int {
+	w := 0
+	for _, c := range ln {
+		switch c {
+		case ' ':
+			w++
+		case '\t':
+			w += 4 - w%4
+		default:
+			return w
+		}
+	}
+	return w
+}
+
+// fenceOpener reports the run and the indent of a fence delimiter under a rule,
+// and whether the line is one at all.
+func fenceOpener(ln string, rule Rule) (run, rest string, indent int, ok bool) {
+	if rule != TopLevel {
+		m := nestedFenceRe.FindStringSubmatch(ln)
+		if m == nil {
+			return "", "", 0, false
+		}
+		return m[2], m[3], indentWidth(m[1]), true
+	}
+	m := fenceRe.FindStringSubmatch(ln)
+	if m == nil {
+		return "", "", 0, false
+	}
+	return m[1], m[2], indentWidth(ln), true
+}
+
+// inItem reports whether a rule reads a fence opened at this indent as held by
+// a list item.
+func inItem(rule Rule, indent int) bool {
+	switch rule {
+	case ListNested:
+		return indent >= 4
+	case listItem:
+		return indent > 0
+	}
+	return false
+}
+
+// Read is the single pass every reading of fences and comments goes through.
+// Spelled twice, two readers could disagree about which lines a span covers and
 // which line opened it.
-func scan(lines []string) (mask []uint8, openLine int, openFlag uint8) {
-	mask = make([]uint8, len(lines))
-	openLine, openFlag = -1, 0
-	fenceOpen := ""
+func Read(lines []string, rule Rule) Reading {
+	r := Reading{Mask: make([]uint8, len(lines)), openLine: -1}
+	fenceOpen, fenceIndent, fenceStart := "", 0, 0
 	inComment := false
+	closeFence := func(end int) {
+		r.Fences = append(r.Fences, Span{Start: fenceStart, End: end, Closed: true})
+		fenceOpen = ""
+		r.openLine, r.openFlag = -1, 0
+	}
 	for i, raw := range lines {
 		ln := strings.TrimRight(raw, "\r")
+		// A list item ends at a non-blank line at column 0, and a fence it held
+		// ends with it. The line itself is then read as live.
+		if fenceOpen != "" && inItem(rule, fenceIndent) && strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
+			closeFence(i)
+		}
 		switch {
 		case inComment:
-			mask[i] |= MaskComment
+			r.Mask[i] |= MaskComment
 			// Inside a comment every byte is literal, so the raw first `-->` is the
 			// closer; the remainder of the line is live markdown again and may open
 			// a fresh span.
 			if k := strings.Index(ln, "-->"); k >= 0 {
 				if inComment = opensCommentFrom(ln, k+len("-->")); inComment {
-					openLine, openFlag = i, MaskComment
+					r.openLine, r.openFlag = i, MaskComment
 				} else {
-					openLine, openFlag = -1, 0
+					r.openLine, r.openFlag = -1, 0
 				}
 			}
 		case fenceOpen != "":
-			mask[i] |= MaskFence
-			if m := fenceRe.FindStringSubmatch(ln); m != nil && m[1][0] == fenceOpen[0] && len(m[1]) >= len(fenceOpen) && strings.TrimSpace(m[2]) == "" {
-				fenceOpen = ""
-				openLine, openFlag = -1, 0
+			r.Mask[i] |= MaskFence
+			run, rest, indent, ok := fenceOpener(ln, rule)
+			reach := 3
+			if inItem(rule, fenceIndent) {
+				reach = fenceIndent + 3
+			}
+			if ok && run[0] == fenceOpen[0] && len(run) >= len(fenceOpen) && strings.TrimSpace(rest) == "" && indent <= reach {
+				closeFence(i + 1)
 			}
 		default:
 			// A backtick opener's info string may not itself contain a backtick.
-			if m := fenceRe.FindStringSubmatch(ln); m != nil && !(m[1][0] == '`' && strings.Contains(m[2], "`")) {
-				fenceOpen = m[1]
-				mask[i] |= MaskFence
-				openLine, openFlag = i, MaskFence
+			if run, rest, indent, ok := fenceOpener(ln, rule); ok && !(run[0] == '`' && strings.Contains(rest, "`")) {
+				fenceOpen, fenceIndent, fenceStart = run, indent, i
+				r.Mask[i] |= MaskFence
+				r.openLine, r.openFlag = i, MaskFence
 				continue
 			}
 			if OpensComment(ln) {
 				inComment = true
-				mask[i] |= MaskComment
-				openLine, openFlag = i, MaskComment
+				r.Mask[i] |= MaskComment
+				r.openLine, r.openFlag = i, MaskComment
 			}
 		}
 	}
-	return mask, openLine, openFlag
+	if fenceOpen != "" {
+		r.Fences = append(r.Fences, Span{Start: fenceStart, End: len(lines)})
+	}
+	return r
 }
 
 // OpensComment reports whether a line leaves an HTML comment open. It walks the
@@ -176,6 +325,55 @@ func opensCommentFrom(ln string, start int) bool {
 		}
 	}
 	return false
+}
+
+// FirstContent is the tree's one leading-comment locator: the first line
+// holding anything but blanks and HTML comments, and the byte column in that
+// line where the content starts. A byte-order mark on line 0 is not content.
+// Comments are read as Read reads them: the first `-->` closes one, a line may
+// hold several, and content after a closer is content. It returns
+// (len(lines), 0) when there is nothing else — a document of blanks and
+// comments, or one whose comment never closes.
+//
+// Four readers once skipped a leading attribution comment each by its own
+// walk on HasPrefix and Contains, and each read a closer followed by text, or
+// two comments on one line, its own way (iss-2609251517210637).
+func FirstContent(lines []string) (line, col int) {
+	inComment := false
+	for i, raw := range lines {
+		ln := strings.TrimRight(raw, "\r")
+		pos := 0
+		if i == 0 && strings.HasPrefix(ln, "\ufeff") {
+			pos = len("\ufeff")
+		}
+		if inComment {
+			k := strings.Index(ln[pos:], "-->")
+			if k < 0 {
+				continue
+			}
+			pos += k + len("-->")
+			inComment = false
+		}
+		for {
+			for pos < len(ln) && (ln[pos] == ' ' || ln[pos] == '\t') {
+				pos++
+			}
+			if pos == len(ln) || !strings.HasPrefix(ln[pos:], "<!--") {
+				break
+			}
+			k := strings.Index(ln[pos+len("<!--"):], "-->")
+			if k < 0 {
+				inComment = true
+				pos = len(ln)
+				break
+			}
+			pos += len("<!--") + k + len("-->")
+		}
+		if pos < len(ln) {
+			return i, pos
+		}
+	}
+	return len(lines), 0
 }
 
 // masked reports whether a line is not live markdown, for any reason. It is the

@@ -135,7 +135,7 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	case flag != nil && flag.Connection != "":
 		c, ok := conns.Named(flag.Connection)
 		if !ok {
-			return Route{}, fmt.Errorf("oracle routing: %s names connection %q, which is not configured on this machine", flagText, flag.Connection)
+			return Route{}, fmt.Errorf("oracle routing: %s names connection %q, which is not configured on this machine", flagText, layered.BoundKey(flag.Connection))
 		}
 		r.ConnectionTried, r.ConnectionUsed = c.Name, c.Name
 		r.SettingsSent = merge(merge(nil, c.Defaults), row.Settings)

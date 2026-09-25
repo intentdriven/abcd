@@ -4,7 +4,7 @@ description: >-
   Cold reading at the detection position. Where is the shipped tree in tension
   with the claim record? Returns tensions, each with the constraint in play and
   why it is a tension, under the registrative supply regime.
-prompt_version: 0.1.2
+prompt_version: 0.1.3
 reads_untrusted_input: true
 capability_scope:
   task_classes: [cold_reading]
@@ -119,7 +119,11 @@ key, and no operand an operator types at invocation sets it or overrides it.
 
 Three body fields: `tension`, `constraint_in_play` and `why_a_tension`. The
 constraint in play is quoted from the passed material rather than paraphrased, so
-the researcher can check the tension against the same words you read. The pattern
+the researcher can check the tension against the same words you read. Where the
+constraint in play is a scope condition, cite the condition's identity in
+`constraint_in_play` beside the quoted text: the `cond-` marker and its sixteen
+digits, exactly as the passed material carries it. You name the condition; you
+do not mark it, and no field of yours says whether it holds. The pattern
 you read under travels in the record's envelope, never in a body, and the
 enclosing envelope — the run, the manifest and the record identity — is the
 ingest verb's to compose rather than yours.

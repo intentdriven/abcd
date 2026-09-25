@@ -292,10 +292,13 @@ func TestSpanMaskingFailsOpenOnClearedLookalikes(t *testing.T) {
 			// HomePath is deliberately left empty: the fixture needs only the
 			// bare-login matcher, and spelling a real home root beside this
 			// login would put a live home path in a committed file.
-			id:       Identity{HomeUser: "dev"},
-			line:     "dev wrote to /dev/null",
-			survives: "/dev/null",
-			want:     "[redacted-user] wrote to /dev/null",
+			// "opt" rather than "dev": a generic account name is not reported
+			// as a bare word at all (iss-236), so the genuine mention this
+			// case needs would not be one.
+			id:       Identity{HomeUser: "opt"},
+			line:     "opt wrote to /opt/tools",
+			survives: "/opt/tools",
+			want:     "[redacted-user] wrote to /opt/tools",
 		},
 	}
 	for _, tc := range cases {

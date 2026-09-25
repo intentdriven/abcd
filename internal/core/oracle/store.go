@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Settings are provider sampling settings (temperature, seed, and whatever
@@ -83,11 +84,16 @@ func Load(r layered.Roots) (*Layered, error) {
 		if err != nil {
 			return nil, fmt.Errorf("oracle routing: %w", err)
 		}
+		orphans := 0
 		for _, name := range names {
 			if !inRoster(name) {
-				l.Diagnostics = append(l.Diagnostics, fmt.Sprintf(
-					"oracle routing: %s (%s layer) has a row for %q, which is not an agent in the roster; "+
-						"the row is skipped and the remaining rows apply", layer.origin, layer.l, name))
+				// Named one line each up to maxOrphanLines, then counted: a
+				// hostile file can carry thousands of rows (review-tier1 F1).
+				if orphans++; orphans <= maxOrphanLines {
+					l.Diagnostics = append(l.Diagnostics, fmt.Sprintf(
+						"oracle routing: %s (%s layer) has a row for %q, which is not an agent in the roster; "+
+							"the row is skipped and the remaining rows apply", layer.origin, layer.l, layered.BoundKey(name)))
+				}
 				continue
 			}
 			found, err := s.Lookup("agents." + name)
@@ -110,9 +116,17 @@ func Load(r layered.Roots) (*Layered, error) {
 				}
 			}
 		}
+		if more := orphans - maxOrphanLines; more > 0 {
+			l.Diagnostics = append(l.Diagnostics, fmt.Sprintf(
+				"oracle routing: %s (%s layer) has %d more row(s) for names that are not agents in the roster; "+
+					"they are skipped and the remaining rows apply", layer.origin, layer.l, more))
+		}
 	}
 	return l, nil
 }
+
+// maxOrphanLines is the most orphan rows one layer names line by line.
+const maxOrphanLines = 5
 
 // decodeRow decodes and validates one file row, clamping its fan-out to the
 // agent's ceiling. clamped is the stated fan-out when it was above the
@@ -155,6 +169,9 @@ func checkSettings(in map[string]json.RawMessage) (Settings, error) {
 	if len(in) == 0 {
 		return nil, nil
 	}
+	if len(in) > MaxSettings {
+		return nil, fmt.Errorf("%d settings are given; a row or a --route carries at most %d", len(in), MaxSettings)
+	}
 	keys := make([]string, 0, len(in))
 	for k := range in {
 		keys = append(keys, k)
@@ -163,11 +180,22 @@ func checkSettings(in map[string]json.RawMessage) (Settings, error) {
 	out := make(Settings, len(in))
 	for _, k := range keys {
 		if !settingKeyRe.MatchString(k) {
-			return nil, fmt.Errorf("setting %q is not a parameter name (lower case, digits and underscores, starting with a letter)", k)
+			return nil, fmt.Errorf("setting %q is not a parameter name (lower case, digits and underscores, starting with a letter)", layered.BoundKey(k))
 		}
 		v := bytes.TrimSpace(in[k])
 		if !scalar(v) {
-			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", k, string(v))
+			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", k, layered.BoundKey(string(v)))
+		}
+		// Bounded and clean where it is read, because it reaches the request
+		// block and the receipt as it is (review-tier1 F6): a receipt records a
+		// setting as sent, so it is refused here rather than truncated there.
+		if len(v) > MaxSettingBytes {
+			return nil, fmt.Errorf("setting %s is %d bytes; a setting's value is at most %d", k, len(v), MaxSettingBytes)
+		}
+		var str string
+		if v[0] == '"' && json.Unmarshal(v, &str) == nil && termsafe.Sanitize(str) != str {
+			return nil, fmt.Errorf("setting %s carries a control, bidirectional or zero-width character; "+
+				"a setting's value is plain text", k)
 		}
 		out[k] = append(json.RawMessage(nil), v...)
 	}
@@ -215,7 +243,14 @@ func (l *Layered) Rows(agent string) ([]LayerRow, error) {
 				return nil, err
 			}
 			tier, _ := ParseTier(fr.Tier)
-			out = append(out, LayerRow{Layer: fd.Layer, Origin: fd.Origin, Row: Row{Tier: tier, Settings: fr.Settings}, Connection: fr.Connection})
+			// A --route states no fan-out: the step runs at the bound the
+			// layer beneath resolves to, clamped, which is Resolve's own
+			// answer (review-tier1 F5), so the board and the step agree.
+			r, err := Resolve(agent, l, NoConnections{})
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, LayerRow{Layer: fd.Layer, Origin: fd.Origin, Row: Row{Tier: tier, FanOut: r.Row.FanOut, Settings: fr.Settings}, Connection: fr.Connection})
 			continue
 		}
 		row, _, err := decodeRow(agent, fd.Raw)
@@ -229,5 +264,5 @@ func (l *Layered) Rows(agent string) ([]LayerRow, error) {
 }
 
 func notInRoster(agent string) error {
-	return fmt.Errorf("%q is not an agent in the roster (%d agents: see agents/)", agent, len(proposal))
+	return fmt.Errorf("%q is not an agent in the roster (%d agents: see agents/)", layered.BoundKey(agent), len(proposal))
 }

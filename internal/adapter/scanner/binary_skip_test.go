@@ -90,10 +90,13 @@ func TestSkipListedBinaryPEMKeyIsCaught(t *testing.T) {
 }
 
 // TestScannedBinaryIsPlainByteScan: a skip-listed name on the plaintext
-// allow-list (.gitignore, a skip FILENAME) is byte-scanned and reported as
-// ScannedBinary; every other skip-listed format defaults to ContentUnverified.
+// allow-list (.gitignore, once a repo's config skip-lists it by name) is
+// byte-scanned and reported as ScannedBinary; every other skip-listed format
+// defaults to ContentUnverified. By default .gitignore is not skip-listed at
+// all and takes the full text rules (TestGitignoreIsScannedAsText).
 func TestScannedBinaryIsPlainByteScan(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ".abcd/config/pii.json", `{"skip_filenames":[".gitignore"]}`)
 	abs := writeFile(t, root, "sub/.gitignore", "# token="+fakeToken()+"\n")
 	sc, err := New(root)
 	if err != nil {

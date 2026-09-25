@@ -39,7 +39,7 @@ No existing entry is renamed, typed or moved.
 
 This spec lands last of the Iteration 2 set. It consumes the condition reader
 the sibling spec
-[spc-2609020626046252](spc-2609020626046252-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md)
+[spc-2609020626046252](../closed/spc-2609020626046252-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md)
 introduces, and it takes the include table, the exclusion floor and the eval
 tables as the earlier specs leave them.
 

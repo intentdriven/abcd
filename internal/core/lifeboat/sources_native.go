@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // nativeSources returns the Tier-2 adapters: brief sections derivable from an
@@ -126,7 +127,7 @@ func nativeIsNumbered(name string) bool {
 // Record locations under the abcd tree, named once so a citation is consistent.
 const (
 	nativeADRDir      = ".abcd/development/decisions/adrs"
-	nativeIssuesDir   = ".abcd/work/issues"
+	nativeIssuesDir   = recordid.IssuesRelDir
 	nativeIntentsDir  = ".abcd/development/intents"
 	nativeGlossaryDir = ".abcd/development/brief/glossary"
 	nativeDecisions   = ".abcd/work/DECISIONS.md"

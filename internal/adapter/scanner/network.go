@@ -239,14 +239,19 @@ func NetworkPatterns() []Pattern {
 					selectorExpression(line, start, end) ||
 					mixedCaseSelector(line, start, end)
 			},
-			Suggestion: "replace with a reserved name (example.com, host.test) or a persona-derived fixture host",
+			// The suggestion names the exact shape personaDerivedHost accepts,
+			// so an author refused on a possessive or capitalised persona host
+			// can see why (iss-2609190338409222).
+			Suggestion: "replace with a reserved name (example.com, host.test) or a persona fixture host spelled <persona>-<noun> in lower case (alice-mac.local; no possessive, no capitals)",
 		},
 		{
 			Name: "net_device_hostname", Kind: kindNetDeviceHost, Label: "device hostname",
 			Re: deviceHostRe, Severity: SeverityWarn,
-			Skip:       func(m string) bool { return personaDerivedHost(m) },
-			SkipAt:     commonNounPhrase,
-			Suggestion: "replace with a persona-derived fixture host (alice-laptop, bob-macbook)",
+			Skip: func(m string) bool { return personaDerivedHost(m) },
+			SkipAt: func(line string, start, end int) bool {
+				return commonNounPhrase(line, start, end) || proseSlug(line, start, end)
+			},
+			Suggestion: "replace with a persona fixture host spelled <persona>-<noun> in lower case (alice-laptop, bob-macbook; no possessive, no capitals)",
 		},
 	}
 }
@@ -478,7 +483,8 @@ func insideLongerDottedRun(line string, start, end int) bool {
 
 // trailingDottedGroups counts the ".<digits>" groups immediately following pos.
 func trailingDottedGroups(line string, pos int) int {
-	n := 0
+	from, n := pos, 0
+	defer func() { scanMeter.charge(stageSkipAt, pos-from) }()
 	for pos < len(line) && line[pos] == '.' {
 		i := pos + 1
 		for i < len(line) && isASCIIDigit(line[i]) {
@@ -529,52 +535,69 @@ func insideLongerColonRun(line string, start, end int) bool {
 	if end < len(line) && isHexDigit(line[end]) {
 		return true
 	}
-	return colonRunGroups(line, start, end) > maxRunGroups
+	return colonRunGroups(line, start, end, maxRunGroups+1) > maxRunGroups
 }
 
 // colonRunGroups counts the NON-EMPTY colon-separated groups of the maximal
-// hex/colon run containing [start,end). An empty group carries no hex at all, so
-// counting it (the "::" compression, the colon a tool prints after an address)
-// inflated a run by a group it never held: a fully expanded eight-hextet address
-// beside one colon measured nine groups and was suppressed as a digest.
-func colonRunGroups(line string, start, end int) int {
-	start = colonRunStart(line, start)
-	for end < len(line) && isColonRunByte(line[end]) {
-		end++
-	}
+// hex/colon run containing [start,end), and stops counting at limit. An empty
+// group carries no hex at all, so counting it (the "::" compression, the colon
+// a tool prints after an address) inflated a run by a group it never held: a
+// fully expanded eight-hextet address beside one colon measured nine groups and
+// was suppressed as a digest.
+//
+// The caller asks only whether the run is longer than an address, so the walk
+// either side of the candidate stops at limit: walking and splitting the whole
+// run for every candidate inside it cost the run's length per candidate, and a
+// fingerprint is nothing but candidates (iss-2609251535277823). The candidate's
+// own ends are group boundaries — insideLongerColonRun has already refused a
+// hex byte on either side — so the three parts count independently.
+//
+// Walking back refuses hex bytes that belong to a LARGER WORD. "IPv6:" ends in
+// a hex digit, but that '6' is the tail of the label, not a group of the run:
+// taking it added a phantom group to every labelled address. A hex byte
+// preceded by a non-hex word byte is part of a word, not of the run.
+func colonRunGroups(line string, start, end, limit int) int {
 	n := 0
 	for _, g := range strings.Split(line[start:end], ":") {
 		if g != "" {
 			n++
 		}
 	}
-	return n
-}
-
-// colonRunStart walks back to the beginning of the hex/colon run, refusing to
-// absorb hex bytes that belong to a LARGER WORD. "IPv6:" ends in a hex digit,
-// but that '6' is the tail of the label, not a group of the run: taking it added
-// a phantom group to every labelled address. A hex byte preceded by a non-hex
-// word byte is part of a word, not of the run.
-func colonRunStart(line string, start int) int {
-	for start > 0 {
-		if line[start-1] == ':' {
-			start--
+	lo := start
+	for lo > 0 && n < limit {
+		if line[lo-1] == ':' {
+			lo--
 			continue
 		}
-		if !isHexDigit(line[start-1]) {
-			return start
+		if !isHexDigit(line[lo-1]) {
+			break
 		}
-		i := start
+		i := lo
 		for i > 0 && isHexDigit(line[i-1]) {
 			i--
 		}
 		if i > 0 && isWordByte(line[i-1]) {
-			return start // the hex bytes are a word's tail, not a group
+			break // the hex bytes are a word's tail, not a group
 		}
-		start = i
+		lo = i
+		n++
 	}
-	return start
+	hi := end
+	for hi < len(line) && n < limit {
+		if line[hi] == ':' {
+			hi++
+			continue
+		}
+		if !isHexDigit(line[hi]) {
+			break
+		}
+		for hi < len(line) && isHexDigit(line[hi]) {
+			hi++
+		}
+		n++
+	}
+	scanMeter.charge(stageSkipAt, hi-lo+end-start)
+	return n
 }
 
 func isColonRunByte(b byte) bool { return b == ':' || isHexDigit(b) }
@@ -603,6 +626,7 @@ func dottedFileOrDirectory(line string, start, end int) bool {
 // noisy report but a silent leak, and the cost of getting it too narrow is a
 // corrupted transcript — so the position is required as well as the case.
 func mixedCaseSelector(line string, start, end int) bool {
+	scanMeter.charge(stageSkipAt, end-start)
 	return mixedCaseHostSuffix(line[start:end]) && valuePosition(line, start)
 }
 
@@ -625,6 +649,7 @@ func valuePosition(line string, start int) bool {
 	for j > 0 && isWordByte(line[j-1]) {
 		j--
 	}
+	scanMeter.charge(stageSkipAt, start-j)
 	return line[j:i] == "return"
 }
 
@@ -654,6 +679,7 @@ func selectorExpression(line string, start, end int) bool {
 	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
 		i++
 	}
+	scanMeter.charge(stageSkipAt, i-end)
 	return i < len(line) && (line[i] == '=' || line[i] == '{')
 }
 
@@ -664,6 +690,35 @@ var determiners = map[string]bool{
 	"these": true, "those": true, "my": true, "our": true, "your": true,
 	"their": true, "its": true, "every": true, "each": true, "some": true,
 	"any": true, "no": true,
+}
+
+// slugFunctionWords are the English function words a prose slug strings
+// between its hyphens and a machine's name does not carry.
+var slugFunctionWords = map[string]bool{
+	"a": true, "an": true, "the": true, "to": true, "of": true, "for": true,
+	"on": true, "onto": true, "in": true, "into": true, "from": true,
+	"with": true, "without": true, "off": true, "over": true, "via": true,
+	"and": true, "or": true, "my": true, "our": true, "your": true,
+	"their": true, "this": true, "that": true,
+}
+
+// proseSlug reports whether a device-hostname match is a hyphenated prose
+// slug — a page or file named in words ("migrating-to-the-nas") — rather than
+// a machine's name: one of the tokens before its device word is a function
+// word. A machine is named <owner>-<device> or <place>-<device>, and a real
+// host name built from a sentence is rare enough that sparing it costs less
+// than rewriting every slug that ends in a device word, which left a record's
+// reproduction step unfollowable (iss-2609240646532741). The token sequence is
+// the match's own; a determiner BEFORE the match is commonNounPhrase's case.
+func proseSlug(line string, start, end int) bool {
+	scanMeter.charge(stageSkipAt, end-start)
+	toks := strings.Split(strings.ToLower(line[start:end]), "-")
+	for _, t := range toks[:len(toks)-1] {
+		if slugFunctionWords[t] {
+			return true
+		}
+	}
+	return false
 }
 
 // commonNounPhrase reports whether a device-hostname match is preceded by a
@@ -683,6 +738,7 @@ func commonNounPhrase(line string, start, _ int) bool {
 	for j > 0 && isWordByte(line[j-1]) {
 		j--
 	}
+	scanMeter.charge(stageSkipAt, start-j)
 	return determiners[strings.ToLower(line[j:i])]
 }
 

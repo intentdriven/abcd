@@ -63,3 +63,19 @@ func TestAppendToAuditNotesInsertsAboveTrailingLinkRefs(t *testing.T) {
 		t.Fatalf("second link ref not preserved exactly once:\n%s", out)
 	}
 }
+
+// TestAppendToAuditNotesOpensWithOneBlankLine: a write into a section that
+// already holds a block leaves exactly one blank line under the heading and
+// one between the blocks, as the first write into an empty section does.
+func TestAppendToAuditNotesOpensWithOneBlankLine(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"empty section", "# a\n\n## Audit Notes\n", "# a\n\n## Audit Notes\n\nBLOCK\n"},
+		{"placeholder", "# a\n\n## Audit Notes\n\n_Empty until review._\n\n## Next\n", "# a\n\n## Audit Notes\n\nBLOCK\n\n## Next\n"},
+		{"a block already there", "# a\n\n## Audit Notes\n\nFIRST\nline\n", "# a\n\n## Audit Notes\n\nFIRST\nline\n\nBLOCK\n"},
+		{"CRLF blanks", "# a\r\n\r\n## Audit Notes\r\n\r\n\r\nFIRST\r\n", "# a\r\n\r\n## Audit Notes\r\n\nFIRST\r\n\nBLOCK\n"},
+	} {
+		if got := appendToAuditNotes(tc.in, "BLOCK"); got != tc.want {
+			t.Errorf("%s:\n got %q\nwant %q", tc.name, got, tc.want)
+		}
+	}
+}

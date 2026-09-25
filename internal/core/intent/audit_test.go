@@ -646,3 +646,25 @@ func TestIngestNeutralisesLinkSyntax(t *testing.T) {
 		}
 	}
 }
+
+// TestIngestVerdictBytesIngestsTheBytesItIsHanded: a front door that has read
+// the verdict once (for the receipt's model_reported) hands those bytes to the
+// ingest, so the model the receipt reports is read from the payload the ingest
+// validated, never from a second read of a file that may have changed between.
+func TestIngestVerdictBytesIngestsTheBytesItIsHanded(t *testing.T) {
+	root := t.TempDir()
+	rcp := shipOne(t, root)
+	vp := writeVerdict(t, root, validVerdict(rcp))
+	raw, err := ReadVerdict(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The file changes after the read; the ingest must not look at it again.
+	if err := os.WriteFile(vp, []byte(`{"_type":"not-a-verdict"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IngestVerdictBytes(root, raw)
+	if err != nil || res.Status != "ingested" || res.ReceiptID != rcp {
+		t.Fatalf("res %+v err %v", res, err)
+	}
+}

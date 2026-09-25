@@ -98,6 +98,7 @@ func SweepCallerHome(text, home string) string {
 // name someone else's, so it is swept wherever it sits; the leading anchor's
 // one purpose, telling "/root" from "/var/root", has no counterpart there.
 func homeStandsAsPath(text string, at, end int) bool {
+	scanMeter.charge(stageIdentity, end-at)
 	single := strings.IndexByte(text[at+1:end], '/') < 0
 	if single && at > 0 && text[at-1] != '/' && (isPathSegmentByte(text[at-1]) || text[at-1] == '~') {
 		return false
@@ -106,15 +107,29 @@ func homeStandsAsPath(text string, at, end int) bool {
 }
 
 // homeSweepable is homeStandsAsPath with the leading half of the anchor
-// waived inside a URL span: behind a URL host the byte before the home is the
-// host's last letter, which is a path-segment byte, yet the path IS the
-// caller's home ("https://ci.example.com/Users/me/build.log"). The trailing abcd-audit:allow
-// half still holds there, so a longer name behind a host is not swept either.
-func homeSweepable(text string, at, end int, urls []span) bool {
-	if inAnySpan(at, urls) {
+// waived where the home is a URL's PATH ROOT: behind a URL host the byte
+// before the home is the host's last letter, which is a path-segment byte, yet
+// the path IS the caller's home ("https://ci.example.com/Users/me/build.log"). abcd-audit:allow
+// The trailing half still holds there, so a longer name behind a host is not
+// swept either. Deeper in a URL's path the ordinary anchor applies: the
+// waiver used to hold anywhere inside the span, so under HOME=/root a
+// "/root" segment anywhere in a URL path ("git@github.com:acme/root/tool.git",
+// a module path ending in /root) was rewritten and hard-failed as the
+// caller's home (iss-2608292005445725). A home of two or more segments is
+// unaffected, since homeStandsAsPath never asks its leading anchor.
+func homeSweepable(text string, at, end int, urls urlSet) bool {
+	if atURLPathRoot(at, urls) {
 		return !nameContinues(text, end)
 	}
 	return homeStandsAsPath(text, at, end)
+}
+
+// atURLPathRoot reports whether offset at is the first byte of the path of a
+// URL span: the first '/' after "scheme://" and the authority, or the byte
+// after the ':' of an scp-style "git@host:" remote (urlPathRoot).
+func atURLPathRoot(at int, urls urlSet) bool {
+	s := urls.at(at)
+	return s != nil && s.root == at
 }
 
 // nameContinues is the ONE rule the home-path anchor uses for "the name goes

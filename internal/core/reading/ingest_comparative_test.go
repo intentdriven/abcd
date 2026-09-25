@@ -387,3 +387,20 @@ func TestTheRecordedInstrumentIsRedacted(t *testing.T) {
 		t.Errorf("the recorded model carries no redaction mask: %s", run.Instrument.Model)
 	}
 }
+
+// TestIngestValidatesTheBytesTheFrontDoorRead: the front door reads the output
+// once, for the position it routes on and the model its receipt reports, and
+// hands the bytes to the ingest, which validates those bytes and does not read
+// the path again, so what was routed and reported is what was ingested.
+func TestIngestValidatesTheBytesTheFrontDoorRead(t *testing.T) {
+	f := newIngestFixture(t, PositionDetection)
+	raw, err := ReadOutput(f.writePayload(f.payload(0)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := f.writePayload(map[string]any{"_type": "not-an-output"})
+	res, err := Ingest(IngestRequest{RepoRoot: f.root, OutputPath: changed, Output: raw})
+	if err != nil || res.RunID != f.runID {
+		t.Fatalf("res %+v err %v", res, err)
+	}
+}

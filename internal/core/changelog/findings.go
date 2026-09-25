@@ -8,16 +8,16 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// issuesLedgerDir is the issue ledger's root, repo-relative. It is spelled ONCE
-// in this package — issuesResolvedDir is derived from it — because two literals
-// for one directory is how a gate ends up scanning a tree the writer no longer
-// uses. core/capture holds the same constant for the ledger it writes; this
-// package cannot import it (capture imports this one for the impact enum), so
-// the second and last spelling lives here.
-const issuesLedgerDir = ".abcd/work/issues"
+// issuesLedgerDir is the issue ledger's root, repo-relative — recordid's one
+// spelling, named here so issuesResolvedDir derives from it. Two literals for
+// one directory is how a gate ends up scanning a tree the writer no longer
+// uses; this package cannot import core/capture (capture imports this one for
+// the impact enum), and the stdlib-only recordid leaf is below both.
+const issuesLedgerDir = recordid.IssuesRelDir
 
 // FindingGuardStatus is the unfixed-findings guardrail's verdict on a cut.
 //

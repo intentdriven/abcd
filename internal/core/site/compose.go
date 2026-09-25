@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -1304,8 +1305,11 @@ func plainPressReleaseText(body string) string {
 // It reads that section through the same fence-aware walk every other reader of
 // these files uses, and only the prose of it. A rollup
 // line elsewhere in the document — in the frontmatter, in another section, or
-// quoted inside a fenced block as an example of the shape — is not a verdict
-// about this intent, and a whole-file substring scan cannot tell the difference.
+// quoted inside a fenced block as an example of the shape, or parked in an HTML
+// comment — is not a verdict about this intent, and a whole-file substring scan
+// cannot tell the difference. Fences and comments are mdrecord's reading, the
+// one Sections takes, so a tilde fence hides a rollup exactly as a backtick
+// fence does (iss-2609250955051598).
 // A fenced `Acceptance rollup: MET 1` needs no negative to do damage: it lifts a
 // concerns-only rollup, whose notMet is already 0, straight past the met > 0
 // test.
@@ -1338,13 +1342,10 @@ func (c *composer) auditIsMet(rel string) bool {
 		return false
 	}
 	met, notMet := 0, 0
-	fence := false
-	for _, line := range strings.Split(notes.Body, "\n") {
-		if isFenceLine(line) {
-			fence = !fence
-			continue
-		}
-		if fence {
+	noteLines := strings.Split(notes.Body, "\n")
+	mask := mdrecord.Read(noteLines, mdrecord.ListNested).Mask
+	for i, line := range noteLines {
+		if mask[i] != 0 {
 			continue
 		}
 		_, after, ok := strings.Cut(line, "Acceptance rollup:")
@@ -1388,10 +1389,11 @@ func (c *composer) auditIsMet(rel string) bool {
 // superstring landing in a FUTURE section restamps the featured record without
 // anything about that record changing.
 //
-// And it is a credit in the changelog's PROSE. The walk tracks fences the way
-// every other reader of these files does, because a handle inside a fenced
-// block is a shell example, a sample entry or a quoted diff — an illustration
-// of the shape rather than a claim that this release delivered that promise.
+// And it is a credit in the changelog's PROSE. The walk reads fences and HTML
+// comments by mdrecord's rule, the way every other reader of these files does,
+// because a handle inside a fenced block is a shell example, a sample entry or a
+// quoted diff, and one inside a comment is parked — an illustration of the shape
+// rather than a claim that this release delivered that promise.
 // The fence check comes first, ahead of the dated-heading test, so a fenced
 // heading moves no version cursor either: both failures are silent, rendering a
 // plausible wrong version rather than none (iss-2609090951287232).
@@ -1402,13 +1404,10 @@ func (c *composer) releaseOf(id string) string {
 	}
 	version := ""
 	want := normalizeHandle(id)
-	fence := false
-	for _, line := range strings.Split(string(data), "\n") {
-		if isFenceLine(line) {
-			fence = !fence
-			continue
-		}
-		if fence {
+	logLines := strings.Split(string(data), "\n")
+	mask := mdrecord.Read(logLines, mdrecord.ListNested).Mask
+	for i, line := range logLines {
+		if mask[i] != 0 {
 			continue
 		}
 		if changelog.IsDatedHeading(line) {

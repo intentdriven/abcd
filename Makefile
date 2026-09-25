@@ -278,7 +278,8 @@ scaffold-sync:
 scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
 
-# Pre-push gate (invoked by .githooks/pre-push): the load check first (a
+# Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
+# receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the six lint gates
 # (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
 # docs-lint), the
@@ -308,6 +309,24 @@ preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-
 	go vet ./...
 	go test ./...
 	go test -race ./internal/...
+	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook
+# never runs this target: git opens a push's connection before it runs the hook,
+# and a preflight inside it held that connection open until the transport's idle
+# timeout closed it. So the gate runs first, as its own command, and its last step
+# mints a receipt the hook checks in milliseconds. A receipt vouches for HEAD only
+# when the tree matched HEAD — nothing staged, unstaged or untracked — both when
+# the run began and when it ended, which is what makes the gates' reading of the
+# working tree a reading of the commit CI will check out.
+#
+# The starting state is read while this Makefile is PARSED, which is before any
+# prerequisite runs; a recipe line or a prerequisite would run after, or in parallel
+# with, the gates. It is read only when `preflight` is named on the command line, so
+# no other target pays for a git status.
+ifneq ($(filter preflight,$(MAKECMDGOALS)),)
+PREFLIGHT_BEGAN := $(shell scripts/preflight-receipt.sh state)
+endif
 
 # The marker tells a check started inside this preflight (the eval harness's own,
 # under `smoke` and `evals-cold-reading`) that the preflight's check already

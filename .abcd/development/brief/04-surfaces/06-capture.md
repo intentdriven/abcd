@@ -163,6 +163,16 @@ stays out of the current cut.
 the issue to `wontfix/`. Grounds are optional here and override the recorded
 text only: the token stays `declined`, because a wontfix **is** that non-action.
 
+**Both moves repoint the links that named the issue.** Resolving and marking
+wontfix each rename the record out of `open/`, and in the same operation every
+relative markdown link in the tree that named its old path is rewritten to the
+new one — from a decision, a draft intent or a sibling issue, and the moved
+issue's own links, written from `open/` — through the one link-repoint
+primitive every record-moving verb shares (`core/relink`). A link that never
+resolved is left as written. Each rewrite is reported (file, line, the
+destination before and after), and a repoint that fails part-way is a warning,
+not a failure: the transition stands.
+
 ## 2. Which ledger a verb addresses
 
 Every verb addresses the checkout's ledger, whichever directory of the working

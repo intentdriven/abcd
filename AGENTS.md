@@ -38,8 +38,10 @@ A prompt that matches no domain injects nothing (zero added tokens).
   working tree. Where git cannot answer for that tree — a checkout owned by
   another uid, a container bind mount — the root is recovered from the `.git`
   marker instead, and a root the caller does not own is REFUSED: the session
-  falls back to its own working directory on the bundled defaults, and one line
-  on stderr names what was refused. Re-admit such a checkout deliberately, from
+  takes its own working directory as the root, nothing above it is read, and one
+  line on stderr names what was refused. The refusal bounds the walk, not the
+  working directory: a `.abcd/` there is still read, so a session started AT the
+  refused root reads that root's configuration. Re-admit such a checkout deliberately, from
   an account you control:
   `mkdir -p ~/.abcd && printf '%s\n' '<checkout>' >> ~/.abcd/trusted-roots`
   (one absolute path per line; `#` starts a comment). Only your home declares
@@ -102,6 +104,17 @@ go test ./...       # unit tests
 go test ./internal/core/                 # a single package
 go test -run TestStatus ./internal/core/ # a single test
 ```
+
+**A push is gated before it connects.** The committed `.githooks/pre-push` hook
+never runs the preflight: git opens a push's connection before it runs the hook,
+and a preflight inside it outlasted the transport's idle timeout, so the push
+reported success and moved nothing. `make preflight` ends by minting a receipt
+for HEAD instead, and only when the working tree matched HEAD — nothing staged,
+unstaged or untracked — both when the run began and when it ended, so the gates
+read exactly the tree CI checks out. The hook refuses a push whose new commit has
+no receipt. The sequence is: commit everything, `make preflight`, then a plain
+`git push`. A receipt minted in any worktree of the checkout counts, and a commit
+the remote already holds (a tag on a merged commit) needs none.
 
 **In a source checkout of abcd, every abcd invocation is `go run ./cmd/abcd
 <verb>` from the repo root** — never the plugin-root binary and never an `abcd`
@@ -411,7 +424,11 @@ irreversible; guessing downward costs nothing.**
   class into every store-before-commit redactor, `abcd lint`'s privacy rule
   refuses either shape in any committed file, and the `harness_leak` lint rule
   refuses it in the record and the docs. One definition, three wired surfaces
-  (itd-152). A fourth exists as a primitive with no front door:
+  (itd-152). A commit message is judged by the check-direction front door onto
+  the same policy, `abcd lint outbound`, twice: the committed
+  `.githooks/commit-msg` hook refuses either shape before the commit exists, and
+  the attribution gate in CI judges every commit message of a pull request and
+  its body again. A fourth exists as a primitive with no front door:
   `scanner.ScrubOutbound` sanitises one outbound artefact and is covered by
   tests, but no command or plugin verb calls it, because `spc-45` deliberately
   scopes a forge client out. The three wired surfaces judge text that is already

@@ -377,6 +377,12 @@ type IngestRequest struct {
 	// OutputPath is the reading's returned JSON. The front door resolves a
 	// relative path against the working directory before it arrives here.
 	OutputPath string
+	// Output is the output's bytes when the front door has already read them
+	// through ReadOutput (to route on the position it names and to report the
+	// model its instrument names). The ingest then validates these bytes and
+	// does not read OutputPath again, so what was routed and reported is what
+	// is ingested. Nil means the ingest reads OutputPath itself.
+	Output []byte
 }
 
 // IngestResult is what an ingest did.
@@ -563,9 +569,11 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	}
 	res.PendingStages = orphans
 
-	raw, err := readOutputFile(req.OutputPath)
-	if err != nil {
-		return err
+	raw := req.Output
+	if raw == nil {
+		if raw, err = readOutputFile(req.OutputPath); err != nil {
+			return err
+		}
 	}
 	out, err := decodeOutput(raw)
 	if err != nil {
@@ -675,6 +683,12 @@ func leftPending(found, cleared []string) []string {
 		}
 	}
 	return pending
+}
+
+// ReadOutput reads a reading's output the way the ingest does, for a front
+// door that hands the bytes on through IngestRequest.Output.
+func ReadOutput(path string) ([]byte, error) {
+	return readOutputFile(path)
 }
 
 // readOutputFile reads the untrusted payload behind fsutil.ReadGuarded

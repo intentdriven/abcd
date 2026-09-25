@@ -1809,3 +1809,51 @@ func TestRawHeadingTitleIsReadFromEveryMasking(t *testing.T) {
 		refusesOrWithholds(t, root, "a raw heading carrying "+what, sentinelAuditNotes)
 	}
 }
+
+// TestConditionBlockNeverReachesTheBundle is spc-2609020626046252 ac-8, a
+// regression guard: a condition disposition block written by `abcd intent
+// condition` lands under `## Audit Notes`, which the assembler already
+// withholds, so no bundle carries its marker, its occasion or its ground, and
+// the manifest asserts the heading's exclusion. It cannot fail against the
+// assembler as delivered; it exists so a later change to the heading floor is
+// caught by the block it would expose. The condition's identity marker, which
+// lives under `## Scope Conditions`, is the positive control: it DOES travel,
+// which is what lets a detection item cite it.
+func TestConditionBlockNeverReachesTheBundle(t *testing.T) {
+	root := fixtureRepo(t)
+	const (
+		cond     = "cond-2608311949582375"
+		occasion = "rdi-2609011200000001"
+		ground   = "SENTINEL-CONDITION-GROUND"
+	)
+	writeFile(t, root, ".abcd/development/intents/shipped/itd-7-conditioned.md",
+		"---\nid: itd-7\nspec_id: spc-1\n---\n\n# A conditioned intent\n\n"+
+			"## Acceptance Criteria\n\n- Given a state, when it runs, then it holds.\n\n"+
+			"## Scope Conditions\n\n- Holds while the record is one repository. <!-- cond: "+cond+" -->\n\n"+
+			"## Audit Notes\n\n"+
+			"<!-- abcd-condition: "+cond+" occasion="+occasion+" -->\n"+
+			"Condition disposition — 2026-09-02, occasioned by "+occasion+".\n"+
+			"- "+cond+" — narrowed: "+ground+"\n"+
+			"  narrowing: holds for one repository only\n")
+	gitCommitAll(t, root)
+
+	res := assembleFixture(t, root, PositionDetection)
+	text := bundleText(res.Bundle)
+	for _, banned := range []string{"abcd-condition", occasion, ground, "holds for one repository only"} {
+		if strings.Contains(text, banned) {
+			t.Errorf("the bundle carries %q from a condition disposition block", banned)
+		}
+	}
+	if !strings.Contains(text, "<!-- cond: "+cond+" -->") {
+		t.Error("the condition's identity marker did not travel with its scope condition; a detection item could not cite it")
+	}
+	asserted := false
+	for _, e := range res.Manifest.Exclusions {
+		if e.Signal == "heading" && e.Detail == "Audit Notes" {
+			asserted = true
+		}
+	}
+	if !asserted {
+		t.Error("the manifest does not assert the Audit Notes exclusion")
+	}
+}
