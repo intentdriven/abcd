@@ -1,6 +1,6 @@
 ---
 name: docs
-description: "List the documentation-currency verbs: Writes nothing; refuses an unknown sub-verb."
+description: "Lint the documentation for currency and keep its citation baseline: Writes nothing but that baseline; refuses an unknown sub-verb."
 argument-hint: "[lint | cite refresh | cite confirm <url>...]"
 block: agents
 ---

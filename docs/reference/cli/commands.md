@@ -316,7 +316,7 @@ lands with is `proposed` until the author sets `accepted`.
 
 ### `abcd disembark`
 
-List the verbs that pack a repository into a lifeboat: Writes nothing; refuses an unknown sub-verb.
+Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.
 
 **Usage:** `abcd disembark`
 
@@ -412,13 +412,13 @@ Review a packed lifeboat against its source repository, or validate the host's v
 
 ### `abcd docs`
 
-List the documentation-currency verbs: Writes nothing; refuses an unknown sub-verb.
+Lint the documentation for currency and keep its citation baseline: Writes nothing but that baseline; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs`
 
 #### `abcd docs cite`
 
-List the verbs that keep the citation baseline: Writes nothing; refuses an unknown sub-verb.
+Keep the citation baseline the docs lint enforces offline: Writes nothing bare, and only that baseline; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs cite`
 
@@ -473,7 +473,7 @@ Lint the docs for change-narration, broken links, citations, and stray root mark
 
 ### `abcd embark`
 
-List the verbs that unpack a lifeboat into a repository: Writes nothing; refuses an unknown sub-verb.
+Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict.
 
 **Usage:** `abcd embark`
 
@@ -491,7 +491,7 @@ Report what a lifeboat would write into a target, coverage blanks first: Writes 
 
 ### `abcd guard`
 
-List the command-hazard verbs: Writes nothing; refuses an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -596,7 +596,7 @@ blocking status and the reason.
 
 ### `abcd history`
 
-List the session-transcript store verbs: Writes nothing; refuses an unknown sub-verb.
+Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.
 
 **Usage:** `abcd history`
 
@@ -703,7 +703,7 @@ List the transcripts that ended but are not yet redacted into the store: Writes 
 
 ### `abcd ideate`
 
-List the verb that records an idea-admission verdict: Writes nothing; refuses an unknown sub-verb.
+Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.
 
 **Usage:** `abcd ideate`
 
@@ -756,7 +756,7 @@ Print the correction for every drifted surface as a unified diff: Writes nothing
 
 ### `abcd implement`
 
-Show the autonomous run's sessions, claims, and division mode: Writes nothing; refuses an unknown sub-verb.
+Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.
 
 **Usage:** `abcd implement`
 

@@ -1,6 +1,6 @@
 ---
 name: embark
-description: "List the verbs that unpack a lifeboat into a repository: Writes nothing; refuses an unknown sub-verb."
+description: "Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict."
 argument-hint: "probe <lifeboat> [target] | from <lifeboat> [target]"
 block: people
 ---

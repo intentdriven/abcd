@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "List the command-hazard verbs: Writes nothing; refuses an unknown sub-verb."
+description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb."
 argument-hint: "[check <command> | hook]"
 block: agents
 ---
