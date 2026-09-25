@@ -256,6 +256,26 @@ func TestLaunchArchiveWithoutVerifyRefusesADirtyTree(t *testing.T) {
 	}
 }
 
+// TestLaunchArchiveHelpStatesTheDirtyTreeRefusal holds the verb's own help to
+// the refusal above: without --verify a dirty tree exits 2, so the Long text
+// and the --verify flag say so, and the generated CLI reference carries both.
+func TestLaunchArchiveHelpStatesTheDirtyTreeRefusal(t *testing.T) {
+	cmd := newLaunchArchiveCommand(new(bool))
+	long := strings.Join(strings.Fields(cmd.Long), " ")
+	for _, want := range []string{"Without --verify", "uncommitted", "exit 2"} {
+		if !strings.Contains(long, want) {
+			t.Errorf("launch archive's Long text does not say %q:\n%s", want, cmd.Long)
+		}
+	}
+	usage := cmd.Flags().Lookup("verify").Usage
+	if !strings.Contains(usage, "without it") || !strings.Contains(usage, "uncommitted") {
+		t.Errorf("--verify's help does not state the dirty-tree refusal without it: %q", usage)
+	}
+	if ref := GenerateReference(); !strings.Contains(ref, usage) {
+		t.Errorf("the generated CLI reference does not carry --verify's help %q", usage)
+	}
+}
+
 // TestLaunchShipPinsOnlyOnTheDeclaration is the other side of the pin: a
 // repository with the version-location contract but no declaration that its
 // release publishes the archive — the managed repository whose scaffolded

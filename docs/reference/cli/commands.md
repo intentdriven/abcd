@@ -1143,13 +1143,22 @@ Render the release's plugin archive and (--verify) prove the committed catalog p
 
 **Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
 
+Render the release's plugin archive into --out and, with --verify, prove the
+committed catalog pins it (exit 1 on a mismatch).
+
+With --verify the pin judges the working tree: a payload file that differs
+from the commit changes the archive's digest, and the pin refuses it. Without
+--verify nothing else judges the tree, so an uncommitted change, tracked or
+untracked and outside the local tier, refuses the render (exit 2) and nothing
+is written to --out.
+
 **Flags:**
 
 ```
       --out string          existing directory to write <plugin>-plugin-v<version>.zip into
       --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
       --tag string          refuse unless the newest dated CHANGELOG version is this tag
-      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
+      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest; without it, a tree with an uncommitted change refuses (exit 2)
 ```
 
 #### `abcd launch scaffold`
