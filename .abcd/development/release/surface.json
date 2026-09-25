@@ -783,6 +783,13 @@
       "hidden": false,
       "flags": [
         {
+          "name": "all",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "kind",
           "shorthand": "",
           "type": "string",

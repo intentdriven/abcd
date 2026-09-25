@@ -51,6 +51,13 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
   standard input, where there is no filename to read it from. The caller also
   says where the transcript came from, a session abcd captured itself or an import of
   a prior tool's transcripts, and it defaults to the first.
+  Asked for a whole session instead, capture stores the named session's main
+  thread and every sub-agent transcript it spawned in one call — the write-side
+  twin of listing a session — finding them under the paths given, or the
+  declared `ingest_roots`, by the session their lines name, and placing them
+  exactly as ingesting does, so a transcript another repository owns is
+  reported rather than stored here. It needs the session named; nothing infers
+  the running one.
 - **The staged listing** names transcripts that ended but are not yet redacted into the
   store. A non-empty list means unredacted transcript text is on disk.
 - **Draining** redacts and stores every staged transcript, then deletes the raw
@@ -329,6 +336,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--all` | bool |
 | `--kind` | string |
 | `--session` | string |
 

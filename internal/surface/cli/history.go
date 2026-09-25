@@ -43,11 +43,20 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// (two-stage, fail-closed), and store the record. This is the ONLY path that
 	// writes to the store; list/show never mutate.
 	var session, kind string
+	var captureAll bool
 	captureCmd := &cobra.Command{
-		Use:   "capture [<transcript-file>|-]",
-		Short: "Redact and store a raw session transcript (reads a file or stdin)",
-		Args:  cobra.MaximumNArgs(1),
+		Use:   "capture [<transcript-file> | - | --session <id> --all <path>...]",
+		Short: "Redact and store a raw session transcript (reads a file or stdin), or a whole session with --all",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if captureAll {
+				return nil // --all takes any number of source paths
+			}
+			return cobra.MaximumNArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if captureAll {
+				return captureWholeSession(cmd, *asJSON, session, kind, args)
+			}
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
@@ -99,6 +108,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	}
 	captureCmd.Flags().StringVar(&session, "session", "", "session id for the record (default: transcript filename; required for stdin)")
 	captureCmd.Flags().StringVar(&kind, "kind", "", "source kind: native | specstory-import (default native)")
+	captureCmd.Flags().BoolVar(&captureAll, "all", false,
+		"capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)")
 	historyCmd.AddCommand(captureCmd)
 
 	// list — records newest-first for this repo, or one session's whole set.
@@ -469,6 +480,55 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	historyCmd.AddCommand(newHistoryReconstructCommand(asJSON))
 
 	return historyCmd
+}
+
+// captureWholeSession is `history capture --session <id> --all`: the
+// write-side twin of `list --session`, so a run captures its own session — the
+// main thread and every sub-agent it spawned — in one call instead of listing
+// the harness's files by hand (iss-2609202046145653).
+//
+// It is an ingest scoped to one session, into THIS repository's store. The
+// transcripts are found by what their lines say, never by where a host keeps
+// them: the sources are the paths given, or the ingest_roots this repository
+// declares, exactly as for ingest. Placement is ingest's too, so a transcript of
+// the session that some other repository owns is reported, not stored here.
+func captureWholeSession(cmd *cobra.Command, asJSON bool, session, kind string, sources []string) error {
+	if session == "" {
+		return fmt.Errorf("history capture: --all captures one named session; pass --session <id>")
+	}
+	if kind != "" && kind != "native" {
+		return fmt.Errorf("history capture: --all stores native transcripts only; --kind %s cannot apply", termsafe.Sanitize(kind))
+	}
+	repoRoot, rootSHA, err := historyStore(cmd)
+	if err != nil {
+		return err
+	}
+	cfg, err := history.LoadConfig(repoRoot)
+	if err != nil {
+		return err
+	}
+	if len(sources) == 0 {
+		sources = cfg.IngestRoots
+	}
+	if len(sources) == 0 {
+		return fmt.Errorf("history capture: --all needs the paths to look under; name them, or declare ingest_roots in %s", history.ConfigRelPath)
+	}
+	dest := history.Destination{RepoRoot: repoRoot, RootSHA: rootSHA}
+	res, err := history.Ingest(dest, sources, history.IngestOptions{
+		Adopt:   cfg.AdoptProjects,
+		Lineage: harnessLineage(sources),
+		Session: session,
+	})
+	if err != nil {
+		return err
+	}
+	redactIngestPaths(&res)
+	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+		renderHistoryIngest(w, "capture --all", dest, res)
+		if len(res.Captured) == 0 && len(res.Failed) == 0 && len(res.Skipped) == 0 && len(res.Orphans) == 0 {
+			fmt.Fprintf(w, "no transcript of session %s was found under the paths given\n", termsafe.Sanitize(session))
+		}
+	})
 }
 
 // historyRecords reads the whole repo's records, or one session's whole set when

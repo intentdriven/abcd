@@ -1,7 +1,7 @@
 ---
 name: history
 description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. list --session reaches one session's whole set — its main thread and every sub-agent it spawned. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
-argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
+argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest [<path>...] | migrate | reconstruct <session-id>"
 ---
 
 # `/abcd:history` — session-transcript store
@@ -187,6 +187,23 @@ session id defaults to the transcript filename; reading from stdin requires
 `specstory-import`). The write is idempotent on the source's content hash: an
 identical transcript already stored is a no-op. If any hard-fail secret or the
 caller's own home path survives redaction, capture refuses to write.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history capture --session <id> --all [<path>...] --json
+```
+
+`--all` captures a whole session in one call: the main thread and every
+sub-agent transcript it spawned, into this repository's store. It is the
+write-side twin of `list --session`, and it is how a run captures its own
+transcripts without listing the host's files by hand. `--session` is required
+with it. The transcripts are found by what their lines say, never by where a
+host keeps them: the sources are the paths given, or the `ingest_roots`
+declared in `.abcd/config/history.json`, walked exactly as `ingest` walks them,
+and only the files whose lines name that one session are stored. Placement is
+`ingest`'s too, so a transcript of the session that another repository owns is
+reported as skipped, not stored here. The report has `ingest`'s four
+populations — `captured`, `skipped`, `orphans` and `failed` — and a session
+found nowhere under the paths says so.
 
 ## Ingest
 

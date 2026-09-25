@@ -189,7 +189,7 @@ func newHistoryIngestCommand(asJSON *bool) *cobra.Command {
 			}
 			redactIngestPaths(&res)
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
-				renderHistoryIngest(w, dest, res)
+				renderHistoryIngest(w, "ingest", dest, res)
 			})
 		},
 	}
@@ -263,15 +263,15 @@ func askAdoptions(cmd *cobra.Command, orphans []history.Orphan) []string {
 
 // renderHistoryIngest writes the human report. The destination leads it, because the
 // destination is the fact an operator most needs to be sure of.
-func renderHistoryIngest(w io.Writer, dest history.Destination, res history.IngestResult) {
+func renderHistoryIngest(w io.Writer, verb string, dest history.Destination, res history.IngestResult) {
 	var wrote int
 	for _, c := range res.Captured {
 		if c.Wrote {
 			wrote++
 		}
 	}
-	fmt.Fprintf(w, "abcd history ingest — into %s (root %s)\n",
-		termsafe.Sanitize(fsutil.RedactHome(dest.RepoRoot)), dest.RootSHA)
+	fmt.Fprintf(w, "abcd history %s — into %s (root %s)\n",
+		verb, termsafe.Sanitize(fsutil.RedactHome(dest.RepoRoot)), dest.RootSHA)
 	fmt.Fprintf(w, "  stored %d of %d owned transcript(s); %d skipped, %d orphaned, %d failed\n",
 		wrote, len(res.Captured), len(res.Skipped), len(res.Orphans), len(res.Failed))
 	for _, c := range res.Captured {

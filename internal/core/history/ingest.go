@@ -140,6 +140,14 @@ type IngestOptions struct {
 	Lineage LineageLookup
 	// MaxDepth bounds a directory walk; zero means ingestDefaultDepth.
 	MaxDepth int
+	// Session, when set, scopes the run to one session: only transcripts whose
+	// lines name exactly this session id — its main thread and every sub-agent
+	// it spawned — are placed and stored, and every other transcript found is
+	// out of scope and not reported. It is the write-side twin of a session
+	// listing (`history capture --session <id> --all`, iss-2609202046145653).
+	// A file that could not be read is still reported as failed: it may have
+	// been one of the session's.
+	Session string
 }
 
 // Ingested is one transcript that entered the store.
@@ -215,6 +223,9 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 	if len(sources) == 0 {
 		return IngestResult{}, errors.New("history: ingest needs at least one source path; declare them in " + ConfigRelPath + " or name them on the command line")
 	}
+	if opts.Session != "" && !sessionIDRe.MatchString(opts.Session) {
+		return IngestResult{}, errors.New("history: the session to ingest must match [A-Za-z0-9._-]+")
+	}
 	// Resolving is what creates the destination store when it is absent, and
 	// what migrates a corpus left at the legacy location into it (iss-95). It
 	// is done here, before any source is read, so a destination that cannot be
@@ -229,6 +240,9 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 		p, err := probeTranscript(c)
 		if err != nil {
 			res.Failed = append(res.Failed, IngestFailure{Path: c.path, Err: err.Error()})
+			continue
+		}
+		if opts.Session != "" && p.sessionID != opts.Session {
 			continue
 		}
 		probes = append(probes, p)

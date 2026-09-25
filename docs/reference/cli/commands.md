@@ -600,13 +600,14 @@ Manage the native session-transcript store
 
 #### `abcd history capture`
 
-Redact and store a raw session transcript (reads a file or stdin)
+Redact and store a raw session transcript (reads a file or stdin), or a whole session with --all
 
-**Usage:** `abcd history capture [<transcript-file>|-] [flags]`
+**Usage:** `abcd history capture [<transcript-file> | - | --session <id> --all <path>...] [flags]`
 
 **Flags:**
 
 ```
+      --all              capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)
       --kind string      source kind: native | specstory-import (default native)
       --session string   session id for the record (default: transcript filename; required for stdin)
 ```
