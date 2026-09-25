@@ -170,8 +170,11 @@ runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
 spelled `git pus? --force` blocks. An unquoted command or process substitution
 is followed into command position, and the words written after one stay the
-enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. A command
-string handed to a shell is opened and read. A git alias declared on the same command line is resolved, and the
+enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. An unquoted
+brace group is expanded as bash expands it and every word it produces is
+checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
+blocks; a group past the expansion cap is refused rather than read in part. A
+command string handed to a shell is opened and read. A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. Where the reading is a
 guess, over-blocking is the direction the guard takes.
 

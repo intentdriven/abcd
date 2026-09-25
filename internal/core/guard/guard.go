@@ -386,7 +386,7 @@ func (r Registry) Check(command string) (Decision, error) {
 	segs = aliasSegs
 	signals = append(signals, aliasSignals...)
 
-	// A brace group the tokenizer could not expand is folded in the same way,
+	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
 	// and AFTER the payload expansion so a group hidden inside an inspectable
 	// payload counts too. One signal is enough however many segments carry a
 	// group: the verdict is the whole command's, and repeating the same lesson

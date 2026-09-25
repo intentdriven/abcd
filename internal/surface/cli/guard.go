@@ -81,7 +81,8 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"a hazard inside a DOUBLE-QUOTED command substitution (`\"$(…)\"`; an\n" +
 			"unquoted `$(…)`, backtick, `<(…)` or `>(…)` IS followed into command\n" +
 			"position, and the words written after one stay the enclosing command's,\n" +
-			"so `rm $(true) -rf *` is read as `rm -rf *`),\n" +
+			"so `rm $(true) -rf *` is read as `rm -rf *`; an unquoted brace group IS\n" +
+			"expanded as bash expands it, and one past 4096 words is blocked),\n" +
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +

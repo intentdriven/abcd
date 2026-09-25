@@ -141,6 +141,12 @@ An unquoted command or process substitution (`$(…)`, a backtick pair, `<(…)`
 written after it still belong to the command it sits in: `rm $(true) -rf *` is
 read as `rm -rf *`, and `git push >(cat) --force` as a force push.
 
+An unquoted brace group is expanded the way bash expands it, and every word it
+produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin
+main` is a force push. A group that would expand past 4096 words on one command
+line is not expanded and is a **block** (`brace-expansion-unexpanded`), because
+the words it would pass are ones the guard has not read.
+
 A git alias declared in the command line is expanded before the match, because
 git resolves it before it runs: `git -c alias.p='push --force' p origin main` is
 a force push, and so are its `--config-env`, `GIT_CONFIG_KEY_n`/`VALUE_n` and

@@ -2,6 +2,7 @@ package guard
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -15,10 +16,12 @@ import (
 type segment struct {
 	tokens []string
 	chain  int
-	// braceGroup records that this command carried an UNQUOTED brace group —
-	// text bash rewrites into several words before the child ever sees it. The
-	// tokenizer does not expand it, so it cannot say what the argv will be; the
-	// flag is how it says so, and Check turns it into a fail-closed block.
+	// braceGroup records that this command carried an UNQUOTED brace group the
+	// tokenizer did not expand: one whose expansion passed the cap
+	// (braceexpand.go), or one the look-ahead ran out of budget on. bash
+	// rewrites such a group into words the guard never computed, so it cannot
+	// say what the argv will be; the flag is how it says so, and Check turns it
+	// into a fail-closed block. A group within the cap is expanded instead.
 	braceGroup bool
 	// heredocUnterminated records that this command opened a here-document
 	// whose delimiter line never came, so the tokenizer read the rest of the
@@ -96,6 +99,17 @@ func tokenize(line string) ([]segment, error) {
 		// a backslash or an ANSI-C decode are literal to bash too.
 		curGlob bool
 		globs   []bool
+		// curMask is parallel to cur and records, per byte, whether it reached
+		// the tokenizer unquoted (wordStruct) and whether it began its word
+		// (wordRawStart) — what the brace expander needs to read a word the way
+		// bash does, since a quoted `{`, `,` or `}` is text, not structure.
+		curMask []byte
+		// curBrace records that the word being built holds a `{` the look-ahead
+		// took for a brace group, so flushToken hands it to the expander.
+		curBrace bool
+		// braceLim bounds what brace expansion may produce and scan across this
+		// whole call; past it a word stays unexpanded and its segment is refused.
+		braceLim = newBraceLimits()
 		// braceBudget is the look-ahead braceExpansionAt may spend across this
 		// whole call. See braceScanBudget: without a shared cap the per-`{`
 		// forward scan is quadratic in the length of one word.
@@ -139,14 +153,39 @@ func tokenize(line string) ([]segment, error) {
 		}
 		return false
 	}
-	flushToken := func() {
-		if hasCur {
-			toks = append(toks, string(cur))
-			globs = append(globs, curGlob)
-			cur = nil
-			hasCur = false
-			curGlob = false
+	// addCur appends bytes to the word being built with one mask value for all
+	// of them: wordStruct for bytes read unquoted, zero for quoted, escaped or
+	// decoded ones.
+	addCur := func(b []byte, mask byte) {
+		cur = append(cur, b...)
+		for range b {
+			curMask = append(curMask, mask)
 		}
+		hasCur = true
+	}
+	flushToken := func() {
+		if !hasCur {
+			return
+		}
+		// A word holding a brace group is expanded into the words bash would
+		// produce, each checked as an argument in its own right
+		// (iss-2608282026038930). An assignment in assignment position is the one
+		// word bash does not brace-expand (`x={a,b} cmd` sets x to `{a,b}`). A
+		// word past the expansion cap stays as written and refuses its segment.
+		if curBrace && !(isAssignment(string(cur)) && allAssignments(toks)) {
+			if words, ok := expandBraces(bword{b: cur, m: curMask}, &braceLim); ok {
+				for _, w := range words {
+					toks = append(toks, string(w.b))
+					globs = append(globs, w.globbed())
+				}
+				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
+				return
+			}
+			braceGroup = true
+		}
+		toks = append(toks, string(cur))
+		globs = append(globs, curGlob)
+		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
 	}
 	flushSegment := func() {
 		flushToken()
@@ -165,10 +204,10 @@ func tokenize(line string) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, cur: cur, hasCur: hasCur, curGlob: curGlob,
-			braceGroup: braceGroup, chain: chain, procSub: procSub,
+			toks: toks, globs: globs, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
+			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 		}
-		toks, globs, cur, hasCur, curGlob, braceGroup = nil, nil, nil, false, false, false
+		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, false, false, false, false
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
 	// closeSubstitution resumes a suspended enclosing command. What the
@@ -180,10 +219,10 @@ func tokenize(line string) ([]segment, error) {
 	// shell hands the command, so the operands after it keep their positions.
 	closeSubstitution := func(e *enclosing) {
 		flushSegment()
-		toks, globs, cur, hasCur, curGlob, braceGroup, chain = e.toks, e.globs, e.cur, e.hasCur, e.curGlob, e.braceGroup, e.chain
+		toks, globs, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
+			e.toks, e.globs, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		if e.procSub {
-			cur = append(cur, procSubOperand...)
-			hasCur = true
+			addCur([]byte(procSubOperand), 0)
 		}
 		lastList = false
 	}
@@ -210,8 +249,7 @@ func tokenize(line string) ([]segment, error) {
 				i += 2
 				continue
 			}
-			cur = append(cur, line[i+1])
-			hasCur = true
+			addCur([]byte{line[i+1]}, 0)
 			lastList = false
 			i += 2
 		case c == '\'':
@@ -222,8 +260,7 @@ func tokenize(line string) ([]segment, error) {
 			if j >= len(line) {
 				return nil, fmt.Errorf("%w: unterminated single quote", ErrUnparsableCommand)
 			}
-			cur = append(cur, line[i+1:j]...)
-			hasCur = true
+			addCur([]byte(line[i+1:j]), 0)
 			lastList = false
 			i = j + 1
 		case c == '"':
@@ -233,12 +270,12 @@ func tokenize(line string) ([]segment, error) {
 				if line[j] == '\\' && j+1 < len(line) {
 					switch line[j+1] {
 					case '"', '\\', '$', '`':
-						cur = append(cur, line[j+1])
+						addCur([]byte{line[j+1]}, 0)
 					case '\n':
 						// Line continuation inside double quotes: both dropped.
 					default:
 						// Backslash is literal before any other character.
-						cur = append(cur, '\\', line[j+1])
+						addCur([]byte{'\\', line[j+1]}, 0)
 					}
 					j += 2
 					continue
@@ -247,7 +284,7 @@ func tokenize(line string) ([]segment, error) {
 					closed = true
 					break
 				}
-				cur = append(cur, line[j])
+				addCur([]byte{line[j]}, 0)
 				j++
 			}
 			if !closed {
@@ -307,8 +344,7 @@ func tokenize(line string) ([]segment, error) {
 		case c == '<' && strings.HasPrefix(line[i:], "<<<"):
 			// A herestring, not a heredoc: its payload is an ordinary argument
 			// token, so the operator is kept as plain token text.
-			cur = append(cur, '<', '<', '<')
-			hasCur = true
+			addCur([]byte("<<<"), wordStruct)
 			lastList = false
 			i += 3
 		case c == '<' && strings.HasPrefix(line[i:], "<<"):
@@ -338,8 +374,7 @@ func tokenize(line string) ([]segment, error) {
 			// here-document side, and skipHeredocBodies' fail-closed block below
 			// is the answer, never an error.
 			if inArithmetic() {
-				cur = append(cur, '<', '<')
-				hasCur = true
+				addCur([]byte("<<"), wordStruct)
 				lastList = false
 				i += 2
 				continue
@@ -351,8 +386,7 @@ func tokenize(line string) ([]segment, error) {
 			// A word that cannot start an unquoted delimiter — `20` in a
 			// `$((1<<20))` reached outside any paren — is not one.
 			if !hd.quoted && !isDelimStart(hd.delim) {
-				cur = append(cur, '<', '<')
-				hasCur = true
+				addCur([]byte("<<"), wordStruct)
 				lastList = false
 				i += 2
 				continue
@@ -392,7 +426,7 @@ func tokenize(line string) ([]segment, error) {
 			// (`2>`, `1>&2`), part of the redirection rather than a token; drop
 			// it. Otherwise flush the real word the operator terminates.
 			if hasCur && isAllDigits(cur) {
-				cur = nil
+				cur, curMask = nil, nil
 				hasCur = false
 				curGlob = false
 			} else {
@@ -430,8 +464,7 @@ func tokenize(line string) ([]segment, error) {
 			if err != nil {
 				return nil, err
 			}
-			cur = append(cur, decoded...)
-			hasCur = true
+			addCur(decoded, 0)
 			lastList = false
 			i = next
 		case c == '$' && i+1 < len(line) && line[i+1] == '"':
@@ -460,7 +493,7 @@ func tokenize(line string) ([]segment, error) {
 			if c == '(' && (procSub || (i > 0 && line[i-1] == '$')) {
 				if !procSub && hasCur && len(cur) > 0 && cur[len(cur)-1] == '$' {
 					// The `$` introducer is not part of the word.
-					cur = cur[:len(cur)-1]
+					cur, curMask = cur[:len(cur)-1], curMask[:len(curMask)-1]
 					hasCur = len(cur) > 0
 				}
 				openSubstitution(parenCommandSub, i, procSub)
@@ -513,29 +546,30 @@ func tokenize(line string) ([]segment, error) {
 			// grouping parens, and a backtick boundary do not.
 			lastList = c == '|'
 			i++
-		case c == '{' && braceExpansionAt(line, i, &braceBudget):
+		case c == '{':
 			// An unquoted brace group is EXPANSION, not text: bash rewrites
 			// `git push {--force,} origin main` into byte-identical `--force`
-			// argv, while this tokenizer read the literal token `{--force,}`,
-			// which no blocker matches — a silent allow of a Tier-1 hazard, the
-			// same mutate-the-flag-token shape the redirection branch closes.
-			// Expanding it properly (the Cartesian product of the alternatives,
-			// nested groups, `{a..z}` ranges) is a bounded expander this round
-			// does not have, so the group is REFUSED instead: a token whose argv
-			// the guard cannot compute is a token it cannot check, and refusing
-			// what cannot be read is what fail-closed means here.
-			//
-			// The refusal rides on the segment rather than returning
-			// ErrUnparsableCommand, which is the obvious route and the wrong
-			// one: the `guard check` verb maps a tokenize error to a blocking
-			// exit, but the pre-tool-use hook maps it to fail-OPEN, so the
-			// bypass would have survived on the surface that matters. Check
-			// folds the flag into a real VerdictBlock, which blocks on both.
-			// The bytes stay in the word so nothing else about the line's
-			// tokenization changes.
-			braceGroup = true
-			cur = append(cur, c)
-			hasCur = true
+			// argv, and reading the literal token `{--force,}` let a Tier-1
+			// hazard through as a silent allow. The look-ahead decides whether
+			// this brace can open a group; flushToken expands the finished word
+			// the way bash does (braceexpand.go) and checks every word it
+			// produces. A look-ahead that runs out of budget can no longer tell
+			// a group from a literal, so the segment is refused — raised on the
+			// segment, never as ErrUnparsableCommand, which the pre-tool-use hook
+			// maps to fail-OPEN. The bytes stay in the word either way.
+			group, exhausted := braceExpansionAt(line, i, &braceBudget)
+			mask := wordStruct
+			if !hasCur && (i == 0 || isWordBreak(line[i-1])) &&
+				(i+1 >= len(line) || line[i+1] == '}' || isWordBreak(line[i+1])) {
+				mask |= wordNotOpener
+			}
+			switch {
+			case exhausted:
+				braceGroup = true
+			case group:
+				curBrace = true
+			}
+			addCur([]byte{c}, mask)
 			lastList = false
 			i++
 		default:
@@ -548,8 +582,7 @@ func tokenize(line string) ([]segment, error) {
 			if c == '*' || c == '?' || c == '[' {
 				curGlob = true
 			}
-			cur = append(cur, c)
-			hasCur = true
+			addCur([]byte{c}, wordStruct)
 			lastList = false
 			i++
 		}
@@ -615,8 +648,10 @@ type enclosing struct {
 	toks       []string
 	globs      []bool
 	cur        []byte
+	curMask    []byte
 	hasCur     bool
 	curGlob    bool
+	curBrace   bool
 	braceGroup bool
 	chain      int
 	// procSub records that the substitution is a process substitution, which
@@ -669,18 +704,18 @@ const (
 )
 
 // braceExpansionBlockSignal is the fail-closed verdict for a command carrying an
-// unquoted brace group. It is a BLOCK rather than a warn because the group can
-// carry any flag at all — the reported shape, `{--force,}`, expands to argv a
-// Tier-1 blocker names — and the guard has no way to tell a harmless expansion
-// from that one without expanding it.
+// unquoted brace group the guard did not expand — one past the expansion cap.
+// It is a BLOCK rather than a warn because the group can carry any flag at all
+// — `{--force,}` expands to argv a Tier-1 blocker names — and an unexpanded
+// group is one the guard has not read.
 func braceExpansionBlockSignal() payloadSignal {
 	return payloadSignal{
 		id:      braceEntryID,
 		verdict: VerdictBlock,
 		family:  familyBrace,
-		reason: "This command carries an unquoted brace group, which the shell expands into different words before the command runs, " +
-			"so the arguments the guard can read are not the arguments that would be passed.",
-		successor: "Spell the words out (`git push --force origin main`), or quote the braces if they are meant literally, " +
+		reason: "This command carries an unquoted brace group that expands into more words than the guard reads " +
+			"(its cap is " + strconv.Itoa(braceMaxWords) + " words per command line), so the arguments that would be passed are ones it has not checked.",
+		successor: "Split the command so each part expands to fewer words, spell the words out, or quote the braces if they are meant literally, " +
 			"so the guard checks the command that actually runs.",
 	}
 }
@@ -707,13 +742,13 @@ func braceExpansionBlockSignal() payloadSignal {
 // though the comma is not at the outer group's own level), and an alternative
 // found inside quotes still counts — a comma the scan cannot rule out is one it
 // must assume bash will act on.
-func braceExpansionAt(line string, i int, budget *int) (group bool) {
+func braceExpansionAt(line string, i int, budget *int) (group, exhausted bool) {
 	// `${…}` is parameter expansion — unless the `$` is ITSELF escaped, which
 	// makes it a literal dollar and leaves the brace group behind it live:
 	// bash expands `\${a,b}` to `$a $b`. So the exemption needs the raw
 	// preceding byte to be a `$` that is not escaped.
 	if i > 0 && line[i-1] == '$' && !escapedAt(line, i-1) {
-		return false
+		return false, false
 	}
 	// The look-ahead is capped by the shared budget rather than by the line, so
 	// the total scanning across one tokenize call is linear however many `{`
@@ -770,7 +805,7 @@ func braceExpansionAt(line string, i int, budget *int) (group bool) {
 			case depth > 1:
 				depth--
 			case expands:
-				return true
+				return true, false
 			}
 			j++
 		case c == ',':
@@ -781,15 +816,36 @@ func braceExpansionAt(line string, i int, budget *int) (group bool) {
 			j += 2
 		case c == ' ' || c == '\t' || c == '\n' || c == ';' ||
 			c == '&' || c == '|' || c == '(' || c == ')':
-			return false
+			return false, false
 		default:
 			j++
 		}
 	}
 	// Running out of line means no closing brace, which bash leaves unexpanded.
 	// Running out of BUDGET means the scan no longer knows, and a guard that
-	// cannot tell a group from a literal says group.
-	return truncated
+	// cannot tell a group from a literal refuses the segment.
+	return truncated, truncated
+}
+
+// isWordBreak reports whether a byte ends the word before it, so the byte
+// after it begins a new word.
+func isWordBreak(c byte) bool {
+	switch c {
+	case ' ', '\t', '\n', '\r', ';', '&', '|', '(', ')', '<', '>':
+		return true
+	}
+	return false
+}
+
+// allAssignments reports whether every token so far is a NAME=VALUE prefix, so
+// the next assignment-shaped word is still in assignment position.
+func allAssignments(toks []string) bool {
+	for _, t := range toks {
+		if !isAssignment(t) {
+			return false
+		}
+	}
+	return true
 }
 
 // escapedAt reports whether the byte at p is preceded by an odd number of

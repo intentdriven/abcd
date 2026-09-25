@@ -542,7 +542,8 @@ an interpreter payload (an execute-a-string payload IS read — `sh -c`,
 a hazard inside a DOUBLE-QUOTED command substitution (`"$(…)"`; an
 unquoted `$(…)`, backtick, `<(…)` or `>(…)` IS followed into command
 position, and the words written after one stay the enclosing command's,
-so `rm $(true) -rf *` is read as `rm -rf *`),
+so `rm $(true) -rf *` is read as `rm -rf *`; an unquoted brace group IS
+expanded as bash expands it, and one past 4096 words is blocked),
 a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),
