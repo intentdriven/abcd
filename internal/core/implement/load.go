@@ -20,14 +20,14 @@ import (
 // The load check (itd-2609231434459890, spc-2609231542463113) runs once at the
 // start of `make preflight` and once at the start of the eval harness. It reads
 // the machine's load and process table, warns when a program outside the running
-// lanes has held a near-full core for longer than the stray limit or when the
-// one-minute load is above the extreme limit, and, inside an autonomous run,
-// writes the same warning to the run log as a `load` event. It never refuses,
-// never waits and never signals anything: every status is a report, and the
-// front door exits 0 on each of them. It is a sibling of `implement check`
-// because it shares that verb's report-never-enforce verdict and this package's
-// single run-log writer; it is not a Run.Check step, because a step can refuse
-// and this check never can.
+// lanes has used nearly all the CPU it could get (machineload.FairShare) for
+// longer than the stray limit or when the one-minute load is above the extreme
+// limit, and, inside an autonomous run, writes the same warning to the run log as
+// a `load` event. It never refuses, never waits and never signals anything:
+// every status is a report, and the front door exits 0 on each of them. It is a
+// sibling of `implement check` because it shares that verb's report-never-enforce
+// verdict and this package's single run-log writer; it is not a Run.Check step,
+// because a step can refuse and this check never can.
 
 // The sites the check runs at.
 const (
