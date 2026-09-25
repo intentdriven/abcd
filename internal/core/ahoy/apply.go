@@ -1554,37 +1554,6 @@ func auditGaps(cwd string, det DetectionResult) []Gap {
 	return gaps
 }
 
-// Status renders the bare-command human summary. Zero writes.
-func Status(cwd string) (string, error) {
-	det, err := Detect(cwd)
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "abcd ahoy — %s\n", det.FolderKind)
-	fmt.Fprintf(&b, "plugin root: %s\n", det.PluginRootStatus)
-	if det.RootSHA != "" {
-		fmt.Fprintf(&b, "root sha: %s\n", shortSHA(det.RootSHA))
-	}
-	if mode, _ := det.Signals["install_mode"].(string); mode != "" {
-		fmt.Fprintf(&b, "install: %s\n", mode)
-	}
-	act := actionable(det.Gaps)
-	switch det.FolderKind {
-	case UnmanagedFolder:
-		b.WriteString("nothing to act on (not a git repo, no abcd markers)\n")
-	case UnmanagedRepo:
-		b.WriteString("unmanaged repo — run `abcd ahoy install` to adopt it\n")
-	default:
-		if len(act) == 0 {
-			b.WriteString("already up to date\n")
-		} else {
-			fmt.Fprintf(&b, "%d actionable gap(s) — run `abcd ahoy install`\n", len(act))
-		}
-	}
-	return b.String(), nil
-}
-
 // ---------------------------------------------------------------------------
 // approval + gap helpers
 // ---------------------------------------------------------------------------
