@@ -544,8 +544,8 @@ double-quoted substitutions deep, holding a case command, or more than
 eight of them where the program name could be, is blocked, because the
 guard has stopped reading it. An ANSI-C string ends at its first NUL, as
 bash ends it. `$(( … ))` is an expression, not commands. A shell reading
-its script from a pipe, a here-document or a here-string is blocked, and
-so is a line over 64 KiB.
+its script from a pipe, a here-document, a here-string, the stdin device
+or a process substitution is blocked, and so is a line over 64 KiB.
 An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at

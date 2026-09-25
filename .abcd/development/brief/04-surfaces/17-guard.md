@@ -192,7 +192,8 @@ the guard follows, is refused rather than left unread. An ANSI-C string ends at
 its first NUL, as bash ends it. An arithmetic expansion is an expression, not
 commands. A shell reading its script from a pipe, a here-document or a
 here-string is refused, because what it runs is text the guard read as data, and
-so is a line longer than the guard reads. An unquoted
+so is one handed the stdin device behind a pipe or a process substitution as its
+script, a `source` of one, and a line longer than the guard reads. An unquoted
 brace group is expanded as bash expands it and every word it produces is
 checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A

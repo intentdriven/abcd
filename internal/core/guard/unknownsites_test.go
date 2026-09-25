@@ -61,6 +61,7 @@ var wordReaders = map[string]string{
 	"pipesIntoInterpreter": "commandSites and nameCouldBeAny",
 	"readsScriptStream":    "commandSites and nameCouldBeAny",
 	"shellReadsStream":     "readWord and clusterCouldCarry on every unknown word",
+	"sourceReadsStream":    "exempt: reads source's literal `--`; its operand goes through scriptIsStream, which reads wordCouldBe",
 	"isPlainCommand":       "refuses unknownMark outright",
 
 	// execstring.go

@@ -181,9 +181,12 @@ so `$'\x00'git` is `git`.
 
 A shell reading its script from a pipe, a here-document or a here-string
 (`curl … | sh`, `bash <<'EOF'`) is a **block** (`interpreter-reads-stream`):
-what it runs is text the guard read as data. A shell handed a script file
-(`bash script.sh`) is not. A command line longer than 64 KiB is a **block**
-(`command-too-long`), because the guard does not read it.
+what it runs is text the guard read as data. So is a shell handed the stdin
+device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
+`source` handed a process substitution as its script (`bash <(curl …)`, `bash <
+<(curl …)`, `source <(curl …)`). A shell handed a script file (`bash
+script.sh`, `bash script.sh < input`) is not. A command line longer than 64 KiB
+is a **block** (`command-too-long`), because the guard does not read it.
 
 An unquoted brace group is expanded the way bash expands it, and every word it
 produces is checked: `mkdir -p foo/{a,b}` is allowed, `git push {--force,} origin

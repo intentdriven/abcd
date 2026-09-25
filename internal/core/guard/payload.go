@@ -955,13 +955,44 @@ func pipesIntoInterpreter(psegs []segment) bool {
 // readsScriptStream reports whether a segment runs a stream as a script: a
 // member of the interpreter set, at any place its command can sit, that reads
 // its script from standard input — with no `-c` string and no script operand,
-// or told to read stdin (`-s`, a lone `-`) — while that input is a pipe, a
-// here-document or a here-string. A name a substitution prints can be any
-// shell.
+// told to read stdin (`-s`, a lone `-`), or handed the stdin device
+// (`/dev/stdin`, `/dev/fd/0`) — while that input is a pipe, a here-document or
+// a here-string; or a shell or `source` handed a process substitution as its
+// script, which is the same stream behind a file name (`bash <(curl …)`,
+// `bash < <(curl …)`, which the tokenizer reads alike). A name a substitution
+// prints can be any shell.
 func readsScriptStream(s segment) bool {
 	for _, a := range commandSites(s) {
 		tok := s.tokens[a.idx]
-		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(s.tokens[a.idx+1:], s.stdinStream) {
+		args := s.tokens[a.idx+1:]
+		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, s.stdinStream) {
+			return true
+		}
+		if nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, s.stdinStream) {
+			return true
+		}
+	}
+	return false
+}
+
+// sourceBuiltins read a file into the running shell: a script by another name.
+var sourceBuiltins = []string{"source", "."}
+
+// stdinDevices are the file names that are a process's own standard input.
+var stdinDevices = []string{"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0"}
+
+// scriptIsStream reports whether a shell's script operand is a stream: a
+// process substitution, or the stdin device while stdin is a stream. An
+// unknown operand is one when it can print as either.
+func scriptIsStream(op string, stdin bool) bool {
+	if wordCouldBe(op, procSubOperand) {
+		return true
+	}
+	if !stdin {
+		return false
+	}
+	for _, dev := range stdinDevices {
+		if wordCouldBe(op, dev) {
 			return true
 		}
 	}
@@ -993,7 +1024,11 @@ func shellReadsStream(args []string, stdin bool) bool {
 		a := args[i]
 		switch {
 		case a == "--":
-			if i+1 >= len(args) && stdin {
+			if i+1 >= len(args) {
+				if stdin {
+					return true
+				}
+			} else if scriptIsStream(args[i+1], stdin) {
 				return true
 			}
 		case a == "-":
@@ -1020,6 +1055,9 @@ func shellReadsStream(args []string, stdin bool) bool {
 			if (r.flag || r.takes) && clusterCouldCarry(a, 's') && stdin {
 				return true
 			}
+			if r.operand && scriptIsStream(a, stdin) {
+				return true
+			}
 		case a == "--rcfile" || a == "--init-file":
 			stack = append(stack, i+2)
 		case strings.HasPrefix(a, "--"):
@@ -1039,7 +1077,9 @@ func shellReadsStream(args []string, stdin bool) bool {
 				stack = append(stack, i+1)
 			}
 		default:
-			// the first operand is the script file
+			if scriptIsStream(a, stdin) {
+				return true // the first operand is the script file
+			}
 		}
 	}
 	return false
@@ -1049,8 +1089,21 @@ func shellReadsStream(args []string, stdin bool) bool {
 // for.
 var shellStreamValueOptions = []string{"-o", "-O", "+o", "+O", "--rcfile", "--init-file"}
 
+// sourceReadsStream reports whether `source`/`.` is handed a stream as the
+// file it reads: its first operand, after an optional `--`.
+func sourceReadsStream(args []string, stdin bool) bool {
+	for i, a := range args {
+		if a == "--" && i == 0 {
+			continue
+		}
+		return scriptIsStream(a, stdin)
+	}
+	return false
+}
+
 // interpreterStreamSignal is the fail-closed verdict for a shell reading its
-// script from a pipe, a here-document or a here-string. It is a BLOCK because
+// script from a pipe, a here-document, a here-string, the stdin device or a
+// process substitution. It is a BLOCK because
 // the stream is text the guard read as data: `printf '<blocker>' | sh` runs the
 // blocker, and every blocker in the registry was one pipe away from a silent
 // allow (iss-2609251640462464).
@@ -1059,8 +1112,8 @@ func interpreterStreamSignal() payloadSignal {
 		id:      interpreterStreamEntryID,
 		verdict: VerdictBlock,
 		family:  familyInterpreterStream,
-		reason: "This command hands a shell its script on standard input — through a pipe, a here-document or a here-string — " +
-			"so the commands that shell runs are text the guard read as data and has not checked.",
+		reason: "This command hands a shell its script as a stream — through a pipe, a here-document, a here-string, " +
+			"the stdin device or a process substitution — so the commands that shell runs are text the guard read as data and has not checked.",
 		successor: "Run the commands directly, or pass them with `sh -c '<commands>'` so the guard reads them; " +
 			"to run a script, save it and run it as a file after reading it.",
 	}

@@ -462,8 +462,9 @@ func (r Registry) check(command string) (Decision, error) {
 		}
 	}
 	// A shell reading its script from a pipe, a here-document or a here-string
-	// runs text the guard read as data (iss-2609251640462464). After the payload
-	// expansion, so a payload's own pipe into a shell is read too.
+	// runs text the guard read as data (iss-2609251640462464), and so does one
+	// handed a process substitution or the stdin device as its script. After the
+	// payload expansion, so a payload's own pipe into a shell is read too.
 	for _, s := range segs {
 		if readsScriptStream(s) {
 			signals = append(signals, interpreterStreamSignal())
