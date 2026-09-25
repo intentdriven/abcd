@@ -1128,7 +1128,12 @@ func appendToAuditNotes(content, block string) string {
 		}
 		section = append(section, ln)
 	}
-	// Drop trailing blank lines inside the section, then re-add one separator.
+	// Drop blank lines at both ends of the section, then re-add one separator on
+	// each side: the heading's blank line is written below, so a leading one kept
+	// here would open the section with two.
+	for len(section) > 0 && strings.TrimSpace(section[0]) == "" {
+		section = section[1:]
+	}
 	for len(section) > 0 && strings.TrimSpace(section[len(section)-1]) == "" {
 		section = section[:len(section)-1]
 	}
