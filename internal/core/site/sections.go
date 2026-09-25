@@ -16,6 +16,8 @@ package site
 import (
 	"regexp"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
 var (
@@ -119,23 +121,37 @@ func frontmatterLead(t string) int {
 }
 
 // Sections splits markdown into its headings and their bodies, honouring fenced
-// code so a `#` comment inside a shell block is never read as a heading.
-// offset is the number of lines already consumed ahead of md (the frontmatter),
-// so the reported lines are the ones a reader would find in the file.
+// code and HTML comments so a `#` comment inside a shell block, or a heading
+// parked in a comment, is never read as a heading. offset is the number of lines
+// already consumed ahead of md (the frontmatter), so the reported lines are the
+// ones a reader would find in the file.
 //
-// A fence that never closes is refused, naming the line that opened it. It is
-// the quietest failure this walk has: once the fence is open no later heading is
-// a heading, so every section after it silently ceases to exist and the page
-// renders a document that is short in a way nobody notices. Refusing costs one
-// edit; not refusing costs a missing chapter nobody is looking for.
+// Fences and comments are read by mdrecord's ListNested rule — CommonMark's
+// fence rule plus a fence indented under a list item, which the record writes —
+// so this walk agrees with every other reader of a record body about which lines
+// are live (iss-2609250955051598).
+//
+// A span that never closes is refused, naming the line that opened it. It is
+// the quietest failure this walk has: once a fence or a comment is open no later
+// heading is a heading, so every section after it silently ceases to exist and
+// the page renders a document that is short in a way nobody notices. Refusing
+// costs one edit; not refusing costs a missing chapter nobody is looking for.
 func Sections(path, md string, offset int) ([]Section, error) {
 	lines := strings.Split(md, "\n")
+	rd := mdrecord.Read(lines, mdrecord.ListNested)
+	if at, flag, ok := rd.Unclosed(); ok {
+		what := "unterminated fenced code block"
+		if flag&mdrecord.MaskComment != 0 {
+			what = "unterminated HTML comment"
+		}
+		return nil, &UnsupportedError{path, offset + at + 1, what,
+			"it swallows every heading after it, so the rest of the document silently stops existing"}
+	}
+
 	var out []Section
 	cur := Section{Line: 0}
 	var body []string
 	bodyStart := offset + 1
-	fence := false
-	fenceLine := 0
 
 	flush := func() {
 		cur.Body, cur.BodyLine = trimBlankLines(body, bodyStart)
@@ -143,14 +159,8 @@ func Sections(path, md string, offset int) ([]Section, error) {
 	}
 
 	for i, line := range lines {
-		if isFenceLine(line) {
-			fence = !fence
-			if fence {
-				fenceLine = offset + i + 1
-			}
-		}
 		var m []string
-		if !fence {
+		if rd.Mask[i] == 0 {
 			m = headingRe.FindStringSubmatch(line)
 		}
 		if m != nil {
@@ -164,11 +174,6 @@ func Sections(path, md string, offset int) ([]Section, error) {
 		body = append(body, line)
 	}
 	flush()
-
-	if fence {
-		return nil, &UnsupportedError{path, fenceLine, "unterminated fenced code block",
-			"it swallows every heading after it, so the rest of the document silently stops existing"}
-	}
 
 	// A section that is neither a heading nor text is nothing: the script drops
 	// it so a document opening on its H1 does not grow an empty preamble.
@@ -197,14 +202,6 @@ func trimBlankLines(body []string, start int) (string, int) {
 	return strings.Join(body[lo:hi], "\n"), start + lo
 }
 
-// isFenceLine reports whether a line opens or closes a fenced code block. An
-// INDENTED fence counts: the record writes them inside list items, and a walk
-// that only saw the left margin would read the fence's own `#` lines as headings
-// and split the document at them.
-func isFenceLine(line string) bool {
-	return strings.HasPrefix(strings.TrimLeft(line, " \t"), "```")
-}
-
 // Slug renders a heading as its anchor: emphasis and code marks dropped,
 // lower-cased, every other run of non-alphanumerics collapsed to a hyphen.
 func Slug(t string) string {
@@ -212,44 +209,45 @@ func Slug(t string) string {
 	return strings.Trim(nonSlugRe.ReplaceAllString(t, "-"), "-")
 }
 
-// Blocks splits a section body into its top-level blocks, honouring fenced code.
+// Blocks splits a section body into its top-level blocks, honouring fenced code
+// by mdrecord's ListNested rule, the same reading Sections takes.
 // start is the 1-based source line the body begins at.
 func Blocks(md string, start int) []Block {
 	if md == "" {
 		return nil
 	}
+	lines := strings.Split(md, "\n")
+	fences := mdrecord.Read(lines, mdrecord.ListNested).Fences
 	var out []Block
 	var buf []string
 	bufLine := 0
-	fence := false
 	flush := func() {
 		if len(buf) > 0 {
 			out = append(out, Block{Text: strings.Join(buf, "\n"), Line: bufLine})
 			buf = nil
 		}
 	}
-	for i, line := range strings.Split(md, "\n") {
-		if isFenceLine(line) {
-			if !fence && len(buf) == 0 {
+	for i := 0; i < len(lines); i++ {
+		if len(fences) > 0 && i == fences[0].Start {
+			f := fences[0]
+			fences = fences[1:]
+			if len(buf) == 0 {
 				bufLine = start + i
 			}
-			fence = !fence
-			buf = append(buf, line)
-			// A fence at the left margin closes its own block. An INDENTED one
-			// belongs to whatever list item holds it, so the block runs on: the
-			// item's renderer dedents it and reads it as a fence there. Ending
-			// the block here instead would leave the fence's blank lines to
-			// split the code into paragraphs, and its `#` lines to be read as
-			// headings — which is a document silently losing sections.
-			if !fence && indentOf(line) == 0 {
+			buf = append(buf, lines[f.Start:f.End]...)
+			i = f.End - 1
+			// A fence closed at the left margin closes its own block. An
+			// INDENTED one belongs to whatever list item holds it, so the block
+			// runs on: the item's renderer dedents it and reads it as a fence
+			// there. Ending the block here instead would leave the fence's blank
+			// lines to split the code into paragraphs, and its `#` lines to be
+			// read as headings — which is a document silently losing sections.
+			if f.Closed && f.End-1 > f.Start && indentOf(lines[f.End-1]) == 0 {
 				flush()
 			}
 			continue
 		}
-		if fence {
-			buf = append(buf, line)
-			continue
-		}
+		line := lines[i]
 		if strings.TrimSpace(line) == "" {
 			flush()
 			continue
