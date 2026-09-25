@@ -343,7 +343,10 @@ gate that will refuse the move mechanically is a recorded seed until built.
    This invocation IS the maintainer's sign-off act — never run it unattended
    or infer consent. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
-   `drafts/ → planned/`.
+   `drafts/ → planned/`. Every relative markdown link that named the draft's
+   path, from any file in the tree, is repointed at `planned/` in the same
+   operation; the JSON lists each rewrite under `relinked` (`file`, `line`,
+   `from`, `to`) — report them.
 
    **`--impact` is the judgement the interview settled**, stamped here because
    this is the moment it is made: a draft filed without one gets it now, in the
@@ -425,6 +428,24 @@ it ships on the close after which no open spec names it. A close that ships
 nothing refuses `--impact`, because that judgement is written only at the close
 that ships (adr-2609151513118583, invariant 17). Report the specs the close
 names as still open — they are the reason the intent did not move.
+
+**The close repoints every link that named a record it moved.** A record's
+folder is its status, so the close renames two files — the spec out of
+`open/`, and on the close that ships, the intent out of `planned/` — and in the
+same operation it rewrites every relative markdown link in the tree that named
+either old path: a spec already closed that pointed at `../open/<the spec>`, an
+ADR or a plan naming the intent's `planned/` path, a draft naming both, and the
+closed spec's own links, which were written from `open/`. A link that never
+resolved is left as written. The JSON lists each rewrite under `relinked`
+(`file`, `line`, `from`, `to`), and the text render prints them; report them,
+because they are files the close changed beyond the two records. The tree the
+close leaves passes record-lint's `links_resolve` with no hand repair. If the
+repoint fails part-way, the close still stands and a warning on stderr says so.
+After an attempt that failed before or during the repoint, re-running the same
+`spec close` repoints every link other files still hold to either old path. The re-run reads the moved records' own links from the folders
+they are in, because they may have been edited there since the move, so it
+never rewrites them; any of those the failed attempt left unrewritten is one
+`links_resolve` names, to repair by hand.
 
 Run it in the **same change** that lands the intent's work — the commit or
 pull request that makes the acceptance criteria true — the way a captured

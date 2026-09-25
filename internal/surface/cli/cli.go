@@ -2025,6 +2025,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "intent plan", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if res.StampOnly {
 					// The identity step alone, over a record already planned: say what
@@ -2043,6 +2044,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.ImpactStamped != "" {
 					fmt.Fprintf(w, "  impact stamped: %s\n", res.ImpactStamped)
 				}
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
@@ -2551,6 +2553,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if res.AuditEmitError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to repoint the links other files hold; record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
 				if res.Remainder.ID != "" {
@@ -2590,6 +2593,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 				default:
 					fmt.Fprintf(w, "  intent %s already %s (no move)\n", res.Intent.ID, res.To)
 				}
+				emitRelinked(w, res.Relinked)
 				// A close is idempotent, so a re-run against an already-shipped
 				// intent gets the SAME receipt back. Announcing "OWED" each time
 				// reads as a fresh obligation; only the close that actually parked
@@ -3541,9 +3545,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("resolve", err)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "capture resolve", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s%s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path), resolvedByNote(res.ResolvedBy))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
@@ -3795,9 +3801,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("wontfix", err)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
