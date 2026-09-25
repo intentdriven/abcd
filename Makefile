@@ -1,7 +1,7 @@
 BINARY := abcd
 BINDIR := bin
 TARGETS := darwin/arm64 darwin/amd64 linux/arm64 linux/amd64
-# Version stamped into `abcd version`. Defaults to the in-source "dev" value; the
+# Version stamped into `abcd --version`. Defaults to the in-source "dev" value; the
 # release build passes the git tag (VERSION=vX.Y.Z). SemVer, v-prefixed.
 VERSION ?=
 # -s -w strips the symbol table and DWARF debug info; -X stamps the version.
@@ -232,11 +232,11 @@ lint-decisions:
 	@bash scripts/check-decisions-append.sh commits origin/main HEAD
 
 # Deterministic docs-currency gate (itd-60): the same internal/core/lint engine,
-# driven over docs/ and the repo root via the transport-agnostic `abcd docs lint`
+# driven over docs/ and the repo root via the transport-agnostic `abcd lint docs`
 # verb. Blocking: change-narration in a doc body, a broken relative link, or a
 # stray root markdown file fails preflight and CI.
 docs-lint:
-	@go run ./cmd/abcd docs lint
+	@go run ./cmd/abcd lint docs
 
 # Site-render gate (iss-2608241845109280). The site renders the RECORD as well as
 # docs/ — 852 records at the 0.6.4 cut — and the renderer supports a fixed
@@ -248,17 +248,17 @@ docs-lint:
 # triggered no audit. It reached a release, where `release.yml`'s site job failed
 # AFTER the binaries had published.
 #
-# Builds into a throwaway directory, then runs `site check` over it before
+# Builds into a throwaway directory, then runs `lint site` over it before
 # discarding it. Build alone answers "does it render"; the publish gates
 # (provenance, hero, banned-tokens, snippets, baseline, mobile, figure-labels)
 # are what release.yml's post-publish site job runs, so a change that renders but
 # trips a check gate would otherwise pass every pre-publish gate and fail only
-# AFTER the binaries ship. `site check` needs no mkdocs — it excludes docs/ — so a
+# AFTER the binaries ship. `lint site` needs no mkdocs — it excludes docs/ — so a
 # plain build output suffices. Roughly ten seconds, almost all of it writing files.
 site-render:
 	@rm -rf .abcd/.work.local/scratch/site-render-check
 	@go run ./cmd/abcd site build --out .abcd/.work.local/scratch/site-render-check >/dev/null
-	@go run ./cmd/abcd site check --out .abcd/.work.local/scratch/site-render-check >/dev/null
+	@go run ./cmd/abcd lint site --out .abcd/.work.local/scratch/site-render-check >/dev/null
 	@rm -rf .abcd/.work.local/scratch/site-render-check
 	@echo "site-render: the record and docs render and pass the site gates"
 
@@ -278,7 +278,8 @@ scaffold-sync:
 scaffold-sync-check:
 	@go run ./cmd/scaffold-sync -check
 
-# Pre-push gate (invoked by .githooks/pre-push): the load check first (a
+# Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
+# receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the six lint gates
 # (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
 # docs-lint), the
@@ -308,6 +309,24 @@ preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-
 	go vet ./...
 	go test ./...
 	go test -race ./internal/...
+	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook
+# never runs this target: git opens a push's connection before it runs the hook,
+# and a preflight inside it held that connection open until the transport's idle
+# timeout closed it. So the gate runs first, as its own command, and its last step
+# mints a receipt the hook checks in milliseconds. A receipt vouches for HEAD only
+# when the tree matched HEAD — nothing staged, unstaged or untracked — both when
+# the run began and when it ended, which is what makes the gates' reading of the
+# working tree a reading of the commit CI will check out.
+#
+# The starting state is read while this Makefile is PARSED, which is before any
+# prerequisite runs; a recipe line or a prerequisite would run after, or in parallel
+# with, the gates. It is read only when `preflight` is named on the command line, so
+# no other target pays for a git status.
+ifneq ($(filter preflight,$(MAKECMDGOALS)),)
+PREFLIGHT_BEGAN := $(shell scripts/preflight-receipt.sh state)
+endif
 
 # The marker tells a check started inside this preflight (the eval harness's own,
 # under `smoke` and `evals-cold-reading`) that the preflight's check already

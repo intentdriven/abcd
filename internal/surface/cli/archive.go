@@ -65,8 +65,7 @@ func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
 	var outDir, tag, repository string
 	var verify bool
 	cmd := &cobra.Command{
-		Use:   "archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>]",
-		Short: "Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)",
+		Use: "archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>]",
 		Long: `Render the release's plugin archive into --out and, with --verify, prove the
 committed catalog pins it (exit 1 on a mismatch).
 

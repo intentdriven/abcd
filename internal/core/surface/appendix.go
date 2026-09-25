@@ -22,6 +22,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
 // BriefSurfacesDir is the brief's surface-chapter directory, repo-relative and
@@ -104,16 +106,46 @@ func ComposeAppendix(paths []string, tree []Command) string {
 		return b.String()
 	}
 	b.WriteString(appendixHeading + "\n\n" + appendixPreamble + "\n\n")
+	current := currentForms(tree)
 	for _, p := range paths {
-		if _, ok := byPath[p]; !ok {
+		c, ok := byPath[p]
+		if !ok {
 			fmt.Fprintf(&b, "### `%s`\n\n%s\n\n", p, UnbuiltSentence(p))
 			continue
 		}
-		for _, c := range subtree(p, tree) {
-			writeCommandSection(&b, c, tree, isRoot(p))
+		if movedWhole(c, tree) {
+			// The chapter's own command moved whole (itd-2609212130136102):
+			// the stub it leaves behind has no surface to list, only a
+			// successor to name.
+			fmt.Fprintf(&b, "### `%s`\n\nIt moved to `%s`.\n\n", p, c.MovedTo)
+			continue
+		}
+		for _, c := range subtree(p, current) {
+			writeCommandSection(&b, c, current, isRoot(p))
 		}
 	}
 	return b.String()
+}
+
+// movedWhole reports whether c is a spelling that moved together with
+// everything below it: it records a successor and has no sub-verb of its own.
+// A command with sub-verbs that records one moved only its bare form, and its
+// sub-verbs are still the surface.
+func movedWhole(c Command, tree []Command) bool {
+	return c.MovedTo != "" && len(children(c.Path, tree)) == 0
+}
+
+// currentForms is tree without the spellings that moved whole, so the appendix
+// names the new forms only: a moved leaf is listed neither in a section of its
+// own nor among its parent's sub-verbs (itd-2609212130136102 criterion 4).
+func currentForms(tree []Command) []Command {
+	out := make([]Command, 0, len(tree))
+	for _, c := range tree {
+		if !movedWhole(c, tree) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 func isRoot(path string) bool { return !strings.Contains(path, " ") }
@@ -145,6 +177,9 @@ func children(path string, tree []Command) []string {
 
 func writeCommandSection(b *strings.Builder, c Command, tree []Command, root bool) {
 	fmt.Fprintf(b, "### `%s`\n\n", c.Path)
+	if c.MovedTo != "" {
+		fmt.Fprintf(b, "Bare, it moved to `%s`.\n\n", c.MovedTo)
+	}
 	if !root {
 		kids := children(c.Path, tree)
 		if len(kids) == 0 {
@@ -184,17 +219,17 @@ func writeCommandSection(b *strings.Builder, c Command, tree []Command, root boo
 // region ambiguous. begin and end are 0-based line indices.
 func markerLines(lines []string) (begin, end int, err error) {
 	begin, end = -1, -1
-	fenced := false
+	// A marker is refused where EITHER mdrecord rule reads it as fenced: a
+	// marker a renderer could show as code is an ambiguous region
+	// (iss-2609251044055902).
+	top := mdrecord.Read(lines, mdrecord.TopLevel).Mask
+	nested := mdrecord.Read(lines, mdrecord.ListNested).Mask
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
-			fenced = !fenced
-			continue
-		}
 		if !strings.HasPrefix(t, markerPrefix) {
 			continue
 		}
-		if fenced {
+		if (top[i]|nested[i])&mdrecord.MaskFence != 0 {
 			return -1, -1, fmt.Errorf("line %d: %w", i+1, ErrMarkerInFence)
 		}
 		switch t {
@@ -361,6 +396,7 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	text := strings.Join(lines, "\n")
 	lineOf := func(offset int) int { return strings.Count(text[:offset], "\n") + 1 }
 	code := codeRegions(text)
+	markFencedLines(code, strings.Split(text, "\n"))
 
 	var out []ShapeClaim
 	for _, m := range flagSpelling.FindAllStringSubmatchIndex(text, -1) {
@@ -443,6 +479,25 @@ func codeRegions(s string) []bool {
 		i = closeAt + n
 	}
 	return in
+}
+
+// markFencedLines marks every byte of a fenced line as code, by mdrecord's
+// fence rule. codeRegions pairs backtick runs, which covers a backtick fence
+// but never a tilde one (iss-2609251045302499). A line either rule reads as
+// fenced is marked, because a marked line only ever makes a spelling count as a
+// claim, and a missed claim is the silent direction.
+func markFencedLines(code []bool, lines []string) {
+	top := mdrecord.Read(lines, mdrecord.TopLevel).Mask
+	nested := mdrecord.Read(lines, mdrecord.ListNested).Mask
+	at := 0
+	for i, ln := range lines {
+		if (top[i]|nested[i])&mdrecord.MaskFence != 0 {
+			for k := at; k < at+len(ln) && k < len(code); k++ {
+				code[k] = true
+			}
+		}
+		at += len(ln) + 1
+	}
 }
 
 // blankKeepingNewlines replaces every byte of s but a newline with a space, so

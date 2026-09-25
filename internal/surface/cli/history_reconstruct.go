@@ -42,9 +42,8 @@ func newHistoryReconstructCommand(asJSON *bool) *cobra.Command {
 	var out, mode string
 	var maxBlock int
 	cmd := &cobra.Command{
-		Use:   "reconstruct <session-id>",
-		Short: "Render one session — the main thread and every sub-agent — as one artefact plus telemetry",
-		Args:  cobra.ExactArgs(1),
+		Use:  "reconstruct <session-id>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {

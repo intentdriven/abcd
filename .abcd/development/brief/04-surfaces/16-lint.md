@@ -15,6 +15,22 @@ questions, two verbs.
 The verb applies rules about form, which adr-40's vocabulary names a lint;
 `/abcd:audit` stays reserved for itd-16's hash-chain fidelity surface.
 
+**One lint, with targets** (itd-2609212130136102). "Check this repository" has
+one verb. Each target runs one check on its own, with its own report and exit
+code, and the table below lists them: the docs-currency gate
+([`10-docs.md`](10-docs.md)), the website's gates ([`22-site.md`](22-site.md)),
+the identity report ([`19-identity.md`](19-identity.md)), and the judgement of
+one piece of outbound text (below). Bare, the verb runs every target that
+judges the repository, each as one rule of the set below: the docs through
+`docs-currency`, the identity through `identity-positioning`, the outbound
+policy over every committed file through `privacy-hygiene`, and the site
+through `site-gates`. The outbound target alone stays out of the bare run,
+because its subject is text the caller hands it, not the repository. The verbs
+that WRITE stay where they were, under the docs, site and identity verbs: the
+citation baseline, the site render and the recording of the identity block. For
+one release each check's retired spelling answers with its target and exits
+non-zero.
+
 ## Sub-verbs
 
 > _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
@@ -27,12 +43,20 @@ The verb applies rules about form, which adr-40's vocabulary names a lint;
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `docs` | lint | shipped |
+| `identity` | lint | shipped |
 | `outbound` | gate | shipped |
+| `site` | gate | shipped |
 
 The staged `chain` and `lifeboat` verbs belong to the **reserved** `/abcd:audit`
 surface (itd-16's hash-chain fidelity checks, registered in
 [`02-constraints/04-naming.md`](../02-constraints/04-naming.md)), not to the
 conformance lint.
+
+The site target is the `gate` bucket because its exit is the release job's
+publish decision: `1` on any failed gate, `2` when the check could not run. The
+docs target is a `lint` whose blocker findings fail the commit gate, and the
+identity target a status render that exits `0` even when it reports drift.
 
 The outbound check is the `gate` bucket rather than `lint`, and the distinction is
 the one adr-40 draws: the parent REPORTS on a repository and leaves the decision
@@ -116,6 +140,7 @@ iss-2608231000561060.
 | `decision-durability` | warn | a committed `.abcd/work/DECISIONS.md`; decisions not living only in the gitignored layer |
 | `docs-currency` | warn | reuses the docs-lint engine where `docs/` exists, and says so where it cannot: a repo with a `docs/` tree but no docs-lint configuration, and a configuration that will not load, each raise a finding against `.abcd/docs-lint.json` rather than passing quietly |
 | `privacy-hygiene` | error (network-identifier findings mapped from a scanner `warn`/`info` land as `warn`) | three leak classes on any tracked text line: absolute local paths in committed files, real network identifiers, and the harness-leak pair the outbound policy bans everywhere (a live agent-session URL, and a tool's own "generated with" footer). The fix names reserved documentation values (RFC 5737/3849/2606/7042, or a persona-derived device name), and an `abcd-lint:allow` line waiver is honoured (the `abcd-audit:allow` spelling too). The network severities come from the merged scanner configuration, so a repo that raises one in `.abcd/config/pii.json` is honoured, and an override that cannot be read is itself an `error` finding saying the scan fell back to the built-in severities. Two findings report what was *not* read rather than a leak: a tracked text file over the 4 MiB scan cap, and one that could not be opened. Binary files are skipped silently |
+| `site-gates` | warn | where `.abcd/site.json` declares a site: renders it into a fresh temporary directory outside the repository, runs the website's gates over it (the site target's, [`22-site.md`](22-site.md)), and removes it, so the lint still writes nothing in the repository. Each gate failure is one finding, filed against the source span it names; a composition that cannot be rendered is a finding against `.abcd/site.json` rather than an aborted lint. Warn, as `docs-currency` is, because the authoritative gate is the site target's exit 1 and re-raising it as an error would double-gate one check |
 | `identity-positioning` | warn | every registered surface still carries the canonical identity block's tagline (and pitch, where required), and every registered surface can still be found: a surface whose locator matches nothing is its own finding, because drift there would go unseen. A registry or identity block that cannot be read is reported rather than passed. Gated on `.abcd/positioning.json` being present on disk, and per-repo upgradeable to `error` (see [`19-identity.md`](19-identity.md)) |
 
 ## How it is built
@@ -149,11 +174,27 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd lint`
 
-Sub-verbs: `abcd lint outbound`.
+Sub-verbs: `abcd lint docs`, `abcd lint identity`, `abcd lint outbound`, `abcd lint site`.
 
 | Flag | Type |
 |---|---|
 | `--root` | string |
+
+### `abcd lint docs`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--config` | string |
+| `--release-gate` | bool |
+| `--root` | string |
+
+### `abcd lint identity`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd lint outbound`
 
@@ -163,5 +204,13 @@ Sub-verbs: none.
 |---|---|
 | `--label` | string |
 | `--root` | string |
+
+### `abcd lint site`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--out` | string |
 
 <!-- surface-appendix:end -->

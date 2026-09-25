@@ -1,10 +1,18 @@
 {
-  "schema_version": 1,
+  "schema_version": 4,
   "commands": [
     {
       "path": "abcd",
       "hidden": false,
+      "sentence": "Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument.",
       "flags": [
+        {
+          "name": "agent",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "json",
           "shorthand": "",
@@ -18,32 +26,68 @@
           "type": "bool",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "version",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },
     {
       "path": "abcd ahoy",
       "hidden": false,
-      "flags": []
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.",
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "identity",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "remote",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd ahoy doctor",
       "hidden": false,
+      "sentence": "Report every install gap, user-scope state included: Writes nothing; refuses any argument.",
       "flags": []
     },
     {
       "path": "abcd ahoy dry-run",
       "hidden": false,
+      "moved_to": "abcd ahoy --dry-run",
       "flags": []
     },
     {
       "path": "abcd ahoy identity-check",
       "hidden": false,
+      "moved_to": "abcd ahoy --identity",
       "flags": []
     },
     {
       "path": "abcd ahoy install",
       "hidden": false,
+      "sentence": "Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.",
       "flags": [
         {
           "name": "adopt",
@@ -127,11 +171,14 @@
     {
       "path": "abcd ahoy remote",
       "hidden": false,
+      "sentence": "Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
+      "moved_to": "abcd ahoy --remote",
       "flags": []
     },
     {
       "path": "abcd ahoy remote apply",
       "hidden": false,
+      "sentence": "Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.",
       "flags": [
         {
           "name": "yes",
@@ -145,6 +192,7 @@
     {
       "path": "abcd ahoy uninstall",
       "hidden": false,
+      "sentence": "Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
       "flags": [
         {
           "name": "bin-dir",
@@ -158,11 +206,15 @@
     {
       "path": "abcd banlist",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it.",
       "flags": []
     },
     {
       "path": "abcd banlist add",
       "hidden": false,
+      "sentence": "Add one banned-name entry to the layer a flag names: Writes that layer's store; refuses without exactly one of --private or --public.",
       "flags": [
         {
           "name": "private",
@@ -197,6 +249,7 @@
     {
       "path": "abcd banlist list",
       "hidden": false,
+      "sentence": "Render the banned-names layers, private entries by key only: Writes nothing; refuses --private and --public together.",
       "flags": [
         {
           "name": "private",
@@ -217,6 +270,7 @@
     {
       "path": "abcd banlist remove",
       "hidden": false,
+      "sentence": "Remove one banned-name entry from the layer a flag names: Writes that layer's store; refuses a public entry curated by hand.",
       "flags": [
         {
           "name": "private",
@@ -237,6 +291,9 @@
     {
       "path": "abcd capture",
       "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout.",
       "flags": [
         {
           "name": "blocked-by",
@@ -306,6 +363,7 @@
     {
       "path": "abcd capture disposition",
       "hidden": false,
+      "sentence": "Answer one reading item with a disposition record: Writes the record keyed to the item; refuses a second answer without --supersedes.",
       "flags": [
         {
           "name": "exit-condition",
@@ -361,6 +419,7 @@
     {
       "path": "abcd capture link",
       "hidden": false,
+      "sentence": "Add or remove blocked_by edges on an issue: Writes the issue's blocked_by list; refuses an id the ledger does not hold.",
       "flags": [
         {
           "name": "blocked-by",
@@ -381,6 +440,7 @@
     {
       "path": "abcd capture list",
       "hidden": false,
+      "sentence": "List the issues in one status folder or all three: Writes nothing; refuses when no status flag is given.",
       "flags": [
         {
           "name": "all",
@@ -415,6 +475,7 @@
     {
       "path": "abcd capture mentions",
       "hidden": false,
+      "sentence": "List open issues that default-branch history names with no resolution behind them: Writes nothing; refuses outside a git checkout.",
       "flags": [
         {
           "name": "ref",
@@ -428,6 +489,7 @@
     {
       "path": "abcd capture migrate",
       "hidden": false,
+      "sentence": "Rewrite retired promote back-links as related_intents and related_issues: Writes the records only with --apply; refuses outside a git checkout.",
       "flags": [
         {
           "name": "apply",
@@ -441,6 +503,7 @@
     {
       "path": "abcd capture promote",
       "hidden": false,
+      "sentence": "Graduate an issue or an accepted reading item into an intent draft: Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
       "flags": [
         {
           "name": "grounds",
@@ -468,6 +531,7 @@
     {
       "path": "abcd capture resolve",
       "hidden": false,
+      "sentence": "Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
       "flags": [
         {
           "name": "commit",
@@ -523,6 +587,7 @@
     {
       "path": "abcd capture wontfix",
       "hidden": false,
+      "sentence": "Move an open issue to wontfix/ with the reason it is not acted on: Writes the moved record; refuses an id this ledger does not hold.",
       "flags": [
         {
           "name": "grounds",
@@ -543,31 +608,49 @@
     {
       "path": "abcd changelog",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Preview the next release cut's version, records, and guardrail verdict: Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.",
       "flags": []
     },
     {
       "path": "abcd decide",
       "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.",
       "flags": []
     },
     {
       "path": "abcd disembark",
       "hidden": false,
+      "group": "portability",
+      "block": "people",
+      "sentence": "Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd disembark coverage",
       "hidden": false,
+      "sentence": "Aggregate saved probe reports into the section-by-repository coverage table: Writes nothing; refuses a file that is not a probe report.",
       "flags": []
     },
     {
       "path": "abcd disembark graveyard",
       "hidden": false,
+      "sentence": "Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.",
       "flags": [
         {
           "name": "lessons-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -576,6 +659,7 @@
     {
       "path": "abcd disembark pack",
       "hidden": false,
+      "sentence": "Pack a lifeboat from a repository into a destination directory: Writes the destination only; refuses when the secret scanner is unavailable.",
       "flags": [
         {
           "name": "include-ignored",
@@ -589,6 +673,7 @@
     {
       "path": "abcd disembark plan",
       "hidden": false,
+      "sentence": "Show the file set a pack would write: Writes nothing; refuses a repository path that is not a directory.",
       "flags": [
         {
           "name": "include-ignored",
@@ -602,11 +687,19 @@
     {
       "path": "abcd disembark press-release",
       "hidden": false,
+      "sentence": "Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.",
       "flags": [
         {
           "name": "press-release-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -615,11 +708,19 @@
     {
       "path": "abcd disembark principles",
       "hidden": false,
+      "sentence": "Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.",
       "flags": [
         {
           "name": "principles-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -628,6 +729,7 @@
     {
       "path": "abcd disembark probe",
       "hidden": false,
+      "sentence": "Report which brief sections a lifeboat could ground from a repository: Writes nothing; refuses a repository path that is not a directory.",
       "flags": [
         {
           "name": "include-ignored",
@@ -641,11 +743,19 @@
     {
       "path": "abcd disembark review",
       "hidden": false,
+      "sentence": "Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.",
       "flags": [
         {
           "name": "review-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -654,16 +764,21 @@
     {
       "path": "abcd docs",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd docs cite",
       "hidden": false,
+      "sentence": "Keep the citation baseline the docs lint enforces offline: Writes nothing bare, and only that baseline; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd docs cite confirm",
       "hidden": false,
+      "sentence": "Record that a person verified a cited URL the fetcher could not read: Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.",
       "flags": [
         {
           "name": "config",
@@ -691,6 +806,7 @@
     {
       "path": "abcd docs cite refresh",
       "hidden": false,
+      "sentence": "Fetch every cited URL once, the one documentation verb that reaches the network: Writes the citation baseline; refuses an unreadable docs-lint configuration.",
       "flags": [
         {
           "name": "config",
@@ -711,53 +827,41 @@
     {
       "path": "abcd docs lint",
       "hidden": false,
-      "flags": [
-        {
-          "name": "config",
-          "shorthand": "",
-          "type": "string",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "release-gate",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "root",
-          "shorthand": "",
-          "type": "string",
-          "required": false,
-          "hidden": false
-        }
-      ]
+      "moved_to": "abcd lint docs",
+      "flags": []
     },
     {
       "path": "abcd embark",
       "hidden": false,
+      "group": "portability",
+      "block": "people",
+      "sentence": "Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict.",
       "flags": []
     },
     {
       "path": "abcd embark from",
       "hidden": false,
+      "sentence": "Unpack a lifeboat's record families into a target repository: Writes those families and the marker block; refuses the whole write on any conflict.",
       "flags": []
     },
     {
       "path": "abcd embark probe",
       "hidden": false,
+      "sentence": "Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.",
       "flags": []
     },
     {
       "path": "abcd guard",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd guard check",
       "hidden": false,
+      "sentence": "Judge one shell command against the hazard registry: Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
       "flags": [
         {
           "name": "command",
@@ -771,16 +875,22 @@
     {
       "path": "abcd guard hook",
       "hidden": false,
+      "block": "agents",
+      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard with the host's blocking status.",
       "flags": []
     },
     {
       "path": "abcd history",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd history capture",
       "hidden": false,
+      "sentence": "Redact and store one raw session transcript from a file or stdin: Writes one record into the store; refuses stdin without --session.",
       "flags": [
         {
           "name": "kind",
@@ -801,6 +911,7 @@
     {
       "path": "abcd history discard",
       "hidden": false,
+      "sentence": "Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.",
       "flags": [
         {
           "name": "yes",
@@ -814,11 +925,13 @@
     {
       "path": "abcd history drain",
       "hidden": false,
+      "sentence": "Redact and store every transcript staged for this repository: Writes the records into the store; refuses outside a git checkout.",
       "flags": []
     },
     {
       "path": "abcd history ingest",
       "hidden": false,
+      "sentence": "Redact and store transcripts already on disk into a named repository: Writes that repository's store; refuses without --into.",
       "flags": [
         {
           "name": "adopt",
@@ -839,6 +952,7 @@
     {
       "path": "abcd history list",
       "hidden": false,
+      "sentence": "List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.",
       "flags": [
         {
           "name": "session",
@@ -852,6 +966,7 @@
     {
       "path": "abcd history migrate",
       "hidden": false,
+      "sentence": "Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.",
       "flags": [
         {
           "name": "apply",
@@ -872,6 +987,7 @@
     {
       "path": "abcd history reconstruct",
       "hidden": false,
+      "sentence": "Render one session and its sub-agents as one artefact plus telemetry: Writes both files into --out; refuses an --out that is not an existing directory.",
       "flags": [
         {
           "name": "max-block-bytes",
@@ -899,11 +1015,13 @@
     {
       "path": "abcd history show",
       "hidden": false,
+      "sentence": "Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.",
       "flags": []
     },
     {
       "path": "abcd history staged",
       "hidden": false,
+      "sentence": "List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.",
       "flags": [
         {
           "name": "all-repos",
@@ -947,11 +1065,16 @@
     {
       "path": "abcd ideate",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ideate record",
       "hidden": false,
+      "block": "agents",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.",
       "flags": [
         {
           "name": "verdict-json",
@@ -965,11 +1088,16 @@
     {
       "path": "abcd identity",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.",
+      "moved_to": "abcd lint identity",
       "flags": []
     },
     {
       "path": "abcd identity init",
       "hidden": false,
+      "sentence": "Record this repository's identity block and the pointer to it: Writes the block and the pointer; refuses without --title and --tagline when no block exists.",
       "flags": [
         {
           "name": "file",
@@ -1011,16 +1139,21 @@
     {
       "path": "abcd identity render",
       "hidden": false,
+      "sentence": "Print the correction for every drifted surface as a unified diff: Writes nothing; refuses a repository that records no identity block.",
       "flags": []
     },
     {
       "path": "abcd implement",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd implement check",
       "hidden": false,
+      "sentence": "Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
       "flags": [
         {
           "name": "path",
@@ -1041,6 +1174,7 @@
     {
       "path": "abcd implement claim",
       "hidden": false,
+      "sentence": "Claim a record for this session before opening its lane: Writes the claim and a run-log line; refuses a record another session holds.",
       "flags": [
         {
           "name": "lane",
@@ -1075,6 +1209,7 @@
     {
       "path": "abcd implement join",
       "hidden": false,
+      "sentence": "Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.",
       "flags": [
         {
           "name": "ceiling",
@@ -1116,6 +1251,7 @@
     {
       "path": "abcd implement leave",
       "hidden": false,
+      "sentence": "Leave the run, releasing every claim this session holds: Writes the releases and a session_close line; refuses without --session.",
       "flags": [
         {
           "name": "reason",
@@ -1136,6 +1272,7 @@
     {
       "path": "abcd implement load",
       "hidden": false,
+      "sentence": "Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.",
       "flags": [
         {
           "name": "site",
@@ -1149,6 +1286,7 @@
     {
       "path": "abcd implement log",
       "hidden": false,
+      "sentence": "Append one of the run's events to today's run log: Writes one line; refuses the claim, window, and session events their own verbs write.",
       "flags": [
         {
           "name": "field",
@@ -1169,6 +1307,7 @@
     {
       "path": "abcd implement mode",
       "hidden": false,
+      "sentence": "Open a window by logging its division mode: Writes a window_mode line; refuses any session but the first.",
       "flags": [
         {
           "name": "session",
@@ -1189,6 +1328,7 @@
     {
       "path": "abcd implement release",
       "hidden": false,
+      "sentence": "Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.",
       "flags": [
         {
           "name": "session",
@@ -1202,6 +1342,7 @@
     {
       "path": "abcd implement report",
       "hidden": false,
+      "sentence": "Derive the comparison of the division modes from the run log: Writes nothing; refuses --date and --log together.",
       "flags": [
         {
           "name": "date",
@@ -1222,21 +1363,29 @@
     {
       "path": "abcd inbox",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument.",
       "flags": []
     },
     {
       "path": "abcd inbox promote",
       "hidden": false,
+      "sentence": "File one report as a capture in abcd's own ledger: Writes the capture and marks the report promoted; refuses outside abcd's own checkout.",
       "flags": []
     },
     {
       "path": "abcd inbox show",
       "hidden": false,
+      "sentence": "Render one report whole: Writes nothing; refuses an id the inbox does not hold.",
       "flags": []
     },
     {
       "path": "abcd intent",
       "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word.",
       "flags": [
         {
           "name": "impact",
@@ -1264,11 +1413,19 @@
     {
       "path": "abcd intent audit",
       "hidden": false,
+      "sentence": "Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: Writes nothing; refuses an intent not shipped.",
       "flags": [
         {
           "name": "issue-drift",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },
@@ -1284,7 +1441,16 @@
     {
       "path": "abcd intent audit ingest",
       "hidden": false,
+      "block": "agents",
+      "sentence": "Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.",
       "flags": [
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -1295,8 +1461,44 @@
       ]
     },
     {
+      "path": "abcd intent condition",
+      "hidden": false,
+      "sentence": "Read or disposition a shipped intent's scope conditions: Writes a dated condition block; refuses an unresolved occasion or thin grounds.",
+      "flags": [
+        {
+          "name": "disposition",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "narrowing",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "occasioned-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent hold",
       "hidden": false,
+      "sentence": "Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.",
       "flags": [
         {
           "name": "reason",
@@ -1310,16 +1512,13 @@
     {
       "path": "abcd intent link",
       "hidden": false,
-      "flags": []
-    },
-    {
-      "path": "abcd intent new",
-      "hidden": false,
+      "sentence": "Link a planned intent to an existing spec: Writes the intent's spec_id; refuses an intent that is not planned.",
       "flags": []
     },
     {
       "path": "abcd intent plan",
       "hidden": false,
+      "sentence": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.",
       "flags": [
         {
           "name": "impact",
@@ -1340,6 +1539,7 @@
     {
       "path": "abcd intent ready",
       "hidden": false,
+      "sentence": "Report whether an intent is ready to implement, exiting 1 when not: Writes its grounds only with --grounds; refuses malformed grounds.",
       "flags": [
         {
           "name": "grounds",
@@ -1353,11 +1553,15 @@
     {
       "path": "abcd intent unhold",
       "hidden": false,
+      "sentence": "Lift an intent's hold: Writes the removal of its held line; refuses a record not held.",
       "flags": []
     },
     {
       "path": "abcd launch",
       "hidden": false,
+      "group": "release",
+      "block": "people",
+      "sentence": "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
       "flags": [
         {
           "name": "dry-run",
@@ -1371,6 +1575,7 @@
     {
       "path": "abcd launch archive",
       "hidden": false,
+      "sentence": "Render the release's plugin archive: Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
       "flags": [
         {
           "name": "out",
@@ -1405,6 +1610,7 @@
     {
       "path": "abcd launch scaffold",
       "hidden": false,
+      "sentence": "Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
       "flags": [
         {
           "name": "confirm",
@@ -1418,6 +1624,7 @@
     {
       "path": "abcd launch ship",
       "hidden": false,
+      "sentence": "Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
       "flags": [
         {
           "name": "allow-dirty",
@@ -1439,12 +1646,22 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
         }
       ]
     },
     {
       "path": "abcd lint",
       "hidden": false,
+      "group": "checks",
+      "block": "people",
+      "sentence": "Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
       "flags": [
         {
           "name": "root",
@@ -1456,8 +1673,43 @@
       ]
     },
     {
+      "path": "abcd lint docs",
+      "hidden": false,
+      "sentence": "Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.",
+      "flags": [
+        {
+          "name": "config",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release-gate",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lint identity",
+      "hidden": false,
+      "sentence": "Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.",
+      "flags": []
+    },
+    {
       "path": "abcd lint outbound",
       "hidden": false,
+      "sentence": "Judge one outbound text against the session-URL and tool-footer policy: Writes nothing; refuses a text carrying either with exit 1.",
       "flags": [
         {
           "name": "label",
@@ -1476,13 +1728,31 @@
       ]
     },
     {
+      "path": "abcd lint site",
+      "hidden": false,
+      "sentence": "Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.",
+      "flags": [
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd memory",
       "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Render the memory store's status: Writes nothing; refuses outside a git checkout.",
       "flags": []
     },
     {
       "path": "abcd memory ask",
       "hidden": false,
+      "sentence": "Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.",
       "flags": [
         {
           "name": "file-back",
@@ -1510,6 +1780,7 @@
     {
       "path": "abcd memory ingest",
       "hidden": false,
+      "sentence": "Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.",
       "flags": [
         {
           "name": "keep-original",
@@ -1530,26 +1801,37 @@
     {
       "path": "abcd memory lint",
       "hidden": false,
+      "sentence": "Health-check the whole memory store: Writes a lint report; refuses a store with a blocker finding.",
       "flags": []
     },
     {
       "path": "abcd mode",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
       "flags": []
     },
     {
       "path": "abcd peers",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.",
       "flags": []
     },
     {
       "path": "abcd reading",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Render the cold-reading assembler's state: Writes nothing; refuses any argument.",
       "flags": []
     },
     {
       "path": "abcd reading assemble",
       "hidden": false,
+      "sentence": "Assemble one reading's input and its hashed manifest at one position: Writes both artefacts; refuses a target that is not HEAD or a commit sha.",
       "flags": [
         {
           "name": "dry-run",
@@ -1584,11 +1866,19 @@
     {
       "path": "abcd reading ingest",
       "hidden": false,
+      "sentence": "Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.",
       "flags": [
         {
           "name": "reading-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -1597,6 +1887,9 @@
     {
       "path": "abcd report",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "File a defect report or an enhancement proposal about abcd: Writes it into your account's inbox; refuses a malformed field or a filesystem path.",
       "flags": [
         {
           "name": "template",
@@ -1610,11 +1903,17 @@
     {
       "path": "abcd rules",
       "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
       "flags": []
     },
     {
       "path": "abcd site",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Report what the website declares and what was built: Writes nothing; refuses any argument.",
       "flags": [
         {
           "name": "out",
@@ -1628,6 +1927,7 @@
     {
       "path": "abcd site build",
       "hidden": false,
+      "sentence": "Render the website into the output directory: Writes only inside that directory; refuses a non-empty directory it did not write.",
       "flags": [
         {
           "name": "commit",
@@ -1669,24 +1969,21 @@
     {
       "path": "abcd site check",
       "hidden": false,
-      "flags": [
-        {
-          "name": "out",
-          "shorthand": "",
-          "type": "string",
-          "required": false,
-          "hidden": false
-        }
-      ]
+      "moved_to": "abcd lint site",
+      "flags": []
     },
     {
       "path": "abcd spec",
       "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Render the spec store's status: Writes nothing; refuses outside a git checkout.",
       "flags": []
     },
     {
       "path": "abcd spec close",
       "hidden": false,
+      "sentence": "Close a spec, and ship its intent when no open spec names it: Writes the moves to closed/ and shipped/; refuses to ship an intent with no impact.",
       "flags": [
         {
           "name": "impact",
@@ -1714,12 +2011,25 @@
     {
       "path": "abcd statusline",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.",
       "flags": []
     },
     {
       "path": "abcd update",
       "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
       "flags": [
+        {
+          "name": "check",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "yes",
           "shorthand": "",
@@ -1732,6 +2042,7 @@
     {
       "path": "abcd version",
       "hidden": false,
+      "moved_to": "abcd --version",
       "flags": [
         {
           "name": "check",

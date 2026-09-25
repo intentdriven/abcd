@@ -46,9 +46,8 @@ func newHistoryMigrateCommand(asJSON *bool) *cobra.Command {
 	var apply bool
 	var sidecarRoots []string
 	cmd := &cobra.Command{
-		Use:   "migrate",
-		Short: "Repair records filed under a composite session id (reports; writes only with --apply)",
-		Args:  cobra.NoArgs,
+		Use:  "migrate",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
@@ -144,8 +143,7 @@ func newHistoryIngestCommand(asJSON *bool) *cobra.Command {
 	var into string
 	var adopt []string
 	cmd := &cobra.Command{
-		Use:   "ingest [<path>...]",
-		Short: "Redact and store transcripts already on disk into a named destination repository",
+		Use: "ingest [<path>...]",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dest, err := resolveDestination(into)
 			if err != nil {

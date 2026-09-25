@@ -292,7 +292,7 @@ func TestBannerNeverOnASubcommandOrHook(t *testing.T) {
 	bannerTTY = func(io.Writer) bool { return true }
 	defer func() { bannerTTY = prev }()
 
-	for _, args := range [][]string{{"version"}, {"hook", "prompt-router"}} {
+	for _, args := range [][]string{{"--version"}, {"hook", "prompt-router"}} {
 		root := NewRootCommand()
 		var out, errOut bytes.Buffer
 		root.SetOut(&out)

@@ -348,28 +348,30 @@ jobs:
         run: go run ./cmd/abcd intent audit --issue-drift --strict
 
       # Docs-currency gate (itd-60): the internal/core/lint engine over docs/ and
-      # the repo root, driven via the `abcd docs lint` verb. Blocking — a doc-body
+      # the repo root, driven via the `abcd lint docs` verb. Blocking — a doc-body
       # change-narration, broken relative link, or stray root markdown fails CI.
       - name: Docs-lint (currency gate)
         if: matrix.os == 'ubuntu-latest'
-        run: go run ./cmd/abcd docs lint
+        run: go run ./cmd/abcd lint docs
 
       # Site-render gate (iss-2608241845109280): the site renders the record as
       # well as docs/, and the renderer refuses markdown outside its supported
       # subset. This lane always runs — the changes classifier never stands the
       # Linux leg down — so a records-only pull request is covered here, which
-      # site-screenshots.yml's path filter does not cover. Build, then `site
-      # check` the output: the publish gates (provenance, banned-tokens,
+      # site-screenshots.yml's path filter does not cover. Build, then `lint
+      # site` the output: the publish gates (provenance, banned-tokens,
       # baseline, ...) are what release.yml's post-publish site job runs, so a
       # change that renders but trips a check gate must fail HERE, not after the
-      # binaries ship. `site check` excludes docs/, so no mkdocs step is needed.
+      # binaries ship. `lint site` excludes docs/, so no mkdocs step is needed.
       - name: Site-render gate
         if: matrix.os == 'ubuntu-latest'
         run: |
           go run ./cmd/abcd site build --out "$RUNNER_TEMP/site-render-check"
-          go run ./cmd/abcd site check --out "$RUNNER_TEMP/site-render-check"
+          go run ./cmd/abcd lint site --out "$RUNNER_TEMP/site-render-check"
 
-  # Secrets never land in history: full-history scan on every push/PR. Run as a
+  # Secrets never land in history: the history each run would land is scanned —
+  # a pull request's own commits, and the full history of the pushed or queued
+  # commit — never every ref the checkout fetched. Run as a
   # pinned, checksum-verified CLI (no PR-comment / SARIF GitHub-API integration),
   # so it works on a private repo and survives the private->public flip. A
   # non-zero exit means gitleaks found a secret.
@@ -398,8 +400,31 @@ jobs:
           tar -xzf "$base" gitleaks
           sudo install gitleaks /usr/local/bin/gitleaks
           gitleaks version
-      - name: Scan full history
-        run: gitleaks git --redact --no-banner .
+      # Scoped to the history this run would land (iss-2608282038283692).
+      # fetch-depth: 0 fetches every remote branch, and a bare `gitleaks git .`
+      # walks `git log --all`, so a secret on a stale branch whose pull request
+      # had closed failed every open pull request until the branch was deleted.
+      # A pull request scans its own range, base..HEAD; a push to the default
+      # branch or a merge-queue entry scans everything reachable from HEAD, which
+      # is the full history of what lands. A pull request whose base cannot be
+      # resolved scans wider, never narrower, and says so. Event data reaches the
+      # script through env only (injection-safe).
+      - name: Scan the history this run would land
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          scope=HEAD
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if [ -n "${BASE_SHA:-}" ] && git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              scope="${BASE_SHA}..HEAD"
+            else
+              echo "::warning::gitleaks: no usable pull-request base (BASE_SHA='${BASE_SHA:-}'); scanning the full history reachable from HEAD instead"
+            fi
+          fi
+          echo "gitleaks: scanning ${scope}"
+          gitleaks git --redact --no-banner --log-opts="${scope}" .
 
   # Audit the workflows themselves (pwn requests, template injection, cache
   # poisoning, unpinned uses). Run as a pinned CLI image (no SARIF upload to

@@ -1,7 +1,8 @@
 ---
 name: decide
-description: Mint a decision record (ADR) — allocate its id through the shared record-id seam and lay the store's skeleton, ready for the author to write the decision into.
+description: "Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title."
 argument-hint: "<the decision, as a short noun phrase>"
+block: people
 ---
 
 # `/abcd:decide` — file a decision record

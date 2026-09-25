@@ -30,8 +30,7 @@ var (
 func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	var site string
 	cmd := &cobra.Command{
-		Use:   "load --site preflight|eval-harness",
-		Short: "Check the machine's load before abcd's own tests start; warns, never refuses (exit 0)",
+		Use: "load --site preflight|eval-harness",
 		Long: "Read the machine's load averages and process table once and warn when a program\n" +
 			"outside the running work has used nearly all the CPU it could get for longer than\n" +
 			"the stray limit, or when the one-minute load average is above the extreme limit.\n" +

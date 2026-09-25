@@ -78,11 +78,12 @@ package lint
 //     `found_during`, `resolution`, a `kind_notes` sentence — and free text is
 //     exactly where an unchecked id hides. Reading only the body left those
 //     fields covered by neither gate.
-//   - FENCED code is excluded, by fenceMask. Only triple-BACKTICK fences are
-//     recognised: a `~~~` fence is not a fence to this rule, and neither is
-//     four-space indented code. An id inside either is read as prose and must
-//     resolve or carry a marker — which is the safe direction to be wrong in,
-//     and is stated here so an author who meets it knows why.
+//   - FENCED code is excluded, by fenceMask, which is mdrecord's fence rule:
+//     backtick and tilde fences both count. Four-space indented code is not a
+//     fence, and a line the fence rules disagree about is read as prose. An id
+//     in either is read as prose and must resolve or carry a marker — which is
+//     the safe direction to be wrong in, and is stated here so an author who
+//     meets it knows why.
 //   - Nine record stores are configured, but only FOUR families resolve
 //     (recordid.familyRoots: adr, itd, iss, spc). The `rdi`, `dsp`, `rdg`, `adm`
 //     and `srp` stores are scanned as FILES — their prose is read like any

@@ -290,39 +290,6 @@ func TestIntentQuotedTextCreates(t *testing.T) {
 	}
 }
 
-// TestIntentNewAliasWarnsAndCreates is itd-46 AC2 (lean a): `abcd intent new
-// "<text>"` routes to the same create path and prints a deprecation warning on
-// stderr naming the new shape; the stdout artefact matches the sub-verb-free form.
-func TestIntentNewAliasWarnsAndCreates(t *testing.T) {
-	intentTestRepo(t)
-
-	stdout, stderr, err := runCLISplit(t, "intent", "new", "a symmetric create path", "--json")
-	if err != nil {
-		t.Fatalf("intent new alias errored: %v\nstderr: %s", err, stderr)
-	}
-	var got struct {
-		ID     string `json:"id"`
-		Bucket string `json:"bucket"`
-		Path   string `json:"path"`
-	}
-	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
-		t.Fatalf("alias stdout not JSON: %v\n%s", err, stdout)
-	}
-	if !cliNativeIntentIDRe.MatchString(got.ID) || got.Bucket != "drafts" {
-		t.Fatalf("alias create result = %+v, want a native itd id in drafts", got)
-	}
-	if !strings.Contains(stderr, "deprecat") {
-		t.Fatalf("alias must warn on stderr about deprecation, got: %q", stderr)
-	}
-	if !strings.Contains(stderr, `intent "`) {
-		t.Fatalf("deprecation warning must name the new quoted-text shape, got: %q", stderr)
-	}
-	// The warning is on stderr only — stdout stays the clean artefact.
-	if strings.Contains(stdout, "deprecat") {
-		t.Fatalf("deprecation warning leaked into stdout:\n%s", stdout)
-	}
-}
-
 // TestIntentBareCreatesNothing is itd-46 AC3: bare `abcd intent` renders status +
 // help and mutates nothing — no drafts file appears.
 func TestIntentBareCreatesNothing(t *testing.T) {
@@ -392,7 +359,7 @@ func TestIntentReadyUnknownExit2(t *testing.T) {
 }
 
 // TestIntentReadyJSON proves the machine seam: --json emits the full ReadyResult
-// (7 fixed checks) even on the not-ready path, alongside exit 1.
+// (8 fixed checks) even on the not-ready path, alongside exit 1.
 func TestIntentReadyJSON(t *testing.T) {
 	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliDrafts+"/itd-10-alpha.md", cliDraftWithAC("itd-10", "alpha"))
@@ -412,8 +379,8 @@ func TestIntentReadyJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("ready --json not JSON: %v\n%s", err, out)
 	}
-	if got.Ready || len(got.Checks) != 7 {
-		t.Fatalf("ready --json = %+v, want ready=false with 7 checks", got)
+	if got.Ready || len(got.Checks) != 8 {
+		t.Fatalf("ready --json = %+v, want ready=false with 8 checks", got)
 	}
 	if got.Checks[0].Name != "bucket" || got.Checks[0].OK || got.Checks[0].Remedy == "" {
 		t.Fatalf("bucket check = %+v, want fail with remedy", got.Checks[0])
@@ -714,8 +681,8 @@ func TestIntentReadyGroundsJSONCarriesTheWriteReceipt(t *testing.T) {
 	if strings.Contains(out, "/Users/alice") {
 		t.Fatalf("the envelope echoed the raw home path:\n%s", out)
 	}
-	if !env.Ready.Ready || len(env.Ready.Checks) != 7 {
-		t.Fatalf("readiness half = %+v, want the unchanged 7-check result", env.Ready)
+	if !env.Ready.Ready || len(env.Ready.Checks) != 8 {
+		t.Fatalf("readiness half = %+v, want the unchanged 8-check result", env.Ready)
 	}
 	// And the write is announced on stderr too, so a later readiness fault — which
 	// carries no envelope at all — can never hide that a write happened.

@@ -134,6 +134,13 @@ func nullToUnset(v string) string {
 // derived here rather than asked for. An empty mode takes the vocabulary's default. The write is
 // atomic.
 func Create(repoRoot, intentID, slug, productionMode string) (Spec, error) {
+	return CreateWithSteps(repoRoot, intentID, slug, productionMode, nil)
+}
+
+// CreateWithSteps is Create with the minted spec's `## Steps` section seeded
+// from steps — the unlanded steps a remainder carries forward from the spec it
+// splits from (itd-2609212103565953). No steps seeds the empty placeholder.
+func CreateWithSteps(repoRoot, intentID, slug, productionMode string, steps []Step) (Spec, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return Spec{}, fmt.Errorf("spec: intent id %q must match ^itd-[0-9]+$", intentID)
 	}
@@ -166,7 +173,7 @@ func Create(repoRoot, intentID, slug, productionMode string) (Spec, error) {
 		}
 		name := fmt.Sprintf("%s-%s.md", id, slug)
 		// 0o644 matches the intent-side markdown writer — both write committed design-record files.
-		if err := fsutil.WriteFileAtomic(filepath.Join(openDir, name), []byte(renderSpec(id, slug, intentID, stamp)), 0o644); err != nil {
+		if err := fsutil.WriteFileAtomic(filepath.Join(openDir, name), []byte(renderSpecWithSteps(id, slug, intentID, stamp, steps)), 0o644); err != nil {
 			return fmt.Errorf("spec: writing %s: %w", filepath.Join(SpecsRelDir, StatusOpen, name), err)
 		}
 		sp = Spec{

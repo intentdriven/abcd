@@ -1,7 +1,8 @@
 ---
 name: site
-description: Render this repository's website — the landing page composed from repository text under the single-source rule, and the record export derived from the record, git history and the changelog — by invoking the abcd binary. The bare form performs zero writes; build and check write only inside the output directory (check renders the site first when the directory has no index.html).
-argument-hint: "[build|check]"
+description: "Report what the website declares and what was built: Writes nothing; refuses any argument."
+argument-hint: "[build]"
+block: agents
 ---
 
 # `/abcd:site` the website as a surface of the record
@@ -85,59 +86,11 @@ rendered subset is reported as `file:line`, and so is an image the page names
 that the repository does not carry. Neither is a rendering bug to work around —
 the fix is an edit to the page.
 
-## `check` — say whether what was rendered may be published
+## The gate over what was rendered
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" site check --out site
-```
-
-reads the built output directory and the repository it came from, and runs seven
-independent gates. Each reports EVERY failure it finds rather than the first, so
-one run is one review round. An output directory with no `index.html` is
-rendered first: a caller who has not built yet is asking the same question as
-one who has. It writes nothing except that render, and reaches no network.
-
-- `provenance` — every visible word on a composed surface sits inside an element
-  whose `data-src` names a repository span that RESOLVES (the file exists, and
-  the heading anchor exists in it), or is an interface string, a number, a date,
-  a file name or an asset name. The `<title>` and `<meta name="description">`
-  carry Identity text with no attribute to name it, and are checked against the
-  Identity block rather than skipped; a page that names itself reads
-  `<page> · <project>`, and both halves are held up.
-- `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
-  block, read through the same parser the positioning surfaces use.
-- `banned-tokens` — the documentation lint's banned tokens, over the text every
-  composed surface publishes, whichever tree the span came from. The escape is
-  read source-side: a token is exempt where the source line it was selected from
-  declares it legitimate. Credit is the one place naming a tool is the sanctioned
-  use, so a span selected from the acknowledgement file, and the attribution
-  page's own authorship data, are exempt from the naming bans — never from
-  provenance, which still matches every name against the history that carries it.
-- `snippets` — every `abcd …` command the site shows names a command the
-  generated CLI reference documents, with flags that reference documents for it.
-- `baseline` — an unresolved cross-reference outside the committed ratchet
-  fails; a ratchet entry whose reference now resolves is reported as shrinkable
-  and fails nothing. Growing is refused, shrinking is invited.
-- `mobile` — over every page this build writes, the record rendering included
-  (the `/docs/` tree is the documentation generator's own output and is dropped
-  before any gate walks it, so no gate here examines it): the viewport
-  meta, an overflow container above every table and command block, a max-width
-  rule for images in the linked stylesheet (resolved from the served root, which
-  is where a root-absolute href points), no picture wider than the content
-  column, and no inline fixed width above 390 px. The rendered-overflow audit
-  needs a browser and runs in CI.
-- `figure-labels` — every text label in a lifted diagram is a phrase on the page
-  it illustrates, where the manifest asks for it.
-
-Report the gates that passed, then every finding under the gate that raised it,
-each with the file and the `data-src` span a reader's next edit goes to. Exit is
-`0` when nothing failed, `1` when something did, and `2` when the check could
-not run at all (no composition manifest, an unreadable input). A shrinkable
-baseline entry is printed as a note and does not change the exit code.
-
-The fix for a finding is always at its SOURCE — the page, the record, the
-manifest or the stylesheet — never in the generated output, which the next build
-overwrites.
+Whether a build may be published is `/abcd:lint site` — run `abcd lint site
+--out site`. It runs the site's gates over the built output directory and names
+every finding at its source.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

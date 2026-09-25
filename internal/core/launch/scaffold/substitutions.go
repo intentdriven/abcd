@@ -9,9 +9,13 @@ var abcdSemanticGates = []string{"docs-currency-reviewer", "iss35-brief-surface-
 // generic Go leg (gofmt/build/vet/test/race). They render into both the verify
 // job and the runbook's numbered gate list from this one source, so the
 // gate_lockstep invariant (runbook list == workflow steps) holds by construction.
+//
+// The docs lint runs with --release-gate here, and only here: a citation past
+// its staleness threshold blocks a release, while ci.yml's commit-time lint
+// keeps it a warning (spc-17; iss-2609091801085579).
 var abcdExtraGates = []Gate{
 	{Name: "Record-lint (design-record drift gate)", Run: "go run ./cmd/record-lint"},
-	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd docs lint"},
+	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd lint docs --release-gate"},
 	{Name: "Reviews-charter discipline (RD001-RD003)", Run: "bash scripts/check-reviews.sh"},
 	{Name: "Smoke every command (self-discovering harness)", Run: "make smoke"},
 }

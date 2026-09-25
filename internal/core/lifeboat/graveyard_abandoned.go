@@ -116,11 +116,11 @@ func gvSupersededIntents(ctx *SourceContext) []Finding {
 			ID:       id,
 			Signal:   SignalSupersededIntent,
 			Summary:  "intent superseded",
-			Evidence: []string{sanitize(path)},
+			Evidence: []string{gvText(path)},
 		})
 	}
 	if truncated {
-		out = append(out, gvListingTruncatedFinding(SignalSupersededIntent))
+		out = append(out, gvListingTruncatedFinding(SignalSupersededIntent, ctx.listCap))
 	}
 	gvSortByID(out)
 	return capSignalFindings(out)
@@ -148,9 +148,9 @@ func gvSupersededADRs(ctx *SourceContext) []Finding {
 		claims.take(id, len(out))
 		var ev []string
 		if !frontmatter.IsNull(supBy) {
-			ev = append(ev, sanitize("superseded_by: "+supBy))
+			ev = append(ev, gvText("superseded_by: "+supBy))
 		}
-		ev = append(ev, sanitize(path))
+		ev = append(ev, gvText(path))
 		out = append(out, Finding{
 			ID:       id,
 			Signal:   SignalSupersededADR,
@@ -159,7 +159,7 @@ func gvSupersededADRs(ctx *SourceContext) []Finding {
 		})
 	})
 	if truncated {
-		out = append(out, gvListingTruncatedFinding(SignalSupersededADR))
+		out = append(out, gvListingTruncatedFinding(SignalSupersededADR, ctx.listCap))
 	}
 	gvSortByID(out)
 	return capSignalFindings(out)
@@ -196,7 +196,7 @@ func gvAlternativesConsidered(ctx *SourceContext) []Finding {
 		}
 		ev := make([]string, 0, len(bullets))
 		for _, b := range bullets {
-			ev = append(ev, sanitize(b))
+			ev = append(ev, gvText(b))
 		}
 		f := Finding{
 			ID:      adrAltID(id),
@@ -209,7 +209,7 @@ func gvAlternativesConsidered(ctx *SourceContext) []Finding {
 		out = append(out, f)
 	})
 	if truncated {
-		out = append(out, gvListingTruncatedFinding(SignalAlternativesConsidered))
+		out = append(out, gvListingTruncatedFinding(SignalAlternativesConsidered, ctx.listCap))
 	}
 	// Sort by the ADR id embedded in the <adr-id>-alt finding id.
 	gvSortByID(out)
@@ -240,9 +240,9 @@ func gvWontfixIssues(ctx *SourceContext) []Finding {
 		claims.take(id, len(out))
 		var ev []string
 		if reason := gvUnquote(fields["wontfix_reason"].Value); reason != "" {
-			ev = append(ev, sanitize("wontfix_reason: "+reason))
+			ev = append(ev, gvText("wontfix_reason: "+reason))
 		} else if slug := gvUnquote(fields["slug"].Value); slug != "" {
-			ev = append(ev, sanitize("slug: "+slug))
+			ev = append(ev, gvText("slug: "+slug))
 		}
 		f := Finding{ID: id, Signal: SignalWontfixIssue, Summary: "issue closed wontfix"}
 		if len(ev) > 0 {
@@ -251,7 +251,7 @@ func gvWontfixIssues(ctx *SourceContext) []Finding {
 		out = append(out, f)
 	}
 	if truncated {
-		out = append(out, gvListingTruncatedFinding(SignalWontfixIssue))
+		out = append(out, gvListingTruncatedFinding(SignalWontfixIssue, ctx.listCap))
 	}
 	gvSortByID(out)
 	return capSignalFindings(out)
@@ -286,7 +286,7 @@ func gvRejectedOptions(ctx *SourceContext) []Finding {
 			ID:       decisionID(i + 1),
 			Signal:   SignalRejectedOption,
 			Summary:  "decision log records a rejected option",
-			Evidence: []string{sanitize(strings.TrimSpace(line))},
+			Evidence: []string{gvText(strings.TrimSpace(line))},
 		})
 	}
 	return capSignalFindings(out)
@@ -318,9 +318,9 @@ func newGvIDClaims() *gvIDClaims {
 // take records that the finding at index i in the signal's slice holds id.
 func (c *gvIDClaims) take(id string, i int) { c.at[id] = i }
 
-// shadowed reports whether id is already claimed and, when it is, notes path on
-// the finding that holds it — the retained finding names every claimant it
-// shadowed. The notes are bounded like any other unbounded evidence source, so a
+// shadowed reports whether id is already claimed and, when it is, notes path in
+// the Notices of the finding that holds it — the retained finding names every
+// claimant it shadowed, the path quoted as an operand of the binary's notice. The notes are bounded like any other unbounded evidence source, so a
 // hostile record home carrying thousands of same-numbered files cannot balloon
 // one finding.
 func (c *gvIDClaims) shadowed(out []Finding, id, path string) bool {
@@ -331,8 +331,8 @@ func (c *gvIDClaims) shadowed(out []Finding, id, path string) bool {
 	if c.shadows[id] < maxAbandonedEvidencePerFinding {
 		c.shadows[id]++
 		f := out[i]
-		f.Evidence = append(append([]string(nil), f.Evidence...),
-			sanitize(fmt.Sprintf("(shadowed: %s also claims %s and is not separately reported)", path, id)))
+		f.Notices = append(append([]string(nil), f.Notices...),
+			fmt.Sprintf("shadowed: %s also claims %s and is not separately reported", gvQuoted(path), id))
 		out[i] = f
 	}
 	return true
@@ -344,14 +344,15 @@ func (c *gvIDClaims) shadowed(out []Finding, id, path string) bool {
 // finding says so, so a packed abandoned.json never presents a cap-truncated input
 // as a complete scan (iss-2608270908348796). It carries the signal it belongs to (so
 // it groups and survives capSignalFindings), and a fixed non-numeric id so gvSortByID
-// orders it stably ahead of the signal's record-keyed findings.
-func gvListingTruncatedFinding(sig Signal) Finding {
+// orders it stably ahead of the signal's record-keyed findings. The statement is the
+// binary's own, so it travels in Notices; the finding cites no evidence.
+func gvListingTruncatedFinding(sig Signal, listCap int) Finding {
 	return Finding{
 		ID:      "gv-listing-truncated-" + idClean(string(sig)),
 		Signal:  sig,
 		Summary: "record listing truncated at the per-directory cap; some records were not scanned",
-		Evidence: []string{sanitize(fmt.Sprintf(
-			"a record home held more than %d entries; only the first %d were scanned", maxDirEntries, maxDirEntries))},
+		Notices: []string{fmt.Sprintf(
+			"a record home held more than %d entries; only %d of them were scanned", listCap, listCap)},
 	}
 }
 

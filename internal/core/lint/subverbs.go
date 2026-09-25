@@ -46,6 +46,8 @@ var subVerbHeadingRe = regexp.MustCompile(`^##\s+Sub-verbs\s*$`)
 type snapshotCommand struct {
 	Path   string `json:"path"`
 	Hidden bool   `json:"hidden"`
+	// MovedTo is the successor of a moved spelling (itd-2609212130136102).
+	MovedTo string `json:"moved_to"`
 }
 
 // snapshotFile is the subset of surface.json this check reads.
@@ -62,7 +64,7 @@ func checkSubVerbCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	}
 	regDir := filepath.ToSlash(filepath.Dir(cfg.Registry))
 
-	subsByVerb, err := loadSnapshotSubVerbs(repoRoot, cfg.Snapshot)
+	subsByVerb, moved, err := loadSnapshotSubVerbs(repoRoot, cfg.Snapshot)
 	if err != nil {
 		// Strip a *PathError to its bare cause: the finding's File already
 		// names the repo-relative snapshot, and the raw error embeds the
@@ -147,6 +149,18 @@ func checkSubVerbCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		rowSet := map[string]bool{}
 		for _, r := range rows {
 			rowSet[r.verb] = true
+			// A moved spelling stays in the tree for one release as a stub,
+			// but the chapter says the new forms only (itd-2609212130136102
+			// criterion 4): a row naming one is stale prose, and the finding
+			// names where the spelling went.
+			if to, ok := moved[verb+" "+r.verb]; ok {
+				out = append(out, Finding{
+					File: rel, Line: r.line, RuleID: "surface_coverage", Severity: cfg.Severity,
+					Message: "sub-verb row '" + r.verb + "' names a moved spelling; `abcd " + verb + " " + r.verb +
+						"` moved to `" + to + "`, so drop the row and document the successor",
+				})
+				continue
+			}
 			if !subVerbBuckets[r.bucket] {
 				out = append(out, Finding{
 					File: rel, Line: r.line, RuleID: "surface_coverage", Severity: cfg.Severity,
@@ -210,16 +224,21 @@ func checkSubVerbCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 // loadSnapshotSubVerbs reads the committed command-tree snapshot into a
 // top-level-verb → sub-command-path map. A hidden command excludes its whole
 // subtree (operator plumbing is not product surface), and cobra's auto-added
-// help/completion are excluded structurally.
-func loadSnapshotSubVerbs(repoRoot, snapshot string) (map[string][]string, error) {
+// help/completion are excluded structurally. A moved spelling
+// (itd-2609212130136102) is excluded too, since the chapters name the new forms
+// only, and is returned in the second map instead, keyed by the path below the
+// root ("ahoy dry-run") and holding its successor; its sub-verbs, when it has
+// any, are still surface and stay in the first.
+func loadSnapshotSubVerbs(repoRoot, snapshot string) (map[string][]string, map[string]string, error) {
 	data, err := os.ReadFile(filepath.Join(repoRoot, snapshot))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var snap snapshotFile
 	if err := json.Unmarshal(data, &snap); err != nil {
-		return nil, fmt.Errorf("parsing %s: %v", snapshot, err)
+		return nil, nil, fmt.Errorf("parsing %s: %v", snapshot, err)
 	}
+	moved := map[string]string{}
 	hidden := map[string]bool{}
 	for _, c := range snap.Commands {
 		if c.Hidden {
@@ -252,13 +271,17 @@ func loadSnapshotSubVerbs(repoRoot, snapshot string) (map[string][]string, error
 			if parts[2] == "help" || parts[2] == "completion" {
 				continue
 			}
+			if c.MovedTo != "" {
+				moved[strings.Join(parts[1:], " ")] = c.MovedTo
+				continue
+			}
 			out[top] = append(out[top], strings.Join(parts[2:], " "))
 		}
 	}
 	for top := range out {
 		sort.Strings(out[top])
 	}
-	return out, nil
+	return out, moved, nil
 }
 
 // parseSubVerbTable reads one surface file and returns the rows of its

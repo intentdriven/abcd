@@ -84,7 +84,7 @@ func TestIdentityBareRendersTheBlockAndSurfaceStatus(t *testing.T) {
 	t.Chdir(adoptedRepo(t, idCleanREADME))
 
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"identity"}, &stdout, &stderr); code != 0 {
+	if code := Run([]string{"lint", "identity"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr = %s", code, stderr.String())
 	}
 	out := stdout.String()
@@ -104,7 +104,7 @@ func TestIdentityJSONCarriesTheReport(t *testing.T) {
 	t.Chdir(adoptedRepo(t, idDriftedREADME))
 
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"identity", "--json"}, &stdout, &stderr); code != 0 {
+	if code := Run([]string{"lint", "identity", "--json"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit = %d, stderr = %s", code, stderr.String())
 	}
 	var rep positioning.Report
@@ -252,7 +252,7 @@ func TestIdentityWithoutARegistryExplainsHowToAdopt(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"identity"}, &stdout, &stderr)
+	code := Run([]string{"lint", "identity"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("un-adopted repo exited 0:\n%s", stdout.String())
 	}

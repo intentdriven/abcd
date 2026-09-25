@@ -240,7 +240,7 @@ record. Commit only content that is about this repository.
 - `AGENTS.md` carries verified repo facts and the marked, nameless
   working-conventions section; the done-test passes.
 - One identity block is recorded and registered — adopted where the repo
-  already had one, interviewed only where it did not — and `abcd identity`
+  already had one, interviewed only where it did not — and `abcd lint identity`
   reports every registered surface as `ok`, or the drift it reports was shown
   to the maintainer with the proposed diff.
 - Nothing from `private-names.txt` and no abcd-internal content appears in any

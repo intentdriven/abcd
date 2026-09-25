@@ -1,6 +1,7 @@
 package lifeboat
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -51,7 +52,7 @@ const maxDirEntries = 50000
 const maxWalkFiles = maxDirEntries
 
 // maxWalkDepth caps how many levels below its start WalkFiles descends. The walk
-// holds a sub-root per directory (os.Root.OpenRoot), so each descent opens one
+// holds a sub-root per directory (openWalkDir), so each descent opens one
 // component in O(1) and a chain costs O(depth) rather than the square of its
 // depth — but an unbounded chain is still an unbounded recursion and a
 // pathological cost, so the cap prunes it. Real trees are shallow — the deepest
@@ -158,10 +159,11 @@ type SourceContext struct {
 	ignoredOnce    sync.Once
 	notIgnored     map[string]struct{} // nil when unknown or not applicable
 
-	// listCap bounds a single directory listing (ListDir / listDirNoted). It is a
-	// field defaulting to maxDirEntries — not the const directly — so a test can
-	// force the cap-truncation path on a small tree, the way ignoredListCapBytes is
-	// a var for the same reason (iss-2608270908348796).
+	// listCap bounds a single directory listing (ListDir / listDirNoted) and each
+	// directory WalkFiles reads — the one per-directory bound. It is a field
+	// defaulting to maxDirEntries — not the const directly — so a test can force
+	// the cap-truncation path on a small tree, the way ignoredListCapBytes is a var
+	// for the same reason (iss-2608270908348796).
 	listCap int
 
 	mu       sync.Mutex
@@ -369,24 +371,94 @@ func (c *SourceContext) listDirNoted(rel string) (names []string, truncated bool
 // and therefore fatal: a probe reads an arbitrary foreign tree in which a
 // symlink is ordinary, so refusing to follow one is enough, and erroring on one
 // would blank a whole section over a repository's normal furniture.
-func (c *SourceContext) WalkFiles(rel string) (paths []string, truncated bool) {
+//
+// A start below the root yields exactly what the whole-tree walk yields beneath
+// it: a skip-set or symlinked start (or one beneath either) yields nothing, and a
+// regular-file start yields that file (see walkStart).
+func (c *SourceContext) WalkFiles(rel string) (paths []string, truncated walkTruncation) {
 	return c.walkFilesLimited(rel, maxWalkFiles)
+}
+
+// walkTruncation says which of WalkFiles' bounds cut a walk short (iss-133). The
+// bounds cut differently: only the whole-walk cap ends the walk, while the depth
+// cap prunes one chain and the per-directory bound truncates one listing, and the
+// walk goes on past both. A single flag could only say "something was cut", and
+// the adapters rendered every cut as the walk stopping; notes names each cut.
+type walkTruncation struct {
+	stopped bool // the whole-walk cap was reached: the walk ended there
+	limit   int  // the whole-walk cap in force
+	perDir  int  // the per-directory bound in force
+
+	pruned int // directories at the depth cap, counted but not descended into
+
+	oversized      []string // up to maxTruncationNames directories read only in part
+	oversizedCount int      // every directory whose listing exceeded perDir
+}
+
+// maxTruncationNames bounds how many oversized directories a note names; the
+// count still covers every one, so the note never understates the cut.
+const maxTruncationNames = 3
+
+// Any reports whether any bound cut the walk.
+func (t walkTruncation) Any() bool { return t.stopped || t.pruned > 0 || t.oversizedCount > 0 }
+
+// noteOversized records a directory whose listing exceeded the per-directory
+// bound.
+func (t *walkTruncation) noteOversized(dir string) {
+	t.oversizedCount++
+	if len(t.oversized) < maxTruncationNames {
+		t.oversized = append(t.oversized, dir)
+	}
+}
+
+// notes renders one phrase per bound that fired, naming what it cut, for an
+// adapter's evidence. Empty when nothing was cut.
+func (t walkTruncation) notes() []string {
+	var out []string
+	if t.stopped {
+		out = append(out, fmt.Sprintf(
+			"stopped at the walk cap (%d files and directories); the rest of the tree was not walked", t.limit))
+	}
+	if t.pruned > 0 {
+		out = append(out, fmt.Sprintf("%d %s at the %d-level depth cap not descended into",
+			t.pruned, pluralDirs(t.pruned), maxWalkDepth))
+	}
+	if t.oversizedCount > 0 {
+		names := strings.Join(t.oversized, ", ")
+		if more := t.oversizedCount - len(t.oversized); more > 0 {
+			names += fmt.Sprintf(" and %d more", more)
+		}
+		held := "it held"
+		if t.oversizedCount > 1 {
+			held = "each held"
+		}
+		out = append(out, fmt.Sprintf("%d %s read only in part (%s): %s more than %d entries and only %d were read",
+			t.oversizedCount, pluralDirs(t.oversizedCount), names, held, t.perDir, t.perDir))
+	}
+	return out
+}
+
+func pluralDirs(n int) string {
+	if n == 1 {
+		return "directory"
+	}
+	return "directories"
 }
 
 // walkFilesLimited is WalkFiles with the whole-walk file-and-directory cap
 // injected, so the truncation branches are exercisable by a test at an
 // affordable scale. The shipped cap stays a const: adapters run concurrently,
 // and a mutable package-level cap would be shared state between them.
-func (c *SourceContext) walkFilesLimited(rel string, limit int) (paths []string, truncated bool) {
-	return c.walkFilesBounded(rel, limit, maxDirEntries)
+func (c *SourceContext) walkFilesLimited(rel string, limit int) (paths []string, truncated walkTruncation) {
+	return c.walkFilesBounded(rel, limit, c.listCap)
 }
 
 // walkFilesBounded is WalkFiles with both bounds injected — the whole-walk cap
 // (limit: regular files and directories) and the per-directory read bound
 // (perDir) — so each is exercisable by a test at an affordable scale.
 //
-// It holds a sub-root per directory: each child directory is opened with
-// os.Root.OpenRoot from its parent's already-open handle, so a descent opens one
+// It holds a sub-root per directory: each child directory is opened by
+// openWalkDir from its parent's already-open handle, so a descent opens one
 // component relative to that directory (O(1)) rather than re-resolving the whole
 // path from the containment root on every open (O(depth)). A chain of
 // directories therefore costs O(entries), not O(entries × depth). Each directory
@@ -395,22 +467,38 @@ func (c *SourceContext) walkFilesLimited(rel string, limit int) (paths []string,
 // cap applies.
 //
 // The os.Root containment guarantee the FS() walk had survives unchanged:
-// OpenRoot refuses any component that escapes the root, and a symlinked
-// directory is detected from its ReadDir type and skipped before it is ever
+// OpenRoot refuses any component that escapes the root, a child swapped for a
+// FIFO or device after its parent was listed is refused without blocking
+// (openWalkDir), and a symlinked directory is detected from its ReadDir type and skipped before it is ever
 // opened, so no symlink is ever followed out of the tree.
-func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths []string, truncated bool) {
+func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths []string, truncated walkTruncation) {
+	truncated = walkTruncation{limit: limit, perDir: perDir}
 	if c.root == nil {
-		return nil, false
+		return nil, truncated
 	}
 	start := path.Clean(filepath.ToSlash(rel))
 	if !fs.ValidPath(start) {
-		return nil, false
+		return nil, truncated
 	}
 	startRoot := c.root
 	if start != "." {
-		r, err := c.root.OpenRoot(filepath.FromSlash(start))
+		isDir, isFile := c.walkStart(start)
+		switch {
+		case isFile:
+			if c.pathIsIgnored(start) {
+				return nil, truncated
+			}
+			if limit < 1 {
+				truncated.stopped = true
+				return nil, truncated
+			}
+			return []string{start}, truncated
+		case !isDir:
+			return nil, truncated
+		}
+		r, err := openWalkDir(c.root, start)
 		if err != nil {
-			return nil, false
+			return nil, truncated
 		}
 		defer r.Close()
 		startRoot = r
@@ -423,7 +511,8 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 		if more {
 			// The directory held more entries than the per-directory bound: only
 			// the bound was materialised, exactly as ListDir bounds one listing.
-			truncated = true
+			// The walk goes on; the note names the directory that was cut.
+			truncated.noteOversized(prefix)
 		}
 		for _, e := range entries {
 			name := e.Name()
@@ -443,17 +532,17 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 				// holding nothing regular yields no path, so a file cap alone never
 				// fires and the walk would run to exhaustion over a foreign tree.
 				if dirs >= limit {
-					truncated = true
+					truncated.stopped = true
 					return true
 				}
 				dirs++
 				if depth+1 >= maxWalkDepth {
 					// Prune the chain, not the tree: the directory is counted but
 					// not descended into, and the truncation is reported either way.
-					truncated = true
+					truncated.pruned++
 					continue
 				}
-				sub, err := dirRoot.OpenRoot(name)
+				sub, err := openWalkDir(dirRoot, name)
 				if err != nil {
 					// Unreadable (or vanished) in a foreign tree: skip it and report
 					// only what could be read.
@@ -473,7 +562,7 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 				continue
 			}
 			if len(paths) >= limit {
-				truncated = true
+				truncated.stopped = true
 				return true
 			}
 			paths = append(paths, child)
@@ -483,6 +572,41 @@ func (c *SourceContext) walkFilesBounded(rel string, limit, perDir int) (paths [
 	walk(startRoot, start, 0)
 	sort.Strings(paths)
 	return paths, truncated
+}
+
+// walkStart classifies a non-dot walk start the way the whole-tree walk would
+// have met it, so a walk that begins below the root yields exactly the subset of
+// the whole walk beneath that start (iss-135). From "." the walk never enters a
+// walkSkipDirs directory, never follows a symlink, and yields a regular file; so
+// a start whose leading components include a skip-set directory or a symlink is
+// unreachable (neither dir nor file), a skip-set or symlinked leaf is not
+// entered, a regular-file leaf is yielded as itself, and anything else (a FIFO,
+// a device, a missing path) yields nothing. Each component is lstat'ed through
+// the containment root, which opens nothing; the descent that follows goes
+// through openWalkDir, so a leaf swapped after this check still cannot block it.
+func (c *SourceContext) walkStart(start string) (isDir, isFile bool) {
+	parts := strings.Split(start, "/")
+	for i, name := range parts {
+		info, err := c.root.Lstat(filepath.FromSlash(strings.Join(parts[:i+1], "/")))
+		if err != nil || info.Mode()&fs.ModeSymlink != 0 {
+			return false, false
+		}
+		last := i == len(parts)-1
+		switch {
+		case info.IsDir():
+			if isSkipDir(name) {
+				return false, false
+			}
+			if last {
+				return true, false
+			}
+		case last && info.Mode().IsRegular():
+			return false, true
+		default:
+			return false, false
+		}
+	}
+	return false, false
 }
 
 // pathIsIgnored reports whether git ignores rel. It answers false whenever it
@@ -540,10 +664,20 @@ func (c *SourceContext) pathIsIgnored(rel string) bool {
 func (c *SourceContext) IgnoredAreIncluded() bool { return c.includeIgnored }
 
 // readDirBounded reads at most bound entries from the directory dirRoot points
-// at, sorted by name for a deterministic walk, and reports whether the directory
-// held more than bound. It materialises at most bound+1 entries, so a directory
-// of millions cannot balloon memory here — the shared per-directory guard ListDir
-// applies with ReadDir(maxDirEntries).
+// at, returns them sorted by name, and reports whether the directory held more
+// than bound. It materialises at most bound+1 entries, so a directory of millions
+// cannot balloon memory here — the shared per-directory guard ListDir applies
+// with ReadDir(maxDirEntries).
+//
+// Determinism holds only at or under the bound (iss-134). There the entries are
+// the whole directory and the walk over it is reproducible. Above it, WHICH bound
+// entries come back is the filesystem's readdir order, which differs between
+// filesystems and is not promised stable between runs; only their order is
+// fixed. The caller learns this from more and must say so: the probe walk names
+// the directory in its truncation note, and embark refuses the lifeboat.
+// Selecting the bound smallest names instead would mean reading the whole
+// listing — the unbounded pass over a hostile directory this guard exists to
+// avoid.
 func readDirBounded(dirRoot *os.Root, bound int) (entries []fs.DirEntry, more bool) {
 	f, err := dirRoot.Open(".")
 	if err != nil {
@@ -559,6 +693,36 @@ func readDirBounded(dirRoot *os.Root, bound int) (entries []fs.DirEntry, more bo
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	return entries, more
+}
+
+// openWalkDir opens the directory rel (one entry name, or a slash-separated
+// path) beneath dirRoot as a sub-root for a walk's descent, and refuses anything
+// that is not a directory at the moment of the open without ever blocking on it
+// (iss-337).
+//
+// The hazard is the window between a parent's ReadDir reporting an entry as a
+// directory and the descent opening it: a hostile tree can swap the directory
+// for a FIFO or a device in between. os.Root.OpenRoot(rel) opens its FINAL
+// component with O_NOFOLLOW|O_CLOEXEC only — no O_DIRECTORY and no O_NONBLOCK,
+// and it takes no flags — so opening a swapped-in FIFO blocks in the kernel
+// until a writer appears, and the probe hangs.
+//
+// The descent therefore asks for rel + "/.": every component of rel becomes an
+// INTERMEDIATE component, which os.Root opens with O_DIRECTORY|O_NOFOLLOW (its
+// rootOpenDir), and the final "." is the just-opened directory itself. The
+// kernel checks O_DIRECTORY before it opens the file, so a FIFO or device is
+// refused with ENOTDIR and nothing waits. Containment is os.Root's exactly as
+// before: a symlinked component still resolves only inside the root.
+//
+// A raw openat(O_DIRECTORY|O_NOFOLLOW|O_NONBLOCK) on the parent descriptor is
+// the other form of the same fix, and is not taken: the syscall package exports
+// Openat on linux but not on darwin, a release target, and the portable spelling
+// needs golang.org/x/sys/unix as a direct dependency. The property rests on
+// os.Root opening intermediate components as directories, which is internal to
+// the standard library, so TestWalkDescentDoesNotBlockOnFifo holds it: a
+// toolchain that changes it fails that test rather than hanging a probe.
+func openWalkDir(dirRoot *os.Root, rel string) (*os.Root, error) {
+	return dirRoot.OpenRoot(rel + "/.")
 }
 
 // isSkipDir reports whether a directory of this name is one WalkFiles never
