@@ -10,8 +10,8 @@ found_at: "internal/core/history/store.go"
 details: "history.Capture validates source kind against validKinds = {native, specstory-import} (internal/core/history/store.go). A transcript from any other harness can only be stored by declaring it 'native', so the record asserts abcd's own hook produced it and the true source is lost. source_kind is the only provenance channel on the record; nothing else on the frontmatter names a harness."
 suggested_fix: "Separate the ingest route from the source harness before the cross-agent import path is built. Either widen the kind vocabulary, or add a distinct source-harness field and let kind describe only the route. Note that specstory-import already conflates the two, so the seam pre-declared in the brief inherits the same defect."
 related_issues: ["iss-217"]
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: source_kind vocabulary (harness vs ingest route) before second-harness capture ships). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Is source_kind keyed by harness or by ingest route, decided before second-harness capture ships?"
 ---
 
 the history store's validKinds drops the source harness of an imported transcript
