@@ -567,7 +567,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			}
 			// A generic account name is ordinary vocabulary wherever it does
 			// not stand as an account (iss-236, iss-2609061504302157).
-			if m.localGeneric && !standsAsAccountName(line, loc[0], loc[1]) {
+			if m.localGeneric && !standsAsAccountName(line, loc[0], loc[1], m.id.HomePath) {
 				return
 			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
@@ -632,10 +632,15 @@ var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-
 // standsAsAccountName reports whether line[start:end] stands where an account
 // name stands rather than as a word: the segment after a home root, a tilde
 // user ("~name"), or inside the local part of an address or login
-// ("name@host", "name.surname@example.com"). These are the positions a real
+// ("name@host", "name.surname@example.com"), or closing the caller's own home
+// literal wherever it sits ("…0/root/deck.key" under HOME=/root, which
+// home_path_self's leading anchor declines). These are the positions a real
 // home path or login leaks from, so a generic account name is still reported
 // there, at its hard_fail floor.
-func standsAsAccountName(line string, start, end int) bool {
+func standsAsAccountName(line string, start, end int, home string) bool {
+	if home != "" && strings.HasSuffix(strings.ToLower(line[:end]), strings.ToLower(home)) {
+		return true
+	}
 	lower := strings.ToLower(line[:start])
 	for _, p := range accountRootPrefixes {
 		if strings.HasSuffix(lower, p) {

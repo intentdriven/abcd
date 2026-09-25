@@ -84,6 +84,24 @@ func TestLocalUsernameGenericAccountNameStillCaughtWhereAnAccountStands(t *testi
 	}
 }
 
+// A generic account name is still reported where it closes the caller's own
+// home literal, whatever precedes it: under HOME=/root a blob-shaped
+// "…0/root/deck.key" is declined by home_path_self's leading anchor, and the
+// username rule is the one that catches it (TestBytesAndTextAgreeOnAnAlnumPrecededHome
+// in the launch package pins the payload half).
+func TestLocalUsernameGenericAccountNameStillCaughtInTheHomeLiteral(t *testing.T) {
+	id := Identity{HomePath: "/root", HomeUser: "root"}
+	line := "tEXtCreator0/root/deck.key"
+	f := ScanText(line, id, DefaultPatterns(), DefaultIdentitySeverities(), "f")
+	if !hasKind(f, kindLocalUser) {
+		t.Errorf("the generic account name closing the caller's home literal was not reported: %+v", f)
+	}
+	// The same word elsewhere is still vocabulary.
+	if f := ScanText("the repository root is clean", id, DefaultPatterns(), DefaultIdentitySeverities(), "f"); hasKind(f, kindLocalUser) {
+		t.Errorf("ordinary vocabulary reported under HOME=/root: %+v", f)
+	}
+}
+
 // A name that is not generic keeps the whole-word rule: a bare mention in prose
 // is the caller's login and a hard_fail, and so is a flag-shaped one, because
 // "--<name>" is also how a message is signed.
