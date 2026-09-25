@@ -174,7 +174,8 @@ _None open; decisions 2 and 3 settle the four this record carried._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-cdad1c08a756 -->
+Fidelity review OWED (receipt rcp-cdad1c08a756).
 
 ## Grounds
 
