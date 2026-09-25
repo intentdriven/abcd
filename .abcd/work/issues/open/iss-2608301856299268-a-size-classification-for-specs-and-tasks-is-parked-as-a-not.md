@@ -9,8 +9,8 @@ found_during: "phase-boundary-parking"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/research/notes"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: design-and-file or reject spec/task size classification (research note 2026-08-30), paired with token metering). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): File or reject spec/task size classification, decided with token metering?"
 ---
 
 a size classification for specs and tasks is parked as a note and owes a design and filing decision in a future session

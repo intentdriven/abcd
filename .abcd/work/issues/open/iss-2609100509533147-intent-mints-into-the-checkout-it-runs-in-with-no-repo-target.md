@@ -9,8 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (intent) / related iss-89"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (planning owed: a repo/worktree target for intent minting (primary worktree by default); related to iss-89). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Should intent minting target the primary worktree by default?"
 ---
 
 `abcd intent` creates its draft in the checkout it runs in, with no repository or worktree target, which bites when the record store is being edited across several worktrees at once.
