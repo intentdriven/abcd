@@ -2172,7 +2172,7 @@ func TestAnAdmissionNamingAnItemOutsideTheWideningPositionIsRefused(t *testing.T
 // pins the tail's current wording, so a rewording fails there before the
 // stand-down's absence can pass for nothing.
 func TestTheBucketBlockerClaimsAReportLineOnlyForAFileTheFamilyReads(t *testing.T) {
-	const tail = "goes on being reported as unanswered"
+	const tail = "no line reports that an answer was written"
 	root := admissionCorpus(t)
 	// Read by the family: its filename is a bare handle.
 	writeFile(t, root, "work/issues/readings/rdg-9/rdi-8.md",
@@ -2675,5 +2675,47 @@ func TestRetiredPromoteStampIsNamedWithItsMigration(t *testing.T) {
 	if !findingWith(fs, filepath.Join("work", "issues", "open", "iss-2-a-finding.md"), ruleRecordSchema,
 		"'related_intents'; run `abcd capture migrate --apply`") {
 		t.Fatalf("a retired promoted_to must be a finding naming its successor and the migration: %+v", fs)
+	}
+}
+
+// The padding and bucket legs say only what the walk establishes. They once
+// ended on "goes on being reported as unanswered", which is conditional in fact:
+// a widening item carrying a declined or held disposition IS answered, and the
+// legs never read a disposition. So they say, as the position leg does, that the
+// record counts for nothing and no line reports an answer was written for the
+// item it names (iss-2608301755006875).
+func TestTheJoinLegsClaimNothingAboutTheReportTheyDidNotRead(t *testing.T) {
+	const claim = "reported as unanswered"
+	const said = "no line reports that an answer was written"
+	adm := func(run, proposal string) string {
+		return "---\nschema_version: 1\nid: adm-3\nrun: " + run + "\nproposal: " + proposal +
+			"\ngrounds: the frame does not already hold it\n---\n\n"
+	}
+	for name, c := range map[string]struct{ dir, body string }{
+		"padding": {"rdg-1", adm("rdg-1", "rdi-2")},
+		"bucket":  {"rdg-9", adm("rdg-9", "rdi-02")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, "rec/.keep", "")
+			writeFile(t, root, "work/issues/readings/rdg-1/rdi-02.md",
+				"---\nschema_version: 1\nid: rdi-2\nrun: rdg-1\nmanifest: sha256:beef\nposition: widening\n"+
+					"regime: constitutive\npattern: a stated constraint\n---\n\n")
+			writeFile(t, root, "work/issues/readings/rdg-9/rdi-5.md",
+				"---\nschema_version: 1\nid: rdi-5\nrun: rdg-9\nmanifest: sha256:beef\nposition: widening\n"+
+					"regime: constitutive\npattern: a stated constraint\n---\n\n")
+			writeFile(t, root, "work/issues/admissions/"+c.dir+"/adm-3.md", c.body)
+			fs, err := Lint(admissionSchemaConfig(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rel := filepath.Join("work", "issues", "admissions", c.dir, "adm-3.md")
+			if findingWith(fs, rel, ruleRecordSchema, claim) {
+				t.Errorf("the %s leg asserts what the report says without reading it: %+v", name, fs)
+			}
+			if !findingWith(fs, rel, ruleRecordSchema, said) {
+				t.Errorf("the %s leg must say no line reports an answer was written: %+v", name, fs)
+			}
+		})
 	}
 }

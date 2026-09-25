@@ -1034,7 +1034,8 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 					Message: join.field + " declares '" + value + "' while the " + target.noun() +
 						" it names is filed as '" + filepath.Base(target.rel) + "'; what reads this " + r.noun() +
 						" matches the value as written against the name that file carries, so this spelling admits " +
-						"nothing and the " + target.noun() + " it names goes on being reported as unanswered",
+						"nothing: it counts for nothing, and no line reports that an answer was written for the " +
+						target.noun() + " it names",
 				})
 				continue
 			}
@@ -1086,9 +1087,14 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 		// leading clause is true of every cross-bucket target, so the finding stands
 		// either way; sending the operator to find a line that does not exist is what
 		// does not (iss-2608301656193936).
+		//
+		// The tail says only what the walk establishes, as the position leg does:
+		// no line reports an answer written by THIS record. It once said the item
+		// "goes on being reported as unanswered", which is false for an item a
+		// declined or held disposition answers, and this leg reads no disposition
+		// (iss-2608301755006875).
 		if stemIsHandle {
-			msg += ", and the " + target.noun() +
-				" it names goes on being reported as unanswered with no sign that an answer was written"
+			msg += ", and no line reports that an answer was written for the " + target.noun() + " it names"
 		}
 		out = append(out, Finding{
 			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
