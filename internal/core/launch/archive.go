@@ -322,6 +322,14 @@ func ArchiveReleaseURL(repoRoot, version string) (string, error) {
 	return repo + "/releases/download/v" + version + "/" + PluginArchiveName(name, version), nil
 }
 
+// ReleaseRepository is the https://github.com/<owner>/<repo> address the
+// working tree's plugin manifest names: where the plugin's releases, and their
+// assets, are published.
+func ReleaseRepository(repoRoot string) (string, error) {
+	_, repo, err := archiveIdentity(repoRoot)
+	return repo, err
+}
+
 // archiveIdentity reads the plugin name and the repository address from the
 // working tree's plugin manifest.
 func archiveIdentity(repoRoot string) (name, repo string, err error) {

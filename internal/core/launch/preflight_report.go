@@ -47,19 +47,27 @@ type PreflightReport struct {
 	// Dirty every uncommitted path the gate saw.
 	AllowDirty bool     `json:"allow_dirty"`
 	Dirty      []string `json:"dirty,omitempty"`
+	// Parity is the file-level diff against the previous release's payload,
+	// and DeepSmoke the deep installability tier, when the run made them.
+	Parity    *ParityReport    `json:"parity,omitempty"`
+	DeepSmoke *DeepSmokeReport `json:"deep_smoke,omitempty"`
 }
 
 // PreflightReport is the preview's pre-flight record. The clock is the
 // caller's: a report is a durable artefact, and a core that read the clock
 // itself would put an unpinnable input inside it.
 func (r DryRunReport) PreflightReport(at time.Time) PreflightReport {
-	return newPreflightReport(ModePreview, at, r.Version, r.WouldRefuseOn, r.Warnings, r.Gates, false, nil)
+	rep := newPreflightReport(ModePreview, at, r.Version, r.WouldRefuseOn, r.Warnings, r.Gates, false, nil)
+	rep.Parity, rep.DeepSmoke = r.Parity, r.DeepSmoke
+	return rep
 }
 
 // PreflightReport is the cut's pre-flight record, for the version the cut will
 // carry (empty when the cut has not derived one yet).
 func (p PayloadPrecheck) PreflightReport(at time.Time, version string) PreflightReport {
-	return newPreflightReport(ModeCut, at, version, p.Refusals, p.Warnings, p.Gates, p.AllowDirty, p.Dirty)
+	rep := newPreflightReport(ModeCut, at, version, p.Refusals, p.Warnings, p.Gates, p.AllowDirty, p.Dirty)
+	rep.Parity, rep.DeepSmoke = p.Parity, p.DeepSmoke
+	return rep
 }
 
 func newPreflightReport(mode string, at time.Time, version string, refusals, warnings []string,
@@ -141,6 +149,9 @@ func (rep PreflightReport) Markdown() string {
 	section("Warnings", rep.Warnings)
 	if rep.AllowDirty {
 		section("Carried by --allow-dirty", rep.Dirty)
+	}
+	if rep.Parity != nil {
+		b.WriteString(rep.Parity.Markdown())
 	}
 	b.WriteString("\n## Gates\n\n| Gate | Tier | Status | Detail |\n|---|---|---|---|\n")
 	for _, g := range rep.Gates {

@@ -1360,7 +1360,28 @@
       "hidden": false,
       "flags": [
         {
+          "name": "baseline",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "deep-smoke",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "fetch-baseline",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1434,6 +1455,13 @@
           "hidden": false
         },
         {
+          "name": "fetch-baseline",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "payload-dir",
           "shorthand": "",
           "type": "string",
@@ -1441,6 +1469,11 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd launch smoke-pages",
+      "hidden": true,
+      "flags": []
     },
     {
       "path": "abcd lint",

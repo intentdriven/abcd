@@ -149,6 +149,11 @@ type PayloadPrecheck struct {
 	// assertions the render makes over its written output, made early enough to
 	// refuse before any durable write.
 	Smoke SmokeReport
+	// DeepSmoke is the deep installability tier, when the caller asked for it.
+	DeepSmoke *DeepSmokeReport
+	// Parity is the diff against the previous release's payload, when the
+	// caller asked for it.
+	Parity *ParityReport
 	// Gates are every gate the precheck ran over the resolved bundle — the scan,
 	// the smoke and the pre-flight suite — in the shape the preview reports.
 	Gates []GateSummary
@@ -171,6 +176,13 @@ type PrecheckOptions struct {
 	// DocAudit is the documentation audit, measured by the caller. Nil reports
 	// the row as not armed.
 	DocAudit *DocAuditPreflight
+	// DeepSmoke, when set, runs the installability smoke's deep tier through
+	// this isolated page runner, over a private materialised copy of the
+	// payload it removes. The cut sets it; the archive gate's render does not.
+	DeepSmoke PageRunner
+	// Parity, when set, diffs the payload against the previous release's and
+	// refuses on a baseline that cannot be read.
+	Parity *ParityInput
 }
 
 // PrecheckRefusal is a precheck that refused on one or more gates. It carries
@@ -195,8 +207,9 @@ func (r *PrecheckRefusal) Unwrap() []error { return r.errs }
 // PrecheckPayload resolves the release payload and runs every refusal a render
 // makes that does not depend on the version.
 //
-// It performs ZERO writes — not even the destination directory — so a caller may
-// run it speculatively and a refused cut leaves the filesystem exactly as it
+// It performs ZERO writes to the repository or the destination — not even the
+// destination directory; the deep tier and the parity render write only
+// private temporary trees they remove — so a caller may run it speculatively and a refused cut leaves the filesystem exactly as it
 // found it. RenderPayload runs it as its own first step, so the two can never
 // disagree about what is refusable.
 //
@@ -208,7 +221,9 @@ func (r *PrecheckRefusal) Unwrap() []error { return r.errs }
 // (a *PrecheckRefusal): the secret/PII scan, the pre-flight suite (marker
 // blocks, change narration, the dirty tree per opts.Dirty, and the warn tier
 // when the repository configures it strict), either manifest missing from the
-// payload, and a declared surface the payload does not carry.
+// payload, and a declared surface the payload does not carry; and, when the
+// caller asks for them, a page the deep smoke tier cannot load and a parity
+// baseline that cannot be read.
 func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPrecheck, error) {
 	var pre PayloadPrecheck
 
@@ -330,6 +345,23 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 	if !pre.Smoke.OK {
 		reason := strings.Join(smokeDetails(pre.Smoke), "; ")
 		refuse(fmt.Errorf("%w: %s", ErrPayloadUninstallable, reason), "installability: "+reason)
+	}
+
+	if opts.DeepSmoke != nil {
+		deep := smokeDeepOverBundle(bundle, opts.DeepSmoke)
+		pre.DeepSmoke = &deep
+		pre.Gates = append(pre.Gates, deepSmokeGate(&deep))
+		for _, reason := range deepSmokeRefusals(&deep) {
+			refuse(fmt.Errorf("%w: %s", ErrPayloadPageUnloadable, reason), reason)
+		}
+	}
+	if opts.Parity != nil {
+		parity := PayloadParity(pre.Root, bundle, *opts.Parity)
+		pre.Parity = &parity
+		pre.Gates = append(pre.Gates, parityGate(&parity))
+		for _, reason := range parityRefusals(&parity) {
+			refuse(fmt.Errorf("%w: %s", ErrParityBaselineUnreadable, parity.RefusalReason), reason)
+		}
 	}
 
 	if len(refusals) > 0 {

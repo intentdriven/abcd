@@ -1134,7 +1134,10 @@ Preview the public launch bundle and release gates (--dry-run required; read-onl
 **Flags:**
 
 ```
-      --dry-run   preview the launch bundle and gates without publishing
+      --baseline string   the release tag the payload parity diff measures against (default: the newest release tag)
+      --deep-smoke        also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)
+      --dry-run           preview the launch bundle and gates without publishing
+      --fetch-baseline    read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
 ```
 
 #### `abcd launch archive`
@@ -1168,13 +1171,14 @@ Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbo
 
 Cut a release: derive the version and the record set from what shipped (exit 1 when the cut refuses)
 
-**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [flags]`
+**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [flags]`
 
 **Flags:**
 
 ```
       --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
+      --fetch-baseline          read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
 ```
 

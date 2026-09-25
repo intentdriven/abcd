@@ -286,7 +286,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newGuardCommand(&asJSON))
 	root.AddCommand(newIdentityCommand(&asJSON))
 
-	var launchDryRun bool
+	var launchDryRun, launchDeepSmoke, launchFetchBaseline bool
+	var launchBaseline string
 	launchCmd := &cobra.Command{
 		Use:   "launch",
 		Short: "Preview the public launch bundle and release gates (--dry-run required; read-only)",
@@ -299,9 +300,24 @@ func NewRootCommand() *cobra.Command {
 			if !launchDryRun {
 				return fmt.Errorf("abcd launch: pass --dry-run to preview the bundle (publishing is not wired at this stage)")
 			}
+			// The parity diff measures the payload against the previous
+			// release's, rendered fresh at its tag unless --fetch-baseline asks
+			// for the published archive (adr-38: the network answers only an
+			// explicit ask). A configured baseline that is wrong is an operand
+			// error, never a first launch.
+			parity, err := launchParityInput(cwd, launchBaseline, launchFetchBaseline, cmd.ErrOrStderr())
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch --dry-run: " + scrubPaths(err)}
+			}
+			var deep launch.PageRunner
+			if launchDeepSmoke {
+				deep = subprocessPageRunner
+			}
 			rep, err := launch.DryRun(launch.DryRunRequest{
-				RepoRoot: cwd,
-				Version:  publishedVersion(cwd),
+				RepoRoot:  cwd,
+				Parity:    parity,
+				DeepSmoke: deep,
+				Version:   publishedVersion(cwd),
 				// Grading the citation baseline needs the lint engine, which
 				// imports launch for its semver — so the measurement is taken
 				// HERE, where both are already in scope, and handed in as data.
@@ -334,6 +350,8 @@ func NewRootCommand() *cobra.Command {
 						fmt.Fprintf(w, "  receipts:       %s\n", termsafe.Sanitize(g.Detail))
 					}
 				}
+				renderDeepSmoke(w, rep.DeepSmoke)
+				renderParity(w, rep.Parity)
 				fmt.Fprintf(w, "  would publish:  %v\n", rep.WouldPublish)
 				for _, reason := range rep.WouldRefuseOn {
 					// Each reason embeds a raw repo filename (a control-char-rejected
@@ -357,6 +375,12 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 	launchCmd.Flags().BoolVar(&launchDryRun, "dry-run", false, "preview the launch bundle and gates without publishing")
+	launchCmd.Flags().BoolVar(&launchDeepSmoke, "deep-smoke", false,
+		"also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)")
+	launchCmd.Flags().StringVar(&launchBaseline, "baseline", "",
+		"the release tag the payload parity diff measures against (default: the newest release tag)")
+	launchCmd.Flags().BoolVar(&launchFetchBaseline, "fetch-baseline", false,
+		"read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)")
 	// `ship` is the release-cut verb: the dry-run above previews the launch
 	// BUNDLE, this cuts the RELEASE (version + changelog record set). They hang
 	// off one command because they gate the same event.
@@ -369,6 +393,9 @@ func NewRootCommand() *cobra.Command {
 	// auto-release.yml, runbook) into a managed repo that lacks it (itd-93). It
 	// extends 04-launch because launch already owns how a release is cut and gated.
 	launchCmd.AddCommand(newLaunchScaffoldCommand(&asJSON))
+	// `smoke-pages` is the deep installability tier's child process (itd-66):
+	// hidden and operator-internal, re-executed by the preview and the cut.
+	launchCmd.AddCommand(newLaunchSmokePagesCommand())
 	root.AddCommand(launchCmd)
 
 	root.AddCommand(newChangelogCommand(&asJSON))
