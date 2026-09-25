@@ -38,6 +38,14 @@ type Config struct {
 	// (iss-39); the spec-store checks (spec_lifecycle, spec_id_unique) still skip an
 	// exempt file. record_schema is cross-store and never consults this at all.
 	ExemptPaths []string `json:"exempt_paths"`
+	// NameRoots are repo-relative directories or files the name gate — the
+	// banned_tokens whose id carries the `names/` prefix, the public banlist
+	// layer — reads in addition to Roots. Every text file there is read, not only
+	// markdown (a script names a project as readily as a page does), and only the
+	// `names/` family runs: the rest of the family is a writing rule for the
+	// documentation, and a name ban is about the whole public surface (iss-279).
+	// exempt_paths and exempt_if_status apply as they do under Roots.
+	NameRoots []string `json:"name_roots"`
 	// ExemptIfStatus lists leading-frontmatter status: values that likewise
 	// exempt a file from the content-authoring checks (e.g. superseded records).
 	ExemptIfStatus []string `json:"exempt_if_status"`

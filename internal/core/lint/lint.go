@@ -215,6 +215,9 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 	}
 
+	// scanned is every file the per-root walk read with the whole token family,
+	// so the name-roots pass below never reports one twice.
+	scanned := map[string]bool{}
 	for _, root := range cfg.Roots {
 		// The walk reads committed files whose content AND paths a cloned repo
 		// controls through its committed .abcd/docs-lint.json / record-lint.json
@@ -252,6 +255,7 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			return nil, err
 		}
 		for _, fileAbs := range mdFiles {
+			scanned[fileAbs] = true
 			realPath, err := containedRealPath(repoRoot, fileAbs)
 			if err != nil {
 				return nil, &configError{"file " + quote(repoRel(repoRoot, fileAbs)) + " " + err.Error() +
@@ -384,6 +388,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			}
 			findings = append(findings, fs...)
 		}
+	}
+
+	if len(cfg.NameRoots) > 0 {
+		nf, err := lintNameRoots(cfg, repoRoot, scanned)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, nf...)
 	}
 
 	// stray_root_docs is repo-root scoped and non-recursive — independent of
@@ -2914,6 +2926,12 @@ func (s ignoredSet) sorted() []string {
 // markdownFilesPruned is markdownFiles skipping what ignored prunes. A nil set
 // prunes nothing.
 func markdownFilesPruned(rootAbs string, ignored *ignoredSet) ([]string, error) {
+	return filesPruned(rootAbs, ignored, hasMarkdownExt)
+}
+
+// filesPruned walks rootAbs for the files whose name keep admits, skipping what
+// ignored prunes, sorted.
+func filesPruned(rootAbs string, ignored *ignoredSet, keep func(name string) bool) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(rootAbs, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -2935,7 +2953,7 @@ func markdownFilesPruned(rootAbs string, ignored *ignoredSet) ([]string, error) 
 			}
 			return nil
 		}
-		if !d.IsDir() && hasMarkdownExt(d.Name()) {
+		if !d.IsDir() && keep(d.Name()) {
 			files = append(files, path)
 		}
 		return nil
@@ -3003,4 +3021,88 @@ func sortFindings(f []Finding) {
 		}
 		return f[i].Message < f[j].Message
 	})
+}
+
+// nameTokenPrefix is the id namespace of the name gate: the public banlist
+// layer's entries (banlist.PublicIDPrefix, restated because the banlist package
+// imports this one).
+const nameTokenPrefix = "names/"
+
+// lintNameRoots runs the name gate — the `names/` banned tokens alone — over
+// cfg.NameRoots (iss-279). A name ban is about the whole public surface, not
+// the documentation's writing, so it reads every text file there, markdown or
+// not; the rest of the token family stays a docs rule. Roots are contained and
+// gitignore-pruned exactly as the per-root walk's are, a file that walk already
+// read is not read twice, a binary file (a NUL in it) is not text, and
+// exempt_paths / exempt_if_status excuse a file here as they do there.
+func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Finding, error) {
+	var names []BannedToken
+	for _, t := range cfg.BannedTokens {
+		if strings.HasPrefix(t.ID, nameTokenPrefix) {
+			names = append(names, t)
+		}
+	}
+	checker, err := NewTokenChecker(names)
+	if err != nil || checker.Len() == 0 {
+		return nil, err
+	}
+	var out []Finding
+	for _, root := range cfg.NameRoots {
+		if err := containedRepoPath(root); err != nil {
+			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		rootAbs := filepath.Join(repoRoot, root)
+		if err := resolvedInsideRoot(repoRoot, rootAbs); err != nil {
+			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		if _, err := os.Stat(rootAbs); err != nil {
+			if os.IsNotExist(err) {
+				return nil, &configError{"name_roots entry " + quote(root) +
+					" does not exist; a configured root that does not resolve silently disarms the name gate for that tree — fix the list or create the tree"}
+			}
+			return nil, err
+		}
+		ignored := ignoredUnderRoot(repoRoot, root)
+		files, err := filesPruned(rootAbs, &ignored, func(string) bool { return true })
+		if err != nil {
+			return nil, err
+		}
+		for _, fileAbs := range files {
+			if scanned[fileAbs] {
+				continue
+			}
+			scanned[fileAbs] = true
+			rel := repoRel(repoRoot, fileAbs)
+			if contentExempt(rel, nil, cfg) {
+				continue
+			}
+			realPath, err := containedRealPath(repoRoot, fileAbs)
+			if err != nil {
+				return nil, &configError{"file " + quote(rel) + " " + err.Error() +
+					"; the lint reads only inside the repository"}
+			}
+			if st, err := os.Stat(realPath); err != nil || !st.Mode().IsRegular() {
+				continue
+			}
+			content, err := fsutil.ReadGuarded(realPath, citationPageSizeLimit)
+			if err != nil {
+				return nil, err
+			}
+			if strings.IndexByte(string(content), 0) >= 0 {
+				continue
+			}
+			lines := strings.Split(string(content), "\n")
+			if contentExempt(rel, frontmatterFields(lines), cfg) {
+				continue
+			}
+			mask := make([]bool, len(lines))
+			if hasMarkdownExt(fileAbs) {
+				mask = fenceMask(lines)
+			}
+			out = append(out, checker.lintLines(rel, lines, mask)...)
+		}
+	}
+	return out, nil
 }

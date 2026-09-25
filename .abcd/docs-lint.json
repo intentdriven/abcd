@@ -3,6 +3,12 @@
     "docs",
     "README.md"
   ],
+  "name_roots": [
+    ".abcd",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "scripts"
+  ],
   "banned_tokens": [
     {
       "id": "present_tense/previously",
@@ -293,6 +299,10 @@
       "block_after_days": 365
     }
   },
-  "exempt_paths": [],
+  "exempt_paths": [
+    ".abcd/docs-lint.json",
+    ".abcd/development/research/",
+    ".abcd/work/reviews/"
+  ],
   "exempt_if_status": []
 }

@@ -21,6 +21,10 @@ would have to contain the very string it forbids.
 | public | `.abcd/docs-lint.json` (the `banned_tokens` family) | `abcd docs lint` in CI, with a per-line escape | entries render in full |
 | private | `.abcd/.work.local/private-names.txt` (gitignored) | the committed `.githooks/pre-commit` and `.githooks/pre-merge-commit` guards, on this machine only | entries render **by key only** |
 
+A public entry reads the lint's `roots` and, beyond them, its `name_roots`:
+every text file under those trees, not only markdown, so a name ban reaches the
+whole public surface a repository declares there.
+
 ## Render both layers (bare)
 
 ```bash
