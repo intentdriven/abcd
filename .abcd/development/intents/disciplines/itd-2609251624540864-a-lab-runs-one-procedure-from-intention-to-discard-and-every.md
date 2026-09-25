@@ -187,7 +187,7 @@ never a live checkout.
 ## Staging
 
 The mechanised rungs are the `abcd lab` verb family
-([itd-2609212137128014](../planned/itd-2609212137128014-abcd-lab-mechanises-the-lab-conventions-three-hand-run.md)):
+([itd-2609212137128014](../shipped/itd-2609212137128014-abcd-lab-mechanises-the-lab-conventions-three-hand-run.md)):
 the store and the snapshot at the pin, the preflight's harness-isolation and
 dual-binary checks, probe-record scaffolding, the retraction sweep, the harvest's
 citation check and its section shape, and the halt a gate refusal holds. The
