@@ -142,7 +142,7 @@ jobs:
         run: go run ./cmd/record-lint
 
       - name: Docs-lint (docs-currency gate)
-        run: go run ./cmd/abcd docs lint
+        run: go run ./cmd/abcd docs lint --release-gate
 
       - name: Reviews-charter discipline (RD001-RD003)
         run: bash scripts/check-reviews.sh
