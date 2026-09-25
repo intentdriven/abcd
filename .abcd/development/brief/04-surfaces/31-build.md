@@ -86,7 +86,9 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, another schema version, or a file stored under a run
-id it does not name.
+id it does not name. A state file or run directory that is a symlink, or that
+the filesystem will not hand over, is refused in the same shape (exit 2, naming
+the file and the remedy), never followed.
 
 The state holds the run's key, intent, spec and driver (the host session, by
 default); the window clock the pacing intent writes (`window_started_at`,

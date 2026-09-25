@@ -621,6 +621,58 @@ func TestReadStateFailsClosed(t *testing.T) {
 	}
 }
 
+// TestASymlinkedRunStateIsRefusedInTheRefusalShape: a state file or a run
+// directory that is a symlink out of the checkout fails closed as the loop's
+// refusal — the step, the reason naming the file, the remedy — not as a
+// generic error, from the direct read and from the listing alike.
+func TestASymlinkedRunStateIsRefusedInTheRefusalShape(t *testing.T) {
+	t.Run("the state file", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		start, err := Start(repo.Root(), "itd-10", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
+		outside := filepath.Join(t.TempDir(), "state.json")
+		if err := os.WriteFile(outside, stateBytes(t, repo.Root(), start.RunID), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, path); err != nil {
+			t.Fatal(err)
+		}
+		_, err = ReadState(repo.Root(), start.RunID)
+		if r := mustRefusal(t, err); r.Step != "state" || !strings.Contains(r.Reason, StateRelPath(start.RunID)) {
+			t.Fatalf("want the state file named at the state step: %+v", r)
+		}
+		_, err = Runs(repo.Root())
+		mustRefusal(t, err)
+	})
+	t.Run("the run directory", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		start, err := Start(repo.Root(), "itd-10", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), start.RunID)
+		outside := filepath.Join(t.TempDir(), start.RunID)
+		if err := os.Rename(dir, outside); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, dir); err != nil {
+			t.Fatal(err)
+		}
+		_, err = Runs(repo.Root())
+		if r := mustRefusal(t, err); r.Step != "state" {
+			t.Fatalf("want the state step: %+v", r)
+		}
+		_, err = Start(repo.Root(), "itd-10", Options{})
+		mustRefusal(t, err)
+	})
+}
+
 // TestResolveNamesTheOnlyLiveRun: a call without a run id addresses the one
 // live run, and is refused naming them when there are several or none.
 func TestResolveNamesTheOnlyLiveRun(t *testing.T) {

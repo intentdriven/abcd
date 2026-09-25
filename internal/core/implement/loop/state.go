@@ -255,7 +255,11 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 			"name a run `abcd implement status` lists, or start one with `abcd build <itd-N>`")
 	}
 	if err != nil {
-		return State{}, fmt.Errorf("reading %s: %w", rel, err)
+		// A symlinked file or run directory, or one the filesystem will not
+		// hand over, fails closed in the refusal shape: it is not a file the
+		// loop wrote.
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s cannot be read as the run's state: %v", rel, err),
+			"the loop writes a regular file in a real directory; restore that, or remove the run directory "+runRel(runID))
 	}
 	var st State
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -299,7 +303,8 @@ func runIDs(root *os.Root) ([]string, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("listing %s: %w", RunRelDir, err)
+		return nil, refuse("state", "", "", fmt.Sprintf("%s cannot be listed: %v", RunRelDir, err),
+			"the loop creates it as a real directory; restore that, or remove it")
 	}
 	defer f.Close()
 	names, err := f.Readdirnames(-1)
