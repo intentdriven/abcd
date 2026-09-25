@@ -234,6 +234,28 @@ a `<source-repo>` that is not a real directory, or an unreadable/oversize/malfor
 payload). The audit files are a mutable synthesis layer and are **not** part of
 `manifest_sha256`.
 
+**Model-tier routing.** Each delegated ingest (`graveyard`, and `principles`,
+`press-release` and `review` given their payload flag) dispatches its agent, and
+each resolves that agent's model tier before anything else runs: an invocation
+override, over the repository's `.abcd/config/oracle-routing.json`, over the
+machine's `~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which
+applies only once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone.
+There is no emit step here, so run the agent at the tier you mean to and pass
+that route as `--route` to the ingest, which records it as an override. Without
+its payload flag a synthesis verb runs its deterministic mode, dispatches no
+agent, and refuses `--route`. The ingest's `--json` result carries a `route`
+receipt (`tier_asked`, `connection_tried`, `connection_used`, `fallback_reason`,
+`override`, `settings_sent`, `model_reported`) and its text a `route:` line;
+relay it with the result. When no configured provider can serve the tier, one
+stderr line says the step goes through the harness instead. A `--route` naming
+an agent this invocation does not dispatch, a tier outside the set, a connection
+this machine has not configured, or a routing table that cannot be read exits 2
+before anything is written. With no table accepted and no `--route`, the step
+asks for `host-decides` and nothing is printed.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails

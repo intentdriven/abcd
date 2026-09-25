@@ -52,7 +52,7 @@ const DefaultRefreshBackstop = 15
 // InjectResult is the outcome of one prompt-router evaluation. Text is empty
 // when nothing new is injected (a healthy no-match renders zero model-facing
 // tokens, per D3). Sources says, per injected name, which layer the domain
-// came from (SourceBundled or SourceRepo): the names alone cannot, and the
+// came from (SourceBundled, SourceUser or SourceRepo): the names alone cannot, and the
 // out-of-band diagnostic must say whose words went into the context.
 type InjectResult struct {
 	Text     string
@@ -62,16 +62,13 @@ type InjectResult struct {
 }
 
 // Labels returns the injected names in order, each labelled the way the
-// rendered heading is — "PII (repo override)" for a repo-sourced domain, the
-// bare name otherwise — so the diagnostic and the block agree byte for byte.
+// rendered heading is — "PII (repo override)" for a repo-sourced domain,
+// "PII (user override)" for a user-scope one, the bare name otherwise — so the
+// diagnostic and the block agree byte for byte.
 func (r InjectResult) Labels() []string {
 	out := make([]string, 0, len(r.Injected))
 	for _, name := range r.Injected {
-		if r.Sources[name] == SourceRepo {
-			out = append(out, name+" (repo override)")
-			continue
-		}
-		out = append(out, name)
+		out = append(out, Label(name, r.Sources[name]))
 	}
 	return out
 }

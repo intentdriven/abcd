@@ -74,7 +74,7 @@ Install or update abcd in this repo (idempotent)
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, which needs an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)
+      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)
 ```
 
 #### `abcd ahoy remote`
@@ -335,6 +335,7 @@ Validate host-produced lesson JSON against a packed lifeboat and write the survi
 
 ```
       --lessons-json string   path to the host-produced lesson JSON (or - for stdin)
+      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 #### `abcd disembark pack`
@@ -371,6 +372,7 @@ Compose the lifeboat's press release (deterministic from the brief/spine, or val
 
 ```
       --press-release-json string   path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode
+      --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 #### `abcd disembark principles`
@@ -383,6 +385,7 @@ Distil principles from a packed lifeboat (deterministic from the ADRs, or valida
 
 ```
       --principles-json string   path to host-produced principle JSON (or - for stdin); absent runs deterministic mode
+      --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 #### `abcd disembark probe`
@@ -407,6 +410,7 @@ Review a packed lifeboat against its source repo — a registered verdict and ci
 
 ```
       --review-json string   path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
+      --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 ### `abcd docs`
@@ -1055,8 +1059,9 @@ Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest 
 **Flags:**
 
 ```
-      --issue-drift   walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
-      --strict        with --issue-drift: exit 1 when any finding is reported (the CI mode)
+      --issue-drift         walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
+      --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --strict              with --issue-drift: exit 1 when any finding is reported (the CI mode)
 ```
 
 ##### `abcd intent audit ingest`
@@ -1068,7 +1073,23 @@ Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
 **Flags:**
 
 ```
+      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --verdict-json string   path to the intent-audit verdict JSON
+```
+
+#### `abcd intent condition`
+
+Read a shipped intent's scope-condition standing, or disposition one condition from a reading item or a delivered intent
+
+**Usage:** `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
+
+**Flags:**
+
+```
+      --disposition string     the condition's disposition: survived|narrowed|falsified|untested
+      --grounds string         why: held to the grounds substance floor, redacted before it is written
+      --narrowing string       what now holds: required on narrowed and refused on every other value
+      --occasioned-by string   what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)
 ```
 
 #### `abcd intent hold`
@@ -1176,6 +1197,7 @@ Cut a release: derive the version and the record set from what shipped (exit 1 w
 ```
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
+      --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 ### `abcd lint`
@@ -1400,6 +1422,7 @@ rolled_back_records on every exit, including a failing one.
 
 ```
       --reading-json string   path to the JSON the cold reading returned
+      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**
@@ -1448,14 +1471,17 @@ Render the active rule set; a positional DOMAIN scopes to one (read-only)
 **Usage:** `abcd rules [domain]`
 
 Render the rule set the modular-rules loader injects: the bundled default
-domains merged with this repo's .abcd/rules.json. Bare, it renders every active
-domain; a positional DOMAIN (case-insensitive) renders that one domain regardless
-of its state or the kill switch, so a dormant domain is still inspectable.
+domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+.abcd/rules.json, each layer per field, so the repo wins a field both set.
+Either file may be absent. Bare, it renders every active domain; a positional
+DOMAIN (case-insensitive) renders that one domain regardless of its state or the
+kill switch, so a dormant domain is still inspectable.
 
-Every domain says which layer it came from. A domain the repo override names —
-its rules replaced, its state changed, or a custom domain declared — renders as
-"## NAME (repo override)" here, in the injected block and in the hook's
-diagnostic, and carries "source": "repo" in --json; an untouched bundled domain
+Every domain says which layer it came from. A domain an override names — its
+rules replaced, its state changed, or a custom domain declared — renders as
+"## NAME (user override)" or "## NAME (repo override)" here, in the injected
+block and in the hook's diagnostic, and carries "source": "user" or "repo" in
+--json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.
 
 ### `abcd site`
@@ -1515,7 +1541,7 @@ Close a spec (open/ -> closed/); ship its linked intent when no open spec is lef
 ```
       --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)
+      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed
 ```
 
 ### `abcd statusline`

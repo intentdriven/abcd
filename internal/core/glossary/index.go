@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -230,32 +231,14 @@ func readTerm(root *os.Root, rel string) (Term, error) {
 // comparison so a UTF-8 byte-order mark ahead of the `---` does not read as
 // missing frontmatter.
 func frontmatterOpen(lines []string) int {
-	norm := func(idx int) string {
-		s := lines[idx]
-		if idx == 0 {
-			s = frontmatter.TrimBOM(s)
-		}
-		return strings.TrimSpace(s)
+	// The comments are mdrecord's to locate (iss-2609251518418878); a line
+	// holding prose after a comment's closer is content, not a comment.
+	i, col := mdrecord.FirstContent(lines)
+	if i >= len(lines) {
+		return -1
 	}
-	inComment := false
-	for i := 0; i < len(lines); i++ {
-		t := norm(i)
-		switch {
-		case inComment:
-			if strings.Contains(t, "-->") {
-				inComment = false
-			}
-		case t == "":
-			// blank line: skip.
-		case strings.HasPrefix(t, "<!--") && strings.HasSuffix(t, "-->"):
-			// a complete single-line comment: skip.
-		case strings.HasPrefix(t, "<!--"):
-			inComment = true
-		case t == "---":
-			return i
-		default:
-			return -1
-		}
+	if strings.TrimSpace(lines[i][col:]) == "---" && strings.TrimSpace(frontmatter.TrimBOM(lines[i][:col])) == "" {
+		return i
 	}
 	return -1
 }
