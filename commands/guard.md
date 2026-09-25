@@ -1,6 +1,6 @@
 ---
 name: guard
-description: Check a shell command against abcd's hazard registry before it runs, by invoking the abcd binary. Read-only; performs zero writes.
+description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb."
 argument-hint: "[check <command> | hook]"
 block: agents
 ---

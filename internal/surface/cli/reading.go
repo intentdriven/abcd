@@ -45,8 +45,7 @@ import (
 // newReadingCommand builds the `reading` sub-tree.
 func newReadingCommand(asJSON *bool) *cobra.Command {
 	readingCmd := &cobra.Command{
-		Use:   "reading",
-		Short: "Cold-reading input assembler: what a reading sees, and the manifest proving it",
+		Use: "reading",
 		Long: "Assemble the input a cold reading is handed.\n\n" +
 			"Blindness is a property of the input, not a promise the reader makes: a positive include\n" +
 			"table names what may travel, fields are projected out of records rather than files copied\n" +
@@ -68,8 +67,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 	var position, target, outDir string
 	var dryRun bool
 	assembleCmd := &cobra.Command{
-		Use:   "assemble --position <position> --target <HEAD|sha>",
-		Short: "Assemble one reading's input and its manifest",
+		Use: "assemble --position <position> --target <HEAD|sha>",
 		Long: "Walk the repository under the include table at one reading position and write two\n" +
 			"artefacts: the assembled input, which carries no repository path, and the manifest,\n" +
 			"which maps every passed item back to its path, its field and its hash.\n\n" +
@@ -190,8 +188,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 	var readingJSON string
 	var readingRoute *routeFlag
 	ingestCmd := &cobra.Command{
-		Use:   "ingest --reading-json <path>",
-		Short: "Validate one reading's returned output and write its records",
+		Use: "ingest --reading-json <path>",
 		Long: "Validate the JSON a cold reading returned and write its reading records.\n\n" +
 			"The verb checks what the reading was LICENSED to produce, not only what it saw: the\n" +
 			"supply regime is read from the position's definition and compared with the output's own\n" +

@@ -33,15 +33,18 @@ import (
 // would report phantom breaks or, worse, miss real ones.
 //
 // Version 2 added each command's help placement (Command.Group and
-// Command.Block, itd-146).
-const SchemaVersion = 2
+// Command.Block, itd-146); version 3 added each command's sentence
+// (Command.Sentence, itd-2609212113220149).
+const SchemaVersion = 3
 
 // readableVersions is every shape Decode accepts. Version 1 stays readable
 // because the release guardrail reads its baseline out of the last release tag,
 // and every tag cut before version 2 carries a version-1 file. Version 1 is
 // version 2 with no placement recorded, and Diff compares no placement, so
-// reading one as the other loses nothing the guardrail judges.
-var readableVersions = map[int]bool{1: true, SchemaVersion: true}
+// reading one as the other loses nothing the guardrail judges. Version 2 stays
+// readable for the same reason: it is version 3 with no sentence recorded, and
+// Diff compares no sentence.
+var readableVersions = map[int]bool{1: true, 2: true, SchemaVersion: true}
 
 // SnapshotPath is where the committed snapshot lives, repo-relative and
 // slash-separated.
@@ -98,7 +101,14 @@ type Command struct {
 	// in the committed tree, its drift test and the release gate's stale-surface
 	// refusal, which is where PlacementChanges names it.
 	Block string `json:"block,omitempty"`
-	Flags []Flag `json:"flags"`
+	// Sentence is the command's one sentence (itd-2609212113220149): what it
+	// does, what it writes, and when it refuses, as the manifest in
+	// sentences.go declares it and the help, the agents block and the plugin
+	// page render it. Omitted when the command has none, which is every hidden
+	// command. Like the placement it is no compatibility claim: Diff never
+	// reads it, because rewording a sentence changes no invocation.
+	Sentence string `json:"sentence,omitempty"`
+	Flags    []Flag `json:"flags"`
 }
 
 // Flag is one flag declared ON a command — its own flags plus the persistent
@@ -232,7 +242,7 @@ func Decode(data []byte) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("decoding surface snapshot: trailing content after the snapshot")
 	}
 	if !readableVersions[s.SchemaVersion] {
-		return Snapshot{}, fmt.Errorf("surface snapshot schema version %d, want %d (or 1, the shape before help placement)",
+		return Snapshot{}, fmt.Errorf("surface snapshot schema version %d, want %d (or 2, the shape before sentences, or 1, the shape before help placement)",
 			s.SchemaVersion, SchemaVersion)
 	}
 	return canonical(s), nil

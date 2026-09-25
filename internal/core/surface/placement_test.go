@@ -21,7 +21,7 @@ func TestEncodeRecordsGroupAndBlock(t *testing.T) {
 		t.Fatalf("Encode: %v", err)
 	}
 	want := `{
-  "schema_version": 2,
+  "schema_version": 3,
   "commands": [
     {
       "path": "abcd capture",

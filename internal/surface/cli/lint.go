@@ -22,9 +22,8 @@ import (
 func newLintCommand(asJSON *bool) *cobra.Command {
 	var rootDir string
 	cmd := &cobra.Command{
-		Use:   "lint",
-		Short: "Check this repo against the working conventions (read-only)",
-		Args:  cobra.NoArgs,
+		Use:  "lint",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir := rootDir
 			if dir == "" {

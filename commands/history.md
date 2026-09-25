@@ -1,6 +1,6 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. list --session reaches one session's whole set — its main thread and every sub-agent it spawned. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
+description: "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb."
 argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
 block: agents
 ---

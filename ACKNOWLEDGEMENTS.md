@@ -50,6 +50,13 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   call in a second block behind one flag. The mechanism is the command groups
   of the CLI framework abcd already uses, so the pattern arrives with no new
   dependency.
+- **The Command Line Interface Guidelines (<https://clig.dev>)** — their advice
+  that a command's help opens with a concise description of what the command
+  does. abcd holds that line to one form (itd-2609212113220149,
+  `internal/core/surface/sentences.go`): what the verb does, what it writes, and
+  when it refuses, declared once and rendered on the command list, the verb's
+  `--help` and its plugin page, so the line an agent chooses a verb by answers
+  the questions it asks before the call.
 - **The NO_COLOR convention (<https://no-color.org>)** — the environment
   variable that asks a program to emit no colour, and specifically its rule
   that the variable counts when *present and not empty*, whatever its value.

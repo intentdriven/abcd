@@ -257,9 +257,11 @@ tagged.
 surface and compares it to the previous release. A removed or altered surface
 with no breaking intent in the release fails the launch under `surface-guard`: a
 mislabelled impact cannot ship a compatibility lie. The snapshot also records each
-verb's help group and block (itd-146). A regroup is not a break, so the diff
-never reads them, but a binary whose placement disagrees with the snapshot
-committed at `HEAD` is refused as stale, and the refusal names each moved verb.
+verb's help group and block (itd-146) and its sentence (itd-2609212113220149).
+A regroup or a rewording is not a break, so the diff never reads them, but a
+binary whose placement or sentence disagrees with the snapshot committed at
+`HEAD` is refused as stale, and the refusal names each moved verb and each
+reworded sentence.
 
 **Unfixed-findings guardrail.** The cut and the read-only `changelog` preview
 both ask one further question of the cut: of the findings **this cycle**

@@ -25,8 +25,7 @@ var newUpdater = update.NewGitHubUpdater
 func newUpdateCommand(asJSON *bool) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "update [tag]",
-		Short: "Complete a chosen update: fetch, verify, and swap the PATH-installed binary",
+		Use: "update [tag]",
 		Long: "Fetches the named release (or resolves the latest, naming it before acting),\n" +
 			"verifies the platform binary against the same release's checksums.txt, and\n" +
 			"swaps the PATH-installed copy atomically. The verb is the only ask: abcd\n" +

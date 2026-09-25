@@ -26,9 +26,8 @@ import (
 // maintainer looks at the canon and at what a fix would look like.
 func newIdentityCommand(asJSON *bool) *cobra.Command {
 	identityCmd := &cobra.Command{
-		Use:   "identity",
-		Short: "Show this repo's canonical identity block and every surface held to it (read-only)",
-		Args:  cobra.NoArgs,
+		Use:  "identity",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root, cfg, err := loadPositioning()
 			if err != nil {
@@ -47,9 +46,8 @@ func newIdentityCommand(asJSON *bool) *cobra.Command {
 	}
 
 	identityCmd.AddCommand(&cobra.Command{
-		Use:   "render",
-		Short: "Print the proposed correction for every drifted surface as a unified diff (writes nothing)",
-		Args:  cobra.NoArgs,
+		Use:  "render",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			root, cfg, err := loadPositioning()
 			if err != nil {
@@ -67,9 +65,8 @@ func newIdentityCommand(asJSON *bool) *cobra.Command {
 
 	var title, tagline, pitch, file, heading string
 	initCmd := &cobra.Command{
-		Use:   "init",
-		Short: "Record this repo's identity block and the pointer to it (adopts an existing block)",
-		Args:  cobra.NoArgs,
+		Use:  "init",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

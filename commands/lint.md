@@ -1,6 +1,6 @@
 ---
 name: lint
-description: Check whether the current repo conforms to the working conventions — the three-tier .abcd/ layout, an AGENTS.md router, durable decisions, current docs, privacy hygiene, and identity positioning — by invoking the abcd binary. Strictly read-only; performs zero writes.
+description: "Check this repository against the working conventions: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone."
 argument-hint: ""
 block: people
 ---

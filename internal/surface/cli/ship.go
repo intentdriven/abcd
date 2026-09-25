@@ -309,9 +309,8 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var payloadDir string
 	var shipRoute *routeFlag
 	cmd := &cobra.Command{
-		Use:   "ship [--changelog-json <file|->] [--payload-dir <dir>]",
-		Short: "Cut a release: derive the version and the record set from what shipped (exit 1 when the cut refuses)",
-		Args:  cobra.NoArgs,
+		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>]",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -332,6 +331,12 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The cut is a fact about the repository, not about the directory
+			// the operator stands in (iss-2609251713073532).
+			root, err := gitutil.CheckoutRoot(cwd, "the release record")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
 			// Read the payload before anything else: it is untrusted host input,
 			// and reading it through the shared guarded-operand path keeps the
 			// ingest seam behind exactly the trust boundary the other delegated
@@ -341,10 +346,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, cwd, raw, payloadDir, *asJSON, route)
+				return runShipIngest(cmd, root, raw, payloadDir, *asJSON, route)
 			}
 
-			cut, err := emitCut(cwd)
+			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
@@ -525,15 +530,19 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 // reader asked for, not a gate they tripped. The gate is the ship verb.
 func newChangelogCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "changelog",
-		Short: "Preview the next release cut — derived version, records, guardrail (read-only, no prose)",
-		Args:  cobra.NoArgs,
+		Use:  "changelog",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			cut, err := emitCut(cwd)
+			// The same root the ship verb reads, from wherever it is run.
+			root, err := gitutil.CheckoutRoot(cwd, "the release record")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
+			}
+			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
 			}

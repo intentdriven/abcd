@@ -65,9 +65,8 @@ func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
 	var outDir, tag, repository string
 	var verify bool
 	cmd := &cobra.Command{
-		Use:   "archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>]",
-		Short: "Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)",
-		Args:  cobra.NoArgs,
+		Use:  "archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>]",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

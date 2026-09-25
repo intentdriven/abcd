@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Share one autonomous run between two sessions — join it, open a window in a division mode, claim a record before opening its lane, check the second session's bounds, log the run's events, and derive the comparison of the modes, and check the machine's load before abcd's own tests start — by invoking the abcd binary. The bare form and report are read-only; the load check warns and never refuses.
+description: "Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb."
 argument-hint: "[join|leave|mode|claim|release|check|log|report|load] …"
 block: agents
 ---

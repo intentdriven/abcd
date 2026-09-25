@@ -1,6 +1,6 @@
 ---
 name: update
-description: Complete a chosen update of the PATH-installed abcd binary — fetch the named (or resolved) release, verify it against the release's own checksums, swap atomically. The verb is the explicit ask; abcd never updates on its own.
+description: "Fetch, verify, and swap the PATH-installed binary for a chosen release: Writes the swapped binary; refuses a binary it cannot prove is abcd's."
 argument-hint: "[tag]"
 block: people
 ---

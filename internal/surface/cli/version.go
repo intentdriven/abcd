@@ -64,9 +64,8 @@ type checkResult struct {
 func newVersionCommand(asJSON *bool) *cobra.Command {
 	var check bool
 	cmd := &cobra.Command{
-		Use:   "version",
-		Short: "Print abcd's version, install mode, and vintage",
-		Args:  cobra.NoArgs,
+		Use:  "version",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

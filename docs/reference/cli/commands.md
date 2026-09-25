@@ -6,12 +6,13 @@ drift test regenerates the tree and fails the build whenever this page and the
 tree disagree, so the reference can never silently go stale. Regenerate it with
 `go generate ./internal/surface/cli`.
 
-Every user-facing command is listed with its usage line, summary, and flags;
-the operator-internal hook entrypoints are omitted.
+Every user-facing command is listed with its sentence (what it does, what it
+writes, and when it refuses), its usage line, and its flags; the
+operator-internal hook entrypoints are omitted.
 
 ## `abcd`
 
-Agent-based configuration for development
+Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument.
 
 **Usage:** `abcd [<record-id>] [flags]`
 
@@ -33,31 +34,31 @@ positional is refused as an unknown command.
 
 ### `abcd ahoy`
 
-Install/update abcd in this repo; bare invocation is read-only status
+Detect abcd's install state for this repository and list its gaps: Writes nothing; refuses any argument.
 
 **Usage:** `abcd ahoy`
 
 #### `abcd ahoy doctor`
 
-Report every gap read-only, including user-scope state (never mutates)
+Report every install gap, user-scope state included: Writes nothing; refuses any argument.
 
 **Usage:** `abcd ahoy doctor`
 
 #### `abcd ahoy dry-run`
 
-Render the detection-result JSON envelope; never mutates
+Print the detection result as its JSON envelope: Writes nothing; refuses any argument.
 
 **Usage:** `abcd ahoy dry-run`
 
 #### `abcd ahoy identity-check`
 
-Exit non-zero if the git commit identity does not match .abcd/config/identity.json
+Check git's commit identity against .abcd/config/identity.json: Writes nothing; refuses an identity that does not match.
 
 **Usage:** `abcd ahoy identity-check`
 
 #### `abcd ahoy install`
 
-Install or update abcd in this repo (idempotent)
+Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.
 
 **Usage:** `abcd ahoy install [flags]`
 
@@ -79,13 +80,13 @@ Install or update abcd in this repo (idempotent)
 
 #### `abcd ahoy remote`
 
-Report the managed repo's GitHub secret-scanning settings (read-only); apply enables them
+Report this repository's GitHub secret-scanning settings: Writes nothing; refuses any argument.
 
 **Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
-Enable GitHub secret scanning and push protection on this managed repo, and mirror the desired state
+Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.
 
 **Usage:** `abcd ahoy remote apply [flags]`
 
@@ -97,7 +98,7 @@ Enable GitHub secret scanning and push protection on this managed repo, and mirr
 
 #### `abcd ahoy uninstall`
 
-Remove the marker block, abcd's owned PATH copy, and its provenance record (leaves .abcd/ intact)
+Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.
 
 **Usage:** `abcd ahoy uninstall [flags]`
 
@@ -109,13 +110,13 @@ Remove the marker block, abcd's owned PATH copy, and its provenance record (leav
 
 ### `abcd banlist`
 
-Banned-names layers (bare renders both, read-only); add/remove maintain them
+Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it.
 
 **Usage:** `abcd banlist`
 
 #### `abcd banlist add`
 
-Add one banned-name entry to the named layer (pattern `-` reads one line from stdin)
+Add one banned-name entry to the layer a flag names: Writes that layer's store; refuses without exactly one of --private or --public.
 
 **Usage:** `abcd banlist add --private|--public <key> <pattern|-> [flags]`
 
@@ -130,7 +131,7 @@ Add one banned-name entry to the named layer (pattern `-` reads one line from st
 
 #### `abcd banlist list`
 
-Render the banlist layers; private entries render by key only
+Render the banned-names layers, private entries by key only: Writes nothing; refuses --private and --public together.
 
 **Usage:** `abcd banlist list [--private | --public] [flags]`
 
@@ -143,7 +144,7 @@ Render the banlist layers; private entries render by key only
 
 #### `abcd banlist remove`
 
-Remove one banned-name entry from the named layer
+Remove one banned-name entry from the layer a flag names: Writes that layer's store; refuses a public entry curated by hand.
 
 **Usage:** `abcd banlist remove --private|--public <key> [flags]`
 
@@ -156,7 +157,7 @@ Remove one banned-name entry from the named layer
 
 ### `abcd capture`
 
-Capture issues to the ledger; bare invocation is read-only status
+File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout.
 
 **Usage:** `abcd capture [text] [flags]`
 
@@ -176,7 +177,7 @@ Capture issues to the ledger; bare invocation is read-only status
 
 #### `abcd capture disposition`
 
-Answer one reading item (a separate record, keyed to the item)
+Answer one reading item with a disposition record: Writes the record keyed to the item; refuses a second answer without --supersedes.
 
 **Usage:** `abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> [--grounds <text>] [--exit-condition <text>] [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]`
 
@@ -194,7 +195,7 @@ Answer one reading item (a separate record, keyed to the item)
 
 #### `abcd capture link`
 
-Add or remove blocked_by edges on an existing issue (any status folder; unblock is applied before blocked-by)
+Add or remove blocked_by edges on an issue: Writes the issue's blocked_by list; refuses an id the ledger does not hold.
 
 **Usage:** `abcd capture link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] [flags]`
 
@@ -207,7 +208,7 @@ Add or remove blocked_by edges on an existing issue (any status folder; unblock 
 
 #### `abcd capture list`
 
-List issues by state (one of --open/--resolved/--wontfix/--all required)
+List the issues in one status folder or all three: Writes nothing; refuses when no status flag is given.
 
 **Usage:** `abcd capture list [flags]`
 
@@ -222,7 +223,7 @@ List issues by state (one of --open/--resolved/--wontfix/--all required)
 
 #### `abcd capture mentions`
 
-List open issues named by default-branch history with no resolution behind them (read-only)
+List open issues that default-branch history names with no resolution behind them: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd capture mentions [--ref <branch>] [flags]`
 
@@ -234,7 +235,7 @@ List open issues named by default-branch history with no resolution behind them 
 
 #### `abcd capture migrate`
 
-Rewrite retired promote back-links (promoted_to / promoted_from) to related_intents / related_issues (reports; writes only with --apply)
+Rewrite retired promote back-links as related_intents and related_issues: Writes the records only with --apply; refuses outside a git checkout.
 
 **Usage:** `abcd capture migrate [--apply] [flags]`
 
@@ -246,7 +247,7 @@ Rewrite retired promote back-links (promoted_to / promoted_from) to related_inte
 
 #### `abcd capture promote`
 
-Graduate an issue or a dispositioned reading item into an intent draft (mints + links both ways: related_issues / related_intents)
+Graduate an issue or an accepted reading item into an intent draft: Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.
 
 **Usage:** `abcd capture promote <iss-N> [--grounds "<token>: <text>"] | promote <rdi-N> [flags]`
 
@@ -260,7 +261,7 @@ Graduate an issue or a dispositioned reading item into an intent draft (mints + 
 
 #### `abcd capture resolve`
 
-Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it
+Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.
 
 **Usage:** `abcd capture resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds "<token>: <text>"] [--intent itd-N] [--spec spc-N] [--commit sha] [--shipped-in vX.Y.Z] [flags]`
 
@@ -278,7 +279,7 @@ Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed i
 
 #### `abcd capture wontfix`
 
-Record an explicit non-action decision (open/ -> wontfix/)
+Move an open issue to wontfix/ with the reason it is not acted on: Writes the moved record; refuses an id this ledger does not hold.
 
 **Usage:** `abcd capture wontfix <iss-N> <reason> [--grounds "declined: <text>"] [flags]`
 
@@ -291,13 +292,13 @@ Record an explicit non-action decision (open/ -> wontfix/)
 
 ### `abcd changelog`
 
-Preview the next release cut — derived version, records, guardrail (read-only, no prose)
+Preview the next release cut's version, records, and guardrail verdict: Writes nothing; refuses outside a checkout, exiting 0 on a cut the gates would stop.
 
 **Usage:** `abcd changelog`
 
 ### `abcd decide`
 
-Mint a decision record (ADR) and lay its skeleton
+Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.
 
 **Usage:** `abcd decide "<title>"`
 
@@ -315,19 +316,19 @@ lands with is `proposed` until the author sets `accepted`.
 
 ### `abcd disembark`
 
-Lifeboat tooling: coverage probe, pack dry-run, and out-of-tree pack
+Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.
 
 **Usage:** `abcd disembark`
 
 #### `abcd disembark coverage`
 
-Aggregate probe reports into the cross-repo section×repo coverage table
+Aggregate saved probe reports into the section-by-repository coverage table: Writes nothing; refuses a file that is not a probe report.
 
 **Usage:** `abcd disembark coverage <report.json>...`
 
 #### `abcd disembark graveyard`
 
-Validate host-produced lesson JSON against a packed lifeboat and write the survivors (cite-or-be-dropped)
+Validate host-produced lesson JSON against a packed lifeboat: Writes the lessons that cite their evidence; refuses without --lessons-json.
 
 **Usage:** `abcd disembark graveyard <lifeboat-dir> --lessons-json <file|-> [flags]`
 
@@ -340,7 +341,7 @@ Validate host-produced lesson JSON against a packed lifeboat and write the survi
 
 #### `abcd disembark pack`
 
-Pack a lifeboat from a repository into a destination directory (writes <dest>, never the source)
+Pack a lifeboat from a repository into a destination directory: Writes the destination only; refuses when the secret scanner is unavailable.
 
 **Usage:** `abcd disembark pack <repo> <dest> [flags]`
 
@@ -352,7 +353,7 @@ Pack a lifeboat from a repository into a destination directory (writes <dest>, n
 
 #### `abcd disembark plan`
 
-Show the full lifeboat file set a pack would write, without writing anything (dry run)
+Show the file set a pack would write: Writes nothing; refuses a repository path that is not a directory.
 
 **Usage:** `abcd disembark plan [repo] [flags]`
 
@@ -364,7 +365,7 @@ Show the full lifeboat file set a pack would write, without writing anything (dr
 
 #### `abcd disembark press-release`
 
-Compose the lifeboat's press release (deterministic from the brief/spine, or validate host-produced press-release JSON)
+Compose a lifeboat's press release, or validate the host's: Writes the press-release files in the lifeboat; refuses a host draft citing nothing resolvable.
 
 **Usage:** `abcd disembark press-release <lifeboat-dir> [--press-release-json <file|->] [flags]`
 
@@ -377,7 +378,7 @@ Compose the lifeboat's press release (deterministic from the brief/spine, or val
 
 #### `abcd disembark principles`
 
-Distil principles from a packed lifeboat (deterministic from the ADRs, or validate host-produced principle JSON)
+Distil a lifeboat's principles from its ADRs, or validate the host's: Writes the principles files in the lifeboat; refuses a directory that is not a lifeboat.
 
 **Usage:** `abcd disembark principles <lifeboat-dir> [--principles-json <file|->] [flags]`
 
@@ -390,7 +391,7 @@ Distil principles from a packed lifeboat (deterministic from the ADRs, or valida
 
 #### `abcd disembark probe`
 
-Report which brief sections a lifeboat could ground from a repository (read-only)
+Report which brief sections a lifeboat could ground from a repository: Writes nothing; refuses a repository path that is not a directory.
 
 **Usage:** `abcd disembark probe [repo] [flags]`
 
@@ -402,7 +403,7 @@ Report which brief sections a lifeboat could ground from a repository (read-only
 
 #### `abcd disembark review`
 
-Review a packed lifeboat against its source repo — a registered verdict and cited findings (deterministic, or validate a host-produced verdict JSON)
+Review a packed lifeboat against its source repository, or validate the host's verdict: Writes the review in the lifeboat; refuses an unregistered verdict.
 
 **Usage:** `abcd disembark review <lifeboat-dir> <source-repo> [--review-json <file|->] [flags]`
 
@@ -415,19 +416,19 @@ Review a packed lifeboat against its source repo — a registered verdict and ci
 
 ### `abcd docs`
 
-Documentation-currency checks for this repo
+Lint the documentation for currency and keep its citation baseline: Writes nothing but that baseline; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs`
 
 #### `abcd docs cite`
 
-Maintain the citation baseline the docs lint enforces offline
+Keep the citation baseline the docs lint enforces offline: Writes nothing bare, and only that baseline; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs cite`
 
 ##### `abcd docs cite confirm`
 
-Record that a human verified a cited URL the fetcher could not read
+Record that a person verified a cited URL the fetcher could not read: Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.
 
 **Usage:** `abcd docs cite confirm [url...] [flags]`
 
@@ -445,7 +446,7 @@ Name the URLs directly, or pass --receipt with a receipt file. Both write the sa
 
 ##### `abcd docs cite refresh`
 
-Fetch every cited URL once and rewrite the committed citation baseline
+Fetch every cited URL once, the one documentation verb that reaches the network: Writes the citation baseline; refuses an unreadable docs-lint configuration.
 
 **Usage:** `abcd docs cite refresh [flags]`
 
@@ -462,7 +463,7 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 
 #### `abcd docs lint`
 
-Lint docs for change-narration, broken links, and stray root markdown
+Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.
 
 **Usage:** `abcd docs lint [flags]`
 
@@ -476,31 +477,31 @@ Lint docs for change-narration, broken links, and stray root markdown
 
 ### `abcd embark`
 
-Unpack a lifeboat's record families back into a target repo (probe read-only; from writes)
+Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict.
 
 **Usage:** `abcd embark`
 
 #### `abcd embark from`
 
-Write a lifeboat's record families into a target repo; refuses on any conflict
+Unpack a lifeboat's record families into a target repository: Writes those families and the marker block; refuses the whole write on any conflict.
 
 **Usage:** `abcd embark from <lifeboat-dir> [target-dir]`
 
 #### `abcd embark probe`
 
-Report what a lifeboat would write into a target, read-only (coverage blanks first)
+Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.
 
 **Usage:** `abcd embark probe <lifeboat-dir> [target-dir]`
 
 ### `abcd guard`
 
-Check a shell command against the hazard registry before it runs
+Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
 #### `abcd guard check`
 
-Decide whether a candidate shell command is safe to run
+Judge one shell command against the hazard registry: Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.
 
 **Usage:** `abcd guard check [flags]`
 
@@ -566,7 +567,7 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Host pre-tool-use adapter: decide a shell command from a hook payload
+Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard with the host's blocking status.
 
 **Usage:** `abcd guard hook`
 
@@ -599,13 +600,13 @@ blocking status and the reason.
 
 ### `abcd history`
 
-Manage the native session-transcript store
+Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.
 
 **Usage:** `abcd history`
 
 #### `abcd history capture`
 
-Redact and store a raw session transcript (reads a file or stdin)
+Redact and store one raw session transcript from a file or stdin: Writes one record into the store; refuses stdin without --session.
 
 **Usage:** `abcd history capture [<transcript-file>|-] [flags]`
 
@@ -618,7 +619,7 @@ Redact and store a raw session transcript (reads a file or stdin)
 
 #### `abcd history discard`
 
-Permanently delete one staged or quarantined raw transcript (requires --yes)
+Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.
 
 **Usage:** `abcd history discard <staged-filename> [flags]`
 
@@ -630,13 +631,13 @@ Permanently delete one staged or quarantined raw transcript (requires --yes)
 
 #### `abcd history drain`
 
-Redact and store every staged transcript for this repo
+Redact and store every transcript staged for this repository: Writes the records into the store; refuses outside a git checkout.
 
 **Usage:** `abcd history drain`
 
 #### `abcd history ingest`
 
-Redact and store transcripts already on disk into a named destination repository
+Redact and store transcripts already on disk into a named repository: Writes that repository's store; refuses without --into.
 
 **Usage:** `abcd history ingest [<path>...] [flags]`
 
@@ -649,7 +650,7 @@ Redact and store transcripts already on disk into a named destination repository
 
 #### `abcd history list`
 
-List stored transcripts for this repo, newest first
+List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd history list [flags]`
 
@@ -661,7 +662,7 @@ List stored transcripts for this repo, newest first
 
 #### `abcd history migrate`
 
-Repair records filed under a composite session id (reports; writes only with --apply)
+Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.
 
 **Usage:** `abcd history migrate [flags]`
 
@@ -674,7 +675,7 @@ Repair records filed under a composite session id (reports; writes only with --a
 
 #### `abcd history reconstruct`
 
-Render one session — the main thread and every sub-agent — as one artefact plus telemetry
+Render one session and its sub-agents as one artefact plus telemetry: Writes both files into --out; refuses an --out that is not an existing directory.
 
 **Usage:** `abcd history reconstruct <session-id> [flags]`
 
@@ -688,13 +689,13 @@ Render one session — the main thread and every sub-agent — as one artefact p
 
 #### `abcd history show`
 
-Show one stored transcript's metadata and redacted body
+Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.
 
 **Usage:** `abcd history show <session-id-or-filename>`
 
 #### `abcd history staged`
 
-List transcripts that ended but are not yet redacted into the store
+List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd history staged [flags]`
 
@@ -706,7 +707,7 @@ List transcripts that ended but are not yet redacted into the store
 
 ### `abcd ideate`
 
-Idea-admission protocol: record the verdict of the three-leg gauntlet
+Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.
 
 **Usage:** `abcd ideate`
 
@@ -719,7 +720,7 @@ verb requires it, and skipping it is never warned about.
 
 #### `abcd ideate record`
 
-Validate a host-composed verdict and write the dated research record
+Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.
 
 **Usage:** `abcd ideate record <idea-slug> --verdict-json <file|-> [flags]`
 
@@ -731,13 +732,13 @@ Validate a host-composed verdict and write the dated research record
 
 ### `abcd identity`
 
-Show this repo's canonical identity block and every surface held to it (read-only)
+Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.
 
 **Usage:** `abcd identity`
 
 #### `abcd identity init`
 
-Record this repo's identity block and the pointer to it (adopts an existing block)
+Record this repository's identity block and the pointer to it: Writes the block and the pointer; refuses without --title and --tagline when no block exists.
 
 **Usage:** `abcd identity init [flags]`
 
@@ -753,13 +754,13 @@ Record this repo's identity block and the pointer to it (adopts an existing bloc
 
 #### `abcd identity render`
 
-Print the proposed correction for every drifted surface as a unified diff (writes nothing)
+Print the correction for every drifted surface as a unified diff: Writes nothing; refuses a repository that records no identity block.
 
 **Usage:** `abcd identity render`
 
 ### `abcd implement`
 
-Share one autonomous run between sessions: join, claim a record, check the bounds, log, and compare the division modes
+Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.
 
 **Usage:** `abcd implement`
 
@@ -786,7 +787,7 @@ another session, or the run state is locked): back off and take other work.
 
 #### `abcd implement check`
 
-Ask whether this session may take a step; the second session's bounds refuse
+Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.
 
 **Usage:** `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
 
@@ -805,7 +806,7 @@ writes nothing. The verdict reports the agent ceiling the session joined with.
 
 #### `abcd implement claim`
 
-Claim a record before opening its lane; exactly one session holds it
+Claim a record for this session before opening its lane: Writes the claim and a run-log line; refuses a record another session holds.
 
 **Usage:** `abcd implement claim <record> --session <id> --lane <lane> [flags]`
 
@@ -832,7 +833,7 @@ reading corpus.
 
 #### `abcd implement join`
 
-Join the run: record the session and its role, and log its session_open
+Join the run with a stated role: Writes the session's record and a session_open line; refuses the other role on a resume.
 
 **Usage:** `abcd implement join --session <id> --role first|second [flags]`
 
@@ -858,7 +859,7 @@ ceiling is recorded and reported by every `check`, not enforced; a resume keeps 
 
 #### `abcd implement leave`
 
-Leave the run: release every claim the session holds and log its session_close
+Leave the run, releasing every claim this session holds: Writes the releases and a session_close line; refuses without --session.
 
 **Usage:** `abcd implement leave --session <id> [flags]`
 
@@ -875,7 +876,7 @@ that stops without leaving strands nothing: its claims lapse with their leases.
 
 #### `abcd implement load`
 
-Check the machine's load before abcd's own tests start; warns, never refuses (exit 0)
+Check the machine's load before abcd's own tests start: Writes a load event to the run log inside a run; refuses an unknown --site, never a loaded machine.
 
 **Usage:** `abcd implement load --site preflight|eval-harness [flags]`
 
@@ -918,7 +919,7 @@ value out of range, is reported loudly and both defaults are used.
 
 #### `abcd implement log`
 
-Append one of the run's events to the run log
+Append one of the run's events to today's run log: Writes one line; refuses the claim, window, and session events their own verbs write.
 
 **Usage:** `abcd implement log <event> --session <id> [--field key=value ...] [flags]`
 
@@ -939,7 +940,7 @@ refused here, so the log cannot record a claim the run state does not hold.
 
 #### `abcd implement mode`
 
-Open a window: log its division mode (the first session's call)
+Open a window by logging its division mode: Writes a window_mode line; refuses any session but the first.
 
 **Usage:** `abcd implement mode <single|claim|batch|split-roles> --session <id> [flags]`
 
@@ -958,7 +959,7 @@ mode in force is the log's last window_mode line, whoever wrote it.
 
 #### `abcd implement release`
 
-Release this session's claim on a record
+Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.
 
 **Usage:** `abcd implement release <record> --session <id> [flags]`
 
@@ -973,7 +974,7 @@ releases a claim; another session's claim lapses with its lease instead.
 
 #### `abcd implement report`
 
-Derive the comparison of the division modes from the run log (read-only)
+Derive the comparison of the division modes from the run log: Writes nothing; refuses --date and --log together.
 
 **Usage:** `abcd implement report [--date YYYY-MM-DD | --log <file>] [flags]`
 
@@ -999,7 +1000,7 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 
 ### `abcd inbox`
 
-Read the reports managed repositories filed back to abcd, and promote one to a capture
+List the reports managed repositories filed back to abcd, newest first: Writes nothing; refuses any argument.
 
 **Usage:** `abcd inbox`
 
@@ -1026,19 +1027,19 @@ Exit 2 on a refusal, with nothing written.
 
 #### `abcd inbox promote`
 
-File one report as a capture in abcd's own ledger, fingerprinted, never named
+File one report as a capture in abcd's own ledger: Writes the capture and marks the report promoted; refuses outside abcd's own checkout.
 
 **Usage:** `abcd inbox promote <id>`
 
 #### `abcd inbox show`
 
-Render one report whole (read-only)
+Render one report whole: Writes nothing; refuses an id the inbox does not hold.
 
 **Usage:** `abcd inbox show <id>`
 
 ### `abcd intent`
 
-Intent lifecycle; bare invocation is read-only status, quoted text files a draft
+File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word.
 
 **Usage:** `abcd intent [text] [flags]`
 
@@ -1052,7 +1053,7 @@ Intent lifecycle; bare invocation is read-only status, quoted text files a draft
 
 #### `abcd intent audit`
 
-Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)
+Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: Writes nothing; refuses an intent not shipped.
 
 **Usage:** `abcd intent audit [<itd-N>] | audit --issue-drift [--strict] [flags]`
 
@@ -1066,7 +1067,7 @@ Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest 
 
 ##### `abcd intent audit ingest`
 
-Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
+Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; refuses without --verdict-json.
 
 **Usage:** `abcd intent audit ingest --verdict-json <path> [flags]`
 
@@ -1079,7 +1080,7 @@ Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
 
 #### `abcd intent condition`
 
-Read a shipped intent's scope-condition standing, or disposition one condition from a reading item or a delivered intent
+Read or disposition a shipped intent's scope conditions: Writes a dated condition block; refuses an unresolved occasion or thin grounds.
 
 **Usage:** `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
 
@@ -1094,7 +1095,7 @@ Read a shipped intent's scope-condition standing, or disposition one condition f
 
 #### `abcd intent hold`
 
-Hold a draft or planned intent (writes `held: "<reason>"`; `intent plan` refuses it until `intent unhold`)
+Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.
 
 **Usage:** `abcd intent hold <itd-N> --reason "<text>" [flags]`
 
@@ -1106,19 +1107,19 @@ Hold a draft or planned intent (writes `held: "<reason>"`; `intent plan` refuses
 
 #### `abcd intent link`
 
-Link a planned intent to an existing spec (writes the intent's spec_id)
+Link a planned intent to an existing spec: Writes the intent's spec_id; refuses an intent that is not planned.
 
 **Usage:** `abcd intent link <itd-N> <spc-N>`
 
 #### `abcd intent new`
 
-Deprecated alias for `abcd intent "<text>"` (files a draft from the text)
+File a draft intent from the text, as the bare verb's quoted form does: Writes the draft into drafts/; refuses empty text.
 
 **Usage:** `abcd intent new <text>`
 
 #### `abcd intent plan`
 
-Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on an already-planned intent, stamp its unmarked scope conditions — either face takes --impact to stamp the judgement
+Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.
 
 **Usage:** `abcd intent plan <itd-N> [flags]`
 
@@ -1131,7 +1132,7 @@ Plan a draft intent (mint its spec, link both sides, move drafts -> planned); on
 
 #### `abcd intent ready`
 
-Report whether an intent is ready to implement (planned + AC + written spec; claims and grounds reported, never refused); exit 1 when not
+Report whether an intent is ready to implement, exiting 1 when not: Writes its grounds only with --grounds; refuses malformed grounds.
 
 **Usage:** `abcd intent ready <itd-N> [--grounds "<pursued|deferred|declined>: <conjecture>"] [flags]`
 
@@ -1143,13 +1144,13 @@ Report whether an intent is ready to implement (planned + AC + written spec; cla
 
 #### `abcd intent unhold`
 
-Lift a hold (removes the `held:` line `intent hold` wrote); refused on a record not held
+Lift an intent's hold: Writes the removal of its held line; refuses a record not held.
 
 **Usage:** `abcd intent unhold <itd-N>`
 
 ### `abcd launch`
 
-Preview the public launch bundle and release gates (--dry-run required; read-only)
+Preview the public launch bundle, its secret scan, and the release gates: Writes nothing; refuses without --dry-run.
 
 **Usage:** `abcd launch [flags]`
 
@@ -1161,7 +1162,7 @@ Preview the public launch bundle and release gates (--dry-run required; read-onl
 
 #### `abcd launch archive`
 
-Render the release's plugin archive and (--verify) prove the committed catalog pins it (exit 1 on a mismatch)
+Render the release's plugin archive: Writes the archive into --out; refuses with exit 1 when --verify finds the catalogue does not pin it.
 
 **Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
 
@@ -1176,7 +1177,7 @@ Render the release's plugin archive and (--verify) prove the committed catalog p
 
 #### `abcd launch scaffold`
 
-Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbook) into this repo
+Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.
 
 **Usage:** `abcd launch scaffold [--confirm] [flags]`
 
@@ -1188,7 +1189,7 @@ Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbo
 
 #### `abcd launch ship`
 
-Cut a release: derive the version and the record set from what shipped (exit 1 when the cut refuses)
+Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.
 
 **Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [flags]`
 
@@ -1202,7 +1203,7 @@ Cut a release: derive the version and the record set from what shipped (exit 1 w
 
 ### `abcd lint`
 
-Check this repo against the working conventions (read-only)
+Check this repository against the working conventions: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
 
 **Usage:** `abcd lint [flags]`
 
@@ -1214,7 +1215,7 @@ Check this repo against the working conventions (read-only)
 
 #### `abcd lint outbound`
 
-Refuse outbound text that breaks the session-URL / tool-footer policy (read-only)
+Judge one outbound text against the session-URL and tool-footer policy: Writes nothing; refuses a text carrying either with exit 1.
 
 **Usage:** `abcd lint outbound [FILE] [flags]`
 
@@ -1235,13 +1236,13 @@ wrote it. Exit 0 clean, 1 the artefact is refused, 2 the check could not run.
 
 ### `abcd memory`
 
-Curated knowledge substrate; bare invocation is read-only status
+Render the memory store's status: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd memory`
 
 #### `abcd memory ask`
 
-Query memory and synthesise a cited answer
+Query memory and synthesise a cited answer: Writes a memory page only with --file-back; refuses outside a git checkout.
 
 **Usage:** `abcd memory ask <question> [flags]`
 
@@ -1255,7 +1256,7 @@ Query memory and synthesise a cited answer
 
 #### `abcd memory ingest`
 
-Distil an external source into cited memory pages (https URLs only)
+Distil a local file or an https source into cited memory pages: Writes the pages; refuses a URL that is not https.
 
 **Usage:** `abcd memory ingest <path-or-https-url> [flags]`
 
@@ -1268,13 +1269,13 @@ Distil an external source into cited memory pages (https URLs only)
 
 #### `abcd memory lint`
 
-Curator health-check over the whole memory store
+Health-check the whole memory store: Writes a lint report; refuses a store with a blocker finding.
 
 **Usage:** `abcd memory lint`
 
 ### `abcd mode`
 
-Print or set whose answer the agent loop is waiting on (managed, facilitator, product-thinker)
+Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.
 
 **Usage:** `abcd mode [<state>]`
 
@@ -1305,7 +1306,7 @@ and nothing is written on any of them.
 
 ### `abcd peers`
 
-List the records this checkout's sibling worktrees and local branches hold that it does not (read-only)
+List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd peers`
 
@@ -1329,7 +1330,7 @@ hold; exit 2 outside a git checkout.
 
 ### `abcd reading`
 
-Cold-reading input assembler: what a reading sees, and the manifest proving it
+Render the cold-reading assembler's state: Writes nothing; refuses any argument.
 
 **Usage:** `abcd reading`
 
@@ -1344,7 +1345,7 @@ Bare `abcd reading` renders the assembler's state and writes nothing.
 
 #### `abcd reading assemble`
 
-Assemble one reading's input and its manifest
+Assemble one reading's input and its hashed manifest at one position: Writes both artefacts; refuses a target that is not HEAD or a commit sha.
 
 **Usage:** `abcd reading assemble --position <position> --target <HEAD|sha> [flags]`
 
@@ -1388,7 +1389,7 @@ abcd reading assemble --position widening --target HEAD --dry-run
 
 #### `abcd reading ingest`
 
-Validate one reading's returned output and write its records
+Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.
 
 **Usage:** `abcd reading ingest --reading-json <path> [flags]`
 
@@ -1433,7 +1434,7 @@ abcd reading ingest --reading-json ./reading-output.json --json
 
 ### `abcd report`
 
-File a defect report or an enhancement proposal about abcd into the inbox in your account
+File a defect report or an enhancement proposal about abcd: Writes it into your account's inbox; refuses a malformed field or a filesystem path.
 
 **Usage:** `abcd report [<file>|-] [flags]`
 
@@ -1466,7 +1467,7 @@ Exit 2 on a refusal, with nothing filed.
 
 ### `abcd rules`
 
-Render the active rule set; a positional DOMAIN scopes to one (read-only)
+Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.
 
 **Usage:** `abcd rules [domain]`
 
@@ -1486,7 +1487,7 @@ renders bare and carries "source": "bundled". Read-only.
 
 ### `abcd site`
 
-The website rendered from this repository: what is declared, and what was built (read-only)
+Report what the website declares and what was built: Writes nothing; refuses any argument.
 
 **Usage:** `abcd site [flags]`
 
@@ -1498,7 +1499,7 @@ The website rendered from this repository: what is declared, and what was built 
 
 #### `abcd site build`
 
-Render the site into the output directory (writes nothing outside it)
+Render the website into the output directory: Writes only inside that directory; refuses a non-empty directory it did not write.
 
 **Usage:** `abcd site build [flags]`
 
@@ -1514,7 +1515,7 @@ Render the site into the output directory (writes nothing outside it)
 
 #### `abcd site check`
 
-Gate the built site: provenance, hero drift, banned tokens, snippets, the reference ratchet, mobile and figure labels
+Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.
 
 **Usage:** `abcd site check [flags]`
 
@@ -1526,13 +1527,13 @@ Gate the built site: provenance, hero drift, banned tokens, snippets, the refere
 
 ### `abcd spec`
 
-Native spec store; bare invocation is read-only status
+Render the spec store's status: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd spec`
 
 #### `abcd spec close`
 
-Close a spec (open/ -> closed/); ship its linked intent when no open spec is left naming it
+Close a spec, and ship its intent when no open spec names it: Writes the moves to closed/ and shipped/; refuses to ship an intent with no impact.
 
 **Usage:** `abcd spec close <spc-N> [flags]`
 
@@ -1546,7 +1547,7 @@ Close a spec (open/ -> closed/); ship its linked intent when no open spec is lef
 
 ### `abcd statusline`
 
-Render abcd's status-line row from the harness payload on stdin (harness-invoked)
+Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.
 
 **Usage:** `abcd statusline`
 
@@ -1575,7 +1576,7 @@ its ordered elements, each with a key, a rendered and a plain form.
 
 ### `abcd update`
 
-Complete a chosen update: fetch, verify, and swap the PATH-installed binary
+Fetch, verify, and swap the PATH-installed binary for a chosen release: Writes the swapped binary; refuses a binary it cannot prove is abcd's.
 
 **Usage:** `abcd update [tag] [flags]`
 
@@ -1597,7 +1598,7 @@ remedy that reinstalls over it — never one that deletes it.
 
 ### `abcd version`
 
-Print abcd's version, install mode, and vintage
+Print abcd's version, install mode, and vintage: Writes nothing; refuses any argument.
 
 **Usage:** `abcd version [flags]`
 

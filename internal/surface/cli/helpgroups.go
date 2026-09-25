@@ -247,10 +247,10 @@ func agentEntries(root *cobra.Command) []helpEntry {
 	return out
 }
 
-// renderRootHelp writes the root's help: the description and usage, then the
-// person's groups under the line that says --agent expands them, or — with
-// --agent — the person's block and then the agents-and-hosts block, then the
-// flags. The layout follows cobra's own template, so everything but the list
+// renderRootHelp writes the root's help: the sentence, the description and the
+// usage, then the person's groups under the line that says --agent expands
+// them, or — with --agent — the person's block and then the agents-and-hosts
+// block, then the flags. The layout follows cobra's own template, so everything but the list
 // reads as it always has.
 func renderRootHelp(w io.Writer, root *cobra.Command, agent bool) {
 	groups := map[string][]helpEntry{}
@@ -273,6 +273,11 @@ func renderRootHelp(w io.Writer, root *cobra.Command, agent bool) {
 		}
 	}
 
+	// The root's help opens with its sentence, as every verb's does
+	// (itd-2609212113220149), and the long help follows it.
+	if short := strings.TrimSpace(root.Short); short != "" {
+		fmt.Fprintf(w, "%s\n\n", short)
+	}
 	if long := strings.TrimSpace(root.Long); long != "" {
 		fmt.Fprintf(w, "%s\n\n", long)
 	}
