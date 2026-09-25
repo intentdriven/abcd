@@ -2603,6 +2603,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if res.AuditEmitError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
 			}
+			routeCloseRequest(cmd, repoRoot, res)
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
 				if res.Remainder.ID != "" {

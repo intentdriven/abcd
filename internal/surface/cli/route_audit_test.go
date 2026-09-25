@@ -111,3 +111,74 @@ func TestIntentAuditIssueDriftRefusesRoute(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// specCloseWorld is a checkout holding one planned intent and the one open
+// spec that realises it, so `spec close spc-1` ships the intent and emits its
+// fidelity-review request.
+func specCloseWorld(t *testing.T) string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	t.Chdir(repo)
+	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\nimpact: fix\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
+	return repo
+}
+
+// closeRequest runs `spec close spc-1 --json` and returns the request document
+// the close emitted, with the close's stderr.
+func closeRequest(t *testing.T, repo string) (doc, stderr string) {
+	t.Helper()
+	stdout, stderr, err := runCLISplit(t, "spec", "close", "spc-1", "--json")
+	if err != nil {
+		t.Fatalf("%v\nstderr %s", err, stderr)
+	}
+	var res struct {
+		ReceiptID string `json:"receipt_id"`
+		To        string `json:"to"`
+	}
+	member(t, []byte(`{"x":`+stdout+`}`), "x", &res)
+	if res.To != "shipped" || res.ReceiptID == "" {
+		t.Fatalf("the close shipped nothing: %s", stdout)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo, ".abcd", ".work.local", "reviews", res.ReceiptID+".request.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw), stderr
+}
+
+// TestSpecCloseRequestCarriesTheRoutingSection: the close that ships an intent
+// emits the auditor's request, and that request carries the same `## Routing`
+// section `intent audit <itd-N>` writes, so a host that reads the close's
+// request directly runs the auditor at the resolved tier.
+func TestSpecCloseRequestCarriesTheRoutingSection(t *testing.T) {
+	repo := specCloseWorld(t)
+	acceptRepoRow(t, repo, "intent-auditor", "economy")
+	doc, stderr := closeRequest(t, repo)
+	if !strings.Contains(doc, "## Routing\n\nrouting:\n  agent: intent-auditor\n  tier: economy\n") {
+		t.Fatalf("the close's request carries no routing section:\n%s", doc)
+	}
+	if !strings.Contains(stderr, "serves tier economy") {
+		t.Fatalf("the fallback is not announced: stderr %q", stderr)
+	}
+}
+
+// TestSpecCloseUnreadableRoutingTableStillCloses: the close is a record move and
+// its emit is report-only, so a routing table that cannot be read leaves the
+// request without a routing section and says so on stderr, naming the re-emit,
+// rather than refusing a close whose intent has already shipped.
+func TestSpecCloseUnreadableRoutingTableStillCloses(t *testing.T) {
+	repo := specCloseWorld(t)
+	writeRepoFile(t, repo, ".abcd/config/oracle-routing.json", `{"schema_version":2,"agents":{}}`)
+	doc, stderr := closeRequest(t, repo)
+	if strings.Contains(doc, "## Routing") {
+		t.Fatalf("a routing section was written from a table that cannot be read:\n%s", doc)
+	}
+	if !strings.Contains(stderr, "schema_version") || !strings.Contains(stderr, "abcd intent audit itd-10") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}

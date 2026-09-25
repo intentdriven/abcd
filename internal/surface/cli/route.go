@@ -24,7 +24,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -241,4 +243,32 @@ func peekPayload(path string, limit int64) []byte {
 		return nil
 	}
 	return raw
+}
+
+// routeCloseRequest gives the fidelity-review request a spec close emitted the
+// same `## Routing` section `intent audit <itd-N>` writes, so a host that reads
+// the close's request directly runs the auditor at the resolved tier. The core
+// close emits the request without one (the route is a front-door fact), so the
+// request is re-emitted here with the section once the route resolves.
+//
+// Only a request still owed is rewritten. The close is a record move whose
+// emit is report-only, so a route that cannot be resolved does not undo or
+// refuse it: the request keeps no routing section and one stderr line names the
+// fault and the re-emit that adds the section once the table reads.
+func routeCloseRequest(cmd *cobra.Command, repoRoot string, res intent.ReconcileResult) {
+	if res.AuditEmitError != "" || (res.ReceiptStatus != "owed" && res.ReceiptStatus != "already_owed") {
+		return
+	}
+	stderr := cmd.ErrOrStderr()
+	id := termsafe.Sanitize(res.Intent.ID)
+	route, err := (&routeFlag{}).resolve(cmd, "abcd spec close", auditAgent)
+	if err == nil {
+		_, err = intent.ReEmitAuditWith(repoRoot, res.Intent.ID,
+			intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "WARNING: abcd spec close — the fidelity-review request for %s carries no routing section (the close stands): %s; "+
+			"once that is fixed, `abcd intent audit %s` re-emits the request with one\n",
+			id, termsafe.Sanitize(fsutil.RedactHome(strings.TrimPrefix(err.Error(), "abcd spec close: "))), id)
+	}
 }
