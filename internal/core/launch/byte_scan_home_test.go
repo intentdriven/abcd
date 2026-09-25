@@ -17,6 +17,7 @@ func TestBytesAndTextAgreeOnAnAlnumPrecededHome(t *testing.T) {
 		t.Run(home, func(t *testing.T) {
 			t.Setenv("HOME", home)
 			root := t.TempDir()
+			writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 			writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["docs"]}`)
 			// Plain bytes, so the .md is text-scanned and the .png (skip-listed
 			// by extension) is byte-scanned over the same content; the home is

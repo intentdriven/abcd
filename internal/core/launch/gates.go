@@ -144,6 +144,10 @@ type suiteRequest struct {
 	Dirty    DirtyPolicy
 	DocAudit *DocAuditPreflight
 	Policy   GatePolicy
+	// Kind is the declared artefact kind. Empty is the plugin shape every
+	// caller that predates the declaration assumes; any other kind reports the
+	// rows that judge a plugin payload as not armed.
+	Kind ArtefactKind
 }
 
 // suiteResult is everything the suite found, collected before anything decides.
@@ -203,7 +207,11 @@ func runGateSuite(req suiteRequest) suiteResult {
 	}
 
 	warn(docAuditGate(req.DocAudit))
-	warn(hookComplianceGate(req.Bundle))
+	if req.Kind == "" || req.Kind == KindPlugin {
+		warn(hookComplianceGate(req.Bundle))
+	} else {
+		res.Gates = append(res.Gates, pluginOnlyRow(gateHookCompliant, req.Kind))
+	}
 	return res
 }
 

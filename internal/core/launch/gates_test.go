@@ -48,6 +48,7 @@ func anyContains(reasons []string, fragments ...string) bool {
 func docsFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "docs", "commands", "README.md"]}`)
 	writeFile(t, root, "README.md", "# readme\n\nThe tool reads the record.\n")
@@ -192,6 +193,7 @@ func TestNarrationGatePassesPresentTense(t *testing.T) {
 func dirtyRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	r := gittest.NewRepo(t)
+	r.Write(ArtefactRelPath, `{"kind": "plugin"}`)
 	r.Write(".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "docs", "README.md"]}`)
 	r.Write(".abcd/config/version-location.json", `{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version"}`)
 	r.Write(".claude-plugin/plugin.json", `{"name": "abcd"}`)
@@ -272,6 +274,7 @@ func TestDirtyTreeGateFailsClosedOffAGitTree(t *testing.T) {
 // nothing, unless the repository configures the suite strict.
 func TestWarnRowsSurfaceWithoutBlocking(t *testing.T) {
 	root := docsFixture(t)
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "docs", "hooks", "scripts", "README.md"]}`)
 	writeFile(t, root, "hooks/hooks.json",
@@ -302,6 +305,7 @@ func TestWarnRowsSurfaceWithoutBlocking(t *testing.T) {
 		}
 	}
 
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "docs", "hooks", "scripts", "README.md"], "strict_warnings": true}`)
 	strict, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3", DocAudit: audit})
@@ -312,6 +316,7 @@ func TestWarnRowsSurfaceWithoutBlocking(t *testing.T) {
 		t.Errorf("a strict suite must refuse on its warnings, got %v", strict.WouldRefuseOn)
 	}
 
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "docs", "README.md"], "strict_warnings": "yes"}`)
 	if _, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"}); err == nil {
@@ -442,6 +447,7 @@ func TestWritePreflightReportLandsInTheLocalTier(t *testing.T) {
 // manifest. Neither may read it as a clean pass.
 func TestHookRowFindsAnUnparseableHooksConfig(t *testing.T) {
 	root := docsFixture(t)
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json",
 		`{"includes": [".claude-plugin", "docs", "hooks", "README.md"]}`)
 	writeFile(t, root, "hooks/hooks.json", "{not json at all")

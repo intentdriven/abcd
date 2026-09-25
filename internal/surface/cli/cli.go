@@ -337,6 +337,8 @@ func NewRootCommand() *cobra.Command {
 			rep.ReportPath, rep.ReportError = writePreflight(cwd, rep.PreflightReport(time.Now()))
 			return render(cmd.OutOrStdout(), asJSON, rep, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd launch (dry-run) — version %s\n", rep.Version)
+				fmt.Fprintf(w, "  artefact kind:  %s\n", rep.Kind)
+				fmt.Fprintf(w, "  scanned tree:   %s\n", rep.ScannedTree)
 				fmt.Fprintf(w, "  files bundled:  %d\n", len(rep.Bundle.Included))
 				fmt.Fprintf(w, "  scan hardfails: %d\n", rep.Scan.HardFails)
 				for _, g := range rep.Gates {
