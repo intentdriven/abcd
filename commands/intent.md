@@ -197,7 +197,7 @@ it. Recording is append-only, so a caller who retries after missing the receipt
 adds a second entry rather than replacing the first.
 
 **The gate reports a planned record that carries no entry, and does not refuse
-it.** The `grounds` check is the seventh and last row of the report and is
+it.** The `grounds` check is the eighth and last row of the report and is
 advisory: its remedy names this exact command, and the verdict ignores the row
 until the rethink of the reading work settles what a human is asked for here
 (iss-2609091009111294). Relay the row; do not treat it as a refusal. Terminal buckets are exempt on the same rule the claim checks follow:
@@ -343,7 +343,10 @@ gate that will refuse the move mechanically is a recorded seed until built.
    This invocation IS the maintainer's sign-off act — never run it unattended
    or infer consent. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
-   `drafts/ → planned/`.
+   `drafts/ → planned/`. Every relative markdown link that named the draft's
+   path, from any file in the tree, is repointed at `planned/` in the same
+   operation; the JSON lists each rewrite under `relinked` (`file`, `line`,
+   `from`, `to`) — report them.
 
    **`--impact` is the judgement the interview settled**, stamped here because
    this is the moment it is made: a draft filed without one gets it now, in the
@@ -364,8 +367,40 @@ gate that will refuse the move mechanically is a recorded seed until built.
    [`plan`](../.abcd/development/brief/glossary/core/plan.md).
 11. **Spec build:** replace the minted spec body's `_Draft:` placeholder with
     the real design record — scope, approach, and how it satisfies each
-    acceptance criterion.
+    acceptance criterion. Where the work is larger than one implementer can
+    hold and land, list its steps under the minted `## Steps` section (see
+    [Steps](#steps-the-unit-below-a-spec)); a spec that lists none is one step.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
+
+## Steps: the unit below a spec
+
+A spec may split its work into **steps**: ordered, independently landable
+pieces, each one lane and one pull request (adr-2609212115255771, decision 4).
+The author writes them; nothing proposes a split. `abcd intent plan` mints every
+spec with an empty `## Steps` section, and a spec that lists no step is built as
+one step. The section is a numbered list, each step's title on its numbered
+line and its footprint indented beneath it:
+
+```markdown
+## Steps
+
+1. The parser
+   - packages: internal/core/spec
+   - tests: the parser over a stepped and an unstepped spec
+   - landed: #123
+2. The remainder copy
+   - packages: internal/core/intent
+   - tests: the remainder carries the unlanded steps
+```
+
+`- landed:` names what landed the step, a pull request or a commit; a step
+without it is not landed. Any other line indented under a step is the author's
+and travels with it. `abcd intent ready` reports the section's shape on its
+advisory `steps` row: the steps listed and how many have landed, or none and so
+one step. A section that is not a numbered list is named there with the shape
+above, and never withholds readiness. The close below reads it too: a
+`--remainder` close carries the steps not marked landed into the spec it mints,
+and refuses, writing nothing, when the section cannot be read as steps.
 
 ## Ship: close the spec in the change that lands the work
 
@@ -385,11 +420,32 @@ scheduled work, the spec that delivered part of it is closed on its own terms
 and a new spec is minted for the remainder and attached to the same intent —
 `--remainder <slug>` does both in one command, and the visible state afterwards
 is exactly what happened: spec closed X, spec open Y, intent still `planned/`.
+The remainder carries the closing spec's steps not marked landed, renumbered
+from one, and the close names each step it carried; a landed step stays with the
+spec that landed it.
 The intent is never narrowed to match what was built; it stands as written, and
 it ships on the close after which no open spec names it. A close that ships
 nothing refuses `--impact`, because that judgement is written only at the close
 that ships (adr-2609151513118583, invariant 17). Report the specs the close
 names as still open — they are the reason the intent did not move.
+
+**The close repoints every link that named a record it moved.** A record's
+folder is its status, so the close renames two files — the spec out of
+`open/`, and on the close that ships, the intent out of `planned/` — and in the
+same operation it rewrites every relative markdown link in the tree that named
+either old path: a spec already closed that pointed at `../open/<the spec>`, an
+ADR or a plan naming the intent's `planned/` path, a draft naming both, and the
+closed spec's own links, which were written from `open/`. A link that never
+resolved is left as written. The JSON lists each rewrite under `relinked`
+(`file`, `line`, `from`, `to`), and the text render prints them; report them,
+because they are files the close changed beyond the two records. The tree the
+close leaves passes record-lint's `links_resolve` with no hand repair. If the
+repoint fails part-way, the close still stands and a warning on stderr says so.
+After an attempt that failed before or during the repoint, re-running the same
+`spec close` repoints every link other files still hold to either old path. The re-run reads the moved records' own links from the folders
+they are in, because they may have been edited there since the move, so it
+never rewrites them; any of those the failed attempt left unrewritten is one
+`links_resolve` names, to repair by hand.
 
 Run it in the **same change** that lands the intent's work — the commit or
 pull request that makes the acceptance criteria true — the way a captured

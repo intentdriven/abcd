@@ -150,21 +150,57 @@ func TestSubVerbStagedButRegisteredFails(t *testing.T) {
 	}
 }
 
-func TestSubVerbMissingTableFailsOnlyWithRegisteredSubs(t *testing.T) {
+// TestSubVerbMissingTableFailsOnEverySurfaceFile: itd-122 ac-1 and ac-5 put a
+// table on every surface file, so the check demands one whatever the verb
+// registers: a verb with no sub-commands, the bare command's own file, a
+// host-delegated surface and a staged verb the tree does not register at all
+// each fail without one. Only the cobra comparison is ever exempted.
+func TestSubVerbMissingTableFailsOnEverySurfaceFile(t *testing.T) {
 	f := newSubverbFixture(t, []map[string]any{
 		cmd("abcd", false),
 		cmd("abcd capture", false), cmd("abcd capture list", false),
 		cmd("abcd version", false),
 	})
 	f.writeSurface(t, "06-capture.md", "# capture — no table here\n")
+	f.writeSurface(t, "08-abcd.md", "# the bare board — no table\n")
+	f.writeSurface(t, "09-reflect.md", "# reflect — staged, no verb, no table\n")
 	f.writeSurface(t, "12-version.md", "# version — no table, no subs\n")
+	f.writeSurface(t, "13-consult.md", "# consult — host-delegated, no table\n")
 	out := runSubverbCheck(t, f)
 	msgs := messages(out)
-	if !strings.Contains(msgs, "06-capture.md") {
-		t.Fatalf("a sub-command-bearing verb without a table must fail:\n%s", msgs)
+	for _, file := range []string{"06-capture.md", "08-abcd.md", "09-reflect.md", "12-version.md", "13-consult.md"} {
+		if !strings.Contains(msgs, file) {
+			t.Errorf("a surface file without a '## Sub-verbs' table must fail: %s is not named in:\n%s", file, msgs)
+		}
 	}
-	if strings.Contains(msgs, "12-version.md") {
-		t.Fatalf("a verb with no sub-commands needs no table:\n%s", msgs)
+	if len(out) != 5 {
+		t.Fatalf("want exactly one finding per tableless file (5), got %d:\n%s", len(out), msgs)
+	}
+}
+
+// TestSubVerbEmptyTablePassesForAVerbWithNoSubs: a verb that registers no
+// sub-command records that with a header-only table; the table is present and
+// every registered sub-command (none) has a row, so it passes. The same empty
+// table on a sub-command-bearing verb still fails row by row.
+func TestSubVerbEmptyTablePassesForAVerbWithNoSubs(t *testing.T) {
+	f := newSubverbFixture(t, []map[string]any{
+		cmd("abcd", false), cmd("abcd version", false),
+		cmd("abcd capture", false), cmd("abcd capture list", false),
+	})
+	empty := func(title string) string {
+		return "# " + title + "\n\n## Sub-verbs\n\n| Verb | Bucket | Status |\n|---|---|---|\n\nNo sub-verb.\n"
+	}
+	f.writeSurface(t, "12-version.md", empty("version"))
+	f.writeSurface(t, "13-consult.md", empty("consult"))
+	f.writeSurface(t, "09-reflect.md", empty("reflect"))
+	f.writeSurface(t, "06-capture.md", "# capture\n\n## Sub-verbs\n\n| Verb | Bucket | Status |\n|---|---|---|\n| `list` | — | shipped |\n")
+	if out := runSubverbCheck(t, f); len(out) != 0 {
+		t.Fatalf("an empty table on a verb with no sub-commands must pass:\n%s", messages(out))
+	}
+	f.writeSurface(t, "06-capture.md", empty("capture"))
+	out := runSubverbCheck(t, f)
+	if len(out) != 1 || !strings.Contains(out[0].Message, "capture list") {
+		t.Fatalf("an empty table on a sub-command-bearing verb must fail on the missing row:\n%s", messages(out))
 	}
 }
 
@@ -235,7 +271,7 @@ func TestSubVerbExclusions(t *testing.T) {
 		cmd("abcd hook", true), cmd("abcd hook session-start", false),
 		cmd("abcd spec", false), cmd("abcd spec close", false),
 	})
-	f.writeSurface(t, "08-abcd.md", "# the bare board — no table\n")
+	f.writeSurface(t, "08-abcd.md", "# the bare board\n\n## Sub-verbs\n\n| Verb | Bucket | Status |\n|---|---|---|\n| `mode` | — | shipped |\n")
 	if out := runSubverbCheck(t, f); len(out) != 0 {
 		t.Fatalf("hidden subtree, operator-internal, and bare must all be excluded:\n%s", messages(out))
 	}

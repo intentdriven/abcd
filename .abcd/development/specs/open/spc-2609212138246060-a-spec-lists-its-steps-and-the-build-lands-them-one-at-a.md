@@ -42,3 +42,8 @@ A parser in the spec store, a counter in the state file, one branch in the loop'
 | 3 remainder carries steps | scope 4 |
 | 4 briefs and record | scope 5 |
 | 5 one word | scope 6 |
+
+## Progress
+
+- Criteria 1 and 3 (scope 1, 2 and 4) are delivered by commit e5dfe0fc: the plan stub carries an empty `## Steps` section, rendered from one list of stub sections; `internal/core/spec/steps.go` parses the section (`- packages:`, `- tests:` and `- landed: <pull request or commit>` indented under each numbered step) and turns a spec listing none into one implicit step; `spec close --remainder` carries the steps not marked landed into the remainder and refuses, writing nothing, on a section it cannot read; `intent ready` reports the section's shape on an advisory `steps` row.
+- Criteria 2, 4 and 5 (scope 3, 5 and 6) are owed to the implement-loop lanes of itd-2609201916151817, which close this spec.

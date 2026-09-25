@@ -154,3 +154,66 @@ short stack, the spec closed in the change that lands step 6.
 - Writing rows from measurements — itd-17.
 - Enforcing a fan-out bound at ingest.
 - A lint rule over the routing files.
+
+## Progress
+
+Part 1 (branch `feat/layered-config-resolver`, autonomous run A, 2026-09-25)
+lands Approach steps 1, 2 and 6 and leaves the spec open.
+
+**The layered resolver** has one home, `internal/core/layered`, and every
+consumer reads through it. Both file families are recorded in
+`.abcd/work/DECISIONS.md` (2026-09-25):
+
+- `layered.Config`: `.abcd/config.json` and `~/.abcd/config.json`, holding
+  `pace.*`, `oracle.review`, `roles.<role>.runner` and `match.threshold`;
+- `layered.OracleRouting`: this spec's two routing files.
+
+Its API:
+
+- `Load(File, Roots{Repo, Home}) (*Stack, error)`: guarded reads, loud on any
+  fault; an absent file is an absent layer.
+- `(*Stack).SetFlag(key, v, origin)`: the flag layer, with the flag text kept
+  verbatim as the value's origin.
+- `(*Stack).Claim(namespace, keys...)`: refuses an unknown key under a
+  claimed namespace; `""` claims the top level and `*` matches an open segment.
+- `Get[T](s, key, bundled, check) (Value[T]{V, Layer, Origin}, error)`: strict
+  decode; a bad winning value refuses and never falls through.
+- `(*Stack).Lookup(key) []Found{Layer, Origin, Raw}`: every layer, highest
+  first.
+- `(*Stack).Members(layer, key)`, `(*Stack).Present(layer)` and `Decode[T](raw)`.
+- `Layer`: `None`, `Bundled`, `Machine`, `Repo` and `Flag`.
+
+**Delivered here, each with tests:**
+
+- AC 1, the resolution half: `Resolve` gives `none`, the harness at
+  `host-decides` under the contract ceiling, and consults no connection.
+- AC 3 and AC 4, the resolution halves: a provider takes the step, or the step
+  falls back to the harness with a reason.
+- AC 6 in full: repo over machine over bundled, and the bare board's `oracle:`
+  lines.
+- AC 7, the core half: `ParseRoutes` and `Apply`, with the five refusals.
+- AC 8, the merge half: connection, then row, then flag.
+- AC 9 in full: an orphan row is reported and skipped.
+
+Also delivered: the tier enum, the bundled proposal and its roster test, and the
+ceiling clamp.
+
+**Two rulings this part took** (DECISIONS, 2026-09-25):
+
+- The bundled proposal applies only once a repository or machine table exists,
+  and a `--route` accepts nothing.
+- Every agent's fan-out ceiling is 1, because no contract declares one.
+
+**What remains:**
+
+- Step 3, `--route` on the delegating verbs through one cobra helper (AC 7 at
+  the surface).
+- Step 4, the request block's `routing:` section and the receipt's `route:`
+  block. These give the stderr fallback line of AC 4 and the receipts of AC 4,
+  5, 7 and 8. Steps 3 and 4 land together, because a flag that changes no
+  request would half-work.
+- Step 5, the `oracle-routing` consent category in `ahoy install` (AC 2).
+- AC 10 (escalation on a failed fix round) and AC 11 (the provider allowlist).
+  They follow the implement loop and the API adapter.
+
+The spec closes in the change that lands the last of steps 3 to 5.

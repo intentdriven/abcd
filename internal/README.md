@@ -61,6 +61,15 @@ plugin surface, and a future MCP server share one engine.
   the families it admits. A leaf because `core/capture` imports `core/intent`
   and both need it; `core/capture` keeps its historical locator names as thin
   wrappers over it.
+- **`core/relink/`** — the one link-repoint primitive. A record's folder is its
+  status, so every lifecycle transition is a rename, and a rename strands every
+  relative link that named the file where it was. The verbs that move a record
+  — `spec close` and `intent plan` (`core/intent`), `capture resolve` and
+  `capture wontfix` (`core/capture`) — hand it the moves they made, and it
+  rewrites every markdown link in the working tree that named an old path and
+  reports each rewrite. A leaf on the `core/mdrecord` precedent: three record
+  families move, and a repoint spelled per family is one that misses a link
+  class the others catch.
 - **`core/provenance/`** — the record's disclosure vocabulary: where an item came
   from (`origin`) and how its text was produced (`production_mode`), plus the one
   parser that reads and renders them. It is a leaf for the same reason
@@ -75,6 +84,14 @@ plugin surface, and a future MCP server share one engine.
   beyond the standard library; the arrow points one way, so the issue schema's
   allow-list carries the two key names as literals, pinned to this package's
   constants by a test here.
+- **`core/layered/`** — the one layered configuration resolver: a value comes
+  from the invocation's flag, else the repository's file, else the machine's file
+  under `~/.abcd/`, else the bundled default, and returns with the layer and the
+  origin that supplied it. Any configuration more than one party may set reads
+  through it (the routing table in `core/oracle`, and the pace, runner, review
+  and match keys in `.abcd/config.json`), so the precedence, the guarded reads
+  and the refusals are spelled once. A present file it cannot read, or a key
+  nobody claims inside a claimed namespace, is an error, never a quiet default.
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier

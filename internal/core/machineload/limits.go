@@ -23,8 +23,8 @@ const (
 	KeyStrayMinutes = "stray-minutes"
 	KeyExtremeLoad  = "extreme-load"
 
-	// DefaultStrayMinutes is how long a process may run at a near-full core
-	// before it reads as a stray.
+	// DefaultStrayMinutes is how long a process may run at nearly all the CPU it
+	// could get before it reads as a stray.
 	DefaultStrayMinutes = 30
 	// DefaultExtremeFactor times the online core count is the extreme load.
 	DefaultExtremeFactor = 4
@@ -37,7 +37,8 @@ const (
 
 // Limits are the two limits the classifier applies.
 type Limits struct {
-	// StrayMinutes: a process older than this at a near-full core is a stray.
+	// StrayMinutes: a process older than this at nearly all the CPU it could get
+	// is a stray.
 	StrayMinutes int
 	// ExtremeLoad: a one-minute load average strictly above this is extreme. It is
 	// an absolute load, in the online-core unit the LOAD rule's cap uses.

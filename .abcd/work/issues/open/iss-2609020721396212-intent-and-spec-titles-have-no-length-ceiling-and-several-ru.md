@@ -9,8 +9,8 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/intent/create.go"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: title ceiling (character or word count) at mint; site truncation can follow). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Title ceiling at mint: characters or words, and what value?"
 ---
 
 Intent and spec titles have no length ceiling, and several run to a full sentence that carries the description rather than a name (the longest today are well over a hundred characters), so a roster, a status board, a changelog line and the record export on the website all show a paragraph where a title belongs, and the id-plus-slug filename derived from the title is truncated at a fixed width that cuts mid-word. Two changes: a threshold on the title at mint time (intent new, spec new, capture promote), refused with the excess named and the description offered as the place for the rest, with a size stated in the record schema and enforced by record-lint for hand-written records; and the website's record export truncating an existing over-long title at the display layer with an ellipsis and the full text on hover or on the record page, so the records already in the corpus do not have to be rewritten to render. The ceiling itself is a decision (a fixed character count, or a word count); the site truncation is not.

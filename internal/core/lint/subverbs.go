@@ -5,10 +5,12 @@ package lint
 // recording two facts per verb — which bucket it is (lint / review / audit /
 // gate, or — for a non-assessment verb) and whether it exists (shipped /
 // staged) — and every row is checked against the committed command-tree
-// snapshot in both directions. This is the detector that removes the
-// surface-grain check's blindness inside a row (iss-246): a `staged` row
-// cannot be cited as live elsewhere without failing the build, and a sub-verb
-// cannot ship without a row.
+// snapshot in both directions. Every surface file carries the table, the
+// bare command's and the host-delegated surfaces' included: their exemption
+// is from the cobra comparison only (itd-122). This is the detector that
+// removes the surface-grain check's blindness inside a row (iss-246): a
+// `staged` row cannot be cited as live elsewhere without failing the build,
+// and a sub-verb cannot ship without a row.
 
 import (
 	"encoding/json"
@@ -127,12 +129,17 @@ func checkSubVerbCoverage(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		}
 		regs := subsByVerb[verb]
 		if !tableFound {
+			// Every surface file carries a table (itd-122 ac-1, ac-5): a verb
+			// with no sub-command records that with a header-only table, and
+			// the exemptions reach the cobra comparison only, never presence.
+			msg := fmt.Sprintf("surface '%s' has no '## Sub-verbs' table — every surface file carries one, header-only where the verb has no sub-verb", verb)
 			if len(regs) > 0 && !exemptFromCobra {
-				out = append(out, Finding{
-					File: rel, Line: 1, RuleID: "surface_coverage", Severity: cfg.Severity,
-					Message: fmt.Sprintf("surface '%s' has %d registered sub-command(s) but no '## Sub-verbs' table — the sub-verb grain may not be waved through in prose", verb, len(regs)),
-				})
+				msg = fmt.Sprintf("surface '%s' has %d registered sub-command(s) but no '## Sub-verbs' table — the sub-verb grain may not be waved through in prose", verb, len(regs))
 			}
+			out = append(out, Finding{
+				File: rel, Line: 1, RuleID: "surface_coverage", Severity: cfg.Severity,
+				Message: msg,
+			})
 			continue
 		}
 
