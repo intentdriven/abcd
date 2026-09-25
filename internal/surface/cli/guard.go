@@ -72,14 +72,20 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"backtick, `<(…)` or `>(…)`, quoted or not, IS followed into command\n" +
 			"position, and the words written after one stay the enclosing command's,\n" +
 			"so `rm $(true) -rf *` is read as `rm -rf *`. What one prints is unknown,\n" +
-			"so a word holding one fails closed: led by a dash (`--$(…)`) it is every\n" +
-			"flag it could become, after a value flag (`git -C $(pwd) push`) it is that\n" +
-			"flag's value, and as an operand it is one operand; text beside one in the\n" +
-			"same word is also read as bash leaves it when the output is empty. One\n" +
-			"nested more than eight double-quoted substitutions deep, or holding a case\n" +
-			"command, is blocked, because the guard has stopped reading it. `$(( … ))`\n" +
-			"is an expression, not commands. A shell reading its script from a pipe, a\n" +
-			"here-document or a here-string is blocked, and so is a line over 64 KiB.\n" +
+			"so a word holding one fails closed, read every way it can be at once: led\n" +
+			"by a dash (`--$(…)`) it is every flag it could become — standing alone,\n" +
+			"taking a value, a shell's `-c` — before the command as well as after it;\n" +
+			"after a value flag (`git -C $(pwd) push`) it is that flag's value; as an\n" +
+			"operand it is one operand; in command position (`$(echo git) push`) it is\n" +
+			"any program its known text allows, so an unknown name with any operand\n" +
+			"reads as `pkill` too. Text beside one in the same word is also read as bash\n" +
+			"leaves it when the output is empty. One nested more than eight\n" +
+			"double-quoted substitutions deep, holding a case command, or more than\n" +
+			"eight of them where the program name could be, is blocked, because the\n" +
+			"guard has stopped reading it. An ANSI-C string ends at its first NUL, as\n" +
+			"bash ends it. `$(( … ))` is an expression, not commands. A shell reading\n" +
+			"its script from a pipe, a here-document or a here-string is blocked, and\n" +
+			"so is a line over 64 KiB.\n" +
 			"An unquoted brace group IS\n" +
 			"expanded as bash expands it, and one past 4096 words is blocked. What an\n" +
 			"allow still does not see is a hazard that never reaches command position at\n" +

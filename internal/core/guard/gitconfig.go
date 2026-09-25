@@ -1,7 +1,6 @@
 package guard
 
 import (
-	"path"
 	"sort"
 	"strings"
 )
@@ -103,94 +102,91 @@ func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth 
 
 	for _, s := range segs {
 		out = append(out, s)
-		ci, noglob := commandIndex(s)
-		if ci < 0 {
-			continue
-		}
-		// A globbed name reaches this pre-pass for the same reason it reaches
-		// matchSegment's command compare: bash expands the word before exec, so
-		// `g?t -c alias.p='push --force' p` is git whenever a file called `git`
-		// is there. Without the glob reading the two compares disagreed, and the
-		// disagreement fell on the allow side — the entry matched the rewrite
-		// that was never built.
-		base := path.Base(s.tokens[ci])
-		if !strings.EqualFold(base, "git") &&
-			!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(base), "git")) {
-			continue
-		}
-		args := s.tokens[ci+1:]
-		decls, unread := gitConfigDeclarations(s.tokens[:ci], args, valueFlags)
-		if unread {
-			signals = append(signals, gitConfigUnreadWarnSignal())
-		}
-		if len(decls) == 0 {
-			continue
-		}
-		globs := s.globSlice(ci+1, len(s.tokens))
-		rewritten, globbed, shell, ok := rewriteGitAlias(args, globs, decls, valueFlags)
-		if !ok {
-			continue
-		}
-		if shell != "" {
-			if seen[shell] {
+		// Every place git can sit is read (sitesNamed), a name a substitution
+		// prints included. A globbed name reaches this pre-pass for the same
+		// reason it reaches matchSegment's command compare: bash expands the
+		// word before exec, so `g?t -c alias.p='push --force' p` is git whenever
+		// a file called `git` is there. Without the glob reading the two
+		// compares disagreed, and the disagreement fell on the allow side — the
+		// entry matched the rewrite that was never built.
+		unreadRaised := false
+		for _, site := range sitesNamed(s, "git") {
+			ci := site.idx
+			args := s.tokens[ci+1:]
+			decls, unread := gitConfigDeclarations(s.tokens[:ci], args, valueFlags)
+			if unread && !unreadRaised {
+				unreadRaised = true
+				signals = append(signals, gitConfigUnreadWarnSignal())
+			}
+			if len(decls) == 0 {
 				continue
 			}
-			seen[shell] = true
-			sig, psegs, inspectable := shellInspect(shell)
-			if !inspectable {
-				// Warned, and what the body does spell is still read.
-				signals = append(signals, sig)
-				if len(psegs) == 0 {
+			globs := s.globSlice(ci+1, len(s.tokens))
+			for _, rw := range rewriteGitAliases(args, globs, decls, valueFlags) {
+				if rw.shell != "" {
+					if seen[rw.shell] {
+						continue
+					}
+					seen[rw.shell] = true
+					sig, psegs, inspectable := shellInspect(rw.shell)
+					if !inspectable {
+						// Warned, and what the body does spell is still read.
+						signals = append(signals, sig)
+						if len(psegs) == 0 {
+							continue
+						}
+					}
+					// The body may itself carry an execute-a-string layer; expanding
+					// it here gives that its own depth budget, which is right — the
+					// body is a fresh command string, not a deeper wrapping of this
+					// one.
+					psegs, psigs := expandPayloads(psegs)
+					signals = append(signals, psigs...)
+					// Each body gets its OWN disjoint chain range, the way
+					// expandPayloads gives each payload one: a body is a separate
+					// command string, so a `cd` in one must not read as preceding
+					// an `rm` in the next. chainMax is the running maximum, so the
+					// range this body takes is never handed out again.
+					for i := range psegs {
+						psegs[i].chain += chainMax + 1
+					}
+					// The body re-enters the pre-pass one level deeper. At the
+					// budget it is still checked as written, and an alias rewrite
+					// in it — one the guard would have had to follow — is refused
+					// instead.
+					if depth+1 > maxBangAliasDepth {
+						if r.anyAliasRewrite(psegs, valueFlags) {
+							signals = append(signals, bangAliasDepthBlockSignal())
+						}
+					} else {
+						var bsigs []payloadSignal
+						psegs, bsigs = r.expandGitAliasesAt(psegs, valueFlags, depth+1, seen)
+						signals = append(signals, bsigs...)
+					}
+					for _, ps := range psegs {
+						if ps.chain > chainMax {
+							chainMax = ps.chain
+						}
+					}
+					bang = append(bang, psegs...)
 					continue
 				}
-			}
-			// The body may itself carry an execute-a-string layer; expanding it
-			// here gives that its own depth budget, which is right — the body is
-			// a fresh command string, not a deeper wrapping of this one.
-			psegs, psigs := expandPayloads(psegs)
-			signals = append(signals, psigs...)
-			// Each body gets its OWN disjoint chain range, the way
-			// expandPayloads gives each payload one: a body is a separate
-			// command string, so a `cd` in one must not read as preceding an
-			// `rm` in the next. chainMax is the running maximum, so the range
-			// this body takes is never handed out again.
-			for i := range psegs {
-				psegs[i].chain += chainMax + 1
-			}
-			// The body re-enters the pre-pass one level deeper. At the budget it
-			// is still checked as written, and an alias rewrite in it — one the
-			// guard would have had to follow — is refused instead.
-			if depth+1 > maxBangAliasDepth {
-				if r.anyAliasRewrite(psegs, valueFlags) {
-					signals = append(signals, bangAliasDepthBlockSignal())
+				next := segment{
+					tokens: append(append([]string(nil), s.tokens[:ci+1]...), rw.args...),
+					chain:  s.chain,
 				}
-			} else {
-				var bsigs []payloadSignal
-				psegs, bsigs = r.expandGitAliasesAt(psegs, valueFlags, depth+1, seen)
-				signals = append(signals, bsigs...)
-			}
-			for _, ps := range psegs {
-				if ps.chain > chainMax {
-					chainMax = ps.chain
+				// The glob record travels onto the rewrite from BOTH ends: from
+				// the alias body's own words, and from the leading tokens, which
+				// is where a glob-spelled `g?t` sits. Carrying only the body's
+				// record left the rewritten segment unglobbed, so matchSegment
+				// compared `g?t` with `git` literally and the rewrite this
+				// pre-pass had just built matched nothing.
+				if lead := globAtRange(s.globbed, 0, ci+1); rw.globs != nil || anyGlob(lead) {
+					next.globbed = append(lead, rw.globs...)
 				}
+				out = append(out, next)
 			}
-			bang = append(bang, psegs...)
-			continue
 		}
-		next := segment{
-			tokens: append(append([]string(nil), s.tokens[:ci+1]...), rewritten...),
-			chain:  s.chain,
-		}
-		// The glob record travels onto the rewrite from BOTH ends: from the
-		// alias body's own words, and from the leading tokens, which is where a
-		// glob-spelled `g?t` sits. Carrying only the body's record left the
-		// rewritten segment unglobbed, so matchSegment compared `g?t` with
-		// `git` literally and the rewrite this pre-pass had just built matched
-		// nothing.
-		if lead := globAtRange(s.globbed, 0, ci+1); globbed != nil || anyGlob(lead) {
-			next.globbed = append(lead, globbed...)
-		}
-		out = append(out, next)
 	}
 
 	return append(out, bang...), signals
@@ -201,22 +197,15 @@ func (r Registry) expandGitAliasesAt(segs []segment, valueFlags []string, depth 
 // follow if it were allowed to.
 func (r Registry) anyAliasRewrite(segs []segment, valueFlags []string) bool {
 	for _, s := range segs {
-		ci, noglob := commandIndex(s)
-		if ci < 0 {
-			continue
-		}
-		base := path.Base(s.tokens[ci])
-		if !strings.EqualFold(base, "git") &&
-			!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(base), "git")) {
-			continue
-		}
-		args := s.tokens[ci+1:]
-		decls, _ := gitConfigDeclarations(s.tokens[:ci], args, valueFlags)
-		if len(decls) == 0 {
-			continue
-		}
-		if _, _, _, ok := rewriteGitAlias(args, s.globSlice(ci+1, len(s.tokens)), decls, valueFlags); ok {
-			return true
+		for _, site := range sitesNamed(s, "git") {
+			args := s.tokens[site.idx+1:]
+			decls, _ := gitConfigDeclarations(s.tokens[:site.idx], args, valueFlags)
+			if len(decls) == 0 {
+				continue
+			}
+			if len(rewriteGitAliases(args, s.globSlice(site.idx+1, len(s.tokens)), decls, valueFlags)) > 0 {
+				return true
+			}
 		}
 	}
 	return false
@@ -323,14 +312,14 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 		}
 	}
 
-	limit := len(args)
-	if idx := operandIndexes(args, valueFlags); len(idx) > 0 {
-		limit = idx[0]
-	}
+	// Every word before operand 0 is read, in whichever reading puts operand 0
+	// furthest along (firstOperandLimit); an unknown word that can be `-c` or
+	// `--config-env` is read as one, and its next word as the setting.
+	limit := firstOperandLimit(args, valueFlags)
 	for i := 0; i < limit; i++ {
 		arg := args[i]
 		switch {
-		case arg == "-c":
+		case arg == "-c" || (isUnknown(arg) && flagCouldBe(arg, "-c")):
 			if i+1 < len(args) {
 				k, v, ok := strings.Cut(args[i+1], "=")
 				switch {
@@ -341,9 +330,10 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 					c.add(k, "")
 				}
 			}
-		case arg == "--config-env", strings.HasPrefix(arg, "--config-env="):
-			spec := strings.TrimPrefix(arg, "--config-env=")
-			if spec == "--config-env" {
+		case arg == "--config-env", strings.HasPrefix(arg, "--config-env="),
+			isUnknown(arg) && flagCouldBe(arg, "--config-env"):
+			spec, glued := strings.CutPrefix(arg, "--config-env=")
+			if !glued {
 				if i+1 >= len(args) {
 					continue
 				}
@@ -468,63 +458,85 @@ func readSingleQuoted(v string, i int) (string, int, bool) {
 	return "", i, false
 }
 
-// rewriteGitAlias returns the arguments git would run once operand 0's alias is
+// aliasRewrite is one command git can run once operand 0's alias is expanded:
+// the arguments and their glob record, or, for a `!` alias, the shell command
+// git hands to a shell.
+type aliasRewrite struct {
+	args  []string
+	globs []bool
+	shell string
+}
+
+// maxAliasRewrites bounds the rewrites one git command yields. Each reading of
+// where operand 0 sits can name a different alias; past the bound the rest are
+// not built, and a rewrite the guard would have had to follow is the bang
+// depth's refusal's shape, one level up (the readings are an attacker's, not
+// an everyday command's).
+const maxAliasRewrites = 16
+
+// rewriteGitAliases returns every command git can run once operand 0's alias is
 // expanded — the flags that preceded it, the body's words, then the arguments
-// that followed — following at most maxAliasHops of nesting. shell is non-empty
-// when the body is a `!` alias, which git runs through a shell rather than as a
-// subcommand; ok is false when operand 0 names no alias and nothing is rewritten.
+// that followed — following at most maxAliasHops of nesting, and every reading
+// of which word is operand 0 (operandReadings). A `!` alias is not a
+// subcommand: git runs the rest of the line through a shell, so the rewrite is
+// that shell command. None is returned when operand 0 names no alias in any
+// reading.
 //
 // The body is split on whitespace. git splits it with its own quote-aware
 // splitter, so a body carrying a quoted space (`alias.c='commit -m "a b"'`)
 // splits into more words here than git would produce — a floor, and one that
 // affects the words of a body an author already controls, not whether the
 // rewrite happens.
-func rewriteGitAlias(args []string, globs []bool, decls map[string]string, valueFlags []string) (rewritten []string, globbed []bool, shell string, ok bool) {
-	cur := args
-	curGlob := globs
-	seen := map[string]bool{}
-	for hop := 0; hop < maxAliasHops; hop++ {
-		idx := operandIndexes(cur, valueFlags)
-		if len(idx) == 0 {
-			break
+func rewriteGitAliases(args []string, globs []bool, decls map[string]string, valueFlags []string) []aliasRewrite {
+	var out []aliasRewrite
+	var walk func(cur []string, curGlob []bool, hop int, seen map[string]bool)
+	walk = func(cur []string, curGlob []bool, hop int, seen map[string]bool) {
+		if hop >= maxAliasHops {
+			return
 		}
-		i := idx[0]
-		name := strings.ToLower(cur[i])
-		body, isAlias := decls[name]
-		if !isAlias || seen[name] {
-			break
+		for _, i := range firstOperands(cur, valueFlags) {
+			if len(out) >= maxAliasRewrites {
+				return
+			}
+			name := strings.ToLower(cur[i])
+			body, isAlias := decls[name]
+			if !isAlias || seen[name] {
+				continue
+			}
+			if strings.HasPrefix(body, "!") {
+				// git runs the rest of the line as the shell command's own
+				// arguments, so they belong in the payload the guard reads.
+				out = append(out, aliasRewrite{shell: strings.TrimSpace(strings.Join(append([]string{strings.TrimPrefix(body, "!")}, cur[i+1:]...), " "))})
+				continue
+			}
+			fields := strings.Fields(body)
+			if len(fields) == 0 {
+				continue
+			}
+			next := make([]string, 0, len(cur)+len(fields)-1)
+			next = append(next, cur[:i]...)
+			next = append(next, fields...)
+			next = append(next, cur[i+1:]...)
+			// The body's words come from a config value, which git does not
+			// expand, so they are never patterns; the surrounding tokens keep the
+			// record they arrived with.
+			var nextGlob []bool
+			if curGlob != nil {
+				nextGlob = make([]bool, 0, len(next))
+				nextGlob = append(nextGlob, globAtRange(curGlob, 0, i)...)
+				nextGlob = append(nextGlob, make([]bool, len(fields))...)
+				nextGlob = append(nextGlob, globAtRange(curGlob, i+1, len(cur))...)
+			}
+			out = append(out, aliasRewrite{args: next, globs: nextGlob})
+			nextSeen := map[string]bool{name: true}
+			for k := range seen {
+				nextSeen[k] = true
+			}
+			walk(next, nextGlob, hop+1, nextSeen)
 		}
-		seen[name] = true
-		if strings.HasPrefix(body, "!") {
-			// git runs the rest of the line as the shell command's own
-			// arguments, so they belong in the payload the guard reads.
-			return nil, nil, strings.TrimSpace(strings.Join(append([]string{strings.TrimPrefix(body, "!")}, cur[i+1:]...), " ")), true
-		}
-		fields := strings.Fields(body)
-		if len(fields) == 0 {
-			break
-		}
-		next := make([]string, 0, len(cur)+len(fields)-1)
-		next = append(next, cur[:i]...)
-		next = append(next, fields...)
-		next = append(next, cur[i+1:]...)
-		// The body's words come from a config value, which git does not expand,
-		// so they are never patterns; the surrounding tokens keep the record
-		// they arrived with.
-		var nextGlob []bool
-		if curGlob != nil {
-			nextGlob = make([]bool, 0, len(next))
-			nextGlob = append(nextGlob, globAtRange(curGlob, 0, i)...)
-			nextGlob = append(nextGlob, make([]bool, len(fields))...)
-			nextGlob = append(nextGlob, globAtRange(curGlob, i+1, len(cur))...)
-		}
-		cur, curGlob = next, nextGlob
-		ok = true
 	}
-	if !ok {
-		return nil, nil, "", false
-	}
-	return cur, curGlob, "", true
+	walk(args, globs, 0, map[string]bool{})
+	return out
 }
 
 // globAtRange returns globs[lo:hi] padded to that length, so a record shorter

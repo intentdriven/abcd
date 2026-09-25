@@ -401,11 +401,16 @@ func (r Registry) check(command string) (Decision, error) {
 	if err != nil {
 		return Decision{}, err
 	}
+	// Each segment's walk to command position is read by every pass below;
+	// it is taken once per segment (walkSegments), here and again after each
+	// pass that adds segments.
+	walkSegments(segs)
 	// Expand every execute-a-string payload ONCE, here, before the entry loop —
 	// never inside a per-entry callee (that path went quadratic). Every entry then
 	// sees the payload segments for free, and any payload the guard cannot read
 	// raises a synthetic (entry-less) signal folded in by severity below.
 	segs, signals := expandPayloads(segs)
+	walkSegments(segs)
 
 	// git rewrites its own subcommand from configuration carried IN the command
 	// line, and the operand walk was built to step exactly those values over
@@ -460,7 +465,7 @@ func (r Registry) check(command string) (Decision, error) {
 	// runs text the guard read as data (iss-2609251640462464). After the payload
 	// expansion, so a payload's own pipe into a shell is read too.
 	for _, s := range segs {
-		if s.stdinStream && readsScriptFromStdin(s) {
+		if readsScriptStream(s) {
 			signals = append(signals, interpreterStreamSignal())
 			break
 		}
@@ -471,6 +476,30 @@ func (r Registry) check(command string) (Decision, error) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
+
+	// Every segment is final here, and the ones the alias and hooks-path
+	// passes added are walked now. A walk that met more words of unknown name
+	// than it follows is refused, like a substitution the tokenizer stopped
+	// reading.
+	walkSegments(segs)
+	for _, s := range segs {
+		if s.walkCapped {
+			signals = append(signals, unknownSitesBlockSignal())
+			break
+		}
+	}
+
+	// Every segment is final here, and the ones the alias and hooks-path
+	// passes added are walked now. A walk that met more words of unknown name
+	// than it follows is refused, like a substitution the tokenizer stopped
+	// reading.
+	walkSegments(segs)
+	for _, s := range segs {
+		if s.walkCapped {
+			signals = append(signals, unknownSitesBlockSignal())
+			break
+		}
+	}
 
 	// Tier 1: the registry match at command position. matchedSeg records WHICH
 	// segments fired, because Tier 2's gate is per segment — a line-wide gate would

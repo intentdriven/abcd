@@ -151,19 +151,33 @@ any other, and the words
 written after it still belong to the command it sits in: `rm $(true) -rf *` is
 read as `rm -rf *`, and `git push >(cat) --force` as a force push. What a
 command substitution prints is not in the command line, so a word holding one is
-an unknown word, and it fails closed in every role it could play: written with a
-leading dash (`--$(…)`, `-r"$(…)"`) it is every flag it could still become;
-after a value flag (`git -C $(pwd) push`) it is that flag's value, never the
-word after it; as an operand it counts as one. Text written beside one in the
-same word is also read as bash leaves it when the output is empty, so a flag
-glued to one is still the flag. A word that is wholly a substitution is read as
-an operand, not as a flag: that is how a commit message or a branch name is
-spelled every day (`git commit -m "$(cat msg)"`), so `git push $(printf -- --force)`
-is not seen. A substitution nested more than eight double-quoted substitutions
-deep, or one holding a case command, is a **block** (`substitution-unread`),
-because the guard has stopped reading it and its command runs all the same. An
-arithmetic expansion `$(( … ))` is read as an expression, not as commands; a
-command substitution inside it is followed.
+an unknown word, and it fails closed in every role it could play, read every
+way it can be read at once: written with a leading dash (`--$(…)`, `-r"$(…)"`)
+it is every flag it could still become — one that stands alone, one that takes
+the next word as its value, a shell's `-c` — wherever it stands, before the
+command as well as after it (`sudo -$(…) root <hazard>`, `git -$(…) /tmp push
+--force`, `bash -$(…) '<hazard>'` all block); after a value flag (`git -C $(pwd)
+push`) it is that flag's value, never the word after it; as an operand it counts
+as one. In command position it is any program its known text still allows:
+`$(echo git) push --force`, `"$(which git)" push --force` and `sudo $(echo git)
+push --force` block, and so does an unknown name followed by a shell's `-c`
+string, a wrapper's options or an alias, because the name can be the shell, the
+wrapper or git. A program name nothing fixes can be `pkill` or `killall`, so an
+unknown name followed by any operand (`"$(which python3)" script.py`) blocks
+under their entries — an accepted over-block; spell the program's name instead.
+A command with more than eight substitutions where its program name could be is
+a **block** (`substitution-unread`), because the guard stops following them.
+Text written beside one in the same word is also read as bash leaves it when the
+output is empty, so a flag glued to one is still the flag. A word that is wholly
+a substitution is read as an operand, not as a flag: that is how a commit
+message or a branch name is spelled every day (`git commit -m "$(cat msg)"`), so
+`git push $(printf -- --force)` is not seen. A substitution nested more than
+eight double-quoted substitutions deep, or one holding a case command, is a
+**block** (`substitution-unread`), because the guard has stopped reading it and
+its command runs all the same. An arithmetic expansion `$(( … ))` is read as an
+expression, not as commands; a command substitution inside it is followed. An
+ANSI-C string ends at its first NUL byte (`$'\x00'`, `$'\0'`), as bash ends it,
+so `$'\x00'git` is `git`.
 
 A shell reading its script from a pipe, a here-document or a here-string
 (`curl … | sh`, `bash <<'EOF'`) is a **block** (`interpreter-reads-stream`):

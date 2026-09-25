@@ -97,65 +97,64 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		item := queue[0]
 		queue = queue[1:]
 		for _, s := range item.segs {
-			kind, fam, payload, trailing, ok := classifySegment(s)
-			if !ok {
-				continue
-			}
-			// Past the depth budget the guard cannot follow the nesting, so a
-			// family member here is fail-closed regardless of family.
-			if item.depth+1 > maxPayloadDepth {
-				signals = append(signals, depthBlockSignal(fam))
-				continue
-			}
+			for _, ref := range payloadsOf(s) {
+				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
+				// Past the depth budget the guard cannot follow the nesting, so a
+				// family member here is fail-closed regardless of family.
+				if item.depth+1 > maxPayloadDepth {
+					signals = append(signals, depthBlockSignal(fam))
+					continue
+				}
 
-			var psegs []segment
-			switch kind {
-			case kindEnvS:
-				toks, inspectable := envInspect(payload, trailing)
-				if !inspectable {
-					signals = append(signals, envSpecialBlockSignal())
+				var psegs []segment
+				switch kind {
+				case kindEnvS:
+					toks, inspectable := envInspect(payload, trailing)
+					if !inspectable {
+						signals = append(signals, envSpecialBlockSignal())
+						continue
+					}
+					psegs = []segment{{tokens: toks}}
+				case kindShell:
+					sig, pseg, inspectable := shellInspect(payload)
+					if !inspectable {
+						signals = append(signals, sig)
+					}
+					if len(pseg) == 0 {
+						continue
+					}
+					psegs = pseg
+				case kindShellWarn:
+					signals = append(signals, shellUnresolvedSignal())
+					continue
+				case kindExecString:
+					// The payload is shell grammar (see execstring.go on how large a
+					// claim that is), so it is inspected exactly as a shell payload is —
+					// the same substitution and pipe-into-interpreter fail-safes apply.
+					sig, pseg, inspectable := shellInspect(payload)
+					if !inspectable {
+						signals = append(signals, sig)
+					}
+					if len(pseg) == 0 {
+						continue
+					}
+					psegs = pseg
+				case kindExecStringWarn:
+					signals = append(signals, execStringWarnSignal(fam))
 					continue
 				}
-				psegs = []segment{{tokens: toks}}
-			case kindShell:
-				sig, pseg, inspectable := shellInspect(payload)
-				if !inspectable {
-					signals = append(signals, sig)
-				}
-				if len(pseg) == 0 {
-					continue
-				}
-				psegs = pseg
-			case kindShellWarn:
-				signals = append(signals, shellUnresolvedSignal())
-				continue
-			case kindExecString:
-				// The payload is shell grammar (see execstring.go on how large a
-				// claim that is), so it is inspected exactly as a shell payload is —
-				// the same substitution and pipe-into-interpreter fail-safes apply.
-				sig, pseg, inspectable := shellInspect(payload)
-				if !inspectable {
-					signals = append(signals, sig)
-				}
-				if len(pseg) == 0 {
-					continue
-				}
-				psegs = pseg
-			case kindExecStringWarn:
-				signals = append(signals, execStringWarnSignal(fam))
-				continue
-			}
 
-			// Offset the payload's chains into a fresh disjoint range and append.
-			offset := chainMax + 1
-			for i := range psegs {
-				psegs[i].chain += offset
-				if psegs[i].chain > chainMax {
-					chainMax = psegs[i].chain
+				// Offset the payload's chains into a fresh disjoint range and append.
+				offset := chainMax + 1
+				for i := range psegs {
+					psegs[i].chain += offset
+					if psegs[i].chain > chainMax {
+						chainMax = psegs[i].chain
+					}
 				}
+				out = append(out, psegs...)
+				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
 			}
-			out = append(out, psegs...)
-			queue = append(queue, work{segs: psegs, depth: item.depth + 1})
 		}
 	}
 	return out, signals
@@ -232,28 +231,35 @@ func shellFamilyGlob(pattern string) (string, bool) {
 	return "", false
 }
 
-// shellNameGuessed reports whether the execute-a-string reading of this segment
-// rests on expanding a GLOBBED command name — `* -c <words>`, `s? -c <words>`.
-// Such a reading is a guess about which program runs: the pattern can expand to
-// `sh`, and it can equally expand to a program nothing here names. Reading the
-// payload on that guess is worth doing, but only IN ADDITION to Tier 2: the
-// unrecognised-launcher warn is what adr-42 decision 2 keeps loud when the guard
-// cannot say what runs the rest of the line, and letting the guess satisfy
-// speculate's carriesPayload gate dropped it — `* -c gh api -X DELETE
-// repos/owner/repo` went from a warn to a silent allow, because `sh -c` reads
-// only `gh` as the payload and the operands after it become the payload's own
-// positional parameters.
-func shellNameGuessed(s segment) bool {
-	ci, noglob := commandIndex(s)
-	if ci < 0 || noglob || !s.globAt(ci) {
-		return false
+// payloadRef is one execute-a-string payload a segment can carry: its family,
+// the payload text, and env's trailing operands for an `env -S` value. guessed
+// records that the reading rests on GUESSING which program runs — a globbed
+// name (`* -c <words>`, `s? -c <words>`) or a name a substitution prints
+// (`$(x) -c <words>`). The pattern can expand to `sh`, and it can equally
+// expand to a program nothing here names, so the payload is read, but only IN
+// ADDITION to Tier 2: the unrecognised-launcher warn is what adr-42 decision 2
+// keeps loud when the guard cannot say what runs the rest of the line, and
+// letting the guess satisfy speculate's gate dropped it — `* -c gh api -X
+// DELETE repos/owner/repo` went from a warn to a silent allow, because `sh -c`
+// reads only `gh` as the payload and the operands after it become the
+// payload's own positional parameters.
+type payloadRef struct {
+	kind     int
+	family   string
+	payload  string
+	trailing []string
+	guessed  bool
+}
+
+// carriesReadPayload reports whether the guard READ a payload the segment
+// carries on a name it did not have to guess (payloadRef.guessed).
+func carriesReadPayload(s segment) bool {
+	for _, ref := range payloadsOf(s) {
+		if !ref.guessed {
+			return true
+		}
 	}
-	cmd, _ := commandOf(s)
-	if isShellFamily(cmd) || cmd == "eval" {
-		return false // the literal name is already an interpreter: no guess
-	}
-	_, ok := shellFamilyGlob(cmd)
-	return ok
+	return false
 }
 
 // singleStringLaunchers run a command handed to them as a single operand by
@@ -274,32 +280,55 @@ var singleStringLaunchers = map[string][]string{
 	},
 }
 
-// launcherPayload returns the command STRING a single-string launcher hands to
-// `sh -c`: its first non-option operand, but ONLY when that operand is a single
-// token carrying a whole command line — the QUOTED form `watch 'git push
-// --force'`. The unquoted, multi-token form spreads the command across argv,
-// where Tier 2 already restarts at the real command and warns, so it is left to
-// that path; classifying it here would switch the Tier-2 fail-safe off for the
-// segment and silently allow it. valueFlags are stepped over so an interval or a
-// job count is not read as the command operand.
-func launcherPayload(args, valueFlags []string) (string, bool) {
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if a == "--" {
-			if i+1 < len(args) {
-				return packedCommand(args[i+1])
-			}
-			return "", false
+// launcherPayloads returns the command STRINGS a single-string launcher hands
+// to `sh -c`: its first non-option operand, but ONLY when that operand is a
+// single token carrying a whole command line — the QUOTED form `watch 'git
+// push --force'`. The unquoted, multi-token form spreads the command across
+// argv, where Tier 2 already restarts at the real command and warns, so it is
+// left to that path; classifying it here would switch the Tier-2 fail-safe off
+// for the segment and silently allow it. valueFlags are stepped over so an
+// interval or a job count is not read as the command operand. Each word is read
+// as readWord reads it, every way it can be, from every index in starts (the
+// word after each place the launcher can sit) in one walk, and every operand a
+// reading reaches is returned.
+func launcherPayloads(tokens []string, starts []int, valueFlags []string) []string {
+	var out []string
+	seen := map[int]bool{}
+	stack := append([]int(nil), starts...)
+	for len(stack) > 0 {
+		i := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if i >= len(tokens) || seen[i] {
+			continue
 		}
-		if strings.HasPrefix(a, "-") && a != "-" {
-			if !strings.Contains(a, "=") && containsString(valueFlags, a) {
-				i++ // its value belongs to the launcher, not to command position
+		seen[i] = true
+		tally(1)
+		a := tokens[i]
+		if a == "--" {
+			if i+1 < len(tokens) {
+				if p, ok := packedCommand(tokens[i+1]); ok {
+					out = append(out, p)
+				}
 			}
 			continue
 		}
-		return packedCommand(a)
+		r := readWord(a, valueFlags)
+		if a == "-" {
+			r = wordReadings{operand: true}
+		}
+		if r.vanish || r.flag {
+			stack = append(stack, i+1)
+		}
+		if r.takes {
+			stack = append(stack, i+2) // its value belongs to the launcher, not to command position
+		}
+		if r.operand {
+			if p, ok := packedCommand(a); ok {
+				out = append(out, p)
+			}
+		}
 	}
-	return "", false
+	return out
 }
 
 // packedCommand accepts an operand as a shell payload only when it carries
@@ -314,146 +343,256 @@ func packedCommand(op string) (string, bool) {
 	return "", false
 }
 
-// classifySegment reports whether a raw segment is an execute-a-string family
-// member and, if so, what to do with its payload. env -S is checked FIRST, on the
-// raw token chain: env is a registered wrapper whose value-flag walk would
-// otherwise consume and discard the -S value before any recognizer built on
-// commandOf output could see it (the fix both rev-2 reviews caught). Only when no
-// env in the chain carries a split-string flag does the shell -c family get read
-// off commandOf output. trailing is env's operands after the -S value, which env
-// appends to the split argv.
-func classifySegment(s segment) (kind int, family, payload string, trailing []string, ok bool) {
-	if v, rest, found := splitStringValue(s.tokens); found {
-		return kindEnvS, familyEnvS, v, rest, true
+// payloadsOf returns every execute-a-string payload a raw segment can carry,
+// reading every place its command can sit (commandArrivals) and every program
+// the name there can be (nameCouldBe): a name a substitution prints is any of
+// them, so each family's reading is taken.
+//
+// env -S and the exec-string verbs are read on the raw token chain, at every
+// arrival, because env, runuser and flock are also wrappers, and the command
+// walk steps through a wrapper to the command it runs — reading the payload
+// string as that command. A shell's `-c`, eval, and the single-string launchers
+// are read at each command site. Each family reads the words after all the
+// places it can sit in ONE walk (the scans take a list of starts), so a line
+// whose command an unknown word puts in several places costs what one does.
+//
+// A globbed interpreter name (`s? -c '<hazard>'`) is read as the pattern it
+// is, for the same reason matchSegment reads a globbed command name: bash
+// expands it before exec, and a payload behind a name this lookup does not
+// open is one opaque token nothing else reaches — a SILENT allow, unlike a
+// globbed wrapper name, which Tier 2 still warns on. That reading, like one
+// on a name a substitution prints, is a guess (payloadRef.guessed).
+func payloadsOf(s segment) []payloadRef {
+	var out []payloadRef
+	add := func(kind int, family, payload string, trailing []string, guessed bool) {
+		out = append(out, payloadRef{kind: kind, family: family, payload: payload, trailing: trailing, guessed: guessed})
 	}
-	// The exec-string family is read from the RAW token chain, before commandOf,
-	// for the same reason env -S is: two of these verbs (runuser, flock) are also
-	// wrappers, so the wrapper walk would step past the verb and read its payload
-	// string as the command.
-	if verb, v, resolved, found := execStringPayload(s.tokens); found {
-		if !resolved {
-			return kindExecStringWarn, verb, "", nil, true
+	arrivals := arrivalsOf(s)
+	// starts returns the word after every arrival (or command site) whose name
+	// can be one of names, split by whether the name was guessed.
+	starts := func(at []arrival, names ...string) (known, guessed []int) {
+		for _, a := range at {
+			tok := s.tokens[a.idx]
+			if !nameCouldBeAny(tok, names) {
+				continue
+			}
+			if isUnknown(tok) {
+				guessed = append(guessed, a.idx+1)
+			} else {
+				known = append(known, a.idx+1)
+			}
 		}
-		return kindExecString, verb, v, nil, true
+		return known, guessed
 	}
-	cmd, args := commandOf(s)
-	// A globbed interpreter name (`s? -c '<hazard>'`) is read as the pattern
-	// it is, for the same reason matchSegment reads a globbed command name:
-	// bash expands it before exec, and a payload behind a name this lookup
-	// does not open is one opaque token nothing else reaches — a SILENT
-	// allow, unlike a globbed wrapper name, which Tier 2 still warns on.
-	// This reading is a GUESS about which program runs, so speculate takes it
-	// IN ADDITION to Tier 2, never instead of it (shellNameGuessed).
-	if shellNameGuessed(s) {
-		if name, ok := shellFamilyGlob(cmd); ok {
-			cmd = name
+
+	envKnown, envGuessed := starts(arrivals, "env")
+	for _, v := range scanEnvSplits(s.tokens, envKnown) {
+		add(kindEnvS, familyEnvS, v.value, v.trailing, false)
+	}
+	for _, v := range scanEnvSplits(s.tokens, envGuessed) {
+		add(kindEnvS, familyEnvS, v.value, v.trailing, true)
+	}
+	out = append(out, execStringPayloads(s.tokens, arrivals)...)
+
+	sites := commandSites(s)
+	// A shell's `-c`: literal names, globbed names that can expand to one, and
+	// names a substitution prints.
+	var shellKnown, shellGuessed []int
+	var evalKnown []int
+	firstUnknown := -1
+	for _, a := range sites {
+		tok := s.tokens[a.idx]
+		cmd := path.Base(tok)
+		switch {
+		case isUnknown(tok):
+			if firstUnknown < 0 {
+				firstUnknown = a.idx
+			}
+			shellGuessed = append(shellGuessed, a.idx)
+		case nameCouldBeAny(tok, shellFamily):
+			shellKnown = append(shellKnown, a.idx)
+		case cmd == "eval":
+			evalKnown = append(evalKnown, a.idx)
+		case !a.noglob && s.globAt(a.idx):
+			if name, ok := shellFamilyGlob(cmd); ok {
+				if name == "eval" {
+					if p, ok := evalPayload(s.tokens[a.idx+1:]); ok {
+						add(kindShell, familyShell, p, nil, true)
+					}
+				} else {
+					shellGuessed = append(shellGuessed, a.idx)
+				}
+			}
 		}
 	}
-	switch {
-	case isShellFamily(cmd) || cmd == "eval":
-		switch p, state := shellCPayload(cmd, args); state {
-		case shellFound:
-			return kindShell, familyShell, p, nil, true
-		case shellUnresolved:
+	for _, i := range evalKnown {
+		if p, ok := evalPayload(s.tokens[i+1:]); ok {
+			add(kindShell, familyShell, p, nil, false)
+		}
+	}
+	// A name a substitution prints can be eval. Its payload is read at the
+	// first such place only: every later one's words are in it, where the walk
+	// inside the payload reaches them the same way.
+	if firstUnknown >= 0 {
+		if p, ok := guessedEvalPayload(s.tokens[firstUnknown+1:]); ok {
+			add(kindShell, familyShell, p, nil, true)
+		}
+	}
+	for _, group := range []struct {
+		sites   []int
+		guessed bool
+	}{{shellKnown, false}, {shellGuessed, true}} {
+		if len(group.sites) == 0 {
+			continue
+		}
+		values, unresolved := shellCPayloads(s.tokens, group.sites)
+		for _, p := range values {
+			add(kindShell, familyShell, p, nil, group.guessed)
+		}
+		if unresolved {
 			// A `-c` string is present but its operand could not be located;
 			// fail safe to a loud WARN, never a silent allow.
-			return kindShellWarn, familyShell, "", nil, true
+			add(kindShellWarn, familyShell, "", nil, group.guessed)
 		}
 	}
 	// watch/parallel hand a single quoted operand to `sh -c`, so the packed
 	// command string is inspected exactly as a shell payload is (gh-354). The
 	// lookup is folded for the same reason isShellFamily is: `WATCH` runs on a
 	// case-insensitive filesystem (gh-315).
-	if flags, ok := singleStringLaunchers[strings.ToLower(cmd)]; ok {
-		if p, ok := launcherPayload(args, flags); ok {
-			return kindShell, familyShell, p, nil, true
+	for _, name := range []string{"parallel", "watch"} {
+		known, guessed := starts(sites, name)
+		for _, p := range launcherPayloads(s.tokens, known, singleStringLaunchers[name]) {
+			add(kindShell, familyShell, p, nil, false)
+		}
+		for _, p := range launcherPayloads(s.tokens, guessed, singleStringLaunchers[name]) {
+			add(kindShell, familyShell, p, nil, true)
 		}
 	}
-	return 0, "", "", nil, false
+	return out
 }
 
-// splitStringValue walks the leading wrapper/assignment chain of a raw segment
-// and, at EVERY token whose basename is `env` (not just the first), scans that
-// env's following tokens for a split-string flag. It returns the RAW value and
-// env's trailing operands. An env carrying no split-string flag is stepped over
-// as an ordinary wrapper and the scan re-enters at the next command-position
-// token, so `env -i env -S <v>` reaches the inner env — a pre-pass that scanned
-// only the first env would let commandOf consume the inner value and silent-allow
-// the deletion.
+// splitStringValue returns the first `env -S` value a raw segment carries and
+// env's trailing operands (payloadsOf reads them all).
 func splitStringValue(tokens []string) (string, []string, bool) {
-	i := 0
-	for i < len(tokens) {
-		tok := tokens[i]
-		if steppedBeforeCommand(tok) {
-			i++
-			continue
+	var starts []int
+	for _, a := range commandArrivals(tokens) {
+		if nameCouldBe(tokens[a.idx], "env") {
+			starts = append(starts, a.idx+1)
 		}
-		// Folded to lower case before lookup: `ENV -S` / `SUDO env -S` resolve to
-		// the real binaries on a case-insensitive filesystem, so a case-varied
-		// wrapper or env must be walked exactly as its lowercase spelling is, or
-		// the split-string value it carries is never read (gh-315).
-		w := strings.ToLower(path.Base(tok))
-		if w == "env" {
-			if v, end, found := scanEnvSplit(tokens, i+1); found {
-				return v, tokens[end:], true
-			}
-			i = skipWrapperArgs(tokens, i+1, "env")
-			continue
-		}
-		if wrappers[w] {
-			i = skipWrapperArgs(tokens, i+1, w)
-			continue
-		}
-		break
+	}
+	if vs := scanEnvSplits(tokens, starts); len(vs) > 0 {
+		return vs[0].value, vs[0].trailing, true
 	}
 	return "", nil, false
 }
 
-// scanEnvSplit scans one env's option tokens (tokens[start:]) for a split-string
-// flag in any of its spellings: separate `-S <v>`, glued `-S<v>`, the
-// `--split-string=<v>` and `--s`...`--split-string` prefix range, and a short
-// cluster carrying S (`-iS<v>`, `-iS <v>`). It returns the RAW value and the
-// index of the FIRST token after the value — env's trailing operands begin there
-// — or found=false when this env carries no split-string flag. The scan stops at
-// command position so it never reads the launched command's own arguments.
-func scanEnvSplit(tokens []string, start int) (value string, valueEnd int, found bool) {
-	for i := start; i < len(tokens); i++ {
+// envSplit is one `env -S` value and env's operands after it, which env
+// appends to the split argv.
+type envSplit struct {
+	value    string
+	trailing []string
+}
+
+// scanEnvSplits scans the option tokens of every env the walk can arrive at
+// (from each index in starts, in one walk) for a split-string flag in any of its spellings: separate `-S <v>`, glued `-S<v>`,
+// the `--split-string=<v>` and `--s`...`--split-string` prefix range, and a
+// short cluster carrying S (`-iS<v>`, `-iS <v>`). It returns every RAW value a
+// reading finds with env's trailing operands after it — or none when this env
+// carries no split-string flag. The scan stops at command position so it never
+// reads the launched command's own arguments. Every env in the chain is read
+// (commandArrivals steps an env carrying no split-string flag as an ordinary
+// wrapper), so `env -i env -S <v>` reaches the inner env.
+//
+// A word is read as unknown.go reads it: an unknown dash-word may be the
+// split-string flag with its value glued on, a value the guard cannot see and
+// envInspect refuses, and otherwise may be any other option, value-taking or
+// not.
+func scanEnvSplits(tokens []string, starts []int) []envSplit {
+	var out []envSplit
+	found := func(value string, end int) {
+		if end > len(tokens) {
+			end = len(tokens)
+		}
+		out = append(out, envSplit{value: value, trailing: tokens[end:]})
+	}
+	seen := map[int]bool{}
+	stack := append([]int(nil), starts...)
+	for len(stack) > 0 {
+		i := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if i >= len(tokens) || seen[i] {
+			continue
+		}
+		seen[i] = true
+		tally(1)
 		tok := tokens[i]
-		if tok == "--" || tok == "-" || !strings.HasPrefix(tok, "-") {
-			return "", i, false // command/operand position: no split flag here
+		if tok == "--" || tok == "-" {
+			continue // command/operand position: no split flag here
+		}
+		if isUnknown(tok) {
+			// A word that can be the split-string flag can carry its value
+			// glued on, where the guard cannot read it: that value is not a
+			// plain command, which refuses the segment (envInspect), so it is
+			// the one reading returned, and the scan need look no further.
+			if flagCouldBe(tok, "--split-string") || unknownFlagCouldBe(tok, "--s") || clusterCouldCarry(tok, 'S') {
+				found(tok, i+1)
+				return out
+			}
+			r := readWord(tok, envValueFlags)
+			if r.vanish || r.flag {
+				stack = append(stack, i+1)
+			}
+			if r.takes {
+				stack = append(stack, i+2)
+			}
+			continue
+		}
+		if !strings.HasPrefix(tok, "-") {
+			continue // command/operand position: no split flag here
 		}
 		if strings.HasPrefix(tok, "--") {
 			name, val, hasEq := splitLongOpt(tok)
 			if isSplitStringLong(name) {
-				if hasEq {
-					return val, i + 1, true
+				switch {
+				case hasEq:
+					found(val, i+1)
+				case i+1 < len(tokens):
+					found(tokens[i+1], i+2)
+				default:
+					found("", i+1)
 				}
-				if i+1 < len(tokens) {
-					return tokens[i+1], i + 2, true
-				}
-				return "", i + 1, true
+				continue
 			}
 			if !hasEq && longEnvTakesValue(name) {
-				i++ // its value is the next token, not command position
+				stack = append(stack, i+2) // its value is the next token, not command position
+			} else {
+				stack = append(stack, i+1)
 			}
 			continue
 		}
 		val, gluedVal, isSplit, takesNext := shortClusterSplit(tok)
 		if isSplit {
-			if gluedVal {
-				return val, i + 1, true
+			switch {
+			case gluedVal:
+				found(val, i+1)
+			case i+1 < len(tokens):
+				found(tokens[i+1], i+2)
+			default:
+				found("", i+1)
 			}
-			if i+1 < len(tokens) {
-				return tokens[i+1], i + 2, true
-			}
-			return "", i + 1, true
+			continue
 		}
 		if takesNext {
-			i++ // a value-taking short flag other than S ended the cluster
+			stack = append(stack, i+2) // a value-taking short flag other than S ended the cluster
+		} else {
+			stack = append(stack, i+1)
 		}
 	}
-	return "", len(tokens), false
+	return out
 }
+
+// envValueFlags are env's own options that take the next word as their value.
+var envValueFlags = []string{"-u", "-C", "-a", "--unset", "--chdir", "--argv0", "-S", "--split-string"}
 
 // splitLongOpt splits `--name=value` into its parts; without an `=` the whole
 // token is the name.
@@ -589,77 +728,151 @@ func isPlainCommand(s string) bool {
 	return true
 }
 
-// The three outcomes of resolving an sh/bash/dash `-c` (or eval) invocation's
-// command string. shellUnresolved is the fail-safe: a `-c` string is present but
-// its operand cannot be confidently located, so the caller raises a loud WARN
-// rather than falling through to a silent allow.
-const (
-	shellNone       = iota // nothing to inspect: a bare interpreter, or `-c` alone
-	shellFound             // the command string was located
-	shellUnresolved        // a -c string exists but its operand could not be located
-)
-
-// shellCPayload extracts the command string an sh/bash/dash `-c` (or `-lc`,
-// `-ic`, ...) runs, or the arguments eval joins and runs.
-//
-// For sh/bash/dash the command string is the shell's FIRST NON-OPTION operand
-// per POSIX getopt — not the token that merely follows `-c`. An option split into
-// its own token after `-c` (`sh -c -x '<payload>'`, `bash -c -- '<payload>'`)
-// otherwise hid the payload behind `-x`/`--` and every blocker inside it was one
-// spelling away from a silent allow (iss-200). Boolean option clusters are
-// stepped over and a bare `--` ends options; an option that appears to take a
-// following argument, or no operand at all, yields shellUnresolved so the caller
-// warns instead of guessing.
-//
-// For eval a single leading `--` (end-of-options) is dropped before the operands
-// are joined; `eval -- '<payload>'` tokenized to command `--` and allowed.
-func shellCPayload(cmd string, args []string) (string, int) {
-	if cmd == "eval" {
-		if len(args) > 0 && args[0] == "--" {
-			args = args[1:]
-		}
-		if len(args) == 0 {
-			return "", shellNone
-		}
-		return strings.Join(args, " "), shellFound
+// evalPayload returns the arguments eval joins and runs. A single leading `--`
+// (end-of-options) is dropped before the operands are joined; `eval --
+// '<payload>'` tokenized to command `--` and allowed.
+func evalPayload(args []string) (string, bool) {
+	if len(args) > 0 && args[0] == "--" {
+		args = args[1:]
 	}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if isShortCluster(a) && strings.ContainsRune(a[1:], 'c') {
-			return shellOperand(args[i+1:])
-		}
+	if len(args) == 0 {
+		return "", false
 	}
-	return "", shellNone
+	return strings.Join(args, " "), true
 }
 
-// shellOperand walks a shell's tokens after the `-c` cluster and returns its
-// first non-option operand — the command string. Boolean option clusters (`-x`,
-// `-e`) are stepped over and a bare `--` ends options so the next token is the
-// operand. An option that appears to consume a following argument (`-o pipefail`,
-// `-O extglob`), an unrecognised option, or the absence of any operand means the
-// command string cannot be confidently located: shellUnresolved routes to a loud
-// WARN, never a guess-and-allow.
-func shellOperand(rest []string) (string, int) {
-	if len(rest) == 0 {
-		return "", shellNone // `sh -c` with nothing after it: nothing to inspect
+// guessedEvalPayload is evalPayload for a name a substitution prints, which
+// can be eval. Its arguments are read as a command line only when one carries
+// a packed command line (whitespace, the mark of a quoted string), because
+// re-reading plain words finds only what the walk to command position already
+// reads in them — each of them is a place a command can sit behind a program of
+// unknown name (commandArrivals). A word that is nothing but a substitution is
+// left out: it may print nothing, and re-reading it as unknown text would only
+// nest the same reading one payload deeper.
+func guessedEvalPayload(args []string) (string, bool) {
+	var words []string
+	packed := false
+	for i, a := range args {
+		if i == 0 && a == "--" {
+			continue
+		}
+		if vanishable(a) {
+			continue
+		}
+		if _, ok := packedCommand(a); ok {
+			packed = true
+		}
+		words = append(words, a)
 	}
-	for i := 0; i < len(rest); i++ {
+	if !packed {
+		return "", false
+	}
+	return strings.Join(words, " "), true
+}
+
+// shellCPayloads extracts the command strings an sh/bash/dash `-c` (or `-lc`,
+// `-ic`, ...) can run.
+//
+// The command string is the shell's FIRST NON-OPTION operand per POSIX getopt
+// — not the token that merely follows `-c`. An option split into its own token
+// after `-c` (`sh -c -x '<payload>'`, `bash -c -- '<payload>'`) otherwise hid
+// the payload behind `-x`/`--` and every blocker inside it was one spelling
+// away from a silent allow (iss-200). A word that can be a cluster carrying
+// `c` (clusterCouldCarry) opens the operand walk, so `bash -$(x) '<payload>'`
+// and `bash -c$(x) '<payload>'` are read as the `-c` they can be. unresolved
+// reports a `-c` whose operand could not be located, which the caller warns
+// on instead of guessing.
+func shellCPayloads(tokens []string, sites []int) (values []string, unresolved bool) {
+	var starts []int
+	scanned := -1 // the words up to here were read from an earlier site
+	for _, site := range sites {
+		if site < scanned {
+			continue // an earlier site's scan covers every word this one reads
+		}
+		scanned = len(tokens)
+		for i := site + 1; i < len(tokens); i++ {
+			a := tokens[i]
+			if !clusterCouldCarry(a, 'c') {
+				continue
+			}
+			starts = append(starts, i+1)
+			if !isUnknown(a) {
+				scanned = i // the shell's own `-c`: what follows it is its operand walk
+				break
+			}
+		}
+	}
+	if len(starts) == 0 {
+		return nil, false
+	}
+	return shellOperands(tokens, starts)
+}
+
+// shellValueOptions are the shell options that take the next word as their
+// value: `set -o NAME`, `bash -O SHOPT`.
+var shellValueOptions = []string{"-o", "-O", "+o", "+O"}
+
+// shellOperands walks a shell's tokens after the `-c` cluster — from each
+// index in starts, one walk for all of them — and returns the words that can
+// be its first non-option operand — the command string. Boolean
+// option clusters (`-x`, `-e`) are stepped over and a bare `--` ends options so
+// the next token is the operand. An option that appears to consume a following
+// argument (`-o pipefail`, `-O extglob`), an unrecognised option, or the absence
+// of any operand means the command string cannot be confidently located:
+// unresolved routes to a loud WARN, never a guess-and-allow. An unknown word is
+// read every way readWord reads it — a boolean, an option taking a value, the
+// operand itself, or no word — and every operand a reading reaches is returned.
+func shellOperands(rest []string, starts []int) (values []string, unresolved bool) {
+	seen := map[int]bool{}
+	var stack []int
+	for _, st := range starts {
+		if st < len(rest) {
+			stack = append(stack, st)
+		}
+		// `sh -c` with nothing after it: nothing to inspect.
+	}
+	for len(stack) > 0 {
+		i := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[i] {
+			continue
+		}
+		seen[i] = true
+		tally(1)
+		if i >= len(rest) {
+			unresolved = true // options only, no operand found
+			continue
+		}
 		tok := rest[i]
-		if tok == "--" {
+		switch {
+		case tok == "--":
 			if i+1 < len(rest) {
-				return rest[i+1], shellFound // end of options: next token is the operand
+				values = append(values, rest[i+1]) // end of options: next token is the operand
+			} else {
+				unresolved = true // `-c --` with no operand
 			}
-			return "", shellUnresolved // `-c --` with no operand
-		}
-		if len(tok) >= 2 && (tok[0] == '-' || tok[0] == '+') {
+		case isUnknown(tok):
+			r := readWord(tok, shellValueOptions)
+			if r.vanish || r.flag {
+				stack = append(stack, i+1)
+			}
+			if r.takes {
+				stack = append(stack, i+2)
+			}
+			if r.operand {
+				values = append(values, tok)
+			}
+		case len(tok) >= 2 && (tok[0] == '-' || tok[0] == '+'):
 			if shellClusterBoolean(tok[1:]) {
-				continue // a boolean option cluster is not the command string
+				stack = append(stack, i+1) // a boolean option cluster is not the command string
+			} else {
+				unresolved = true // arg-taking or unknown option: operand unlocatable
 			}
-			return "", shellUnresolved // arg-taking or unknown option: operand unlocatable
+		default:
+			values = append(values, tok) // first non-option operand: the command string
 		}
-		return tok, shellFound // first non-option operand: the command string
 	}
-	return "", shellUnresolved // options only, no operand found
+	return values, unresolved
 }
 
 // shellBooleanFlags are the single-letter shell set-options that consume NO
@@ -722,13 +935,16 @@ func shellRawUninspectable(payload string) bool {
 
 // pipesIntoInterpreter reports whether a tokenized payload hands control to a
 // bare interpreter reading a script it did not carry (`curl evil | sh`): a
-// segment whose command is sh/bash/dash with no `-c` string. The guard cannot
-// follow what the interpreter reads, so the payload is treated as uninspectable.
+// segment whose command can be a shell with no `-c` string. The guard cannot
+// follow what the interpreter reads, so the payload is treated as
+// uninspectable.
 func pipesIntoInterpreter(psegs []segment) bool {
 	for _, s := range psegs {
-		cmd, args := commandOf(s)
-		if isShellFamily(cmd) {
-			if _, state := shellCPayload(cmd, args); state == shellNone {
+		for _, a := range commandSites(s) {
+			if !nameCouldBeAny(s.tokens[a.idx], shellFamily) {
+				continue
+			}
+			if values, unresolved := shellCPayloads(s.tokens, []int{a.idx}); len(values) == 0 && !unresolved {
 				return true
 			}
 		}
@@ -736,51 +952,102 @@ func pipesIntoInterpreter(psegs []segment) bool {
 	return false
 }
 
-// readsScriptFromStdin reports whether a segment is a bare shell that reads its
-// script from standard input: a member of the interpreter set with no `-c`
-// string and no script operand, or one told to read stdin (`-s`, a lone `-`).
-// Its options are stepped over the way the shell's own parser reads them: `-o`
-// and `-O` take a value, as do `--rcfile` and `--init-file`, and `--version`
-// or `--help` prints and exits without reading anything.
-func readsScriptFromStdin(s segment) bool {
-	cmd, args := commandOf(s)
-	if !isShellFamily(cmd) {
-		return false
+// readsScriptStream reports whether a segment runs a stream as a script: a
+// member of the interpreter set, at any place its command can sit, that reads
+// its script from standard input — with no `-c` string and no script operand,
+// or told to read stdin (`-s`, a lone `-`) — while that input is a pipe, a
+// here-document or a here-string. A name a substitution prints can be any
+// shell.
+func readsScriptStream(s segment) bool {
+	for _, a := range commandSites(s) {
+		tok := s.tokens[a.idx]
+		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(s.tokens[a.idx+1:], s.stdinStream) {
+			return true
+		}
 	}
-	for i := 0; i < len(args); i++ {
+	return false
+}
+
+// shellReadsStream walks a shell's arguments the way its own parser reads them:
+// `-o` and `-O` take a value, as do `--rcfile` and `--init-file`, and
+// `--version` or `--help` prints and exits without reading anything. Each
+// unknown word is read every way readWord reads it, and a stream any reading
+// runs is enough.
+func shellReadsStream(args []string, stdin bool) bool {
+	seen := map[int]bool{}
+	stack := []int{0}
+	for len(stack) > 0 {
+		i := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[i] {
+			continue
+		}
+		seen[i] = true
+		tally(1)
+		if i >= len(args) {
+			if stdin {
+				return true // no script operand: the script is standard input
+			}
+			continue
+		}
 		a := args[i]
 		switch {
 		case a == "--":
-			return i+1 >= len(args)
+			if i+1 >= len(args) && stdin {
+				return true
+			}
 		case a == "-":
-			return true
+			if stdin {
+				return true
+			}
 		case a == "--version" || a == "--help":
-			return false
 		case strings.HasPrefix(a, "<<<"):
 			// A here-string is the stream itself, kept as words by the
 			// tokenizer: the operator, and its text when not glued to it.
 			if a == "<<<" {
-				i++
+				stack = append(stack, i+2)
+			} else {
+				stack = append(stack, i+1)
+			}
+		case isUnknown(a):
+			r := readWord(a, shellStreamValueOptions)
+			if r.vanish || r.flag {
+				stack = append(stack, i+1)
+			}
+			if r.takes {
+				stack = append(stack, i+2)
+			}
+			if (r.flag || r.takes) && clusterCouldCarry(a, 's') && stdin {
+				return true
 			}
 		case a == "--rcfile" || a == "--init-file":
-			i++
+			stack = append(stack, i+2)
 		case strings.HasPrefix(a, "--"):
 			// --norc, --noprofile, --posix, --login: no value.
+			stack = append(stack, i+1)
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
 			switch cluster := a[1:]; {
 			case strings.ContainsRune(cluster, 'c'):
-				return false // a -c string: the payload reading takes it
+				// a -c string: the payload reading takes it
 			case strings.ContainsRune(cluster, 's'):
-				return true
+				if stdin {
+					return true
+				}
 			case strings.ContainsAny(cluster, "oO"):
-				i++
+				stack = append(stack, i+2)
+			default:
+				stack = append(stack, i+1)
 			}
 		default:
-			return false // the first operand is the script file
+			// the first operand is the script file
 		}
 	}
-	return true
+	return false
 }
+
+// shellStreamValueOptions are the shell options shellReadsStream steps a value
+// for.
+var shellStreamValueOptions = []string{"-o", "-O", "+o", "+O", "--rcfile", "--init-file"}
 
 // interpreterStreamSignal is the fail-closed verdict for a shell reading its
 // script from a pipe, a here-document or a here-string. It is a BLOCK because

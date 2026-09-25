@@ -179,14 +179,20 @@ or inside double quotes, is followed into command position, and the words
 written after one stay the
 enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. What a
 substitution prints is not in the line, so a word holding one is unknown and
-fails closed in every role it could play: led by a dash it is every flag it
-could become, after a value flag it is that flag's value, and as an operand it
-is one operand; text beside one in the same word is also read as bash leaves it
-when the output is empty. One nested past the depth the guard reads, or holding
-a case command, is refused rather than left unread. An arithmetic expansion is
-an expression, not commands. A shell reading its script from a pipe, a
-here-document or a here-string is refused, because what it runs is text the
-guard read as data, and so is a line longer than the guard reads. An unquoted
+fails closed in every role it could play, read every way it can be at once: led
+by a dash it is every flag it could become — one standing alone, one taking a
+value, a shell's `-c` — before the command as well as after it; after a value
+flag it is that flag's value; as an operand it is one operand; and in command
+position it is any program its known text allows, a shell, a wrapper and git
+among them. Every reader of a word goes through that one rule, and a test holds
+the package to it. Text beside one in the same word is also read as bash leaves
+it when the output is empty. One nested past the depth the guard reads, one
+holding a case command, or more of them where the program name could be than
+the guard follows, is refused rather than left unread. An ANSI-C string ends at
+its first NUL, as bash ends it. An arithmetic expansion is an expression, not
+commands. A shell reading its script from a pipe, a here-document or a
+here-string is refused, because what it runs is text the guard read as data, and
+so is a line longer than the guard reads. An unquoted
 brace group is expanded as bash expands it and every word it produces is
 checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
 blocks; a group past the expansion cap is refused rather than read in part. A

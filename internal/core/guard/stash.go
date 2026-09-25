@@ -1,7 +1,6 @@
 package guard
 
 import (
-	"path"
 	"strings"
 	"sync"
 
@@ -80,20 +79,29 @@ func (r Registry) sharedStashSignal(segs []segment, valueFlags []string) (payloa
 }
 
 // bareStash reports whether a segment is a git stash that takes or gives the
-// TOP of the shared stack without naming it.
+// TOP of the shared stack without naming it. Every place git can sit and every
+// reading of its operands is read (unknown.go); readings past their bound are
+// taken as bare, the warning's fail-closed side.
 func bareStash(s segment, valueFlags []string) bool {
-	ci, noglob := commandIndex(s)
-	if ci < 0 {
-		return false
+	for _, site := range sitesNamed(s, "git") {
+		args := s.tokens[site.idx+1:]
+		readings, complete := operandReadings(args, valueFlags, 3)
+		if !complete {
+			return true
+		}
+		for _, idx := range readings {
+			if bareStashReading(args, idx) {
+				return true
+			}
+		}
 	}
-	base := path.Base(s.tokens[ci])
-	if !strings.EqualFold(base, "git") &&
-		!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(base), "git")) {
-		return false
-	}
-	args := s.tokens[ci+1:]
-	idx := operandIndexes(args, valueFlags)
-	if len(idx) == 0 || args[idx[0]] != "stash" {
+	return false
+}
+
+// bareStashReading reads one placing of a git command's first operands: the
+// subcommand, then stash's own first two.
+func bareStashReading(args []string, idx []int) bool {
+	if len(idx) == 0 || !wordCouldBe(args[idx[0]], "stash") {
 		return false
 	}
 	ops := make([]string, 0, len(idx)-1)
@@ -101,21 +109,22 @@ func bareStash(s segment, valueFlags []string) bool {
 		ops = append(ops, args[i])
 	}
 	rest := args[idx[0]+1:]
-	switch {
-	case len(ops) == 0:
+	if len(ops) == 0 {
 		// `git stash [options]` is `git stash push [options]`.
 		return !stashHasMessage(rest)
-	case ops[0] == "push":
-		return !stashHasMessage(rest)
-	case ops[0] == "save":
+	}
+	switch {
+	case wordCouldBe(ops[0], "push") && !stashHasMessage(rest):
+		return true
+	case wordCouldBe(ops[0], "save") && len(ops) < 2:
 		// The deprecated form takes its message as an operand.
-		return len(ops) < 2
-	case ops[0] == "pop" || ops[0] == "apply":
-		return len(ops) < 2
+		return true
+	case (wordCouldBe(ops[0], "pop") || wordCouldBe(ops[0], "apply")) && len(ops) < 2:
+		return true
 	}
 	// `git stash -- <pathspec>`, `git stash -p` and the like: a stash that
 	// pushes, with the first operand a pathspec rather than a subcommand.
-	if !isStashSubcommand(ops[0]) {
+	if isUnknown(ops[0]) || !isStashSubcommand(ops[0]) {
 		return !stashHasMessage(rest)
 	}
 	return false

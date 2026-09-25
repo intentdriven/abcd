@@ -1,10 +1,5 @@
 package guard
 
-import (
-	"path"
-	"strings"
-)
-
 // hooksPathKey is git's core.hooksPath, folded: the directory git runs a
 // repository's hooks from.
 const hooksPathKey = "core.hookspath"
@@ -47,32 +42,45 @@ func expandHooksPathOverrides(segs []segment, valueFlags []string) []segment {
 }
 
 // hooksPathRewrite returns s with --no-verify inserted after its subcommand when
-// s is a git command whose own text sets core.hooksPath.
+// s is a git command whose own text sets core.hooksPath. Every place git can
+// sit is read, and so is every word that can be its subcommand: the flag goes
+// after each, which can only add flags to the readings the matcher takes.
 func hooksPathRewrite(s segment, valueFlags []string) (segment, bool) {
-	ci, noglob := commandIndex(s)
-	if ci < 0 {
-		return segment{}, false
+	for _, site := range sitesNamed(s, "git") {
+		ci := site.idx
+		args := s.tokens[ci+1:]
+		if !readGitConfig(s.tokens[:ci], args, valueFlags).hooksPath {
+			continue
+		}
+		firsts := firstOperands(args, valueFlags)
+		if len(firsts) == 0 {
+			continue
+		}
+		after := map[int]bool{}
+		for _, f := range firsts {
+			after[ci+1+f] = true
+		}
+		var g []bool
+		if s.globbed != nil {
+			g = globAtRange(s.globbed, 0, len(s.tokens))
+		}
+		next := segment{tokens: make([]string, 0, len(s.tokens)+len(firsts)), chain: s.chain}
+		if g != nil {
+			next.globbed = make([]bool, 0, len(s.tokens)+len(firsts))
+		}
+		for i, tok := range s.tokens {
+			next.tokens = append(next.tokens, tok)
+			if g != nil {
+				next.globbed = append(next.globbed, g[i])
+			}
+			if after[i] {
+				next.tokens = append(next.tokens, noVerifyFlag)
+				if g != nil {
+					next.globbed = append(next.globbed, false)
+				}
+			}
+		}
+		return next, true
 	}
-	base := path.Base(s.tokens[ci])
-	if !strings.EqualFold(base, "git") &&
-		!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(base), "git")) {
-		return segment{}, false
-	}
-	args := s.tokens[ci+1:]
-	if !readGitConfig(s.tokens[:ci], args, valueFlags).hooksPath {
-		return segment{}, false
-	}
-	idx := operandIndexes(args, valueFlags)
-	if len(idx) == 0 {
-		return segment{}, false
-	}
-	at := ci + 1 + idx[0] + 1
-	tokens := make([]string, 0, len(s.tokens)+1)
-	tokens = append(append(append(tokens, s.tokens[:at]...), noVerifyFlag), s.tokens[at:]...)
-	next := segment{tokens: tokens, chain: s.chain}
-	if s.globbed != nil {
-		g := globAtRange(s.globbed, 0, len(s.tokens))
-		next.globbed = append(append(append(make([]bool, 0, len(g)+1), g[:at]...), false), g[at:]...)
-	}
-	return next, true
+	return segment{}, false
 }

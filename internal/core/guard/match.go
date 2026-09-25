@@ -167,102 +167,28 @@ var reserved = map[string]bool{
 
 // precededByCD reports whether an earlier command in the SAME chain changes
 // directory. A cd on a previous logical line does not chain: a new line is a
-// new shell command, and its failure cannot redirect this one.
+// new shell command, and its failure cannot redirect this one. Every place the
+// earlier command can sit is read, and a name a substitution prints can be a
+// directory change (unknown.go).
 func precededByCD(before []segment, chain int) bool {
 	for _, s := range before {
 		if s.chain != chain {
 			continue
 		}
-		if cmd, _ := commandOf(s); changesDirectory[cmd] {
-			return true
+		for _, a := range commandSites(s) {
+			if nameCouldBeAny(s.tokens[a.idx], directoryChanges) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
-// changesDirectory names the builtins an `after_cd` entry reads as the
+// directoryChanges names the builtins an `after_cd` entry reads as the
 // directory change a command is chained after. `pushd` and `popd` change it
 // exactly as `cd` does and fail the same way, leaving the shell where it was
 // for the command that follows (iss-2609251640464735).
-var changesDirectory = map[string]bool{"cd": true, "pushd": true, "popd": true}
-
-// commandOf returns the segment's command name (basename, wrappers and
-// environment-assignment prefixes stepped over) and the arguments that follow
-// it. An empty name means the segment holds no command (assignments only).
-func commandOf(s segment) (string, []string) {
-	i, _ := commandIndex(s)
-	if i < 0 {
-		return "", nil
-	}
-	return path.Base(s.tokens[i]), s.tokens[i+1:]
-}
-
-// commandIndex locates command position: the index of the token commandOf
-// names, or -1 when the segment holds no command. noglob reports that the
-// wrapper chain stepped on the way carried zsh's `noglob`, which turns
-// filename expansion off for the command it precedes — so the segment's glob
-// record describes words bash would NOT rewrite, and the matcher compares them
-// literally.
-func commandIndex(s segment) (idx int, noglob bool) {
-	i := 0
-	for i < len(s.tokens) {
-		tok := s.tokens[i]
-		if steppedBeforeCommand(tok) {
-			i++
-			continue
-		}
-		if tok == "coproc" {
-			i = skipCoproc(s.tokens, i+1)
-			continue
-		}
-		// The wrapper name is folded to lower case before lookup: on a
-		// case-insensitive filesystem (macOS's default) `SUDO`/`ENV`/`NICE`
-		// resolve to and run the real binary, so a case-varied wrapper must be
-		// stepped over exactly as its lowercase spelling is, or the command it
-		// launches never reaches command position (gh-315).
-		if w := strings.ToLower(path.Base(tok)); wrappers[w] {
-			if w == "noglob" {
-				noglob = true
-			}
-			i = skipWrapperArgs(s.tokens, i+1, w)
-			continue
-		}
-		break
-	}
-	if i >= len(s.tokens) {
-		return -1, noglob
-	}
-	return i, noglob
-}
-
-// skipWrapperArgs advances past one wrapper's own arguments, from pos (the token
-// just after the wrapper name), and returns the index where the command it
-// launches begins. Without it a known wrapper turned an entry the registry does
-// describe into an allow with one extra token — `sudo <hazard>` was seen,
-// `sudo -u bob <hazard>` was not, because `-u` was read as the command name
-// (iss-148).
-func skipWrapperArgs(tokens []string, pos int, wrapper string) int {
-	valueFlags := wrapperValueFlags[wrapper]
-	for pos < len(tokens) {
-		tok := tokens[pos]
-		if tok == "--" {
-			// End of the wrapper's options: everything after it is the command.
-			pos++
-			break
-		}
-		if tok == "-" || !strings.HasPrefix(tok, "-") {
-			break
-		}
-		pos++
-		if !strings.Contains(tok, "=") && containsString(valueFlags, tok) {
-			pos++ // its value belongs to the wrapper, not to command position
-		}
-	}
-	for n := wrapperOperands[wrapper]; n > 0 && pos < len(tokens); n-- {
-		pos++
-	}
-	return pos
-}
+var directoryChanges = []string{"cd", "pushd", "popd"}
 
 // skipCoproc advances past the `coproc` keyword's own tokens, from pos (the
 // token just after `coproc`), and returns the index where the command it launches
@@ -304,8 +230,9 @@ func isShellName(tok string) bool {
 // steppedBeforeCommand reports whether a token precedes the command rather than
 // being it: an environment assignment, a reserved word, or a word that is
 // nothing but a substitution's output, which an empty output leaves no word
-// for (`$(true) gh repo delete` runs gh). Every walk to command position reads
-// it, so they cannot disagree about where the command is.
+// for. Tier 2 reads it to skip a start no entry's command can be; the walk to
+// command position reads the same three shapes in commandArrivals, where a
+// substitution is also a program of unknown name.
 func steppedBeforeCommand(tok string) bool {
 	return isAssignment(tok) || reserved[tok] || vanishable(tok)
 }
@@ -354,117 +281,115 @@ func isAssignment(tok string) bool {
 // `--forc?` and `--force*` spell the dash and still fire.
 func matchSegment(p Pattern, s segment) bool {
 	tally(len(s.tokens))
-	ci, noglob := commandIndex(s)
-	if ci < 0 {
-		return false
+	// Every place the command can sit is read (commandArrivals): an unknown word
+	// before it is read every way it can be, and an unknown word in command
+	// position is every program its tail allows. The command NAME is folded
+	// (nameCouldBe): a case-insensitive filesystem resolves `GIT`, `RM`, `GH`
+	// to the real binaries and executes the hazard (gh-315). Only the name is
+	// folded — subcommands, flags and values stay case-sensitive below, because
+	// git/gh/rm parse THOSE case-sensitively, so a case-varied subcommand does
+	// not run the hazard and must not be blocked.
+	sites := sitesNamed(s, p.Command)
+	need := operandNeed(p)
+	for _, noglob := range []bool{false, true} {
+		var group []arrival
+		for _, a := range sites {
+			// A place with fewer words after it than the entry needs operands
+			// is no match in any reading, and costs nothing to rule out.
+			if a.noglob == noglob && len(s.tokens)-(a.idx+1) >= need {
+				group = append(group, a)
+			}
+		}
+		if len(group) == 0 {
+			continue
+		}
+		// glob reports, per TOKEN index, whether bash would expand that token.
+		glob := func(i int) bool { return !noglob && s.globAt(i) }
+		m := newEntryMatcher(p, s.tokens, glob)
+		for _, a := range group {
+			if m.matchesAfter(a.idx) {
+				return true
+			}
+		}
 	}
-	// The command NAME is folded: a case-insensitive filesystem resolves `GIT`,
-	// `RM`, `GH` to the real binaries and executes the hazard, so a byte-exact
-	// compare here was a silent allow on macOS (gh-315). Only the name is folded —
-	// subcommands, flags and values stay case-sensitive below, because git/gh/rm
-	// parse THOSE case-sensitively, so a case-varied subcommand does not run the
-	// hazard and must not be blocked.
-	cmd := path.Base(s.tokens[ci])
-	if !strings.EqualFold(cmd, p.Command) &&
-		!(!noglob && s.globAt(ci) && globMatches(strings.ToLower(cmd), strings.ToLower(p.Command))) {
-		return false
+	return false
+}
+
+// entryMatcher answers, for any place a command can sit in one segment, whether
+// the arguments after it meet an entry's operand and flag constraints. It reads
+// the tokens once however many places there are — a line whose command an
+// unknown word puts in several places costs what a line with one does.
+type entryMatcher struct {
+	// accept[i] reports whether tokens[i:], as a command's arguments, meet the
+	// operand constraints in some reading (operandAcceptance).
+	accept []bool
+	// nextStop[i] is the first index at or after i holding the `--` operand
+	// terminator, or len(tokens): no flag is read past it.
+	nextStop []int
+	// nextHit holds, per flag clause (each flag group, then each flag-value
+	// constraint), the first index at or after i whose token satisfies it.
+	nextHit [][]int
+}
+
+// newEntryMatcher reads the tokens for one entry. One operand walk reads every
+// word, an unknown one every way it can be read (unknown.go): as a value flag's
+// value it fills the slot, so the operands after it keep their positions (`git
+// -C $(pwd) push` is a push); an unknown dash-word both stands alone and takes
+// a value (`git -$(x) /tmp push`); a word that may print nothing both is and is
+// not an operand (`git $(true) push`). The subcommands, the count, the prefix
+// and the path are all met by one reading.
+func newEntryMatcher(p Pattern, tokens []string, glob func(int) bool) entryMatcher {
+	n := len(tokens)
+	want := operandWant{
+		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
+		prefixes: p.ArgPrefixes, paths: p.ArgPaths,
 	}
-	args := s.tokens[ci+1:]
-	// glob reports, per ARGUMENT index, whether bash would expand that token.
-	glob := func(i int) bool { return !noglob && s.globAt(ci+1+i) }
-	// One operand walk reads every word, an unknown one included (unknown.go):
-	// a substitution is one operand of unknown value, and as a value flag's
-	// value it fills the slot, so the operands after it keep their positions
-	// (`git -C $(pwd) push` is a push). The count reads that walk. The
-	// positional compares read it too, and read it again with every word that
-	// may vanish taken out — `git $(true) push` is a push as well.
-	opIdx := operandIndexes(args, p.ValueFlags)
-	if len(opIdx) < p.MinOperands {
-		return false
-	}
-	vanIdx := withoutVanishable(args, opIdx)
-	ops := make([]string, len(opIdx))
-	for n, i := range opIdx {
-		ops[n] = args[i]
-	}
-	if p.Subcommand != "" && !operandMatches(args, opIdx, 0, p.Subcommand, glob) &&
-		!operandMatches(args, vanIdx, 0, p.Subcommand, glob) {
-		return false
-	}
-	if p.Subcommand2 != "" && !operandMatches(args, opIdx, 1, p.Subcommand2, glob) &&
-		!operandMatches(args, vanIdx, 1, p.Subcommand2, glob) {
-		return false
+	m := entryMatcher{accept: operandAcceptance(tokens, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
+	m.nextStop[n] = n
+	for i := n - 1; i >= 0; i-- {
+		m.nextStop[i] = m.nextStop[i+1]
+		if tokens[i] == "--" {
+			m.nextStop[i] = i
+		}
 	}
 	opts := gitOptionTable(p)
-	for _, group := range p.Flags {
-		if !flagGroupMatches(group, args, glob, opts) {
-			return false
+	next := func(hit func(i int) bool) []int {
+		nh := make([]int, n+1)
+		nh[n] = n
+		for i := n - 1; i >= 0; i-- {
+			nh[i] = nh[i+1]
+			if hit(i) {
+				nh[i] = i
+			}
 		}
+		return nh
+	}
+	for _, group := range p.Flags {
+		alts := strings.Split(group, "|")
+		m.nextHit = append(m.nextHit, next(func(i int) bool { return flagGroupHit(alts, tokens, i, glob, opts) }))
 	}
 	for _, fv := range p.FlagValues {
-		if !flagValueMatches(fv, args, glob) {
-			return false
-		}
+		fv := fv
+		m.nextHit = append(m.nextHit, next(func(i int) bool { return flagValueHit(fv, tokens, i, glob) }))
 	}
-	for _, prefix := range p.ArgPrefixes {
-		if !argPrefixMatches(prefix, ops) {
-			return false
-		}
+	return m
+}
+
+// matchesAfter reports whether the arguments after a command at site meet the
+// entry: the operands in some reading, and every flag clause before the first
+// `--` after it.
+func (m entryMatcher) matchesAfter(site int) bool {
+	start := site + 1
+	if !m.accept[start] {
+		return false
 	}
-	for _, pa := range p.ArgPaths {
-		if !pathArgMatches(pa, ops) {
+	stop := m.nextStop[start]
+	for _, nh := range m.nextHit {
+		if nh[start] >= stop {
 			return false
 		}
 	}
 	return true
-}
-
-// operandIndexes returns the INDEXES into args of the segment's non-flag
-// arguments, in order, stepping over the value of any flag listed in valueFlags
-// (`git -C /repo push` is a push). An unknown value-taking flag is not stepped
-// over — the miss is a non-match, never a false block. The subcommand is operand
-// 0. Indexes rather than the words themselves is what lets every caller pair an
-// operand with its token's glob record, which decides whether the compare is
-// literal or a pattern match.
-func operandIndexes(args []string, valueFlags []string) []int {
-	var idx []int
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if !strings.HasPrefix(a, "-") {
-			idx = append(idx, i)
-			continue
-		}
-		if a == "--" {
-			continue
-		}
-		if !strings.Contains(a, "=") && containsString(valueFlags, a) {
-			i++ // its value is an option argument, not an operand
-		}
-	}
-	return idx
-}
-
-// withoutVanishable returns opIdx less the operands that are nothing but a
-// substitution's output, which an empty output leaves no word for.
-func withoutVanishable(args []string, opIdx []int) []int {
-	var out []int
-	for _, i := range opIdx {
-		if !vanishable(args[i]) {
-			out = append(out, i)
-		}
-	}
-	return out
-}
-
-// operandMatches reports whether the n-th operand is want — literally, as a
-// word its glob pattern can produce, or as an unknown word, which can print
-// anything at all.
-func operandMatches(args []string, opIdx []int, n int, want string, glob func(int) bool) bool {
-	if n < 0 || n >= len(opIdx) {
-		return false
-	}
-	i := opIdx[n]
-	return args[i] == want || isUnknown(args[i]) || (glob(i) && globMatches(args[i], want))
 }
 
 // globMatches reports whether the shell pattern can produce the literal. A
@@ -536,33 +461,31 @@ func argPrefixMatches(prefix string, ops []string) bool {
 	return false
 }
 
-// flagGroupMatches reports whether any alternative in one "a|b" group is present
-// among the argument tokens. glob reports, per argument index, whether bash
-// would expand that token. The scan stops at `--`: after the terminator every
-// word is an operand, so `git push -- --force origin main` pushes a refspec
-// called `--force` and is not a force push. opts, when the entry names a
-// subcommand whose options are modelled (gitOptionTable), is read for the
-// abbreviations git accepts of a long alternative (abbreviatesAlternative).
-func flagGroupMatches(group string, args []string, glob func(int) bool, opts []string) bool {
-	alts := strings.Split(group, "|")
+// flagGroupHit reports whether the token at i is an alternative of one "a|b"
+// flag group. glob reports, per token index, whether bash would expand that
+// token. The caller reads the tokens only up to `--` (entryMatcher): after the
+// terminator every word is an operand, so `git push -- --force origin main` pushes a refspec
+// called `--force` and is not a force push. opts, when the
+// entry names a subcommand whose options are modelled (gitOptionTable), is read
+// for the abbreviations git accepts of a long alternative
+// (abbreviatesAlternative).
+func flagGroupHit(alts []string, tokens []string, i int, glob func(int) bool, opts []string) bool {
+	arg := tokens[i]
+	if arg == "--" {
+		return false
+	}
+	// The known text is the word with every substitution printing nothing; an
+	// unknown dash-word is also every flag it can still become (unknown.go).
+	k := knownText(arg)
 	for _, alt := range alts {
 		if alt == "" {
 			continue
 		}
-		for i, arg := range args {
-			if arg == "--" {
-				break
-			}
-			// The known text is the word with every substitution printing
-			// nothing; an unknown dash-word is also every flag it can still
-			// become (unknown.go).
-			k := knownText(arg)
-			if flagMatches(alt, k, glob(i)) || unknownFlagCouldBe(arg, alt) {
-				return true
-			}
-			if opts != nil && abbreviatesAlternative(k, alt, alts, opts) {
-				return true
-			}
+		if flagMatches(alt, k, glob(i)) || unknownFlagCouldBe(arg, alt) {
+			return true
+		}
+		if opts != nil && abbreviatesAlternative(k, alt, alts, opts) {
+			return true
 		}
 	}
 	return false
@@ -624,57 +547,56 @@ func flagMatches(alt, arg string, glob bool) bool {
 	return false
 }
 
-// flagValueMatches reports whether some argument SETS one of the flag
+// flagValueHit reports whether the token at i SETS one of the flag
 // alternatives to one of the accepted values. All three spellings a shell user
 // reaches for are read — `-X DELETE`, `-XDELETE`, `--method=DELETE` — because a
 // constraint another spelling of the same call steps past is not one. A
 // globbed flag or value token is compared as a pattern in the separate-token
 // form; the attached forms stay literal (the floor flagMatches names). The
-// FLAG half carries the same two narrowings flagGroupMatches does — the token
-// must be flag-shaped, and the scan stops at `--` — because this is a flag
-// position too, and the rule cannot hold at two of its three sites. The VALUE
-// half is a different position: a globbed value is an ordinary word, and
+// FLAG half carries the same two narrowings flagGroupHit does — the token
+// must be flag-shaped, and the caller reads only up to `--` — because this is a
+// flag position too, and the rule cannot hold at two of its three sites. The
+// VALUE half is a different position: a globbed value is an ordinary word, and
 // `-X DELET?` is compared as the pattern it is.
-func flagValueMatches(fv FlagValue, args []string, glob func(int) bool) bool {
+func flagValueHit(fv FlagValue, tokens []string, i int, glob func(int) bool) bool {
+	arg := tokens[i]
+	if arg == "--" {
+		return false
+	}
 	for _, alt := range strings.Split(fv.Flag, "|") {
 		if alt == "" {
 			continue
 		}
-		for i, arg := range args {
-			if arg == "--" {
-				break
-			}
-			// An unknown word is read as unknown.go says: by its known text,
-			// and, written with a dash, as any flag it can still become —
-			// which, with its value attached, is a setting the constraint
-			// accepts.
-			if unknownFlagCouldBe(arg, alt) {
+		// An unknown word is read as unknown.go says: by its known text,
+		// and, written with a dash, as any flag it can still become —
+		// which, with its value attached, is a setting the constraint
+		// accepts.
+		if unknownFlagCouldBe(arg, alt) {
+			return true
+		}
+		k := knownText(arg)
+		switch {
+		case k == alt || (glob(i) && flagShaped(k) && globMatches(k, alt)):
+			// The separate-token form: the value is the next argument.
+			if i+1 < len(tokens) && acceptsValue(fv.Values, tokens[i+1], glob(i+1)) {
 				return true
 			}
-			k := knownText(arg)
-			switch {
-			case k == alt || (glob(i) && flagShaped(k) && globMatches(k, alt)):
-				// The separate-token form: the value is the next argument.
-				if i+1 < len(args) && acceptsValue(fv.Values, args[i+1], glob(i+1)) {
-					return true
-				}
-			case strings.HasPrefix(arg, alt+"="):
-				if acceptsValue(fv.Values, arg[len(alt)+1:], false) {
-					return true
-				}
-			case strings.HasPrefix(k, alt+"="):
-				if acceptsValue(fv.Values, k[len(alt)+1:], false) {
-					return true
-				}
-			case isShortFlag(alt) && len(arg) > len(alt) && strings.HasPrefix(arg, alt):
-				// A short flag's value may be attached with no separator at all.
-				if acceptsValue(fv.Values, arg[len(alt):], false) {
-					return true
-				}
-			case isShortFlag(alt) && len(k) > len(alt) && strings.HasPrefix(k, alt):
-				if acceptsValue(fv.Values, k[len(alt):], false) {
-					return true
-				}
+		case strings.HasPrefix(arg, alt+"="):
+			if acceptsValue(fv.Values, arg[len(alt)+1:], false) {
+				return true
+			}
+		case strings.HasPrefix(k, alt+"="):
+			if acceptsValue(fv.Values, k[len(alt)+1:], false) {
+				return true
+			}
+		case isShortFlag(alt) && len(arg) > len(alt) && strings.HasPrefix(arg, alt):
+			// A short flag's value may be attached with no separator at all.
+			if acceptsValue(fv.Values, arg[len(alt):], false) {
+				return true
+			}
+		case isShortFlag(alt) && len(k) > len(alt) && strings.HasPrefix(k, alt):
+			if acceptsValue(fv.Values, k[len(alt):], false) {
+				return true
 			}
 		}
 	}
@@ -727,7 +649,9 @@ func isShortFlag(alt string) bool {
 func pathArgMatches(pa PathArg, ops []string) bool {
 	for _, op := range ops {
 		if isUnknown(op) {
-			if unknownOperandOnPath(pa, op) {
+			// The path it can print, and the one its known text spells when
+			// every substitution in it prints nothing (unknown.go).
+			if unknownOperandOnPath(pa, op) || (!vanishable(op) && pathArgMatches(pa, []string{knownText(op)})) {
 				return true
 			}
 			continue

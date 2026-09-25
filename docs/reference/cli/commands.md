@@ -532,14 +532,20 @@ cannot tell whether that program runs the rest of the line. A `$(…)`,
 backtick, `<(…)` or `>(…)`, quoted or not, IS followed into command
 position, and the words written after one stay the enclosing command's,
 so `rm $(true) -rf *` is read as `rm -rf *`. What one prints is unknown,
-so a word holding one fails closed: led by a dash (`--$(…)`) it is every
-flag it could become, after a value flag (`git -C $(pwd) push`) it is that
-flag's value, and as an operand it is one operand; text beside one in the
-same word is also read as bash leaves it when the output is empty. One
-nested more than eight double-quoted substitutions deep, or holding a case
-command, is blocked, because the guard has stopped reading it. `$(( … ))`
-is an expression, not commands. A shell reading its script from a pipe, a
-here-document or a here-string is blocked, and so is a line over 64 KiB.
+so a word holding one fails closed, read every way it can be at once: led
+by a dash (`--$(…)`) it is every flag it could become — standing alone,
+taking a value, a shell's `-c` — before the command as well as after it;
+after a value flag (`git -C $(pwd) push`) it is that flag's value; as an
+operand it is one operand; in command position (`$(echo git) push`) it is
+any program its known text allows, so an unknown name with any operand
+reads as `pkill` too. Text beside one in the same word is also read as bash
+leaves it when the output is empty. One nested more than eight
+double-quoted substitutions deep, holding a case command, or more than
+eight of them where the program name could be, is blocked, because the
+guard has stopped reading it. An ANSI-C string ends at its first NUL, as
+bash ends it. `$(( … ))` is an expression, not commands. A shell reading
+its script from a pipe, a here-document or a here-string is blocked, and
+so is a line over 64 KiB.
 An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at

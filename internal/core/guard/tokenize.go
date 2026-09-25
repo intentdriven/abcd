@@ -59,6 +59,15 @@ type segment struct {
 	// because a glob's expansion IS decidable at the positions an entry
 	// constrains (match.go) where a brace group's is not.
 	globbed []bool
+	// arrivals caches commandArrivals(tokens) once Check has its final
+	// segments (walked records that it is set), so the walk to command position
+	// is paid once per segment rather than once per entry. A segment built
+	// anywhere else leaves it unset and is walked when read.
+	arrivals []arrival
+	walked   bool
+	// walkCapped records that the walk stopped at maxUnknownSites, which
+	// Check refuses.
+	walkCapped bool
 }
 
 // globAt reports whether token i carried an unquoted glob metacharacter.
