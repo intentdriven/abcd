@@ -195,8 +195,13 @@ it when the output is empty. One nested past the depth the guard reads, one
 holding a case command, or more of them where the program name could be than
 the guard follows, is refused rather than left unread. A parameter expansion
 holding a substitution prints its output, so its word is unknown from the `${`
-on. A here-document body is data, but the substitutions the shell runs in a body
-whose delimiter is unquoted are read as commands. An ANSI-C string ends at its
+on, and inside double quotes one ends at its own `}`, where a nested `"` opens a
+string of its own. A here-document body is data, but the substitutions the shell
+runs in a body whose delimiter is unquoted are read as commands, and such a body
+is read by the lines bash compares with its delimiter, joined across a trailing
+odd run of backslashes. A payload that is wholly a substitution printing a
+here-document the shell does not change (`sh -c "$(cat <<'EOF' … EOF)"`) is also
+read as that document's text. An ANSI-C string ends at its
 closing quote, found before any escape is decoded, and at its first NUL, as bash
 ends it. An arithmetic expansion is an expression, not commands. A shell reading its script from a pipe, a here-document or a
 here-string is refused, because what it runs is text the guard read as data, and

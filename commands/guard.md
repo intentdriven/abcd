@@ -170,7 +170,10 @@ be, the block is reported as `program-name-unknown`, with the entries the line
 reads as among its matches, and its way past is to spell the program's name. A
 program name nothing fixes can be `pkill` or `killall`, so an unknown name
 followed by any operand (`"$(which python3)" script.py`, `$(date) x`) blocks —
-an accepted over-block, answered the same way.
+an accepted over-block, answered the same way. So is a here-document whose
+delimiter is a substitution (`cat <<$(echo EOF)`): the guard does not run it to
+learn the delimiter, so no line ends the document and it blocks as
+`heredoc-unterminated`; write the delimiter out.
 A command with more than eight substitutions where its program name could be is
 a **block** (`substitution-unread`), because the guard stops following them.
 Text written beside one in the same word is also read as bash leaves it when the
@@ -180,10 +183,18 @@ message or a branch name is spelled every day (`git commit -m "$(cat msg)"`), so
 `git push $(printf -- --force)` is not seen. A parameter expansion holding a
 substitution (`${X:-$(…)}`) prints that substitution's output, so its word is
 unknown from the `${` on: `--${X:-$(…)}` is every long flag, and a wholly
-`${…}` word is read as a wholly-substituted one is. A here-document body is data,
+`${…}` word is read as a wholly-substituted one is. Inside double quotes a
+`${…}` ends at its own `}`, and a `"` in it opens a nested string rather than
+closing the outer one, so `echo "${MSG:-"don't"}"` is one word and runs. A
+here-document body is data,
 but where its delimiter is unquoted (`<<EOF`, not `<<'EOF'`, `<<"EOF"` or
 `<<\EOF`) the shell runs the command substitutions in it, and each is read as a
-command. A substitution nested more than
+command; such a body is read by the lines bash compares with the delimiter, so a
+line ending in an odd number of backslashes joins the next one before the
+compare, and `x\` followed by `EOF` does not end the document. A word that is
+wholly `"$(cat <<'EOF' … EOF)"`, whose document the shell does not change, is
+also read as that document's text where it is a payload, so `sh -c` or `eval`
+handed one reads the document as the command it runs. A substitution nested more than
 eight double-quoted substitutions deep, or one holding a case command, is a
 **block** (`substitution-unread`), because the guard has stopped reading it and
 its command runs all the same. An arithmetic expansion `$(( … ))` is read as an

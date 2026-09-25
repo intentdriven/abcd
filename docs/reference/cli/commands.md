@@ -546,8 +546,13 @@ double-quoted substitutions deep, holding a case command, or more than
 eight of them where the program name could be, is blocked, because the
 guard has stopped reading it. An ANSI-C string ends at its closing quote
 and its first NUL, as bash ends it. A `${…}` holding a substitution is
-unknown from its `${` on. A here-document body is data, but a substitution
-in one whose delimiter is unquoted runs, and is read as a command.
+unknown from its `${` on, and inside double quotes it ends at its own
+`}`, its nested quotes opening a nested string. A here-document body is
+data, but a substitution in one whose delimiter is unquoted runs, and is
+read as a command; a body line ending in an odd number of backslashes
+joins the next before the delimiter compare, as bash joins it. A
+`"$(cat <<'EOF' … EOF)"` handed to `sh -c` or `eval` is read as its
+document's text.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
 or a process substitution is blocked, and so is a line over 64 KiB.

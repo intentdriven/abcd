@@ -156,3 +156,14 @@ func TestUnquotedHeredocBodyJoinsBackslashNewline(t *testing.T) {
 		{"cat <<'EOF'\nx\\\nEOF\n'$(" + push + ")'", VerdictAllow, ""},
 	})
 }
+
+// TestSubstitutedDelimiterIsARecordedOverBlock pins the exotic over-block
+// review5-guard named: a delimiter a substitution prints (`<<$(echo EOF)`) is
+// not run to learn it, so no line ends the document, and the line blocks as an
+// unterminated here-document although bash runs it. It is recorded in the
+// decision log and on the command page; this keeps the record true.
+func TestSubstitutedDelimiterIsARecordedOverBlock(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{"cat <<$(echo EOF)\ntext\nEOF", VerdictBlock, heredocEntryID},
+	})
+}
