@@ -125,9 +125,11 @@ absent flag takes the repo's declared default from `.abcd/config/identity.json`,
 falling back to `hand-written`. On `capture resolve` and `capture wontfix` the
 flag **restamps** the record — a resolution note is new text with its own mode —
 and an absent flag leaves the record's existing stamp alone. A restamp of a
-record that predates disclosure (one carrying no `origin`) is refused before
-anything is written, because the pair is written together or not at all; re-run
-without the flag. Such a record still resolves normally.
+record that predates disclosure (one carrying no `origin`), or of one whose
+`origin` is outside the vocabulary, is refused before anything is written,
+because the pair is written together or not at all; re-run without the flag. A
+record carrying a valid `origin` and no `production_mode` is completed into the
+pair by the restamp. Such a record still resolves normally.
 
 Neither key touches authorship: they are disclosure at field granularity, on the
 same footing as the `Assisted-by:` trailer at commit granularity. Population is

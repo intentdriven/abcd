@@ -460,10 +460,22 @@ func restampField(fm map[string]any, issID, mode string) ([]kv, error) {
 	if mode == "" {
 		return nil, nil
 	}
-	if asString(fm[provenance.KeyOrigin]) == "" {
+	origin := asString(fm[provenance.KeyOrigin])
+	if origin == "" {
 		return nil, fmt.Errorf(
 			"%s carries no %s, so it predates disclosure and there is nothing to restamp: the pair is written together or not at all, and a lone %s is a state no command produces (nothing written — re-run without --production-mode)",
 			issID, provenance.KeyOrigin, provenance.KeyProductionMode)
+	}
+	// The origin is PARSED, not merely found present (iss-2608300941548519): a
+	// restamp beside an origin outside the vocabulary writes a pair no command
+	// produces, which is the state this gate exists to keep a command from
+	// writing. A record carrying a valid origin and no production_mode is the
+	// other half of that question, and it is allowed: the restamp completes it
+	// into the pair a command writes.
+	if _, err := provenance.ParseOrigin(origin); err != nil {
+		return nil, fmt.Errorf(
+			"%s carries %s %q, which is outside the vocabulary, so a restamp would write a pair no command produces: correct the %s first (nothing written — or re-run without --production-mode): %w",
+			issID, provenance.KeyOrigin, origin, provenance.KeyOrigin, err)
 	}
 	m, err := provenance.ParseMode(mode)
 	if err != nil {
