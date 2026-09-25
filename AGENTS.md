@@ -137,7 +137,7 @@ vet, test and the race-enabled internal tests on both, with the `make
 fmt-check` format gate, the record-lint, issue-drift and docs-lint steps and the
 site-render gate on the Linux leg alone. Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
-(RS001–RS005) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
+(RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
 (`make smoke`). A
 fail-closed classifier stands the macOS leg, the race lane and the `zizmor`,
