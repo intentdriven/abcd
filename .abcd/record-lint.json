@@ -241,6 +241,11 @@
       "severity": "blocker",
       "intents_dir": "intents"
     },
+    "intent_sota": {
+      "enabled": true,
+      "severity": "warn",
+      "intents_dir": "intents"
+    },
     "issue_id_unique": {
       "enabled": true,
       "severity": "blocker",

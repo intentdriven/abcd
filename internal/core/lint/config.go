@@ -388,6 +388,7 @@ var knownRules = map[string]bool{
 	ruleCrossStoreIDClaim:       true,
 	ruleDeliveryState:           true,
 	ruleHarnessLeak:             true,
+	ruleIntentSOTA:              true,
 	ruleProseCitationResolves:   true,
 	ruleReadingOutstanding:      true,
 	ruleRecordProvenance:        true,

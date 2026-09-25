@@ -354,6 +354,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, checkIntentImpact(tree, impactCfg)...)
 		}
 
+		if sotaCfg, ok := cfg.Rules[ruleIntentSOTA]; ok && sotaCfg.Enabled {
+			tree, err := scanIntents(intentsDirOf(sotaCfg))
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, checkIntentSOTA(tree, sotaCfg)...)
+		}
+
 		if specCfg, ok := cfg.Rules["spec_lifecycle"]; ok && specCfg.Enabled {
 			sl, err := checkSpecLifecycle(repoRoot, rootAbs, specCfg, cfg)
 			if err != nil {
@@ -1655,6 +1663,9 @@ type intentRecord struct {
 	// preamble is the 1-based line the leading `---` sits on when something
 	// precedes it, 0 otherwise — the extraction half of the loader contract.
 	preamble int
+	// lines is the file's content split on newlines, kept for the rules that read
+	// an intent's body rather than its frontmatter (intent_sota).
+	lines []string
 }
 
 // intentTree is ONE scan of the intent buckets, shared by every rule that reads
@@ -1736,7 +1747,7 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 			fields := frontmatterFields(lines)
 			tree.records = append(tree.records, intentRecord{
 				rel: rel, bucket: bucket, name: e.Name(), fields: fields,
-				preamble: preambleLine(lines),
+				preamble: preambleLine(lines), lines: lines,
 			})
 		}
 	}
