@@ -40,7 +40,7 @@ const ruleReadingOutstanding = "reading_outstanding"
 const severityInfo = "info"
 
 var (
-	readingRunDirRe   = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
+	readingRunDirRe = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
 	// The item filename grammar is the one record_schema holds the store to,
 	// recordid.BareFilenameNumRe, so the gate and the report cannot disagree about
 	// which files are items (iss-2608300929274006).

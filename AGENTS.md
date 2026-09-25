@@ -315,8 +315,9 @@ irreversible; guessing downward costs nothing.**
   `## [Unreleased]` must be EMPTY or the ingest refuses — a derived cut never
   folds hand-written prose into a generated section. So the way to announce a
   change is to resolve its issue or ship its intent in the same diff, which the
-  point below already requires. Writing the entry by hand does not add a line; it
-  blocks the next release.
+  point below already requires. Writing the entry by hand does not add a line: record-lint's
+  `changelog_unreleased_empty` rule refuses it at the change, before it can block
+  the next release.
 - **A change that fixes a captured issue resolves it in the same change**, and
   says so with a `Resolves: iss-N` trailer. `lint-issues` (RS001) refuses a
   trailer whose record does not enter `.abcd/work/issues/resolved/` or

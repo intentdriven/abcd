@@ -414,6 +414,10 @@
         "iss35-brief-surface-crosscheck"
       ]
     },
+    "changelog_unreleased_empty": {
+      "enabled": true,
+      "severity": "blocker"
+    },
     "gate_lockstep": {
       "enabled": true,
       "severity": "blocker",
