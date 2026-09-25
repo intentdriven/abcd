@@ -48,8 +48,8 @@ core and the packaging boundary holds.
   the conventions marker block and the rules loader (itd-3), and bootstrapping the
   user-scope history store. There is no `abcd init` and no config get/set pair:
   install is the write path a person reaches for, and the bare invocation,
-  `doctor`, `dry-run`, `identity-check` and a bare `remote` are the read-only
-  halves. Two further forms write: `uninstall` takes abcd back out again, and
+  its `--dry-run`, `--identity` and `--remote` modes, and `doctor` are the
+  read-only halves. Two further forms write: `uninstall` takes abcd back out again, and
   `remote apply` turns on the forge's own secret scanning. The full surface is
   the machine-checked table in
   [`04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md); this milestone is what
@@ -80,8 +80,7 @@ core and the packaging boundary holds.
 ## 3. Intent, brief, and review through the host-delegated oracle
 
 - **intent**: `/abcd:intent` (itd-1, itd-27, itd-34), with press-release
-  composition. Creation is bare quoted text, with `new` kept as a deprecated
-  alias; the shipped sub-verbs are the machine-checked table in
+  composition. Creation is bare quoted text; the shipped sub-verbs are the machine-checked table in
   [`../04-surfaces/05-intent.md`](../04-surfaces/05-intent.md). Shipping runs the
   other way round: an intent moves to `shipped/` as the close-hook of `abcd spec
   close` — on the close after which no open spec names it, since an intent owns

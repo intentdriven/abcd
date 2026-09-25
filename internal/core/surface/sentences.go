@@ -24,18 +24,14 @@ var sentences = map[string]string{
 	"abcd": "Render the status board, or say what one record id is and its next move: " +
 		"Writes nothing; refuses any other positional argument.",
 
-	"abcd ahoy": "Detect abcd's install state for this repository and list its gaps: " +
-		"Writes nothing; refuses any argument.",
+	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
+		"Writes nothing; refuses any argument or two modes at once.",
 	"abcd ahoy doctor": "Report every install gap, user-scope state included: " +
 		"Writes nothing; refuses any argument.",
-	"abcd ahoy dry-run": "Print the detection result as its JSON envelope: " +
-		"Writes nothing; refuses any argument.",
-	"abcd ahoy identity-check": "Check git's commit identity against .abcd/config/identity.json: " +
-		"Writes nothing; refuses an identity that does not match.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
 		"Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.",
-	"abcd ahoy remote": "Report this repository's GitHub secret-scanning settings: " +
-		"Writes nothing; refuses any argument.",
+	"abcd ahoy remote": "Enable GitHub secret scanning and push protection: " +
+		"Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
 	"abcd ahoy remote apply": "Enable GitHub secret scanning and push protection on this repository: " +
 		"Writes both settings and their mirror; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
@@ -94,7 +90,7 @@ var sentences = map[string]string{
 	"abcd disembark review": "Review a packed lifeboat against its source repository, or validate the host's verdict: " +
 		"Writes the review in the lifeboat; refuses an unregistered verdict.",
 
-	"abcd docs": "Lint the documentation for currency and keep its citation baseline: " +
+	"abcd docs": "Keep the citation baseline that `abcd lint docs` enforces offline: " +
 		"Writes nothing but that baseline; refuses an unknown sub-verb.",
 	"abcd docs cite": "Keep the citation baseline the docs lint enforces offline: " +
 		"Writes nothing bare, and only that baseline; refuses an unknown sub-verb.",
@@ -102,8 +98,6 @@ var sentences = map[string]string{
 		"Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.",
 	"abcd docs cite refresh": "Fetch every cited URL once, the one documentation verb that reaches the network: " +
 		"Writes the citation baseline; refuses an unreadable docs-lint configuration.",
-	"abcd docs lint": "Lint the docs for change-narration, broken links, citations, and stray root markdown: " +
-		"Writes nothing; refuses a tree with a blocker finding.",
 
 	"abcd embark": "Unpack a verified lifeboat into a target repository, probing first: " +
 		"Writes only its record families and marker block; refuses the whole write on any conflict.",
@@ -145,8 +139,8 @@ var sentences = map[string]string{
 	"abcd ideate record": "Validate a host-composed gauntlet verdict: " +
 		"Writes the dated research record; refuses without an idea slug or --verdict-json.",
 
-	"abcd identity": "Show this repository's identity block and every surface held to it: " +
-		"Writes nothing; refuses a repository that records no identity block.",
+	"abcd identity": "Record the identity block and propose drift corrections: " +
+		"Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.",
 	"abcd identity init": "Record this repository's identity block and the pointer to it: " +
 		"Writes the block and the pointer; refuses without --title and --tagline when no block exists.",
 	"abcd identity render": "Print the correction for every drifted surface as a unified diff: " +
@@ -192,8 +186,6 @@ var sentences = map[string]string{
 		"Writes the held line with its reason; refuses without --reason.",
 	"abcd intent link": "Link a planned intent to an existing spec: " +
 		"Writes the intent's spec_id; refuses an intent that is not planned.",
-	"abcd intent new": "File a draft intent from the text, as the bare verb's quoted form does: " +
-		"Writes the draft into drafts/; refuses empty text.",
 	"abcd intent plan": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: " +
 		"Writes both records; refuses an intent on hold.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +
@@ -210,10 +202,16 @@ var sentences = map[string]string{
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 
-	"abcd lint": "Check this repository against the working conventions: " +
+	"abcd lint": "Check this repository against the conventions, every target included: " +
 		"Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
+	"abcd lint docs": "Lint the docs for change-narration, broken links, citations, and stray root markdown: " +
+		"Writes nothing; refuses a tree with a blocker finding.",
+	"abcd lint identity": "Show this repository's identity block and every surface held to it: " +
+		"Writes nothing; refuses a repository that records no identity block.",
 	"abcd lint outbound": "Judge one outbound text against the session-URL and tool-footer policy: " +
 		"Writes nothing; refuses a text carrying either with exit 1.",
+	"abcd lint site": "Gate the built website, rendering it first when absent: " +
+		"Writes only inside the output directory; refuses a site failing any gate with exit 1.",
 
 	"abcd memory": "Render the memory store's status: " +
 		"Writes nothing; refuses outside a git checkout.",
@@ -247,8 +245,6 @@ var sentences = map[string]string{
 		"Writes nothing; refuses any argument.",
 	"abcd site build": "Render the website into the output directory: " +
 		"Writes only inside that directory; refuses a non-empty directory it did not write.",
-	"abcd site check": "Gate the built website, rendering it first when absent: " +
-		"Writes only inside the output directory; refuses a site failing any gate with exit 1.",
 
 	"abcd spec": "Render the spec store's status: " +
 		"Writes nothing; refuses outside a git checkout.",
@@ -258,11 +254,8 @@ var sentences = map[string]string{
 	"abcd statusline": "Render abcd's status-line row from the host's payload on stdin: " +
 		"Writes nothing; never refuses.",
 
-	"abcd update": "Fetch, verify, and swap the PATH-installed binary for a chosen release: " +
+	"abcd update": "Swap the PATH-installed binary for a verified release, or with --check only compare: " +
 		"Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
-
-	"abcd version": "Print abcd's version, install mode, and vintage: " +
-		"Writes nothing; refuses any argument.",
 }
 
 // SentenceFor returns the sentence the manifest declares for the command at

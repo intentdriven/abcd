@@ -111,7 +111,7 @@ plugin — the update downloads the pinned archive of the release you just cut,
 which needs Claude Code v2.1.224 or later), then start a new session and check:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" version
+"${CLAUDE_PLUGIN_ROOT}/abcd" --version
 ```
 
 It should report the version you just released. If it still reports `dev` or the

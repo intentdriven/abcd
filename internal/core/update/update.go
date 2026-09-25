@@ -233,7 +233,7 @@ func Plan(t ahoy.UpdateTarget) *Refusal {
 // pointed at the verb; every other shape is pointed at the mechanism that owns
 // its binary, taken verbatim from Plan's refusal so the remedy text lives in
 // exactly one place. This is the canonical "what do I run next" primitive:
-// `version --check` and every schema-too-new refusal render through it
+// `update --check` and every schema-too-new refusal render through it
 // (itd-130 / iss-2609012111168872).
 func NextStep(t ahoy.UpdateTarget) string {
 	if r := Plan(t); r != nil {
@@ -296,7 +296,7 @@ type Updater struct {
 }
 
 // releaseOrigin is the one place releases come from — the same origin
-// `version --check` and hooks/bootstrap.sh resolve against, deliberately.
+// `update --check` and hooks/bootstrap.sh resolve against, deliberately.
 const releaseOrigin = "https://github.com/intentdriven/abcd"
 
 // NewGitHubUpdater builds the updater as it ships: the pinned origin, the

@@ -142,7 +142,7 @@ jobs:
         run: go run ./cmd/record-lint
 
       - name: Docs-lint (docs-currency gate)
-        run: go run ./cmd/abcd docs lint --release-gate
+        run: go run ./cmd/abcd lint docs --release-gate
 
       - name: Reviews-charter discipline (RD001-RD003)
         run: bash scripts/check-reviews.sh
@@ -391,7 +391,7 @@ jobs:
           done
 
       - name: Cross-compile the four binaries (version-stamped from the tag)
-        # VERSION=<tag> stamps `abcd version` via -ldflags -X …internal/core.Version.
+        # VERSION=<tag> stamps `abcd --version` via -ldflags -X …internal/core.Version.
         # The binaries built here are the ones checksummed, attested, and uploaded
         # below, so the manifest, the published assets, and the reported version are
         # all in sync.

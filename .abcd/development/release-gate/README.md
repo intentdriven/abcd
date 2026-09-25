@@ -75,7 +75,7 @@ CI cannot run these — they spawn LLM agents. Run them in the agent harness
 against the exact commit to be tagged:
 
 1. **`docs-currency-reviewer`** — verifies every user-facing claim still matches
-   the code (the semantic complement of `docs lint`; see
+   the code (the semantic complement of `lint docs`; see
    [`../brief/04-surfaces/10-docs.md`](../brief/04-surfaces/10-docs.md)).
 2. **Brief↔surface cross-check** — [`brief-surface-crosscheck.js`](brief-surface-crosscheck.js),
    the Direction-A semantic half of the iss-35 graduation: the brief's surface

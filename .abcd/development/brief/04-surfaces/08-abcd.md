@@ -226,6 +226,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 | `--agent` | bool |
 | `--json` | bool |
 | `--no-color` | bool |
+| `--version` | bool |
 
 ### `abcd mode`
 

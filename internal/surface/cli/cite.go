@@ -6,7 +6,7 @@ package cli
 // `refresh` is the only place abcd dials out on behalf of documentation, and it
 // runs when a maintainer asks. `confirm` closes the manual queue that refresh
 // prints. Both live under `docs` because the baseline exists to serve
-// `docs lint` — the gate is the customer, these verbs are how it gets fed.
+// `lint docs` — the gate is the customer, these verbs are how it gets fed.
 
 import (
 	"fmt"
@@ -169,7 +169,7 @@ func addCiteFlags(cmd *cobra.Command, configPath, rootDir *string) {
 }
 
 // loadCiteConfig resolves the root and the docs-lint config the same way
-// `docs lint` does, so the refresh fetches exactly the set the gate enforces.
+// `lint docs` does, so the refresh fetches exactly the set the gate enforces.
 func loadCiteConfig(verb, rootDir, configPath string) (string, lint.Config, error) {
 	root := rootDir
 	if root == "" {

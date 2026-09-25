@@ -18,7 +18,7 @@ would have to contain the very string it forbids.
 
 | layer | store | enforced by | visibility |
 |---|---|---|---|
-| public | `.abcd/docs-lint.json` (the `banned_tokens` family) | `abcd docs lint` in CI, with a per-line escape | entries render in full |
+| public | `.abcd/docs-lint.json` (the `banned_tokens` family) | `abcd lint docs` in CI, with a per-line escape | entries render in full |
 | private | `.abcd/.work.local/private-names.txt` (gitignored) | the committed `.githooks/pre-commit` and `.githooks/pre-merge-commit` guards, on this machine only | entries render **by key only** |
 
 ## Render both layers (bare)
@@ -94,7 +94,7 @@ which each existing whole-line pattern needs a key.
 A public add takes `--severity` (`blocker`, the default, or `warn`) and
 `--successor` (the replacement the finding cites; default "a generic term"), and
 writes one entry into the committed config under the `names/` id namespace. Its
-pattern is a **Go (RE2) regular expression**, because `abcd docs lint` is what
+pattern is a **Go (RE2) regular expression**, because `abcd lint docs` is what
 enforces the public layer; the entry is stored with the `(?i)` prefix so it matches
 case-insensitively like every hand-curated entry. Report the entry `id` and remind
 the user to commit it: the public layer gates everyone.

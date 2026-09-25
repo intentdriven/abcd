@@ -110,7 +110,7 @@ func TestUpdateSeamUntouchedByOtherVerbs(t *testing.T) {
 	newUpdater = func() *update.Updater { calls++; return orig() }
 	t.Cleanup(func() { newUpdater = orig })
 
-	for _, args := range [][]string{{"version"}, {"rules"}} {
+	for _, args := range [][]string{{"--version"}, {"rules"}} {
 		cmd := NewRootCommand()
 		var out bytes.Buffer
 		cmd.SetOut(&out)

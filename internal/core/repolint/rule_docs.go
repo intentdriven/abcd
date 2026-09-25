@@ -16,7 +16,7 @@ import (
 //
 // Every finding is emitted at warn severity regardless of the underlying
 // docs-lint severity: audit is an advisory conformance surface, and the
-// authoritative docs gate is `abcd docs lint` itself (which still exits 2 on a
+// authoritative docs gate is `abcd lint docs` itself (which still exits 2 on a
 // blocker). Re-raising a docs blocker as an audit error would double-gate the
 // same check. (Recorded in DECISIONS.md.)
 type docsCurrency struct{}
@@ -25,7 +25,7 @@ func (docsCurrency) Meta() RuleMeta {
 	return RuleMeta{
 		ID:         "docs-currency",
 		Severity:   SeverityWarn,
-		Fix:        "run `abcd docs lint` and resolve the drift it reports",
+		Fix:        "run `abcd lint docs` and resolve the drift it reports",
 		PolicyInfo: "docs describe what IS; change-narration, broken links, and stray root markdown are the drift signals the docs-lint engine already checks",
 	}
 }
@@ -74,7 +74,7 @@ func (docsCurrency) Eval(ctx Context) ([]Finding, error) {
 	for _, f := range findings {
 		out = append(out, Finding{
 			RuleID:   "docs-currency",
-			Severity: SeverityWarn, // advisory; the docs gate is `abcd docs lint`
+			Severity: SeverityWarn, // advisory; the docs gate is `abcd lint docs`
 			File:     f.File,
 			Line:     f.Line,
 			Message:  f.Message,

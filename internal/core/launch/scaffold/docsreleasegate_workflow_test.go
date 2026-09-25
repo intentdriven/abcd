@@ -6,7 +6,7 @@ import (
 )
 
 // TestReleaseVerifyArmsTheDocsCitationGate holds the release path to the
-// stricter docs lint (iss-2609091801085579). `abcd docs lint --release-gate`
+// stricter docs lint (iss-2609091801085579). `abcd lint docs --release-gate`
 // promotes a citation past its staleness threshold from a warning to a
 // blocker, and nothing ran it: the release workflow invoked the bare lint, so
 // an overdue citation reached a release with a warning nobody had to answer
@@ -19,10 +19,10 @@ func TestReleaseVerifyArmsTheDocsCitationGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	verify := jobSection(t, string(rendered.ReleaseYML), "verify")
-	if !strings.Contains(verify, "run: go run ./cmd/abcd docs lint --release-gate\n") {
+	if !strings.Contains(verify, "run: go run ./cmd/abcd lint docs --release-gate\n") {
 		t.Error("release.yml's verify job must run the docs lint in release-gate mode")
 	}
-	if strings.Contains(verify, "run: go run ./cmd/abcd docs lint\n") {
+	if strings.Contains(verify, "run: go run ./cmd/abcd lint docs\n") {
 		t.Error("release.yml's verify job still runs the bare docs lint, where an overdue citation only warns")
 	}
 }

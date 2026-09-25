@@ -8,7 +8,8 @@ tree disagree, so the reference can never silently go stale. Regenerate it with
 
 Every user-facing command is listed with its sentence (what it does, what it
 writes, and when it refuses), its usage line, and its flags; the
-operator-internal hook entrypoints are omitted.
+operator-internal hook entrypoints, and the old spellings of moved commands,
+are omitted.
 
 ## `abcd`
 
@@ -30,31 +31,28 @@ positional is refused as an unknown command.
       --agent      with --help, list the verbs agents and hosts call as well, each naming the page to read next
       --json       emit machine-readable JSON on stdout; a refusal is a {"abcd":"error","error":…,"exit_code":…} object on stdout too, and exits non-zero
       --no-color   render the banner without color
+      --version    print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)
 ```
 
 ### `abcd ahoy`
 
-Detect abcd's install state for this repository and list its gaps: Writes nothing; refuses any argument.
+Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.
 
-**Usage:** `abcd ahoy`
+**Usage:** `abcd ahoy [flags]`
+
+**Flags:**
+
+```
+      --dry-run    print the detection result as its JSON envelope, whether or not --json is passed
+      --identity   check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --remote     report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+```
 
 #### `abcd ahoy doctor`
 
 Report every install gap, user-scope state included: Writes nothing; refuses any argument.
 
 **Usage:** `abcd ahoy doctor`
-
-#### `abcd ahoy dry-run`
-
-Print the detection result as its JSON envelope: Writes nothing; refuses any argument.
-
-**Usage:** `abcd ahoy dry-run`
-
-#### `abcd ahoy identity-check`
-
-Check git's commit identity against .abcd/config/identity.json: Writes nothing; refuses an identity that does not match.
-
-**Usage:** `abcd ahoy identity-check`
 
 #### `abcd ahoy install`
 
@@ -80,9 +78,9 @@ Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the n
 
 #### `abcd ahoy remote`
 
-Report this repository's GitHub secret-scanning settings: Writes nothing; refuses any argument.
+Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.
 
-**Usage:** `abcd ahoy remote`
+**Usage:** `abcd ahoy remote [command]` (the bare form's work is `abcd ahoy --remote`)
 
 ##### `abcd ahoy remote apply`
 
@@ -416,7 +414,7 @@ Review a packed lifeboat against its source repository, or validate the host's v
 
 ### `abcd docs`
 
-Lint the documentation for currency and keep its citation baseline: Writes nothing but that baseline; refuses an unknown sub-verb.
+Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs`
 
@@ -459,20 +457,6 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 ```
       --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
       --root string     repo root (default: current working directory)
-```
-
-#### `abcd docs lint`
-
-Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.
-
-**Usage:** `abcd docs lint [flags]`
-
-**Flags:**
-
-```
-      --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
-      --release-gate    run as the release gate: a citation past its staleness threshold blocks instead of warning (release-time only)
-      --root string     repo root to lint (default: current working directory)
 ```
 
 ### `abcd embark`
@@ -732,9 +716,9 @@ Validate a host-composed gauntlet verdict: Writes the dated research record; ref
 
 ### `abcd identity`
 
-Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.
+Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.
 
-**Usage:** `abcd identity`
+**Usage:** `abcd identity [command]` (the bare form's work is `abcd lint identity`)
 
 #### `abcd identity init`
 
@@ -1111,12 +1095,6 @@ Link a planned intent to an existing spec: Writes the intent's spec_id; refuses 
 
 **Usage:** `abcd intent link <itd-N> <spc-N>`
 
-#### `abcd intent new`
-
-File a draft intent from the text, as the bare verb's quoted form does: Writes the draft into drafts/; refuses empty text.
-
-**Usage:** `abcd intent new <text>`
-
 #### `abcd intent plan`
 
 Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.
@@ -1203,7 +1181,7 @@ Cut a release, deriving its version and records from what shipped: Writes the CH
 
 ### `abcd lint`
 
-Check this repository against the working conventions: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
+Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
 
 **Usage:** `abcd lint [flags]`
 
@@ -1212,6 +1190,26 @@ Check this repository against the working conventions: Writes nothing; refuses w
 ```
       --root string   repo root to lint (default: current working directory)
 ```
+
+#### `abcd lint docs`
+
+Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.
+
+**Usage:** `abcd lint docs [flags]`
+
+**Flags:**
+
+```
+      --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
+      --release-gate    run as the release gate: a citation past its staleness threshold blocks instead of warning (release-time only)
+      --root string     repo root to lint (default: current working directory)
+```
+
+#### `abcd lint identity`
+
+Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.
+
+**Usage:** `abcd lint identity`
 
 #### `abcd lint outbound`
 
@@ -1232,6 +1230,18 @@ wrote it. Exit 0 clean, 1 the artefact is refused, 2 the check could not run.
 ```
       --label string   what the artefact is (commit-message, pr-body, issue, comment) — it names the artefact in the report (default "outbound-artefact")
       --root string    repo root supplying the scanner configuration (default: current working directory)
+```
+
+#### `abcd lint site`
+
+Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.
+
+**Usage:** `abcd lint site [flags]`
+
+**Flags:**
+
+```
+      --out string   built output directory to check (rendered first if absent) (default "site")
 ```
 
 ### `abcd memory`
@@ -1513,18 +1523,6 @@ Render the website into the output directory: Writes only inside that directory;
       --version string   version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
 ```
 
-#### `abcd site check`
-
-Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.
-
-**Usage:** `abcd site check [flags]`
-
-**Flags:**
-
-```
-      --out string   built output directory to check (rendered first if absent) (default "site")
-```
-
 ### `abcd spec`
 
 Render the spec store's status: Writes nothing; refuses outside a git checkout.
@@ -1576,7 +1574,7 @@ its ordered elements, each with a key, a rendered and a plain form.
 
 ### `abcd update`
 
-Fetch, verify, and swap the PATH-installed binary for a chosen release: Writes the swapped binary; refuses a binary it cannot prove is abcd's.
+Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's.
 
 **Usage:** `abcd update [tag] [flags]`
 
@@ -1590,20 +1588,13 @@ the binary running the command, an install ~/.abcd/path-entry records, or
 a digest a published release still names. Anything else is refused with a
 remedy that reinstalls over it — never one that deletes it.
 
-**Flags:**
-
-```
-      --yes   skip the TTY confirmation of a freshly resolved tag
-```
-
-### `abcd version`
-
-Print abcd's version, install mode, and vintage: Writes nothing; refuses any argument.
-
-**Usage:** `abcd version [flags]`
+With --check it only asks: it fetches the latest release's tag once, says
+whether this binary is behind and which command takes the update for this
+install's shape, and swaps nothing.
 
 **Flags:**
 
 ```
-      --check   fetch the latest release once and compare (this command's only network touch; abcd never fetches implicitly — adr-38); names its source
+      --check   fetch the latest release once and compare it with this binary, swapping nothing (the only network touch besides the update itself; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
+      --yes     skip the TTY confirmation of a freshly resolved tag
 ```

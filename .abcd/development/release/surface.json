@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "commands": [
     {
       "path": "abcd",
@@ -26,6 +26,13 @@
           "type": "bool",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "version",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -34,8 +41,30 @@
       "hidden": false,
       "group": "set-up",
       "block": "people",
-      "sentence": "Detect abcd's install state for this repository and list its gaps: Writes nothing; refuses any argument.",
-      "flags": []
+      "sentence": "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once.",
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "identity",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "remote",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd ahoy doctor",
@@ -46,13 +75,13 @@
     {
       "path": "abcd ahoy dry-run",
       "hidden": false,
-      "sentence": "Print the detection result as its JSON envelope: Writes nothing; refuses any argument.",
+      "moved_to": "abcd ahoy --dry-run",
       "flags": []
     },
     {
       "path": "abcd ahoy identity-check",
       "hidden": false,
-      "sentence": "Check git's commit identity against .abcd/config/identity.json: Writes nothing; refuses an identity that does not match.",
+      "moved_to": "abcd ahoy --identity",
       "flags": []
     },
     {
@@ -142,7 +171,8 @@
     {
       "path": "abcd ahoy remote",
       "hidden": false,
-      "sentence": "Report this repository's GitHub secret-scanning settings: Writes nothing; refuses any argument.",
+      "sentence": "Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
+      "moved_to": "abcd ahoy --remote",
       "flags": []
     },
     {
@@ -736,7 +766,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Lint the documentation for currency and keep its citation baseline: Writes nothing but that baseline; refuses an unknown sub-verb.",
+      "sentence": "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -797,30 +827,8 @@
     {
       "path": "abcd docs lint",
       "hidden": false,
-      "sentence": "Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.",
-      "flags": [
-        {
-          "name": "config",
-          "shorthand": "",
-          "type": "string",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "release-gate",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "root",
-          "shorthand": "",
-          "type": "string",
-          "required": false,
-          "hidden": false
-        }
-      ]
+      "moved_to": "abcd lint docs",
+      "flags": []
     },
     {
       "path": "abcd embark",
@@ -1082,7 +1090,8 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.",
+      "sentence": "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.",
+      "moved_to": "abcd lint identity",
       "flags": []
     },
     {
@@ -1507,12 +1516,6 @@
       "flags": []
     },
     {
-      "path": "abcd intent new",
-      "hidden": false,
-      "sentence": "File a draft intent from the text, as the bare verb's quoted form does: Writes the draft into drafts/; refuses empty text.",
-      "flags": []
-    },
-    {
       "path": "abcd intent plan",
       "hidden": false,
       "sentence": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.",
@@ -1651,7 +1654,7 @@
       "hidden": false,
       "group": "checks",
       "block": "people",
-      "sentence": "Check this repository against the working conventions: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
+      "sentence": "Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
       "flags": [
         {
           "name": "root",
@@ -1661,6 +1664,40 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd lint docs",
+      "hidden": false,
+      "sentence": "Lint the docs for change-narration, broken links, citations, and stray root markdown: Writes nothing; refuses a tree with a blocker finding.",
+      "flags": [
+        {
+          "name": "config",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release-gate",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lint identity",
+      "hidden": false,
+      "sentence": "Show this repository's identity block and every surface held to it: Writes nothing; refuses a repository that records no identity block.",
+      "flags": []
     },
     {
       "path": "abcd lint outbound",
@@ -1676,6 +1713,20 @@
         },
         {
           "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lint site",
+      "hidden": false,
+      "sentence": "Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.",
+      "flags": [
+        {
+          "name": "out",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -1911,16 +1962,8 @@
     {
       "path": "abcd site check",
       "hidden": false,
-      "sentence": "Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.",
-      "flags": [
-        {
-          "name": "out",
-          "shorthand": "",
-          "type": "string",
-          "required": false,
-          "hidden": false
-        }
-      ]
+      "moved_to": "abcd lint site",
+      "flags": []
     },
     {
       "path": "abcd spec",
@@ -1971,8 +2014,15 @@
       "hidden": false,
       "group": "set-up",
       "block": "people",
-      "sentence": "Fetch, verify, and swap the PATH-installed binary for a chosen release: Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
+      "sentence": "Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
       "flags": [
+        {
+          "name": "check",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "yes",
           "shorthand": "",
@@ -1985,9 +2035,7 @@
     {
       "path": "abcd version",
       "hidden": false,
-      "group": "agents",
-      "block": "agents",
-      "sentence": "Print abcd's version, install mode, and vintage: Writes nothing; refuses any argument.",
+      "moved_to": "abcd --version",
       "flags": [
         {
           "name": "check",

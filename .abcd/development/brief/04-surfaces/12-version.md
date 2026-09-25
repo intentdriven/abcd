@@ -5,10 +5,16 @@ is: its version, how it was installed, how old it is, and whether it has
 drifted from the reference it should match. The whole answer is read off disk,
 so it costs nothing, works offline, and writes nothing.
 
-The one exception is the opt-in online check, which fetches the latest
-release exactly once, compares, and names the source it consulted. That is this
-surface's only network touch, and abcd never fetches implicitly
-([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
+The answer is a flag on the root, where every tool keeps its version, and not a
+verb (itd-2609212130136102); the root's appendix in
+[`08-abcd.md`](08-abcd.md) lists it. The opt-in online check is a flag of the
+update verb, which fetches the latest release exactly once, compares, and names
+the source it consulted: it lives with the verb that takes the update it finds
+([`21-update.md`](21-update.md)), and it is the only network touch
+either answer makes, because abcd never fetches implicitly
+([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)). For one
+release the retired verb answers with the flag, or with the check when asked for
+it, and exits non-zero.
 
 ## Sub-verbs
 
@@ -23,20 +29,17 @@ surface's only network touch, and abcd never fetches implicitly
 | Verb | Bucket | Status |
 |---|---|---|
 
-The table is empty: the verb registers no sub-command. The online check is a
-flag on the verb, not a sub-verb.
+The table is empty: the surface is a root flag and registers no sub-command.
 
 ## Behaviour
 
-Bare `abcd version` prints a short block: the version line, then `install:`
-(only when an install mode is resolvable), `vintage:` and `staleness:`. It is
-the bare-invocation convention the [surfaces index](README.md) sets out, a
-read-only render of the verb's own state, and `version` keeps it rather than
-sitting among the exceptions that index enumerates. What it is not is a board for
-the repository: the state it reports is the binary's. The JSON form emits the
-same facts as `name`, `version`, `vintage` and `staleness`, with `install_mode`
-present only when it resolves and a `check` object present only when the online
-check was asked for.
+The version flag prints a short block: the version line, then `install:`
+(only when an install mode is resolvable), `vintage:` and `staleness:`. It is a
+read-only render of the binary's own state, not a board for the repository, and
+it answers alone: a record id beside the flag is refused rather than silently
+dropped. The JSON form emits the same facts as `name`, `version`, `vintage` and
+`staleness`, with `install_mode` present only when it resolves. The update
+verb's check prints the same report with a `check` object added.
 
 When the online check finds an update, the answer carries the command that takes it,
 so the reader's next move is on screen rather than inferred: `abcd update` for
@@ -94,10 +97,6 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd version`
 
-Sub-verbs: none.
-
-| Flag | Type |
-|---|---|
-| `--check` | bool |
+It moved to `abcd --version`.
 
 <!-- surface-appendix:end -->

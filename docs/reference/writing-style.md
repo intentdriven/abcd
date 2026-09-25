@@ -7,7 +7,7 @@ rather than restate.
 Every rule carries an **enforcement** label, and that label is a fact about
 shipped machinery, never an aspiration:
 
-- **machine-enforced**: A shipped `abcd docs lint` rule checks it; the label
+- **machine-enforced**: A shipped `abcd lint docs` rule checks it; the label
   names the rule id.
 - **review**: Humans (and reviewing agents) check it. A rule stays labelled
   `review` until its lint ships, however firmly it is agreed.
@@ -66,7 +66,7 @@ reference page documenting a `--color` flag spells the flag as the code does. <!
 
 ## Structure
 
-Checks that already ship in `abcd docs lint`, listed here so the page states
+Checks that already ship in `abcd lint docs`, listed here so the page states
 the whole machine-enforced surface:
 
 | Rule | Enforcement |

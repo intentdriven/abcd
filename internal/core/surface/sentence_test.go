@@ -122,7 +122,7 @@ func TestEncodeRecordsTheSentence(t *testing.T) {
 		t.Fatalf("Encode: %v", err)
 	}
 	want := `{
-  "schema_version": 3,
+  "schema_version": 4,
   "commands": [
     {
       "path": "abcd capture",
@@ -144,7 +144,7 @@ func TestEncodeRecordsTheSentence(t *testing.T) {
 	}
 	back, err := Decode(got)
 	if err != nil {
-		t.Fatalf("Decode(version 3) = %v", err)
+		t.Fatalf("Decode(version 4) = %v", err)
 	}
 	if back.Commands[0].Sentence != snap.Commands[0].Sentence {
 		t.Fatalf("round trip lost the sentence: %+v", back.Commands[0])

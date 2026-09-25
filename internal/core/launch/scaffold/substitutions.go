@@ -15,7 +15,7 @@ var abcdSemanticGates = []string{"docs-currency-reviewer", "iss35-brief-surface-
 // keeps it a warning (spc-17; iss-2609091801085579).
 var abcdExtraGates = []Gate{
 	{Name: "Record-lint (design-record drift gate)", Run: "go run ./cmd/record-lint"},
-	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd docs lint --release-gate"},
+	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd lint docs --release-gate"},
 	{Name: "Reviews-charter discipline (RD001-RD003)", Run: "bash scripts/check-reviews.sh"},
 	{Name: "Smoke every command (self-discovering harness)", Run: "make smoke"},
 }

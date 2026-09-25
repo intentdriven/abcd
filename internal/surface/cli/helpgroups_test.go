@@ -228,9 +228,9 @@ func TestPlacementChangesNoInvocation(t *testing.T) {
 			t.Errorf("%q is placed in the help but is not an available command", path)
 		}
 	}
-	out := runCLI(t, "version", "--json")
-	if !bytes.Contains(out, []byte(`"version"`)) {
-		t.Fatalf("`abcd version --json` (an agents-block verb) did not run as before:\n%s", out)
+	out := runCLI(t, "guard", "check", "--command", "ls", "--json")
+	if !bytes.Contains(out, []byte(`"allow"`)) {
+		t.Fatalf("`abcd guard check --json` (an agents-block verb) did not run as before:\n%s", out)
 	}
 }
 
@@ -283,6 +283,14 @@ func TestCommandPagesDeclareTheirBlock(t *testing.T) {
 		}
 		head, _ := frontmatter.Split(body)
 		field, ok := frontmatter.Fields(strings.Split(head, "\n"))["block"]
+		if cmd.Deprecated != "" {
+			// The verb moved whole (itd-2609212130136102): no block lists its
+			// stub, so a page that says one does is claiming a listing.
+			if ok {
+				t.Errorf("commands/%s.md says `block: %s`, but `abcd %s` moved to `%s` and no block lists it", verb, field.Value, verb, movedTo(cmd))
+			}
+			continue
+		}
 		want := helpBlock(cmd)
 		switch {
 		case !ok:

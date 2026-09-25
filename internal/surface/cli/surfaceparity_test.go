@@ -140,6 +140,11 @@ func TestPluginSurfaceReachesEveryBinaryVerb(t *testing.T) {
 		if len(parts) < 3 {
 			continue // the parent verb itself, backed by its file
 		}
+		if cmd.MovedTo != "" {
+			// A moved spelling (itd-2609212130136102): its page names the
+			// successor, never the stub, so there is nothing to reach.
+			continue
+		}
 		sub := parts[2]
 		if !regexp.MustCompile(`\b` + regexp.QuoteMeta(sub) + `\b`).MatchString(body) {
 			t.Errorf("`%s` is registered by the binary but %s/%s.md never mentions `%s`: the sub-verb "+

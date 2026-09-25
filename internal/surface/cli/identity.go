@@ -14,7 +14,8 @@ import (
 // newIdentityCommand wires the `abcd identity` family: the repo's canonical
 // self-description and the surfaces held to it.
 //
-//   - bare — read-only status: the block, and every registered surface's verdict.
+//   - bare — moved to `abcd lint identity` (newLintIdentityCommand), the
+//     read-only status: the block, and every registered surface's verdict.
 //   - render — the proposed correction for each drifted surface, as a unified
 //     diff on stdout. It writes nothing, and no flag makes it: a deliberate
 //     identity change is an edit to the block, after which the same proposal
@@ -28,22 +29,10 @@ func newIdentityCommand(asJSON *bool) *cobra.Command {
 	identityCmd := &cobra.Command{
 		Use:  "identity",
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			root, cfg, err := loadPositioning()
-			if err != nil {
-				return err
-			}
-			rep, err := positioning.Check(root, cfg)
-			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd identity: " + scrubPaths(err)}
-			}
-			// A status render, not a gate: drift here exits 0 and says so. The
-			// gate is `abcd lint`, which carries the tri-state exit code.
-			return render(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
-				renderIdentity(w, rep)
-			})
-		},
 	}
+	// The bare report is `abcd lint identity` (itd-2609212130136102); the bare
+	// verb answers with it for one release, and its sub-verbs stay.
+	markMoved(identityCmd, "abcd lint identity")
 
 	identityCmd.AddCommand(&cobra.Command{
 		Use:  "render",
@@ -98,6 +87,30 @@ func newIdentityCommand(asJSON *bool) *cobra.Command {
 	return identityCmd
 }
 
+// newLintIdentityCommand builds `lint identity`: the canonical block and every
+// registered surface's verdict. A status render, not a gate: drift here exits 0
+// and says so. The gate is bare `abcd lint`, whose identity rule carries the
+// tri-state exit code.
+func newLintIdentityCommand(asJSON *bool) *cobra.Command {
+	return &cobra.Command{
+		Use:  "identity",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			root, cfg, err := loadPositioning()
+			if err != nil {
+				return err
+			}
+			rep, err := positioning.Check(root, cfg)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd lint identity: " + scrubPaths(err)}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
+				renderIdentity(w, rep)
+			})
+		},
+	}
+}
+
 // loadPositioning resolves the working directory's registry. A repo that has not
 // adopted the check is told how to, rather than shown an empty report that reads
 // like a clean bill of health.
@@ -133,7 +146,7 @@ func identityGlyph(s positioning.Status) string {
 // and every surface string is repo content, so it passes through the canonical
 // terminal sanitiser.
 func renderIdentity(w io.Writer, rep positioning.Report) {
-	fmt.Fprintf(w, "abcd identity — %s (%s)\n", termsafe.Sanitize(rep.Block.File), rep.Severity)
+	fmt.Fprintf(w, "abcd lint identity — %s (%s)\n", termsafe.Sanitize(rep.Block.File), rep.Severity)
 	fmt.Fprintf(w, "  title:   %s\n", termsafe.Sanitize(rep.Block.Title))
 	fmt.Fprintf(w, "  tagline: %s\n", termsafe.Sanitize(rep.Block.Tagline))
 	if rep.Block.Pitch != "" {
@@ -152,7 +165,7 @@ func renderIdentity(w io.Writer, rep positioning.Report) {
 			fmt.Fprintf(w, "    canonical: %s\n", termsafe.Sanitize(s.Canonical))
 		}
 	}
-	fmt.Fprintf(w, "abcd identity — %d surface(s) adrift of the block\n", rep.Drifted())
+	fmt.Fprintf(w, "abcd lint identity — %d surface(s) adrift of the block\n", rep.Drifted())
 }
 
 // renderProposal prints the unified diffs. The header states plainly that this
