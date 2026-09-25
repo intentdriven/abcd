@@ -329,3 +329,40 @@ func TestCommitMsgHookResistsInheritedShellState(t *testing.T) {
 		h.assertRefusedBeforeACommit(h.commitWith("a.txt", msg))
 	})
 }
+
+// A checkout whose abcd does not compile cannot judge any message, and must say so
+// rather than blame the message: `go run` exits 1 on a compile error, the same code
+// as a policy finding, so the hook reported compiler output as "the commit message
+// breaks the outbound policy". It still fails closed.
+func TestCommitMsgHookSaysATreeThatDoesNotBuildCannotJudge(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	src := t.TempDir()
+	hook, err := os.ReadFile(filepath.Join(c.hooks, "commit-msg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rel, body := range map[string]string{
+		"go.mod":               "module example.com/broken\n\ngo 1.21\n",
+		"cmd/abcd/main.go":     "package main\n\nfunc main() {\n",
+		".githooks/commit-msg": string(hook),
+	} {
+		p := filepath.Join(src, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.git("config", "core.hooksPath", filepath.Join(src, ".githooks"))
+	refused, out := c.commitWith("a.txt", "fix: the walk\n\nAssisted-by: None\n")
+	if !refused {
+		t.Fatalf("a hook whose abcd does not build passed the commit\n%s", out)
+	}
+	if !strings.Contains(out, "the tree does not build") {
+		t.Errorf("the refusal does not say the checkout failed to build\n%s", out)
+	}
+	if strings.Contains(out, "breaks the outbound policy") {
+		t.Errorf("a build failure was reported as a finding against the message\n%s", out)
+	}
+}

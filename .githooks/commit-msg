@@ -16,16 +16,19 @@
 # The judgement is `abcd lint outbound`, never a regex here: the session-URL
 # detector is a pattern plus an opacity classifier that POSIX ERE cannot express
 # (see internal/surface/cli/lint_outbound.go), so a shell copy would be weaker than
-# the policy it claims to enforce. It runs through `go run ./cmd/abcd` from this
-# checkout, the rule for every abcd invocation in a source checkout: an installed
-# abcd is whatever was last released, which in this repository is stale by
-# construction.
+# the policy it claims to enforce. The hook builds ./cmd/abcd from this checkout and
+# runs that build, the rule for every abcd invocation in a source checkout: an
+# installed abcd is whatever was last released, which in this repository is stale
+# by construction.
 #
-# FAILS CLOSED. A checkout with no abcd source or no Go toolchain cannot judge the
-# message, and a hook that cannot judge must not pass silently: a green commit that
-# means "the check was skipped" is indistinguishable from one that means "there was
-# nothing to find". Go is a prerequisite for developing this repository, so the
-# refusal names the missing piece rather than asking for anything new.
+# FAILS CLOSED. A checkout with no abcd source, no Go toolchain or a cmd/abcd that
+# does not compile cannot judge the message, and a hook that cannot judge must not
+# pass silently: a green commit that means "the check was skipped" is
+# indistinguishable from one that means "there was nothing to find". Each refusal
+# names the missing piece and never blames the message for it. The build is its
+# own step for that reason: `go run` exits 1 on a compile error, the same code the
+# check gives a finding. Go is a prerequisite for developing this repository, so
+# the refusal asks for nothing new.
 #
 # REACH, stated rather than implied. git runs this hook for `git commit` (an
 # amend and a reword through `git commit` included) and for a `git merge` that
@@ -135,8 +138,8 @@ for candidate in "$hook_dir/.." "$(git rev-parse --show-toplevel 2>/dev/null || 
 done
 if [ -z "$src" ]; then
   echo "commit-msg: BLOCKED — no abcd source to judge this commit message with." >&2
-  echo "            the outbound check runs \`go run ./cmd/abcd lint outbound\` from the checkout" >&2
-  echo "            that holds this hook, and neither the hook's checkout nor this working tree" >&2
+  echo "            the outbound check builds ./cmd/abcd from the checkout that holds this hook" >&2
+  echo "            and runs \`abcd lint outbound\`, and neither the hook's checkout nor this working tree" >&2
   echo "            carries cmd/abcd. Point the clone's hooks at the committed directory:" >&2
   echo "            git config core.hooksPath .githooks" >&2
   exit 1
@@ -219,7 +222,20 @@ printf '%s' "$message" >"$artefact"
 rc=0
 out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
   GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-  "$go_bin" run -buildvcs=false ./cmd/abcd lint outbound --label "commit message" --root "$src" "$artefact" 2>&1)" || rc=$?
+  "$go_bin" build -buildvcs=false -o "$work/abcd" ./cmd/abcd 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] || [ ! -x "$work/abcd" ]; then
+  echo "commit-msg: BLOCKED — could not judge the message (the tree does not build)." >&2
+  echo "            the outbound check is this checkout's own abcd, and \`go build ./cmd/abcd\` failed" >&2
+  echo "            in $src:" >&2
+  say "            " "$out"
+  echo "            nothing in the message was found wrong; fix the build and commit again." >&2
+  exit 1
+fi
+
+rc=0
+out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+  "$work/abcd" lint outbound --label "commit message" --root "$src" "$artefact" 2>&1)" || rc=$?
 
 case "$rc" in
   0)
