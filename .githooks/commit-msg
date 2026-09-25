@@ -77,11 +77,18 @@ LC_ALL=C
 export LC_ALL
 # The Go toolchain lives wherever its installer put it (~/.local/bin, ~/go/bin,
 # /usr/local/go/bin), so it is resolved on the INHERITED PATH, to an absolute path,
-# before the pin below. That is a deliberate boundary, not an oversight: any real
-# `go` builds this checkout's own source and judges the message the same way, so an
-# accidental substitute cannot pass what the policy refuses; a fake `go` that forges
-# a pass is a deliberate act, the class of `--no-verify`, which CI's check over the
-# pull request is the backstop for.
+# before the pin below. That is a deliberate boundary, not an oversight, and it
+# takes the Go environment with it: the toolchain AND the GOFLAGS, GOROOT,
+# GOTOOLCHAIN and GOCACHE it runs under (the environment or the go env file) are
+# the committer's, and the hook trusts them to build this checkout's own source.
+# Two GOFLAGS entries say outright that the build is something else — -overlay
+# swaps source files, -toolexec runs every compile step through a program of the
+# caller's choosing — so the hook refuses either before it builds. Short of those,
+# a real `go` builds this checkout's own source and judges the message the same
+# way, so an accidental substitute cannot pass what the policy refuses; a fake `go`,
+# a doctored GOROOT or a poisoned build cache that forges a pass is a deliberate
+# act, the class of `--no-verify`, which CI's check over the pull request is the
+# backstop for.
 go_bin=$(command -v go 2>/dev/null || true)
 case "$go_bin" in /*) ;; *) go_bin="" ;; esac
 # PATH is pinned to the standard system directories for every other tool, with the
@@ -161,6 +168,31 @@ if [ -z "$go_bin" ]; then
   echo "            go.mod declares." >&2
   exit 1
 fi
+# GOFLAGS as `go` itself resolves it, from the environment or the go env file.
+rc=0
+goflags="$(cd "$src" && "$go_bin" env GOFLAGS 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "commit-msg: BLOCKED — could not read GOFLAGS from \`go env\`, so the build the outbound" >&2
+  echo "            check runs cannot be vouched for:" >&2
+  say "            " "$goflags"
+  echo "            nothing in the message was found wrong; fix the Go environment and commit again." >&2
+  exit 1
+fi
+set -f
+for flag in $goflags; do
+  case "$flag" in
+    -overlay | -overlay=* | --overlay | --overlay=* | -toolexec | -toolexec=* | --toolexec | --toolexec=*)
+      set +f
+      echo "commit-msg: BLOCKED — GOFLAGS carries ${flag%%=*}, so \`go build ./cmd/abcd\` would not build" >&2
+      echo "            this checkout's own source (-overlay swaps source files, -toolexec runs every" >&2
+      echo "            compile step through another program), and the outbound check cannot judge" >&2
+      echo "            the message with it. Nothing in the message was found wrong; commit with" >&2
+      echo "            the flag removed from GOFLAGS (the environment or \`go env -w\`)." >&2
+      exit 1
+      ;;
+  esac
+done
+set +f
 
 # The text git will record. git discards what follows its scissors line only when it
 # truncates the message, which is a verbose commit (`git commit -v`, whose staged

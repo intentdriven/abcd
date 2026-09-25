@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -393,4 +394,55 @@ func TestCommitMsgHookSaysATreeThatDoesNotBuildCannotJudge(t *testing.T) {
 	if strings.Contains(out, "breaks the outbound policy") {
 		t.Errorf("a build failure was reported as a finding against the message\n%s", out)
 	}
+}
+
+// The hook's judgement is this checkout's own abcd only while the build compiles
+// this checkout's own source. GOFLAGS reaches `go build` from the committer's
+// environment (or the go env file), and two of its flags break that: -overlay
+// swaps source files for others, and -toolexec runs every compile step through a
+// program of the caller's choosing. An overlay that replaced cmd/abcd/main.go by
+// a no-op built cleanly, judged nothing and passed a session URL. The hook
+// refuses either flag before it builds, and says the message was not judged.
+func TestCommitMsgHookRefusesAGOFLAGSThatSwapsTheSource(t *testing.T) {
+	msg := "fix: the walk\n\nSession: " + sessionURL() + "\n\nAssisted-by: Claude:claude-opus-5\n"
+	assertRefusedUnjudged := func(t *testing.T, c *commitMsgHookCase, flag string, refused bool, out string) {
+		t.Helper()
+		if !refused {
+			t.Fatalf("a commit built with GOFLAGS carrying %s was committed\n%s", flag, out)
+		}
+		if _, err := c.tryGit("rev-parse", "--verify", "HEAD"); err == nil {
+			t.Fatalf("a commit exists after the refusal\n%s", out)
+		}
+		if !strings.Contains(out, "GOFLAGS") || !strings.Contains(out, flag) {
+			t.Errorf("the refusal does not name GOFLAGS and %s\n%s", flag, out)
+		}
+		if strings.Contains(out, "breaks the outbound policy") {
+			t.Errorf("a refused toolchain setting was reported as a finding against the message\n%s", out)
+		}
+	}
+
+	t.Run("overlay", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		dir := t.TempDir()
+		noop := filepath.Join(dir, "main.go")
+		if err := os.WriteFile(noop, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		target := filepath.Join(c.root, "cmd", "abcd", "main.go")
+		overlay := filepath.Join(dir, "overlay.json")
+		body := `{"Replace":{` + strconv.Quote(target) + `:` + strconv.Quote(noop) + `}}`
+		if err := os.WriteFile(overlay, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h := c.withEnv("GOFLAGS=-mod=mod -overlay=" + overlay)
+		refused, out := h.commitWith("a.txt", msg)
+		assertRefusedUnjudged(t, h, "-overlay", refused, out)
+	})
+
+	t.Run("toolexec", func(t *testing.T) {
+		c := newCommitMsgHookCase(t)
+		h := c.withEnv("GOFLAGS=-mod=mod --toolexec=/usr/bin/env")
+		refused, out := h.commitWith("a.txt", "fix: the walk\n\nAssisted-by: None\n")
+		assertRefusedUnjudged(t, h, "-toolexec", refused, out)
+	})
 }
