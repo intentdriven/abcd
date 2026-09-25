@@ -138,7 +138,8 @@ We expect the foreign-sustained-CPU signal to flag both recorded incidents (the 
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-46f69cff6b50 -->
+Fidelity review OWED (receipt rcp-46f69cff6b50).
 
 ## Grounds
 
