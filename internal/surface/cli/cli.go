@@ -3301,7 +3301,19 @@ func (p *stdinPrompter) Confirm(question string) bool {
 	return line == "y" || line == "yes"
 }
 
+// Prompt renders core's canonical explanation of the question above it (what
+// is being decided, then what each answer means), so the person answering, or
+// the host agent relaying the question to them, reads abcd's own words rather
+// than inventing them (iss-163). The question line itself is unchanged, so a
+// scripted answer stream and a transcript still line up with it. A key core
+// has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
+	if h, ok := ahoy.HelpFor(key); ok {
+		fmt.Fprintf(p.w, "\n%s\n", h.About)
+		for _, c := range h.Choices {
+			fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
+		}
+	}
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)
 	line, _ := p.r.ReadString('\n')
 	line = strings.TrimSpace(line)

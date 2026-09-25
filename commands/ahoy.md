@@ -123,6 +123,15 @@ than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
 and exit status, not the pipeline's.
 
+**Every value question arrives explained.** A question that picks one of
+several values (`visibility`, `docs_target`, `oracle_backend`, `scan_deep`, the
+house-style question and each status-line element) is printed with abcd's own
+explanation above it: one paragraph saying what is being decided, then one
+line per answer saying what that answer means, including what it asks of the
+user (keys, tools, cost). When you relay such a question, relay that
+explanation verbatim with it; never describe an answer in your own words, and
+never offer an answer the question does not list.
+
 That is a channel for passing on an answer the user has GIVEN — ask first, then
 pipe; it is never a licence to answer on their behalf. Note that `yes |`
 approves EVERY question, so only reach for it once the user has agreed to all of

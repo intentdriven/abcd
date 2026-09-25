@@ -342,6 +342,17 @@ agent drives the git-identity pin, the one approval no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
 
+**Every value question carries its own explanation** (iss-163). A question that
+picks one of several values (the repo visibility, the docs target, the oracle
+backend, the deep-scan toggle, the house-style question and each status-line
+element) is rendered with core's canonical help above it: what is being
+decided, then what each answer means, including what it asks of the person in
+keys, tools or cost. The oracle question defines an oracle before asking for
+one, and says plainly that every answer but host-delegated is recorded without
+changing how reviews run, because no other adapter ships. The words live in core, so every
+front door shows the same explanation and none invents its own; the question
+line itself is unchanged, so a piped answer stream lines up with it.
+
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
 was not told to adopt. The cost is that a stdin held open and silent makes a
