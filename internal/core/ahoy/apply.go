@@ -444,9 +444,11 @@ func (a *applyCtx) stepSkeleton() {
 		return
 	}
 	cfg := map[string]any{"meta": map[string]any{"schema_version": 1}}
-	if err := writeConfig(a.cwd, cfg); err == nil {
-		a.note(writeSettings, configPath(a.cwd))
+	if err := writeConfig(a.cwd, cfg); err != nil {
+		a.refuse("could not write the starter settings file .abcd/config.json: " + errText(err))
+		return
 	}
+	a.note(writeSettings, configPath(a.cwd))
 }
 
 // stepConfigValues collects and persists the four config values. Returns nil on
@@ -756,7 +758,9 @@ func (a *applyCtx) stepHistory() {
 			"github":      a.det.RepoIdentity.Github,
 			"corpus":      map[string]any{"transcripts": corpus},
 		}
-		if err := writeJSON(metaPath, meta); err == nil {
+		if err := writeJSON(metaPath, meta); err != nil {
+			a.refuse("could not register this repository on this machine (" + displayPath(metaPath) + "): " + errText(err))
+		} else {
 			a.note(writeSessionStore, metaPath)
 		}
 	}
@@ -1138,6 +1142,8 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 	}
 	if kind == binTargetOwnedSymlink || kind == binTargetOwnedCopy {
 		if err := os.Remove(target); err != nil {
+			a.refuse("could not replace the existing PATH entry " + displayPath(target) + " with the dev shim: " + errText(err) +
+				"; the pinned entry is left as it was")
 			return
 		}
 		// The provenance record vouches for an entry that is gone; keeping it
@@ -1148,6 +1154,7 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 		a.echoChange("install_mode", "pinned", "dev")
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		a.refuse("could not create the install directory " + displayPath(filepath.Dir(target)) + " for the dev shim: " + errText(err))
 		return
 	}
 	content := renderDevShim(a.det.pluginRoot, pluginBinaryPath(a.det.pluginRoot))
@@ -1155,6 +1162,7 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 	// store: a symlink pre-planted at the leaf is replaced, never written through,
 	// and the executable bit is set via fchmod on the temp descriptor.
 	if err := fsutil.WriteFileAtomic(target, []byte(content), 0o755); err != nil {
+		a.refuse("could not write the dev PATH entry " + displayPath(target) + ": " + errText(err) + "; no abcd was installed there")
 		return
 	}
 	a.note(writeCommandEntry, target)
@@ -1286,6 +1294,8 @@ func (a *applyCtx) installPinnedSymlink(target string, kind binTargetKind) {
 	}
 	if kind == binTargetDevShim {
 		if err := os.Remove(target); err != nil {
+			a.refuse("could not replace the dev PATH entry " + displayPath(target) + " with the pinned one: " + errText(err) +
+				"; the dev entry is left as it was")
 			return
 		}
 		a.echoChange("install_mode", "dev", "pinned")
@@ -1373,9 +1383,11 @@ func (a *applyCtx) stepRules() {
 	rules := map[string]any{"schema_version": 1, "disabled": false, "domains": map[string]any{}}
 	// Contained through an os.Root opened at the repo: a committed `.abcd` ancestor
 	// symlink must not land rules.json outside the working tree (GHSA-xrf8-4432-gw2f).
-	if err := writeRepoJSON(a.cwd, rulesRelPath, rules); err == nil {
-		a.note(writeRules, filepath.Join(a.cwd, ".abcd", "rules.json"))
+	if err := writeRepoJSON(a.cwd, rulesRelPath, rules); err != nil {
+		a.refuse("could not write .abcd/rules.json: " + errText(err))
+		return
 	}
+	a.note(writeRules, filepath.Join(a.cwd, ".abcd", "rules.json"))
 }
 
 // stepVersionStamp writes the meta setup block.
@@ -1402,9 +1414,11 @@ func (a *applyCtx) stepVersionStamp() {
 	meta["setup_date"] = time.Now().UTC().Format("2006-01-02")
 	meta["project_name"] = a.det.RepoIdentity.Name
 	cfgMap["meta"] = meta
-	if err := writeConfig(a.cwd, cfgMap); err == nil {
-		a.note(writeSettings, configPath(a.cwd))
+	if err := writeConfig(a.cwd, cfgMap); err != nil {
+		a.refuse("could not record the setup version in .abcd/config.json: " + errText(err))
+		return
 	}
+	a.note(writeSettings, configPath(a.cwd))
 }
 
 // Uninstall removes the marker block and the owned PATH entry (the spc-35 owned
