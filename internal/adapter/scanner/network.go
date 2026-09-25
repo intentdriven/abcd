@@ -247,7 +247,7 @@ func NetworkPatterns() []Pattern {
 		{
 			Name: "net_device_hostname", Kind: kindNetDeviceHost, Label: "device hostname",
 			Re: deviceHostRe, Severity: SeverityWarn,
-			Skip:       func(m string) bool { return personaDerivedHost(m) },
+			Skip: func(m string) bool { return personaDerivedHost(m) },
 			SkipAt: func(line string, start, end int) bool {
 				return commonNounPhrase(line, start, end) || proseSlug(line, start, end)
 			},
