@@ -36,6 +36,15 @@ const maxGuardFileBytes = 256 * 1024
 // returned so the caller (the hook shim) can announce the dropped repo layer
 // loudly while continuing to check against the bundled registry.
 func Load(repoRoot string) (Registry, error) {
+	r, err := load(repoRoot)
+	// Whatever layer the registry ended up holding, it was loaded for this
+	// repository, so it can read the repository's worktree count (stash.go).
+	r.worktrees = worktreeCounter(repoRoot)
+	return r, err
+}
+
+// load is Load without the repository facts attached.
+func load(repoRoot string) (Registry, error) {
 	// Refuse a symlinked .abcd directory component before touching the leaf, so a
 	// swapped .abcd cannot redirect the read (trust boundary).
 	if di, err := os.Lstat(filepath.Join(repoRoot, ".abcd")); err == nil && di.Mode()&os.ModeSymlink != 0 {

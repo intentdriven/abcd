@@ -179,6 +179,12 @@ dangerous form no entry describes.
 Coverage is what the registry names. Say exactly this if a user asks about
 coverage — never that the guard cleared the command.
 
+In a repository with more than one worktree, a `git stash` or `git stash pop`
+that does not name its entry is a **warn** (`git-stash-shared-stack`): git keeps
+one stash stack for the whole repository, so a bare pop can take another
+worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
+warned about, and neither is anything in a single-worktree clone.
+
 A candidate too long to read is refused (exit 2), not answered on the part that
 fitted.
 

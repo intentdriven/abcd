@@ -105,7 +105,7 @@ type speculationBudget struct {
 // claiming one would be indexed out of Registry.Entries by a synthetic winner
 // (yielding a blank message), and would let a repo dress an ordinary entry up as
 // the guard's own verdict.
-var reservedEntryIDs = []string{syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, gitConfigEntryID}
+var reservedEntryIDs = []string{syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, gitConfigEntryID, stashEntryID}
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at
 // most one signal per segment (the first hit wins; there is nothing to gain from

@@ -141,6 +141,10 @@ type Registry struct {
 	SchemaVersion int              `json:"schema_version"`
 	Disabled      bool             `json:"disabled"`
 	Entries       map[string]Entry `json:"entries"`
+
+	// worktrees counts the working trees of the repository this registry was
+	// loaded for (stash.go); nil for a registry with no repository behind it.
+	worktrees func() int
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -395,6 +399,13 @@ func (r Registry) Check(command string) (Decision, error) {
 	segs = aliasSegs
 	signals = append(signals, aliasSignals...)
 
+	// A stash that does not name its entry, in a repository whose stash stack
+	// several worktrees share (iss-2609190338340796). Read after the alias
+	// pre-pass so an alias that expands to `stash pop` is reached too.
+	if sig, ok := r.sharedStashSignal(segs, r.gitValueFlags()); ok {
+		signals = append(signals, sig)
+	}
+
 	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
 	// and AFTER the payload expansion so a group hidden inside an inspectable
 	// payload counts too. One signal is enough however many segments carry a
@@ -560,7 +571,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {
