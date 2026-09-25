@@ -418,6 +418,8 @@ func specLinkCheck(it Intent, store spec.Store) (ReadyCheck, spec.Spec) {
 		c.Detail = "spec_id is null — no spec realises this intent"
 		if it.Bucket == BucketDrafts {
 			c.Remedy = fmt.Sprintf("planning (`abcd intent plan %s`) mints and links the spec", it.ID)
+		} else if it.Bucket == BucketPlanned {
+			c.Remedy = fmt.Sprintf("run `abcd intent plan %s` — on a planned record with no spec it mints and links one in place, moving nothing", it.ID)
 		} else {
 			c.Remedy = fmt.Sprintf("hand-author %s/open/spc-N-<slug>.md with `intent: %s`, then run `abcd intent link`", spec.SpecsRelDir, it.ID)
 		}

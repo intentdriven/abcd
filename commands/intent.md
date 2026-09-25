@@ -272,7 +272,11 @@ after planning still reaches the mint. That re-run also takes `--impact`,
 under the rules step 10 gives, so a planned record filed without a judgement
 gets one before its close through the verb rather than an editor. With nothing
 unmarked (and no judgement to add) it refuses and says so, rather than exiting
-quietly having done nothing. The
+quietly having done nothing. A planned intent whose `spec_id` is null — planned
+before the spec seam existed — is the one exception: the same call mints and
+links its spec as it would for a draft, on the same Acceptance Criteria bar,
+and still moves no bucket; the readiness gate's remedy for a missing spec names
+that call. The
 identities are rendered by `abcd intent ready <itd-N> --json` under
 `conditions`, which is where a consumer reads them; bare `abcd intent` is a
 corpus-wide count-and-link status and carries no per-record body.

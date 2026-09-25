@@ -2112,6 +2112,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					// The identity step alone, over a record already planned: say what
 					// was done and nothing more, so the line cannot read as a move.
 					fmt.Fprintf(w, "abcd intent plan — %s already planned; stamped in place\n", res.Intent.ID)
+				} else if res.LinkedInPlace {
+					// A planned record that had no spec: minted and linked, no move
+					// (iss-2609211738504433).
+					fmt.Fprintf(w, "abcd intent plan — %s already planned; linked %s in place\n", res.Intent.ID, res.Spec.ID)
 				} else {
 					fmt.Fprintf(w, "abcd intent plan — %s drafts -> planned, linked %s\n", res.Intent.ID, res.Spec.ID)
 				}

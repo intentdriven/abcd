@@ -147,6 +147,12 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	// re-run would leave such a record permanently unable to satisfy the gate that
 	// demands the marker (iss-2608300210588874).
 	if it.Bucket == BucketPlanned {
+		// A planned record with no spec — planned before the spec seam existed —
+		// is given one in place: the draft's mint and link, on the same criteria
+		// bar, with no bucket move (iss-2609211738504433).
+		if frontmatter.IsNull(it.SpecID) {
+			return linkPlannedSpec(repoRoot, it, opts)
+		}
 		return stampPlanned(repoRoot, it, opts.Impact)
 	}
 	if !slugRe.MatchString(it.Slug) {
@@ -462,6 +468,84 @@ func stampPlanned(repoRoot string, it Intent, impact string) (PlanResult, error)
 		}
 	}
 	return res, nil
+}
+
+// linkPlannedSpec mints (or reuses) the spec for a record already in planned/
+// whose spec_id is null, and writes the link in place. It is the draft face of
+// Plan without the move: the Acceptance Criteria bar, the impact judgement,
+// the scope-condition stamp and the size check all apply, in the same order,
+// under the same lock, so a refusal leaves the record byte-identical with no
+// spec minted. A spec that already names the intent (a one-sided link) is
+// reused rather than duplicated, which also repairs that link. The one write
+// sets spec_id together with the kind (defaulted only when null), the impact
+// and the stamped identities, so there is no intermediate record to lint.
+func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, error) {
+	if !slugRe.MatchString(it.Slug) {
+		return PlanResult{}, fmt.Errorf("intent: %s has slug %q which must be kebab-case", it.ID, it.Slug)
+	}
+	rel := it.Path
+	abs := filepath.Join(repoRoot, rel)
+	var (
+		sp                spec.Spec
+		kind              string
+		conditionsStamped int
+		impactStamp       string
+	)
+	if err := withIntentMintLock(repoRoot, func() error {
+		content, err := readIntentRefusingHold(abs, rel, it.ID, "plan")
+		if err != nil {
+			return err
+		}
+		if !hasAcceptanceCriteria(content) {
+			return fmt.Errorf("intent: %s is planned with no spec, and has no non-empty '## Acceptance Criteria' section (itd-1 discipline) to mint one from; refusing to plan", it.ID)
+		}
+		impactStamp, err = resolvePlanImpact(it, content, opts.Impact)
+		if err != nil {
+			return err
+		}
+		store, err := spec.Load(repoRoot)
+		if err != nil {
+			return err
+		}
+		var reused bool
+		sp, reused = store.ByIntent(it.ID)
+		specID := sp.ID
+		if !reused {
+			if specID, err = probeMinter().Mint(specFamily); err != nil {
+				return err
+			}
+		}
+		if err := checkDraftFaceSize(content, it, specID, impactStamp, rel); err != nil {
+			return err
+		}
+		if !reused {
+			if sp, err = spec.Create(repoRoot, it.ID, it.Slug, opts.ProductionMode); err != nil {
+				return err
+			}
+		}
+		stamped, n, err := stampScopeConditions(content, recordid.Minter{})
+		if err != nil {
+			return err
+		}
+		conditionsStamped = n
+		kind = it.Kind
+		if frontmatter.IsNull(kind) {
+			kind = KindStandalone
+		}
+		fields := draftFaceFields(kind, impactStamp)
+		fields["spec_id"] = sp.ID
+		linked, err := setFrontmatterFields(stamped, fields)
+		if err != nil {
+			return err
+		}
+		return writeIntentFile(abs, rel, linked)
+	}); err != nil {
+		return PlanResult{}, err
+	}
+	it.Kind = kind
+	it.SpecID = sp.ID
+	return PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped,
+		LinkedInPlace: true, ImpactStamped: impactStamp}, nil
 }
 
 // Link retroactively writes the derived spec_id link on an existing planned

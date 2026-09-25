@@ -120,10 +120,13 @@ func TestIntentPlanRefusesNoAC(t *testing.T) {
 	}
 }
 
+// A planned record that already has its spec and nothing unmarked is refused.
+// (A planned record with spec_id null is not: plan mints its spec in place,
+// iss-2609211738504433 — TestIntentPlanLinksASpecForAPlannedRecordWithNone.)
 func TestIntentPlanRefusesNonDraft(t *testing.T) {
 	repo := intentTestRepo(t)
 	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
-		"---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n")
 	if _, err := runCLIErr(t, "intent", "plan", "itd-10"); err == nil {
 		t.Fatal("plan on a non-draft intent must exit non-zero")
 	}
@@ -864,5 +867,24 @@ func TestIntentPlanImpactFlagOnAPlannedRecord(t *testing.T) {
 	_, err = runCLIErr(t, "intent", "plan", "itd-10", "--impact", "breaking")
 	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "does not revise a recorded judgement") {
 		t.Fatalf("a disagreeing --impact must be refused: %v", err)
+	}
+}
+
+// TestIntentPlanLinksASpecForAPlannedRecordWithNone is the front door of
+// iss-2609211738504433: the render says the spec was linked in place, never
+// that the record moved.
+func TestIntentPlanLinksASpecForAPlannedRecordWithNone(t *testing.T) {
+	repo := intentTestRepo(t)
+	dir := filepath.Join(repo, cliPlanned)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n\n## Acceptance Criteria\n\n- ok\n"
+	if err := os.WriteFile(filepath.Join(dir, "itd-10-alpha.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := string(runCLI(t, "intent", "plan", "itd-10"))
+	if !strings.Contains(out, "itd-10 already planned; linked spc-") || strings.Contains(out, "drafts -> planned") {
+		t.Fatalf("render = %s", out)
 	}
 }

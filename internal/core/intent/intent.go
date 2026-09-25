@@ -244,6 +244,10 @@ type PlanResult struct {
 	// condition written after planning reaches the mint, which is what makes the
 	// readiness gate's remedy a command that works.
 	StampOnly bool `json:"stamp_only"`
+	// LinkedInPlace reports that this run minted (or reused) the spec for a
+	// record already in planned/ whose spec_id was null, and linked it without
+	// moving the record (iss-2609211738504433).
+	LinkedInPlace bool `json:"linked_in_place"`
 	// ImpactStamped is the impact judgement this run wrote onto the record, and
 	// empty when it wrote none — because no --impact was supplied, or because the
 	// record already carried the same value.
