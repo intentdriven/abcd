@@ -3,10 +3,18 @@ name: auto-release
 # On every push to the default branch, tag-and-release the NEWEST dated
 # CHANGELOG version when it has no git tag yet — WITHOUT a PAT. A tag pushed with
 # the built-in GITHUB_TOKEN deliberately does NOT re-trigger release.yml's
-# tag-push event, so this workflow instead creates the tag and then invokes
-# release.yml directly as a reusable workflow (the `release` job below). That
-# keeps the whole publish path inside GitHub's own token model — no personal
-# access token, no elevated secret.
+# tag-push event, so this workflow invokes release.yml directly as a reusable
+# workflow (the `release` job below) and asks it to create the tag. That keeps
+# the whole publish path inside GitHub's own token model — no personal access
+# token, no elevated secret.
+#
+# The order is detect -> verify -> tag -> build -> publish. The tag is made
+# INSIDE release.yml, by a job that needs its verify gate, never here before the
+# call: a tag is immutable, so a tag cut ahead of a gate that then refuses
+# consumes the version with no Release behind it, and the heal path below would
+# rebuild the same refused commit on every later push (iss-2608231226347380,
+# the residual of adr-52). A refused gate now leaves no tag, the version stays
+# free, and the next push to the default branch retries.
 #
 # Only the NEWEST dated version is ever tagged: older CHANGELOG versions are left
 # alone, because tagging them at the current HEAD would mis-point an immutable
@@ -38,12 +46,7 @@ jobs:
   # read: no writes, no pushes, contents: read only.
   detect:
     runs-on: ubuntu-latest
-<%- if .Abcd %>
-    # Room for the pre-tag archive proof below, which compiles the binary.
-    timeout-minutes: 15
-<%- else %>
     timeout-minutes: 5
-<%- end %>
     permissions:
       contents: read
     outputs:
@@ -109,90 +112,17 @@ jobs:
               echo "release_ref=$commit" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "$tag has no git tag; will tag and release at github.sha."
+            echo "$tag has no git tag; release.yml will verify, then tag and release, github.sha."
             echo "need_tag=true" >> "$GITHUB_OUTPUT"
             echo "need_release=true" >> "$GITHUB_OUTPUT"
           fi
-<%- if .Abcd %>
-
-      # --- The pinned plugin archive, proved BEFORE the tag -------------------
-      # release.yml's verify job proves the committed pin reproduces, but only
-      # once the tag exists, and a tag is never moved: a refusal there consumes
-      # the version. The pushed commit is not always the one the ship rendered —
-      # a merge-queue batch carries the ship together with any other queued pull
-      # request, and one that touches the payload re-renders to another digest.
-      # So the same proof runs here, on the exact commit the tag job would tag,
-      # and a refusal fails detect, which the tag job needs: nothing is tagged,
-      # the version stays free, and the next push to the default branch retries.
-      # Only a version about to be tagged is proved — between releases the
-      # default branch pins the last release's archive, which its moved-on tree
-      # no longer reproduces. TAG arrives through env (injection-safe).
-      - name: Set up Go
-        if: steps.detect.outputs.need_tag == 'true'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          # cache: false — module caching in a release-triggering workflow is a
-          # cache-poisoning vector (zizmor).
-          cache: false
-
-      - name: Plugin archive reproduces the committed pin, before the tag (fail-closed)
-        if: steps.detect.outputs.need_tag == 'true'
-        env:
-          TAG: v${{ steps.detect.outputs.version }}
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/plugin-archive"
-          mkdir -p "$out"
-          # --repository binds the pin's address to the repository this workflow
-          # releases from: the address derives from plugin.json's repository,
-          # which a rename, a transfer or a fork leaves naming another
-          # repository, and --verify alone passes on a pin every install 404s on.
-          go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
-<%- end %>
-
-  # Create and push the annotated tag with the GITHUB_TOKEN. This is the ONLY
-  # push this automation makes, and it targets a NEW tag ref only — never a
-  # branch. A GITHUB_TOKEN-pushed tag raises no tag-push event, which is why the
-  # release below invokes release.yml explicitly rather than relying on the tag.
-  tag:
-    needs: detect
-    if: needs.detect.outputs.need_tag == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write        # push the new tag ref
-    steps:
-      - name: Check out the pushed commit
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # github.sha = this main push's HEAD, the immutable commit to tag.
-          ref: ${{ github.sha }}
-          # persist-credentials: true is REQUIRED here so `git push` below
-          # authenticates as the GITHUB_TOKEN. Scoped to this single tag-creating
-          # job whose only step pushes one new tag ref; no other step runs, so
-          # the persisted credential is never exposed to untrusted input.
-          persist-credentials: true
-
-      - name: Create and push the annotated tag at the released commit
-        # Values arrive via env (no ${{ }} inside the script): injection-safe.
-        env:
-          TAG: v${{ needs.detect.outputs.version }}
-          COMMIT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          # Annotated tag at github.sha — the exact commit this push built and the
-          # commit release.yml will check out (github.sha) and ship.
-          git tag -a "$TAG" -m "abcd $TAG" "$COMMIT"
-          git push origin "refs/tags/$TAG"
 
   # Cut the release by calling release.yml as a reusable workflow. Because it is
-  # CALLED (not triggered by the tag push), github.sha inside release.yml is this
-  # run's HEAD = the commit just tagged, so both of release.yml's jobs check out
-  # and ship exactly that commit — the same anti-tag-move property the tag-push
-  # entry point has.
+  # CALLED (not triggered by a tag push), github.sha inside release.yml is this
+  # run's HEAD, so its verify gate, its tag job and its publish job all check out,
+  # tag and ship exactly that commit — the same anti-tag-move property the
+  # tag-push entry point has. release.yml's tag job pushes the only ref this
+  # automation writes, a NEW tag, and only once verify is green.
 <%- if .Abcd %>
   # A called workflow is capped by the caller's grants, and that cap is
   # transitive: release.yml in turn calls site.yml (adr-48), so this job hands
@@ -204,31 +134,28 @@ jobs:
   # every scope release.yml's jobs need (contents: write).
 <%- end %>
   release:
-    needs: [detect, tag]
-    # Run when a release is needed AND the tag is in place — either the tag job
-    # just created it (success) or it already existed and was skipped. !cancelled()
-    # is required because `tag` is skipped on the re-release path; a bare success()
-    # would skip this job too. !cancelled() still fires on a SKIPPED `tag` but NOT
-    # on a cancelled run, so a manual cancel can never publish a half-finished
-    # state. A FAILED tag job (result neither success nor skipped) blocks the
-    # release, so a half-made tag never publishes.
-    if: >-
-      !cancelled()
-      && needs.detect.outputs.need_release == 'true'
-      && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
+    needs: detect
+    # Run when a release is needed: a fresh version (need_tag, so release.yml
+    # tags it after verify) or a tagged version whose Release is missing (the
+    # heal path, built from the tagged commit).
+    if: needs.detect.outputs.need_release == 'true'
     permissions:
 <%- if .Abcd %>
-      contents: write        # release.yml: create the Release + verify the tag; site.yml: attach site.tar.gz
+      contents: write        # release.yml: push the new tag after verify, create the Release; site.yml: attach site.tar.gz
       id-token: write        # release.yml + site.yml: OIDC for build-provenance attestation
       attestations: write    # release.yml: publish + read back the attestations; site.yml: attest site.tar.gz
 <%- else %>
-      contents: write        # release.yml: create the Release + verify the tag
+      contents: write        # release.yml: push the new tag after verify, create the Release
 <%- end %>
     uses: ./.github/workflows/release.yml
     with:
       tag: v${{ needs.detect.outputs.version }}
+      # True only on the fresh-tag path: release.yml's tag job, which needs its
+      # verify gate, creates the tag at the commit verify passed. False on the
+      # heal path, where the tag already exists and is never moved.
+      create_tag: ${{ needs.detect.outputs.need_tag == 'true' }}
       # Empty on the fresh-tag path → release.yml falls back to github.sha (the
-      # commit just tagged). The resolved tagged-commit SHA on the re-release
+      # commit it verifies and then tags). The resolved tagged-commit SHA on the re-release
       # path, so the Release is built from the tag, not a newer main HEAD.
       ref: ${{ needs.detect.outputs.release_ref }}
     # Without this the whole chain runs with an EMPTY secrets context, and the

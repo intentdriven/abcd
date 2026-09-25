@@ -238,6 +238,6 @@ family + `gh` the binary provenance already uses).
    PROMOTE, alongside the deterministic gates. The tag itself is never moved
    (anti-tag-move); moving the gate to the safe side of the tag is what stops a
    semantic refusal from wedging a version the way a gate in the publish path did
-   (iss-2608231226347380, iss-326). On the auto-release path the `tag` job still
-   mints the tag before it invokes `release.yml`, so closing that residual for the
-   automated path is tracked separately.
+   (iss-2608231226347380, iss-326). On the auto-release path the tag is made by
+   `release.yml`'s own `tag` job, which needs `verify`, so a refused gate —
+   semantic or deterministic — leaves no tag and the version stays free.

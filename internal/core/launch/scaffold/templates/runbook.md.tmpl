@@ -3,9 +3,11 @@
 This repo cuts releases the changelog-driven way (adr-37): rolling the
 accumulated `## [Unreleased]` section into a dated `## [X.Y.Z] - <date>` heading,
 in an ordinary reviewed PR, **is** the release decision. On merge to
-`<% .DefaultBranch %>`, `auto-release.yml` reads the newest dated heading, tags
-exactly that commit, and calls `release.yml` to verify and publish. Nothing else
-declares a release; an ordinary push with no new dated heading is a no-op.
+`<% .DefaultBranch %>`, `auto-release.yml` reads the newest dated heading and
+calls `release.yml`, which verifies exactly that commit, tags it only once the
+gates pass, and publishes. A refused gate leaves no tag, so the version stays
+free. Nothing else declares a release; an ordinary push with no new dated
+heading is a no-op.
 
 The whole path runs on the built-in `GITHUB_TOKEN` — no personal access token,
 no standing secret. Tags are immutable; a publish is idempotent and self-healing
@@ -90,10 +92,11 @@ conventions do not collide.
 <% if .SemanticGates -%>
 2. On the merged commit, run the semantic gates above and record each verdict as
    a receipt keyed to that commit's sha.
-3. `auto-release.yml` tags `vX.Y.Z` on the merged commit and publishes. Once the
-   fail-closed gate is armed, the tag is rejected unless every semantic receipt
-   is present and PROMOTE.
+3. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
+   commit and publish. Once the fail-closed gate is armed, no tag is made unless
+   every semantic receipt is present and PROMOTE.
 <%- else -%>
-2. `auto-release.yml` tags `vX.Y.Z` on the merged commit and publishes, gated on
-   the deterministic `verify` job alone.
+2. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
+   commit and publish; the tag and the Release are gated on the deterministic
+   `verify` job alone.
 <%- end %>

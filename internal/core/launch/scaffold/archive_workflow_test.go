@@ -108,44 +108,6 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 // workflow carries a copy of it in shell.
 const repositoryBinding = ` --repository "${GITHUB_REPOSITORY}"`
 
-// TestAutoReleaseProvesThePinBeforeTheTag is the pre-tag half of the pin gate.
-// release.yml's verify job runs after the tag exists, so a pin the tagged
-// commit cannot reproduce — a merge-queue batch that carried the ship with a
-// payload-touching change re-renders to another digest — refused there only
-// after the immutable tag had consumed the version. auto-release's detect job
-// makes the same proof on the pushed commit before the tag job may run.
-func TestAutoReleaseProvesThePinBeforeTheTag(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(AutoReleaseYMLPath)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	wf := string(data)
-
-	detect := jobSection(t, wf, "detect")
-	decide := indexOf(t, detect, "id: detect", "detect")
-	setup := indexOf(t, detect, "actions/setup-go@", "detect")
-	gate := indexOf(t, detect, `go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify`+repositoryBinding, "detect")
-	if !(decide < setup && setup < gate) {
-		t.Errorf("detect job order: decision %d < setup-go %d < archive verify %d must hold", decide, setup, gate)
-	}
-	// Only a version about to be tagged is proved: between releases main pins
-	// the last release's archive, which its moved-on tree no longer reproduces.
-	for _, at := range []int{setup, gate} {
-		stepStart := strings.LastIndex(detect[:at], "- name:")
-		if !strings.Contains(detect[stepStart:at], "if: steps.detect.outputs.need_tag == 'true'") {
-			t.Errorf("the pre-tag pin step at %d must run only when a tag is about to be made", at)
-		}
-	}
-	if !strings.Contains(detect, "TAG: v${{ steps.detect.outputs.version }}") {
-		t.Error("the pre-tag pin gate must be bound to the version the tag job will tag")
-	}
-
-	// The tag job waits on detect, so a refusal there leaves no tag behind.
-	if tag := jobSection(t, wf, "tag"); !strings.Contains(tag, "needs: detect\n") {
-		t.Error("the tag job must need detect, so a pre-tag refusal blocks the tag")
-	}
-}
-
 // TestBareReleaseWorkflowHasNoArchive keeps the archive abcd-only: a managed
 // repo's scaffolded workflow has no abcd binary to render with.
 func TestBareReleaseWorkflowHasNoArchive(t *testing.T) {

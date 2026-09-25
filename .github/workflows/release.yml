@@ -10,22 +10,26 @@ name: release
 # their SLSA build-provenance attestations once the repo is public — attestation is
 # not offered on a user-owned private repo, so it is skipped there and re-enables
 # automatically on the public flip).
-# Nothing is pushed to any branch. Both jobs check out `github.sha` — the commit the
+# Nothing is pushed to any branch. Every job checks out `github.sha` — the commit the
 # pushed tag pointed at, fixed for the whole run — never the tag NAME (which could be
 # re-pointed between jobs to swap unverified code into the build) and never the
 # default-branch tip. Net effect: a tag push yields a verified release whose binaries,
-# checksums, and reported version all come from the pushed commit.
+# checksums, and reported version all come from the pushed commit. Called by
+# auto-release with create_tag, the same run makes the tag itself, and only once
+# verify is green: detect -> verify -> tag -> build -> publish.
 on:
   push:
     tags:
       - 'v*'
-  # Called by auto-release.yml after it tags the newest dated CHANGELOG version
+  # Called by auto-release.yml to release the newest dated CHANGELOG version
   # (adr-37). `tag` and `ref` are an unenforced caller CONTRACT — --verify-tag
   # checks only that the tag exists, not that it points at `ref`; the sole
   # caller (auto-release) binds them: ref = `git rev-parse "$tag^{commit}"` on
-  # the re-release path, empty (-> github.sha, the just-tagged commit) on the
-  # fresh-tag path. A resolved commit SHA, never a tag name, keeps the
-  # anti-tag-move property.
+  # the re-release path, empty (-> github.sha, the commit verify gates and the
+  # tag job then tags) on the fresh-tag path. A resolved commit SHA, never a tag
+  # name, keeps the anti-tag-move property. `create_tag` is true on the
+  # fresh-tag path only: the tag job below makes the tag after verify passes, so
+  # a refused gate consumes no version (iss-2608231226347380).
   workflow_call:
     inputs:
       tag:
@@ -35,6 +39,10 @@ on:
         required: false
         type: string
         default: ''
+      create_tag:
+        required: false
+        type: boolean
+        default: false
   # Manual rehearsal. A workflow_dispatch runs the `rehearsal` job below alongside
   # `verify`, and nothing that publishes: the publish job (`release`) is gated off
   # this event, and the rehearsal arms the gate's resolution path against a
@@ -58,9 +66,9 @@ concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
-# Floor for the workflow: read-only. The release job elevates itself to
-# contents: write only to create the Release and upload its assets; verify stays
-# read-only. No job pushes to any branch.
+# Floor for the workflow: read-only. The tag job elevates itself to contents:
+# write only to push one new tag ref, the release job only to create the Release
+# and upload its assets; verify stays read-only. No job pushes to any branch.
 permissions:
   contents: read
 
@@ -143,10 +151,9 @@ jobs:
       # differs. Re-render the archive from THIS commit, reproducibly, and refuse
       # the release unless it yields exactly the pinned digest: a pin the release
       # could not reproduce would name a zip nobody can publish, and every install
-      # would fail. Refusing here, in verify, costs the tag but builds and
-      # publishes nothing; on the auto-release path auto-release.yml's detect
-      # job has already made this proof before tagging, so this is the second
-      # proof there and the only one for a hand-pushed tag. Skipped on the rehearsal path: a workflow_dispatch has
+      # would fail. Refusing here, in verify, builds and publishes nothing, and on
+      # the auto-release path it makes no tag either: the tag job needs verify,
+      # so the version stays free. Skipped on the rehearsal path: a workflow_dispatch has
       # no release tag to bind (TAG is the branch name), and main between releases
       # pins the LAST release's archive, which its own tree no longer reproduces.
       # TAG reaches the script through the workflow env (injection-safe).
@@ -164,8 +171,9 @@ jobs:
       # verify gates the release before it is built or published, so a semantic
       # refusal blocks the release the way a deterministic failure already does,
       # WITHOUT consuming a version — the fix for iss-2608231226347380, where a
-      # gate that sat in the publish job wedged the immutable tag. The tag itself is
-      # untouched: only the GATE moved to the safe side of it.
+      # gate that sat in the publish job wedged the immutable tag. On the
+      # auto-release path the tag job below needs verify, so the tag itself is made
+      # only after this gate and the deterministic ones above have passed.
       #
       # Skipped on the rehearsal path: verify runs on workflow_dispatch too, where
       # no real receipts exist, and a missing receipt there is not a refusal
@@ -191,15 +199,59 @@ jobs:
             --require-gate docs-currency-reviewer \
             --require-gate iss35-brief-surface-crosscheck
 
+  # Create and push the annotated tag with the GITHUB_TOKEN — AFTER verify, so a
+  # refused gate leaves no tag and the version stays free (iss-2608231226347380;
+  # adr-52 moved the gate into verify, this moves the tag behind it). Runs only
+  # when the caller asks (auto-release, fresh-tag path): a tag push already has
+  # its tag, and the rehearsal makes none. This is the ONLY push the release
+  # chain makes, and it targets a NEW tag ref only — never a branch. A
+  # GITHUB_TOKEN-pushed tag raises no tag-push event, so nothing re-triggers.
+  tag:
+    needs: verify
+    if: inputs.create_tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write        # push the new tag ref
+    steps:
+      - name: Check out the verified commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit verify checked out and gated, resolved the same way.
+          ref: ${{ inputs.ref || github.sha }}
+          # persist-credentials: true is REQUIRED here so `git push` below
+          # authenticates as the GITHUB_TOKEN. Scoped to this single tag-creating
+          # job whose only step pushes one new tag ref; no other step runs, so
+          # the persisted credential is never exposed to untrusted input.
+          persist-credentials: true
+
+      - name: Create and push the annotated tag at the verified commit
+        # Values arrive via env (no ${{ }} inside the script): injection-safe.
+        env:
+          COMMIT: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Annotated tag at the commit verify passed and the release job below
+          # checks out and ships.
+          git tag -a "$TAG" -m "abcd $TAG" "$COMMIT"
+          git push origin "refs/tags/$TAG"
+
   # Build and publish ONLY after verify is green. Binaries are cross-compiled from
   # the same pushed commit (github.sha) that verify just gated, so the shipped
   # artefacts match the code that passed — even if the tag were re-pointed since.
   release:
-    needs: verify
+    needs: [verify, tag]
     # The publish path never runs on a manual rehearsal (workflow_dispatch): that
-    # event runs the `rehearsal` job, which publishes nothing. The tag-push and
-    # workflow_call (auto-release) entry points are unaffected.
-    if: github.event_name != 'workflow_dispatch'
+    # event runs the `rehearsal` job, which publishes nothing. Otherwise it runs
+    # once verify is green and the tag is in place — the tag job made it
+    # (success) or the tag already existed and the job was skipped (a tag push,
+    # or auto-release's heal path). !cancelled() is required because a skipped
+    # need skips a job whose if uses no status function; it never fires on a
+    # cancelled run, so a manual cancel cannot publish a half-finished state. A
+    # FAILED tag job blocks the release, so a half-made tag never publishes.
+    if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     timeout-minutes: 20
     runs-on: ubuntu-latest
     # A human stands between merge and publish: the environment carries a required
