@@ -79,7 +79,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
 		Use:   "build <itd-N>",
 		Short: "Start a run that takes one READY intent to delivered, refusing while a decision is open",
-		Long: "Start the implement loop for one intent. The checks run first, and every one must pass:\n" +
+		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
+			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, its spec leaves a step to\n" +
 			"build, and no peer holds it (no sibling worktree or local branch holds it in another\n" +
@@ -89,8 +90,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"`.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,\n" +
 			"the other unlanded steps pending, and the run record's first line. The tier itself is\n" +
 			"never created: only a repository abcd manages has one. Starting again while the run is\n" +
-			"in progress creates nothing and names the run, so a killed process resumes where it\n" +
-			"stopped.\n\n" +
+			"in progress creates nothing and names the run without judging the checks again (the\n" +
+			"run's own lanes change what they read), so a killed process resumes where it stopped.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",

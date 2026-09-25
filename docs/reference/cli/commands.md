@@ -159,7 +159,8 @@ Start a run that takes one READY intent to delivered, refusing while a decision 
 
 **Usage:** `abcd build <itd-N>`
 
-Start the implement loop for one intent. The checks run first, and every one must pass:
+Start the implement loop for one intent, or resume the run already in progress for it.
+A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, its spec leaves a step to
 build, and no peer holds it (no sibling worktree or local branch holds it in another
@@ -170,8 +171,8 @@ When the checks pass, the run is created in this checkout's local tier,
 `.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
 the other unlanded steps pending, and the run record's first line. The tier itself is
 never created: only a repository abcd manages has one. Starting again while the run is
-in progress creates nothing and names the run, so a killed process resumes where it
-stopped.
+in progress creates nothing and names the run without judging the checks again (the
+run's own lanes change what they read), so a killed process resumes where it stopped.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
 

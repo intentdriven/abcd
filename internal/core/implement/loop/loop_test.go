@@ -178,6 +178,75 @@ func TestStartRefusesAPeerHoldingTheRecord(t *testing.T) {
 	})
 }
 
+// TestStartAgainResumesTheRunItsOwnLaneChanged is criterion 7's resume once
+// the run has changed the tree it was judged on: its lane's worktree (in the
+// machine-scoped store, piece 6's shape) delivers the intent to shipped/, or
+// its lane holds a claim on it. The checks judged the record at the start; a
+// live run for the key is found first and resumed, not re-judged into a
+// refusal that names the run's own lane as a peer.
+func TestStartAgainResumesTheRunItsOwnLaneChanged(t *testing.T) {
+	t.Run("its lane worktree ships the intent", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		first, err := Start(repo.Root(), "itd-10", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wt := filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees", "0123abcd", "lane-1")
+		if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("worktree", "add", "-q", "-b", "build/lane-1", wt)
+		if err := os.MkdirAll(filepath.Join(wt, ".abcd", "development", "intents", "shipped"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", wt, "mv", plannedRel, ".abcd/development/intents/shipped/itd-10-alpha.md")
+		repo.Git("-C", wt, "commit", "-q", "-m", "deliver alpha")
+
+		again, err := Start(repo.Root(), "itd-10", Options{})
+		if err != nil {
+			t.Fatalf("starting again while the run is in progress resumes it, whatever its lane did: %v", err)
+		}
+		if !again.Resumed || again.RunID != first.RunID {
+			t.Fatalf("want run %s resumed, got %+v", first.RunID, again)
+		}
+	})
+	t.Run("its lane claims the intent", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		first, err := Start(repo.Root(), "itd-10", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
+		run, err := implement.Open(strings.TrimSpace(sha))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := run.Join("lane-session", implement.RoleFirst, "", "", 0); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := run.Claim(implement.ClaimRequest{Session: "lane-session", Record: "itd-10", Lane: "lane-1"}); err != nil {
+			t.Fatal(err)
+		}
+		again, err := Start(repo.Root(), "itd-10", Options{})
+		if err != nil {
+			t.Fatalf("the run's own claim must not refuse its resume: %v", err)
+		}
+		if !again.Resumed || again.RunID != first.RunID {
+			t.Fatalf("want run %s resumed, got %+v", first.RunID, again)
+		}
+	})
+	t.Run("a key that is not an intent is refused before any lookup", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := Start(repo.Root(), "../itd-10", Options{})
+		if r := mustRefusal(t, err); r.Check != CheckKey {
+			t.Fatalf("want the key check named: %+v", r)
+		}
+	})
+}
+
 // TestStartRefusesWithoutTheLocalTier: the tier is never created, so a
 // repository abcd does not manage has no run.
 func TestStartRefusesWithoutTheLocalTier(t *testing.T) {

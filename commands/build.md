@@ -18,7 +18,8 @@ last one stopped.
 "${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> --json
 ```
 
-The checks run first, and every one must pass:
+For an intent with no run in progress, the checks run first, and every one must
+pass:
 
 - `key` — the argument is an intent id. An issue id is refused: the issue key
   is not built yet.
@@ -43,8 +44,10 @@ When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
 unlanded step), the `pending` spec steps, and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
-refuses. Starting again while the run is in progress creates nothing and
-reports `resumed: true` with the same run.
+refuses. Starting again while the run is in progress creates nothing, runs no
+check, and reports `resumed: true` with the same run and an empty `checks`: the
+run's own lanes move and claim the intent, so judging it again would refuse the
+run as its own peer.
 
 ## Drive it
 

@@ -28,7 +28,7 @@ later pieces of the spec; until each lands, the loop refuses at it by name.
 
 ## The checks
 
-Nothing starts until every check passes, and each is a read (criteria 1 and 2):
+No run is created until every check passes, and each is a read (criteria 1 and 2):
 
 - **key** — the record is an intent. The issue key (decision 10) is refused by
   name until the piece that admits it lands.
@@ -85,7 +85,11 @@ receipt and pull request.
 
 Starting creates one lane, for the first unlanded spec step, and records the
 rest as pending. Starting again while that run is in progress creates nothing
-and names the run.
+and names the run. The live run for the key is looked up first, under the lock,
+and the checks run only when a run is created: they judged the record at the
+start, and the run's own lanes then change what they read (a lane's worktree
+moves the intent to `shipped/`, a lane claims it), so judging again would refuse
+the run as its own peer. Only the key's shape is checked before the lookup.
 
 ## The step interface
 

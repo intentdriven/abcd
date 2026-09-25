@@ -123,8 +123,10 @@ type StartResult struct {
 	Resumed bool          `json:"resumed"`
 	Lane    Lane          `json:"lane"`
 	Pending []PendingStep `json:"pending"`
-	Checks  []CheckRow    `json:"checks"`
-	Next    string        `json:"next"`
+	// Checks are the pre-start checks' rows when the call created the run; a
+	// resumed start runs none, and carries none.
+	Checks []CheckRow `json:"checks"`
+	Next   string     `json:"next"`
 }
 
 // StepResult is what Advance and Receipt return.
@@ -142,14 +144,28 @@ type StepResult struct {
 	Next     string `json:"next"`
 }
 
-// Start runs the checks for key and, when every one passes, creates the run:
-// the state file with one lane at the sequence's first step, the spec's other
-// unlanded steps pending, and the record's first line. A refused check writes
-// nothing. A live run for the same key in this checkout is resumed — named, not
-// duplicated — so starting again after a kill loses nothing and repeats nothing.
+// Start resumes the live run for key, or runs the checks and, when every one
+// passes, creates the run: the state file with one lane at the sequence's first
+// step, the spec's other unlanded steps pending, and the record's first line. A
+// refused check writes nothing.
+//
+// A live run for the same key in this checkout is looked up first, under the
+// lock, and resumed — named, not duplicated, and not re-judged. The checks
+// judged the record when the run was created; since then the run's own lanes
+// change the tree they read (a lane's worktree moves the intent to shipped/, a
+// lane claims it), so judging again would refuse the run as its own peer. So
+// starting again after a kill loses nothing and repeats nothing, and the checks
+// run only when a run is created. Only the key's shape is checked before the
+// lookup, so a path is never built from a key that is not an intent id.
 func Start(repoRoot, key string, o Options) (StartResult, error) {
 	if err := tierPresent(repoRoot); err != nil {
 		return StartResult{}, err
+	}
+	if row, ok := keyCheck(key); !ok {
+		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
+	}
+	if res, ok, err := resumeLive(repoRoot, key); err != nil || ok {
+		return res, err
 	}
 	chk, err := Check(repoRoot, key)
 	if err != nil {
@@ -167,11 +183,11 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		if err != nil {
 			return err
 		}
-		for _, st := range runs {
-			if recordid.SameID(st.Key, chk.Key) && !st.Complete() {
-				res = startResult(st, chk, true)
-				return nil
-			}
+		// A start that raced this one past the lookup above created the run
+		// while the checks ran: it is resumed, not duplicated.
+		if st, ok := liveRun(runs, chk.Key); ok {
+			res = startResult(st, nil, true)
+			return nil
 		}
 		id, err := freeRunID(root, o.Minter)
 		if err != nil {
@@ -200,15 +216,53 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		if err := writeState(root, st); err != nil {
 			return err
 		}
-		res = startResult(st, chk, false)
+		res = startResult(st, chk.Checks, false)
 		return nil
 	})
 	return res, err
 }
 
-func startResult(st State, chk CheckResult, resumed bool) StartResult {
+// resumeLive returns the live run for key, under the lock, when this checkout
+// has one. A checkout with no run directory has none, and the lookup creates
+// nothing; a run directory that is not a real directory is left to the create
+// path, which refuses it.
+func resumeLive(repoRoot, key string) (StartResult, bool, error) {
+	if !fsutil.IsRealDir(filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))) {
+		return StartResult{}, false, nil
+	}
+	var res StartResult
+	found := false
+	err := withLock(repoRoot, func(root *os.Root) error {
+		runs, err := readRuns(root)
+		if err != nil {
+			return err
+		}
+		if st, ok := liveRun(runs, key); ok {
+			res, found = startResult(st, nil, true), true
+		}
+		return nil
+	})
+	return res, found, err
+}
+
+// liveRun returns the run for key that is not complete.
+func liveRun(runs []State, key string) (State, bool) {
+	for _, st := range runs {
+		if recordid.SameID(st.Key, key) && !st.Complete() {
+			return st, true
+		}
+	}
+	return State{}, false
+}
+
+// startResult reports a run as Start returns it. checks are the rows the call
+// ran: a resumed start runs none.
+func startResult(st State, checks []CheckRow, resumed bool) StartResult {
+	if checks == nil {
+		checks = []CheckRow{}
+	}
 	res := StartResult{RunID: st.RunID, State: StateRelPath(st.RunID), Resumed: resumed,
-		Pending: st.Pending, Checks: chk.Checks}
+		Pending: st.Pending, Checks: checks}
 	if i := st.current(); i >= 0 {
 		res.Lane = st.Lanes[i]
 		res.Next = nextMove(st, st.Lanes[i])
