@@ -1729,8 +1729,13 @@ func intentsDirOf(cfg RuleConfig) string {
 // soft (no records, no error), mirroring the rest of the record lint.
 func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 	intentsRoot := filepath.Join(rootAbs, intentsDir)
+	// Absent is soft; present-but-unreadable is a fault, as it is for the
+	// sibling scanners (iss-2608261533419897).
 	if _, err := os.Stat(intentsRoot); err != nil {
-		return intentTree{}, nil
+		if os.IsNotExist(err) {
+			return intentTree{}, nil
+		}
+		return intentTree{}, err
 	}
 
 	// Collect every intent id that exists as a file in any bucket, so the
@@ -1739,8 +1744,11 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 	// branches each allocating "the next free id" collide silently otherwise.
 	known := map[string]bool{}
 	idFiles := map[string][]string{}
-	_ = filepath.WalkDir(intentsRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	if err := filepath.WalkDir(intentsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
 			return nil
 		}
 		if intentFileRe.MatchString(d.Name()) {
@@ -1749,7 +1757,9 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 			idFiles[id] = append(idFiles[id], path)
 		}
 		return nil
-	})
+	}); err != nil {
+		return intentTree{}, err
+	}
 
 	buckets, err := os.ReadDir(intentsRoot)
 	if err != nil {
@@ -2161,7 +2171,10 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 		specsDir = "specs"
 	}
 	if _, err := os.Stat(filepath.Join(rootAbs, specsDir)); err != nil {
-		return nil, nil // missing specs/ is soft, mirroring intent_lifecycle
+		if os.IsNotExist(err) {
+			return nil, nil // missing specs/ is soft, mirroring intent_lifecycle
+		}
+		return nil, err // present but unreadable is a fault (iss-2608261533419897)
 	}
 
 	rootRel, err := filepath.Rel(repoRoot, rootAbs)
@@ -2271,7 +2284,10 @@ func checkSpecIDUnique(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([]
 		specsDir = "specs"
 	}
 	if _, err := os.Stat(filepath.Join(rootAbs, specsDir)); err != nil {
-		return nil, nil // missing specs/ is soft, mirroring spec_lifecycle
+		if os.IsNotExist(err) {
+			return nil, nil // missing specs/ is soft, mirroring spec_lifecycle
+		}
+		return nil, err // present but unreadable is a fault (iss-2608261533419897)
 	}
 	rootRel, err := filepath.Rel(repoRoot, rootAbs)
 	if err != nil {
