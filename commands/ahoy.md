@@ -73,9 +73,14 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 
 **This writes.** It applies the actionable gaps the detection pass found — the
 marker block (only where `--docs-target` names a conventions file; the
-default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Report the
-returned `status`, what changed, and any `notes` — a note is a refusal, stating
-something abcd deliberately did not do and why. The engine prompts before an
+default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Lead
+the report with the returned `headline`, then each `summary` item in its own
+three parts: `what` it is, `why` it matters, and the `action`, if any, the user
+should take. These are abcd's own plain words for the product thinker and the
+technical facilitator; relay them rather than rewording, and keep the `refs`
+(the exact paths and identifiers each item explains) for anyone who asks. Then
+report any `notes` — a note is a refusal, stating something abcd deliberately
+did not do and why. The engine prompts before an
 ambiguous adoption, so surface any prompt to the user rather than answering it
 for them.
 

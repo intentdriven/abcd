@@ -20,6 +20,17 @@ import (
 // a re-run with zero required+resolvable gaps writes nothing and reports
 // "already_up_to_date".
 func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error) {
+	res, err := install(cwd, opts, p)
+	if err != nil {
+		return res, err
+	}
+	res.explain()
+	return res, nil
+}
+
+// install is Install without the person-facing summary, which Install composes
+// once over whichever of the several outcomes below was reached.
+func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return InstallResult{}, err
@@ -201,6 +212,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		DeclinedCategories: declined,
 		Notes:              ac.notes,
 		OptionalSkipped:    optionalSkipped(opts, final.Gaps),
+		writeKinds:         ac.writeKinds,
 	}, nil
 }
 
@@ -300,13 +312,15 @@ func adoptedBinTarget(pluginRoot string) string {
 // applyCtx threads the approved-category set and accumulated writes through the
 // ordered apply steps.
 type applyCtx struct {
-	cwd         string
-	det         DetectionResult
-	approved    map[GapCategory]bool
-	overrides   map[string]string
-	prompter    Prompter
-	gapPresent  map[string]bool
-	writes      []string
+	cwd        string
+	det        DetectionResult
+	approved   map[GapCategory]bool
+	overrides  map[string]string
+	prompter   Prompter
+	gapPresent map[string]bool
+	writes     []string
+	// writeKinds runs parallel to writes: what each write is, for the summary.
+	writeKinds  []writeKind
 	changes     []string // human-readable value changes an explicit override forced
 	notes       []string // loud refusals: what abcd deliberately did not do, and why
 	autoYes     bool     // --yes: every category auto-approved without interaction
@@ -401,7 +415,7 @@ func (a *applyCtx) stepIdentityPin() {
 		return
 	}
 	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err == nil {
-		a.note(identity.PinRelPath)
+		a.note(writeIdentityPin, identity.PinRelPath)
 	}
 }
 
@@ -419,7 +433,7 @@ func (a *applyCtx) stepDependencies() {
 		}
 		tool := strings.TrimPrefix(strings.TrimSuffix(g.ID, "_missing"), "deps.")
 		if !onPath(tool) {
-			a.note("dependency: " + g.FixHint)
+			a.note(writeScannerHint, "dependency: "+g.FixHint)
 		}
 	}
 }
@@ -431,7 +445,7 @@ func (a *applyCtx) stepSkeleton() {
 	}
 	cfg := map[string]any{"meta": map[string]any{"schema_version": 1}}
 	if err := writeConfig(a.cwd, cfg); err == nil {
-		a.note(configPath(a.cwd))
+		a.note(writeSettings, configPath(a.cwd))
 	}
 }
 
@@ -541,7 +555,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		a.rollbackForced()
 		return nil
 	}
-	a.note(configPath(a.cwd))
+	a.note(writeSettings, configPath(a.cwd))
 	return ic
 }
 
@@ -683,7 +697,7 @@ func (a *applyCtx) stepVisibility(cfg *InstallConfig) {
 	}
 	wrote, err := applyVisibilityBlock(a.cwd, cfg.Visibility)
 	if err == nil && wrote {
-		a.note(filepath.Join(a.cwd, ".gitignore"))
+		a.note(writeGitignore, filepath.Join(a.cwd, ".gitignore"))
 	}
 	// A narrowed public fence is said out loud (iss-255): the reader must learn
 	// that the committed record tiers stay published, from the receipt rather
@@ -713,7 +727,7 @@ func (a *applyCtx) stepHistory() {
 	if a.approved[UserState] || a.approved[SafeAutocreate] {
 		if wrote, err := bootstrapHistory(); err == nil && wrote {
 			if root, e := historyRoot(); e == nil {
-				a.note(filepath.Join(root, "index.json"))
+				a.note(writeSessionStore, filepath.Join(root, "index.json"))
 			}
 		}
 	}
@@ -728,7 +742,7 @@ func (a *applyCtx) stepHistory() {
 	repoDir := filepath.Join(root, sha)
 	store, storeErr := history.Resolve(a.cwd, sha)
 	if storeErr == nil && a.approved[SafeAutocreate] {
-		a.note(store.Records)
+		a.note(writeSessionStore, store.Records)
 	}
 	metaPath := filepath.Join(repoDir, "meta.json")
 	if a.approved[UserState] && !fileExists(metaPath) {
@@ -743,7 +757,7 @@ func (a *applyCtx) stepHistory() {
 			"corpus":      map[string]any{"transcripts": corpus},
 		}
 		if err := writeJSON(metaPath, meta); err == nil {
-			a.note(metaPath)
+			a.note(writeSessionStore, metaPath)
 		}
 	}
 	if a.approved[UserState] {
@@ -754,7 +768,7 @@ func (a *applyCtx) stepHistory() {
 		// it reads, so registerRepo's rewrite below writes the whole file back
 		// clean, including entries this repo has nothing to do with.
 		if scrubMetaCredential(metaPath) {
-			a.note(metaPath)
+			a.note(writeSessionStore, metaPath)
 			a.changes = append(a.changes,
 				"history meta.json: dropped a credential from the recorded remote URL — revoke the token, it has been on disk")
 		}
@@ -872,7 +886,7 @@ func (a *applyCtx) registerRepo(sha string) {
 	}
 	if wrote {
 		if root, e2 := historyRoot(); e2 == nil {
-			a.note(filepath.Join(root, "index.json"))
+			a.note(writeSessionStore, filepath.Join(root, "index.json"))
 		}
 	}
 }
@@ -904,7 +918,7 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 	for _, name := range markerTargets(target) {
 		path := filepath.Join(a.cwd, name)
 		if wrote, ok := installMarkerFile(path); ok && wrote {
-			a.note(path)
+			a.note(writeConventionsBlock, path)
 		}
 	}
 	// Retract the block from files a narrowed docs-target override de-selected,
@@ -912,7 +926,7 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 	for _, name := range a.markerRetract {
 		path := filepath.Join(a.cwd, name)
 		if wrote, ok := removeMarkerFile(path); ok && wrote {
-			a.note(path)
+			a.note(writeConventionsBlockRemoved, path)
 		}
 	}
 }
@@ -1092,7 +1106,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		return
 	}
 	a.recordEntry(target, want)
-	a.note(target)
+	a.note(writeCommandEntry, target)
 }
 
 // recordEntry stamps ~/.abcd/path-entry for the entry abcd just installed at
@@ -1111,7 +1125,7 @@ func (a *applyCtx) recordEntry(target, shaHex string) {
 		return
 	}
 	if p := userPathEntryPath(); p != "" {
-		a.note(p)
+		a.note(writeCommandEntry, p)
 	}
 }
 
@@ -1143,7 +1157,7 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 	if err := fsutil.WriteFileAtomic(target, []byte(content), 0o755); err != nil {
 		return
 	}
-	a.note(target)
+	a.note(writeCommandEntry, target)
 }
 
 // stepPathEntry records the installed PATH entry in ~/.abcd/path-entry, for the
@@ -1281,7 +1295,7 @@ func (a *applyCtx) installPinnedSymlink(target string, kind binTargetKind) {
 		return
 	}
 	if err := os.Symlink(source, target); err == nil {
-		a.note(target)
+		a.note(writeCommandEntry, target)
 	} else {
 		a.refuse("could not write the PATH entry " + displayPath(target) + ": " + errText(err))
 	}
@@ -1360,7 +1374,7 @@ func (a *applyCtx) stepRules() {
 	// Contained through an os.Root opened at the repo: a committed `.abcd` ancestor
 	// symlink must not land rules.json outside the working tree (GHSA-xrf8-4432-gw2f).
 	if err := writeRepoJSON(a.cwd, rulesRelPath, rules); err == nil {
-		a.note(filepath.Join(a.cwd, ".abcd", "rules.json"))
+		a.note(writeRules, filepath.Join(a.cwd, ".abcd", "rules.json"))
 	}
 }
 
@@ -1389,7 +1403,7 @@ func (a *applyCtx) stepVersionStamp() {
 	meta["project_name"] = a.det.RepoIdentity.Name
 	cfgMap["meta"] = meta
 	if err := writeConfig(a.cwd, cfgMap); err == nil {
-		a.note(configPath(a.cwd))
+		a.note(writeSettings, configPath(a.cwd))
 	}
 }
 

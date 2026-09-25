@@ -181,9 +181,11 @@ func detectPluginRoot(ok bool) []Gap {
 		ID:       "plugin.root_missing",
 		Category: PluginOwned,
 		Scope:    "machine",
-		Title:    "plugin root not resolvable",
-		Detail:   "ABCD_PLUGIN_ROOT and CLAUDE_PLUGIN_ROOT are unset and the fallback found no plugin layout.",
-		FixHint:  "Reinstall the abcd plugin, or set ABCD_PLUGIN_ROOT.",
+		// Plain words for the person, not the mechanism (iss-164): the two
+		// environment names are named only in the fix hint, with what they are.
+		Title:   "abcd's plugin files were not found on this machine",
+		Detail:  "abcd looked for the folder its plugin was installed into and found none, so it cannot check the automatic hooks that run it.",
+		FixHint: "Reinstall the abcd plugin in your AI assistant; or, to point abcd at a plugin folder by hand, set the ABCD_PLUGIN_ROOT environment variable to that folder (the assistant normally supplies it as CLAUDE_PLUGIN_ROOT).",
 	}}
 }
 

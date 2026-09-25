@@ -353,6 +353,17 @@ changing how reviews run, because no other adapter ships. The words live in core
 front door shows the same explanation and none invents its own; the question
 line itself is unchanged, so a piped answer stream lines up with it.
 
+**The result explains itself to the person who ran it** (iss-164). Beside the
+exact record (every write, change, note, declined category, outstanding step and
+optional step left undone), the install returns a one-sentence headline for its
+status and a plain-language summary: one item per kind of write, per declined
+category, for the required work still outstanding, and per optional step left
+undone, each saying what it is, why it matters and what, if anything, to do, and
+naming the paths or identifiers it explains. The words are core's, written for
+the product thinker and the technical facilitator rather than abcd's
+implementers, with no raw environment names; the text render leads with them and
+prints the exact record after as detail.
+
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
 was not told to adopt. The cost is that a stdin held open and silent makes a

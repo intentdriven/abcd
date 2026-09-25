@@ -170,6 +170,17 @@ type InstallResult struct {
 	// reported rather than assumed: a run that says "already up to date" while
 	// leaving optional work on the table has to say so (iss-166).
 	OptionalSkipped []string `json:"optional_skipped,omitempty"`
+	// Headline says in one plain sentence what the run amounted to, and Summary
+	// explains every reported item (each write, each declined kind of change,
+	// the required work still outstanding, the optional steps left undone) as
+	// what it is, why it matters and what, if anything, to do. They are for
+	// the person who ran the install; the fields above stay the exact record
+	// (iss-164).
+	Headline string        `json:"headline"`
+	Summary  []SummaryItem `json:"summary"`
+	// writeKinds runs parallel to Writes: what each write is, which the summary
+	// explains. Unexported, so the wire shape is unchanged.
+	writeKinds []writeKind
 }
 
 // ApplyResult is the outcome of one apply step.

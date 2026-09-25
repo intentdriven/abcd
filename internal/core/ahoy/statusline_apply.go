@@ -194,9 +194,9 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		return
 	}
 	if settingBytes != nil {
-		a.note(settingPath)
+		a.note(writeStatusLine, settingPath)
 	}
-	a.note(hs.path)
+	a.note(writeStatusLine, hs.path)
 }
 
 // repairStatusLine closes the dangling gap: the harness's command names an abcd
@@ -238,7 +238,7 @@ func (a *applyCtx) repairStatusLine() {
 		a.refuse("could not write " + displayPath(hs.path) + " (" + errText(err) + "); the dangling status line was left as it is.")
 		return
 	}
-	a.note(hs.path)
+	a.note(writeStatusLine, hs.path)
 }
 
 // uninstallStatusLine is the uninstall half: a status line that is abcd's is
@@ -440,5 +440,5 @@ func (a *applyCtx) stepLocalTier() {
 			". abcd never reaches the local tier through a symlink; remove what is there and re-run `abcd ahoy install`.")
 		return
 	}
-	a.note(filepath.Join(a.cwd, filepath.FromSlash(localTierRelPath)))
+	a.note(writeLocalTier, filepath.Join(a.cwd, filepath.FromSlash(localTierRelPath)))
 }

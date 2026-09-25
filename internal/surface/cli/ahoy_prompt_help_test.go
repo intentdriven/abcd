@@ -65,3 +65,62 @@ func TestStdinPrompterRendersNoHelpForAnUnknownKey(t *testing.T) {
 		t.Fatalf("rendered %q, want only the question and the echoed answer %q", buf.String(), want)
 	}
 }
+
+// TestAhoyInstallTextLeadsWithThePlainSummary is iss-164 at the front door: the
+// text render opens with core's headline and its plain-language items (what,
+// why, what to do) before the exact record of paths, so a person reads what
+// changed for them first and the implementer's detail after.
+func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
+	hermeticEnv(t)
+	repo := gittest.NewRepo(t).Root()
+	t.Chdir(repo)
+	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "both",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
+	out, errOut, err := runCLIPipedStdinSplit(t, "", append(args, "--json")...)
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
+	}
+	var res ahoy.InstallResult
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Headline == "" || len(res.Summary) == 0 {
+		t.Fatalf("the JSON envelope carries no plain summary: %s", out)
+	}
+
+	// A second repository, rendered as text, so the first run's writes do not
+	// turn this one into an up-to-date no-op.
+	repo2 := gittest.NewRepo(t).Root()
+	t.Chdir(repo2)
+	text, errOut, err := runCLIPipedStdinSplit(t, "", args...)
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, text, errOut)
+	}
+	s := string(text)
+	firstDetail := strings.Index(s, "  wrote: ")
+	if firstDetail < 0 {
+		t.Fatalf("no write detail in the text render:\n%s", s)
+	}
+	if at := strings.Index(s, res.Headline); at < 0 || at > firstDetail {
+		t.Errorf("the headline does not lead the render:\n%s", s)
+	}
+	// The machine-level writes (the command entry, the session store) land on
+	// the first run only, so the second repository's summary is the first's
+	// less those; every item it does print must come whole and before detail.
+	shown := 0
+	for _, it := range res.Summary {
+		at := strings.Index(s, it.What)
+		if at < 0 {
+			continue
+		}
+		shown++
+		for _, part := range []string{it.What, it.Why, it.Action} {
+			if at := strings.Index(s, part); at < 0 || at > firstDetail {
+				t.Errorf("summary text %q is not printed before the detail:\n%s", part, s)
+			}
+		}
+	}
+	if shown < 5 {
+		t.Errorf("only %d summary items were printed:\n%s", shown, s)
+	}
+}

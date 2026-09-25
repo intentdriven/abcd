@@ -2892,6 +2892,18 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy install — %s\n", res.Status)
+				// Core's plain summary first (iss-164): what changed for the
+				// person, why it matters and what to do. The exact record of
+				// paths and identifiers follows as detail.
+				if res.Headline != "" {
+					fmt.Fprintf(w, "\n%s\n", res.Headline)
+				}
+				for _, it := range res.Summary {
+					fmt.Fprintf(w, "\n  - %s\n    %s\n    %s\n", it.What, it.Why, it.Action)
+				}
+				if len(res.Summary) > 0 {
+					fmt.Fprint(w, "\ndetail:\n")
+				}
 				for _, c := range res.Changes {
 					fmt.Fprintf(w, "  changed: %s\n", c)
 				}
