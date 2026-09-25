@@ -58,6 +58,14 @@ Ruled by the product thinker on 2026-09-21, in the interview that filed and plan
 2. The provider is an adapter behind a seam, one shipped.
 3. The same pages for every repository, opt-out per page.
 
+Taken in the implementing lane (autonomous run A, 2026-09-26), within the rulings above:
+
+4. **The credential's interim source (2026-09-26).** The credential store this intent resolves through is itd-2609221017023290, planned and not built. Until it lands, the hosting credential is read by name through one narrow interface (`internal/core/credential`, `Resolve(name)`) from one machine-scoped file, `~/.abcd/credentials.json`, refused unless it is a regular file this uid owns at mode 0600 or tighter. itd-2609221017023290 is the successor: it replaces the source behind the interface, and no reader changes.
+5. **Secrets are the person's step (2026-09-26).** The forge encrypts an environment secret before it accepts it, and doing that here would add a dependency and pass the value through abcd. The verb reads which secret names the deploy environment holds and prints the exact `gh secret set` command for each missing one.
+6. **Render on release, whoever made it (2026-09-26).** The workflow runs on `release: published`, on the `release` workflow completing on the default branch (a release created with the workflow's own token fires no release event), and on dispatch. It renders with abcd's latest release, checksum- and attestation-verified, so the file does not change when abcd does.
+7. **The page set's edges (2026-09-26).** The status page is the record health page; the timeline is the genealogy the dashboard carries; the landing page and the record pages cannot be switched off beneath the explorer. The composition setup derives quotes the recorded identity block and composes the landing page from `docs/README.md`, and the static inputs are seeded as byte copies of abcd's own.
+8. **The account is the token's (2026-09-26).** The provider account is the one the credential reaches; a token reaching none or several is refused rather than guessed at, so no account identifier is configured anywhere.
+
 ## Open Questions
 
 _None open._

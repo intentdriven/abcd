@@ -1966,6 +1966,41 @@
       "flags": []
     },
     {
+      "path": "abcd site setup",
+      "hidden": false,
+      "sentence": "Take the website from this checkout to a live address: Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
+      "flags": [
+        {
+          "name": "confirm",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "domain",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "name",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "yes",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd spec",
       "hidden": false,
       "group": "records",
