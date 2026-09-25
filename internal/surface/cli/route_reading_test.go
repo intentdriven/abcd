@@ -19,9 +19,20 @@ func TestReadingIngestCarriesTheReceipt(t *testing.T) {
 	runID, manifestHash, def := parkedRunForIngest(t, srcRoot, repo, "detection")
 	outPath := detectionPayloadFile(t, runID, manifestHash, def.Regime, def)
 
-	_, _, err := runCLISplit(t, "reading", "ingest", "--reading-json", outPath, "--route", "cold-reading-widening=economy")
-	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), `does not dispatch "cold-reading-widening"`) {
-		t.Fatalf("a --route for a position the payload does not name: err %v", err)
+	// The verb registers all four positions, so the refusal speaks of this
+	// invocation, never of the verb: a detection output dispatches the
+	// detection agent alone (AC 7's refusal half; a second --route is refused, not merged).
+	for _, routes := range [][]string{
+		{"--route", "cold-reading-widening=economy"},
+		{"--route", "cold-reading-detection=economy", "--route", "cold-reading-widening=economy"},
+	} {
+		args := append([]string{"reading", "ingest", "--reading-json", outPath}, routes...)
+		_, _, err := runCLISplit(t, args...)
+		if exitCodeOf(err) != 2 ||
+			!strings.Contains(err.Error(), `this invocation dispatches cold-reading-detection, not "cold-reading-widening"`) ||
+			strings.Contains(err.Error(), "this verb") {
+			t.Fatalf("%v: a --route for a position the payload does not name: err %v", routes, err)
+		}
 	}
 
 	stdout, stderr, err := runCLISplit(t, "reading", "ingest", "--reading-json", outPath, "--json",

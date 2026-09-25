@@ -21,10 +21,13 @@ type FlagRoute struct {
 }
 
 // ParseRoutes parses every --route value and refuses, before any step runs, a
-// value that is malformed, names an agent the verb does not dispatch (one
-// outside the roster included), names a tier outside the vocabulary, names a
-// connection not configured on this machine, carries a malformed setting, or
-// repeats an agent. dispatched is the set of agents the verb can dispatch.
+// value that is malformed, names an agent this invocation does not dispatch
+// (one outside the roster included), names a tier outside the vocabulary,
+// names a connection not configured on this machine, carries a malformed
+// setting, or repeats an agent. dispatched is the set of agents this
+// invocation dispatches, which for every delegating verb is one agent, so a
+// second --route naming another agent is refused rather than merged (the
+// 2026-09-25 ruling on AC 7 in .abcd/work/DECISIONS.md).
 func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, error) {
 	can := map[string]bool{}
 	for _, a := range dispatched {
@@ -43,8 +46,8 @@ func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, er
 			return nil, fmt.Errorf("--route %s: %w", shown, err)
 		}
 		if !can[fr.Agent] || !inRoster(fr.Agent) {
-			return nil, fmt.Errorf("--route %s: this verb does not dispatch %q; it dispatches %s",
-				shown, layered.BoundKey(fr.Agent), dispatchList(dispatched))
+			return nil, fmt.Errorf("--route %s: this invocation dispatches %s, not %q; a --route naming any other agent is refused, never merged or ignored",
+				shown, dispatchList(dispatched), layered.BoundKey(fr.Agent))
 		}
 		if seen[fr.Agent] {
 			return nil, fmt.Errorf("--route %s: %s is routed more than once in this invocation", shown, fr.Agent)

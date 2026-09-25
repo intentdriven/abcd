@@ -78,7 +78,7 @@ func addRouteFlag(cmd *cobra.Command, agents ...string) *routeFlag {
 	rf := &routeFlag{agents: agents}
 	cmd.Flags().StringArrayVar(&rf.texts, routeFlagName, nil,
 		"route one agent for this run: "+oracle.RouteSyntax+", tier one of "+tierHelp()+
-			" (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)")
+			" (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)")
 	return rf
 }
 

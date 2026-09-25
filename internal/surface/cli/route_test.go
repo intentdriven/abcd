@@ -94,7 +94,7 @@ func principlesPayload(t *testing.T) string {
 }
 
 // TestRouteRefusalsExitTwoBeforeAnyStep is AC 7's refusal half at the surface:
-// an agent the verb does not dispatch, a tier outside the vocabulary, a
+// an agent this invocation does not dispatch, a tier outside the vocabulary, a
 // connection not configured on this machine, a malformed routing table and a
 // --route on a deterministic mode each exit 2, and nothing is written.
 func TestRouteRefusalsExitTwoBeforeAnyStep(t *testing.T) {
@@ -105,7 +105,7 @@ func TestRouteRefusalsExitTwoBeforeAnyStep(t *testing.T) {
 		want   string
 		broken string
 	}{
-		{"agent not dispatched", []string{"--route", "scribe=economy"}, `does not dispatch "scribe"`, ""},
+		{"agent not dispatched", []string{"--route", "scribe=economy"}, `this invocation dispatches principle-distiller, not "scribe"`, ""},
 		{"tier outside the vocabulary", []string{"--route", "principle-distiller=cheap"}, `tier "cheap" is not one of`, ""},
 		{"connection not configured", []string{"--route", "principle-distiller=local@lab"}, `connection "lab" is not configured`, ""},
 		{"malformed routing table", nil, "schema_version", `{"schema_version":2,"agents":{}}`},

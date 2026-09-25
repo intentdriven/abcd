@@ -334,7 +334,7 @@ Validate host-produced lesson JSON against a packed lifeboat and write the survi
 
 ```
       --lessons-json string   path to the host-produced lesson JSON (or - for stdin)
-      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 #### `abcd disembark pack`
@@ -371,7 +371,7 @@ Compose the lifeboat's press release (deterministic from the brief/spine, or val
 
 ```
       --press-release-json string   path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode
-      --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 #### `abcd disembark principles`
@@ -384,7 +384,7 @@ Distil principles from a packed lifeboat (deterministic from the ADRs, or valida
 
 ```
       --principles-json string   path to host-produced principle JSON (or - for stdin); absent runs deterministic mode
-      --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray        route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 #### `abcd disembark probe`
@@ -409,7 +409,7 @@ Review a packed lifeboat against its source repo — a registered verdict and ci
 
 ```
       --review-json string   path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode
-      --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray    route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 ### `abcd docs`
@@ -1055,7 +1055,7 @@ Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest 
 
 ```
       --issue-drift         walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
-      --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --strict              with --issue-drift: exit 1 when any finding is reported (the CI mode)
 ```
 
@@ -1068,7 +1068,7 @@ Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
 **Flags:**
 
 ```
-      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --verdict-json string   path to the intent-audit verdict JSON
 ```
 
@@ -1177,7 +1177,7 @@ Cut a release: derive the version and the record set from what shipped (exit 1 w
 ```
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
-      --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 ### `abcd lint`
@@ -1402,7 +1402,7 @@ rolled_back_records on every exit, including a failing one.
 
 ```
       --reading-json string   path to the JSON the cold reading returned
-      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (repeatable; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**
