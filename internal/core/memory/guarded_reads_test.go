@@ -55,8 +55,15 @@ func TestLintSkipsSymlinkedTypedPage(t *testing.T) {
 	}
 	plantSymlink(t, outside, filepath.Join(mem, "fact_eng_injected.md"))
 
-	if isTypedMemoryPagePath(mem, filepath.Join(mem, "fact_eng_injected.md")) {
-		t.Fatal("a symlinked page was followed and classified as a typed memory page")
+	store, err := openStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, p := range store.typedPages() {
+		if p.rel == "fact_eng_injected.md" {
+			t.Fatal("a symlinked page was followed and classified as a typed memory page")
+		}
 	}
 }
 

@@ -113,9 +113,11 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	// already refused at WritePages -> validatedMemoryDir, but that fires only
 	// after these reads; guarding here closes the pre-write read. A missing store
 	// is fine (present=false) — WritePages materialises it.
-	if _, _, err := safeMemoryDir(root); err != nil {
+	store, err := openStore(root)
+	if err != nil {
 		return IngestResult{}, err
 	}
+	defer store.Close()
 	now := req.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -167,8 +169,6 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 			memoryConsumer, _ = consumers["memory"].(map[string]any)
 		}
 	}
-	mem := Dir(root)
-
 	// ---- Registry-hit fast path (validate BEFORE mutate) -------------------
 	var validRecorded []string
 	var recorded []string
@@ -176,7 +176,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 		recorded = anyToStrings(memoryConsumer["pages"])
 		allValid := len(recorded) > 0
 		for _, pageName := range recorded {
-			hashes, present := pageHashSet(mem, pageName)
+			hashes, present := pageHashSet(store, pageName)
 			if present && contains(hashes, contentHash) {
 				validRecorded = append(validRecorded, pageName)
 			} else {
@@ -295,13 +295,13 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	}
 
 	// ---- Existing pages + repair safety ------------------------------------
-	existing := existingPageFrontmatter(mem)
+	existing := existingPageFrontmatter(store)
 	if repairing {
 		for _, pageName := range recorded {
 			if contains(validRecorded, pageName) {
 				continue
 			}
-			hashes, present := pageHashSet(mem, pageName)
+			hashes, present := pageHashSet(store, pageName)
 			if !present {
 				continue // missing — re-distil writes fresh
 			}
@@ -472,12 +472,11 @@ func backlinkOtherHashes(registry map[string]any, plan WritePlan, contentHash st
 // fact; a few MiB is far more than any real one.
 const maxMemoryPageBytes = 4 << 20 // 4 MiB
 
-func pageHashSet(mem, filename string) ([]string, bool) {
+func pageHashSet(store *storeHandle, filename string) ([]string, bool) {
 	if !IsMemoryPageName(filename) {
 		return nil, false
 	}
-	path := filepath.Join(mem, filename)
-	raw, err := fsutil.ReadGuarded(path, maxMemoryPageBytes)
+	raw, err := store.read(filename, maxMemoryPageBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false
@@ -490,30 +489,23 @@ func pageHashSet(mem, filename string) ([]string, bool) {
 	return SourceHashes(pageSourceBlock(string(raw))), true
 }
 
-func existingPageFrontmatter(mem string) map[string]map[string]any {
+// existingPageFrontmatter reads every top-level page's frontmatter through the
+// store handle, so a hostile page can neither redirect the read nor exhaust
+// memory, and nothing is read from outside the store.
+func existingPageFrontmatter(store *storeHandle) map[string]map[string]any {
 	pages := map[string]map[string]any{}
-	entries, err := os.ReadDir(mem)
-	if err != nil {
-		return pages
-	}
-	for _, e := range entries {
-		if !e.Type().IsRegular() || !IsMemoryPageName(e.Name()) {
-			continue
-		}
-		// ReadGuarded re-checks regular-file on the open fd (closing the ReadDir→
-		// open symlink-swap TOCTOU) and caps the size, so a hostile page cannot
-		// redirect the read or exhaust memory.
-		raw, err := fsutil.ReadGuarded(filepath.Join(mem, e.Name()), maxMemoryPageBytes)
+	for _, name := range store.pageNames() {
+		raw, err := store.read(name, maxMemoryPageBytes)
 		if err != nil {
-			pages[e.Name()] = map[string]any{}
+			pages[name] = map[string]any{}
 			continue
 		}
 		fm, err := parseFrontmatter(string(raw))
 		if err != nil {
-			pages[e.Name()] = map[string]any{}
+			pages[name] = map[string]any{}
 			continue
 		}
-		pages[e.Name()] = fm
+		pages[name] = fm
 	}
 	return pages
 }

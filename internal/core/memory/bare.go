@@ -3,13 +3,8 @@ package memory
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // bare.go — the SD001-non-mutating bare render: page count by class,
@@ -36,15 +31,17 @@ type BareStatus struct {
 
 // Bare renders the read-only store status.
 func Bare(repoRoot string) (BareStatus, error) {
-	// Refuse a symlinked store DIRECTORY (GHSA-72rp): the leaf O_NOFOLLOW guards
-	// below do not contain a symlinked ancestor, so a committed `.abcd/memory`
-	// symlink would otherwise have its out-of-repo pages crawled and disclosed.
-	mem, present, err := safeMemoryDir(repoRoot)
+	// Every read goes through the store handle: a symlinked store DIRECTORY is
+	// refused when it is opened (GHSA-72rp), and no read below can leave it
+	// (iss-2608291814572914).
+	store, err := openStore(repoRoot)
 	if err != nil {
 		return BareStatus{}, err
 	}
+	defer store.Close()
+	present := store.present()
 
-	infos := barePageInfos(mem)
+	infos := barePageInfos(store)
 	// Seed the collections non-nil so an empty or contradiction-free store
 	// marshals them as [] in --json, not bare null (every --json collection is an
 	// empty list, never null; a healthy store keeps an empty contradictions list).
@@ -77,12 +74,12 @@ func Bare(repoRoot string) (BareStatus, error) {
 	})
 
 	registry := map[string]any{}
-	if r, err := LoadRegistry(SourcesIndexPath(repoRoot)); err == nil {
+	if r, err := store.registry(); err == nil {
 		registry = r
 	}
 	status.LastIngest = bareLastIngest(registry)
 
-	if contrText, ok := readOrEmpty(filepath.Join(mem, "contradictions.md")); ok {
+	if contrText, ok := store.readText("contradictions.md"); ok {
 		for _, line := range strings.Split(contrText, "\n") {
 			t := strings.TrimSpace(line)
 			if strings.HasPrefix(t, "- ") {
@@ -98,7 +95,7 @@ func Bare(repoRoot string) (BareStatus, error) {
 		}
 		stale := map[string]bool{}
 		for name, want := range desired {
-			current, ok := readOrEmpty(filepath.Join(mem, name))
+			current, ok := store.readText(name)
 			if !ok || sha256Hex(current) != sha256Hex(want) {
 				stale[name] = true
 			}
@@ -111,25 +108,14 @@ func Bare(repoRoot string) (BareStatus, error) {
 		}
 	}
 
-	status.Headroom = bareHeadroomLines(repoRoot, mem)
+	status.Headroom = bareHeadroomLines(repoRoot, store)
 	return status, nil
 }
 
-func barePageInfos(mem string) []PageInfo {
-	entries, err := os.ReadDir(mem)
-	if err != nil {
-		return nil
-	}
+func barePageInfos(store *storeHandle) []PageInfo {
 	var infos []PageInfo
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if e.Type().IsRegular() && IsMemoryPageName(e.Name()) {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		if text, ok := readOrEmpty(filepath.Join(mem, name)); ok {
+	for _, name := range store.pageNames() {
+		if text, ok := store.readText(name); ok {
 			infos = append(infos, pageInfoFrom(name, text))
 		}
 	}
@@ -172,11 +158,10 @@ func fmtSignedPct(fraction float64) string {
 	return fmt.Sprintf("+%.0f%%", pct)
 }
 
-func bareHeadroomLines(repoRoot, mem string) []string {
+func bareHeadroomLines(repoRoot string, store *storeHandle) []string {
 	const header = "Quotation-budget headroom:"
-	indexPath := CoverageIndexPath(repoRoot)
 
-	raw, err := fsutil.ReadGuarded(indexPath, maxRegistryBytes)
+	raw, err := store.read(coverageIndexName, maxRegistryBytes)
 	if err != nil {
 		return []string{header + " coverage index not built yet — run `abcd memory lint`"}
 	}
@@ -193,21 +178,8 @@ func bareHeadroomLines(repoRoot, mem string) []string {
 	}
 
 	// Read-only crawl over the same typed pages the lint crawls.
-	var pages []crawledPage
-	_ = filepath.WalkDir(mem, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		if !isTypedMemoryPagePath(mem, path) {
-			return nil
-		}
-		if b, err := fsutil.ReadGuarded(path, maxMemoryPageBytes); err == nil {
-			rel, _ := filepath.Rel(mem, path)
-			pages = append(pages, crawledPage{rel: filepath.ToSlash(rel), text: string(b)})
-		}
-		return nil
-	})
-	registry, regErr := LoadRegistry(SourcesIndexPath(repoRoot))
+	pages := store.typedPages()
+	registry, regErr := store.registry()
 	if regErr != nil {
 		registry = nil
 	}
@@ -269,15 +241,4 @@ func bareHeadroomLines(repoRoot, mem string) []string {
 		lines = append(lines, fmt.Sprintf("  %s: coverage unavailable (%v)", short12(sh), unavailable[sh]))
 	}
 	return lines
-}
-
-// readOrEmpty reads one store file through the guarded primitive: the store
-// sits inside the repo working tree — a trust boundary — so a committed
-// symlink leaf is refused rather than followed, and the read is size-capped.
-func readOrEmpty(path string) (string, bool) {
-	raw, err := fsutil.ReadGuarded(path, maxMemoryPageBytes)
-	if err != nil {
-		return "", false
-	}
-	return string(raw), true
 }
