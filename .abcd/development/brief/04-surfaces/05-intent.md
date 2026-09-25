@@ -605,7 +605,7 @@ once a table is accepted. The emit writes the request block into the request
 document as a `## Routing` section after the provenance block, outside the
 hashed prompt, so the verdict's `prompt_hash` does not move with the machine's
 routing, and returns it as a `routing` member while the review is still owed.
-The request `spec close` emits when it ships an intent carries the same
+The request emitted when a spec's close ships its intent carries the same
 section. The close is a record move whose emit is report-only, so a routing
 table that cannot be read leaves that request without the section, one stderr
 warning names the re-emit through the audit that adds it, and the close stands.
