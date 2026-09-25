@@ -228,7 +228,14 @@ func (l *Layered) Rows(agent string) ([]LayerRow, error) {
 				return nil, err
 			}
 			tier, _ := ParseTier(fr.Tier)
-			out = append(out, LayerRow{Layer: fd.Layer, Origin: fd.Origin, Row: Row{Tier: tier, Settings: fr.Settings}, Connection: fr.Connection})
+			// A --route states no fan-out: the step runs at the bound the
+			// layer beneath resolves to, clamped, which is Resolve's own
+			// answer (review-tier1 F5), so the board and the step agree.
+			r, err := Resolve(agent, l, NoConnections{})
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, LayerRow{Layer: fd.Layer, Origin: fd.Origin, Row: Row{Tier: tier, FanOut: r.Row.FanOut, Settings: fr.Settings}, Connection: fr.Connection})
 			continue
 		}
 		row, _, err := decodeRow(agent, fd.Raw)

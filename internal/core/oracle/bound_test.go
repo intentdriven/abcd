@@ -67,3 +67,30 @@ func TestSettingRefusalsBoundWhatTheyEcho(t *testing.T) {
 		}
 	}
 }
+
+// TestRowsReportsTheFlagRowAtTheResolvedFanOut is review-tier1 F5: a --route
+// row carries no fan-out of its own, and Rows listed it at 0 while Resolve
+// resolves it to the clamped bound. The board and a step must agree.
+func TestRowsReportsTheFlagRowAtTheResolvedFanOut(t *testing.T) {
+	f := newFx(t)
+	f.repo(`{"scribe":{"tier":"economy"}}`)
+	l := f.load()
+	routes, err := ParseRoutes([]string{"scribe=frontier"}, []string{"scribe"}, NoConnections{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Apply(routes); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := l.Rows("scribe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := Resolve("scribe", l, NoConnections{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].Row.FanOut != r.Row.FanOut || rows[0].Row.FanOut < 1 {
+		t.Fatalf("flag row fan-out %d, Resolve says %d", rows[0].Row.FanOut, r.Row.FanOut)
+	}
+}
