@@ -12,6 +12,24 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-25 (itd-2609020625405251 — a detection item cites the condition it names)
+
+Iteration 2's condition disposition joins a researcher's mark on a scope
+condition to the reading item that occasioned it, and the join runs through the
+item's citation: where the constraint in play is a scope condition, the item
+cites the condition's `cond-` identity in `constraint_in_play`. The condition
+verb reads that citation and reports a mismatch with the condition it
+dispositions; it never refuses on one, because the item is the reading's word
+and the mark is the researcher's.
+
+### cold-reading-detection 0.1.3
+
+PATCH: the item shape gains the one sentence above, and says the reading names
+the condition without marking it. The body fields, the regime, the object's
+source list and the blindness core are untouched, so the ingest validates a
+detection body exactly as before; the other three definitions carry no such
+field and do not move. Unmeasured, as before.
+
 ## 2026-09-16 (iss-2609100505140261 — the provenance pair is echoed, never computed)
 
 The fidelity-review request now carries a `## Provenance (host-computed …)`

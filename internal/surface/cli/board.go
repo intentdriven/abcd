@@ -6,6 +6,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -28,6 +29,9 @@ type boardOutput struct {
 	// Peers is present only when a live peer holds a record that differs here
 	// (itd-2609091416295622); omitted, not null, otherwise.
 	Peers *boardPeersLine `json:"peers,omitempty"`
+	// Oracle is the model-tier routing, one row per agent, present only once a
+	// routing table is accepted (itd-2609170822093401); omitted otherwise.
+	Oracle []oracle.BoardRow `json:"oracle,omitempty"`
 }
 
 // boardStatusline is the board's view of the row: the state the badge

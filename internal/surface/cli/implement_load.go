@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -32,12 +33,16 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 		Use:   "load --site preflight|eval-harness",
 		Short: "Check the machine's load before abcd's own tests start; warns, never refuses (exit 0)",
 		Long: "Read the machine's load averages and process table once and warn when a program\n" +
-			"outside the running work has held a near-full core (a lifetime CPU share of 0.9 or\n" +
-			"more) for longer than the stray limit, or when the one-minute load average is above\n" +
-			"the extreme limit. `make preflight` runs it first, and the eval harness runs it once\n" +
-			"at its start; it never runs once per test package. It never refuses, never waits and\n" +
-			"never stops anything, and it exits 0 on every status: ok, warning, skipped (in CI,\n" +
-			"where the line says why) and unchecked (a platform other than macOS and\n" +
+			"outside the running work has used nearly all the CPU it could get for longer than\n" +
+			"the stray limit, or when the one-minute load average is above the extreme limit.\n" +
+			"What a program could get is its fair share: the online cores divided by the\n" +
+			"one-minute load, and never more than one core. A lifetime CPU share of at least 0.9\n" +
+			"of it makes a stray, so forty busy loops on 16 cores, each at 0.4 of a core, are all\n" +
+			"strays, as one loop at a full core of an idle machine is. Your programs and other\n" +
+			"accounts' are judged alike. `make preflight` runs it first, and the eval harness runs\n" +
+			"it once at its start; it never runs once per test package. It never refuses, never\n" +
+			"waits and never stops anything, and it exits 0 on every status: ok, warning, skipped\n" +
+			"(in CI, where the line says why) and unchecked (a platform other than macOS and\n" +
 			"Linux, or a read that failed).\n\n" +
 			"Your own strays are named with their pid, process group, age and CPU share, with\n" +
 			"commands to stop them that re-check each target first and never match by pattern;\n" +
@@ -47,7 +52,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"also written to the run log as a `load` event.\n\n" +
 			"The limits are per machine, in `~/.abcd/load-limits`, which the check reads and\n" +
 			"never creates. `#` starts a comment; every other line is `<key> <value>`:\n\n" +
-			"  stray-minutes 30   minutes at a near-full core before a program is a stray (1 to 10080)\n" +
+			"  stray-minutes 30   minutes at nearly all its share before a program is a stray (1 to 10080)\n" +
 			"  extreme-load 64    the one-minute load above which the machine is overloaded\n\n" +
 			"Either key may be omitted. The defaults are 30 minutes and four times the online\n" +
 			"core count. The file must be a regular file you own that nobody else can write, at\n" +
@@ -127,7 +132,7 @@ func renderLoadWarning(w io.Writer, res implement.LoadResult) {
 		fmt.Fprintf(w, "  Only the load was checked: %s.\n", res.Reason)
 	}
 	if len(res.OwnStrays) > 0 {
-		fmt.Fprintf(w, "  Your programs at a near-full core for over %s:\n", strayLimit)
+		fmt.Fprintf(w, "  Your programs at nearly all the CPU they can get, for over %s:\n", strayLimit)
 		width := 0
 		for _, s := range res.OwnStrays {
 			width = max(width, len(s.Name))
@@ -166,10 +171,17 @@ func renderLoadWarning(w io.Writer, res implement.LoadResult) {
 		fmt.Fprintln(w, "  Never by pattern (pkill -f, killall): a pattern also matches other sessions' programs.")
 	}
 	if res.OtherStrays.Count > 0 {
-		fmt.Fprintf(w, "  Other accounts: %d programs at a near-full core for over %s, using about %.1f cores.\n",
+		fmt.Fprintf(w, "  Other accounts: %d programs at nearly all the CPU they can get, for over %s, using about %.1f cores.\n",
 			res.OtherStrays.Count, strayLimit, res.OtherStrays.Cores)
 	}
 	if res.Load != nil {
+		// What one program can get at this load, said only when it is under a
+		// core, so a stray at 40% of a core reads as the whole of its share.
+		fair := machineload.FairShare(machineload.Snapshot{Load1: res.Load.One, HasLoad: true, Cores: res.Cores})
+		share := ""
+		if stray && fair < 1 {
+			share = fmt.Sprintf("a program can get about %d%% of a core", int(math.Round(fair*100)))
+		}
 		if extreme {
 			derivation := fmt.Sprintf("%d x %s", machineload.DefaultExtremeFactor, coresText(res))
 			if lim.ExtremeFromFile {
@@ -177,6 +189,11 @@ func renderLoadWarning(w io.Writer, res implement.LoadResult) {
 			}
 			fmt.Fprintf(w, "  Load %.1f over 1 min (%.1f over 5, %.1f over 15) is above the extreme limit of %s (%s).\n",
 				res.Load.One, res.Load.Five, res.Load.Fifteen, num(lim.ExtremeLoad), derivation)
+			if share != "" {
+				fmt.Fprintf(w, "  At that load %s.\n", share)
+			}
+		} else if share != "" {
+			fmt.Fprintf(w, "  Load %.1f on %s: %s.\n", res.Load.One, coresText(res), share)
 		} else {
 			fmt.Fprintf(w, "  Load %.1f on %s.\n", res.Load.One, coresText(res))
 		}
