@@ -210,7 +210,12 @@ which is what it is. The handshake is locked and keyed on content per
 one carrying different bytes replaces the staged copy (the later snapshot of a
 session is the one worth keeping), and a drain removes a staged file only while
 it still holds the bytes it captured. One `(session, agent)` has one staged
-copy, and a fresher copy is never lost (GHSA-xq36-hcgf-9wrj).
+copy, and a fresher copy is never lost (GHSA-xq36-hcgf-9wrj). The lock is
+per agent, never per repository: each staged file's key (its agent id, or the
+session id for a main thread) has its own lock file under `staging/locks/`, so
+a burst of simultaneous sub-agent completions stages in parallel instead of
+queuing behind one lock whose timeout would refuse the tail of the burst. A
+lock file is removed with the staged file it guards.
 
 Staging is also **the outcome record the store never had.** Before it, an absent
 record spanned "never ended", "ended before the store existed" and "ended and

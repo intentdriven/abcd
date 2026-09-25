@@ -75,15 +75,37 @@ const stageSidecarSuffix = ".stage.json"
 // corrupted file.
 const stageSidecarSchema = 1
 
-// stagingLockFilename is the per-repo staging lock, a sibling of the staged
-// files (listStaged filters on stagedSuffix, so the lock is invisible to it).
-// Every writer of the staging dir — Stage's list-compare-write and Drain's
-// remove-if-unchanged — takes it through fsutil.WithFileLock, the one
-// inter-process load-modify-write primitive, so the per-session idempotency
+// stagingLocksDirName is the directory, under staging/, that holds the staging
+// locks: one lock file per staged key, never one for the whole directory.
+//
+// The shape is the product thinker's ruling on iss-2609090828371674 (M22,
+// 2026-09-23): each agent stages behind its own lock. A single per-repo lock
+// admitted roughly ten writers a second under contention — the flock helper's
+// backoff ceiling sets that rate, not the critical section — so a burst of
+// simultaneous sub-agent completions past about fifty ran into the staging
+// timeout, and a stage that times out is a transcript written nowhere. Keyed
+// per agent, distinct agents never wait on each other, and the only contention
+// left is the one the lock exists for: one agent's own re-fired stage against
+// its own drain.
+//
+// The key is the staged filename's key (stagedKey: the agent id, or the session
+// id for a main thread), so every mutator of one staged file — Stage's
+// list-compare-write, Drain's remove-if-unchanged, quarantine's move and
+// Discard — derives the same lock from the file's own name without reading its
+// sidecar. Each goes through fsutil.WithFileLock, the one inter-process
+// load-modify-write primitive, so the per-(session, agent) idempotency
 // guarantee holds across concurrent hooks and not just single-threaded
-// (GHSA-xq36-hcgf-9wrj). It nests inside nothing: Drain releases it before
-// Capture takes the store's repoLock, so the two can never wait on each other.
-const stagingLockFilename = ".lock"
+// (GHSA-xq36-hcgf-9wrj). A lock file is retired by whichever mutator retires
+// the staged file it guards, which WithFileLock's inode revalidation makes safe,
+// so the directory holds a lock only for a key that has something staged. It
+// nests inside nothing: Drain releases it before Capture takes the store's
+// repoLock, so the two can never wait on each other. It is a directory, so
+// listStaged — which skips directories and filters on stagedSuffix — never sees
+// a lock.
+const stagingLocksDirName = "locks"
+
+// stagingLockSuffix ends every staging lock filename.
+const stagingLockSuffix = ".lock"
 
 // stagingLockTimeout bounds how long a staging writer waits for the lock. It is
 // short because the SessionEnd hook must never wedge the session it is ending:
@@ -384,7 +406,7 @@ func Stage(repoRoot, rootSHA string, meta StageMeta, raw []byte) (StageResult, e
 		return StageResult{}, err
 	}
 	var res StageResult
-	err = withStagingLock(sdir, func() error {
+	err = withStagingLock(sdir, stagedKey(meta.Lineage), func() error {
 		var err error
 		res, err = stageLocked(sdir, meta, raw)
 		return err
@@ -395,15 +417,49 @@ func Stage(repoRoot, rootSHA string, meta StageMeta, raw []byte) (StageResult, e
 	return res, nil
 }
 
-// withStagingLock runs fn under the staging lock, naming the lock in the error
-// when the primitive itself refuses (contention, or an unsafe lock path); fn's
-// own error passes through unchanged.
-func withStagingLock(sdir string, fn func() error) error {
-	err := fsutil.WithFileLock(filepath.Join(sdir, stagingLockFilename), stagingLockTimeout, fn)
+// stagingLockPath is the lock file guarding every staged file whose filename
+// key is key.
+func stagingLockPath(sdir, key string) string {
+	return filepath.Join(sdir, stagingLocksDirName, key+stagingLockSuffix)
+}
+
+// stagedLockKey is the lock key for a staged (or quarantined) file, read from
+// its filename: the key stagedFilename wrote after the stamp. A name that does
+// not carry the stamp shape falls back to the whole name without its suffix,
+// which still names one file and still contains no separator (every caller
+// has already refused one).
+func stagedLockKey(path string) string {
+	name := filepath.Base(path)
+	if key := sessionIDFromStaged(name); key != "" && sessionIDRe.MatchString(key) {
+		return key
+	}
+	return strings.TrimSuffix(name, stagedSuffix)
+}
+
+// withStagingLock runs fn under the lock for one staged key, naming the lock
+// in the error when the primitive itself refuses (contention, or an unsafe
+// lock path); fn's own error passes through unchanged. The locks directory is
+// created 0o700 on demand and refused if it is anything but a real directory.
+func withStagingLock(sdir, key string, fn func() error) error {
+	locks := filepath.Join(sdir, stagingLocksDirName)
+	if err := fsutil.EnsureRealDir(locks, storeDirPerm); err != nil {
+		return fmt.Errorf("history: staging lock: %w", storeDirFault(locks, err))
+	}
+	err := fsutil.WithFileLock(stagingLockPath(sdir, key), stagingLockTimeout, fn)
 	if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
 		return fmt.Errorf("history: staging lock: %w", err)
 	}
 	return err
+}
+
+// retireStagingLock removes the lock file for key. It is called only by a
+// holder of that lock, inside fn, once the staged file the lock guards has
+// left the staging directory. A waiter already queued on the retired file
+// notices on acquisition and starts over on the current one (fsutil's inode
+// revalidation), so removing it costs nobody their exclusion. Failure is
+// ignored: a lock file left behind is an empty file, never a wrong answer.
+func retireStagingLock(sdir, key string) {
+	_ = os.Remove(stagingLockPath(sdir, key))
 }
 
 // stageLocked is Stage's critical section. listStaged is oldest-first, so when
@@ -798,7 +854,8 @@ func refreshedFromSource(s Staged, stagedBytes []byte) (body []byte, extended bo
 // id where a session id belongs.
 func removeStagedIfUnchanged(sdir string, s Staged, read []byte) error {
 	want := sha256.Sum256(read)
-	return withStagingLock(sdir, func() error {
+	key := stagedLockKey(s.Path)
+	return withStagingLock(sdir, key, func() error {
 		current, err := fsutil.ReadGuarded(s.Path, maxTranscriptBytes)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -815,6 +872,7 @@ func removeStagedIfUnchanged(sdir string, s Staged, read []byte) error {
 		if err := os.Remove(sidecarPathFor(s.Path)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
+		retireStagingLock(sdir, key)
 		return nil
 	})
 }
