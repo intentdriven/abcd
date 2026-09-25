@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "ahoy-install-onboarding-2026-09-12"
 origin: researcher-authored
 production_mode: hand-written
-wontfix_reason: "duplicate of iss-2608290810037524: the same closed-set flags on capture (--source, --category) whose refusal and help name no accepted values; the refusal half is fixed at tip (acceptedValues in internal/core/capture/validate.go), and the help half remains on the survivor"
+wontfix_reason: "duplicate of iss-2608290810037524: the same closed-set flags on capture (--source, --category) whose refusal and help name no accepted values; both the refusal (acceptedValues in internal/core/capture/validate.go) and capture --help enumerate the accepted values at tip; the residual (name the flag, stop blaming frontmatter) is carried by the survivor"
 ---
 
 capture --source and --category are closed sets but neither --help nor the refusal names the valid values: 'invalid source "session-observation"' with no list. An agent relaying a capture has to guess or fall back to the default. Every closed-set refusal should print the set, as --production-mode's help text already does.
