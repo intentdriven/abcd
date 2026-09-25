@@ -33,11 +33,22 @@ import (
 type ShippedOn func(relPath string) string
 
 // QueuedReview is one owed review in the drain queue: the reader's entry plus
-// the day its intent shipped ("" when unknown).
+// the day its intent shipped ("" when there is none to give) and which of the
+// three facts about that day holds (ShippedState).
 type QueuedReview struct {
 	ReviewEntry
-	Shipped string `json:"shipped,omitempty"`
+	Shipped      string `json:"shipped,omitempty"`
+	ShippedState string `json:"shipped_state"`
 }
+
+// The states of a queued review's shipped day. An undated entry is either
+// uncommitted (the history was read and does not hold it yet) or unknown (no
+// history was read at all); the two sort alike and mean different things.
+const (
+	ShippedDated       = "dated"
+	ShippedUncommitted = "uncommitted"
+	ShippedUnknown     = "unknown"
+)
 
 // ReviewQueue is the owed reviews, oldest shipped first, capped at Max.
 // Owed is the whole owed total before the cap; Remaining is how many the cap
@@ -76,11 +87,14 @@ func OwedQueue(repoRoot string, max int, shippedOn ShippedOn) (ReviewQueue, erro
 		if !e.IsOwed() {
 			continue
 		}
-		day := ""
+		day, state := "", ShippedUnknown
 		if shippedOn != nil {
-			day = shippedOn(paths[e.IntentID])
+			day, state = shippedOn(paths[e.IntentID]), ShippedDated
+			if day == "" {
+				state = ShippedUncommitted
+			}
 		}
-		q.Queue = append(q.Queue, QueuedReview{ReviewEntry: e, Shipped: day})
+		q.Queue = append(q.Queue, QueuedReview{ReviewEntry: e, Shipped: day, ShippedState: state})
 	}
 	sort.SliceStable(q.Queue, func(i, j int) bool {
 		a, b := q.Queue[i], q.Queue[j]

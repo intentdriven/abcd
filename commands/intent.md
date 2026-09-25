@@ -642,8 +642,10 @@ Report the returned split alongside the acceptance rollup.
 
 `--owed` is the bounded command that pays the review debt. It returns `queue`
 — the owed reviews, oldest shipped first (`shipped` is the day the intent
-entered `shipped/`; one shipped in the working tree and not yet committed has
-none and comes last), at most `max` of them — with `owed`, the whole total, and
+entered `shipped/`, and `shipped_state` says which fact holds: `dated`;
+`uncommitted`, shipped in the working tree and not yet committed, with no day
+and last; or `unknown`, when the history could not be read, which leaves every
+day unknown and the queue in mint order), at most `max` of them — with `owed`, the whole total, and
 `remaining`, how many the cap left out. `next` names the oldest one's
 `request_path` and its `routing`: the command has just emitted that request,
 exactly as `intent audit <itd-N>` does — its routing section included, and a

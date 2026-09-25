@@ -60,8 +60,11 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 		fmt.Fprintln(w)
 		for i, e := range step.Queue {
 			day := "shipped " + e.Shipped
-			if e.Shipped == "" {
+			switch e.ShippedState {
+			case intent.ShippedUncommitted:
 				day = "shipped (not yet committed)"
+			case intent.ShippedUnknown:
+				day = "shipped day unknown"
 			}
 			rcp := "receipt " + e.ReceiptID
 			if e.ReceiptID == "" {

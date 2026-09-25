@@ -232,3 +232,43 @@ func TestIntentAuditOwedCarriesTheRouting(t *testing.T) {
 		t.Fatalf("a --route for another agent must exit 2, got %v", err)
 	}
 }
+
+// TestIntentAuditOwedUnreadableHistoryIsUnknown (iss-2609252052381777): when the
+// history walk fails, the shipped days are unknown, and the listing says so
+// rather than reading every committed intent as not yet committed.
+func TestIntentAuditOwedUnreadableHistoryIsUnknown(t *testing.T) {
+	repo := drainRepo(t)
+	// HEAD on a branch that does not exist: the history walk cannot read it.
+	cmd := exec.Command("git", "-C", repo, "symbolic-ref", "HEAD", "refs/heads/no-such-branch")
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	text, stderr, err := runCLISplit(t, "intent", "audit", "--owed")
+	if err != nil {
+		t.Fatalf("an unreadable history must not refuse the drain: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "shipped days are unknown") {
+		t.Fatalf("stderr does not say the days are unknown: %q", stderr)
+	}
+	if strings.Contains(text, "not yet committed") || strings.Count(text, "shipped day unknown") != 3 {
+		t.Fatalf("every entry must read as day unknown, none as not yet committed:\n%s", text)
+	}
+	stdout, _, err := runCLISplit(t, "intent", "audit", "--owed", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Queue []struct {
+			ShippedState string `json:"shipped_state"`
+		} `json:"queue"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range got.Queue {
+		if e.ShippedState != "unknown" {
+			t.Fatalf("shipped_state must be unknown:\n%s", stdout)
+		}
+	}
+}

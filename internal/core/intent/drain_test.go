@@ -196,3 +196,32 @@ func TestNextOwedAuditOnNothingOwedWritesNothing(t *testing.T) {
 		t.Fatal("an empty drain step wrote to the tree")
 	}
 }
+
+// TestOwedQueueTellsUnknownFromUncommitted (iss-2609252052381777): with no
+// history every day is unknown, which is not the same fact as an intent
+// shipped in the working tree and not yet committed, so the two carry
+// distinct states.
+func TestOwedQueueTellsUnknownFromUncommitted(t *testing.T) {
+	root := t.TempDir()
+	seedReviewStates(t, root)
+	q, err := OwedQueue(root, 0, shippedOnFrom(map[string]string{"itd-14-bare.md": "2026-01-15"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]string{}
+	for _, e := range q.Queue {
+		states[e.IntentID] = e.ShippedState
+	}
+	if states["itd-14"] != ShippedDated || states["itd-11"] != ShippedUncommitted {
+		t.Fatalf("with a history: states %v, want itd-14 %q and itd-11 %q", states, ShippedDated, ShippedUncommitted)
+	}
+	q, err = OwedQueue(root, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range q.Queue {
+		if e.ShippedState != ShippedUnknown || e.Shipped != "" {
+			t.Fatalf("with no history every day is unknown, got %+v", e)
+		}
+	}
+}
