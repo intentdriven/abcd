@@ -6,6 +6,10 @@ severity: "minor"
 category: "observation"
 source: "user-observation"
 found_during: "manual-capture"
+resolution: "The tokenizer suspends the enclosing command when a substitution opens and resumes it when it closes, so the argv after a substitution stays the enclosing command's: cd s && rm $(true) -rf * blocks. The three reverted-design regressions are pinned (chain across a newline, leading-position substitution, nested bare paren) and an unterminated substitution still emits every suspended command."
+impact: fix
+resolved_by:
+  commit: "2733f2538576334f3053995f4f85e96e1bd8bd8b"
 ---
 
 guard registry coverage gaps found while wiring itd-103 (registry content, not matching semantics): a push whose refspec carries a leading plus is a force in disguise and no entry describes it; xargs, timeout and exec are absent from the matcher's wrappers set, so a hazard launched through one of them is not seen; a backtick command substitution is not followed, while the dollar-paren form is; and a wrapper that IS in the set defangs an entry the moment it carries its own flags, because only the wrapper name is stepped over — `sudo <hazard>` is seen, `sudo -u bob <hazard>` is not, and the same holds for `env -i` and `time -p`. That last one is the sharpest: it turns an entry the registry does describe into an allow with one extra token, and it is the only item here that a facilitator would reasonably assume was covered. Candidates for the admission gate as the registry grows from reality; the wrapper-flag item is matcher-side (`commandOf` in internal/core/guard/match.go), not registry content.
@@ -74,3 +78,7 @@ command position across the substitution boundary. Note for whoever takes it tha
 (`rm $(true) -rf *` does not read as a recursive force delete) — a pre-existing
 gap this round surfaced and did not introduce, and the reason the two problems
 are one problem.
+
+## Grounds
+
+- pursued: a substitution written before trailing flags keeps them in the enclosing command; shown wrong by any substitution shape in TestSubstitutionKeepsTheEnclosingCommandWhole answering allow
