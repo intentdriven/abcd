@@ -218,6 +218,10 @@
       "enabled": true,
       "severity": "blocker"
     },
+    "link_anchors": {
+      "enabled": true,
+      "severity": "warn"
+    },
     "no_brittle_line_refs": {
       "enabled": true,
       "severity": "warn"

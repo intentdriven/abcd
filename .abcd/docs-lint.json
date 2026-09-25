@@ -256,6 +256,10 @@
       "enabled": true,
       "severity": "blocker"
     },
+    "link_anchors": {
+      "enabled": true,
+      "severity": "warn"
+    },
     "harness_leak": {
       "enabled": true,
       "severity": "blocker"

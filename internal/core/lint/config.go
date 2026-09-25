@@ -373,6 +373,7 @@ func ArmAgentDiff(cfg Config, diffRange string) Config {
 // the first time a config names it, which fails loud rather than green.
 var knownRules = map[string]bool{
 	"links_resolve":             true,
+	ruleLinkAnchors:             true,
 	"no_git_metadata":           true,
 	"no_brittle_line_refs":      true,
 	"persona_registry":          true,

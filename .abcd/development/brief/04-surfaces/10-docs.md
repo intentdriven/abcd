@@ -89,6 +89,12 @@ promotion is reachable only by a human typing the flag.
   mirror's directory. The configuration's `exempt_paths` does not reach this
   rule, because it excuses how a record is written, never whether its links
   resolve.
+- **Broken heading anchors.** A link's `#fragment` names a heading or an
+  explicit HTML anchor of the markdown page it resolves to, or of the linking
+  page for a bare `#fragment`: the `link_anchors` rule slugs the target's ATX
+  headings as the forge renders them (a repeated heading suffixed `-1`, `-2`)
+  and reports a fragment that names none. It is its own rule so it lands at
+  warning beside the blocking file check, and reads the same `exempt` globs.
 - **Stray root markdown.** Markdown at the repo root belongs under `docs/`
   unless it is one of the allowlisted files. A root markdown **symlink** is
   judged by its resolved target's stem rather than by its own name, which is

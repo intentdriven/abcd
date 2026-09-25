@@ -183,6 +183,9 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		return nil, err
 	}
 
+	anchorsCfg, anchorsOn := cfg.Rules[ruleLinkAnchors]
+	anchorsOn = anchorsOn && anchorsCfg.Enabled
+	anchorSlugs := map[string]map[string]bool{}
 	linksCfg, linksOn := cfg.Rules["links_resolve"]
 	gitMetaCfg, gitMetaOn := cfg.Rules["no_git_metadata"]
 	brittleCfg, brittleOn := cfg.Rules["no_brittle_line_refs"]
@@ -300,6 +303,9 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			// this excuses where a copy is required to sit (iss-2609151150180583).
 			if linksOn && !matchesGlob(linksCfg.Exempt, filepath.ToSlash(rel)) {
 				findings = append(findings, checkLinks(rel, fileAbs, repoRoot, lines, mask, linksCfg)...)
+			}
+			if anchorsOn && !matchesGlob(anchorsCfg.Exempt, filepath.ToSlash(rel)) {
+				findings = append(findings, checkLinkAnchors(rel, fileAbs, repoRoot, lines, mask, anchorsCfg, anchorSlugs)...)
 			}
 			if brittleOn {
 				findings = append(findings, checkBrittleRefs(rel, lines, mask, brittleCfg)...)

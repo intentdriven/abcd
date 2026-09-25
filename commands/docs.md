@@ -45,7 +45,9 @@ It also checks that relative links resolve and that no stray markdown sits at th
 repo root (it belongs under `docs/`). A file whose links resolve only from
 somewhere else, such as a tool-mandated mirror of a root file, is excused from
 the link check by listing it in the `links_resolve` rule's `exempt` globs in
-`.abcd/docs-lint.json`; `exempt_paths` does not reach the link check. Point the user at the offending file and
+`.abcd/docs-lint.json`; `exempt_paths` does not reach the link check. A
+link's `#fragment` is checked against the target page's headings by the
+`link_anchors` rule, which warns rather than blocks. Point the user at the offending file and
 line for each finding, and note whether it is a blocker or a warning.
 
 Where a repo arms them, the citation rules add: footnote markers and definitions
