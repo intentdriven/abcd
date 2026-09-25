@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: ledger/admission
+not_to_be_confused_with: [ledger/admission, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not call a disposition a resolution: resolved means fixed, and an accepted te
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [admission](admission.md)
 - [regime](regime.md)

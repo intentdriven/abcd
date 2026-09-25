@@ -8,7 +8,7 @@ status: stable
 introduced_in: itd-67
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/phase
+not_to_be_confused_with: distribution/release
 versions: null
 ---
 
@@ -48,5 +48,6 @@ that organises what ships together.
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [phase](../core/phase.md) — the internal sequencing unit; a version is an output of completing one
 - [release](release.md) — the published act that carries a version

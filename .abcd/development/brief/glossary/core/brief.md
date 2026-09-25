@@ -39,6 +39,7 @@ implementation-scoped). The brief is project-wide; intents and specs are narrowe
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [intent](intent.md) — a press-release-shaped feature description within the project scope
 - [voyage](voyage.md) — the operations namespace recording what abcd did to produce a lifeboat; a
   [disembark](disembark.md) run grounds the brief's structure section by section

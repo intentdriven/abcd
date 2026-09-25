@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/transport
+not_to_be_confused_with: [core/transport, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -65,6 +65,7 @@ carry no command file and no registry row by design.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [transport](transport.md) — how context reaches an oracle, not how a user reaches a verb
 - [record](record.md) — what the surfaces mint
 - [reading-position](reading-position.md) — a position is not a surface; the surface is `/abcd:reading`

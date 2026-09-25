@@ -20,3 +20,7 @@ A **bundle** is a delivery grouping, not a sequencing one: two or three intents 
 ## When to use
 
 When two intents would be one pull request. Not as a phase in disguise: a bundle of ten is a sign the intents were cut wrong.
+
+## Related terms
+
+- [record families](record-families.md) — the one page that maps the record families and how they relate
