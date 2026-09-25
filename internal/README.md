@@ -46,6 +46,15 @@ plugin surface, and a future MCP server share one engine.
   reader spelled twice is one the two can disagree about, which is how a bullet
   one writer appends becomes a bullet the other cannot find. It owns no heading's
   meaning: a caller supplies the pattern it is looking for.
+- **`core/relink/`** — the one link-repoint primitive. A record's folder is its
+  status, so every lifecycle transition is a rename, and a rename strands every
+  relative link that named the file where it was. The verbs that move a record
+  — `spec close` and `intent plan` (`core/intent`), `capture resolve` and
+  `capture wontfix` (`core/capture`) — hand it the moves they made, and it
+  rewrites every markdown link in the working tree that named an old path and
+  reports each rewrite. A leaf on the `core/mdrecord` precedent: three record
+  families move, and a repoint spelled per family is one that misses a link
+  class the others catch.
 - **`core/provenance/`** — the record's disclosure vocabulary: where an item came
   from (`origin`) and how its text was produced (`production_mode`), plus the one
   parser that reads and renders them. It is a leaf for the same reason
