@@ -156,6 +156,13 @@ var (
 	// three. The indent is SPACES: a tab makes an indented code block, not a
 	// heading, so `\s` would refuse a line no renderer treats as one.
 	floorATXRe = regexp.MustCompile(`^([ ]{0,3})#{1,6}\s+(.*)$`)
+	// nestedHeadingRe matches an ATX heading behind any run of indentation,
+	// blockquote markers and list markers: `- ## X`, `> ## X`, `1. ## X`, and a
+	// heading at a list item's content indent. Each renders as a heading and
+	// none has a span in the section walk. It also matches a heading in an
+	// indented code block, which is the fail-closed direction: such a line is
+	// refused only when it names an excluded heading.
+	nestedHeadingRe = regexp.MustCompile(`^[ \t]*(?:(?:>|[-*+][ \t]|[0-9]{1,9}[.)][ \t])[ \t]*)*#{1,6}[ \t]+(.*)$`)
 	// rawHeadingOpenRe matches an element that OPENS a heading: an h1-h6 tag, or
 	// any element carrying a heading role, which renders and is announced as a
 	// heading while no h-tag appears. Matching the opening tag alone, rather
@@ -212,12 +219,12 @@ var (
 	flowExplicitKeyRe = regexp.MustCompile(`[{,]\s*\?`)
 )
 
-// Two shapes this floor does NOT see, disclosed rather than claimed. A heading
-// nested inside a blockquote or a list item is indented and prefixed, so neither
-// the section scan nor the raw-line patterns read it as a heading. And a title
+// One shape this floor does NOT see, disclosed rather than claimed: a title
 // reaching the excluded one through a homoglyph or an invisible format character
-// slugs differently by construction, because the slug compares code points. Both
-// are residue; neither is caught.
+// slugs differently by construction, because the slug compares code points. It
+// is residue and is not caught. A heading nested in a blockquote or a list item
+// IS caught: the section scan cannot span it, so the verifier refuses it
+// (nestedHeadingRe, iss-2609251509209801).
 //
 // namesExcludedHeading reports whether a heading title is one of the excluded
 // ones, under the ONE equality this floor uses: a case fold, or the same
@@ -433,6 +440,14 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 		}
 		m := floorATXRe.FindStringSubmatch(line)
 		if m == nil {
+			if n := nestedHeadingRe.FindStringSubmatch(line); n != nil {
+				if want, ok := namesExcludedHeading(normaliseHeadingTitle(n[1]), headings); ok {
+					return fmt.Errorf("reading: %s nests the excluded heading %q in a list item, a "+
+						"blockquote or an indent at line %d; the section scan cannot span it, the floor "+
+						"names %q, and a heading is excluded however it is spelled",
+						rel, strings.TrimSpace(line), i+1, want)
+				}
+			}
 			continue
 		}
 		want, ok := namesExcludedHeading(normaliseHeadingTitle(m[2]), headings)
