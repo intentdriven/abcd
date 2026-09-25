@@ -1,8 +1,6 @@
-> **Read with adr-2609212115255771 (2026-09-21).** The phase layer described below is retired: the layers are the brief, the intent and the spec (with its steps), the bundle is a delivery grouping of intents, the derived release is the checkpoint, and Now / Next / Later is a rendered status, never a stored unit. The diagram and the prose keep the phase until itd-2609211913453478 rewrites this chapter; until then, read "phase" as history.
+# Mental Model
 
-# Four-Layer Mental Model
-
-abcd uses four layers to organise development work, each tuned to the kind of question it answers. Three are the original design layers — brief, intent, spec; the fourth, **phase**, is the sequencing-and-reflection layer added per [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md). The diagram below shows the brief → intent → spec flow into delivered reality, with the phase as the audit target of delivered reality; the phase layer is explained in full after it.
+abcd organises development work in three layers, each tuned to the question it answers: the **brief** (what is this project?), the **intent** (why does this user-facing change matter?) and the **spec** (how do we build it?), with the spec's **steps** below it as the landable pieces of its work. Two groupings sit beside the layers rather than above them. The **bundle** is a delivery grouping: several intents that ship as one change share one spec. The **derived release** is the checkpoint: its version is computed from the impact of what shipped, and its changelog is composed from the records that reached a terminal folder since the last tag. Nothing sits above the intent for sequence: order comes from dependencies (`blocked_by`, `builds_on`) and the lifecycle shelves, and Now / Next / Later is a position derived from them, never a stored unit; the status block that renders it is itd-2609212103568351, planned ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md), which supersedes [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md)). The [record-families page](../glossary/core/record-families.md) maps every family, what groups it and the verb that moves it.
 
 ```mermaid
 flowchart TD
@@ -10,9 +8,9 @@ flowchart TD
 
     Brief -->|user-facing scope| Intent
     Brief -->|cross-cutting rule| IntentDiscipline
-    Brief -->|plumbing phase| SpecPlumbing
+    Brief -->|plumbing scope| SpecPlumbing
 
-    Intent["<b>Intent</b> (standalone or bundle)<br/>Why does this user-facing<br/>change matter?<br/><i>Press release + acceptance<br/>(1 or N intents → 1 spec)</i>"]
+    Intent["<b>Intent</b> (standalone or bundle member)<br/>Why does this user-facing<br/>change matter?<br/><i>Press release + acceptance<br/>(1 or N intents → 1 spec)</i>"]
     IntentDiscipline["<b>Discipline</b><br/>What rule must every<br/>spec obey?<br/><i>## Rule + acceptance<br/>(no press release, no spec)</i>"]
 
     Intent -->|/abcd:intent plan| Gate
@@ -23,18 +21,18 @@ flowchart TD
     Gate --> SpecUserFacing
     Gate --> SpecPlumbing
 
-    SpecUserFacing["<b>Spec</b> (user-facing)<br/>How do we build it?<br/><i>native spec + tasks</i>"]
-    SpecPlumbing["<b>Spec</b> (plumbing)<br/>How do we build it?<br/><i>native spec + tasks</i>"]
+    SpecUserFacing["<b>Spec</b> (user-facing)<br/>How do we build it?<br/><i>design record + ## Steps</i>"]
+    SpecPlumbing["<b>Spec</b> (plumbing)<br/>How do we build it?<br/><i>design record + ## Steps</i>"]
 
-    SpecUserFacing -->|implementation| Reality
-    SpecPlumbing -->|implementation| Reality
+    SpecUserFacing -->|one step per lane| Reality
+    SpecPlumbing -->|one step per lane| Reality
 
     Reality(["<b>Delivered reality</b><br/>code, configs, docs, tests"])
 
-    Phase["<b>Phase</b> (sequencing layer)<br/>What does this stretch<br/>of work make true?<br/><i>## Expectation + ## Phase Acceptance<br/>(bundles intents + plumbing)</i>"]
+    Release(["<b>Derived release</b><br/>the checkpoint<br/><i>version from impact,<br/>changelog from records</i>"])
 
     Reality -.->|intent-auditor| Intent
-    Reality -.->|phase audit| Phase
+    Reality -->|launch ship| Release
 
     classDef briefStyle fill:#e8f0fe,stroke:#1967d2,stroke-width:2px,color:#000
     classDef intentStyle fill:#fef7e0,stroke:#f9ab00,stroke-width:2px,color:#000
@@ -42,7 +40,7 @@ flowchart TD
     classDef gateStyle fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#000
     classDef specStyle fill:#e6f4ea,stroke:#137333,stroke-width:2px,color:#000
     classDef realityStyle fill:#fce8e6,stroke:#c5221f,stroke-width:2px,color:#000
-    classDef phaseStyle fill:#e0f2f1,stroke:#00695c,stroke-width:2px,color:#000
+    classDef releaseStyle fill:#e0f2f1,stroke:#00695c,stroke-width:2px,color:#000
 
     class Brief briefStyle
     class Intent intentStyle
@@ -50,17 +48,16 @@ flowchart TD
     class Gate gateStyle
     class SpecUserFacing,SpecPlumbing specStyle
     class Reality realityStyle
-    class Phase phaseStyle
+    class Release releaseStyle
 ```
 
-**Reading the diagram.** The brief sits at the top — it's the shared canvas, and per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md) it's always the current state, not a versioned artefact. Three paths lead down: user-facing scope flows through an *intent* (press-release-shaped, why-driven; standalone or bundle) before reaching a spec; *discipline* intents capture cross-cutting rules (no user moment, no spec of their own) and register as inherited gates that every other spec must satisfy; plumbing scope skips the intent surface (because plumbing has no user moment to press-release) but still passes through the discipline gate. Both spec kinds produce *delivered reality*. The dotted arrows are the audit feedback loop: `intent-auditor` compares reality against the intent's `## Acceptance Criteria`; the phase audit compares reality against the phase's `## Phase Acceptance` (see the phase layer below). The format of acceptance is uniform across all surfaces; the *home* differs.
+**Reading the diagram.** The brief sits at the top — it's the shared canvas, and per [adr-5](../../decisions/adrs/0005-brief-is-current-state.md) it's always the current state, not a versioned artefact. Three paths lead down: user-facing scope flows through an *intent* (press-release-shaped, why-driven; standalone or a bundle member) before reaching a spec; *discipline* intents capture cross-cutting rules (no user moment, no spec of their own) and register as inherited gates that every other spec must satisfy; plumbing scope skips the intent surface (because plumbing has no user moment to press-release) but still passes through the discipline gate. Both spec kinds reach *delivered reality* one step at a time, and what has shipped since the last tag is cut as the *derived release*. The dotted arrow is the audit feedback loop: `intent-auditor` compares reality against the intent's `## Acceptance Criteria`. The format of acceptance is uniform across all surfaces; the *home* differs.
 
-**The phase layer.** The diagram's `Phase` node is the fourth layer — it wraps the other three on the sequencing axis. A phase is an ordered stretch of work that ends in a milestone; it bundles a set of intents and brief plumbing-phases and re-states, in user terms, *what that stretch is expected to make true*. Phases live in [`roadmap/phases/`](../../roadmap/phases/README.md). Mirroring an intent's press-release-then-`## Acceptance Criteria` shape one grain up, each phase doc carries a prose `## Expectation` (working-backwards, at phase granularity — coarser than one intent's press release, finer than the whole brief) **and** a structured `## Phase Acceptance` (Given-When-Then bullets). The `phase:` spec anchor described in adr-9 — the mechanism that will make the **phase audit** runnable (when every spec in a phase closes, delivered reality is reviewed against the phase's `## Phase Acceptance`, the same fidelity shape one grain up from the intent audit) — is **deferred, bundled with the phase-audit tooling that reads it**, not a standing convention today. Current phase membership is reconstructed editorially from each phase doc's `## Scope`. Phase acceptance is a *roll-up*: each bullet asserts an emergent, cross-intent truth or a phase-spanning journey, never a copy of an intent's own acceptance. abcd thus has three audit grains of one shape: brief audit (vs. brief-phase acceptance), phase audit (vs. phase acceptance), intent audit (vs. intent acceptance). See [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md) and its amendment.
-
+**Steps, bundles and the release.** A **step** is one of the ordered pieces a spec lists under its `## Steps` section, each landable as one lane and one pull request; a spec with no steps is one step. The step is a section of the spec, not a record family of its own. A **bundle** groups intents for delivery, never for sequence: its members share one spec and ship together when it closes (planning several intents onto one spec in a single act is itd-34, planned); the active bundles are listed in [`intents/README.md`](../../intents/README.md) § Bundles. The **derived release** is the one checkpoint: `abcd launch ship` computes the version from the declared impact of what shipped and composes the changelog from the records, and an intent's own acceptance criteria say what its part of the release makes true. There is no planned end condition apart from these two. The phase and the milestone are retired; the documents under [`roadmap/phases/`](../../roadmap/phases/README.md) stay as history.
 
 **The brief** answers *what is this project as a whole?* It's the shared canvas — the document you'd hand a new collaborator to understand the scope, the user-facing capability, and the plumbing infrastructure that makes that capability possible. Plumbing infrastructure (adapters, agents, hooks, scaffolding) lives here because it has no user moment of its own; it exists *to enable* user-facing capability.
 
-**Intents** answer *why does each user-facing change matter?* Most intents are press-release-shaped (Amazon working-backwards) to force product-thinking before engineering scope — written in present tense as if already shipped, with a customer quote from the persona registry. Intents are individually portable — they live as standalone documents at `.abcd/development/intents/{drafts,planned,shipped,disciplines,superseded}/`, so they can be reordered, bundled into milestones, moved to a later phase, or killed without disturbing the brief or each other. The "why" emphasis is load-bearing — it's what disciplines product clarity when scope creep tries to enter through the engineering door.
+**Intents** answer *why does each user-facing change matter?* Most intents are press-release-shaped (Amazon working-backwards) to force product-thinking before engineering scope — written in present tense as if already shipped, with a customer quote from the persona registry. Intents are individually portable — they live as standalone documents at `.abcd/development/intents/{drafts,planned,shipped,disciplines,superseded}/`, so they can be reordered by their dependencies, bundled for delivery, or killed without disturbing the brief or each other. The "why" emphasis is load-bearing — it's what disciplines product clarity when scope creep tries to enter through the engineering door.
 
 **Three kinds of intent.** Not every intent maps cleanly to "one user moment, one spec." Three structural kinds exist:
 
@@ -70,7 +67,7 @@ flowchart TD
 
 **Why typing matters.** The 1:1-only model (every intent = one spec) forces bundle-shaped work into separate specs that redo each other's plumbing, and forces discipline-shaped rules into "specs" whose only deliverable is "every other spec inherits this gate." Both shapes calcify into wrong fits. The three kinds let each intent's *delivery shape* match its *forward-looking shape* without forcing one onto the other.
 
-**The phased intents span two of the three kinds** — standalone capabilities plus the phased disciplines; the set itself is the union of the phase docs' `## Scope` sections and is never transcribed here (per [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md), hand-kept counts re-drift). The `bundle-member` kind is declared but not yet delivered: no bundle's shared spec has been minted (`spec_id` is `null` on every member), so no bundle has shipped. See [`phases/README.md`](../../roadmap/phases/README.md) for the phase plan and each phase's intent scope, [`intents/README.md`](../../intents/README.md) for the intent index, and that file's § Bundles for the active and dissolved bundles.
+**The live corpus spans all three kinds**, and it is never counted here, because hand-kept counts re-drift: the lifecycle folders under [`intents/`](../../intents/README.md) are the count. See [`intents/README.md`](../../intents/README.md) for the intent index and that file's § Bundles for the active and dissolved bundles.
 
 **Classification happens at plan time.** Capture stays cheap and format-neutral (`/abcd:intent "<text>"` produces a press-release-shaped draft regardless of eventual kind, with an optional advisory `suggested_kind` hint from the LLM classifier). The binding `kind` field is set at `/abcd:intent plan` time, when the user is committing to *build* the thing — that's when the shape decision has to be true. A continuous audit role (the third role on `intent-auditor`, see [`05-internals/01-agents.md`](../05-internals/01-agents.md)) suggests reclassifications when patterns emerge in the corpus over time.
 
@@ -83,9 +80,9 @@ flowchart TD
 
 This is the *authoring-origin* axis and is a closed two-value split. The finer-grained taxonomy of what a discipline *does* (e.g., `methodology` / `documentation` / `audit`) is still deliberately deferred: each discipline keeps its free-text `kind_notes`, and that taxonomy moves from free-text to formal enum only once the corpus contains enough samples to cluster meaningfully — see the revisit triggers in [`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md).
 
-**Specs** answer *how do we build this concrete thing?* They live in the native spec store as specs and tasks ([adr-26](../../decisions/adrs/0026-native-spec-layer-ccpm-backend.md); the companion harness `ccpm` as the deeper backend), are plan-reviewed before work starts, completion-reviewed after work finishes, and trace back to *something* — either one or more intents (for user-facing work; standalone or bundle), or a brief phase (for plumbing), or a discipline being made concrete in a particular spec's acceptance criteria (for cross-cutting rules). That trace is what keeps the project auditable.
+**Specs** answer *how do we build this concrete thing?* They live in the native spec store, each ordering its work under `## Steps` ([adr-26](../../decisions/adrs/0026-native-spec-layer-ccpm-backend.md); the companion harness `ccpm` as the deeper backend), are plan-reviewed before work starts, completion-reviewed after work finishes, and trace back to *something* — either one or more intents (for user-facing work; standalone or bundle), or the brief's plumbing scope (for plumbing), or a discipline being made concrete in a particular spec's acceptance criteria (for cross-cutting rules). That trace is what keeps the project auditable.
 
-**Acceptance discipline applies uniformly across the boundary.** Every standalone or bundle-member intent's press release is followed by a `## Acceptance Criteria` block in Given-When-Then format (per the itd-1 discipline). Every brief phase has an `## Acceptance` block in the same format. Discipline-kind intents skip the press release but use the same Given-When-Then format under a `## Rule` heading — the gate they impose on every other spec. The `intent-auditor` agent compares delivered reality against intent acceptance; the same agent's discipline role checks every spec against the active disciplines; the phase audit compares reality against the phase's `## Expectation`. The format is uniform; the *home* differs to match the nature of the work.
+**Acceptance discipline applies uniformly across the boundary.** Every standalone or bundle-member intent's press release is followed by a `## Acceptance Criteria` block in Given-When-Then format (per the itd-1 discipline). The brief's press release and surface chapters carry an `## Acceptance` block in the same format. Discipline-kind intents skip the press release but use the same Given-When-Then format under a `## Rule` heading — the gate they impose on every other spec. The `intent-auditor` agent compares delivered reality against intent acceptance; the same agent's discipline role checks every spec against the active disciplines; and the derived release reports what shipped since the last tag, each intent answering for its own criteria. The format is uniform; the *home* differs to match the nature of the work.
 
 **Why most intents are still press-release-shaped.** Press-release format requires a user moment ("abcd ships X — Bob, staff engineer, says..."). Plumbing has no user moment — Pass A spine agents, harness Protocol, adapter dispatchers — these exist to make user-facing work possible, not to be experienced by users directly. Forcing press-release format on plumbing produces strained or mistargeted prose. Disciplines have no user moment either (a rule is not a feature). The brief is the right home for plumbing; the `disciplines/` directory is the right home for disciplines; press-release-shaped `drafts/` is the right home for everything that has a real user moment to announce.
 
