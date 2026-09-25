@@ -12,6 +12,24 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-25 (itd-2609020625402599 — the scribe's context is assembled and its output is ingested)
+
+The scribe is a verb rather than a protocol. `abcd scribe assemble` builds the
+scribe's context from an allow list derived from the issue ledger's own
+directory list, plus the researcher's supplied dispositions, and `abcd scribe
+ingest` validates the scribe's return and writes it through the capture verbs,
+refusing anything the scribe authored (adr-2609021016275803).
+
+### scribe 0.2.0
+
+MINOR: the Inputs list is the assembler's allow list, which completes the
+ledger enumeration with the admissions, surprises and reframes stores; the run's
+reading records are named as coming from the store, never as a raw output handed
+over again; and Delivery names the two verbs and the output document with its
+four parts in place of "there is no ingest verb". The access rule is unchanged —
+ledger content only — and so are the record shapes, the fidelity-flag rule and
+the contribution stamp. Unmeasured, as before.
+
 ## 2026-09-25 (itd-2609020625405251 — a detection item cites the condition it names)
 
 Iteration 2's condition disposition joins a researcher's mark on a scope
