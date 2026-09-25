@@ -202,3 +202,31 @@ func TestOracleRoutingIsAskedAfterTheStatusLine(t *testing.T) {
 		t.Fatalf("categoryPromptOrder = %v, want %v", categoryPromptOrder, want)
 	}
 }
+
+// TestOracleRoutingRepoWriteNamesASymlinkLeavingTheRepository: a repository
+// whose .abcd/config is a symlink out of the checkout gets no routing file
+// written through it, and the refusal names the symlink rather than claiming
+// the file appeared while the question was open.
+func TestOracleRoutingRepoWriteNamesASymlinkLeavingTheRepository(t *testing.T) {
+	setupHermetic(t)
+	repo := installedRepo(t)
+	outside := t.TempDir()
+	link := filepath.Join(repo, ".abcd", "config")
+	if err := os.RemoveAll(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(repo, InstallOptions{}, routingPrompter(false, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := strings.Join(res.Notes, "\n")
+	if !strings.Contains(notes, ".abcd/config is a symlink") || strings.Contains(notes, "appeared while the question was open") {
+		t.Fatalf("notes %q", notes)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("a routing file was written through the symlink: %v", entries)
+	}
+}

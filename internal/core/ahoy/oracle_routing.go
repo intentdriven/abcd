@@ -151,8 +151,19 @@ func (a *applyCtx) writeRepoRouting(body []byte) {
 		return
 	}
 	defer root.Close()
-	if _, err := root.Lstat(filepath.FromSlash(rel)); !errors.Is(err, fs.ErrNotExist) {
+	switch _, err := root.Lstat(filepath.FromSlash(rel)); {
+	case err == nil:
 		a.refuse("the repository's model-tier routing was not written: " + rel + " appeared while the question was open, and it is left as it is.")
+		return
+	case !errors.Is(err, fs.ErrNotExist):
+		// The root refuses a path through a symlink that leaves the checkout;
+		// name the symlink, which is the fault, rather than the root's error.
+		if link := symlinkOnPath(root, rel); link != "" {
+			a.refuse("the repository's model-tier routing was not written: " + link + " is a symlink, and " + rel +
+				" is written only inside the repository, never through a link that leaves it.")
+			return
+		}
+		a.refuse("the repository's model-tier routing was not written: " + rel + " could not be checked (" + errText(err) + "); nothing was written.")
 		return
 	}
 	if err := fsutil.WriteFileAtomicInRoot(root, rel, body, 0o644); err != nil {
@@ -212,4 +223,21 @@ func repoRoutingQuestion() string {
 	return "The same table can also be committed with this repository, where it routes the delegated steps of " +
 		"everyone who works in it and wins over each machine's own table. Declining writes nothing. " +
 		oracleRoutingRepoQuestionTail
+}
+
+// symlinkOnPath names the first directory on rel's path, inside root, that is
+// a symlink, or "" when none is.
+func symlinkOnPath(root *os.Root, rel string) string {
+	parts := strings.Split(rel, "/")
+	for i := 1; i < len(parts); i++ {
+		dir := strings.Join(parts[:i], "/")
+		fi, err := root.Lstat(filepath.FromSlash(dir))
+		if err != nil {
+			return ""
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return dir
+		}
+	}
+	return ""
 }
