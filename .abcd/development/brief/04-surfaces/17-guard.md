@@ -172,7 +172,9 @@ hazard behind a launcher it does not recognise is a **warn** naming the entry it
 matched rather than an allow, because the guard cannot tell whether that program
 runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
-spelled `git pus? --force` blocks. A command or process substitution, unquoted
+spelled `git pus? --force` blocks. A git long flag written short of its full
+name is read as git reads it, as the one option that prefix can mean. A command
+or process substitution, unquoted
 or inside double quotes, is followed into command position, and the words
 written after one stay the
 enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`; text beside

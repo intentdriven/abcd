@@ -139,6 +139,12 @@ command runs, so a spelling the pattern *can* produce (`git pus? --force`,
 `git push --forc?`) is treated as produced and blocks. A glob anywhere else
 (`ls *`, `git add *.md`) changes nothing, and a quoted one is literal.
 
+A long flag of `git push` or `git commit` written short of its full name is read
+the way git reads it: git accepts any prefix no other option of the subcommand
+shares, so `git push --force-w` is `--force-with-lease` and `git commit
+--no-veri` is `--no-verify`, and both block. A prefix only blocked options share
+(`--forc`) blocks too, although git refuses it as ambiguous.
+
 A command or process substitution (`$(…)`, a backtick pair, `<(…)`, `>(…)`),
 unquoted or inside double quotes, runs its own command, which is checked like
 any other, and the words

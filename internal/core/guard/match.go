@@ -366,8 +366,9 @@ func matchSegment(p Pattern, s segment) bool {
 	if p.Subcommand2 != "" && !operandMatches(args, opIdx, 1, p.Subcommand2, glob) {
 		return false
 	}
+	opts := gitOptionTable(p)
 	for _, group := range p.Flags {
-		if !flagGroupMatches(group, args, glob) {
+		if !flagGroupMatches(group, args, glob, opts) {
 			return false
 		}
 	}
@@ -531,9 +532,12 @@ func argPrefixMatches(prefix string, ops []string) bool {
 // among the argument tokens. glob reports, per argument index, whether bash
 // would expand that token. The scan stops at `--`: after the terminator every
 // word is an operand, so `git push -- --force origin main` pushes a refspec
-// called `--force` and is not a force push.
-func flagGroupMatches(group string, args []string, glob func(int) bool) bool {
-	for _, alt := range strings.Split(group, "|") {
+// called `--force` and is not a force push. opts, when the entry names a
+// subcommand whose options are modelled (gitOptionTable), is read for the
+// abbreviations git accepts of a long alternative (abbreviatesAlternative).
+func flagGroupMatches(group string, args []string, glob func(int) bool, opts []string) bool {
+	alts := strings.Split(group, "|")
+	for _, alt := range alts {
 		if alt == "" {
 			continue
 		}
@@ -542,6 +546,9 @@ func flagGroupMatches(group string, args []string, glob func(int) bool) bool {
 				break
 			}
 			if flagMatches(alt, arg, glob(i)) {
+				return true
+			}
+			if opts != nil && abbreviatesAlternative(arg, alt, alts, opts) {
 				return true
 			}
 		}
