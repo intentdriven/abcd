@@ -439,32 +439,40 @@ func TestReadFollowsCommonMarkOnRunLengthCharacterAndInfoString(t *testing.T) {
 
 // TestReadListNestedEndsAFenceWithItsListItem: a fenced block cannot continue
 // lazily, so a non-blank line at column 0 ends the list item holding the fence
-// and the fence with it (CommonMark 5.2). TopLevel cannot know the run was
-// nested and reads it as a top-level fence nobody closed; the two readings
-// disagree, which is exactly what a fail-closed reader asks both of them for.
+// and the fence with it (CommonMark 5.2).
 func TestReadListNestedEndsAFenceWithItsListItem(t *testing.T) {
-	ls := lines("- item\n  ```\n  code\n# Heading\nbody\n")
+	ls := lines("- item\n\n    ```\n    code\n# Heading\nbody\n")
 	nested := Read(ls, ListNested)
-	if nested.Mask[3] != 0 {
+	if nested.Mask[4] != 0 {
 		t.Fatalf("ListNested: the column-0 heading after the item is masked: %v", nested.Mask)
 	}
 	if _, _, ok := nested.Unclosed(); ok {
 		t.Fatal("ListNested: a fence its list item ended is reported unclosed")
 	}
-	if want := []Span{{Start: 1, End: 3, Closed: true}}; !reflect.DeepEqual(nested.Fences, want) {
+	if want := []Span{{Start: 2, End: 4, Closed: true}}; !reflect.DeepEqual(nested.Fences, want) {
 		t.Fatalf("ListNested fences = %+v, want %+v", nested.Fences, want)
 	}
-	top := Read(ls, TopLevel)
-	if top.Mask[3]&MaskFence == 0 {
-		t.Fatalf("TopLevel: the indented run is a top-level fence and the heading below is inside it: %v", top.Mask)
-	}
-	if line, _, ok := top.Unclosed(); !ok || line != 1 {
-		t.Fatalf("TopLevel: Unclosed = (%d, %v), want line 1", line, ok)
-	}
 	// A run indented four or more past the opener is content, not a closer.
-	deep := Read(lines("- a\n  ```\n      ```\n  x\n  ```\nlive\n"), ListNested)
-	if want := []Span{{Start: 1, End: 5, Closed: true}}; !reflect.DeepEqual(deep.Fences, want) {
+	deep := Read(lines("- a\n\n    ```\n        ```\n    x\n    ```\nlive\n"), ListNested)
+	if want := []Span{{Start: 2, End: 6, Closed: true}}; !reflect.DeepEqual(deep.Fences, want) {
 		t.Fatalf("ListNested: a run indented past the closer's reach closed the fence: %+v", deep.Fences)
+	}
+}
+
+// TestReadListNestedReadsAShallowRunAsTopLevelDoes: whether a run at one to
+// three columns sits in a list item turns on the list around it, which this
+// package does not parse. Both exported rules take the top-level reading —
+// the one a committed record depends on, whose indented closer is followed by a
+// column-0 line inside the same fence — and the list-item reading is left to
+// FencedUnderEveryRule.
+func TestReadListNestedReadsAShallowRunAsTopLevelDoes(t *testing.T) {
+	ls := lines("```\n---\na: |\n  ```\nkey: v\n  ```\n---\n```\nlive\n")
+	top, nested := Read(ls, TopLevel), Read(ls, ListNested)
+	if !reflect.DeepEqual(top, nested) {
+		t.Fatalf("TopLevel = %+v\nListNested = %+v", top, nested)
+	}
+	if want := []Span{{0, 4, true}, {5, 8, true}}; !reflect.DeepEqual(top.Fences, want) {
+		t.Fatalf("Fences = %+v, want %+v", top.Fences, want)
 	}
 }
 
@@ -494,13 +502,18 @@ func TestMaskAndUnclosedAreTheTopLevelReading(t *testing.T) {
 	}
 }
 
-// TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree: a line either rule
-// reads as live is live, and a comment is not a fence.
+// TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree: a line any reading reads
+// as live is live — including the list-item reading of a shallow run, under
+// which a column-0 line ends the item and its fence — and a comment is not a
+// fence.
 func TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree(t *testing.T) {
-	ls := lines("```\nx\n```\n- item\n  ```\n  code\n# Heading\n<!--\nparked\n-->\n")
+	ls := lines("```\nx\n```\n- item\n  ```\n  code\n# Heading\n  ```\n<!--\nparked\n-->\n")
 	got := FencedUnderEveryRule(ls)
-	want := []bool{true, true, true, false, true, true, false, false, false, false, false}
+	want := []bool{true, true, true, false, true, true, false, true, false, false, false, false}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("FencedUnderEveryRule = %v, want %v", got, want)
+	}
+	if m := Read(ls, TopLevel).Mask; m[6]&MaskFence == 0 {
+		t.Fatalf("TopLevel reads the heading as fenced, which is the disagreement under test: %v", m)
 	}
 }

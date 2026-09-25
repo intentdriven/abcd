@@ -105,18 +105,25 @@ const (
 	// renders fences written inside list items, where the fence sits at the
 	// item's content indent and that may be four columns or more; a reader that
 	// saw only the left margin would read the fence's own `#` lines as headings.
-	// Such a fence opens at any indent. It closes on a run of the opener's
-	// character at least as long, with nothing after it, indented no more than
-	// three columns past the opener (further in is content, CommonMark's closer
-	// allowance measured from the item). And because fenced code never continues
-	// lazily, a non-blank line at column 0 ends the list item holding an
-	// indented fence, and the fence with it (CommonMark 5.2).
 	//
-	// ListNested cannot know whether a run at one to three spaces opened inside
-	// a list item or at the top level; it takes the list-item reading, and
-	// TopLevel takes the other. A reader whose safety turns on the answer asks
-	// both and treats a line as masked only where they agree.
+	// A run at four or more columns cannot open a fence at the top level (it is
+	// indented code there), so under ListNested it opens a fence in the list
+	// item holding it. That fence closes on a run of the opener's character at
+	// least as long, with nothing after it, indented no more than three columns
+	// past the opener (further in is content: CommonMark's closer allowance,
+	// measured from the item). And because fenced code never continues lazily,
+	// a non-blank line at column 0 ends the item and the fence with it
+	// (CommonMark 5.2). A run at up to three columns is read exactly as TopLevel
+	// reads it, so the two rules differ only where TopLevel sees no fence at all.
 	ListNested
+
+	// listItem is the reading neither exported rule takes: a run at one to
+	// three columns opened inside a list item, which ends with the item at a
+	// column-0 line. Whether a run at that indent is nested or top-level turns on
+	// the list around it, which this package does not parse, so the exported
+	// rules take the top-level reading and FencedUnderEveryRule consults this
+	// one as well.
+	listItem
 )
 
 // Span is one fenced block as the half-open line range [Start, End), its
@@ -145,24 +152,28 @@ func (r Reading) Unclosed() (line int, flag uint8, ok bool) {
 	return r.openLine, r.openFlag, r.openLine >= 0
 }
 
-// FencedUnderEveryRule reports, per line, whether EVERY rule reads that line as
-// inside a fence (its delimiters included). It is the reading for a reader that
+// FencedUnderEveryRule reports, per line, whether EVERY reading reads that line
+// as inside a fence (its delimiters included): TopLevel, ListNested, and the
+// list-item reading of a run indented one to three columns. It is the reading for a reader that
 // must never hide live text behind a disagreement between the rules — a gate
 // whose missed finding is silent, a floor whose missed heading travels — so a
 // line either rule reads as live is live to it. HTML comments are not consulted:
 // what a comment hides is the caller's question, and the readers that ask this
 // one read commented text.
 func FencedUnderEveryRule(lines []string) []bool {
-	top := Read(lines, TopLevel).Mask
-	nested := Read(lines, ListNested).Mask
 	out := make([]bool, len(lines))
 	for i := range out {
-		out[i] = top[i]&MaskFence != 0 && nested[i]&MaskFence != 0
+		out[i] = true
+	}
+	for _, rule := range []Rule{TopLevel, ListNested, listItem} {
+		for i, m := range Read(lines, rule).Mask {
+			out[i] = out[i] && m&MaskFence != 0
+		}
 	}
 	return out
 }
 
-// nestedFenceRe matches a fence delimiter at any indent, for ListNested.
+// nestedFenceRe matches a fence delimiter at any indent, for the nested readings.
 var nestedFenceRe = regexp.MustCompile("^([ \t]*)(`{3,}|~{3,})(.*)$")
 
 // indentWidth is the column a line's first non-blank character sits at, a tab
@@ -185,7 +196,7 @@ func indentWidth(ln string) int {
 // fenceOpener reports the run and the indent of a fence delimiter under a rule,
 // and whether the line is one at all.
 func fenceOpener(ln string, rule Rule) (run, rest string, indent int, ok bool) {
-	if rule == ListNested {
+	if rule != TopLevel {
 		m := nestedFenceRe.FindStringSubmatch(ln)
 		if m == nil {
 			return "", "", 0, false
@@ -197,6 +208,18 @@ func fenceOpener(ln string, rule Rule) (run, rest string, indent int, ok bool) {
 		return "", "", 0, false
 	}
 	return m[1], m[2], indentWidth(ln), true
+}
+
+// inItem reports whether a rule reads a fence opened at this indent as held by
+// a list item.
+func inItem(rule Rule, indent int) bool {
+	switch rule {
+	case ListNested:
+		return indent >= 4
+	case listItem:
+		return indent > 0
+	}
+	return false
 }
 
 // Read is the single pass every reading of fences and comments goes through.
@@ -213,9 +236,9 @@ func Read(lines []string, rule Rule) Reading {
 	}
 	for i, raw := range lines {
 		ln := strings.TrimRight(raw, "\r")
-		// A list item ends at a non-blank line at column 0, and an indented
-		// fence it held ends with it. The line itself is then read as live.
-		if fenceOpen != "" && rule == ListNested && fenceIndent > 0 && strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
+		// A list item ends at a non-blank line at column 0, and a fence it held
+		// ends with it. The line itself is then read as live.
+		if fenceOpen != "" && inItem(rule, fenceIndent) && strings.TrimSpace(ln) != "" && indentWidth(ln) == 0 {
 			closeFence(i)
 		}
 		switch {
@@ -234,8 +257,11 @@ func Read(lines []string, rule Rule) Reading {
 		case fenceOpen != "":
 			r.Mask[i] |= MaskFence
 			run, rest, indent, ok := fenceOpener(ln, rule)
-			if ok && run[0] == fenceOpen[0] && len(run) >= len(fenceOpen) && strings.TrimSpace(rest) == "" &&
-				(rule == TopLevel || indent <= fenceIndent+3) {
+			reach := 3
+			if inItem(rule, fenceIndent) {
+				reach = fenceIndent + 3
+			}
+			if ok && run[0] == fenceOpen[0] && len(run) >= len(fenceOpen) && strings.TrimSpace(rest) == "" && indent <= reach {
 				closeFence(i + 1)
 			}
 		default:
