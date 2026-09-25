@@ -1356,6 +1356,44 @@
       "flags": []
     },
     {
+      "path": "abcd lab",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd lab harvest",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd lab mint",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "pin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab preflight",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd lab record",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd lab sweep",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd launch",
       "hidden": false,
       "flags": [
