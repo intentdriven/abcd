@@ -1,6 +1,6 @@
 ---
 name: mode
-description: Print or set whose answer the agent loop is waiting on — managed, facilitator, or product-thinker — by invoking the abcd binary. The bare form is a read-only print; the set form writes one line to the checkout's local tier.
+description: "Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier."
 argument-hint: "[managed|facilitator|product-thinker]"
 block: agents
 ---

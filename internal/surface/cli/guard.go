@@ -31,16 +31,14 @@ const maxGuardStdinBytes = 1 << 20 // 1 MiB
 // can never brick a session). spc-16, "Fail-open-loud and health".
 func newGuardCommand(asJSON *bool) *cobra.Command {
 	guardCmd := &cobra.Command{
-		Use:   "guard",
-		Short: "Check a shell command against the hazard registry before it runs",
-		Args:  failOpenNoArgs,
-		RunE:  helpRunE,
+		Use:  "guard",
+		Args: failOpenNoArgs,
+		RunE: helpRunE,
 	}
 
 	var command string
 	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "Decide whether a candidate shell command is safe to run",
+		Use: "check",
 		Long: "Evaluates one candidate command line against the hazard registry — the\n" +
 			"bundled defaults merged with this repo's `.abcd/guard.json` — and reports\n" +
 			"allow, warn, or block. A blocker exits 1 and names the safe successor; a\n" +
@@ -150,8 +148,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 // and must never be silently absent either (itd-103 AC 1).
 func newGuardHookCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "hook",
-		Short: "Host pre-tool-use adapter: decide a shell command from a hook payload",
+		Use: "hook",
 		Long: "Reads a host pre-tool-use hook payload on stdin and evaluates its shell\n" +
 			"command against the hazard registry. A blocker exits with the host's\n" +
 			"blocking status and puts the safe successor and the plain-language why on\n" +

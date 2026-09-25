@@ -1,6 +1,6 @@
 ---
 name: version
-description: Print the installed abcd version, install mode, and vintage by invoking the abcd binary. Read-only unless --check is passed.
+description: "Print abcd's version, install mode, and vintage: Writes nothing; refuses any argument."
 block: agents
 ---
 

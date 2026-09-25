@@ -122,7 +122,8 @@ say what the surface is for, and let the appendix say how it is spelled.
 line above them saying that `abcd --help --agent` expands the list. With
 `--agent` the help renders two blocks: the person's groups, then the verbs agents
 and hosts call, each line naming the command page an agent reads next (itd-146).
-Every other command's help is the framework's own.
+Every other command's help is the framework's own, except that it opens with
+the command's sentence (the section below).
 
 | Block | Group | Verbs |
 |---|---|---|
@@ -147,6 +148,30 @@ refusal name every verb whose placement moved without a regeneration. A test in
 group, and another holds each command page's `block:` frontmatter to the tree.
 A regroup is not a break: the surface diff never reads the placement, because it
 changes no invocation.
+
+## The sentence every verb opens with
+
+Every visible verb and sub-verb carries one sentence naming what it does, what
+it writes (or that it writes nothing), and when it refuses, in that order: the
+doing clause, a colon, a writing clause opening with "Writes", a semicolon, and
+a refusing clause opening with "refuses" or "never refuses", at most 160
+characters, under the [writing-style guide](../../../../docs/reference/writing-style.md)
+(itd-2609212113220149). The sentence is declared once, in the surface manifest
+(`internal/core/surface/sentences.go`), and rendered from there byte for byte:
+it is the line every command list prints (a parent's list, the root's groups
+and the agents block), the first line of the verb's own `--help`, and, for a
+top-level verb with a plugin page, that page's `description:`. The committed
+command-tree snapshot records it, `go generate ./internal/surface/cli` writes
+the pages' descriptions from it, and the generated CLI reference carries it,
+which puts it under the docs lint.
+
+It is gated. A test in `internal/surface/cli` walks every visible command and
+fails naming the verb and the defect when a sentence is missing, lacks a clause,
+runs past the cap, or differs between the manifest, the command list, the help
+and the page; a synthetic tree proves it names each defect. A reworded sentence
+is not a break: the surface diff never reads it, because it changes no
+invocation. Adding a verb therefore adds its sentence to the manifest in the
+same change, and the regeneration carries it to every place it appears.
 
 ## Bare invocation
 

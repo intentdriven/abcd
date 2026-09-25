@@ -30,8 +30,9 @@ const referenceIntro = "# CLI command reference\n\n" +
 	"drift test regenerates the tree and fails the build whenever this page and the\n" +
 	"tree disagree, so the reference can never silently go stale. Regenerate it with\n" +
 	"`go generate ./internal/surface/cli`.\n\n" +
-	"Every user-facing command is listed with its usage line, summary, and flags;\n" +
-	"the operator-internal hook entrypoints are omitted.\n"
+	"Every user-facing command is listed with its sentence (what it does, what it\n" +
+	"writes, and when it refuses), its usage line, and its flags; the\n" +
+	"operator-internal hook entrypoints are omitted.\n"
 
 // GenerateReference walks the abcd command tree and renders it as a single,
 // deterministic Markdown reference page — the source of truth for

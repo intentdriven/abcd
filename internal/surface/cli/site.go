@@ -22,9 +22,8 @@ import (
 // and committed assets, into a directory the repository does not track.
 func newSiteCommand(asJSON *bool) *cobra.Command {
 	siteCmd := &cobra.Command{
-		Use:   "site",
-		Short: "The website rendered from this repository: what is declared, and what was built (read-only)",
-		Args:  cobra.NoArgs,
+		Use:  "site",
+		Args: cobra.NoArgs,
 	}
 
 	var statusOut string
@@ -47,9 +46,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	var version, commit, stampDate string
 	var preview bool
 	buildCmd := &cobra.Command{
-		Use:   "build",
-		Short: "Render the site into the output directory (writes nothing outside it)",
-		Args:  cobra.NoArgs,
+		Use:  "build",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -78,9 +76,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	var checkOut string
 	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "Gate the built site: provenance, hero drift, banned tokens, snippets, the reference ratchet, mobile and figure labels",
-		Args:  cobra.NoArgs,
+		Use:  "check",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

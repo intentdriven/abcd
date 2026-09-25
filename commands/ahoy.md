@@ -1,6 +1,6 @@
 ---
 name: ahoy
-description: Detect and repair abcd's install/update state for the current repo — folder kind, plugin-root status, and outstanding gaps — by invoking the abcd binary. Bare invocation performs zero writes.
+description: "Detect abcd's install state for this repository and list its gaps: Writes nothing; refuses any argument."
 argument-hint: "[install | uninstall | doctor | dry-run | remote]"
 block: people
 ---

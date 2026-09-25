@@ -1,6 +1,6 @@
 ---
 name: disembark
-description: Pack a lifeboat from a repository into a destination directory — read-only over the source, behind a destination safety gate, secret-scanned before any write. Point it at any repo (including a dead or archived one) and write the lifeboat elsewhere.
+description: "List the verbs that pack a repository into a lifeboat: Writes nothing; refuses an unknown sub-verb."
 argument-hint: "<source-repo> <dest> | plan <source-repo> | probe <source-repo>"
 block: people
 ---

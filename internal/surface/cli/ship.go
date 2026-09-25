@@ -307,9 +307,8 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var changelogJSON string
 	var payloadDir string
 	cmd := &cobra.Command{
-		Use:   "ship [--changelog-json <file|->] [--payload-dir <dir>]",
-		Short: "Cut a release: derive the version and the record set from what shipped (exit 1 when the cut refuses)",
-		Args:  cobra.NoArgs,
+		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>]",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -508,9 +507,8 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 // reader asked for, not a gate they tripped. The gate is the ship verb.
 func newChangelogCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "changelog",
-		Short: "Preview the next release cut — derived version, records, guardrail (read-only, no prose)",
-		Args:  cobra.NoArgs,
+		Use:  "changelog",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

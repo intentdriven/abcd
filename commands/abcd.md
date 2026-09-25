@@ -1,6 +1,6 @@
 ---
 name: abcd
-description: Top-level where-am-i status board and record-id dispatch. Bare `/abcd` renders a read-only snapshot of the current directory; `/abcd <record-id>` (iss-N, itd-N, spc-N, adr-N) reports what that record is and the next move. Strictly read-only.
+description: "Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument."
 argument-hint: "[<record-id>]"
 ---
 

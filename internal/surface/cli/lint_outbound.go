@@ -69,8 +69,7 @@ type outboundReport struct {
 func newLintOutboundCommand(asJSON *bool) *cobra.Command {
 	var label, rootDir string
 	cmd := &cobra.Command{
-		Use:   "outbound [FILE]",
-		Short: "Refuse outbound text that breaks the session-URL / tool-footer policy (read-only)",
+		Use: "outbound [FILE]",
 		Long: "Judge one outbound artefact — a commit message, a pull-request body, an issue, a\n" +
 			"comment, a release note — against abcd's outbound policy: never a live\n" +
 			"agent-session URL, never a tool's own attribution footer.\n\n" +

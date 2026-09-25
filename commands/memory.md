@@ -1,6 +1,6 @@
 ---
 name: memory
-description: Query and curate the per-project memory substrate at .abcd/memory/ by invoking the abcd binary. Bare invocation is a read-only status render; ingest/ask/lint curate, synthesise, and health-check the store.
+description: "Render the memory store's status: Writes nothing; refuses outside a git checkout."
 argument-hint: "[<empty>] | ingest <path-or-https-url> [--keep-original] | ask <question> | lint"
 block: people
 ---
