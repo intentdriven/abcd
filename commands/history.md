@@ -1,7 +1,7 @@
 ---
 name: history
-description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show and staged are read-only; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. list --session reaches one session's whole set — its main thread and every sub-agent it spawned. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
-argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
+description: Manage the native session-transcript store for this repo by invoking the abcd binary. list, show, staged and separation are read-only, and separation reports whether any retained transcript held both a reading and the ledger of one run; capture, drain and ingest are the redacting write paths, migrate repairs records in place, reconstruct renders one session as an artefact plus telemetry, and discard permanently deletes one unredacted staged or quarantined transcript. list --session reaches one session's whole set — its main thread and every sub-agent it spawned. The store is user-level, keyed on the repo's root-commit SHA, and every stored transcript is redacted on write.
+argument-hint: "list [--session <id>] | separation | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | ingest [<path>...] | migrate | reconstruct <session-id>"
 ---
 
 # `/abcd:history` — session-transcript store
@@ -87,6 +87,37 @@ whenever the user asks what a session did, or what one of its agents did — a
 sub-agent's record holds the full session id, so the session identifier alone is
 enough and no filtering by hand is needed. An empty result names the session it
 found nothing for, so a mistyped id never reads as a repo with no transcripts.
+
+The text listing ends with the session-separation line described under
+Separation, computed over the whole store whatever the listing selected. The
+JSON stays an array of records and carries no such line.
+
+## Separation
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history separation --json
+```
+
+Report whether any retained transcript held both a reading and the ledger of
+one run. Every reading bundle and every scribe context carries a per-run context
+stamp naming its kind, its run and a digest of what it holds; capture records
+the stamps a transcript carried as metadata, and this check reads that metadata
+and never a body. It says one of three things, and say which to the user:
+
+- **`violations`** non-empty: each names a record `file`, its `session_id` and
+  the `run` whose reading stamp and scribe stamp it carries. The verb exits 1.
+  That session held both halves of the wall, which is what the scribe verb and
+  the reading verb exist to keep apart.
+- **Held for what was seen**: no retained transcript carries two stamps of one
+  run. Report the `runs` it saw and how many of the `transcripts` were
+  `stamped`; it is a statement about those, not about every session that ever
+  ran.
+- **`unobserved`** true: the store holds no transcript, or none carrying a
+  stamp. Report the `reason` and never call it clean. A host that assembles a
+  session's context before anything is retained is outside this check's reach,
+  and there the scribe definition's protocol remains the gate.
+
+Read-only; exits 0 unless a violation was found.
 
 ## Show
 

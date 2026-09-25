@@ -733,6 +733,12 @@ Render one session — the main thread and every sub-agent — as one artefact p
       --out string            directory to write <session>.md and <session>.telemetry.json into, or - for stdout (default ".")
 ```
 
+#### `abcd history separation`
+
+Report whether any retained transcript held both a reading and the ledger of one run
+
+**Usage:** `abcd history separation`
+
 #### `abcd history show`
 
 Show one stored transcript's metadata and redacted body

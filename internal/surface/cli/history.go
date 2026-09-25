@@ -157,12 +157,49 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "\n%d record(s) for session %s — the main thread first, then every sub-agent it spawned.\n",
 						len(records), termsafe.Sanitize(listSession))
 				}
+				// The session-separation line, over the whole store whatever the
+				// listing selected: the property is the store's, not a session's
+				// (adr-2609021016275803). The JSON stays an array, so it carries no
+				// such line and a consumer of it is untouched.
+				if rep, err := history.SessionSeparation(repoRoot, rootSHA); err == nil {
+					fmt.Fprintf(w, "\n%s\n", termsafe.Sanitize(rep.Summary()))
+				}
 			})
 		},
 	}
 	listCmd.Flags().StringVar(&listSession, "session", "",
 		"list one session's whole set — its main-thread record and every sub-agent it spawned, main thread first")
 	historyCmd.AddCommand(listCmd)
+
+	// separation — the session-separation check (adr-2609021016275803,
+	// spc-2609020626045177). Read-only, and reads record metadata only. A
+	// retained transcript carrying the reading stamp and the scribe stamp of one
+	// run is a finding, so the verb exits 1 after rendering it; the property held
+	// for what was seen, and the property unobserved, both exit 0 and say which.
+	historyCmd.AddCommand(&cobra.Command{
+		Use:   "separation",
+		Short: "Report whether any retained transcript held both a reading and the ledger of one run",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			repoRoot, rootSHA, err := historyStore(cmd)
+			if err != nil {
+				return err
+			}
+			rep, err := history.SessionSeparation(repoRoot, rootSHA)
+			if err != nil {
+				return err
+			}
+			if err := render(cmd.OutOrStdout(), *asJSON, rep, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd history — %s\n", termsafe.Sanitize(rep.Summary()))
+			}); err != nil {
+				return err
+			}
+			if len(rep.Violations) > 0 {
+				return &exitError{Code: 1}
+			}
+			return nil
+		},
+	})
 
 	// staged — what ended but is not yet stored. This is the outcome axis the
 	// store never had: before staging existed, "absent from the store" spanned
