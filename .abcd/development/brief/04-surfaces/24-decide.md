@@ -8,6 +8,22 @@ counterpart of the read-only `abcd adr-N` dispatch the
 [`/abcd:embark`](03-embark.md) unpacks a lifeboat's decision records into the same
 store, which is a restore rather than a mint.
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty: the verb registers no sub-command. Its one argument is the
+decision's title.
+
 ## Behaviour
 
 Given the quoted title as its one operand, the JSON form emits

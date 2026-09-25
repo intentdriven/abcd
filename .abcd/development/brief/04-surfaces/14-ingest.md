@@ -27,6 +27,25 @@ bring in. Every host-delegated page has the same shape, `/abcd:consult` and
 `/abcd:prepare-this-repo` alongside this one. What the note should say is that the
 command runs in the host agent rather than at the CLI.
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty: the command takes the link or document as its one argument
+and defines no sub-verb. Because the command is host-delegated, the rule's
+configuration exempts this table from the comparison with the command tree, and
+from nothing else: the table is still required, and any row it carries is still
+format-checked.
+
 ## What it does
 
 The work is split. The corpus's own registrar script does the deterministic
