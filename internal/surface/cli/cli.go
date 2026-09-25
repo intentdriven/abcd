@@ -2777,7 +2777,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin or the status-line wiring, so say which optional work it
+				// pin, the status-line wiring or a routing table, so say which optional work it
 				// left, why each needs an answer, and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
 					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
@@ -2794,7 +2794,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
-	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, which needs an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
+	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
@@ -3105,6 +3105,8 @@ func optionalSkipReason(id string) string {
 		return "the pin records the current git identity, so it is only written against an answered prompt"
 	case ahoy.StatusLineOfferGapID:
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
+	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
+		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
 	}
 	return ""
 }

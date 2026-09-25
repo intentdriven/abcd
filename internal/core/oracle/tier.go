@@ -20,13 +20,12 @@
 //
 // Staged, loudly (the loud-staging rule): spc-2609180535002478 lands the types,
 // the proposal and its roster test, the store readers, the --route parser,
-// Resolve, the bare board's oracle lines, and the request block and receipt
-// every delegating verb carries (Route.Request, Route.Receipt). The ahoy
-// consent step that writes an accepted table is the spec's step 5. Escalating
-// a tier after a failed fix round and the provider allowlist wait on the
-// implement loop's state file and the API adapter, and are the spec's
-// remainder; until the adapter implements Connections, every step resolves to
-// the harness.
+// Resolve, the bare board's oracle lines, the request block and receipt every
+// delegating verb carries (Route.Request, Route.Receipt), and the ahoy consent
+// step that writes an accepted table. Escalating a tier after a failed fix
+// round and the provider allowlist wait on the implement loop's state file and
+// the API adapter, and are the spec's remainder; until the adapter implements
+// Connections, every step resolves to the harness.
 package oracle
 
 import (
