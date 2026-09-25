@@ -98,7 +98,7 @@ once. Human-paired (the §4 gate is manual by design).
 
 No ordering constraints among them; each is small and autonomous-eligible
 unless its body says otherwise:
-[iss-33](../../work/issues/open/iss-33-ahoy-verb-hygiene.md) (unvalidated
+[iss-33](../../work/issues/resolved/iss-33-ahoy-verb-hygiene.md) (unvalidated
 interactive answers persisted),
 [iss-221](../../work/issues/open/iss-221-refounding-lineage-prompt-is-a-one-shot.md),
 [iss-222](../../work/issues/resolved/iss-222-install-dev-silent-noop-over-unowned-wrapper.md),

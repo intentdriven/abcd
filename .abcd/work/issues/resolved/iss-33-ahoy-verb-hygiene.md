@@ -7,6 +7,10 @@ category: "bug"
 source: "agent-finding"
 found_during: "2026-07-08 multi-agent review"
 found_at: "internal/core/ahoy/apply.go"
+resolution: "Deleted ahoy.Status: the bare form's text summary is rendered by the abcd ahoy front door and the plugin page runs ahoy --json, and no surface promises Status's output; TestEveryExportedAhoyFunctionHasAFrontDoor now refuses an exported ahoy function no production code outside the package calls."
+impact: internal
+resolved_by:
+  commit: "14ec74e2"
 ---
 
 RE-SCOPED 2026-09-09 against the shipped tree. Every instance in the original
@@ -57,3 +61,7 @@ coverage-plus-caller audit that distinguishes loud staging from silent
 scaffolding, per `.abcd/development/principles/loud-staging.md` — is still the
 right shape and is still unbuilt; `ahoy.Status` is exactly the instance it would
 catch.
+
+## Grounds
+
+- pursued: no exported ahoy renderer exists that no front door reaches; shown wrong if an exported ahoy function without an outside production caller passes the package's caller audit
