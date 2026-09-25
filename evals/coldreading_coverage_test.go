@@ -697,6 +697,36 @@ var coverage = []coverageRow{
 		Falsifier: "drop the admissions directory from issueschema.LedgerDirs, so the derived row disappears",
 		Caught:    caughtFamily,
 	},
+	// ---- the knowledge record (spc-2609020626042471) ----
+	{
+		Rule:      "principles are admitted as their statement at the three assembling positions",
+		Falsifier: "delete the principle row from Table",
+		Caught:    caughtCarrier,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		Rule:      "the four principle claim keys never travel",
+		Falsifier: "delete the four claim-key rows from Exclusions",
+		Caught:    caughtLeak,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		Rule:      "a principle's citations never travel: it is projected to its statement",
+		Falsifier: "project the whole file on the principle row (empty its Fields)",
+		Caught:    caughtLeak,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		Rule:      "a link in a principle's statement travels as its label",
+		Falsifier: "stop unwrapping links in the labelled-paragraph resolution",
+		Caught:    caughtLeak,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		Rule:      "the principle row is not admitted at the comparative position, and its manifest says so",
+		Falsifier: "add the comparative position to the principle row",
+		Caught:    caughtFamily,
+	},
 	{
 		Rule:      "surprises never reach the comparative reading, and its manifest says so",
 		Falsifier: "drop the surprises directory from issueschema.LedgerDirs, so the derived row disappears",

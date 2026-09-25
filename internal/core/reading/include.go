@@ -78,7 +78,14 @@ import (
 // PROMISED — it now carries a token naming its kind and its run — which is
 // MINOR by this constant's own rule (adr-2609021016275803,
 // spc-2609020626045177).
-const AssemblerVersionCore = "1.10.0"
+// It goes 1.10.0 to 1.11.0 with the knowledge record as a read object: Table
+// gains the principles row at the three assembling positions, Kinds() gains
+// `principle`, the projection gains its labelled-paragraph resolution, and
+// Exclusions gains the four claim keys and the citation entry, which a new
+// refusal enforces. A source admitted, a vocabulary member and refusals a
+// reader can now check are each MINOR by this constant's own rule
+// (adr-2609021016270132, spc-2609020626042471).
+const AssemblerVersionCore = "1.11.0"
 
 // AssemblerVersion is the core semver with the rendered include table's digest
 // as semver build metadata. The digest is computed, not declared, so a table
@@ -184,13 +191,18 @@ const (
 	// selects repository material, and a candidate is selected by the derived
 	// run (adr-2609021016272867; validatePresets refuses it by name).
 	KindCandidate Kind = "candidate"
+	// KindPrinciple is one principle of the knowledge record, projected to its
+	// statement: the H1 title and the `**The rule.**` paragraph, links unwrapped
+	// to their labels. Its four claim keys and every citation stay behind as
+	// genealogy (adr-2609021016270132, spc-2609020626042471).
+	KindPrinciple Kind = "principle"
 )
 
 // Kinds lists the closed material-class vocabulary.
 func Kinds() []Kind {
 	return []Kind{KindBriefSection, KindGlossaryTerm, KindIntentProjection,
 		KindDiscipline, KindSpec, KindSource, KindTest, KindDoc, KindConfig,
-		KindCandidate}
+		KindCandidate, KindPrinciple}
 }
 
 // Scan says whether the exclusion floor examined an item, and it is ONE word
@@ -326,6 +338,16 @@ var allPositions = []Position{PositionWidening, PositionEntailment, PositionComp
 // a path or a record at the comparative position selects nothing outside the
 // criteria discipline, because there is nothing else there for it to reach.
 var coldPositions = []Position{PositionWidening, PositionEntailment, PositionDetection}
+
+// PrincipleSource is the knowledge record: one principle per file, each a
+// statement and the genealogy it was distilled from.
+const PrincipleSource = ".abcd/development/principles"
+
+// PrincipleField is the one field a principle travels as: its statement, the
+// labelled paragraph `**The rule.**` with the H1 title above it (projectField's
+// labelled-paragraph resolution). Everything after it — the reasons, the
+// bounds, the promotion rung — and every frontmatter key stays behind.
+const PrincipleField = "The rule"
 
 // CandidateSource is the ledger directory the candidate row reaches: the working
 // tier's readings store, one directory per run. It is the leaf bucket the
@@ -489,6 +511,29 @@ var Table = []Row{
 			"the candidate set and the reading asked to widen it does not",
 	},
 	{
+		// The knowledge record as a read object (adr-2609021016270132). A
+		// principle's statement is what a project carries forward and sits on
+		// the cold side; its claim keys and its citations back to the records it
+		// was distilled from are derivational and stay behind, which is a
+		// projection rule rather than a path rule — so the row names the family
+		// and projects one field, and the floor below asserts the rest.
+		//
+		// Not at comparative: there the include table is the whole account and
+		// admits the candidates and the criteria alone (companion 7.2, R3).
+		// Which of the three assembling positions RECEIVES the knowledge record
+		// is a committed preset entry's choice, measured by the presets' eval;
+		// the table only admits it.
+		Positions: coldPositions,
+		Source:    PrincipleSource,
+		Match:     []string{".md"},
+		Store:     "prn",
+		Fields:    []string{PrincipleField},
+		Kind:      KindPrinciple,
+		Scan:      ScanParsed,
+		Rule: "The knowledge record is a read object: a principle travels as its statement, " +
+			"and its keys and citations are genealogy (adr-2609021016270132)",
+	},
+	{
 		// Ordered above the .go row deliberately: path.Ext("foo_test.go") is
 		// ".go", so the source row would otherwise claim every test file, and
 		// the first row that reaches a path owns it. Both rows admit — this
@@ -587,6 +632,14 @@ var Table = []Row{
 var Exclusions = []Exclusion{
 	{Rule: "field projection", Signal: "frontmatter key", Detail: "origin"},
 	{Rule: "field projection", Signal: "frontmatter key", Detail: "production_mode"},
+	// A principle's four claim keys (adr-2609021016270132): what kind of claim
+	// it makes, what it is about, what comparison produced it, and the records
+	// and conditions it rests on. They are genealogy, and a principle travels as
+	// its statement alone.
+	{Rule: "field projection", Signal: "frontmatter key", Detail: "claim_type"},
+	{Rule: "field projection", Signal: "frontmatter key", Detail: "reference"},
+	{Rule: "field projection", Signal: "frontmatter key", Detail: "comparison"},
+	{Rule: "field projection", Signal: "frontmatter key", Detail: "evidence"},
 	{Rule: "field projection", Signal: "heading", Detail: "Audit Notes"},
 	{Rule: "field projection", Signal: "heading", Detail: "Open Questions"},
 	{Rule: "field projection", Signal: "heading", Detail: "Why This Matters"},
@@ -616,6 +669,12 @@ var Exclusions = []Exclusion{
 		Positions: coldPositions,
 	},
 	{Rule: "absent from the positive walk", Signal: "file", Detail: ".abcd/work/DECISIONS.md"},
+	// A principle's citations. The projection keeps the statement and unwraps a
+	// link to its label, and verifyPrincipleItem refuses the assembly if a
+	// record handle survives into a principle item, so this is an assertion the
+	// assembler checks rather than a disclosure a reader trusts.
+	{Rule: "the statement is knowledge and the citations are genealogy", Signal: "citation",
+		Detail: "record handles and links in a principle"},
 	// The local ledger tier. It was excluded from the first day and asserted by
 	// nothing: absent from the positive walk, denied by the `.abcd` segment, and
 	// named in no row here — so every manifest was silent about the one tier
@@ -670,6 +729,17 @@ var Exclusions = []Exclusion{
 		Signal:    "directory",
 		Detail:    ".abcd/development/intents/shipped",
 		Positions: []Position{PositionWidening},
+	},
+	// The knowledge record's one withdrawal. At comparative the include table
+	// is the whole account and admits the candidates and the criteria alone, so
+	// the principles row withdraws there; the floor asserts it, so a reader
+	// checks the withdrawal rather than inferring it from a row's silence, and
+	// assertExclusions enforces it by path (spc-2609020626042471).
+	{
+		Rule:      "the comparative reading receives the candidates and the criteria alone",
+		Signal:    "directory",
+		Detail:    PrincipleSource,
+		Positions: []Position{PositionComparative},
 	},
 }
 

@@ -53,6 +53,10 @@ type excludedKey struct {
 var excludedKeys = []excludedKey{
 	{Key: "origin", Source: "itd-183 exclusion list: `origin`, detected by frontmatter key"},
 	{Key: "production_mode", Source: "itd-183 exclusion list: production mode, detected by frontmatter key"},
+	{Key: "claim_type", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
+	{Key: "reference", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
+	{Key: "comparison", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
+	{Key: "evidence", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
 }
 
 // excludedHeading is one heading the record refuses.
@@ -174,6 +178,12 @@ var excludedFamilies = []excludedFamily{
 			"5.2 both state that object without the shipped intents, so the widening position " +
 			"withdraws from the row and the floor asserts the withdrawal (iss-2609012259587904)",
 	},
+	{
+		Path:      ".abcd/development/principles",
+		Positions: []string{posComparative},
+		Source: "spc-2609020626042471: at the comparative position the include table admits the " +
+			"candidates and the criteria alone, so the knowledge record is not among its sources",
+	},
 }
 
 // bindsAt reports whether the exclusion binds at position p.
@@ -224,6 +234,12 @@ var admittedRecordPaths = []admittedRecordPath{
 	},
 	{Path: ".abcd/development/intents/disciplines", Source: "itd-183 include list"},
 	{Path: ".abcd/development/specs", Source: "itd-183 include list"},
+	{
+		Path:      ".abcd/development/principles",
+		Positions: []string{posWidening, posEntailment, posDetection},
+		Source: "spc-2609020626042471: the knowledge record is a read object, admitted as each " +
+			"principle's statement at the three positions that read repository material",
+	},
 	{
 		Path:      ".abcd/development/intents/drafts",
 		Positions: []string{posEntailment},
@@ -357,6 +373,12 @@ var materialClasses = []materialClass{
 		Under:  []string{".abcd/development/specs"},
 		Match:  []string{".md"},
 		Source: "itd-183 include list: the design record a capability was built against",
+	},
+	{
+		Kind:   "principle",
+		Under:  []string{".abcd/development/principles"},
+		Match:  []string{".md"},
+		Source: "spc-2609020626042471: a principle of the knowledge record, projected to its statement",
 	},
 	{
 		Kind:   "test",
@@ -638,16 +660,16 @@ func requireOracleTables(t *testing.T) {
 		got  int
 		want int
 	}{
-		{"sentinelClasses", len(sentinelClasses), 22},
-		{"carriers", len(carriers), 19},
-		{"materialClasses", len(materialClasses), 11},
-		{"holes", len(holes), 3},
+		{"sentinelClasses", len(sentinelClasses), 23},
+		{"carriers", len(carriers), 20},
+		{"materialClasses", len(materialClasses), 12},
+		{"holes", len(holes), 4},
 		{"refusals", len(refusals), 8},
-		{"excludedKeys", len(excludedKeys), 2},
+		{"excludedKeys", len(excludedKeys), 6},
 		{"excludedHeadings", len(excludedHeadings), 4},
-		{"excludedFamilies", len(excludedFamilies), 23},
-		{"admittedRecordPaths", len(admittedRecordPaths), 13},
-		{"coverage", len(coverage), 80},
+		{"excludedFamilies", len(excludedFamilies), 24},
+		{"admittedRecordPaths", len(admittedRecordPaths), 14},
+		{"coverage", len(coverage), 85},
 	} {
 		if tbl.got != tbl.want {
 			t.Fatalf("the %s table holds %d row(s), and this eval is written against %d; "+

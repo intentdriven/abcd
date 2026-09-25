@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/site"
 )
 
@@ -20,9 +21,11 @@ import (
 // record in this binary.
 //
 // A field resolves as a heading section where the file carries a heading of
-// that name, and otherwise as a frontmatter key. Nothing else resolves: a field
-// the file does not carry contributes no item, which is what lets one
-// projection describe an intent whose sections the record is still growing.
+// that name, then as a LABELLED PARAGRAPH where the file carries a paragraph
+// opening with the field in bold (`**The rule.**`), and otherwise as a
+// frontmatter key. Nothing else resolves: a field the file does not carry
+// contributes no item, which is what lets one projection describe an intent
+// whose sections the record is still growing.
 
 // trimBlankEdges joins a section body, dropping the blank lines at either end so
 // a projected field is the text and not the whitespace around it.
@@ -1333,9 +1336,44 @@ func projectField(rel, doc, field string) (string, bool, error) {
 		start, end := sectionSpan(sections, i, len(lines))
 		return trimBlankEdges(lines[min(start+1, len(lines)):min(end, len(lines))]), true, nil
 	}
+	if text, ok := labelledParagraph(sections, lines, field); ok {
+		return text, true, nil
+	}
 	fields := frontmatter.Fields(strings.Split(doc, "\n"))
 	if f, ok := fields[field]; ok && !frontmatter.IsNull(f.Value) {
 		return f.Value, true, nil
 	}
 	return "", false, nil
+}
+
+// labelledParagraph resolves a field as the first live paragraph opening with
+// the field in bold, `**<field>.**`, taken to the next blank line
+// (mdrecord.LabelledParagraph, the one reading the principles lint shares).
+//
+// It is how a principle's statement is found (spc-2609020626042471): a
+// principle carries one heading, its H1, and a body of labelled paragraphs,
+// so its statement is a paragraph and not a section. Two things are done to
+// what it finds. The label is removed and the document's H1 title is placed
+// above the paragraph, because a rule without its name is not readable cold.
+// And every inline link is unwrapped to its label on the renderedTexts
+// precedent: a link target is a citation, the label is prose, and the
+// statement travels as knowledge while its citations stay behind.
+func labelledParagraph(sections []site.Section, lines []string, field string) (string, bool) {
+	start, end, ok := mdrecord.LabelledParagraph(lines, field)
+	if !ok {
+		return "", false
+	}
+	para := make([]string, 0, end-start)
+	for _, ln := range lines[start:end] {
+		para = append(para, strings.TrimRight(ln, "\r"))
+	}
+	para[0] = strings.TrimLeft(strings.TrimPrefix(para[0], "**"+field+".**"), " \t")
+	body := strings.TrimSpace(mdLinkRe.ReplaceAllString(strings.Join(para, "\n"), "$1"))
+	for _, sec := range sections {
+		if sec.Level == 1 && strings.TrimSpace(sec.Title) != "" {
+			title := mdLinkRe.ReplaceAllString(normaliseHeadingTitle(sec.Title), "$1")
+			return "# " + title + "\n\n" + body, true
+		}
+	}
+	return body, true
 }

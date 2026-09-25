@@ -322,6 +322,28 @@ var sentinelClasses = []sentinelClass{
 			"own reframe row",
 	},
 	{
+		// The knowledge record's genealogy (spc-2609020626042471). A typed
+		// principle carries it in three homes: a claim key (`evidence`), the
+		// reasoning below the statement (`**Why.**`, beside a record handle),
+		// and a link TARGET inside the statement itself. The statement travels
+		// and every one of the three stays behind: the reasoning by the
+		// projection, and the link target by the projection's unwrapping to the
+		// label. The key is stripped by the floor, but a projected principle
+		// never carries its frontmatter at all, so the key rows need a home on
+		// a record that travels WHOLE to be falsifiable — the fourth plant, an
+		// `evidence` key on the spec, on the same ground an excluded heading
+		// keeps a home on one (testdata/cold-reading/README.md). Warm at every
+		// position.
+		Name: "PRINCIPLE-CITATION",
+		Homes: []string{
+			"repo:.abcd/development/principles/a-typed-principle.md",
+			"repo:.abcd/development/specs/open/spc-1-a-design-record.md",
+		},
+		Count: 4,
+		Why: "adr-2609021016270132: a principle is read cold by its statement and never by " +
+			"its citations, which are genealogy",
+	},
+	{
 		Name:  "DEFINITION",
 		Homes: []string{"repo:agents/cold-reading-widening.md"},
 		Count: 1,
@@ -474,6 +496,20 @@ var holes = []hole{
 		Positions: []string{posComparative},
 		Why: "the derived widening run's items are admitted at the comparative position and " +
 			"projected to two body fields, so a fate relocated into one of those fields travels",
+	},
+	{
+		// The knowledge record's control (spc-2609020626042471, ac-7). The
+		// link-target plant in the baseline cannot leak while the unwrapper
+		// stands, so it falsifies the unwrapping alone; this relocation is what
+		// exercises the read block over the statement — the citation class
+		// moved into the `**The rule.**` paragraph as a bare token, which the
+		// projection carries into the bundle and the control must report.
+		Class:     "PRINCIPLE-CITATION",
+		From:      ".abcd/development/principles/a-typed-principle.md",
+		To:        ".abcd/development/principles/a-typed-principle.md",
+		Positions: []string{posWidening, posEntailment, posDetection},
+		Why: "a principle's statement is projected to every position whose entry admits the " +
+			"knowledge record, so a token relocated into it travels",
 	},
 }
 
@@ -849,6 +885,22 @@ var carriers = []carrier{
 		Scan:      "parsed",
 		Why: "the criteria discipline, which the assembler narrows the disciplines row to at " +
 			"this position; a comparative reading with no criteria characterises against nothing",
+	},
+	{
+		// The knowledge record's carrier (spc-2609020626042471). The fixture
+		// preset admits the principle kind at the three assembling positions, so
+		// the principle row is falsifiable by presence: deleting it leaks nothing
+		// and only this floor sees it go. Fields pins the projection to the one
+		// statement field, so a row projecting the whole file is told apart from
+		// one projecting the statement.
+		Path:      ".abcd/development/principles/a-typed-principle.md",
+		Positions: []string{posWidening, posEntailment, posDetection},
+		Markers:   []string{"ABCD-EVAL-PRINCIPLE-STATEMENT travels as the knowledge record"},
+		Fields:    []string{"The rule"},
+		Scan:      "parsed",
+		Classes:   []string{"PRINCIPLE-CITATION"},
+		Why: "a typed principle, admitted as its statement; the carrier is what makes the " +
+			"principles row falsifiable",
 	},
 	{
 		// The live leak's own shape: a Go test file carrying record-shaped
