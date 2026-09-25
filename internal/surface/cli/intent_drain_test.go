@@ -272,3 +272,38 @@ func TestIntentAuditOwedUnreadableHistoryIsUnknown(t *testing.T) {
 		}
 	}
 }
+
+// TestIntentAuditOwedBadHeadDoesNotBlock (iss-2609252052386874): the oldest
+// owed intent's request cannot be emitted (its spec_id carries no number); the
+// drain lists it with its error, exits 0, and emits the next entry's request.
+func TestIntentAuditOwedBadHeadDoesNotBlock(t *testing.T) {
+	repo := drainRepo(t)
+	bad := strings.Replace(cliShippedWithNotes("itd-19", "_Empty._"), "spec_id: spc-1", "spec_id: none", 1)
+	writeRepoFile(t, repo, cliShipped+"/itd-19-s.md", bad)
+	commitShippedOn(t, repo, cliShipped+"/itd-19-s.md", "2025-12-01")
+
+	text, stderr, err := runCLISplit(t, "intent", "audit", "--owed")
+	if err != nil {
+		t.Fatalf("a bad head must not block the drain: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(text, "itd-19") || !strings.Contains(text, "not emitted") || !strings.Contains(text, "next: itd-21") {
+		t.Fatalf("want itd-19 listed as not emitted and next itd-21:\n%s", text)
+	}
+	stdout, _, err := runCLISplit(t, "intent", "audit", "--owed", "--json", "--max", "1")
+	if err != nil {
+		t.Fatalf("a queue of one bad entry must still exit 0: %v", err)
+	}
+	var got struct {
+		Queue []struct {
+			IntentID  string `json:"intent_id"`
+			EmitError string `json:"emit_error"`
+		} `json:"queue"`
+		Next *struct{} `json:"next"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if len(got.Queue) != 1 || got.Queue[0].IntentID != "itd-19" || got.Queue[0].EmitError == "" || got.Next != nil {
+		t.Fatalf("want itd-19 with its emit_error and no next:\n%s", stdout)
+	}
+}

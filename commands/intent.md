@@ -650,7 +650,11 @@ day unknown and the queue in mint order), at most `max` of them — with `owed`,
 `request_path` and its `routing`: the command has just emitted that request,
 exactly as `intent audit <itd-N>` does — its routing section included, and a
 `--route intent-auditor=<tier>` override applied the same way — minting the
-receipt if the intent had none. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+receipt if the intent had none. An entry whose request cannot be emitted (a
+malformed `spec_id`, an unreadable file) carries `emit_error`, and `next` is
+the first entry after it that emits, so one bad record never blocks the drain;
+no `next` while `owed` is above zero means no listed entry could be emitted.
+It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
 `--max` without `--owed` is refused, as are `--owed` with an intent id or with
 `--issue-drift`.
 
@@ -664,10 +668,13 @@ auditor at a time are what bound the cost:
    owed left owed: no intent-auditor available — <what the host said>"). A
    refused launch part-way through stops the loop the same way, and the
    summary names the entries it did not reach.
-2. **For each entry in `queue`, in order:** run `intent audit <itd-N> --json`,
-   with the same `--route` when the drain was given one (for the first entry
-   the request is already written, and the re-emit is idempotent), hand the whole request file to the `intent-auditor` agent,
-   write the verdict it returns to `.abcd/.work.local/scratch/`, and run
+2. **For each entry in `queue`, in order:** an entry carrying `emit_error`
+   is not audited — report it with its error, as needing a hand fix, and take
+   the next. Otherwise run `intent audit <itd-N> --json`, with the same
+   `--route` when the drain was given one (for the entry `next` names the
+   request is already written, and the re-emit is idempotent), hand the whole
+   request file to the `intent-auditor` agent, write the verdict it returns to
+   `.abcd/.work.local/scratch/`, and run
    `intent audit ingest --verdict-json <file> --json`. The verdict lands exactly
    as a single audit's does — the Audit Notes block, the receipt, the scope-
    condition dispositions. Report the ingest's status, then take the next
@@ -681,8 +688,9 @@ auditor at a time are what bound the cost:
    `dead_letter` ingest is reported with its reason and is listed apart by
    bare `intent audit` from then on.
 4. **Summarise:** how many were audited, the ingest outcome of each, the
-   captures filed for NOT_MET (their ids), how many stay owed — the command's
-   `remaining` plus any entry the loop did not reach — and why the loop
+   captures filed for NOT_MET (their ids), the entries skipped for an
+   `emit_error`, how many stay owed — the command's `remaining` plus any entry
+   the loop did not reach — and why the loop
    stopped: the queue ran out, the cap was reached, or no auditor was
    available.
 

@@ -14,7 +14,8 @@ import (
 // runOwedDrain is `abcd intent audit --owed [--max <n>]` (itd-53,
 // spc-2609211930059886): the owed reviews from the one reader, ordered oldest
 // shipped first and capped in internal/core/intent, with the oldest's request
-// emitted through the single audit's own emit and its path printed, so a host
+// emitted through the single audit's own emit and its path printed (an entry
+// whose emit fails is listed with its error and the next one is emitted), so a host
 // without the plugin page drives the drain by hand: audit the request, ingest
 // the verdict, run this again. It runs no reviewer, so every entry stays owed
 // until its verdict is ingested. The shipped day comes from the site package's
@@ -71,8 +72,17 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 				rcp = "no receipt (one is minted on re-emit)"
 			}
 			fmt.Fprintf(w, "  %d. %s  %s  %s\n", i+1, e.IntentID, day, rcp)
+			if e.EmitError != "" {
+				fmt.Fprintf(w, "     not emitted: %s\n", termsafe.Sanitize(e.EmitError))
+			}
 		}
-		if step.Next != nil {
+		if step.Next == nil {
+			fmt.Fprint(w, "next: none — no listed entry could be emitted; each needs the hand fix its error names")
+			if step.Remaining > 0 {
+				fmt.Fprint(w, " (a larger --max reaches the entries behind them)")
+			}
+			fmt.Fprintln(w)
+		} else {
 			fmt.Fprintf(w, "next: %s (receipt %s) — request: %s\n", step.Next.IntentID, step.Next.ReceiptID, step.Next.RequestPath)
 			renderRequestLine(w, route)
 			fmt.Fprintln(w, "  hand the whole request to the intent-auditor agent, ingest its verdict with "+
@@ -84,7 +94,8 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 }
 
 // drainView is the drain step as the front door renders it: the queue, and the
-// head's emit joined with its routing member, as `audit <itd-N>` joins it.
+// emitted entry's result joined with its routing member, as `audit <itd-N>`
+// joins it.
 type drainView struct {
 	intent.ReviewQueue
 	Next any `json:"next,omitempty"`

@@ -225,3 +225,38 @@ func TestOwedQueueTellsUnknownFromUncommitted(t *testing.T) {
 		}
 	}
 }
+
+// TestNextOwedAuditSkipsAHeadThatCannotBeEmitted (iss-2609252052386874): a head
+// whose request cannot be emitted (here a spec_id carrying no number) carries
+// its error on its own queue entry, and the step emits the next entry instead,
+// so one bad record never blocks the drain. With every listed entry failing,
+// the queue still comes back, with no next.
+func TestNextOwedAuditSkipsAHeadThatCannotBeEmitted(t *testing.T) {
+	root := t.TempDir()
+	seedReviewStates(t, root)
+	bad := strings.Replace(shippedWithNotes("itd-9", "bad", "_Empty._"), "spec_id: spc-1", "spec_id: none", 1)
+	writeFile(t, root, shippedDir+"/itd-9-bad.md", bad)
+	days := map[string]string{"itd-9-bad.md": "2025-12-01", "itd-11-owed.md": "2026-03-01", "itd-14-bare.md": "2026-01-15"}
+
+	step, err := NextOwedAudit(root, 0, shippedOnFrom(days), AuditEmitOptions{})
+	if err != nil {
+		t.Fatalf("a head that cannot be emitted must not fail the step: %v", err)
+	}
+	if got, want := strings.Join(queueIDs(step.ReviewQueue), ","), "itd-9,itd-14,itd-11,itd-15"; got != want {
+		t.Fatalf("queue = %s, want %s", got, want)
+	}
+	if !strings.Contains(step.Queue[0].EmitError, "spec_id") {
+		t.Fatalf("the bad head carries no emit error: %+v", step.Queue[0])
+	}
+	if step.Next == nil || step.Next.IntentID != "itd-14" || step.Queue[1].EmitError != "" {
+		t.Fatalf("next = %+v, want itd-14, the first entry that emits", step.Next)
+	}
+
+	step, err = NextOwedAudit(root, 1, shippedOnFrom(days), AuditEmitOptions{})
+	if err != nil {
+		t.Fatalf("a queue of one bad entry must still come back: %v", err)
+	}
+	if step.Next != nil || len(step.Queue) != 1 || step.Queue[0].EmitError == "" || step.Remaining != 3 {
+		t.Fatalf("want the one bad entry listed with its error and no next, got %+v", step)
+	}
+}

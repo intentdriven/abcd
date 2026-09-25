@@ -39,6 +39,11 @@ type QueuedReview struct {
 	ReviewEntry
 	Shipped      string `json:"shipped,omitempty"`
 	ShippedState string `json:"shipped_state"`
+	// EmitError is why the drain step could not emit this entry's request (a
+	// malformed spec_id, an unreadable file); the step moves on to the next
+	// entry, so one bad record never blocks the drain. "" when it was not
+	// tried or was emitted.
+	EmitError string `json:"emit_error,omitempty"`
 }
 
 // The states of a queued review's shipped day. An undated entry is either
@@ -116,9 +121,10 @@ func OwedQueue(repoRoot string, max int, shippedOn ShippedOn) (ReviewQueue, erro
 	return q, nil
 }
 
-// DrainStep is one step of the drain: the queue, and the request for its head
-// re-emitted so a host can hand it to the auditor. Next is nil when nothing is
-// owed.
+// DrainStep is one step of the drain: the queue, and the request for the
+// first entry that could be emitted, re-emitted so a host can hand it to the
+// auditor. Next is nil when nothing is owed, or when no listed entry could be
+// emitted (each then carries its EmitError).
 type DrainStep struct {
 	ReviewQueue
 	Next *AuditEmitResult `json:"next,omitempty"`
@@ -126,27 +132,30 @@ type DrainStep struct {
 
 // NextOwedAudit is OwedQueue plus the single audit's own emit on the head of
 // the queue: the head's request is (re-)written and named, and a markerless
-// head has its receipt minted, which the queue then reports. Only the head is
-// emitted; nothing runs a reviewer. The next step, after the host ingests the
-// head's verdict, finds the queue one shorter. opts is what the front door adds
-// to the request, as it adds it to a single audit's (the routing section).
+// head has its receipt minted, which the queue then reports. Only one entry is
+// emitted; nothing runs a reviewer. The next step, after the host ingests that
+// entry's verdict, finds the queue one shorter. A head whose emit fails keeps
+// its error on its own entry and the next entry is tried, so a record that
+// needs a hand fix stays listed without blocking the ones behind it. opts is
+// what the front door adds to the request, as it adds it to a single audit's
+// (the routing section).
 func NextOwedAudit(repoRoot string, max int, shippedOn ShippedOn, opts AuditEmitOptions) (DrainStep, error) {
 	q, err := OwedQueue(repoRoot, max, shippedOn)
 	if err != nil {
 		return DrainStep{}, err
 	}
 	step := DrainStep{ReviewQueue: q}
-	if len(q.Queue) == 0 {
-		return step, nil
+	for i := range step.Queue {
+		e := &step.Queue[i]
+		res, err := ReEmitAuditWith(repoRoot, e.IntentID, opts)
+		if err != nil {
+			e.EmitError = err.Error()
+			continue
+		}
+		step.Next = &res
+		e.State, e.ReceiptID = ReviewOwed, res.ReceiptID
+		break
 	}
-	head := q.Queue[0].IntentID
-	res, err := ReEmitAuditWith(repoRoot, head, opts)
-	if err != nil {
-		return DrainStep{}, fmt.Errorf("intent: emitting the request for %s, the oldest of %d owed review(s): %w; "+
-			"`abcd intent audit` lists every owed review and its re-emit", head, q.Owed, err)
-	}
-	step.Next = &res
-	step.Queue[0].State, step.Queue[0].ReceiptID = ReviewOwed, res.ReceiptID
 	return step, nil
 }
 
