@@ -17,3 +17,4 @@ Local record gates validate the WORKING TREE, not the committed/pushed tree, so 
 ## Grounds
 
 - pursued: a commit whose working tree diverged from it during its preflight cannot be pushed through the hook; a divergence that still earns a receipt, such as one git status --porcelain does not report, would show it wrong
+- pursued: review met the falsifier above — an edit to a file flagged skip-worktree or assume-unchanged is invisible to git status and earned a receipt; the receipt is now withheld while any such flag is set, and the divergences it still cannot see (an ignored file a gate reads such as go.work, HEAD or the tree moved and restored between its two reads) are stated in scripts/preflight-receipt.sh and .abcd/work/DECISIONS.md rather than closed
