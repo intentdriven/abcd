@@ -51,20 +51,12 @@ var windowsDriveRe = regexp.MustCompile(`^[A-Za-z]:[\\/]`)
 // include patterns. A missing/malformed config, or an absolute / ".." /
 // denied-rooted include, is a PreflightError.
 func LoadIncludes(repoRoot string) ([]string, error) {
-	path := filepath.Join(repoRoot, includeConfigRelPath)
-	data, err := os.ReadFile(path)
+	raw, err := readIncludeConfig(repoRoot)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, &PreflightError{msg: "include config not found: " + includeConfigRelPath, err: ErrNoLaunchPayload}
-		}
-		return nil, preflight("include config unreadable: %s: %v", includeConfigRelPath, err)
+		return nil, err
 	}
 	// Hand-validate the container shape: a top-level object with a non-empty
 	// includes array of non-empty strings. Reject anything else (no schema lib).
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, preflight("include config is not a JSON object: %s: %v", includeConfigRelPath, err)
-	}
 	rawIncludes, ok := raw["includes"]
 	if !ok {
 		return nil, preflight("include config missing required 'includes' key: %s", includeConfigRelPath)
@@ -97,6 +89,24 @@ func LoadIncludes(repoRoot string) ([]string, error) {
 		return nil, preflight("include config yielded no usable patterns: %s", includeConfigRelPath)
 	}
 	return patterns, nil
+}
+
+// readIncludeConfig reads the launch-payload config as a JSON object, the one
+// reader both the include list and the gate policy go through.
+func readIncludeConfig(repoRoot string) (map[string]json.RawMessage, error) {
+	path := filepath.Join(repoRoot, includeConfigRelPath)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, &PreflightError{msg: "include config not found: " + includeConfigRelPath, err: ErrNoLaunchPayload}
+		}
+		return nil, preflight("include config unreadable: %s: %v", includeConfigRelPath, err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, preflight("include config is not a JSON object: %s: %v", includeConfigRelPath, err)
+	}
+	return raw, nil
 }
 
 // normalizeInclude strips a leading ./ and a trailing / and collapses to POSIX.

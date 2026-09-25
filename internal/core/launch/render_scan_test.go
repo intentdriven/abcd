@@ -23,7 +23,7 @@ func TestRenderPayloadSecretRefuses(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "payload")
 
 	// PrecheckPayload performs zero writes and must already refuse.
-	if _, err := PrecheckPayload(root, dest); !errors.Is(err, ErrPayloadScanRefused) {
+	if _, err := PrecheckPayload(root, dest, PrecheckOptions{Dirty: DirtySkip}); !errors.Is(err, ErrPayloadScanRefused) {
 		t.Fatalf("PrecheckPayload must refuse on a secret in an included file, got %v", err)
 	}
 

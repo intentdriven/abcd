@@ -12,14 +12,15 @@ a dated changelog heading and the release page and stops, and CI and a human tak
 And it never ships the design record: the payload is default-deny with the whole
 `.abcd/` namespace excluded structurally, so no include line can put it back.
 
-The preview is read-only and always exits 0, because a preview never blocks.
-Bare `abcd launch` refuses with a hint to ask for it. A repository with no
-launch payload (`.abcd/config/launch-payload.json`) has nothing to preview, and
-the preview says so and names the release path it does have: the scaffolded
-release workflows, the dated CHANGELOG heading the cut writes, and the
-auto-release workflow that tags it.
+The preview always exits 0, because a preview never blocks, and its one write is
+its pre-flight report in the gitignored local tier. Bare `abcd launch` refuses
+with a hint to ask for it. A repository with no launch payload
+(`.abcd/config/launch-payload.json`) has nothing to preview, and the preview
+says so and names the release path it does have: the scaffolded release
+workflows, the dated CHANGELOG heading the cut writes, and the auto-release
+workflow that tags it.
 
-> **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The full pre-flight gate suite and the remaining release automation are separately scheduled intents (itd-65 gate suite, itd-66 render parity, itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
+> **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The pre-flight gate suite (itd-65) runs on the preview and on the cut's render path; the remaining release automation is separately scheduled (itd-66 render parity, itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
 
 ## Sub-verbs
 
@@ -81,11 +82,14 @@ the tagged commit, each run bound to the repository the workflow runs in.
 `release-changelog-composer` agent, including the release page's retry loop. The
 deterministic emit alone is `abcd changelog`, read-only and prose-free.
 
-**Commit, tag and publish stay a design target** (itd-65's gate suite, itd-72's
-publishing). The verb neither commits, tags, nor publishes, so every step past
-the changelog heading and the release page is performed by a human and by CI. The dirty-tree and
-documentation-warning overrides belong to that design and are not on the shipped
-verb. There is no version flag at all: the version is derived, never authored
+**Commit, tag and publish stay a design target** (itd-72's publishing). The
+verb neither commits, tags, nor publishes, so every step past the changelog
+heading and the release page is performed by a human and by CI. A cut that
+renders a payload runs the pre-flight gate suite first (§ 1), and the
+dirty-tree override is that suite's one override: it waives the dirty-tree gate
+and nothing else. There is no documentation-warning override, because a warning
+refuses nothing unless the repository configures the suite strict. There is no
+version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
 
 **The scaffold writes the release machinery into a managed repo that lacks
@@ -106,42 +110,81 @@ the caller confirms, and a structural fault exits 2.
 **The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
 binary registers no `dry-run` subcommand under launch, and `commands/launch.md`
 names it as a flag. Its report is
-preview-only and always exits 0. It is **not** "ship minus publish": running the
-full gate suite and hard-failing on a finding is the full cut's design.
+preview-only and always exits 0. It is **not** "ship minus publish": it runs the
+same gate suite the cut's render path runs and reports what that path would
+refuse on, but refusing is the cut's.
 
 ## 1. Pre-flight gates
 
-Six gates report in the preview's JSON form today, and the honest summary is that
-four run and two do not.
+Every gate runs on the preview and on the cut's render path alike, over the one
+resolved bundle, so the two refuse on the same findings. The suite runs **all**
+of its gates and collects **all** of their findings before anything decides: a
+cut that refused on its first finding would hide the rest until the next
+attempt. The preview reports each gate as a row in its JSON — a name, a status
+(`ran`, `not_armed` where the repository has not adopted what the gate reads,
+`not_implemented`, or `host-run`), a one-line measurement, a tier, and the
+located findings.
 
-The **secret and PII scan** runs for real in report-only mode over the resolved
-bundle, and prints what it would refuse on, including a fail-closed reason where
-a scanner is unavailable. The **installability smoke** runs for real at its light
-tier. The **citation baseline** runs for real, tallying cited claims against
-their receipts. The **semantic-receipts** row reports presence only, never a
-verdict, because the release workflow owns the required-gates list and judges
-receipt validity: the row exists because a preview silent about the receipt gate
-once let a one-commit release branch reach a tag and fail-close there
-(iss-2608231226342272). The **marker-block** and **documentation-auditor** rows
-report `not_implemented`, deferred to itd-65.
+The **hard-fail** gates refuse the release:
 
-The plain-text preview omits the gate list entirely: it prints the
-version, the file count bundled, scan hard-fails, citations, receipts and
-whether it would publish, plus a would-refuse-on line when there is a finding.
-The JSON carries the gate detail.
+- **The secret and PII scan** over the resolved bundle, fail-closed where a
+  scanner is unavailable or a file could not be covered.
+- **Marker-block sanity** over every shipped Markdown file: a
+  `<!-- BEGIN ABCD -->` never closed, an `<!-- END ABCD -->` with no open block,
+  or a nested pair, each named with its file and line. A marker quoted in code
+  is not a marker.
+- **Change narration** over the shipped doc bodies — Markdown under `docs/` and
+  at the payload root, the changelog and the release page excepted: a sentence
+  carrying "changed from … to", "no longer", "migrated from", "renamed … to",
+  "previously … now" or an active "used to" is named with its file, line and
+  text. Bare "now" and bare "previously" are present-tense prose and pass; a
+  construct inside code, or on a line carrying the docs-lint escape, is exempt.
+  The changelog is derived from the records
+  ([adr-37](../../decisions/adrs/0037-changelog-driven-releases.md)), so the
+  remedy is to rephrase the doc, not to move the sentence into the changelog.
+- **The dirty tree**: any uncommitted change against `HEAD`, tracked or
+  untracked (the local tier excepted), refuses the cut unless the cut is
+  given the dirty-tree override. The override is recorded in the pre-flight report with every path
+  it carried. A tree whose state git cannot read refuses whatever the flag
+  says. The preview has no override, so a dirty tree is on its would-refuse
+  list. The cut runs this gate before it writes anything; the render after its
+  writes skips it, because by then the cut's own output is on disk.
+- **The installability smoke** at its light tier (below).
 
-The **manifest lockstep check** also runs for real, at its `dev` polarity over
-the working tree — the polarity adr-19 requires the committed manifests to
-satisfy, which is that they carry no version key — and folds any drift, or an
-unreadable version-location contract, into what the preview would refuse on.
-The preview's retention plan refuses where the existing release tags could not
-be listed, rather than reading an unread tag set as nothing to prune.
+The **warn** gates surface a concern and refuse nothing, unless the
+repository's `.abcd/config/launch-payload.json` sets `"strict_warnings": true`,
+which makes each warning a refusal:
 
-The full gate suite itd-65 designs adds the rest: a deeper opt-in secret scan,
-deep credential verification, a hook-compliance check, marker-block sanity, a
-dirty-tree refusal, a vulnerability check, and a documentation auditor over
-`docs/`. The scan layers that do ship enforce a per-kind severity floor that a
-repo's config can raise and never lower.
+- **The documentation audit** is the docs-lint engine over the repository's
+  configured doc roots. It reports `not_armed` where there is no
+  `.abcd/docs-lint.json`.
+- **Hook compliance**: every payload file a hook command invokes is executable
+  in the payload, every command handler names a command, and every timeout is a
+  positive number.
+
+Two rows report without a tier. The **citation baseline** tallies cited claims
+against their receipts and refuses on a broken, unreceipted or overdue one. The
+**semantic-receipts** row reports presence only, never a verdict, because the
+release workflow owns the required-gates list and judges receipt validity: the
+row exists because a preview silent about the receipt gate once let a
+one-commit release branch reach a tag and fail-close there
+(iss-2608231226342272).
+
+The plain-text preview prints the version, the file count bundled, scan
+hard-fails, citations, receipts and whether it would publish, then a
+would-refuse-on line per refusal, a warning line per warn-tier concern, and
+where its report landed. The JSON carries the gate detail.
+
+The **manifest lockstep check** also runs for real on the preview, at its `dev`
+polarity over the working tree — the polarity adr-19 requires the committed
+manifests to satisfy, which is that they carry no version key — and folds any
+drift, or an unreadable version-location contract, into what the preview would
+refuse on. The preview's retention plan refuses where the existing release tags
+could not be listed, rather than reading an unread tag set as nothing to prune.
+
+The gate suite does not carry a deeper opt-in secret scan, deep credential
+verification, or a vulnerability check. The scan layers that do ship enforce a
+per-kind severity floor that a repo's config can raise and never lower.
 
 The installability smoke is worth stating in full, because it is the gate that
 answers "will this artefact actually install". It resolves **one** declared
@@ -169,10 +212,9 @@ deferred) would, over the same resolved list, import every shipped entrypoint
 and render each command's help in an isolated subprocess rooted at the rendered
 payload.
 
-The pre-flight report file under a per-timestamp launch directory is full-cut
-behaviour (itd-65); `dry-run` renders its gate result inline and writes no
-report. The scan gate is side-effect-free with respect to the repo: its only
-writes are to a private temporary tree it removes.
+Every preview, and every cut that renders a payload, writes its pre-flight
+report (§ 4). The scan gate is side-effect-free with respect to the repo: its
+only writes are to a private temporary tree it removes.
 
 ## 2. Curated release artefact (default-deny)
 
@@ -386,7 +428,7 @@ no version key. The checker has no bypass flag, and adr-20 records that
 a dirty-tree override must not bypass manifest consistency.
 
 The release commit message format — carrying the bump tier and its reason — is
-**full-cut design target** (itd-65 plus itd-72). The shipped cut never
+a **full-cut design target** (itd-72). The shipped cut never
 commits, and no shipped path produces that format; the release cuts made so far
 use hand-written prose.
 
@@ -410,7 +452,7 @@ happened.
 
 A prune is a destructive, outward-visible act, so the design has the cut report
 exactly which release it removed, or why it refused. **Removal itself is a
-full-cut design target** (itd-65). What ships today computes the decision and
+full-cut design target** (itd-70). What ships today computes the decision and
 renders it — which releases a line keeps, which the plan would prune, and the
 reason a refusal stands — and stops there: no shipped path deletes a tag, a
 release or an asset, so the plan is a statement of intent a person still carries
@@ -418,11 +460,16 @@ out.
 
 ## 4. Reports
 
-A launch report under a per-timestamp launch directory is **full-cut
-behaviour** (itd-65): no shipped path writes it yet. When it lands it goes to
-the gitignored `.abcd/.work.local/logs/` tier, per the iss-36 and iss-56
-adjudication resolved as iss-73, and a detector fails the build if any non-test
-Go source under `internal/` so much as names the retired runtime location.
+Every preview, and every cut that renders a payload, writes a pre-flight report:
+`preflight.json` and `preflight.md` in a directory of its own under
+`.abcd/.work.local/logs/launch/`, named for the run's instant, in the gitignored
+local tier (per the iss-36 and iss-56 adjudication resolved as iss-73). The
+report carries the mode (preview or cut), the verdict, every refusal, every
+warning, every gate row, and the dirty-tree override with the paths it carried.
+A refused cut writes its report too, and the refusal names where it landed. The
+preview's JSON carries `report_path`, the cut's `preflight_report`. A detector
+fails the build if any non-test Go source under `internal/` so much as names the
+retired runtime location.
 
 ## 5. Bootstrap exception
 
@@ -449,8 +496,9 @@ performed by a human and by CI.
 - **Given** a clean tree with a deliberate PII fixture inside the resolved
   artefact, **when** the preview runs, **then** the report-only gate prints that
   it *would* refuse on that finding, naming the offending file and line, still
-  exits 0, and writes no artefact. The hard-fail on that finding is the full
-  cut's behaviour (itd-65).
+  exits 0, and writes no artefact beyond its pre-flight report. **When** a cut
+  that renders a payload runs on the same tree, **then** it refuses before it
+  writes anything.
 - **Given** a clean tree, **when** the preview runs, **then** the report lists
   exactly the include and exclude manifest of [§ 2](#2-curated-release-artefact-default-deny)
   with no surprises, and no artefact is written.
@@ -504,12 +552,18 @@ performed by a human and by CI.
   every other line is untouched. **Given** a release newer than the
   just-published version already exists, the retention step refuses to prune
   anything and records the refusal reason. *(Not built: the shipped cut renders
-  the retention decision and stops before any removal, and the launch report is
-  itd-65's.)*
-- **Given** a documentation-auditor warning, **when** the cut runs without
-  the documentation-warning override, **then** the user is shown the warnings and asked
-  transparently whether to proceed. *(Both the auditor gate and the override are
-  itd-65's.)*
+  the retention decision and stops before any removal; removal is itd-70's.)*
+- **Given** a documentation-auditor or hook-compliance warning, **when** the
+  preview or the cut runs, **then** the warning is shown and refuses nothing;
+  **given** `"strict_warnings": true` in the launch-payload config, the same
+  warning refuses.
+- **Given** findings in several gates at once, **when** the preview or the cut
+  runs, **then** every one of them is reported in the one pass and in the
+  pre-flight report.
+- **Given** a dirty working tree, **when** a cut that renders a payload runs,
+  **then** it refuses before writing anything and names the uncommitted paths;
+  **with** the dirty-tree override it proceeds and its pre-flight report
+  records the override and every path it carried.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
@@ -550,6 +604,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--allow-dirty` | bool |
 | `--changelog-json` | string |
 | `--payload-dir` | string |
 

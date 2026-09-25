@@ -149,7 +149,48 @@ type PayloadPrecheck struct {
 	// assertions the render makes over its written output, made early enough to
 	// refuse before any durable write.
 	Smoke SmokeReport
+	// Gates are every gate the precheck ran over the resolved bundle — the scan,
+	// the smoke and the pre-flight suite — in the shape the preview reports.
+	Gates []GateSummary
+	// Refusals are every reason the precheck refused, collected from all of its
+	// gates before it decided; Warnings are the warn-tier concerns.
+	Refusals []string
+	Warnings []string
+	// AllowDirty records that the dirty-tree gate was waived, and Dirty the
+	// uncommitted paths it saw — the override the pre-flight report records.
+	AllowDirty bool
+	Dirty      []string
 }
+
+// PrecheckOptions are the caller's inputs to the pre-flight gate suite the
+// precheck runs.
+type PrecheckOptions struct {
+	// Dirty is how the dirty-tree gate treats uncommitted changes. The zero
+	// value refuses them.
+	Dirty DirtyPolicy
+	// DocAudit is the documentation audit, measured by the caller. Nil reports
+	// the row as not armed.
+	DocAudit *DocAuditPreflight
+}
+
+// PrecheckRefusal is a precheck that refused on one or more gates. It carries
+// every gate's refusal, not the first: the suite runs all of its gates and
+// reports all of their findings in one pass, so one fix pass can clear them.
+// Each refusal stays matchable with errors.Is on its gate's sentinel.
+type PrecheckRefusal struct {
+	errs []error
+}
+
+func (r *PrecheckRefusal) Error() string {
+	parts := make([]string, 0, len(r.errs))
+	for _, err := range r.errs {
+		parts = append(parts, err.Error())
+	}
+	return strings.Join(parts, "; ")
+}
+
+// Unwrap exposes every refusal to errors.Is and errors.As.
+func (r *PrecheckRefusal) Unwrap() []error { return r.errs }
 
 // PrecheckPayload resolves the release payload and runs every refusal a render
 // makes that does not depend on the version.
@@ -159,12 +200,16 @@ type PayloadPrecheck struct {
 // found it. RenderPayload runs it as its own first step, so the two can never
 // disagree about what is refusable.
 //
-// It refuses when: dest overlaps repoRoot or is already populated; the
-// version-location contract is unreadable or blocked (adr-19 — a blocked
-// decision has no schema-valid place to write); the bundle carries a violation;
-// either manifest is not in the payload at all; or the payload declares a
-// surface it does not carry.
-func PrecheckPayload(repoRoot, dest string) (PayloadPrecheck, error) {
+// It refuses at once, as a structural fault, when: dest overlaps repoRoot or is
+// already populated; the version-location contract is unreadable or blocked
+// (adr-19 — a blocked decision has no schema-valid place to write); the launch
+// config is malformed; or the bundle carries a violation. Over a bundle it can
+// read, it then runs every gate and refuses with ALL of their findings at once
+// (a *PrecheckRefusal): the secret/PII scan, the pre-flight suite (marker
+// blocks, change narration, the dirty tree per opts.Dirty, and the warn tier
+// when the repository configures it strict), either manifest missing from the
+// payload, and a declared surface the payload does not carry.
+func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPrecheck, error) {
 	var pre PayloadPrecheck
 
 	pre.Root = fsutil.RealExistingPath(repoRoot)
@@ -221,6 +266,19 @@ func PrecheckPayload(repoRoot, dest string) (PayloadPrecheck, error) {
 	if bundle.HasViolation() {
 		return pre, fmt.Errorf("the payload carries %d rejected file(s); resolve them before rendering a release", len(bundle.Rejected))
 	}
+	policy, err := LoadGatePolicy(pre.Root)
+	if err != nil {
+		return pre, err
+	}
+
+	// From here every gate runs and every refusal is collected before the
+	// precheck decides (run-all-collect-all): a cut that refused on its first
+	// finding would hide the rest until the next attempt.
+	var refusals []error
+	refuse := func(err error, reason string) {
+		refusals = append(refusals, err)
+		pre.Refusals = append(pre.Refusals, reason)
+	}
 
 	// The secret/PII scan gate, run on the MATERIALISING path so the render fails
 	// closed BEFORE any write — the design record pins the scan as "hard-fail
@@ -230,8 +288,26 @@ func PrecheckPayload(repoRoot, dest string) (PayloadPrecheck, error) {
 	// runs the SAME scanner over the SAME resolved bundle and refuses on exactly
 	// the scan verdict wouldRefuseOn reports — no second scanner.
 	scan := scanBundle(pre.Root, bundle)
+	pre.Gates = append(pre.Gates, GateSummary{Name: "secret+pii-scan", Status: "ran", Detail: scanDetail(scan)})
 	if reasons := scanRefusals(scan); len(reasons) > 0 {
-		return pre, fmt.Errorf("%w: %s", ErrPayloadScanRefused, strings.Join(reasons, "; "))
+		for _, reason := range reasons {
+			refuse(fmt.Errorf("%w: %s", ErrPayloadScanRefused, reason), reason)
+		}
+	}
+
+	// The pre-flight suite over the same bundle, with the caller's dirty-tree
+	// policy: the cut runs this precheck BEFORE it writes anything, so the
+	// dirty-tree gate sees the tree the cut starts from.
+	suite := runGateSuite(suiteRequest{
+		RepoRoot: pre.Root, Bundle: bundle, Dirty: opts.Dirty,
+		DocAudit: opts.DocAudit, Policy: policy,
+	})
+	pre.Gates = append(pre.Gates, suite.Gates...)
+	pre.Warnings = suite.Warnings
+	pre.Dirty = suite.Dirty
+	pre.AllowDirty = opts.Dirty == DirtyAllow
+	for i, err := range suite.errs {
+		refuse(err, suite.Refusals[i])
 	}
 
 	included := make(map[string]struct{}, len(bundle.Included))
@@ -240,7 +316,8 @@ func PrecheckPayload(repoRoot, dest string) (PayloadPrecheck, error) {
 	}
 	for _, rel := range []string{primaryPath, marketplaceFile} {
 		if _, ok := included[rel]; !ok {
-			return pre, fmt.Errorf("%s is not in the payload — a version stamped there would never ship", rel)
+			reason := rel + " is not in the payload — a version stamped there would never ship"
+			refuse(errors.New(reason), reason)
 		}
 	}
 
@@ -249,8 +326,14 @@ func PrecheckPayload(repoRoot, dest string) (PayloadPrecheck, error) {
 	// and names no path. So a payload that would fail installability fails HERE,
 	// before a release record exists.
 	pre.Smoke = SmokeLight(NewBundleTree(bundle))
+	pre.Gates = append(pre.Gates, GateSummary{Name: "installability-smoke", Status: "ran", Detail: smokeDetail(pre.Smoke)})
 	if !pre.Smoke.OK {
-		return pre, fmt.Errorf("%w: %s", ErrPayloadUninstallable, strings.Join(smokeDetails(pre.Smoke), "; "))
+		reason := strings.Join(smokeDetails(pre.Smoke), "; ")
+		refuse(fmt.Errorf("%w: %s", ErrPayloadUninstallable, reason), "installability: "+reason)
+	}
+
+	if len(refusals) > 0 {
+		return pre, &PrecheckRefusal{errs: refusals}
 	}
 	return pre, nil
 }
@@ -280,7 +363,11 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 		return res, errors.New("the changelog entry needs a reason, a source SHA and a date")
 	}
 
-	pre, err := PrecheckPayload(req.RepoRoot, req.Dest)
+	// The dirty-tree gate is skipped here, and only here: a cut renders AFTER
+	// its own writes (the dated heading, the release page, the archive pin), so
+	// the tree is dirty by construction, with exactly the cut's expected output.
+	// The cut ran the gate before those writes, in its own precheck.
+	pre, err := PrecheckPayload(req.RepoRoot, req.Dest, PrecheckOptions{Dirty: DirtySkip})
 	if err != nil {
 		return res, err
 	}

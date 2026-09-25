@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 const fakeSecret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
@@ -75,7 +76,10 @@ func TestDryRunPreflightError(t *testing.T) {
 // TestShipCleanWouldPublish proves a clean tree with agreeing manifests stops at
 // WouldPublish=true with no error and no network call.
 func TestShipCleanWouldPublish(t *testing.T) {
-	root := t.TempDir()
+	// A committed repository: the dirty-tree gate reads the working tree
+	// against HEAD, and a tree with no commit cannot be shown clean.
+	repo := gittest.NewRepo(t)
+	root := repo.Root()
 	// The payload must carry .claude-plugin: a bundle without the manifests is
 	// not an installable plugin, which the installability gate now says out loud.
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "commands", "README.md"]}`)
@@ -84,9 +88,8 @@ func TestShipCleanWouldPublish(t *testing.T) {
 	// adr-19: a clean SOURCE tree is version-ABSENT; the version keys appear
 	// only in the rendered payload.
 	writeLockstepTree(t, root, "", "", "")
+	repo.Commit("a clean payload")
 
-	// The tag set is injected: the fixture is not a repository, and a tag
-	// listing that fails is a retention refusal (iss-194).
 	report, err := Ship(ShipRequest{RepoRoot: root, Version: "1.2.3", ExistingTags: []Semver{}})
 	if err != nil {
 		t.Fatalf("clean tree must not error: %v (reasons %v)", err, report.BlockReasons)

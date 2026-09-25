@@ -312,17 +312,17 @@ func TestPrecheckPayloadRefusesACaseVariantDestination(t *testing.T) {
 
 	caseFoldsPaths = func() bool { return true }
 	dest := filepath.Join(base, "REPO", "dist")
-	_, err := PrecheckPayload(root, dest)
+	_, err := PrecheckPayload(root, dest, PrecheckOptions{Dirty: DirtySkip})
 	if err == nil || !strings.Contains(err.Error(), "inside the repository") {
 		t.Fatalf("case-variant dest %q under root %q: got %v, want a refusal naming the repository", dest, root, err)
 	}
-	_, err = PrecheckPayload(filepath.Join(root, "inner"), filepath.Join(base, "REPO"))
+	_, err = PrecheckPayload(filepath.Join(root, "inner"), filepath.Join(base, "REPO"), PrecheckOptions{Dirty: DirtySkip})
 	if err == nil || !strings.Contains(err.Error(), "contains the repository") {
 		t.Fatalf("case-variant dest containing the root: got %v, want a refusal", err)
 	}
 
 	caseFoldsPaths = func() bool { return false }
-	if _, err := PrecheckPayload(root, dest); err != nil && strings.Contains(err.Error(), "the repository") {
+	if _, err := PrecheckPayload(root, dest, PrecheckOptions{Dirty: DirtySkip}); err != nil && strings.Contains(err.Error(), "the repository") {
 		t.Fatalf("on a case-sensitive filesystem %q and %q are distinct directories; got %v", dest, root, err)
 	}
 }

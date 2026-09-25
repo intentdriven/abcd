@@ -308,10 +308,16 @@ func NewRootCommand() *cobra.Command {
 				Citations: citationPreflight(cwd),
 				// Same reason, same shape: measured here, handed in as data.
 				Receipts: receiptPreflight(cwd),
+				// The documentation audit is the docs-lint engine, which also
+				// imports launch: measured here, handed in as data.
+				DocAudit: docAuditPreflight(cwd),
 			})
 			if err != nil {
 				return errors.New("abcd launch --dry-run: " + launchPayloadRefusal(err))
 			}
+			// Every preview leaves its pre-flight report in the local logs tier
+			// (itd-65); the preview still refuses nothing and exits 0.
+			rep.ReportPath, rep.ReportError = writePreflight(cwd, rep.PreflightReport(time.Now()))
 			return render(cmd.OutOrStdout(), asJSON, rep, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd launch (dry-run) — version %s\n", rep.Version)
 				fmt.Fprintf(w, "  files bundled:  %d\n", len(rep.Bundle.Included))
@@ -335,6 +341,17 @@ func NewRootCommand() *cobra.Command {
 					// output and passes through the canonical sanitiser, matching the
 					// citation line above.
 					fmt.Fprintf(w, "  would refuse on: %s\n", termsafe.Sanitize(reason))
+				}
+				// Warn-tier concerns refuse nothing, so they are printed apart
+				// from the refusals — but printed: a warning only --json shows is
+				// one nobody reads.
+				for _, warning := range rep.Warnings {
+					fmt.Fprintf(w, "  warning:        %s\n", termsafe.Sanitize(warning))
+				}
+				if rep.ReportPath != "" {
+					fmt.Fprintf(w, "  report:         %s\n", termsafe.Sanitize(rep.ReportPath))
+				} else {
+					fmt.Fprintf(w, "  report:         not written — %s\n", termsafe.Sanitize(rep.ReportError))
 				}
 			})
 		},

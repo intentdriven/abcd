@@ -1420,6 +1420,13 @@
       "hidden": false,
       "flags": [
         {
+          "name": "allow-dirty",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "changelog-json",
           "shorthand": "",
           "type": "string",

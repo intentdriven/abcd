@@ -1168,11 +1168,12 @@ Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbo
 
 Cut a release: derive the version and the record set from what shipped (exit 1 when the cut refuses)
 
-**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [flags]`
+**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [flags]`
 
 **Flags:**
 
 ```
+      --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
 ```
