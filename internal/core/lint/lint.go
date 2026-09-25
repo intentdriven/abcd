@@ -279,7 +279,12 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			if gitMetaOn {
 				findings = append(findings, checkGitMetadata(rel, lines, gitMetaCfg)...)
 			}
-			if linksOn {
+			// links_resolve's own `exempt` globs excuse a file from the link check
+			// alone — a tool-mandated mirror of a root file, whose links resolve
+			// from the root and not from the mirror's directory. It is not the
+			// content exemption: exempt_paths excuses how a record is written,
+			// this excuses where a copy is required to sit (iss-2609151150180583).
+			if linksOn && !matchesGlob(linksCfg.Exempt, filepath.ToSlash(rel)) {
 				findings = append(findings, checkLinks(rel, fileAbs, repoRoot, lines, mask, linksCfg)...)
 			}
 			if brittleOn {

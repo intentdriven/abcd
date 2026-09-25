@@ -82,6 +82,13 @@ promotion is reachable only by a human typing the flag.
   describe present state warn advisorily rather than block. Docs are present
   tense: what *is*, never what *was superseded*.
 - **Broken relative links.** Every relative link resolves to a file in the tree.
+  The rule's own `exempt` globs (repo-relative, `*` staying inside one
+  directory) excuse a file from this check alone: a tool-mandated mirror of a
+  root file, such as a byte-identical copy of `AGENTS.md` a tool reads from
+  `.github/`, carries links that resolve from the root and not from the
+  mirror's directory. The configuration's `exempt_paths` does not reach this
+  rule, because it excuses how a record is written, never whether its links
+  resolve.
 - **Stray root markdown.** Markdown at the repo root belongs under `docs/`
   unless it is one of the allowlisted files. A root markdown **symlink** is
   judged by its resolved target's stem rather than by its own name, which is

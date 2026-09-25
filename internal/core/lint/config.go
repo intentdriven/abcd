@@ -77,7 +77,11 @@ type RuleConfig struct {
 	Severity string `json:"severity"`
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
-	// Exempt is the directory_coverage glob allowlist.
+	// Exempt is a glob allowlist of repo-relative paths (filepath.Match, so `*`
+	// stays inside one directory). directory_coverage reads it for directories
+	// excused a README; links_resolve reads it for files whose links are not
+	// checked — a tool-mandated mirror of a root file, whose relative links
+	// resolve from the root and not from the mirror's directory.
 	Exempt []string `json:"exempt"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name
