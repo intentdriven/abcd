@@ -336,3 +336,55 @@ func TestIntentAuditOwedRefusesANegativeCapFirst(t *testing.T) {
 		t.Fatalf("the --owed help does not say it writes: %q", owedLine)
 	}
 }
+
+// reviewsDirIsAFile turns the reviews directory into a plain file, so every
+// request write fails the way an unwritable local tier does, and points HOME
+// at the directory holding the repository, so the failure's path lies under it.
+func reviewsDirIsAFile(t *testing.T, repo string) {
+	t.Helper()
+	writeRepoFile(t, repo, ".abcd/.work.local/reviews", "not a directory\n")
+	t.Setenv("HOME", filepath.Dir(repo))
+}
+
+func shippedBytes(t *testing.T, repo string) map[string]string {
+	t.Helper()
+	ents, err := os.ReadDir(filepath.Join(repo, cliShipped))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := map[string]string{}
+	for _, e := range ents {
+		b, err := os.ReadFile(filepath.Join(repo, cliShipped, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m[e.Name()] = string(b)
+	}
+	return m
+}
+
+// TestIntentAuditOwedFailedRequestWriteParksNoStub (iss-2609252127427592): with
+// the request unwritable, `--owed --max 3` modifies no intent file, and every
+// row names the error rather than a receipt the emit never parked.
+func TestIntentAuditOwedFailedRequestWriteParksNoStub(t *testing.T) {
+	repo := drainRepo(t)
+	reviewsDirIsAFile(t, repo)
+	before := shippedBytes(t, repo)
+
+	text, stderr, err := runCLISplit(t, "intent", "audit", "--owed", "--max", "3")
+	if err != nil {
+		t.Fatalf("a failed emit must not fail the drain: %v\n%s", err, stderr)
+	}
+	after := shippedBytes(t, repo)
+	for name, b := range before {
+		if after[name] != b {
+			t.Errorf("%s was modified by a drain whose request write failed:\n%s", name, after[name])
+		}
+	}
+	if got := strings.Count(text, "not emitted: "); got != 3 {
+		t.Fatalf("want each of the three rows to name its error, got %d:\n%s", got, text)
+	}
+	if !strings.Contains(text, "next: none") {
+		t.Fatalf("no entry was emitted, so there is no next:\n%s", text)
+	}
+}

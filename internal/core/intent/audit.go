@@ -308,10 +308,16 @@ func emitAuditWith(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmit
 	res := AuditEmitResult{ReceiptID: rcp, IntentID: it.ID}
 	block := owedBlock(rcp)
 	updated := upsertReviewBlock(content, rcp, block)
-	if err := writeIntentFile(abs, it.Path, updated); err != nil {
+	// The request is written before the intent file (iss-2609252127427592): a
+	// request that cannot be written then leaves the intent untouched, rather
+	// than parking an OWED stub no request backs. The reverse failure, an intent
+	// write refused after its request landed, leaves only a gitignored request
+	// that the next emit of the same content rewrites under the same receipt.
+	// Either way an error here means no stub was parked.
+	if err := writeAuditRequest(repoRoot, it, rcp, updated, opts); err != nil {
 		return AuditEmitResult{}, err
 	}
-	if err := writeAuditRequest(repoRoot, it, rcp, updated, opts); err != nil {
+	if err := writeIntentFile(abs, it.Path, updated); err != nil {
 		return AuditEmitResult{}, err
 	}
 	res.Status = "owed"

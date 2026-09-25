@@ -260,3 +260,44 @@ func TestNextOwedAuditSkipsAHeadThatCannotBeEmitted(t *testing.T) {
 		t.Fatalf("want the one bad entry listed with its error and no next, got %+v", step)
 	}
 }
+
+// TestNextOwedAuditFailedRequestWriteLeavesEveryIntentUntouched
+// (iss-2609252127427592): the request is written before the intent file, so an
+// environment-shaped failure to write it (here the reviews directory is a plain
+// file) parks no OWED stub on any entry the step tries. Every row carries its
+// error and keeps the receipt state it read: a markerless row still has no
+// receipt, which is now the truth, and an already-parked one stays OWED.
+func TestNextOwedAuditFailedRequestWriteLeavesEveryIntentUntouched(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, shippedDir+"/itd-20-owed.md", shippedWithNotes("itd-20", "owed", owedBlock(owedRcp)))
+	for _, id := range []string{"itd-21", "itd-22", "itd-23", "itd-24"} {
+		writeFile(t, root, shippedDir+"/"+id+"-bare.md", shippedWithNotes(id, "bare", "_Empty._"))
+	}
+	writeFile(t, root, reviewsRelDir, "not a directory\n")
+	before := snapshotTree(t, root)
+
+	step, err := NextOwedAudit(root, 4, nil, AuditEmitOptions{})
+	if err != nil {
+		t.Fatalf("a failed emit must not fail the step: %v", err)
+	}
+	if after := snapshotTree(t, root); after != before {
+		t.Fatal("a failed request write modified the tree: an OWED stub was parked with no request")
+	}
+	if step.Next != nil || len(step.Queue) != 4 || step.Remaining != 1 {
+		t.Fatalf("want four rows, no next, one remaining; got %+v", step)
+	}
+	for _, e := range step.Queue {
+		if e.EmitError == "" {
+			t.Fatalf("%s: the row does not name its error: %+v", e.IntentID, e)
+		}
+		if e.IntentID == "itd-20" {
+			if e.State != ReviewOwed || e.ReceiptID != owedRcp {
+				t.Fatalf("an already-parked receipt must stay reported as OWED: %+v", e)
+			}
+			continue
+		}
+		if e.State != ReviewNone || e.ReceiptID != "" {
+			t.Fatalf("%s: a markerless row whose emit failed must still read no receipt: %+v", e.IntentID, e)
+		}
+	}
+}

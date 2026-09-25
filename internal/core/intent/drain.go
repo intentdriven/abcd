@@ -158,7 +158,13 @@ func NextOwedAudit(repoRoot string, max int, shippedOn ShippedOn, opts AuditEmit
 		e := &step.Queue[i]
 		res, err := ReEmitAuditWith(repoRoot, e.IntentID, opts)
 		if err != nil {
+			// A failed emit parks no stub, so the row keeps the receipt state
+			// the reader gave it; an already-parked receipt the emit named is
+			// reported as the OWED receipt it is.
 			e.EmitError = err.Error()
+			if res.Status == "already_owed" {
+				e.State, e.ReceiptID = ReviewOwed, res.ReceiptID
+			}
 			continue
 		}
 		step.Next = &res
