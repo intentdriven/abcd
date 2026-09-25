@@ -219,7 +219,8 @@ is checked in one respect: the commit that added it precedes the rewrite.
 Refused with nothing written: an occasion outside the three families or naming
 no record, one not committed or committed after the rewrite, a degenerate
 ground, uncommitted surface changes outside a first half, a frame with no distinct
-prior state, a second open record, a completion in which nothing moved, and a
+prior state within its fingerprintable history (named with how far back that
+history reaches), a second open record, a completion in which nothing moved, and a
 before state the history no longer holds within 64 commits touching the frame.
 
 **Resolving** marks an issue resolved and moves it to

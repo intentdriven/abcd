@@ -341,6 +341,47 @@ func TestReframeRefusesAFrameWithNoPriorState(t *testing.T) {
 	}
 }
 
+// A history whose older states carry no Construal section has a fingerprintable
+// history that stops where the section begins. A frame with no distinct state
+// inside it is refused for that reason — no prior state within the history that
+// can be fingerprinted, and how far back that history reaches — not as though
+// the fingerprint itself had failed.
+func TestReframeRefusesNamingHowFarTheFingerprintableHistoryReaches(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write(fxFraming, "# Framing\n\nNo construal section yet.\n")
+	r.Write(fxScope, scopeDoc("The scope."))
+	r.Write(fxGlossary+"/core/term.md", "# Term\n\nA term.\n")
+	r.Write(".abcd/work/issues/readings/rdg-1/"+fxItem+".md", "---\nid: rdi-11\n---\n")
+	r.Commit("the frame before it had a construal section")
+	unsectioned := r.Git("rev-parse", "--short=12", "HEAD")
+	r.Write(fxFraming, framingDoc("The first construal."))
+	r.Commit("introduce the construal section")
+	sectioned := r.Git("rev-parse", "--short=12", "HEAD")
+
+	before := ledgerDigest(t, ledgerOf(r))
+	_, err := Reframe(reframeReq(r, fxItem))
+	if err == nil {
+		t.Fatal("a frame with no distinct fingerprintable prior state was recorded")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"matches no prior committed state within its fingerprintable history",
+		"reaches back 1 commit(s) touching the frame, to " + sectioned,
+		"the state before it, at " + unsectioned + ", cannot be fingerprinted",
+		`no H2 section titled "Construal"`,
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("refusal lacks %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "the frame's previous state cannot be fingerprinted") {
+		t.Errorf("refusal names a fingerprint failure rather than the missing prior state:\n%s", msg)
+	}
+	if ledgerDigest(t, ledgerOf(r)) != before {
+		t.Fatal("a refused reframe changed the ledger")
+	}
+}
+
 // commitDated stages everything and commits it with both dates pinned, so a
 // fixture can order commits on two lines of history by timestamp.
 func commitDated(t *testing.T, r *gittest.Repo, msg, date string, extra ...string) {

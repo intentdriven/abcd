@@ -547,7 +547,9 @@ that the occasion caused the rewrite. Report the `id`, `half`, `changed`,
 Everything the verb refuses writes nothing: an occasion outside the three
 families or naming no record, an occasion not yet committed or committed after
 the rewrite, a ground below the floor, uncommitted changes to a surface without
-`--open`, a frame with no distinct prior committed state, a second open record,
+`--open`, a frame with no distinct prior committed state (the refusal says how
+far back the fingerprintable history reaches: a state whose framing chapter has
+no `Construal` section ends it), a second open record,
 a completion in which no surface moved, and a completion whose before state the
 surfaces' history no longer holds within 64 commits touching the frame (both
 states named). The family is warm: no cold reading receives it, and every

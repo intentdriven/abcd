@@ -22,6 +22,7 @@ package capture
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -261,11 +262,20 @@ func frameSurfacePaths() []string {
 	return out
 }
 
+// unfingerprintableState marks a frame state whose content has no fingerprint:
+// a surface absent, or a framing chapter without exactly one Construal section.
+// A walk treats it as the end of the fingerprintable history, which a failure
+// to read git is not.
+type unfingerprintableState struct{ err error }
+
+func (e unfingerprintableState) Error() string { return e.err.Error() }
+func (e unfingerprintableState) Unwrap() error { return e.err }
+
 // fingerprintFrame composes the triple from the three surfaces' content.
 func fingerprintFrame(framing, scope string, glossary map[string][]byte) (Frame, error) {
 	c, err := ConstrualFingerprint(framing)
 	if err != nil {
-		return Frame{}, err
+		return Frame{}, unfingerprintableState{err}
 	}
 	return Frame{Construal: c, Glossary: GlossaryFingerprint(glossary), Scope: ScopeFingerprint(scope)}, nil
 }
@@ -308,7 +318,7 @@ func frameAtCommit(repoRoot, rev string, cache blobCache) (Frame, error) {
 	chapter := func(s FrameSurface) (string, error) {
 		oid, ok := blobs[s.Path]
 		if !ok {
-			return "", fmt.Errorf("the %s surface %s is absent at %s", s.Name, s.Path, shortRev(rev))
+			return "", unfingerprintableState{fmt.Errorf("the %s surface %s is absent at %s", s.Name, s.Path, shortRev(rev))}
 		}
 		return read(oid)
 	}
@@ -518,6 +528,14 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 		i := 0
 		for ; i < len(walk.commits); i++ {
 			f, err := walk.at(i)
+			var state unfingerprintableState
+			if errors.As(err, &state) && i > 0 {
+				// Every state from HEAD back to here equals HEAD's, and the
+				// one before cannot be compared: the fingerprintable history
+				// ends here, holding no distinct state.
+				return ReframeResult{}, fmt.Errorf("%w: the frame at HEAD matches no prior committed state within its fingerprintable history, so there is no reframe to record: that history reaches back %d commit(s) touching the frame, to %s, and the state before it, at %s, cannot be fingerprinted (%v) (nothing written)",
+					ErrInvariantViolation, i, shortRev(walk.commits[i-1]), shortRev(walk.commits[i]), state)
+			}
 			if err != nil {
 				return ReframeResult{}, fmt.Errorf("%w: the frame's previous state cannot be fingerprinted: %v; there is no prior committed state to record against (nothing written)",
 					ErrInvariantViolation, err)
