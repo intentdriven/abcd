@@ -58,7 +58,10 @@ inbound = outbound statement is the whole of it.
   runs; `make fmt` applies it). The repository
   ships its hooks in [`.githooks/`](.githooks/); they are per-machine opt-in —
   run `git config core.hooksPath .githooks` once per clone to arm the
-  pre-commit name guard and the pre-push preflight.
+  pre-commit name guard, the commit-msg outbound check (it refuses a live
+  agent-session URL or a tool's attribution footer in a commit message, through
+  `go run ./cmd/abcd lint outbound`, and refuses the commit when it cannot run
+  the check) and the pre-push preflight.
 - **Conventional-commit prefixes** (`feat`/`fix`/`docs`/`chore`/`refactor`/`test`/`ci`),
   no scopes; short title, body explains why.
 - A user-facing change **resolves its issue or ships its intent in the same diff**;

@@ -411,7 +411,11 @@ irreversible; guessing downward costs nothing.**
   class into every store-before-commit redactor, `abcd lint`'s privacy rule
   refuses either shape in any committed file, and the `harness_leak` lint rule
   refuses it in the record and the docs. One definition, three wired surfaces
-  (itd-152). A fourth exists as a primitive with no front door:
+  (itd-152). A commit message is judged by the check-direction front door onto
+  the same policy, `abcd lint outbound`, twice: the committed
+  `.githooks/commit-msg` hook refuses either shape before the commit exists, and
+  the attribution gate in CI judges every commit message of a pull request and
+  its body again. A fourth exists as a primitive with no front door:
   `scanner.ScrubOutbound` sanitises one outbound artefact and is covered by
   tests, but no command or plugin verb calls it, because `spc-45` deliberately
   scopes a forge client out. The three wired surfaces judge text that is already

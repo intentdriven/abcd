@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Outbound gate, commit-message half — run on every clone via the global
+# ~/.githooks dispatcher (core.hooksPath), or by pointing this clone's hooks at
+# this directory: git config core.hooksPath .githooks
+#
+# Refuses a commit whose message carries a LIVE AGENT-SESSION URL or a tool's own
+# attribution footer, the two halves of the outbound policy AGENTS.md states
+# (§ Attribution and acknowledgements). One reached three commit messages and two
+# pull-request bodies of a managed public repository (iss-2609061438431625), and a
+# merged commit message comes out only by rewriting a protected branch. CI judges
+# every commit message of a pull request with the same check
+# (scripts/check-attribution.sh), but by then the message is already in the
+# author's history and on the forge: this hook is the half that fails before the
+# commit exists.
+#
+# The judgement is `abcd lint outbound`, never a regex here: the session-URL
+# detector is a pattern plus an opacity classifier that POSIX ERE cannot express
+# (see internal/surface/cli/lint_outbound.go), so a shell copy would be weaker than
+# the policy it claims to enforce. It runs through `go run ./cmd/abcd` from this
+# checkout, the rule for every abcd invocation in a source checkout: an installed
+# abcd is whatever was last released, which in this repository is stale by
+# construction.
+#
+# FAILS CLOSED. A checkout with no abcd source or no Go toolchain cannot judge the
+# message, and a hook that cannot judge must not pass silently: a green commit that
+# means "the check was skipped" is indistinguishable from one that means "there was
+# nothing to find". Go is a prerequisite for developing this repository, so the
+# refusal names the missing piece rather than asking for anything new.
+#
+# REACH, stated rather than implied. git runs this hook for `git commit` (an
+# amend and a reword through `git commit` included) and for a `git merge` that
+# creates a commit. `git commit --no-verify`, `git rebase`, `git cherry-pick`,
+# `git am` and a message edited on the forge bypass it by construction; the CI
+# gate over the pull request's range is the backstop for all of them.
+set -euo pipefail
+case $- in *x*) set +x ;; esac
+
+msg_file="${1:-}"
+if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+  echo "commit-msg: BLOCKED — git passed no message file to judge." >&2
+  exit 1
+fi
+
+# Where the abcd source is. The hook's own directory first: its parent is the
+# checkout the hook was committed in, whichever path git invoked it by (the global
+# dispatcher's absolute path, or `.githooks/commit-msg` relative to the working
+# tree under core.hooksPath). The working tree next, for a copy installed under
+# .git/hooks. Pure parameter expansion resolves the first candidate before any
+# directory change.
+hook_dir="${0%/*}"
+case "$hook_dir" in /*) ;; *) hook_dir="$PWD/$hook_dir" ;; esac
+src=""
+for candidate in "$hook_dir/.." "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do
+  [ -n "$candidate" ] || continue
+  if [ -f "$candidate/go.mod" ] && [ -d "$candidate/cmd/abcd" ]; then
+    src="$(cd "$candidate" && pwd)"
+    break
+  fi
+done
+if [ -z "$src" ]; then
+  echo "commit-msg: BLOCKED — no abcd source to judge this commit message with." >&2
+  echo "            the outbound check runs \`go run ./cmd/abcd lint outbound\` from the checkout" >&2
+  echo "            that holds this hook, and neither the hook's checkout nor this working tree" >&2
+  echo "            carries cmd/abcd. Point the clone's hooks at the committed directory:" >&2
+  echo "            git config core.hooksPath .githooks" >&2
+  exit 1
+fi
+if ! command -v go >/dev/null 2>&1; then
+  echo "commit-msg: BLOCKED — go is not on PATH, so the outbound check cannot run." >&2
+  echo "            the check refuses a live session URL or a tool attribution footer in the" >&2
+  echo "            message, and a check that cannot run must not pass. Install the Go toolchain" >&2
+  echo "            go.mod declares." >&2
+  exit 1
+fi
+
+# The text git will record. Everything below a scissors line is the `git commit -v`
+# diff, which git discards: judging it would refuse a commit for a fixture it
+# stages rather than for anything in the message. Comment lines are KEPT and judged:
+# whether git strips them depends on the cleanup mode (`-m` keeps a `#` line), and
+# over-judging a comment only ever refuses more.
+artefact="$(mktemp "${TMPDIR:-/tmp}/abcd-commit-msg.XXXXXX")"
+trap 'rm -f "$artefact"' EXIT INT TERM HUP
+awk '/^[^[:alnum:][:space:]]+ -+ >8 -+$/ { exit } { print }' "$msg_file" >"$artefact"
+
+# An empty message is git's to refuse (or to allow, under --allow-empty-message);
+# there is nothing in it that could leak.
+if ! grep -q '[^[:space:]]' "$artefact"; then
+  exit 0
+fi
+
+# Git exports its private environment (GIT_DIR, GIT_INDEX_FILE et al.) to a hook;
+# the Go build must not see it. -buildvcs=false keeps the build from asking git
+# about this checkout at all while a commit holds its index.
+rc=0
+out="$(cd "$src" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+  -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_PREFIX \
+  go run -buildvcs=false ./cmd/abcd lint outbound --label "commit message" --root "$src" "$artefact" 2>&1)" || rc=$?
+
+case "$rc" in
+  0)
+    printf '%s\n' "$out" | sed 's/^/commit-msg: /' >&2
+    ;;
+  1)
+    echo "commit-msg: BLOCKED — the commit message breaks the outbound policy." >&2
+    printf '%s\n' "$out" | sed 's/^/            /' >&2
+    echo "            delete the line named above and commit again." >&2
+    exit 1
+    ;;
+  *)
+    echo "commit-msg: BLOCKED — the outbound check could not judge the message (exit $rc)." >&2
+    printf '%s\n' "$out" | sed 's/^/            /' >&2
+    exit 1
+    ;;
+esac
