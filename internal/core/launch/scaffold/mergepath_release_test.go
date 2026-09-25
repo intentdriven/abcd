@@ -45,16 +45,21 @@ func TestScaffoldedGateCutsAFirstReleaseThatPublishes(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash is required to run the workflow scripts")
 	}
-	for _, semantic := range []bool{false, true} {
-		name := "bare"
-		if semantic {
-			name = "semantic-gate"
-		}
-		t.Run(name, func(t *testing.T) { cutFirstRelease(t, semantic) })
+	for _, profile := range []string{"bare", "semantic-gate", "binary-gate"} {
+		t.Run(profile, func(t *testing.T) { cutFirstRelease(t, profile) })
 	}
 }
 
-func cutFirstRelease(t *testing.T, semantic bool) {
+// cutFirstRelease drives one profile: "bare" is a managed plugin repository's
+// scaffold, "semantic-gate" the same with a receipt gate configured, and
+// "binary-gate" a declared binary's scaffold, whose gate workflow auto-release
+// calls in place of release.yml (itd-2609150819432059).
+func cutFirstRelease(t *testing.T, profile string) {
+	semantic := profile == "semantic-gate"
+	workflow := ReleaseYMLPath
+	if profile == "binary-gate" {
+		workflow = GateWorkflowPath
+	}
 	goEnv := hostGoEnv(t) // before gittest pins HOME, so the build cache stays warm
 	f := newFakeForge(t, goEnv)
 	r := f.work
@@ -69,6 +74,11 @@ func cutFirstRelease(t *testing.T, semantic bool) {
 	if semantic {
 		adoptSemanticProfile(t, f, goEnv)
 	} else {
+		kind := "plugin"
+		if profile == "binary-gate" {
+			kind = "binary"
+		}
+		r.Write(".abcd/config/artefact.json", `{"kind": "`+kind+`"}`+"\n")
 		rep, err := Scaffold(Request{RepoRoot: r.Root()})
 		if err != nil {
 			t.Fatalf("scaffold: %v", err)
@@ -82,8 +92,8 @@ func cutFirstRelease(t *testing.T, semantic bool) {
 	scaffolded := r.Git("rev-parse", "HEAD")
 
 	// 1. The rehearsal, on record and green: a workflow_dispatch of release.yml.
-	rehearsal := f.run(ReleaseYMLPath, event{name: "workflow_dispatch", sha: scaffolded, refName: "main"})
-	for job, want := range map[string]string{"verify": "success", "rehearsal": "success", "tag": "skipped", "release": "skipped"} {
+	rehearsal := f.run(workflow, event{name: "workflow_dispatch", sha: scaffolded, refName: "main"})
+	for job, want := range map[string]string{"verify": "success", "rehearsal": "success", "tag": "skipped", "build": "skipped", "release": "skipped"} {
 		if got := rehearsal[job].result; got != want {
 			t.Fatalf("rehearsal: job %s = %s, want %s\n%s", job, got, want, f.log.String())
 		}

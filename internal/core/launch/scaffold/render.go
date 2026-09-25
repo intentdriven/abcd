@@ -71,6 +71,28 @@ type Substitutions struct {
 	// (`--require-gate <name>`). Empty means no semantic detector is configured and
 	// the deterministic gates alone admit the release (spc-14 clean degradation).
 	SemanticGates []string
+	// ReleaseWorkflow is the file name of the workflow that verifies, tags and
+	// publishes — release.yml for a plugin, abcd-release-gate.yml for any other
+	// artefact kind — so auto-release calls it, the runbook names it and a
+	// receipt attestation names it as its signer by the name it has.
+	ReleaseWorkflow string
+	// Gate renders the release template as the gate workflow a non-plugin kind
+	// receives (itd-2609150819432059, decisions 5 and 6): no tag-push trigger of
+	// its own, so it never races a repository's own tag-driven workflow, and a
+	// `publish` input its caller turns off when it builds and publishes itself.
+	Gate bool
+	// OwnReleaseWorkflow is the repository's own release workflow, repo-relative,
+	// when it has one; the runbook then describes the gate as called from it.
+	OwnReleaseWorkflow string
+	// GoModule reports that the repository is a Go module (it carries a go.mod).
+	// The verify job's Go leg — setup-go, gofmt, build, vet, test and the race
+	// leg — and the rehearsal's build render only for one: a repository that is
+	// not a Go module would fail setup-go on the go.mod it does not have.
+	GoModule bool
+	// CallStanza is what a repository whose own release workflow stays in
+	// charge adds to it to call the gate; the runbook carries it, and the
+	// scaffold report prints it.
+	CallStanza string
 	// CIChecks are the check names the managed repo's own pull-request CI
 	// reports (DeriveCIChecks): the merge gate the release roll passes through.
 	// The bare rendering names them in release.yml's verify header and lists them
@@ -78,6 +100,15 @@ type Substitutions struct {
 	// an injection-safe allowlist before it gets here. abcd's own rendering
 	// leaves this empty; its merge gate is ci.yml, described in its own runbook.
 	CIChecks []string
+}
+
+// ExtraBase is the number the runbook gives the first extra gate: it follows
+// the five Go gates when the repository is a Go module, and leads otherwise.
+func (s Substitutions) ExtraBase() int {
+	if s.GoModule {
+		return 6
+	}
+	return 1
 }
 
 // Rendered is the file set a scaffold run produces, keyed by repo-relative path.

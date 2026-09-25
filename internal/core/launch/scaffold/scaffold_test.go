@@ -297,6 +297,7 @@ func TestReleaseJobGatedOffRehearsal(t *testing.T) {
 func TestScaffoldIdempotentAndRefusesHandEdit(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "go.mod"), "module example.com/x\n\ngo 1.22\n")
+	declarePlugin(t, dir)
 	gitInit(t, dir, "release-line")
 
 	// First run: four files written — the two workflows, the runbook and the
@@ -365,6 +366,7 @@ func TestScaffoldIdempotentAndRefusesHandEdit(t *testing.T) {
 func TestRefusalAbortReportMatchesDisk(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "go.mod"), "module example.com/x\n\ngo 1.22\n")
+	declarePlugin(t, dir)
 	gitInit(t, dir, "main")
 
 	// auto-release.yml exists and differs (a hand-edit); release.yml is absent.
@@ -430,6 +432,13 @@ func TestDeriveRepoFactsRejectsHostileInputs(t *testing.T) {
 }
 
 // --- helpers ---------------------------------------------------------------
+
+// declarePlugin declares the repository a plugin, the kind whose scaffold is
+// release.yml, auto-release.yml, the runbook and the charter check.
+func declarePlugin(t *testing.T, dir string) {
+	t.Helper()
+	mustWrite(t, filepath.Join(dir, ".abcd", "config", "artefact.json"), `{"kind": "plugin"}`+"\n")
+}
 
 func mustWrite(t *testing.T, path, content string) {
 	t.Helper()
@@ -548,8 +557,11 @@ func TestRunbookGateListMatchesVerifySteps(t *testing.T) {
 		"Semantic-gate receipts (fail-closed, before tag)": true,
 	}
 	itemRe := regexp.MustCompile(`^(\d+)\. (.+)$`)
+	notGo := GateSubstitutions("main", "")
+	notGo.GoModule = false
 	for name, subs := range map[string]Substitutions{
 		"abcd": AbcdSubstitutions(), "bare": BareSubstitutions("main"), "bare+semantic": semantic,
+		"gate": GateSubstitutions("main", ""), "gate, not a Go module": notGo,
 	} {
 		rendered, err := Render(subs)
 		if err != nil {

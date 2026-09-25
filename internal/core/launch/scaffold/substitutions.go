@@ -27,10 +27,12 @@ var abcdExtraGates = []Gate{
 // track the derivation rather than the proven workflow.
 func AbcdSubstitutions() Substitutions {
 	return Substitutions{
-		DefaultBranch: "main",
-		Abcd:          true,
-		ExtraGates:    abcdExtraGates,
-		SemanticGates: abcdSemanticGates,
+		DefaultBranch:   "main",
+		Abcd:            true,
+		ReleaseWorkflow: "release.yml",
+		GoModule:        true,
+		ExtraGates:      abcdExtraGates,
+		SemanticGates:   abcdSemanticGates,
 	}
 }
 
@@ -50,9 +52,11 @@ var bareExtraGates = []Gate{
 // because the rendered workflows read it out of the adopter's go.mod.
 func BareSubstitutions(defaultBranch string) Substitutions {
 	return Substitutions{
-		DefaultBranch: defaultBranch,
-		Abcd:          false,
-		ExtraGates:    bareExtraGates,
-		SemanticGates: nil,
+		DefaultBranch:   defaultBranch,
+		Abcd:            false,
+		ReleaseWorkflow: "release.yml",
+		GoModule:        true,
+		ExtraGates:      bareExtraGates,
+		SemanticGates:   nil,
 	}
 }

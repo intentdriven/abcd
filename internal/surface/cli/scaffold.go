@@ -13,10 +13,16 @@ import (
 )
 
 // newLaunchScaffoldCommand builds `abcd launch scaffold` (itd-93, spc-14): it
-// writes the changelog-driven release machinery — release.yml, auto-release.yml,
-// the adr-37 runbook and the reviews-charter check — into a managed repo that
-// lacks it, wired to the repo's own default branch and pull-request CI check
-// names, GITHUB_TOKEN-only and injection-safe.
+// writes the changelog-driven release machinery into a managed repo that lacks
+// it, wired to the repo's own default branch and pull-request CI check names,
+// GITHUB_TOKEN-only and injection-safe. The file set follows the artefact kind
+// the repository declares (itd-2609150819432059): a plugin receives release.yml,
+// auto-release.yml, the adr-37 runbook and the reviews-charter check; any other
+// kind receives the gate workflow abcd-release-gate.yml with a named empty build
+// job, the runbook, the charter check, the empty [Unreleased] anchor when it has
+// no changelog, and auto-release.yml unless its own release workflow — left
+// byte-for-byte — stays in charge. A repository that has declared no kind, or a
+// kind abcd does not know, is refused before anything is written (exit 2).
 //
 // It is idempotent and fail-safe (AC4): a re-run on current machinery is a no-op,
 // and a hand-edited file is refused (exit 1) rather than clobbered unless
@@ -30,7 +36,7 @@ func newLaunchScaffoldCommand(asJSON *bool) *cobra.Command {
 	var confirm bool
 	cmd := &cobra.Command{
 		Use:   "scaffold [--confirm]",
-		Short: "Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbook, reviews charter) into this repo",
+		Short: "Scaffold the changelog-driven release gate into this repo, shaped by its declared artefact kind",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -80,8 +86,8 @@ func renderScaffold(w io.Writer, rep scaffold.Report, blocked bool) {
 	case rep.NoOp:
 		verdict = "no-op (already current)"
 	}
-	fmt.Fprintf(w, "abcd launch scaffold — %s (branch %s, go %s)\n",
-		verdict, termsafe.Sanitize(rep.DefaultBranch), termsafe.Sanitize(rep.GoVersion))
+	fmt.Fprintf(w, "abcd launch scaffold — %s (kind %s, branch %s, go %s)\n",
+		verdict, termsafe.Sanitize(string(rep.Kind)), termsafe.Sanitize(rep.DefaultBranch), termsafe.Sanitize(rep.GoVersion))
 	if len(rep.CIChecks) > 0 {
 		fmt.Fprintf(w, "  merge gate: %s (require these on %s)\n",
 			termsafe.Sanitize(strings.Join(rep.CIChecks, ", ")), termsafe.Sanitize(rep.DefaultBranch))
@@ -97,6 +103,14 @@ func renderScaffold(w io.Writer, rep scaffold.Report, blocked bool) {
 		fmt.Fprintln(w)
 	}
 	fmt.Fprintf(w, "  %d written, %d refused\n", rep.Wrote, rep.Refused)
+	// The repository's own release workflow is left alone, so what to add to it
+	// is printed rather than written: the stanza is abcd's own text.
+	if rep.CallStanza != "" {
+		fmt.Fprintln(w, "  to call the gate, add this to your own release workflow:")
+		for _, line := range strings.Split(strings.TrimRight(rep.CallStanza, "\n"), "\n") {
+			fmt.Fprintf(w, "    %s\n", line)
+		}
+	}
 	if blocked {
 		fmt.Fprintln(w, "  re-run with --confirm to overwrite the hand-edited file(s) with the machinery.")
 	}

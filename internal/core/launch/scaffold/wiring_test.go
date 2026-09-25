@@ -109,6 +109,7 @@ func TestScaffoldWiresTheRepositorysOwnCIChecks(t *testing.T) {
 	mustWrite(t, filepath.Join(dir, "go.mod"), "module example.com/x\n\ngo 1.22\n")
 	mustWrite(t, filepath.Join(dir, ".github", "workflows", "ci.yml"), managedCI)
 	gitInit(t, dir, "trunk")
+	declarePlugin(t, dir)
 
 	rep, err := Scaffold(Request{RepoRoot: dir})
 	if err != nil {
@@ -141,6 +142,7 @@ func TestScaffoldWiresTheRepositorysOwnCIChecks(t *testing.T) {
 	bare := t.TempDir()
 	mustWrite(t, filepath.Join(bare, "go.mod"), "module example.com/y\n\ngo 1.22\n")
 	gitInit(t, bare, "main")
+	declarePlugin(t, bare)
 	if rep, err = Scaffold(Request{RepoRoot: bare}); err != nil {
 		t.Fatal(err)
 	}
@@ -234,6 +236,8 @@ func TestScaffoldedWorkflowsPassTheWorkflowAudit(t *testing.T) {
 		"bare":           BareSubstitutions("main"),
 		"bare+ci-checks": withChecks,
 		"bare+semantic":  semantic,
+		"gate":           GateSubstitutions("main", ""),
+		"gate+own":       GateSubstitutions("main", ".github/workflows/release.yml"),
 	}
 	for name, subs := range profiles {
 		rendered, err := Render(subs)
@@ -265,13 +269,16 @@ func TestScaffoldedWorkflowsPassTheWorkflowAudit(t *testing.T) {
 // a branch name, a commit message) is in it, so an expression reading one
 // fails the strict evaluation.
 var trustedContext = map[string]any{
-	"inputs.tag": "v1.2.3", "inputs.ref": "", "inputs.create_tag": true,
+	"inputs.tag": "v1.2.3", "inputs.ref": "", "inputs.create_tag": true, "inputs.publish": true,
 	"github.sha": strings.Repeat("a", 40), "github.ref_name": "v1.2.3", "github.token": "t",
 	"github.event_name": "push", "github.repository": "example/fixture",
 	"github.event.repository.default_branch": "main", "github.event.repository.private": false,
 	"secrets.GITHUB_TOKEN": "t",
 	"needs.verify.result":  "success", "needs.tag.result": "success", "needs.release.result": "success",
 	"needs.verify.outputs.content_sha":   strings.Repeat("b", 40),
+	"needs.build.result":                 "success",
+	"needs.build.outputs.assets":         "false",
+	"steps.assets.outputs.assets":        "false",
 	"needs.detect.outputs.version":       "1.2.3",
 	"needs.detect.outputs.need_tag":      "true",
 	"needs.detect.outputs.need_release":  "true",

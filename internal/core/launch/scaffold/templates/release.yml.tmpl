@@ -1,4 +1,4 @@
-name: release
+name: <% if .Gate %>abcd-release-gate<% else %>release<% end %>
 <% if .Abcd %>
 # Pushing a version tag (vX.Y.Z) first re-runs the deterministic, Linux-only
 # verify gate (gofmt, build, vet, the race leg, and the record/docs/reviews
@@ -17,6 +17,19 @@ name: release
 # checksums, and reported version all come from the pushed commit. Called by
 # auto-release with create_tag, the same run makes the tag itself, and only once
 # verify is green: detect -> verify -> tag -> build -> publish.
+<%- else if .Gate %>
+# abcd's release gate for this repository. It is CALLED — by auto-release.yml, or
+# by this repository's own release workflow before its build step — and never
+# triggered by a tag push of its own, so it cannot race a tag-driven workflow the
+# repository already runs. It re-runs the verification gate against the commit
+# being released; only if that gate is green does it make the tag (when asked),
+# run the build job below and publish a GitHub Release from that same commit. A
+# caller that builds and publishes itself passes `publish: false`, and the gate
+# then verifies and tags only. Nothing is pushed to any branch, and the whole
+# path runs on the built-in GITHUB_TOKEN. Every job checks out a resolved commit
+# SHA, never a re-resolvable tag NAME. A manual workflow_dispatch runs the
+# rehearsal (below), which arms the gate against a simulated release and
+# publishes nothing.
 <%- else %>
 # Pushing a version tag (vX.Y.Z) re-runs the full verification gate against the
 # PUSHED COMMIT; only if that gate is green does it build and publish a GitHub
@@ -29,9 +42,11 @@ name: release
 # publishes nothing.
 <%- end %>
 on:
+<%- if not .Gate %>
   push:
     tags:
       - 'v*'
+<%- end %>
   # Called by auto-release.yml to release the newest dated CHANGELOG version
   # (adr-37). `tag` and `ref` are an unenforced caller CONTRACT — --verify-tag
   # checks only that the tag exists, not that it points at `ref`; the sole
@@ -54,6 +69,15 @@ on:
         required: false
         type: boolean
         default: false
+<%- if .Gate %>
+      # False when the caller builds and publishes the release itself: the gate
+      # then verifies (and, with create_tag, tags) and its build and release
+      # jobs are skipped.
+      publish:
+        required: false
+        type: boolean
+        default: true
+<%- end %>
   # Manual rehearsal. A workflow_dispatch runs the `rehearsal` job below alongside
   # `verify`, and nothing that publishes: the publish job (`release`) is gated off
   # this event, and the rehearsal arms the gate's resolution path against a
@@ -74,7 +98,7 @@ env:
 # Never run two releases of the same tag concurrently, and never cancel a release
 # mid-flight — a half-published release is worse than a queued one.
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: <% if .Gate %>abcd-release-gate<% else %>release<% end %>-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 # Floor for the workflow: read-only. The tag job elevates itself to contents:
@@ -95,8 +119,13 @@ jobs:
   # exercises exactly the commit whose binaries will ship.
 <%- else %>
   # Gate the release on the pushed commit: the deterministic verification gate
+<%- if .GoModule %>
   # (gofmt, build, vet, test, the race leg). A red step here aborts before anything
-  # is built or published. Checked out at github.sha — the commit the pushed tag
+  # is built or published.
+<%- else %>
+  # (the steps below; this repository is not a Go module, so it runs no Go leg).
+  # A red step here aborts before anything is built or published.
+<%- end %> Checked out at github.sha — the commit the pushed tag
   # pointed at, never the default-branch tip or the re-resolvable tag name — so the
   # gate exercises exactly the commit that will ship.
   #
@@ -142,6 +171,7 @@ jobs:
 <%- end %>
           fetch-depth: 0
           persist-credentials: false
+<%- if .GoModule %>
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -201,6 +231,7 @@ jobs:
       # "no such file or directory" and wedge the release.
       - name: Test (race)
         run: go test -race ./...
+<%- end %>
 <%- end %>
 <%- range .ExtraGates %>
 
@@ -332,12 +363,67 @@ jobs:
           # checks out and ships.
           git tag -a "$TAG" -m "abcd $TAG" "$COMMIT"
           git push origin "refs/tags/$TAG"
+<% if not .Abcd %>
+  # The build, EMPTY BY DESIGN (iss-2608270559310755): abcd lays the gate
+  # plumbing and does not guess how this repository builds. Fill the step below,
+  # or replace this job's steps with a call to your own build, and leave every
+  # file the release should carry in dist/: the release job downloads dist/ and
+  # attaches each file in it to the GitHub Release. Left empty, the Release
+  # carries its generated notes alone. It runs from the commit verify gated,
+  # once the tag is in place, and never on the rehearsal.
+  build:
+    needs: [verify, tag]
+    if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')<% if .Gate %> && inputs.publish<% end %>
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      assets: ${{ steps.assets.outputs.assets }}
+    steps:
+      - name: Check out the verified commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit verify gated, resolved exactly as verify resolved it.
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
 
+      - name: Build the release assets into dist/
+        # This repository's build goes here. TAG, the release tag, is in the
+        # environment; write every asset the release should carry into dist/.
+        run: mkdir -p dist
+
+      - name: Count the release assets in dist/
+        id: assets
+        run: |
+          set -euo pipefail
+          if [ -n "$(ls -A dist 2>/dev/null)" ]; then
+            echo "assets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "assets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Hand dist/ to the release job
+        if: steps.assets.outputs.assets == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-assets
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  # Publish ONLY after verify is green and the build job succeeded, from the same
+  # commit verify gated, so the published assets match the code that passed —
+  # even if the tag were re-pointed since.
+  release:
+    needs: [verify, tag, build]
+<%- else %>
   # Build and publish ONLY after verify is green. Binaries are cross-compiled from
   # the same pushed commit (github.sha) that verify just gated, so the shipped
   # artefacts match the code that passed — even if the tag were re-pointed since.
   release:
     needs: [verify, tag]
+<%- end %>
     # The publish path never runs on a manual rehearsal (workflow_dispatch): that
     # event runs the `rehearsal` job, which publishes nothing. Otherwise it runs
     # once verify is green and the tag is in place — the tag job made it
@@ -346,7 +432,11 @@ jobs:
     # need skips a job whose if uses no status function; it never fires on a
     # cancelled run, so a manual cancel cannot publish a half-finished state. A
     # FAILED tag job blocks the release, so a half-made tag never publishes.
+<%- if .Abcd %>
     if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
+<%- else %>
+    if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped') && needs.build.result == 'success'<% if .Gate %> && inputs.publish<% end %>
+<%- end %>
     timeout-minutes: 20
     runs-on: ubuntu-latest
 <%- if .Abcd %>
@@ -415,6 +505,7 @@ jobs:
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+<%- if .GoModule %>
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -424,6 +515,7 @@ jobs:
           # leaves a job compiling on a toolchain the format gate would reject.
           go-version-file: go.mod
           cache: false
+<%- end %>
 <%- if .SemanticGates %>
 
       # --- Semantic-gate provenance (iss-35; dormant until the public flip) ------
@@ -482,7 +574,7 @@ jobs:
           for r in .abcd/work/reviews/"$CONTENT_SHA"/*.json; do
             gh attestation verify "$r" \
               --repo "${GITHUB_REPOSITORY}" \
-              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>" \
               --predicate-type https://abcd.dev/attestations/semantic-release-gate/v1
           done
 <%- end %>
@@ -581,7 +673,7 @@ jobs:
             --dir "$DL"
           gh attestation verify "$DL/abcd-linux-amd64" \
             --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>"
           # The plugin archive too: fresh from the Release, attested by this
           # workflow, and byte-identical to the archive verified against the pin.
           gh release download "${TAG}" \
@@ -590,21 +682,33 @@ jobs:
             --dir "$DL"
           gh attestation verify "$DL/abcd-plugin-${TAG}.zip" \
             --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>"
           cmp "$DL/abcd-plugin-${TAG}.zip" "bin/abcd-plugin-${TAG}.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 <%- else %>
-      - name: Build
-        run: go build ./...
+      - name: Receive the build job's dist/
+        if: needs.build.outputs.assets == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-assets
+          path: dist/
 
-      - name: Create the GitHub Release and generate notes
+      - name: Create the GitHub Release, attach dist/ and generate notes
         # --verify-tag: refuse to publish unless the tag already exists remotely —
         # existence only; it does not check what the tag points at (see the contract
-        # note at the top of this file). --generate-notes lists the merged PRs
-        # since the previous tag; CHANGELOG.md remains the durable, hand-curated
-        # record. GITHUB_TOKEN-only: no personal access token, no elevated secret.
-        run: gh release create "${TAG}" --verify-tag --title "${TAG}" --generate-notes
+        # note at the top of this file). Every file the build job left in dist/ is
+        # attached; with none, the Release carries its notes alone. --generate-notes
+        # lists the merged PRs since the previous tag; CHANGELOG.md remains the
+        # durable record. GITHUB_TOKEN-only: no personal access token, no elevated
+        # secret.
+        run: |
+          set -euo pipefail
+          assets=()
+          if [ -d dist ]; then
+            while IFS= read -r -d '' f; do assets+=("$f"); done < <(find dist -type f -print0 | sort -z)
+          fi
+          gh release create "${TAG}" ${assets[@]+"${assets[@]}"} --verify-tag --title "${TAG}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 <%- end %>
@@ -731,9 +835,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so the content-commit resolution below can walk parents,
-          # exactly as release.yml's semantic gate does.
+          # exactly as <% .ReleaseWorkflow %>'s semantic gate does.
           fetch-depth: 0
           persist-credentials: false
+<%- if .GoModule %>
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -743,6 +848,7 @@ jobs:
           # leaves a job compiling on a toolchain the format gate would reject.
           go-version-file: go.mod
           cache: false
+<%- end %>
 <%- if .SemanticGates %>
 
       - name: Simulate a changelog roll and a BATCHED merge-queue push
@@ -794,8 +900,8 @@ jobs:
           git merge -q --no-ff -m 'rehearsal: merge unrelated batch-mate' rehearsal-unrelated
           echo "REHEARSAL_CONTENT_SHA=$content" >> "$GITHUB_ENV"
 
-      - name: Resolve the reviewed content commit (release.yml's derivation)
-        # Mirrors release.yml's derivation exactly: the content commit is read from
+      - name: Resolve the reviewed content commit (<% .ReleaseWorkflow %>'s derivation)
+        # Mirrors <% .ReleaseWorkflow %>'s derivation exactly: the content commit is read from
         # the RECEIPTS DIRECTORY of the released tree, not HEAD^2^/HEAD^ ancestry.
         # Asserts it lands on the simulated content commit AND that the old HEAD^2^
         # derivation would NOT — the iss-355 regression the batched shape above
@@ -850,8 +956,8 @@ jobs:
           git merge -q --no-ff -m 'rehearsal: merge simulated release' rehearsal-sim
           echo "REHEARSAL_CONTENT_SHA=$content" >> "$GITHUB_ENV"
 
-      - name: Resolve the reviewed content commit (release.yml's derivation)
-        # This profile arms no receipt gate, so release.yml derives no content
+      - name: Resolve the reviewed content commit (<% .ReleaseWorkflow %>'s derivation)
+        # This profile arms no receipt gate, so <% .ReleaseWorkflow %> derives no content
         # commit. The step proves the two-commit release shape instead: HEAD^2^
         # of the merge (HEAD^ on a direct tag) lands on the simulated content
         # commit, an ancestor of the released commit, which is the commit the
@@ -881,7 +987,9 @@ jobs:
       - name: Prove the gate admits and nothing was published
         run: |
           set -euo pipefail
+<%- if .GoModule %>
           # Build the simulated tree — the deterministic leg the gate requires.
           go build ./...
+<%- end %>
           echo "rehearsal: gate arming resolved; the deterministic gates admit the simulated roll."
           echo "rehearsal: nothing published — no tag, Release, or attestation was created (contents: read)."

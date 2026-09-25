@@ -1178,7 +1178,7 @@ Run the release job's semantic-receipt gate locally, before the merge (exit 1 wh
 
 #### `abcd launch scaffold`
 
-Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbook, reviews charter) into this repo
+Scaffold the changelog-driven release gate into this repo, shaped by its declared artefact kind
 
 **Usage:** `abcd launch scaffold [--confirm] [flags]`
 
