@@ -71,7 +71,12 @@ So an unknown command or flag carries a second line, derived from what the
 binary can prove on disk alone and never from the network (adr-38). Where the
 command surface beside the resolved plugin root documents the very verb or flag
 that was refused, the line says the binary predates it and names the remedy for
-where the binary sits. Failing that evidence, the disk-only vintage this verb
+where the binary sits. A page that documents no verb is not that evidence: the
+dispatcher page `abcd.md` documents the bare call, and the host-delegated pages
+(`consult`, `ingest`, `prepare-this-repo`) run in the host agent, so the line
+for one of those tokens says what it is instead — `abcd <record-id>` for the
+first, the `/abcd:<page>` invocation for the rest — and never sends the reader
+to rebuild or update. Failing that evidence, the disk-only vintage this verb
 renders stands in. When neither says anything, the framework's line stands
 byte-for-byte. The exit code, the stream and the JSON envelope are the
 framework's own.

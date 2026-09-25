@@ -67,6 +67,25 @@ var (
 	flagShape = regexp.MustCompile(`^--[a-z][a-z0-9-]*$`)
 )
 
+// dispatcherPage is the command page documenting the bare `abcd` call itself —
+// the status board and the record-id dispatch — rather than a verb under it.
+const dispatcherPage = "abcd"
+
+// pagesWithNoVerb are the command pages that document no binary verb, each
+// with what the token is instead: the dispatcher page, and the host-delegated
+// pages whose whole workflow runs in the host agent. A page existing for one
+// of these tokens proves nothing about the binary's age, so staleUsageNote
+// names what the token is rather than calling an up-to-date binary stale
+// (iss-2609200953255336, iss-2609240519471816). The surface-parity test reads
+// this set, so a new host-delegated page is added here or the parity check
+// reads its missing verb as drift.
+var pagesWithNoVerb = map[string]string{
+	dispatcherPage:      "`abcd` is the binary itself, not one of its commands — the page /abcd:abcd documents the bare call; did you mean `abcd <record-id>` (or bare `abcd` for the status board)?",
+	"consult":           "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
+	"ingest":            "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
+	"prepare-this-repo": "`prepare-this-repo` has no binary verb — it runs in the host agent; invoke it as /abcd:prepare-this-repo",
+}
+
 // maxCommandPageBytes caps a command-page read; the pages are a few KiB.
 const maxCommandPageBytes = 256 << 10
 
@@ -85,6 +104,14 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 	skew, ok := classifyUsageError(root, args, msg)
 	if !ok {
 		return ""
+	}
+	// A top-level token whose page documents no verb is not evidence of age,
+	// and neither the page nor the vintage is consulted for it: a rebuild or an
+	// update adds no verb that was never meant to exist.
+	if len(skew.known) == 0 {
+		if what, noVerb := pagesWithNoVerb[skew.verb]; noVerb {
+			return what
+		}
 	}
 	pluginRoot, rootOK := ahoy.ResolvePluginRoot()
 	inRoot := rootOK && executableUnder(pluginRoot)
