@@ -110,6 +110,16 @@ func tokenize(line string) ([]segment, error) {
 		// question is answered by what ENCLOSES the operator, never by the bytes
 		// after it. See inArithmetic and the `<<` branch.
 		parens []parenFrame
+		// chainSeq is the highest chain number handed out so far. A newline
+		// takes the next one rather than incrementing chain, because a
+		// substitution restores its enclosing command's chain when it closes:
+		// counting up from the restored value would hand a later line a number
+		// an inner line already holds, and precededByCD would read the two as
+		// one chain.
+		chainSeq int
+		// procSubNext records that the redirection branch just read the `<`/`>`
+		// of a process substitution, so the `(` that follows opens one.
+		procSubNext bool
 	)
 	// inArithmetic reports whether the innermost construct that can change how a
 	// `<<` reads is an arithmetic one. A plain `(` is skipped rather than
@@ -146,6 +156,36 @@ func tokenize(line string) ([]segment, error) {
 			globs = nil
 			braceGroup = false
 		}
+	}
+	// openSubstitution suspends the command being built when a command or
+	// process substitution opens inside it. The substitution's own command is
+	// read as a fresh segment, and closeSubstitution resumes the enclosing one
+	// where it stopped — so the argv written AFTER a substitution stays in the
+	// enclosing command (`rm $(true) -rf *` is `rm -rf *`, iss-148) instead of
+	// becoming a command called `-rf`.
+	openSubstitution := func(kind parenKind, pos int, procSub bool) {
+		saved := &enclosing{
+			toks: toks, globs: globs, cur: cur, hasCur: hasCur, curGlob: curGlob,
+			braceGroup: braceGroup, chain: chain, procSub: procSub,
+		}
+		toks, globs, cur, hasCur, curGlob, braceGroup = nil, nil, nil, false, false, false
+		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
+	}
+	// closeSubstitution resumes a suspended enclosing command. What the
+	// substitution contributes to the word it sat in is unknowable here, so a
+	// command substitution contributes nothing — the reading under which an
+	// unquoted one that expands to nothing (`$(true)`) leaves no word at all,
+	// and a leading-position substitution never becomes argv[0]. A process
+	// substitution always contributes exactly one word, the /dev/fd path the
+	// shell hands the command, so the operands after it keep their positions.
+	closeSubstitution := func(e *enclosing) {
+		flushSegment()
+		toks, globs, cur, hasCur, curGlob, braceGroup, chain = e.toks, e.globs, e.cur, e.hasCur, e.curGlob, e.braceGroup, e.chain
+		if e.procSub {
+			cur = append(cur, procSubOperand...)
+			hasCur = true
+		}
+		lastList = false
 	}
 
 	for i := 0; i < len(line); {
@@ -255,7 +295,8 @@ func tokenize(line string) ([]segment, error) {
 			// list operator does not end the list, and every token-producing
 			// branch clears the flag as soon as real content arrives.
 			if !lastList {
-				chain++
+				chainSeq++
+				chain = chainSeq
 			}
 		case c == '#' && !hasCur:
 			// A comment starts only at a word boundary (POSIX): `url/#frag` is
@@ -332,8 +373,9 @@ func tokenize(line string) ([]segment, error) {
 			// leading redirection (`>/dev/null git push --force`) displaced the
 			// command out of position and degraded a Tier-1 block to a warn.
 			if i+1 < len(line) && line[i+1] == '(' {
-				cur = append(cur, c)
-				hasCur = true
+				// Process substitution: the `(` that follows opens it, and the
+				// operator byte is not part of any word.
+				procSubNext = true
 				lastList = false
 				i++
 				break
@@ -409,6 +451,29 @@ func tokenize(line string) ([]segment, error) {
 			// top-level `` `gh repo delete owner/repo` `` was a silent allow while
 			// its `$( … )` twin blocked (gh-312). Inside single quotes the byte is
 			// literal and never reaches here, matching the shell.
+			//
+			// A substitution that OPENS here suspends the enclosing command
+			// rather than ending it (openSubstitution), so its inner command is
+			// its own segment and the enclosing one resumes when it closes.
+			procSub := procSubNext
+			procSubNext = false
+			if c == '(' && (procSub || (i > 0 && line[i-1] == '$')) {
+				if !procSub && hasCur && len(cur) > 0 && cur[len(cur)-1] == '$' {
+					// The `$` introducer is not part of the word.
+					cur = cur[:len(cur)-1]
+					hasCur = len(cur) > 0
+				}
+				openSubstitution(parenCommandSub, i, procSub)
+				lastList = false
+				i++
+				continue
+			}
+			if c == '`' && !(len(parens) > 0 && parens[len(parens)-1].kind == parenBacktick) {
+				openSubstitution(parenBacktick, i, false)
+				lastList = false
+				i++
+				continue
+			}
 			flushSegment()
 			switch c {
 			case '(':
@@ -419,25 +484,24 @@ func tokenize(line string) ([]segment, error) {
 				// both halves close it and `$(((a))` reads as arithmetic plus
 				// one ordinary group.
 				kind := parenGroup
-				if i > 0 && line[i-1] == '$' {
-					kind = parenCommandSub
-				}
 				if n := len(parens); n > 0 && parens[n-1].pos == i-1 && parens[n-1].kind != parenArithmetic {
 					parens[n-1].kind = parenArithmetic
 					kind = parenArithmetic
 				}
 				parens = append(parens, parenFrame{kind: kind, pos: i})
-			case ')':
+			case ')', '`':
+				// A backtick is its own closer: reaching this branch means the
+				// innermost open frame is a backtick (an opening one was taken
+				// above), so both bytes pop. A frame that suspended an enclosing
+				// command resumes it; a plain group or an arithmetic half does
+				// not, which is what keeps a nested bare `(` inside `$( … )` from
+				// closing the substitution early.
 				if n := len(parens); n > 0 {
+					top := parens[n-1]
 					parens = parens[:n-1]
-				}
-			case '`':
-				// A backtick is its own closer, so it toggles: an open one on
-				// the stack is popped, anything else pushes a fresh frame.
-				if n := len(parens); n > 0 && parens[n-1].kind == parenBacktick {
-					parens = parens[:n-1]
-				} else {
-					parens = append(parens, parenFrame{kind: parenBacktick, pos: i})
+					if top.saved != nil {
+						closeSubstitution(top.saved)
+					}
 				}
 			}
 			if (c == '&' || c == '|') && i+1 < len(line) && line[i+1] == c {
@@ -491,6 +555,16 @@ func tokenize(line string) ([]segment, error) {
 		}
 	}
 	flushSegment()
+	// A substitution still open when the input ends is a syntax error bash
+	// refuses to run, but the guard reads it fail-safe all the same: every
+	// suspended enclosing command is resumed and emitted, so no token written
+	// before an unterminated `$(` or backtick escapes the check.
+	for n := len(parens) - 1; n >= 0; n-- {
+		if parens[n].saved != nil {
+			closeSubstitution(parens[n].saved)
+			flushSegment()
+		}
+	}
 	// A here-document still pending when the INPUT ends is in the same state as
 	// one whose delimiter line never came, and takes the same fail-closed
 	// verdict. Reaching the end of the input without ever crossing a newline
@@ -528,7 +602,33 @@ const (
 type parenFrame struct {
 	kind parenKind
 	pos  int
+	// saved is the enclosing command a substitution suspended, resumed when
+	// this frame closes; nil for a frame that suspends nothing (a subshell or
+	// grouping paren, an arithmetic half).
+	saved *enclosing
 }
+
+// enclosing is the state of a command suspended by a substitution opening
+// inside it: its tokens so far, the word in progress, and the chain it belongs
+// to, which a newline inside the substitution must not change.
+type enclosing struct {
+	toks       []string
+	globs      []bool
+	cur        []byte
+	hasCur     bool
+	curGlob    bool
+	braceGroup bool
+	chain      int
+	// procSub records that the substitution is a process substitution, which
+	// leaves one /dev/fd operand in the word it sat in.
+	procSub bool
+}
+
+// procSubOperand is the word a process substitution leaves in the enclosing
+// command: the /dev/fd path bash hands it (the descriptor number varies; the
+// shape does not). It is an operand, never a flag, so an entry's flag scan
+// passes over it and its operand positions stay where the shell puts them.
+const procSubOperand = "/dev/fd/63"
 
 // globsOrNil returns the per-token glob record, or nil when no token in it is
 // globbed — the common case, kept allocation-free for the matcher's compares.

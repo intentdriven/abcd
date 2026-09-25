@@ -78,8 +78,10 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"under `/api/v3/`; the api.github.com URL form IS read), a bare `$VAR` inside\n" +
 			"an interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
 			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
-			"a hazard inside a top-level command substitution (`$(…)` and\n" +
-			"backticks are both followed into command position),\n" +
+			"a hazard inside a DOUBLE-QUOTED command substitution (`\"$(…)\"`; an\n" +
+			"unquoted `$(…)`, backtick, `<(…)` or `>(…)` IS followed into command\n" +
+			"position, and the words written after one stay the enclosing command's,\n" +
+			"so `rm $(true) -rf *` is read as `rm -rf *`),\n" +
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +

@@ -168,8 +168,10 @@ hazard behind a launcher it does not recognise is a **warn** naming the entry it
 matched rather than an allow, because the guard cannot tell whether that program
 runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
-spelled `git pus? --force` blocks. A command string handed to a shell is opened
-and read. A git alias declared on the same command line is resolved, and the
+spelled `git pus? --force` blocks. An unquoted command or process substitution
+is followed into command position, and the words written after one stay the
+enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. A command
+string handed to a shell is opened and read. A git alias declared on the same command line is resolved, and the
 command git would actually run is what gets checked. Where the reading is a
 guess, over-blocking is the direction the guard takes.
 
@@ -179,7 +181,7 @@ path an entry names by its root segment when the host serves that API under a
 prefix; a bare `$VAR` standing where the hazard would be inside a payload the
 guard does read, because the guard sees the variable and not what the shell will
 expand it to, and warning on every variable would bury the warnings that matter;
-a payload inside a non-shell interpreter such as `python -c`, which is one
+a hazard inside a double-quoted command substitution (`"$(…)"`); a payload inside a non-shell interpreter such as `python -c`, which is one
 opaque token and today a silent allow; and any dangerous form no entry
 describes. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
