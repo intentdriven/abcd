@@ -63,6 +63,8 @@ var wordReaders = map[string]string{
 	"shellReadsStream":     "readWord and clusterCouldCarry on every unknown word",
 	"sourceReadsStream":    "exempt: reads source's literal `--`; its operand goes through scriptIsStream, which reads wordCouldBe",
 	"isPlainCommand":       "refuses unknownMark outright",
+	"isSplitStringLong":    "exempt: reads the known option name scanEnvSplits hands it after reading the word by the rule",
+	"longEnvTakesValue":    "exempt: reads the known option name scanEnvSplits hands it after reading the word by the rule",
 
 	// execstring.go
 	"execStringPayloads": "commandArrivals and nameCouldBe",
@@ -78,18 +80,21 @@ var wordReaders = map[string]string{
 	"bareStash":              "sitesNamed and operandReadings",
 	"stashHasMessage":        "exempt: fail-closed by construction — an unknown word is never read as the message, so the stash stays bare",
 	"abbreviatesAlternative": "exempt: reads the known text flagGroupHit hands it",
+	"gitValueFlags":          "exempt: builds the value-flag table the git passes read words with, and reads no word",
 
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
 	"allNoglob":     "commandSites",
 
 	// Grammar and registry readers, not command words.
-	"seqWidth":         "exempt: a brace sequence's number sign, before any word exists",
-	"allReserved":      "exempt: reserved words are grammar, which no substitution prints",
-	"keywordAt":        "exempt: reserved words are grammar, which no substitution prints",
-	"readHeredocDelim": "exempt: the `<<-` operator is grammar",
-	"Validate":         "exempt: reads registry entries, not command words",
-	"validEntryID":     "exempt: reads a registry id, not a command word",
+	"seqWidth":          "exempt: a brace sequence's number sign, before any word exists",
+	"padInt":            "exempt: writes a brace sequence's number sign, before any word exists",
+	"committedRegistry": "exempt: hands git its own options to read the committed registry; reads no command word",
+	"allReserved":       "exempt: reserved words are grammar, which no substitution prints",
+	"keywordAt":         "exempt: reserved words are grammar, which no substitution prints",
+	"readHeredocDelim":  "exempt: the `<<-` operator is grammar",
+	"Validate":          "exempt: reads registry entries, not command words",
+	"validEntryID":      "exempt: reads a registry id, not a command word",
 }
 
 // TestEveryWordReaderGoesThroughUnknown is the grep the rule promises, run as a
@@ -109,6 +114,7 @@ func TestEveryWordReaderGoesThroughUnknown(t *testing.T) {
 		body       *ast.BlockStmt
 	}
 	var fns []fn
+	var parsed []*ast.File
 	for _, f := range files {
 		if strings.HasSuffix(f, "_test.go") {
 			continue
@@ -121,6 +127,7 @@ func TestEveryWordReaderGoesThroughUnknown(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		parsed = append(parsed, file)
 		for _, d := range file.Decls {
 			switch d := d.(type) {
 			case *ast.FuncDecl:
@@ -145,10 +152,11 @@ func TestEveryWordReaderGoesThroughUnknown(t *testing.T) {
 		}
 	}
 
+	dashes := dashNames(parsed)
 	var unlisted []string
 	listed := map[string]bool{}
 	for _, f := range fns {
-		if !readsWords(f.body) {
+		if !readsWords(f.body, dashes) {
 			continue
 		}
 		listed[f.name] = true
@@ -167,7 +175,7 @@ func TestEveryWordReaderGoesThroughUnknown(t *testing.T) {
 	sort.Strings(unlisted)
 	if os.Getenv("LIST_READERS") != "" {
 		for _, f := range fns {
-			if readsWords(f.body) {
+			if readsWords(f.body, dashes) {
 				t.Logf("READER %s %s", f.file, f.name)
 			}
 		}
@@ -182,29 +190,70 @@ func TestEveryWordReaderGoesThroughUnknown(t *testing.T) {
 	}
 }
 
-// readsWords reports whether a function body reads a word as an option parser
-// or a command lookup does: it tests a string for a leading dash or compares it
-// with a dash-led literal, compares a byte with '-', reads a basename, tests a
-// short-option shape, looks a name up in the wrapper, verb, launcher or
-// interpreter tables, reads a value-flag table, or asks unknown.go itself.
-func readsWords(body *ast.BlockStmt) bool {
-	dashLit := func(e ast.Expr) bool {
-		lit, ok := e.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			return false
-		}
-		v, err := strconv.Unquote(lit.Value)
-		return err == nil && strings.HasPrefix(v, "-")
+// TestReadsWordsSeesEveryDashSpelling — review4-guard finding 5. The reader
+// detection must not depend on the one spelling the package happens to use:
+// a switch on the first byte, strings.IndexByte or strings.Index, a bytes
+// function, or a named dash constant reads a word's dash just as
+// strings.HasPrefix does, and each must be found.
+func TestReadsWordsSeesEveryDashSpelling(t *testing.T) {
+	const src = `package p
+
+const dash = '-'
+const longPrefix = "--"
+
+func viaSwitch(tok string) bool {
+	switch tok[0] {
+	case '-':
+		return true
 	}
+	return false
+}
+func viaIndexByte(tok string) bool { return strings.IndexByte(tok, '-') == 0 }
+func viaIndex(tok string) bool     { return strings.Index(tok, "--") == 0 }
+func viaBytes(tok []byte) bool     { return bytes.HasPrefix(tok, []byte("-")) }
+func viaConst(tok string) bool     { return tok[0] == dash }
+func viaStringConst(tok string) bool { return strings.HasPrefix(tok, longPrefix) }
+func viaCut(tok string) string     { s, _ := strings.CutPrefix(tok, "-"); return s }
+func notAReader(a, b int) int      { return a - b }
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dashes := dashNames([]*ast.File{file})
+	for _, d := range file.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		want := fd.Name.Name != "notAReader"
+		if got := readsWords(fd.Body, dashes); got != want {
+			t.Errorf("readsWords(%s) = %v, want %v", fd.Name.Name, got, want)
+		}
+	}
+}
+
+// readsWords reports whether a function body reads a word as an option parser
+// or a command lookup does: it mentions a dash at all — a '-' rune, a
+// dash-led string, or a package-level name (dashes) that holds one, however
+// the comparison around it is spelled (review4-guard finding 5) — reads a
+// basename, tests a short-option shape, looks a name up in the wrapper, verb,
+// launcher or interpreter tables, reads a value-flag table, or asks unknown.go
+// itself. Detecting the dash by its mention rather than by the shape of the
+// test around it is what keeps a switch on the first byte, strings.IndexByte,
+// a bytes function or a named constant from reading a word unseen; a function
+// that mentions a dash for any other reason is listed as exempt, with why.
+func readsWords(body *ast.BlockStmt, dashes map[string]bool) bool {
 	found := false
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch n := n.(type) {
+		case *ast.BasicLit:
+			found = found || dashLiteral(n)
+		case *ast.Ident:
+			found = found || dashes[n.Name]
 		case *ast.CallExpr:
 			switch name := callName(n); name {
-			case "strings.HasPrefix", "strings.CutPrefix", "strings.TrimPrefix":
-				if len(n.Args) == 2 && dashLit(n.Args[1]) {
-					found = true
-				}
 			case "path.Base", "isShellFamily", "shellFamilyGlob", "isShortCluster", "isShortFlag",
 				"readWord", "flagCouldBe", "clusterCouldCarry", "unknownFlagCouldBe", "nameCouldBe",
 				"nameCouldBeAny", "commandNamed", "commandArrivals", "commandSites", "sitesNamed",
@@ -224,19 +273,50 @@ func readsWords(body *ast.BlockStmt) bool {
 					found = true
 				}
 			}
-		case *ast.BinaryExpr:
-			if n.Op == token.EQL || n.Op == token.NEQ {
-				if dashLit(n.X) || dashLit(n.Y) {
-					found = true
-				}
-				if lit, ok := n.Y.(*ast.BasicLit); ok && lit.Kind == token.CHAR && lit.Value == "'-'" {
-					found = true
-				}
-			}
 		}
 		return !found
 	})
 	return found
+}
+
+// dashLiteral reports whether a literal is a dash: the '-' rune, or a string
+// that begins with one.
+func dashLiteral(lit *ast.BasicLit) bool {
+	switch lit.Kind {
+	case token.CHAR:
+		return lit.Value == "'-'"
+	case token.STRING:
+		v, err := strconv.Unquote(lit.Value)
+		return err == nil && strings.HasPrefix(v, "-")
+	}
+	return false
+}
+
+// dashNames returns the package-level constants and variables whose value is
+// a dash literal, so a reader that names one instead of spelling the dash is
+// seen as readily as one that spells it.
+func dashNames(files []*ast.File) map[string]bool {
+	out := map[string]bool{}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for i, v := range vs.Values {
+					if lit, ok := v.(*ast.BasicLit); ok && dashLiteral(lit) && i < len(vs.Names) {
+						out[vs.Names[i].Name] = true
+					}
+				}
+			}
+		}
+	}
+	return out
 }
 
 // callsAny reports whether a body calls a function or reads a name in names.
