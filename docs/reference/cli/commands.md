@@ -1047,14 +1047,16 @@ Intent lifecycle; bare invocation is read-only status, quoted text files a draft
 
 #### `abcd intent audit`
 
-Intent audit (promise vs delivered): list the owed fidelity reviews (bare), re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)
+Intent audit (promise vs delivered): list the owed fidelity reviews (bare), drain them oldest first (--owed), re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)
 
-**Usage:** `abcd intent audit [<itd-N>] | audit --issue-drift [--strict] [flags]`
+**Usage:** `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
 
 **Flags:**
 
 ```
       --issue-drift   walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
+      --max int       with --owed: list at most n owed reviews (0: no cap); the summary names how many remain
+      --owed          drain the owed fidelity reviews: list them oldest shipped first and emit the oldest's request; runs no reviewer
       --strict        with --issue-drift: exit 1 when any finding is reported (the CI mode)
 ```
 

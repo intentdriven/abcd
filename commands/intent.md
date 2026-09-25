@@ -1,7 +1,7 @@
 ---
 name: intent
 description: Press-release intent lifecycle — status, quoted-text create, the implement-readiness gate, and the human planning interview that turns a draft into a planned, specced intent.
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 ---
 
 # `/abcd:intent` — intent lifecycle
@@ -560,6 +560,7 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --json                               # list the owed fidelity reviews (read-only)
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed [--max <n>] --json            # drain them oldest first (see Drain below)
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit <itd-N> --json                       # re-emit a shipped intent's review request
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
 ```
@@ -604,6 +605,61 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+## Drain: pay the owed reviews, oldest first
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed --max <n> --json
+```
+
+`--owed` is the bounded command that pays the review debt. It returns `queue`
+— the owed reviews, oldest shipped first (`shipped` is the day the intent
+entered `shipped/`; one shipped in the working tree and not yet committed has
+none and comes last), at most `max` of them — with `owed`, the whole total, and
+`remaining`, how many the cap left out. `next` names the oldest one's
+`request_path`: the command has just emitted that request, exactly as
+`intent audit <itd-N>` does, minting the receipt if the intent had none. It
+runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+`--max` without `--owed` is refused, as are `--owed` with an intent id or with
+`--issue-drift`.
+
+Run the loop one audit at a time, never in parallel — the cap and the one
+auditor at a time are what bound the cost:
+
+1. **Check for an auditor first.** The `intent-auditor` agent must be in the
+   host's agent listing. When it is not, or its launch is refused, run no
+   audit: every entry stays owed, nothing is marked failed or dead-lettered for
+   want of a reviewer, and the summary says why nothing ran ("0 audited; 12
+   owed left owed: no intent-auditor available — <what the host said>"). A
+   refused launch part-way through stops the loop the same way, and the
+   summary names the entries it did not reach.
+2. **For each entry in `queue`, in order:** run `intent audit <itd-N> --json`
+   (for the first entry the request is already written, and the re-emit is
+   idempotent), hand the whole request file to the `intent-auditor` agent,
+   write the verdict it returns to `.abcd/.work.local/scratch/`, and run
+   `intent audit ingest --verdict-json <file> --json`. The verdict lands exactly
+   as a single audit's does — the Audit Notes block, the receipt, the scope-
+   condition dispositions. Report the ingest's status, then take the next
+   entry; start the next audit only after this ingest has returned.
+3. **A NOT_MET verdict is captured, never fixed.** Every intent the drain
+   reaches has already shipped, so a criterion it did not meet is a finding
+   against delivered work: file it with
+   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup`,
+   naming the receipt, and continue the loop. The drain changes no code and
+   re-opens nothing; the fix round belongs to the build that owns the work. A
+   `dead_letter` ingest is reported with its reason and is listed apart by
+   bare `intent audit` from then on.
+4. **Summarise:** how many were audited, the ingest outcome of each, the
+   captures filed for NOT_MET (their ids), how many stay owed — the command's
+   `remaining` plus any entry the loop did not reach — and why the loop
+   stopped: the queue ran out, the cap was reached, or no auditor was
+   available.
+
+A host without this page drives the same pair by hand: the text form prints
+the ordered list and the `next:` request path, and after the verdict is
+ingested the next `--owed` run finds the queue one shorter. Nothing starts the
+drain on its own: the spec close still only parks the OWED marker, and no hook,
+gate or schedule runs a reviewer.
 
 ## Condition: disposition one scope condition from a reading or a delivery
 

@@ -1273,6 +1273,20 @@
           "hidden": false
         },
         {
+          "name": "max",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "owed",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "strict",
           "shorthand": "",
           "type": "bool",

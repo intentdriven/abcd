@@ -2387,12 +2387,28 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 // stub + ephemeral request for a shipped intent; bare `audit` is the read-only
 // listing of the owed fidelity reviews (itd-2609150819445595).
 func newIntentAuditCommand(asJSON *bool) *cobra.Command {
-	var issueDrift, strict bool
+	var issueDrift, strict, owed bool
+	var maxOwed int
 	auditCmd := &cobra.Command{
-		Use:   "audit [<itd-N>] | audit --issue-drift [--strict]",
-		Short: "Intent audit (promise vs delivered): list the owed fidelity reviews (bare), re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)",
+		Use:   "audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict]",
+		Short: "Intent audit (promise vs delivered): list the owed fidelity reviews (bare), drain them oldest first (--owed), re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if owed {
+				switch {
+				case issueDrift:
+					return &exitError{Code: 2, Msg: "abcd intent audit --owed: the drain and --issue-drift are separate passes; run one at a time"}
+				case strict:
+					return &exitError{Code: 2, Msg: "abcd intent audit: --strict applies to --issue-drift only"}
+				case len(args) > 0:
+					return &exitError{Code: 2, Msg: "abcd intent audit --owed: the drain walks the whole owed set and takes no <itd-N>; " +
+						"`abcd intent audit " + args[0] + "` emits that one intent's request"}
+				}
+				return runOwedDrain(cmd, *asJSON, maxOwed)
+			}
+			if cmd.Flags().Changed("max") {
+				return &exitError{Code: 2, Msg: "abcd intent audit: --max applies to --owed only (it caps the drain queue)"}
+			}
 			if issueDrift {
 				if len(args) > 0 {
 					return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: the drift check walks the whole corpus and takes no <itd-N>"}
@@ -2471,6 +2487,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
 		"walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0")
 	auditCmd.Flags().BoolVar(&strict, "strict", false, "with --issue-drift: exit 1 when any finding is reported (the CI mode)")
+	auditCmd.Flags().BoolVar(&owed, "owed", false,
+		"drain the owed fidelity reviews: list them oldest shipped first and emit the oldest's request; runs no reviewer")
+	auditCmd.Flags().IntVar(&maxOwed, "max", 0, "with --owed: list at most n owed reviews (0: no cap); the summary names how many remain")
 	return auditCmd
 }
 
