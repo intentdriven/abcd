@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/condition"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -61,19 +62,25 @@ var verdictEnum = map[string]bool{
 
 // dispositionUntested is the disposition vocabulary's word for the absence of a
 // judgement — the value the quarantine path records, and the only one exempt
-// from the cited-evidence rule.
-const dispositionUntested = "untested"
+// from the cited-evidence rule. It is core/condition's value: the vocabulary is
+// shared with the condition verb and every reader of both writers' blocks.
+const dispositionUntested = condition.Untested
 
 // dispositionNarrowed is the one disposition that requires a stated narrowing —
 // and the only one permitted to carry one.
-const dispositionNarrowed = "narrowed"
+const dispositionNarrowed = condition.Narrowed
 
-// dispositionEnum is the closed set of scope-condition dispositions (spc-59).
-// It is deliberately disjoint from verdictEnum: a condition is not a criterion,
-// and an acceptance verdict is not a judgement about an ex-ante assumption.
-var dispositionEnum = map[string]bool{
-	"survived": true, dispositionNarrowed: true, "falsified": true, dispositionUntested: true,
-}
+// dispositionEnum is the closed set of scope-condition dispositions (spc-59),
+// as a set over core/condition's Enum. It is deliberately disjoint from
+// verdictEnum: a condition is not a criterion, and an acceptance verdict is not
+// a judgement about an ex-ante assumption.
+var dispositionEnum = func() map[string]bool {
+	m := make(map[string]bool, len(condition.Enum))
+	for _, v := range condition.Enum {
+		m[v] = true
+	}
+	return m
+}()
 
 var (
 	// rcpIDRe constrains a receipt id so it can never build a path that escapes
@@ -92,7 +99,10 @@ var (
 	// It is still a byte pattern rather than a grammar: it does not know a fenced
 	// block from prose, so a marker-shaped line inside a fence still matches
 	// (iss-2609020529185438). Both defences are needed; neither is sufficient.
-	markerRe = regexp.MustCompile(`(?m)^<!-- abcd-review: (OWED|INGESTED|DEAD_LETTER) receipt=(rcp-[0-9a-f]+) -->\r?$`)
+	//
+	// The grammar is core/condition's ReviewMarkerRe, shared with the condition
+	// block's reader.
+	markerRe = condition.ReviewMarkerRe
 	// auditPlaceholderRe matches an intent template's Audit Notes placeholder,
 	// dropped when the first real review block lands so a populated audit carries no
 	// stale "Empty" claim. It tolerates both delimiter styles the templates have
@@ -207,6 +217,12 @@ type IngestVerdictResult struct {
 	Untested       int    `json:"untested"`
 	DeadLetterPath string `json:"dead_letter_path,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+	// ReadingOccasionedStanding is every condition-block disposition the fold
+	// still reports as standing after this write: the verdict did not override
+	// it, because its rationale did not name the block's occasion
+	// (spc-2609020626046252). An auditor who meant to override one names its
+	// occasion and ingests again.
+	ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -622,7 +638,8 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
 		Conditions: len(v.ScopeConditions), Survived: split["survived"],
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
-		Untested: split[dispositionUntested],
+		Untested:                  split[dispositionUntested],
+		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
 }
 
@@ -901,7 +918,27 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 		Status: "dead_letter", ReceiptID: rcp, IntentID: it.ID,
 		Conditions: len(untested), Untested: len(untested),
 		DeadLetterPath: dlRel, Reason: reason,
+		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
+}
+
+// occasionedStanding lists the condition-block dispositions the fold reports as
+// standing in content, ordered by condition identity so the report is
+// deterministic.
+func occasionedStanding(content string) []condition.Disposition {
+	standing := condition.Standing(content)
+	ids := make([]string, 0, len(standing))
+	for id, d := range standing {
+		if d.Occasion != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	out := make([]condition.Disposition, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, standing[id])
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -951,8 +988,10 @@ func markerState(content, rcp string) (string, bool) {
 
 // upsertReviewBlock replaces the existing review block for rcp with newBlock, or
 // appends newBlock to the Audit Notes section (creating the section if absent). A
-// review block runs from its marker line to the next marker, the next heading, or
-// end of file.
+// review block runs from its marker line to the next block marker of EITHER
+// grammar (condition.IsBlockMarker), the next heading, or end of file — so a
+// condition block written after an OWED stub survives the stub's replacement
+// rather than being swallowed as part of it (spc-2609020626046252).
 func upsertReviewBlock(content, rcp, newBlock string) string {
 	lines := strings.Split(content, "\n")
 	start := -1
@@ -967,7 +1006,7 @@ func upsertReviewBlock(content, rcp, newBlock string) string {
 		end := len(lines)
 		for j := start + 1; j < len(lines); j++ {
 			t := strings.TrimRight(lines[j], "\r")
-			if markerRe.MatchString(t) || mdrecord.IsHeading(t) {
+			if condition.IsBlockMarker(t) || mdrecord.IsHeading(t) {
 				end = j
 				break
 			}
@@ -1142,14 +1181,7 @@ func renderDispositions(b *strings.Builder, conds []verdictCondition, free prose
 	}
 	b.WriteString("\nScope-condition dispositions:\n")
 	for _, c := range conds {
-		fmt.Fprintf(b, "- %s — %s", oneLine(c.ConditionID), oneLine(c.Disposition))
-		if r := free(c.Rationale); r != "" {
-			fmt.Fprintf(b, ": %s", r)
-		}
-		b.WriteString("\n")
-		if n := free(c.Narrowing); n != "" {
-			fmt.Fprintf(b, "  narrowing: %s\n", n)
-		}
+		writeDispositionBullet(b, oneLine(c.ConditionID), oneLine(c.Disposition), free(c.Rationale), free(c.Narrowing))
 		for _, e := range c.Evidence {
 			fmt.Fprintf(b, "  evidence: %s\n", renderEvidence(e, free))
 		}

@@ -2225,7 +2225,86 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	})
 
 	intentCmd.AddCommand(newIntentAuditCommand(asJSON))
+	intentCmd.AddCommand(newIntentConditionCommand(asJSON))
 	return intentCmd
+}
+
+// newIntentConditionCommand builds `abcd intent condition`, the second writer
+// into the scope-condition disposition surface (spc-2609020626046252). With one
+// operand it renders every condition the intent carries with its standing
+// disposition and the block it came from, and writes nothing; with a condition
+// id it writes one dated disposition block, joined to the reading item or the
+// shipped intent that occasioned it. Both forms are front doors onto
+// internal/core/intent; every refusal exits 2 with nothing written.
+func newIntentConditionCommand(asJSON *bool) *cobra.Command {
+	var disposition, occasionedBy, groundsText, narrowing string
+	cmd := &cobra.Command{
+		Use:   "condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]",
+		Short: "Read a shipped intent's scope-condition standing, or disposition one condition from a reading item or a delivered intent",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			if len(args) == 1 {
+				for _, f := range []string{"disposition", "occasioned-by", "grounds", "narrowing"} {
+					if cmd.Flags().Changed(f) {
+						return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent condition: --%s writes a disposition and needs the condition id: `abcd intent condition <itd-N> <cond-id> ...` (nothing written)", f)}
+					}
+				}
+				v, err := intent.ConditionStanding(repoRoot, args[0])
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd intent condition: " + err.Error()}
+				}
+				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) {
+					fmt.Fprintf(w, "abcd intent condition — %s: %d condition(s), %d disposition(s) recorded\n", v.IntentID, len(v.Standing), len(v.Dispositions))
+					fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(v.Path))
+					renderConditionStanding(w, v.Standing)
+				})
+			}
+			res, err := intent.DispositionCondition(repoRoot, intent.ConditionRequest{
+				IntentID: args[0], ConditionID: args[1], Disposition: disposition,
+				Narrowing: narrowing, OccasionedBy: occasionedBy, Grounds: groundsText,
+				Date: time.Now().UTC().Format(time.DateOnly),
+			})
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent condition: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd intent condition — %s on %s: %s, occasioned by %s (%s)\n",
+					res.ConditionID, res.IntentID, res.Disposition, res.OccasionedBy, res.Date)
+				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
+				renderConditionStanding(w, res.Standing)
+				if c := res.OccasionCitation; c != nil {
+					fmt.Fprintf(w, "  note: %s cites %s, not %s — reported, not refused: the item is the reading's word and the mark is yours\n",
+						c.Occasion, c.Cited, c.Dispositioned)
+				}
+				emitRedactionNote(w, res.Redacted, "")
+			})
+		},
+	}
+	cmd.Flags().StringVar(&disposition, "disposition", "", "the condition's disposition: survived|narrowed|falsified|untested")
+	cmd.Flags().StringVar(&occasionedBy, "occasioned-by", "", "what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)")
+	cmd.Flags().StringVar(&groundsText, "grounds", "", "why: held to the grounds substance floor, redacted before it is written")
+	cmd.Flags().StringVar(&narrowing, "narrowing", "", "what now holds: required on narrowed and refused on every other value")
+	return cmd
+}
+
+// renderConditionStanding writes one line per condition: its standing value and
+// the block it came from, or `untested (no block)` for one no block names.
+func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {
+	for _, e := range standing {
+		if e.Source == "" {
+			fmt.Fprintf(w, "  %s — %s (no block)\n", e.ConditionID, e.Disposition)
+			continue
+		}
+		from := e.Source
+		if e.Date != "" {
+			from += ", " + e.Date
+		}
+		fmt.Fprintf(w, "  %s — %s (from %s)\n", e.ConditionID, e.Disposition, termsafe.Sanitize(from))
+	}
 }
 
 // ledgerDecisionRule is the one-line capture-vs-intent decision rule shown in
@@ -2366,6 +2445,12 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 					}
 				case "dead_letter":
 					fmt.Fprintf(w, "  DEAD_LETTER: %s\n  raw payload: %s\n", res.Reason, res.DeadLetterPath)
+				}
+				// The condition blocks this verdict did not override: its rationale
+				// named none of their occasions (spc-2609020626046252).
+				for _, d := range res.ReadingOccasionedStanding {
+					fmt.Fprintf(w, "  still standing: %s — %s (from %s); name %s in the rationale to override it\n",
+						d.ConditionID, d.Disposition, termsafe.Sanitize(d.Source), d.Occasion)
 				}
 			})
 		},

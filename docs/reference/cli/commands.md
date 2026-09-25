@@ -1066,6 +1066,21 @@ Ingest an intent-audit verdict JSON into the shipped intent's Audit Notes
       --verdict-json string   path to the intent-audit verdict JSON
 ```
 
+#### `abcd intent condition`
+
+Read a shipped intent's scope-condition standing, or disposition one condition from a reading item or a delivered intent
+
+**Usage:** `abcd intent condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds "<why>" [--narrowing "<what now holds>"]] [flags]`
+
+**Flags:**
+
+```
+      --disposition string     the condition's disposition: survived|narrowed|falsified|untested
+      --grounds string         why: held to the grounds substance floor, redacted before it is written
+      --narrowing string       what now holds: required on narrowed and refused on every other value
+      --occasioned-by string   what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)
+```
+
 #### `abcd intent hold`
 
 Hold a draft or planned intent (writes `held: "<reason>"`; `intent plan` refuses it until `intent unhold`)

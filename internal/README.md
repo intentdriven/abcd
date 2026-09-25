@@ -46,6 +46,21 @@ plugin surface, and a future MCP server share one engine.
   reader spelled twice is one the two can disagree about, which is how a bullet
   one writer appends becomes a bullet the other cannot find. It owns no heading's
   meaning: a caller supplies the pattern it is looking for.
+- **`core/condition/`** — the scope-condition disposition vocabulary: the four
+  values, the `cond-…` identity marker, the two block grammars a disposition is
+  written under (the fidelity verdict's review marker and the condition verb's
+  dated block), and the one reader that folds them into a condition's standing
+  disposition. A leaf on the `core/grounds` precedent: two writers in
+  `core/intent` and the record lint in `core/lint` read one vocabulary, and
+  `core/intent`'s tests import `core/lint`, so a lint importing intent back is
+  an import cycle. It imports `core/mdrecord` for the one notion of a section,
+  and nothing else beyond the standard library.
+- **`core/readingitem/`** — the reading ledger's locator: a reading item or a
+  disposition found by id across every run, symlink-refusing at each level, and
+  the one occasion resolver the verbs that name an occasion share, each naming
+  the families it admits. A leaf because `core/capture` imports `core/intent`
+  and both need it; `core/capture` keeps its historical locator names as thin
+  wrappers over it.
 - **`core/provenance/`** — the record's disclosure vocabulary: where an item came
   from (`origin`) and how its text was produced (`production_mode`), plus the one
   parser that reads and renders them. It is a leaf for the same reason
