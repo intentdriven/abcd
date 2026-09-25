@@ -250,8 +250,10 @@ staged worktree store, the run state an autonomous run's sessions share
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), machine config defaults (a later phase: every config read
 in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
 is read at all; the one machine setting read today is `load-limits`, the load
-check's two limits, read-only and never created, itd-2609231434459890),
-user-scope memory for personal cross-project knowledge (a later
+check's two limits, read-only and never created, itd-2609231434459890), the
+machine's rule conventions in `rules.json` (the user layer of the rules loader,
+read-only and never created, itd-117 — see
+[the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
 phase too: the shipped memory store is repo-scope), and the `sources/` corpus `/abcd:ingest` and
 `/abcd:consult` read (abcd never creates that one, and both verbs say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
@@ -291,6 +293,70 @@ the plugin install itself; everything else routes to the scope-appropriate
 `.abcd/`. The one interaction the design gives abcd with it is read-only: the
 staged memory harvest of § 2 would read from it as a source.
 
+## The rules layers — bundled, user, repo
+
+The rules loader composes three layers, each overriding the one before it per
+field: the domains bundled in the binary, then the user scope's
+`~/.abcd/rules.json`, then the resolved repo root's `.abcd/rules.json`. Both
+files take one schema — `schema_version`, the `disabled` kill switch, and a
+`domains` map whose entries override a bundled domain's `state`, `recall`,
+`aliases` or `rules` or declare a custom domain outright. A field one layer sets
+replaces the field below it wholesale; a field it leaves out is inherited. So
+the bundled domains are the floor, the machine's house conventions refine them
+once for every repo abcd manages there, and a repo that genuinely differs still
+overrides locally (itd-117, spc-23).
+
+| Layer | File | What it is for |
+|---|---|---|
+| **bundled** | none — embedded in the binary | abcd's own opinions, the same on every machine |
+| **user** | `~/.abcd/rules.json` | the delta between those opinions and one machine's house style: a definition-of-done wording, an attribution example, a custom domain wanted across that person's own projects |
+| **repo** | `<repo>/.abcd/rules.json` | what one repository needs that differs from both |
+
+**Suppression is sticky downward.** A repo's `dormant` state beats a user layer
+declaring the domain active, because the repo is applied last. The kill switch is
+sticky in both directions — either file's `"disabled": true` silences the set —
+so a user-scope kill switch silences every repo on the machine and no repo file
+re-enables it. That is the fail-safe direction: a kill switch a lower layer
+could override is not a kill switch.
+
+**Absence costs nothing.** A machine with no `~/.abcd/rules.json` loads exactly
+the set it would without the layer, and abcd never creates the file or its
+directory: it is hand-edited, and `abcd rules` is its read-only render. A `HOME`
+or `~/.abcd` this account cannot search reads as absent too, as it does for the
+other home-scoped declarations, so a sandboxed or foreign `HOME` never warns on
+every prompt about a file nobody can see; a `rules.json` that is there and
+cannot be read is refused.
+
+**The user file is read as the caller's word.** It injects text into every
+session on the machine, so it is read through the same guard as the home-scoped
+declarations: a regular file — never a symlink, FIFO or device — of at most
+256 KiB, owned by this account and writable by no one else, with `~/.abcd`
+itself refused as a symlink once a `rules.json` sits behind it. A
+dotfiles-symlinked `~/.abcd` can therefore never host a `rules.json`: the file
+is refused behind a symlinked `~/.abcd`, and only a symlinked `~/.abcd` with no
+`rules.json` in it is spared, so that a machine whose `~/.abcd` lives in a
+dotfiles checkout keeps injecting exactly what it did. The repo layer's `.abcd`
+has no such exemption and is refused as a symlink unconditionally. A file failing
+any of those, or failing to parse or validate, fails the whole load: the hook
+injects nothing and names the file on stderr, and `abcd rules` exits non-zero.
+It never degrades to a partial set built from the layers that did load
+([`../../principles/loud-staging.md`](../../principles/loud-staging.md)). A
+domain left with no rules after all three layers is skipped with a note naming
+the file that last named it, the same treatment a repo file's ruleless domain
+gets.
+
+**Provenance names the layer.** Each domain carries the layer that last named
+it: `## NAME (user override)` or `## NAME (repo override)` in the injected block,
+in `abcd rules` and in the hook's diagnostic, and `"source": "user"`, `"repo"`
+or `"bundled"` in `abcd rules --json`. A disabled set names every file whose kill
+switch is set.
+
+**Known limitation.** Replacement is per field, so a user or repo layer cannot
+add one rule to a bundled domain's list: it restates the list. A third layer
+makes that grain more visible; finer-grained merging, detecting a repo file that
+duplicates the user layer, and moving conventions out of per-project harness
+memory are all recorded in itd-117 as follow-up questions.
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
@@ -318,8 +384,9 @@ second falls back to the `.git` marker, under two bounds:
 | **ownership** | a marker root whose owner is not the caller. Shape alone is not a trust boundary: `git init` in a shared world-writable directory produces a genuine repository, and git's refusal on ownership is the same signal in that attack as in the legitimate foreign-uid case (iss-2609020259564193) | a declaration, once, per foreign-uid checkout |
 
 A refused root is refused **loudly and fail-closed**: the session resolves to its
-own working directory with no walk, the bundled rule defaults and bundled hazard
-registry stand in for the repository's, and every front door prints one line naming
+own working directory with no walk, the bundled rule defaults (under the user
+layer, which is the caller's own) and bundled hazard registry stand in for the
+repository's, and every front door prints one line naming
 the refused directory, the two uids, and the exact command that re-admits it
 ([`../../principles/loud-staging.md`](../../principles/loud-staging.md)). The
 ownership bound applies only to the git-refused fallback: where git answers, the
@@ -349,8 +416,10 @@ treats home write as the ownership root.
 One residual stays open and recorded rather than assumed shut:
 **iss-2609020219198779**, the user scope when the home directory is itself a git
 working tree. The toplevel for a session in a non-repo directory beneath such a
-home is the home, so the user-scope `.abcd` governs it; closing it needs a decision
-on whether a home-directory toplevel is a legitimate configuration scope.
+home is the home, so the user-scope `.abcd` governs it as the repo root too — its
+`rules.json` as the repo layer as well as the user layer, and its `guard.json` and
+`config.json` with it; closing it needs a decision on whether a home-directory
+toplevel is a legitimate repo-scope root.
 
 ## 1. Visibility-driven gitignore policy
 

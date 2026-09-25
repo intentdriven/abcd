@@ -1821,14 +1821,17 @@ func newRulesCommand(asJSON *bool) *cobra.Command {
 		Use:   "rules [domain]",
 		Short: "Render the active rule set; a positional DOMAIN scopes to one (read-only)",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
-domains merged with this repo's .abcd/rules.json. Bare, it renders every active
-domain; a positional DOMAIN (case-insensitive) renders that one domain regardless
-of its state or the kill switch, so a dormant domain is still inspectable.
+domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+.abcd/rules.json, each layer per field, so the repo wins a field both set.
+Either file may be absent. Bare, it renders every active domain; a positional
+DOMAIN (case-insensitive) renders that one domain regardless of its state or the
+kill switch, so a dormant domain is still inspectable.
 
-Every domain says which layer it came from. A domain the repo override names —
-its rules replaced, its state changed, or a custom domain declared — renders as
-"## NAME (repo override)" here, in the injected block and in the hook's
-diagnostic, and carries "source": "repo" in --json; an untouched bundled domain
+Every domain says which layer it came from. A domain an override names — its
+rules replaced, its state changed, or a custom domain declared — renders as
+"## NAME (user override)" or "## NAME (repo override)" here, in the injected
+block and in the hook's diagnostic, and carries "source": "user" or "repo" in
+--json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1862,7 +1865,16 @@ renders bare and carries "source": "bundled". Read-only.`,
 			active := rs.Active()
 			return render(cmd.OutOrStdout(), *asJSON, rulesView{Disabled: rs.Disabled, Domains: active}, func(w io.Writer) {
 				if rs.Disabled {
-					fmt.Fprintln(w, "abcd rules — disabled (kill switch set in .abcd/rules.json)")
+					// The switch is sticky across layers, so name every file
+					// that set it: each has to clear it.
+					var files []string
+					for _, src := range rs.KillSwitchSources() {
+						files = append(files, rules.LayerPath(src))
+					}
+					if len(files) == 0 {
+						files = []string{rules.RepoRelPath}
+					}
+					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(files, " and "))
 					return
 				}
 				if out := rules.Render(active); out != "" {
