@@ -604,16 +604,15 @@ func hookComplianceGate(bundle Bundle) GateSummary {
 			Detail: "is invoked by a hook command but is not executable in the payload (mode " + mode + "), so the hook cannot run it"})
 	}
 	for _, e := range surface.Entries {
-		if e.Kind != SurfaceHook || e.Origin == OriginHookCommand || e.Requirement != RequirePayload || !tree.Has(e.Path) {
+		if !isHookConfig(e) || !tree.Has(e.Path) {
 			continue
 		}
-		data, err := tree.Read(e.Path)
+		// The resolver above already refuses a config that does not read or
+		// parse; the row still fails closed rather than trusting that.
+		doc, err := readHookConfig(tree, e.Path)
 		if err != nil {
+			row.Findings = append(row.Findings, GateFinding{File: e.Path, Detail: err.Error()})
 			continue
-		}
-		var doc any
-		if json.Unmarshal(data, &doc) != nil {
-			continue // an unparseable hook config is the smoke's refusal
 		}
 		row.Findings = append(row.Findings, hookHandlerFindings(e.Path, doc)...)
 	}

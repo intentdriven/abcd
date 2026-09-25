@@ -414,3 +414,29 @@ func TestWritePreflightReportLandsInTheLocalTier(t *testing.T) {
 		}
 	}
 }
+
+// TestHookRowFindsAnUnparseableHooksConfig is iss-2609251827104081: a hooks
+// config the host cannot parse registers no hook on any install, so it is a
+// finding of the hook-compliance row (AC5: the concern is surfaced) and the
+// installability smoke refuses it, as it refuses an unparseable plugin
+// manifest. Neither may read it as a clean pass.
+func TestHookRowFindsAnUnparseableHooksConfig(t *testing.T) {
+	root := docsFixture(t)
+	writeFile(t, root, ".abcd/config/launch-payload.json",
+		`{"includes": [".claude-plugin", "docs", "hooks", "README.md"]}`)
+	writeFile(t, root, "hooks/hooks.json", "{not json at all")
+
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	hook := gateRow(t, report.Gates, "hook-compliance")
+	if len(hook.Findings) == 0 || !anyContains(report.Warnings, "hook-compliance", "hooks/hooks.json") {
+		t.Errorf("an unparseable hooks config must be a finding of the hook row naming it; row = %+v, warnings = %v", hook, report.Warnings)
+	}
+
+	if report.Smoke.OK || !anyContains(report.WouldRefuseOn, "hooks/hooks.json", "does not parse") {
+		t.Errorf("the smoke must refuse an unparseable hooks config, naming it; smoke = %+v, would_refuse_on = %v",
+			report.Smoke, report.WouldRefuseOn)
+	}
+}
