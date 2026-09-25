@@ -1170,6 +1170,12 @@ Render the release's plugin archive and (--verify) prove the committed catalog p
       --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
 ```
 
+#### `abcd launch receipts`
+
+Run the release job's semantic-receipt gate locally, before the merge (exit 1 when it would refuse)
+
+**Usage:** `abcd launch receipts`
+
 #### `abcd launch scaffold`
 
 Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbook) into this repo

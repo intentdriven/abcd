@@ -1458,6 +1458,11 @@
       ]
     },
     {
+      "path": "abcd launch receipts",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd launch scaffold",
       "hidden": false,
       "flags": [

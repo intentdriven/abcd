@@ -357,8 +357,16 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
-			if rerr := render(cmd.OutOrStdout(), *asJSON, cut, func(w io.Writer) {
+			// The emit step ends with the receipts protocol (itd-93 AC8), so a
+			// first-time operator learns it from the verb, not a failed release.
+			proto, err := release.ReceiptsProtocolFor(cwd)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
+			emitted := shipEmit{Cut: cut, ReceiptsProtocol: proto}
+			if rerr := render(cmd.OutOrStdout(), *asJSON, emitted, func(w io.Writer) {
 				renderCut(w, "abcd launch ship", cut)
+				renderReceiptsProtocol(w, proto)
 			}); rerr != nil {
 				return rerr
 			}
@@ -379,6 +387,14 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 		"read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt "+
 			"(a network fetch; default: a fresh render at the tag)")
 	return cmd
+}
+
+// shipEmit is the emit step's report: the cut, unchanged in shape (embedded,
+// so its JSON fields stay where they were), plus the receipts protocol it ends
+// with.
+type shipEmit struct {
+	release.Cut
+	ReceiptsProtocol release.ReceiptsProtocol `json:"receipts_protocol"`
 }
 
 // runShipIngest is the ingest step of `abcd launch ship`: validate the composed

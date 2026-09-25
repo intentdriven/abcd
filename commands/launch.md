@@ -1,7 +1,7 @@
 ---
 name: launch
-description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, render and verify the release's pinned plugin archive, and scaffold the changelog-driven release gate into a managed repo. The preview writes only its pre-flight report, to the gitignored local tier; `ship` writes the dated CHANGELOG heading, the RELEASE.md page and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `scaffold` writes the release workflows and never publishes.
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, render and verify the release's pinned plugin archive, run the release job's semantic-receipt gate locally before the merge, and scaffold the changelog-driven release gate into a managed repo. The preview writes only its pre-flight report, to the gitignored local tier; `ship` writes the dated CHANGELOG heading, the RELEASE.md page and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `receipts` writes nothing; `scaffold` writes the release workflows and never publishes.
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | receipts | scaffold [--confirm]"
 ---
 
 # `/abcd:launch` release preview and release cut
@@ -137,10 +137,13 @@ Six failures are worth recognising, because each looks like something else.
   its environment secrets perfectly well, provided every caller above it passes
   `secrets: inherit` — measured on a canary secret, and pinned by
   `TestReleaseChainPassesSecretsAtEveryLevel`.
-- **The release job fails on `Semantic-gate receipts`.** The receipts do not
-  match the commit the workflow derived. The tag exists by then and the workflow
-  never moves a tag, so the version is consumed: it needs the tag deleted and the
-  release re-cut. Step 2 exists to catch this before the merge — run it.
+- **`verify` fails on `Semantic-gate receipts`.** The receipts do not match
+  the commit the workflow derived from the receipts directory. On the
+  `auto-release` path the gate runs before the tag, so nothing was tagged and the
+  version is still free: land a follow-up pull request carrying the missing or
+  corrected receipts, and its merge retries. A hand-pushed tag exists before the
+  gate runs, so there the version is consumed. Step 2 exists to catch this
+  before the merge — run it.
 - **`auto-release` fails in `detect`, on `Plugin archive reproduces the committed
   pin, before the tag`, and no tag appears.** The merged commit renders a
   different archive from the one the ship pinned — a payload file (`commands/`,
@@ -262,9 +265,11 @@ delegated composition, a validating ingest.
 Those three steps write the CHANGELOG heading. They do **not** finish the
 release. Two host-run semantic passes must also run and record receipts, and the
 release branch has to carry them in a second commit — see *Semantic receipts*
-below. A branch that skips them merges and tags cleanly and then fails at
-`release.yml`'s fail-closed receipt gate, which is the most expensive place to
-find out: the tag is already created by then, and the workflow never moves a tag.
+below. A branch that skips them merges cleanly and then fails `release.yml`'s
+fail-closed receipt gate, which is the most expensive place to find out: the
+release run is spent, and the fix is another pull request. The emit step ends
+with this protocol as a numbered checklist, so the report you read before
+composing already says what follows it.
 
 ### 1. Emit the cut (deterministic, writes nothing)
 
@@ -281,6 +286,14 @@ that entered `shipped/` since the base tag; never an issue, an `impact: internal
 intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
 alone. Read-only preview of the same thing: `abcd changelog --json`.
+
+The emit render ends with the **receipts protocol**, a numbered checklist the
+binary composes from the committed `release.yml`: commit the roll, run each
+semantic gate the release job requires against that commit, key every receipt
+to its full sha, commit the receipts on top so the branch is exactly two
+commits, then run `launch receipts`. `--json` carries it as `receipts_protocol`
+(`required_gates`, `steps`). Relay it with the cut; in a repository whose release
+workflow arms no semantic gate it says no receipt is required.
 
 Exit codes gate the flow:
 
@@ -594,10 +607,12 @@ the commit it names, because adding it would change that commit's sha. So:
    archive move. This is what the reviewers read.
 2. **The receipts** — a commit recording the semantic verdicts that name commit 1.
 
-On merge, `release.yml` derives the content commit as `<merge>^2^` and finds its
-receipts in the released tree. A one-commit branch breaks this: the single commit
-is taken as the receipts commit, the gate arms against whatever preceded it, and
-no receipt names that commit.
+On merge, `release.yml` derives the content commit from the receipts directory
+of the released tree: the nearest commit on the released lineage that a
+`.abcd/work/reviews/<sha>/` directory names, which must carry this release's own
+CHANGELOG version — an earlier release's receipts never stand in for this one's.
+A one-commit branch breaks this: no receipt can name the commit that carries it,
+so the release has no receipts for its content and the gate refuses.
 
 ### Running the passes
 
@@ -623,33 +638,32 @@ around, and the receipts cannot be hand-written to unblock a release.
 
 ### Prove the gate before you merge
 
-`receipt_gate` runs inside the release job, which is **after** the tag is
-created. A refusal there does not block the release, it consumes the version: the
-workflow never moves a tag, and its recovery path rebuilds from the tagged
-commit, whose tree can never gain the missing receipts. Recovering means deleting
-a tag the machinery treats as immutable (recorded as `adr-52`, undecided).
-
-So reproduce the gate's verdict locally, on the release branch, while nothing is
-tagged. From the repository root:
+`receipt_gate` runs in `release.yml`'s `verify` job, on the merged commit. On
+the `auto-release` path that is before the tag, so a refusal leaves the version
+free — but it still spends the release run and needs another pull request to
+fix. So run the same gate on the release branch first, while nothing has merged:
 
 ```bash
-go run ./cmd/record-lint --release-gate <content-commit-sha> \
-  --require-gate docs-currency-reviewer \
-  --require-gate iss35-brief-surface-crosscheck
+"${CLAUDE_PLUGIN_ROOT}/abcd" launch receipts --json
 ```
 
-- `<content-commit-sha>` is the **full 40-character** sha of the commit the
-  receipts name, which on a correctly shaped release branch is the receipts
-  commit's parent (`git rev-parse HEAD^`). Use the full sha: an abbreviated one
-  is well-formed, finds no receipt, and makes the gate refuse as though the
-  semantic pass had never run.
-- `record-lint` is a repository-local program, not an installed binary. `go run
-  ./cmd/record-lint` is the invocation; there is no `record-lint` on `PATH`.
-- The required-gate names come from `release.yml`, which owns that list on
-  purpose. If they diverge, the workflow is right and this command is stale.
+It is the release job's receipt gate, not a model of it: it reads the
+required-gate names from the committed `release.yml` (which owns that list), derives
+the content commit from the receipts directory the way the release job does, and
+runs the release job's own check over it. It reads the working tree, so it
+refuses on an uncommitted receipt change — the release job reads the committed
+tree and would not see it.
 
-**Exit 0 means the release will pass the gate.** A non-zero exit names what is
-missing, and costs nothing to fix, because no tag exists yet.
+Exit codes:
+
+- **0** — the release job's receipt gate admits this state (or `release.yml` arms
+  no semantic gate, and nothing is required). Merge.
+- **1** — it would refuse. The report names each missing or non-PROMOTE receipt
+  and the full sha of the commit it must name (`commit`; `derived` says whether it
+  came from the receipts directory or is the roll at `HEAD`, before any receipt
+  exists). Relay `problems`, fix the receipts commit, and run it again. It costs
+  an amend; nothing has merged.
+- **2** — a structural fault (the repository or its workflow could not be read).
 
 ## Archive — the release's pinned plugin archive
 

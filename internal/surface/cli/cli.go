@@ -394,6 +394,9 @@ func NewRootCommand() *cobra.Command {
 	// auto-release.yml, runbook) into a managed repo that lacks it (itd-93). It
 	// extends 04-launch because launch already owns how a release is cut and gated.
 	launchCmd.AddCommand(newLaunchScaffoldCommand(&asJSON))
+	// `receipts` runs the release job's semantic-receipt gate locally, before
+	// the merge, through the same reader the job runs (itd-93 AC7).
+	launchCmd.AddCommand(newLaunchReceiptsCommand(&asJSON))
 	// `smoke-pages` is the deep installability tier's child process (itd-66):
 	// hidden and operator-internal, re-executed by the preview and the cut.
 	launchCmd.AddCommand(newLaunchSmokePagesCommand())

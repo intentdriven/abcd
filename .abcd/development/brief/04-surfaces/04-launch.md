@@ -35,6 +35,7 @@ workflow that tags it.
 | Verb | Bucket | Status |
 |---|---|---|
 | `archive` | gate | shipped |
+| `receipts` | gate | shipped |
 | `scaffold` | — | shipped |
 | `ship` | gate | shipped |
 
@@ -77,6 +78,26 @@ repository's own release downloads for the tag — removing the archive on eithe
 refusal, so nothing unpinned can be published. `auto-release.yml` runs it on the
 pushed commit before the tag is made, and the release workflow runs it again on
 the tagged commit, each run bound to the repository the workflow runs in.
+
+**The emit step ends with the receipts protocol.** After the cut's report, the
+render closes with a numbered checklist, composed in the core and carried in
+the machine-readable report too: commit the roll, run each semantic gate the
+release workflow requires against that commit, key every receipt to it, commit
+the receipts on top so the branch is exactly two commits, then prove the gate
+locally. The gate names come from the committed `release.yml`, the list the
+release job enforces, so the checklist cannot ask for a gate the release does not
+require. A workflow that arms no semantic gate gets a checklist that says no
+receipt is required.
+
+**The receipts check is the release job's receipt gate, run before the merge.**
+It reads the required gates from the committed `release.yml`, derives the
+content commit from the receipts directory the way the release job does, and
+runs the release job's own check over it — one reader, which a test holds to the
+release job's verdict and reasons on the same repository state by running the
+workflow's step beside it. It names each missing or non-PROMOTE receipt and the
+commit the receipt must name, and refuses on an uncommitted receipt change,
+because the release job reads the committed tree. It exits 0 when the gate would
+admit (or nothing is armed), 1 when it would refuse, and 2 on a structural fault.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent, including the release page's retry loop. The
@@ -623,7 +644,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd launch`
 
-Sub-verbs: `abcd launch archive`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
+Sub-verbs: `abcd launch archive`, `abcd launch receipts`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
 
 | Flag | Type |
 |---|---|
@@ -642,6 +663,12 @@ Sub-verbs: none.
 | `--repository` | string |
 | `--tag` | string |
 | `--verify` | bool |
+
+### `abcd launch receipts`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd launch scaffold`
 
