@@ -1535,6 +1535,10 @@ Close a spec, and ship its intent when no open spec names it: Writes the moves t
 
 **Usage:** `abcd spec close <spc-N> [flags]`
 
+Moves the spec to closed/ and, when no open spec still names its intent, moves the intent to shipped/.
+
+The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` answers. A failed emit is a warning on stderr; the intent ships regardless.
+
 **Flags:**
 
 ```

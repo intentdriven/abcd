@@ -2701,7 +2701,12 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		closeMode      string
 	)
 	closeCmd := &cobra.Command{
-		Use:  "close <spc-N>",
+		Use: "close <spc-N>",
+		Long: "Moves the spec to closed/ and, when no open spec still names its intent, moves the intent to shipped/.\n\n" +
+			"The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), " +
+			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
+			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
+			"answers. A failed emit is a warning on stderr; the intent ships regardless.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
