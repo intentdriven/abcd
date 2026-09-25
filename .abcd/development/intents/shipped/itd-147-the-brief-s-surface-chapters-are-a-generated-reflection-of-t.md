@@ -352,7 +352,7 @@ it does not reach.
 
 ### ac-6 met by the ingest chapter fix (2026-09-25)
 
-**ac-6 is met by commit 7dafb541**, which resolves iss-2609240519422232. The
+**ac-6 is met, against the v0.10.0 classification, by commit 7dafb541**, which resolves iss-2609240519422232. The
 one finding of the 17 that sat inside the seam (x-049) was the ingest chapter's
 prose above its appendix marker enumerating ingest sub-verbs without
 `history ingest`. The fix does not add the missing verb, because this intent's
