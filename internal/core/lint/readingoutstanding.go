@@ -687,11 +687,18 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	for _, u := range report.Unsafe {
+		msg := "the reading walk did not read this — " + u.Reason + ". " +
+			"What it holds is neither reported outstanding nor confirmed answered, because a path nobody read " +
+			"supports no claim either way"
+		// The capture clause is true of the trees core/capture reads before it
+		// writes (readings, dispositions). It reads no admission and no surprise,
+		// so on those paths the clause would send the operator looking for a
+		// second gate's agreement nobody performs (iss-2608301649337920).
+		if !underFamilyDir(u.Path, issueschema.AdmissionsDir, issueschema.SurprisesDir) {
+			msg += ". `abcd capture` refuses the same paths outright, because its read is followed by a write"
+		}
 		out = append(out, Finding{
-			File: u.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo,
-			Message: "the reading walk did not read this — " + u.Reason + ". " +
-				"What it holds is neither reported outstanding nor confirmed answered, because a path nobody read " +
-				"supports no claim either way. `abcd capture` refuses the same paths outright, because its read is followed by a write",
+			File: u.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo, Message: msg,
 		})
 	}
 	for _, c := range report.Contested {
@@ -721,4 +728,17 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	return out, nil
+}
+
+// underFamilyDir reports whether a slash-separated ledger path has one of the
+// named family directories as a path segment.
+func underFamilyDir(path string, dirs ...string) bool {
+	for _, seg := range strings.Split(path, "/") {
+		for _, d := range dirs {
+			if seg == d {
+				return true
+			}
+		}
+	}
+	return false
 }
