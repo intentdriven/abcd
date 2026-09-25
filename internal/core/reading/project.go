@@ -1241,42 +1241,20 @@ func fenceInHTMLBlock(lines []string, start int) (int, bool) {
 // closed stays closed. What is refused is exactly the document the two readers
 // disagree about.
 func displacedFrontmatter(lines []string) (int, string, bool) {
-	inComment := false
-	for i, raw := range lines {
-		line := raw
-		if i == 0 {
-			line = frontmatter.TrimBOM(line)
-		}
-		trimmed := strings.TrimSpace(line)
-		if inComment {
-			if idx := strings.Index(trimmed, "-->"); idx >= 0 {
-				inComment = false
-				trimmed = strings.TrimSpace(trimmed[idx+len("-->"):])
-			} else {
-				continue
-			}
-		}
-		for strings.HasPrefix(trimmed, "<!--") {
-			idx := strings.Index(trimmed, "-->")
-			if idx < 0 {
-				inComment = true
-				trimmed = ""
-				break
-			}
-			trimmed = strings.TrimSpace(trimmed[idx+len("-->"):])
-		}
-		if trimmed == "" {
-			continue
-		}
-		if i == 0 || !strings.HasPrefix(trimmed, "---") {
-			// Either the block opens where this package already reads it, or the
-			// document's first content is not a delimiter and there is nothing
-			// here two readers can disagree about.
-			return 0, "", false
-		}
-		return i + 1, fmt.Sprintf("a frontmatter block displaced from line 0 by %d line(s)", i), true
+	// The comments are mdrecord's to locate (iss-2609251518418878). Content
+	// after a comment's closer on the same line is content, so a delimiter
+	// there is judged like one standing alone.
+	i, col := mdrecord.FirstContent(lines)
+	if i >= len(lines) {
+		return 0, "", false
 	}
-	return 0, "", false
+	if i == 0 || !strings.HasPrefix(strings.TrimSpace(lines[i][col:]), "---") {
+		// Either the block opens where this package already reads it, or the
+		// document's first content is not a delimiter and there is nothing
+		// here two readers can disagree about.
+		return 0, "", false
+	}
+	return i + 1, fmt.Sprintf("a frontmatter block displaced from line 0 by %d line(s)", i), true
 }
 
 // unboundedRawHeading reports a raw heading opener whose title reaches the end

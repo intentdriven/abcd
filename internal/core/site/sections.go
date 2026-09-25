@@ -89,35 +89,14 @@ func StripFrontmatter(t string) (string, int) {
 // part of an HTML comment. It is 0 for a document that opens with anything else,
 // which is every document that carries no such preamble.
 func frontmatterLead(t string) int {
-	at, inComment := 0, false
-	for at < len(t) {
-		nl := strings.IndexByte(t[at:], '\n')
-		lineEnd := len(t)
-		next := len(t)
-		if nl >= 0 {
-			lineEnd = at + nl
-			next = lineEnd + 1
-		}
-		line := strings.TrimSpace(t[at:lineEnd])
-		switch {
-		case inComment:
-			if strings.Contains(line, "-->") {
-				inComment = false
-			}
-		case line == "":
-			// a blank line: skip.
-		case strings.HasPrefix(line, "<!--") && strings.HasSuffix(line, "-->"):
-			// a complete single-line comment: skip.
-		case strings.HasPrefix(line, "<!--"):
-			inComment = true
-		default:
-			return at
-		}
-		at = next
+	// The comments are mdrecord's to locate (iss-2609251518418878).
+	lines := strings.Split(t, "\n")
+	line, _ := mdrecord.FirstContent(lines)
+	at := 0
+	for _, ln := range lines[:line] {
+		at += len(ln) + 1
 	}
-	// Nothing but blanks and comments: there is no frontmatter to find, and the
-	// caller's HasPrefix check returns the document untouched.
-	return at
+	return min(at, len(t))
 }
 
 // Sections splits markdown into its headings and their bodies, honouring fenced
