@@ -169,3 +169,42 @@ func TestDeriveReleaseContentSha_FailsClosedWithNoReceipts(t *testing.T) {
 		t.Errorf("error = %q, want a fail-closed message", err)
 	}
 }
+
+// TestDeriveReleaseContentSha_RefusesAnEarlierReleasesReceipts is
+// iss-2609251755386183: the nearest receipts directory on the released lineage
+// is not necessarily this release's. A roll to 1.0.0 that records no receipts
+// of its own would otherwise derive the 0.9.0 cut, whose PROMOTE receipts are
+// valid, and the gate would admit an unreviewed release. The derived commit
+// must carry the released tree's own release version, or the derivation fails
+// closed and names both.
+func TestDeriveReleaseContentSha_RefusesAnEarlierReleasesReceipts(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("CHANGELOG.md", "## [Unreleased]\n")
+	r.Commit("base")
+
+	r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [0.9.0] - 2025-12-01\n")
+	r.Commit("roll 0.9.0 (old content)")
+	old := r.Git("rev-parse", "HEAD")
+	receiptsFor(r, old)
+
+	// The next release: rolled, never reviewed.
+	r.Write("CHANGELOG.md", "## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n## [0.9.0] - 2025-12-01\n")
+	r.Commit("roll 1.0.0 (content, no receipts)")
+	released := r.Git("rev-parse", "HEAD")
+
+	got, err := lint.DeriveReleaseContentSha(r.Root(), released)
+	if err == nil {
+		t.Fatalf("derived %s — the 0.9.0 cut's receipts — for the 1.0.0 release; must fail closed", got)
+	}
+	for _, want := range []string{"fail-closed", "0.9.0", "1.0.0"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to name %q", err, want)
+		}
+	}
+
+	// Its own receipts, in the second commit, make it derivable again.
+	receiptsFor(r, released)
+	if got, err = lint.DeriveReleaseContentSha(r.Root(), r.Git("rev-parse", "HEAD")); err != nil || got != released {
+		t.Errorf("with its own receipts the 1.0.0 roll must derive: got %s, %v", got, err)
+	}
+}

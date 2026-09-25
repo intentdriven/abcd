@@ -132,6 +132,14 @@ func LatestChangelogVersion(root string) (launch.Semver, bool, error) {
 		}
 		return launch.Semver{}, false, err
 	}
+	return LatestVersionIn(data)
+}
+
+// LatestVersionIn is LatestChangelogVersion over CHANGELOG bytes the caller
+// already holds — a blob read out of a commit rather than the working tree,
+// which is how the release gate compares the version a receipt's commit carries
+// with the version being released.
+func LatestVersionIn(data []byte) (launch.Semver, bool, error) {
 	for _, line := range strings.Split(string(data), "\n") {
 		m := datedHeadingRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
 		if m == nil {

@@ -100,8 +100,12 @@ name the commit they gate, so `record-lint --derive-content-sha` reads the
 `.abcd/work/reviews/<sha>/` entry on the released lineage and returns that `<sha>`
 — not the merge commit, and not `<merge>^2^` ancestry, which a batched
 merge-queue push can point at an unrelated PR's commit (`github.sha` is the batch
-tip, iss-355). `subject.digest.gitCommit` therefore still matches the armed
-commit exactly and the gate stays strict. (Before this, the gate armed with the tagged merge commit, whose
+tip, iss-355). The entry must also belong to THIS release: the commit it names
+carries the released tree's own newest dated CHANGELOG version, or the derivation
+fails closed — the nearest entry on a release that recorded no receipts of its
+own is the previous release's, whose valid receipts would otherwise admit it
+unreviewed (iss-2609251755386183). `subject.digest.gitCommit` therefore still
+matches the armed commit exactly and the gate stays strict. (Before this, the gate armed with the tagged merge commit, whose
 tree can never hold a receipt naming itself — an unsatisfiable self-reference.
 Dormant while the repo was private, it surfaced at the first public release and
 fail-closed it, v0.3.0, iss-108.)

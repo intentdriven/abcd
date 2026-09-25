@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -100,6 +101,27 @@ func DeriveReleaseContentSha(root, released string) (string, error) {
 		return "", fmt.Errorf("release-gate: two receipts directories are equidistant from the released commit; the content commit is ambiguous (fail-closed)")
 	}
 
+	// Nearest is not enough: the nearest receipts directory can be an EARLIER
+	// release's, when this release recorded none of its own, and its PROMOTE
+	// receipts would then admit a release nobody reviewed (iss-2609251755386183).
+	// The content commit a release's receipts name is the commit that rolled the
+	// CHANGELOG to this release's version, so it carries the released tree's own
+	// newest dated version. A candidate carrying any other version is not this
+	// release's content commit, and the derivation fails closed on it.
+	want, err := releaseVersionAt(root, released)
+	if err != nil {
+		return "", err
+	}
+	got, err := releaseVersionAt(root, best)
+	if err != nil {
+		return "", err
+	}
+	if got != want {
+		return "", fmt.Errorf("release-gate: the nearest receipts directory names %s, whose newest CHANGELOG version is %s, "+
+			"not this release's %s; no receipts directory names this release's content commit (fail-closed)",
+			best, versionOrNone(got), versionOrNone(want))
+	}
+
 	// Return the full 40/64-hex sha so the armed gate's receiptShaRe check and the
 	// receipt's subject digest compare against a canonical form, never an
 	// abbreviated directory name.
@@ -139,4 +161,34 @@ func receiptDirNames(root, released string) ([]string, error) {
 		names = append(names, filepath.Base(line[tab+1:]))
 	}
 	return names, nil
+}
+
+// releaseVersionAt reads the newest dated CHANGELOG version out of rev's tree
+// — the version auto-release tags when rev is released. "" means rev carries no
+// CHANGELOG.md or no dated heading in it; an unreadable blob or a malformed
+// heading is an error, never a silent "".
+func releaseVersionAt(root, rev string) (string, error) {
+	if _, err := gitutil.Run(root, "cat-file", "-e", rev+":CHANGELOG.md"); err != nil {
+		return "", nil
+	}
+	blob, err := gitutil.Run(root, "cat-file", "blob", rev+":CHANGELOG.md")
+	if err != nil {
+		return "", fmt.Errorf("release-gate: reading CHANGELOG.md at %s: %w", rev, err)
+	}
+	v, found, err := changelog.LatestVersionIn([]byte(blob))
+	if err != nil {
+		return "", fmt.Errorf("release-gate: CHANGELOG.md at %s: %w", rev, err)
+	}
+	if !found {
+		return "", nil
+	}
+	return v.String(), nil
+}
+
+// versionOrNone renders a release version for a refusal, naming its absence.
+func versionOrNone(v string) string {
+	if v == "" {
+		return "none"
+	}
+	return v
 }
