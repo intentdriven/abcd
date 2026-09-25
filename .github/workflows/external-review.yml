@@ -57,8 +57,18 @@ jobs:
           fi
 
           # role_name is the granular role (admin/maintain/write/triage/read/none).
+          # A failed lookup FAILS the check and says which one (iss-302). Folding
+          # every non-zero exit into "none" made a 403, a rate limit or a network
+          # error indistinguishable from a real no-role answer: an invited author
+          # read as external, a real approval went uncounted, and the red check
+          # named the wrong cause. gh's own error reaches the log on stderr.
           role_of() {
-            gh api "repos/$REPO/collaborators/$1/permission" --jq .role_name 2>/dev/null || echo none
+            local role
+            if ! role="$(gh api "repos/$REPO/collaborators/$1/permission" --jq .role_name)" || [ -z "$role" ]; then
+              echo "external-review: could not read the repository role of '$1'; refusing rather than counting it as no role." >&2
+              return 1
+            fi
+            printf '%s\n' "$role"
           }
           is_invited() {
             case "$1" in admin|maintain|write|triage) return 0 ;; *) return 1 ;; esac
@@ -73,7 +83,7 @@ jobs:
             exit 0
           fi
 
-          author_role="$(role_of "$PR_AUTHOR")"
+          author_role="$(role_of "$PR_AUTHOR")" || exit 1
           if is_invited "$author_role"; then
             echo "external-review: author is an invited collaborator (role: $author_role) — the external rule does not apply."
             exit 0
@@ -102,7 +112,7 @@ jobs:
 
           count=0
           for reviewer in $approvers; do
-            r="$(role_of "$reviewer")"
+            r="$(role_of "$reviewer")" || exit 1
             if is_invited "$r"; then
               echo "  counted: $reviewer (role: $r)"
               count=$((count + 1))
