@@ -1,0 +1,314 @@
+#!/usr/bin/env bash
+# Outbound gate, commit-message half — run on every clone via the global
+# ~/.githooks dispatcher (core.hooksPath), or by pointing this clone's hooks at
+# this directory: git config core.hooksPath .githooks
+#
+# Refuses a commit whose message carries a LIVE AGENT-SESSION URL or a tool's own
+# attribution footer, the two halves of the outbound policy AGENTS.md states
+# (§ Attribution and acknowledgements). One reached three commit messages and two
+# pull-request bodies of a managed public repository (iss-2609061438431625), and a
+# merged commit message comes out only by rewriting a protected branch. CI judges
+# every commit message of a pull request with the same check
+# (scripts/check-attribution.sh), but by then the message is already in the
+# author's history and on the forge: this hook is the half that fails before the
+# commit exists.
+#
+# The judgement is `abcd lint outbound`, never a regex here: the session-URL
+# detector is a pattern plus an opacity classifier that POSIX ERE cannot express
+# (see internal/surface/cli/lint_outbound.go), so a shell copy would be weaker than
+# the policy it claims to enforce. The hook builds ./cmd/abcd from this checkout and
+# runs that build, the rule for every abcd invocation in a source checkout: an
+# installed abcd is whatever was last released, which in this repository is stale
+# by construction.
+#
+# FAILS CLOSED. A checkout with no abcd source, no Go toolchain or a cmd/abcd that
+# does not compile cannot judge the message, and a hook that cannot judge must not
+# pass silently: a green commit that means "the check was skipped" is
+# indistinguishable from one that means "there was nothing to find". Each refusal
+# names the missing piece and never blames the message for it. The build is its
+# own step for that reason: `go run` exits 1 on a compile error, the same code the
+# check gives a finding. Go is a prerequisite for developing this repository, so
+# the refusal asks for nothing new.
+#
+# REACH, stated rather than implied. git runs this hook for `git commit` (an
+# amend and a reword through `git commit` included) and for a `git merge` that
+# creates a commit. `git commit --no-verify`, `git rebase`, `git cherry-pick`,
+# `git am` and a message edited on the forge bypass it by construction; the CI
+# gate over the pull request's range is the backstop for all of them.
+# `set` is dropped before its first use: a shadowed one would leave errexit off for
+# the whole hook. The fixed list below drops it again with the rest.
+unset -f set 2>/dev/null || true
+set -euo pipefail
+# --- environment pin: the FIRST statements, before anything is read or run -------
+# The same pin as .githooks/pre-commit, for the same reason: git starts this hook as
+# a fresh bash with the committer's environment, and a hook that judges a commit
+# must not let that environment answer for it. An exported function
+# (`BASH_FUNC_grep%%=() { return 1; }`), a BASH_ENV file or a PATH-prepended tool
+# once turned the "nothing to judge" test into yes, and the hook passed a message
+# carrying a session URL without judging a byte of it.
+case $- in *x*) set +x ;; esac
+# Drop any inherited function shadowing a name this hook runs. A function wins over
+# PATH lookup — and over a builtin — so pinning PATH alone does nothing against one.
+# The list names every command this hook runs that is not its own function or a
+# shell keyword: the tools, `go` (the one tool resolved outside the pinned PATH),
+# and the builtins that decide a value, a refusal or which lines are judged.
+# `exit`, `test` and `[` because a surviving `exit` function turns every refusal
+# into a printed BLOCK that does not block; `continue` and `break` because a loop
+# that steers on them judges the lines they choose (a no-op `continue` once sent
+# every line into the scissors search and cut the message to nothing); `declare`
+# because the sweep below reads it. The list is expansion-free and runs before
+# `declare` is consulted, so what it names is dropped even when the sweep is
+# neutered — and the scissors cut below is steered by no builtin at all.
+unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ go cd pwd trap \
+  declare continue break return local export set true 2>/dev/null || true
+# A field separator the caller cannot choose, pinned before the sweep splits on it.
+IFS=$' \t\n'
+# Then sweep every function that survives: best-effort on top of the fixed list (a
+# shadowed `declare` silences it, which is why the refusal paths' names are on the
+# list above). A shadowed `unset` or `builtin` has no in-script remedy.
+set -f
+for _fn in $(declare -F); do
+  case "$_fn" in declare|-f|-fx) continue ;; esac
+  unset -f "$_fn" 2>/dev/null || true
+done
+set +f
+unset _fn 2>/dev/null || true
+LC_ALL=C
+export LC_ALL
+# The Go toolchain lives wherever its installer put it (~/.local/bin, ~/go/bin,
+# /usr/local/go/bin), so it is resolved on the INHERITED PATH, to an absolute path,
+# before the pin below. That is a deliberate boundary, not an oversight, and it
+# takes the Go environment with it: the toolchain AND the GOFLAGS, GOROOT,
+# GOTOOLCHAIN and GOCACHE it runs under (the environment or the go env file) are
+# the committer's, and the hook trusts them to build this checkout's own source.
+# Two GOFLAGS entries say outright that the build is something else — -overlay
+# swaps source files, -toolexec runs every compile step through a program of the
+# caller's choosing — so the hook refuses either before it builds. Short of those,
+# a real `go` builds this checkout's own source and judges the message the same
+# way, so an accidental substitute cannot pass what the policy refuses; a fake `go`,
+# a -modfile naming another module file, a doctored GOROOT or a poisoned build
+# cache that forges a pass is a deliberate
+# act, the class of `--no-verify`, which CI's check over the pull request is the
+# backstop for.
+go_bin=$(command -v go 2>/dev/null || true)
+case "$go_bin" in /*) ;; *) go_bin="" ;; esac
+# PATH is pinned to the standard system directories for every other tool, with the
+# same repo-local extension the pre-commit guard reads:
+#     git config --local abcd.guardPath /nix/var/nix/profiles/default/bin
+# This NARROWS the class of a substituted tool; it does not close it (two pinned
+# directories are user-writable on a typical developer machine, and
+# `#!/usr/bin/env bash` resolves the interpreter through the inherited PATH).
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+guard_path=$(git config --local --get abcd.guardPath 2>/dev/null || true)
+if [ -n "$guard_path" ]; then
+  case ":$guard_path:" in
+    *::*)
+      echo "commit-msg: BLOCKED — abcd.guardPath contains an empty element, which means the current" >&2
+      echo "            directory to every PATH consumer and would put this repo's working tree on the" >&2
+      echo "            hook's PATH. Set it to directories only: git config --local abcd.guardPath /path/to/bin" >&2
+      exit 1
+      ;;
+  esac
+  PATH="$PATH:$guard_path"
+fi
+export PATH
+for tool in git mktemp rm; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "commit-msg: BLOCKED — $tool is not on the hook's pinned PATH ($PATH)." >&2
+    echo "            the hook pins PATH so a repo-scoped override cannot substitute a fake tool," >&2
+    echo "            and it refuses rather than run unchecked. Install $tool there, or point the" >&2
+    echo "            hook at its directory: git config --local abcd.guardPath /path/to/bin" >&2
+    exit 1
+  fi
+done
+# --- end environment pin --------------------------------------------------------
+
+# Every line of output below goes through this, a builtin loop, so no external tool
+# stands between a refusal and the terminal.
+say() {
+  local prefix="$1" line
+  while IFS= read -r line || [[ -n $line ]]; do
+    printf '%s%s\n' "$prefix" "$line" >&2
+  done <<<"$2"
+}
+
+msg_file="${1:-}"
+if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+  echo "commit-msg: BLOCKED — git passed no message file to judge." >&2
+  exit 1
+fi
+
+# Where the abcd source is. The hook's own directory first: its parent is the
+# checkout the hook was committed in, whichever path git invoked it by (the global
+# dispatcher's absolute path, or `.githooks/commit-msg` relative to the working
+# tree under core.hooksPath). The working tree next, for a copy installed under
+# .git/hooks. Pure parameter expansion resolves the first candidate before any
+# directory change.
+hook_dir="${0%/*}"
+case "$hook_dir" in /*) ;; *) hook_dir="$PWD/$hook_dir" ;; esac
+src=""
+for candidate in "$hook_dir/.." "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do
+  [ -n "$candidate" ] || continue
+  if [ -f "$candidate/go.mod" ] && [ -d "$candidate/cmd/abcd" ]; then
+    src="$(cd "$candidate" && pwd)"
+    break
+  fi
+done
+if [ -z "$src" ]; then
+  echo "commit-msg: BLOCKED — no abcd source to judge this commit message with." >&2
+  echo "            the outbound check builds ./cmd/abcd from the checkout that holds this hook" >&2
+  echo "            and runs \`abcd lint outbound\`, and neither the hook's checkout nor this working tree" >&2
+  echo "            carries cmd/abcd. Point the clone's hooks at the committed directory:" >&2
+  echo "            git config core.hooksPath .githooks" >&2
+  exit 1
+fi
+if [ -z "$go_bin" ]; then
+  echo "commit-msg: BLOCKED — go is not on PATH, so the outbound check cannot run." >&2
+  echo "            the check refuses a live session URL or a tool attribution footer in the" >&2
+  echo "            message, and a check that cannot run must not pass. Install the Go toolchain" >&2
+  echo "            go.mod declares." >&2
+  exit 1
+fi
+# GOFLAGS as `go` itself resolves it, from the environment or the go env file.
+rc=0
+goflags="$(cd "$src" && "$go_bin" env GOFLAGS 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "commit-msg: BLOCKED — could not read GOFLAGS from \`go env\`, so the build the outbound" >&2
+  echo "            check runs cannot be vouched for:" >&2
+  say "            " "$goflags"
+  echo "            nothing in the message was found wrong; fix the Go environment and commit again." >&2
+  exit 1
+fi
+# go splits GOFLAGS with its own tokeniser (space, tab, newline and carriage
+# return separate fields; a field may be wrapped in single or double quotes), so
+# the words are taken the same way here: quotes become separators, and the split
+# is on all four blanks, never on the inherited IFS.
+goflags_words=${goflags//[\"\']/ }
+goflags_words=${goflags_words//$'\r'/ }
+set -f
+old_ifs=$IFS
+IFS=$' \t\n'
+for flag in $goflags_words; do
+  case "$flag" in
+    -overlay | -overlay=* | --overlay | --overlay=* | -toolexec | -toolexec=* | --toolexec | --toolexec=*)
+      set +f
+      IFS=$old_ifs
+      echo "commit-msg: BLOCKED — GOFLAGS carries ${flag%%=*}, so \`go build ./cmd/abcd\` would not build" >&2
+      echo "            this checkout's own source (-overlay swaps source files, -toolexec runs every" >&2
+      echo "            compile step through another program), and the outbound check cannot judge" >&2
+      echo "            the message with it. Nothing in the message was found wrong; commit with" >&2
+      echo "            the flag removed from GOFLAGS (the environment or \`go env -w\`)." >&2
+      exit 1
+      ;;
+  esac
+done
+IFS=$old_ifs
+set +f
+
+# The text git will record. git discards what follows its scissors line only when it
+# truncates the message, which is a verbose commit (`git commit -v`, whose staged
+# diff it appends below the line) or the scissors cleanup mode; a message given with
+# -F or -m keeps everything, a look-alike line and the text under it included. The
+# hook cannot see which mode git runs in, so it cuts only where git's own cut would
+# be unmistakable: at git's exact scissors line, prefixed with this clone's comment
+# character, and only when a `diff --git` line follows it. Everywhere else it judges
+# the whole file — an over-judged comment only ever refuses more. Comment lines are
+# KEPT and judged: whether git strips them depends on the cleanup mode (`-m` keeps a
+# `#` line). What this cannot tell apart: a -F message that forges git's scissors
+# and a diff header below them is cut here and kept by git; CI's check over the
+# pull request (scripts/check-attribution.sh reads the recorded message) is the
+# backstop for that deliberate shape. The cut is bash builtins end to end, so no
+# external tool decides what is judged.
+#
+# The comment character: core.commentString or core.commentChar, whichever git
+# config sets last, `#` when neither is set; under `auto` git picks one of its
+# candidates per message, so any of them marks the line.
+comment="#"
+while IFS= read -r line || [[ -n $line ]]; do
+  [[ -n $line ]] && comment="${line#* }"
+done <<<"$(git config --get-regexp '^core\.comment(char|string)$' 2>/dev/null || true)"
+auto_candidates='#;@!$%^&|:'
+cut_line=" ------------------------ >8 ------------------------"
+is_scissors() {
+  if [[ $comment == auto ]]; then
+    [[ ${#1} -gt 1 && $auto_candidates == *"${1:0:1}"* && ${1:1} == "$cut_line" ]]
+  else
+    [[ $1 == "$comment$cut_line" ]]
+  fi
+}
+lines=()
+while IFS= read -r line || [[ -n $line ]]; do
+  lines+=("$line")
+done <"$msg_file"
+# git cuts at its first scissors line; cut there only if the diff follows it. The
+# loops steer on arithmetic and `if` alone, never on `continue` or `break`, so
+# what is judged does not rest on a builtin an inherited function could shadow.
+n=${#lines[@]}
+keep=$n
+first=-1
+for ((i = 0; i < n && first < 0; i++)); do
+  if is_scissors "${lines[i]}"; then
+    first=$i
+  fi
+done
+if ((first >= 0)); then
+  for ((j = first + 1; j < n && keep == n; j++)); do
+    if [[ ${lines[j]} == "diff --git "* ]]; then
+      keep=$first
+    fi
+  done
+fi
+message=""
+for ((i = 0; i < keep; i++)); do
+  message+="${lines[i]}"$'\n'
+done
+
+# An empty message is git's to refuse (or to allow, under --allow-empty-message);
+# there is nothing in it that could leak. The test is a bash builtin: no tool
+# outside this shell can answer "nothing to judge".
+if ! [[ $message =~ [^[:space:]] ]]; then
+  exit 0
+fi
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/abcd-commit-msg.XXXXXX")"
+trap 'rm -rf "$work" || true' EXIT INT TERM HUP
+artefact="$work/message"
+printf '%s' "$message" >"$artefact"
+
+# Git exports its private environment (GIT_DIR, GIT_INDEX_FILE et al.) to a hook;
+# the Go build must not see it. -buildvcs=false keeps the build from asking git
+# about this checkout at all while a commit holds its index.
+rc=0
+out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+  "$go_bin" build -buildvcs=false -o "$work/abcd" ./cmd/abcd 2>&1)" || rc=$?
+if [ "$rc" -ne 0 ] || [ ! -x "$work/abcd" ]; then
+  echo "commit-msg: BLOCKED — could not judge the message (the tree does not build)." >&2
+  echo "            the outbound check is this checkout's own abcd, and \`go build ./cmd/abcd\` failed" >&2
+  echo "            in $src:" >&2
+  say "            " "$out"
+  echo "            nothing in the message was found wrong; fix the build and commit again." >&2
+  exit 1
+fi
+
+rc=0
+out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+  "$work/abcd" lint outbound --label "commit message" --root "$src" "$artefact" 2>&1)" || rc=$?
+
+case "$rc" in
+  0)
+    say "commit-msg: " "$out"
+    ;;
+  1)
+    echo "commit-msg: BLOCKED — the commit message breaks the outbound policy." >&2
+    say "            " "$out"
+    echo "            delete the line named above and commit again." >&2
+    exit 1
+    ;;
+  *)
+    echo "commit-msg: BLOCKED — the outbound check could not judge the message (exit $rc)." >&2
+    say "            " "$out"
+    exit 1
+    ;;
+esac
