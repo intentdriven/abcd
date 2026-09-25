@@ -83,11 +83,16 @@ func Load(r layered.Roots) (*Layered, error) {
 		if err != nil {
 			return nil, fmt.Errorf("oracle routing: %w", err)
 		}
+		orphans := 0
 		for _, name := range names {
 			if !inRoster(name) {
-				l.Diagnostics = append(l.Diagnostics, fmt.Sprintf(
-					"oracle routing: %s (%s layer) has a row for %q, which is not an agent in the roster; "+
-						"the row is skipped and the remaining rows apply", layer.origin, layer.l, name))
+				// Named one line each up to maxOrphanLines, then counted: a
+				// hostile file can carry thousands of rows (review-tier1 F1).
+				if orphans++; orphans <= maxOrphanLines {
+					l.Diagnostics = append(l.Diagnostics, fmt.Sprintf(
+						"oracle routing: %s (%s layer) has a row for %q, which is not an agent in the roster; "+
+							"the row is skipped and the remaining rows apply", layer.origin, layer.l, layered.BoundKey(name)))
+				}
 				continue
 			}
 			found, err := s.Lookup("agents." + name)
@@ -110,9 +115,17 @@ func Load(r layered.Roots) (*Layered, error) {
 				}
 			}
 		}
+		if more := orphans - maxOrphanLines; more > 0 {
+			l.Diagnostics = append(l.Diagnostics, fmt.Sprintf(
+				"oracle routing: %s (%s layer) has %d more row(s) for names that are not agents in the roster; "+
+					"they are skipped and the remaining rows apply", layer.origin, layer.l, more))
+		}
 	}
 	return l, nil
 }
+
+// maxOrphanLines is the most orphan rows one layer names line by line.
+const maxOrphanLines = 5
 
 // decodeRow decodes and validates one file row, clamping its fan-out to the
 // agent's ceiling. clamped is the stated fan-out when it was above the
@@ -163,11 +176,11 @@ func checkSettings(in map[string]json.RawMessage) (Settings, error) {
 	out := make(Settings, len(in))
 	for _, k := range keys {
 		if !settingKeyRe.MatchString(k) {
-			return nil, fmt.Errorf("setting %q is not a parameter name (lower case, digits and underscores, starting with a letter)", k)
+			return nil, fmt.Errorf("setting %q is not a parameter name (lower case, digits and underscores, starting with a letter)", layered.BoundKey(k))
 		}
 		v := bytes.TrimSpace(in[k])
 		if !scalar(v) {
-			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", k, string(v))
+			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", k, layered.BoundKey(string(v)))
 		}
 		out[k] = append(json.RawMessage(nil), v...)
 	}
@@ -229,5 +242,5 @@ func (l *Layered) Rows(agent string) ([]LayerRow, error) {
 }
 
 func notInRoster(agent string) error {
-	return fmt.Errorf("%q is not an agent in the roster (%d agents: see agents/)", agent, len(proposal))
+	return fmt.Errorf("%q is not an agent in the roster (%d agents: see agents/)", layered.BoundKey(agent), len(proposal))
 }

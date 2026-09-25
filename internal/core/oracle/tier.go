@@ -30,6 +30,8 @@ package oracle
 import (
 	"fmt"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
 // Tier is a model tier: a class of model that survives model churn, not a
@@ -61,7 +63,7 @@ func ParseTier(s string) (Tier, error) {
 			return t, nil
 		}
 	}
-	return "", fmt.Errorf("tier %q is not one of %s", s, tierList())
+	return "", fmt.Errorf("tier %q is not one of %s", layered.BoundKey(s), tierList())
 }
 
 func tierList() string {
