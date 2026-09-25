@@ -482,6 +482,20 @@ func (r schemaRecord) valueEmpty(field string, f fmField) bool {
 	return isAbsentValue(f.value)
 }
 
+// blockValue returns the value a key carries on the indented lines below it,
+// and whether it carries one there: a key whose own line is empty, or holds
+// only a block-scalar header (`|`, `>-`), over a non-empty block. It is the
+// block half of valueEmpty's question, for the legs that must tell a
+// block-spelled value from a same-line one.
+func (r schemaRecord) blockValue(field string, f fmField) (string, bool) {
+	v := strings.TrimSpace(f.value)
+	if v != "" && !blockScalarIndicatorRe.MatchString(v) {
+		return "", false
+	}
+	block := r.blocks[field]
+	return block, strings.TrimSpace(block) != ""
+}
+
 // recordRef is one handle read out of a cross-reference field.
 type recordRef struct {
 	prefix string
@@ -1310,9 +1324,14 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	// the sibling of the list case, and the same silent invisibility
 	// (iss-2608300234599781). What the block SAYS is not parsed: it is present, and
 	// it is no instant, which is the whole of the finding.
+	//
+	// The block is read through r.blockValue, the accessor the required-field
+	// check's valueEmpty shares, so a block-scalar HEADER (`lapsed_at: |` over an
+	// indented instant) is a block here too, and gets the block message rather
+	// than a format complaint about the header byte (iss-2608301221402131).
 	fromBlock := false
-	if hasLapseField && lapsedAt == "" && strings.TrimSpace(lapseField.value) == "" {
-		if block := r.blocks["lapsed_at"]; block != "" {
+	if hasLapseField {
+		if block, ok := r.blockValue("lapsed_at", lapseField); ok {
 			lapsedAt, fromBlock = block, true
 		}
 	}
