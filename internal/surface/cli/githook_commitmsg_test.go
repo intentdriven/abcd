@@ -138,21 +138,64 @@ func TestCommitMsgHookPassesACleanMessage(t *testing.T) {
 	}
 }
 
-// Everything below a scissors line is the `git commit -v` diff, which git discards.
-// Judging it would refuse a commit for a fixture it stages, not for its message.
+// Everything below git's scissors line in a `git commit -v` message is the staged
+// diff, which git discards. Judging it would refuse a commit for a fixture it
+// stages, not for its message, so the hook cuts there — under the default comment
+// character and under one the clone configures.
 func TestCommitMsgHookIgnoresTheVerboseDiffBelowTheScissors(t *testing.T) {
-	c := newCommitMsgHookCase(t)
-	msg := "fix: the walk\n\nAssisted-by: Claude:claude-opus-5\n" +
-		"# ------------------------ >8 ------------------------\n" +
-		"+" + sessionURL() + "\n"
-	// git truncates at the scissors only for a message it opened an editor on, so
-	// the commit is "edited" through an editor that changes nothing.
-	refused, out := c.commitWith("a.txt", msg, "--cleanup=scissors", "-e")
-	if refused {
-		t.Fatalf("a session URL in the discarded diff below the scissors refused the commit\n%s", out)
+	for name, config := range map[string][]string{
+		"default comment character":    nil,
+		"configured comment character": {"-c", "core.commentChar=;"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newCommitMsgHookCase(t)
+			if err := os.WriteFile(filepath.Join(c.dir, "fixture.txt"), []byte(sessionURL()+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c.git("add", "fixture.txt")
+			msgFile := filepath.Join(t.TempDir(), "msg")
+			if err := os.WriteFile(msgFile, []byte("test: stage a fixture\n\nAssisted-by: None\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			// -e opens the editor (GIT_EDITOR=true changes nothing), and -v appends the
+			// staged diff below the scissors: exactly the file a verbose commit hands the hook.
+			args := append(append([]string{}, config...), "commit", "-q", "-e", "-v", "-F", msgFile)
+			if out, err := c.tryGit(args...); err != nil {
+				t.Fatalf("a session URL in the discarded verbose diff refused the commit\n%s", out)
+			}
+			if logged := c.git("log", "-1", "--format=%B"); strings.Contains(logged, testOutboundSessionID) {
+				t.Fatalf("the fixture's premise is wrong: git kept the text below the scissors\n%s", logged)
+			}
+		})
 	}
-	if logged := c.git("log", "-1", "--format=%B"); strings.Contains(logged, testOutboundSessionID) {
-		t.Fatalf("the fixture's premise is wrong: git kept the text below the scissors\n%s", logged)
+}
+
+// A scissors-shaped line is not a licence to stop reading. git cuts only at its own
+// scissors (its comment character, its exact cut line) and only when it truncates
+// — a verbose commit, whose diff follows the line. A message given with -F keeps
+// everything under the default cleanup, so a session URL written below a
+// look-alike line is in the commit git records, and the hook must judge it.
+func TestCommitMsgHookJudgesTextBelowAScissorsLineGitKeeps(t *testing.T) {
+	for name, line := range map[string]string{
+		"short hash scissors":         "# ---- >8 ----",
+		"semicolon scissors":          "; ------------------------ >8 ------------------------",
+		"git's scissors with no diff": "# ------------------------ >8 ------------------------",
+	} {
+		t.Run(name, func(t *testing.T) {
+			msg := "fix: the walk\n\nAssisted-by: None\n" + line + "\nSession: " + sessionURL() + "\n"
+
+			// The premise, with the hooks skipped: git records the text below the line.
+			c := newCommitMsgHookCase(t)
+			if refused, out := c.commitWith("a.txt", msg, "--no-verify"); refused {
+				t.Fatalf("premise: the commit failed with the hooks skipped\n%s", out)
+			}
+			if logged := c.git("log", "-1", "--format=%B"); !strings.Contains(logged, testOutboundSessionID) {
+				t.Fatalf("the fixture's premise is wrong: git discarded the text below %q\n%s", line, logged)
+			}
+			c.git("update-ref", "-d", "HEAD")
+
+			c.assertRefusedBeforeACommit(c.commitWith("a.txt", msg))
+		})
 	}
 }
 

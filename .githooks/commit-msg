@@ -149,18 +149,57 @@ if [ -z "$go_bin" ]; then
   exit 1
 fi
 
-# The text git will record. Everything below a scissors line is the `git commit -v`
-# diff, which git discards: judging it would refuse a commit for a fixture it
-# stages rather than for anything in the message. Comment lines are KEPT and judged:
-# whether git strips them depends on the cleanup mode (`-m` keeps a `#` line), and
-# over-judging a comment only ever refuses more. The cut is bash builtins end to
-# end, so no external tool decides what is judged.
-scissors_re='^[^[:alnum:][:space:]]+ -+ >8 -+$'
-message=""
+# The text git will record. git discards what follows its scissors line only when it
+# truncates the message, which is a verbose commit (`git commit -v`, whose staged
+# diff it appends below the line) or the scissors cleanup mode; a message given with
+# -F or -m keeps everything, a look-alike line and the text under it included. The
+# hook cannot see which mode git runs in, so it cuts only where git's own cut would
+# be unmistakable: at git's exact scissors line, prefixed with this clone's comment
+# character, and only when a `diff --git` line follows it. Everywhere else it judges
+# the whole file — an over-judged comment only ever refuses more. Comment lines are
+# KEPT and judged: whether git strips them depends on the cleanup mode (`-m` keeps a
+# `#` line). What this cannot tell apart: a -F message that forges git's scissors
+# and a diff header below them is cut here and kept by git; CI's check over the
+# pull request (scripts/check-attribution.sh reads the recorded message) is the
+# backstop for that deliberate shape. The cut is bash builtins end to end, so no
+# external tool decides what is judged.
+#
+# The comment character: core.commentString or core.commentChar, whichever git
+# config sets last, `#` when neither is set; under `auto` git picks one of its
+# candidates per message, so any of them marks the line.
+comment="#"
 while IFS= read -r line || [[ -n $line ]]; do
-  [[ $line =~ $scissors_re ]] && break
-  message+="$line"$'\n'
+  [[ -n $line ]] && comment="${line#* }"
+done <<<"$(git config --get-regexp '^core\.comment(char|string)$' 2>/dev/null || true)"
+auto_candidates='#;@!$%^&|:'
+cut_line=" ------------------------ >8 ------------------------"
+is_scissors() {
+  if [[ $comment == auto ]]; then
+    [[ ${#1} -gt 1 && $auto_candidates == *"${1:0:1}"* && ${1:1} == "$cut_line" ]]
+  else
+    [[ $1 == "$comment$cut_line" ]]
+  fi
+}
+lines=()
+while IFS= read -r line || [[ -n $line ]]; do
+  lines+=("$line")
 done <"$msg_file"
+keep=${#lines[@]}
+for ((i = 0; i < ${#lines[@]}; i++)); do
+  is_scissors "${lines[i]}" || continue
+  # git cuts at its first scissors line; cut there only if the diff follows it.
+  for ((j = i + 1; j < ${#lines[@]}; j++)); do
+    if [[ ${lines[j]} == "diff --git "* ]]; then
+      keep=$i
+      break
+    fi
+  done
+  break
+done
+message=""
+for ((i = 0; i < keep; i++)); do
+  message+="${lines[i]}"$'\n'
+done
 
 # An empty message is git's to refuse (or to allow, under --allow-empty-message);
 # there is nothing in it that could leak. The test is a bash builtin: no tool
