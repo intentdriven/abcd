@@ -9,7 +9,7 @@ production_mode: hand-written
 
 ## Summary
 
-The remainder of [itd-112](../../intents/planned/itd-112-bare-abcd-opens-with-a-generated-banner.md)
+The remainder of [itd-112](../../intents/shipped/itd-112-bare-abcd-opens-with-a-generated-banner.md)
 that [spc-41](../closed/spc-41-bare-abcd-opens-with-a-generated-banner.md) did not deliver. spc-41 closed on
 2026-09-23 with acceptance criteria 2 to 6 delivered and criterion 1 in part: the banner renders above a byte-unchanged status board, stays out of every machine stream, follows the colour ladder, takes its words from the generated identity constant, and the emission-discipline ADR and exported primitives are recorded. This spec carries what did not ship.
 

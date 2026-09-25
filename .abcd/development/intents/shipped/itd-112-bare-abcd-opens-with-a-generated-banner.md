@@ -182,4 +182,5 @@ for art, text-only otherwise).
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-c0f8eb651646 -->
+Fidelity review OWED (receipt rcp-c0f8eb651646).
