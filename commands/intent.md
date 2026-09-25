@@ -518,7 +518,8 @@ before anything else runs: an invocation override, over the repository's
 `.abcd/config/oracle-routing.json`, over the machine's
 `~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
 once a table is accepted). The override is `--route
-<agent>=<tier>[@<connection>][?k=v,...]`, repeatable, with the tier one of
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
 `local`, `economy`, `frontier` or `host-decides`; it governs this run alone. The
 emit's `--json` result carries the request block as a `routing` member (`agent`,
 `tier`, `fan_out`, `source`, `origin`, `override`, `connection`, `fallback`),

@@ -239,7 +239,8 @@ each resolves that agent's model tier before anything else runs: an invocation
 override, over the repository's `.abcd/config/oracle-routing.json`, over the
 machine's `~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which
 applies only once a table is accepted). The override is `--route
-<agent>=<tier>[@<connection>][?k=v,...]`, repeatable, with the tier one of
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
 `local`, `economy`, `frontier` or `host-decides`; it governs this run alone.
 There is no emit step here, so run the agent at the tier you mean to and pass
 that route as `--route` to the ingest, which records it as an override. Without

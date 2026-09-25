@@ -267,7 +267,8 @@ model tier before anything else runs: an invocation override, over the
 repository's `.abcd/config/oracle-routing.json`, over the machine's
 `~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
 once a table is accepted). The override is `--route
-<agent>=<tier>[@<connection>][?k=v,...]`, repeatable, with the tier one of
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
 `local`, `economy`, `frontier` or `host-decides`; it governs this run alone.
 `assemble` takes no `--route`: its invocation is a position and a target and
 nothing else, so run the reading at the tier you mean to and pass that route to
