@@ -8,7 +8,7 @@ import "testing"
 // code and must now reach the same verdict as the spelling the guard already
 // blocks.
 
-// TestBacktickCommandSubstitutionBlocks — gh-312. “ `cmd` “ runs cmd exactly as
+// TestBacktickCommandSubstitutionBlocks — gh-312. A backtick-quoted cmd runs it exactly as
 // `$(cmd)` does, but the tokenizer had no backtick case, so the hazard never
 // reached command position while the `$( … )` spelling blocked.
 func TestBacktickCommandSubstitutionBlocks(t *testing.T) {

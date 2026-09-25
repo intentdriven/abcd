@@ -305,7 +305,7 @@ var (
 //     inside a code span or fence, or prefixed with `abcd ` or `/abcd:`. The same
 //     words as plain English ("the intent plan", "the docs lint") are prose;
 //   - a backticked sub-verb name below one of the chapter's own verbs
-//     (“ `list` “ in the capture chapter).
+//     (`list` in the capture chapter).
 //
 // The `## Sub-verbs` section's table and its standard blockquote note are
 // exempt: the table is compared against the command-tree snapshot by

@@ -380,10 +380,15 @@ func appendUnique(list []string, id string) []string {
 }
 
 // shellQuoted wraps s in SINGLE quotes for the shell a remedy is pasted into,
-// spelling an embedded quote the only way single quoting can ('\”: close,
-// escaped quote, reopen). It exists so the orphan remedy runs as printed: a
-// repair command a person has to re-quote by hand is a remedy that fails on its
-// own text.
+// spelling an embedded quote the only way single quoting can: close, escaped
+// quote, reopen, which is the four bytes
+//
+//	'\''
+//
+// It exists so the orphan remedy runs as printed: a repair command a person has
+// to re-quote by hand is a remedy that fails on its own text. (The spelling sits
+// in a code block because gofmt rewrites a doubled apostrophe in doc-comment
+// prose to a typographic quote.)
 //
 // Single, not double: inside double quotes a POSIX shell still interprets four
 // characters, which can be escaped one by one — but an INTERACTIVE bash or zsh
