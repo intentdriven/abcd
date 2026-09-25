@@ -117,8 +117,8 @@ The lint's site target runs seven independent gates over a rendered tree and rep
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
-loop-figure labels. The check's own help text names the same seven, kept beside the
-code that runs them.
+loop-figure labels. The seven are named once in the code that runs them, and the
+check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
 every manifest-selected span; the verbatim record rendering is exempt; and the
