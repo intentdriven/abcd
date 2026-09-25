@@ -499,6 +499,40 @@
       ]
     },
     {
+      "path": "abcd capture reframe",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "complete",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "occasioned-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "open",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture resolve",
       "hidden": false,
       "flags": [

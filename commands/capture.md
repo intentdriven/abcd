@@ -1,7 +1,7 @@
 ---
 name: capture
-description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; admit/defer/disposition/link/list/promote/resolve/surprise/wontfix act on the ledger, and migrate rewrites retired back-links.
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | migrate [--apply]"
+description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; admit/defer/disposition/link/list/promote/reframe/resolve/surprise/wontfix act on the ledger, and migrate rewrites retired back-links.
+argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
 ---
 
 # `/abcd:capture` — issue ledger
@@ -499,6 +499,66 @@ were admitted, declined and held, and which carry neither an admission nor a
 `declined` or `held` disposition (`widening_runs` in the board's JSON). A
 widening proposal carrying neither an admission nor a decline is also reported
 on its own line, at `info`.
+
+## Record a reframe
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why the frame moved>" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why the frame moved>" --open --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture reframe --complete <rfm-N> --json
+```
+
+When a reading sends the researcher back to the frame rather than to the
+artefact, the rewrite is recorded as a **reframe record** (`rfm-N`, under
+`.abcd/work/issues/reframes/`). The frame is three committed surfaces at fixed
+paths: the `## Construal` section of
+`.abcd/development/brief/01-product/06-framing.md`, the glossary terms under
+`.abcd/development/brief/glossary/` (each `README.md` index and the
+`_template.md` scaffold excepted), and the scope chapter
+`.abcd/development/brief/01-product/04-scope.md`. The record carries the
+occasion, the SHA-256 fingerprint of each surface before and after the rewrite,
+`changed` (the surfaces that moved) and the ground. The prior text of any
+surface never enters it: the framing a rewrite abandons stays on the local side
+(adr-55). The verb reads the surfaces itself, so no hash is supplied.
+
+A reframe is written in one of three halves, and every render names which:
+
+- **Whole**, after the rewrite is committed (no flag). All three surfaces in the
+  working tree must match `HEAD`, or the verb refuses naming the one that does
+  not. It walks the surfaces' history to the previous distinct committed state
+  and writes both halves at once.
+- **Open**, before the rewrite is committed (`--open`). The before fingerprints
+  are `HEAD`'s and the after half is absent; the render names the completion.
+  Only one record may be open at a time.
+- **Completed** (`--complete rfm-N`), once the rewrite is committed. The verb
+  walks back from `HEAD` to the state the record opened against and writes the
+  after half. A rewrite spread over several commits, or brought in by a merge,
+  pairs the same way, and `commits` says how many commits it crossed.
+
+The occasion is a reading item, a disposition or a surprise this ledger holds,
+and nothing else. The join is the operator's assertion, checked in one respect
+only: the commit that added the occasion's record precedes the rewrite, or, for
+`--open`, is already in `HEAD`'s history. That check is a floor, not a proof
+that the occasion caused the rewrite. Report the `id`, `half`, `changed`,
+`commits` and `path` from the JSON, and `redacted` whenever it is non-zero.
+
+Everything the verb refuses writes nothing: an occasion outside the three
+families or naming no record, an occasion not yet committed or committed after
+the rewrite, a ground below the floor, uncommitted changes to a surface without
+`--open`, a frame with no distinct prior committed state, a second open record,
+a completion in which no surface moved, and a completion whose before state the
+surfaces' history no longer holds within 64 commits touching the frame (both
+states named). The family is warm: no cold reading receives it, and every
+manifest asserts its exclusion. `/abcd <rfm-N>` describes the record: its
+occasion, its fingerprints and the surfaces that moved, or, while it is open,
+the completion as its next move.
+
+The committed-tree gate holds a hand-written reframe to the same shape:
+`record_schema` refuses a blank ground, a missing before fingerprint, an unknown
+key, a fingerprint that is not 64 lower-case hex, an after half present in part,
+a `changed` naming anything but `construal`, `glossary` or `scope`, and an
+occasion that is not an `rdi-N`, `dsp-N` or `srp-N` naming a record the corpus
+holds.
 
 ## Promote an issue into an intent
 

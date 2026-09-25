@@ -32,6 +32,7 @@ binary.
 | `mentions` | — | shipped |
 | `migrate` | — | shipped |
 | `promote` | — | shipped |
+| `reframe` | — | shipped |
 | `resolve` | — | shipped |
 | `surprise` | — | shipped |
 | `wontfix` | — | shipped |
@@ -197,6 +198,26 @@ or a disposition this ledger holds, and nothing else: prose, a record of any
 other family, and a handle naming nothing are refused before anything is
 minted. No disposition is written on this path. The record gate holds a
 hand-written surprise to the same closed form.
+
+**Recording a reframe** writes one reframe record (`rfm-N`, under
+`reframes/`) when a reading occasions a rewrite of the frame
+(spc-2609020626048705). The frame is three committed surfaces at fixed paths:
+the framing chapter's `Construal` section, the glossary terms (indexes and the
+scaffold excepted) and the scope chapter. The record carries the occasion (a
+reading item, a disposition or a surprise), the SHA-256 fingerprint of each
+surface before and after, which surfaces changed, and the ground, and no text of
+any surface. The verb reads the surfaces at `HEAD`, in the working tree and
+along their history, so the operator supplies no hash. Written after the
+rewrite's commit it is one write; written before it, a first half records the
+before fingerprints and a second write finishes it once the rewrite is
+committed, walking back across as many commits as the rewrite took, merges
+included. Every render names the half it wrote. The occasion
+is checked in one respect: the commit that added it precedes the rewrite.
+Refused with nothing written: an occasion outside the three families or naming
+no record, one not committed or committed after the rewrite, a degenerate
+ground, uncommitted surface changes outside a first half, a frame with no distinct
+prior state, a second open record, a completion in which nothing moved, and a
+before state the history no longer holds within 64 commits touching the frame.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with
@@ -404,6 +425,13 @@ for ad-hoc scribbles.
 - **Given** a surprise whose occasion resolves to a reading item, an admission
   or a disposition, **when** the user records it, **then** one surprise record
   exists as its own file and no disposition was touched.
+- **Given** a reading item and any of the three frame surfaces rewritten and
+  committed, **when** the user records a reframe with the item as occasion and a
+  ground, **then** one reframe record exists carrying the occasion, the before
+  fingerprint of each surface's previously committed state, the after
+  fingerprint of each surface's current state, which surfaces changed and the
+  ground; a frame with no distinct prior state, or a before state the history
+  no longer holds, is refused naming the mismatch.
 - **Given** a run of widening items, **when** the bare board or `abcd lint`
   runs, **then** it counts the run's admitted, declined and held proposals and
   names each one carrying neither an admission nor a `declined` or `held`
@@ -454,6 +482,15 @@ or naming no record, and either family filed in the other's store are each a
 blocker. `abcd <adm-N>` and `abcd <srp-N>` describe the record and its joins;
 the reading families `rdi`, `dsp` and `rdg` have no record dispatch.
 
+The reframe record (itd-2609020625402518, spc-2609020626048705) has its schema
+beside them in `internal/core/issueschema`, wired to `record_schema`, and its
+writer, the three surface readers and the fingerprints in
+`internal/core/capture/reframe.go`. The gate refuses a hand-written reframe with
+a blank ground, a missing or mis-shaped fingerprint, a partial after half, a
+`changed` outside the three surface names, or an occasion outside the closed
+form. `abcd <rfm-N>` describes it. The family is warm: the cold-reading
+assembler's exclusion floor names it at every position.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface
@@ -462,7 +499,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture reframe`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -552,6 +589,17 @@ Sub-verbs: none.
 | `--grounds` | string |
 | `--intent` | string |
 | `--production-mode` | string |
+
+### `abcd capture reframe`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--complete` | string |
+| `--grounds` | string |
+| `--occasioned-by` | string |
+| `--open` | bool |
 
 ### `abcd capture resolve`
 

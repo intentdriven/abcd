@@ -282,6 +282,21 @@ Graduate an issue or a dispositioned reading item into an intent draft (mints + 
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
 
+#### `abcd capture reframe`
+
+Record a reframe a reading occasioned: the frame's fingerprints before and after, and which surfaces moved
+
+**Usage:** `abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why>" [--open] | --complete <rfm-N> [flags]`
+
+**Flags:**
+
+```
+      --complete string        the open reframe record (rfm-N) to finish once the rewrite is committed
+      --grounds string         why the frame moved (free text, held to the grounds floor)
+      --occasioned-by string   the record that occasioned the reframe: a reading item (rdi-N), a disposition (dsp-N) or a surprise (srp-N)
+      --open                   record the first half before the rewrite is committed; complete it after with --complete
+```
+
 #### `abcd capture resolve`
 
 Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed it
