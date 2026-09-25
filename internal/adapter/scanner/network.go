@@ -239,14 +239,17 @@ func NetworkPatterns() []Pattern {
 					selectorExpression(line, start, end) ||
 					mixedCaseSelector(line, start, end)
 			},
-			Suggestion: "replace with a reserved name (example.com, host.test) or a persona-derived fixture host",
+			// The suggestion names the exact shape personaDerivedHost accepts,
+			// so an author refused on a possessive or capitalised persona host
+			// can see why (iss-2609190338409222).
+			Suggestion: "replace with a reserved name (example.com, host.test) or a persona fixture host spelled <persona>-<noun> in lower case (alice-mac.local; no possessive, no capitals)",
 		},
 		{
 			Name: "net_device_hostname", Kind: kindNetDeviceHost, Label: "device hostname",
 			Re: deviceHostRe, Severity: SeverityWarn,
 			Skip:       func(m string) bool { return personaDerivedHost(m) },
 			SkipAt:     commonNounPhrase,
-			Suggestion: "replace with a persona-derived fixture host (alice-laptop, bob-macbook)",
+			Suggestion: "replace with a persona fixture host spelled <persona>-<noun> in lower case (alice-laptop, bob-macbook; no possessive, no capitals)",
 		},
 	}
 }
