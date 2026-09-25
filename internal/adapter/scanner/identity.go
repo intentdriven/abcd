@@ -292,6 +292,11 @@ type identityMatchers struct {
 	github       *regexp.Regexp
 	localBare    *regexp.Regexp
 	localEncoded string // path-encoded username (dots->hyphens); boundary checked in Go
+	// localGeneric says the account name identifies no person — a role or
+	// image default ("dev", "runner", "root") or a one- or two-rune name — so
+	// the bare word is ordinary vocabulary and only an occurrence where an
+	// account name stands is reported (isGenericAccountName, iss-236).
+	localGeneric bool
 }
 
 func newIdentityMatchers(id Identity) identityMatchers {
@@ -351,6 +356,7 @@ func newIdentityMatchers(id Identity) identityMatchers {
 		// resolves to the same account and must still trip the hard_fail
 		// local_username gate — not slip redaction while the home path is caught.
 		m.localBare = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(id.HomeUser))
+		m.localGeneric = isGenericAccountName(id.HomeUser)
 		if enc := strings.ReplaceAll(id.HomeUser, ".", "-"); enc != id.HomeUser {
 			m.localEncoded = enc
 		}
@@ -524,8 +530,13 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			if isDottedNamespaceComponent(line, loc[0], loc[1]) {
 				return
 			}
+			// A generic account name is ordinary vocabulary wherever it does
+			// not stand as an account (iss-236, iss-2609061504302157).
+			if m.localGeneric && !standsAsAccountName(line, loc[0], loc[1]) {
+				return
+			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
-				"(local machine username; replace with [USERNAME] or remove)")
+				"(local machine username, the last segment of $HOME; replace with [USERNAME] or remove)")
 		}
 		for _, loc := range m.localBare.FindAllStringIndex(line, -1) {
 			if !wordBounded(line, loc[0], loc[1]) {
@@ -540,6 +551,76 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 		}
 	}
 	return out
+}
+
+// genericAccountNames are account names that identify no person: the default
+// accounts of hosted CI machines, container and cloud images and development
+// environments, and the role words a shared machine is named for. Each is also
+// ordinary vocabulary — a documented flag, a noun in the docs — so treating
+// every bare occurrence as the caller's login hard-failed the launch payload
+// on a pristine tree and rewrote prose in committed records (iss-236,
+// iss-2609061504302157). The list is built in and not configurable: the
+// per-repo pii.json is committed content, and a planted entry there would
+// disarm the username gate for a real person's login.
+var genericAccountNames = map[string]bool{
+	"admin": true, "administrator": true, "app": true, "build": true,
+	"builder": true, "ci": true, "codespace": true, "debian": true,
+	"deploy": true, "dev": true, "developer": true, "docker": true,
+	"ec2-user": true, "git": true, "gitpod": true, "guest": true,
+	"jenkins": true, "node": true, "root": true, "runner": true,
+	"test": true, "tester": true, "ubuntu": true, "user": true,
+	"vagrant": true, "vscode": true, "worker": true,
+}
+
+// maxGenericAccountRunes is the length floor under which an account name is too
+// short to identify anyone: a one- or two-rune word ("me", "io") collides with
+// prose everywhere and names no one.
+const maxGenericAccountRunes = 2
+
+// isGenericAccountName reports whether an account name is under the generic
+// floor (genericAccountNames, or maxGenericAccountRunes or shorter).
+func isGenericAccountName(name string) bool {
+	if name == "" {
+		return false
+	}
+	if utf8.RuneCountInString(name) <= maxGenericAccountRunes {
+		return true
+	}
+	return genericAccountNames[strings.ToLower(name)]
+}
+
+// accountRootPrefixes are the spellings that put the next segment in the
+// account-name position of a home directory: POSIX, Windows, and the
+// dash-encoded form a harness uses to name a per-project directory.
+var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-home-"}
+
+// standsAsAccountName reports whether line[start:end] stands where an account
+// name stands rather than as a word: the segment after a home root, a tilde
+// user ("~name"), or inside the local part of an address or login
+// ("name@host", "name.surname@example.com"). These are the positions a real
+// home path or login leaks from, so a generic account name is still reported
+// there, at its hard_fail floor.
+func standsAsAccountName(line string, start, end int) bool {
+	lower := strings.ToLower(line[:start])
+	for _, p := range accountRootPrefixes {
+		if strings.HasSuffix(lower, p) {
+			return true
+		}
+	}
+	if start > 0 && line[start-1] == '~' {
+		return true
+	}
+	hi := end
+	for hi < len(line) && isLocalPartByte(line[hi]) {
+		hi++
+	}
+	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
+}
+
+// isLocalPartByte is the byte class of an address's local part as it appears
+// in prose: letters, digits and the separators people put in one.
+func isLocalPartByte(b byte) bool {
+	return isAlnumByte(b) || b == '.' || b == '_' || b == '-' || b == '+' || b == '%'
 }
 
 // isNonUserHomeMatch reports whether a generic-home match's final segment is a
@@ -719,7 +800,8 @@ func isSystemPathSegment(line string, start, end int) bool {
 // two-label host are untouched; and a run followed by '@' is an address's local
 // part, where the mailbox is the identity, so that stays a leak too. A bare word
 // in prose has no dots at all and is unaffected — the ordinary-dictionary-word
-// over-redaction (iss-2609061504302157) is a different finding and stays open.
+// over-redaction (iss-2609061504302157) is a different finding, answered by
+// the generic-account floor (isGenericAccountName).
 func isDottedNamespaceComponent(line string, start, end int) bool {
 	lo, hi := start, end
 	for lo > 0 && isDottedIdentifierByte(line[lo-1]) {
