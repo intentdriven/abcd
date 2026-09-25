@@ -2464,6 +2464,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd intent audit: --strict applies to --issue-drift only"}
 			}
 			if len(args) == 0 {
+				// The listing is read-only and dispatches no agent: a --route is refused.
+				if _, err := auditRoute.resolve(cmd, "abcd intent audit", ""); err != nil {
+					return err
+				}
 				return runOwedReviews(cmd, *asJSON)
 			}
 			repoRoot, err := intentStoreRoot(cmd)
