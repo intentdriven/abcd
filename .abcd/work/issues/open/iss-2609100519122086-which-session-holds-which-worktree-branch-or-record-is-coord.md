@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work"
 related_intents: [itd-2609150819440345]
-deferred_after: "v0.9.0"
-deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M30: plan next cycle as its own intent (itd-2609150819440345), the interview opening on transport (code host, per-machine helper, or both)). Earlier deferral: Nothing records which session holds which worktree, branch or record, so every session rebuilds the picture by conversation. This cut adds evidence rather than a fix: two agents in this very checkout each reported a peer editing it, each named the other's files correctly, and neither was a peer. Designing the substrate means deciding what a claim is, who may write one, and what happens to a claim nobody released, and a coordination record that nobody updates is worse than the conversation it replaced."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Session register transport: the code host, a per-machine helper, or both?"
 ---
 
 Which session holds which worktree, branch or record is coordinated entirely by conversation, so every new session repeats a handshake that nothing records. A session joining work in progress has no way to ask what is already claimed: it messages the peers it can see, waits for replies, and rebuilds a picture that the sessions before it had already built and did not write down. One measured encounter cost four messages and about fifteen minutes before any work began, and the picture it produced is not durable, so the session after that pays again. The convention that a diff you did not make is a peer's work depends on knowing who the peers are and what they hold, which is precisely the thing no artefact carries. The repository already records this gap for the narrow case of detecting a peer session before mutating git state; the wider case is claim rather than presence, and the two want the same substrate. Whatever holds it should be as cheap to write as it is to read, because a coordination record nobody updates is worse than the chat it replaced.

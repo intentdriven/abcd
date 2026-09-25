@@ -26,6 +26,23 @@ The grain is the phase, deliberately. Per-intent reflection is the
 `intent-auditor`'s job, and a retrospective per intent would be a chore nobody
 finishes.
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty. The command tree registers no reflect verb, so no row can
+read shipped, and the design below takes a phase id as its only argument, so
+there is no sub-verb to record as staged either.
+
 ## Argument
 
 The command takes exactly one positional argument: a **phase id**, which is a

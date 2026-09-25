@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (intent, decide, capture) / conventions"
 related_intents: [itd-2609150819439571]
-deferred_after: "v0.9.0"
-deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M25: plan next cycle through the planning interview of itd-2609150819439571: the convention first (per record family, where a correction goes, what it carries, why the original stays), then possibly a verb). Earlier deferral: There is no supported way to correct a factual error in a durable record, and inventing one is a decision about what the record family promises. A record store whose entries can be edited says something different about its own history than one whose corrections are appended, and both are defensible. The record calls errata the fourth case beside resolve, wontfix and supersede, which is exactly the shape of a question that wants a ruling rather than an implementation."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Per record family, where does a correction go, what does it carry, and why does the original stay?"
 ---
 
 abcd has no supported operation for correcting a factual error inside a durable record, and no documented convention saying what to do instead. The record is deliberately not rewritten, which is right, but "not rewritten" and "wrong" are different states and only the first has a mechanism.

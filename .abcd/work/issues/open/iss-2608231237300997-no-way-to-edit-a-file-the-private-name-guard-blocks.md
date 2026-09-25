@@ -7,8 +7,8 @@ category: documentation
 found_at: ACKNOWLEDGEMENTS.md
 found_during: user-observation
 source: user-observation
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: keyed entry anchoring vs diff-scoped scanning vs a recorded per-commit acknowledgement for a reviewed edit past the private name guard). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): For a reviewed edit past the private name guard: keyed entry anchoring, diff-scoped scanning, or a recorded per-commit acknowledgement?"
 ---
 
 # There is no way to change text in a file the private name-guard blocks

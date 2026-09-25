@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +82,39 @@ func TestMarkerInsertSkipsFencedH1(t *testing.T) {
 	}
 	if classifyMarker(path) != markerCurrent {
 		t.Errorf("state = %q, want current", classifyMarker(path))
+	}
+}
+
+// The fence rule is CommonMark's (mdrecord.Mask): a fence closes only on a
+// bare run of its own marker, at least as long as the opener. A three-backtick
+// line quoted inside a four-backtick example does not close it, and a `# `
+// line parked in an HTML comment is not the title. Read with a private toggle,
+// the block was written inside the example, above the real H1
+// (iss-2609250955219864).
+func TestMarkerInsertFollowsTheCommonMarkFenceRule(t *testing.T) {
+	for name, original := range map[string]string{
+		"quoted fence":    "````markdown\n```sh\n# not the title\n```\n````\n\n# Real Title\n\nbody text\n",
+		"tilde in ticks":  "```text\n~~~\n# not the title\n~~~\n```\n\n# Real Title\n\nbody text\n",
+		"commented title": "<!--\n# not the title\n-->\n\n# Real Title\n\nbody text\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "CLAUDE.md")
+			if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := installMarkerFile(path); !ok {
+				t.Fatal("install failed")
+			}
+			got, _ := os.ReadFile(path)
+			blockAt := bytes.Index(got, markerBegin)
+			titleAt := bytes.Index(got, []byte("# Real Title"))
+			if blockAt == -1 || titleAt == -1 || blockAt < titleAt {
+				t.Fatalf("the block belongs after the real H1 (block=%d title=%d):\n%s", blockAt, titleAt, got)
+			}
+			if !bytes.HasPrefix(got, []byte(strings.SplitN(original, "# Real Title", 2)[0])) {
+				t.Errorf("the example above the title must be left whole:\n%s", got)
+			}
+		})
 	}
 }
 

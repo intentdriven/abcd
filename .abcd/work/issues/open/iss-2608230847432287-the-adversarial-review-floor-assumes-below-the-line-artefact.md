@@ -10,8 +10,8 @@ found_at: ".abcd/development/principles/adversarial-review-scales-with-blast-rad
 details: "adversarial-review-scales-with-blast-radius sets a floor: ledger captures, comments and routine pull requests are never blocked on adversarial review because they 'are covered by the gates they already have'. On 2026-08-22/23 four errors were made in exactly those below-the-line artefacts, and record-lint, docs-lint and lint-reviews passed on every one. The floor's empirical claim is false as written. The floor's PURPOSE stands: mandatory review on captures would suppress the ledger, exactly as the principle argues. What is wrong is the stated reason, not the placement."
 suggested_fix: "Correct the floor's justification rather than moving the floor. Below-the-line artefacts are unblocked because review friction would cost more than the errors do, not because their gates cover them. Optionally add the narrow bound: a peer session already present is a near-zero-friction reviewer, so the cost argument does not apply to it. Weigh that bound against the thin evidence recorded in iss-2608230847432286 before adopting; a maintainer decides."
 related_issues: ["iss-2608230847432286", "iss-2608230752354926"]
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: restate the floor reason in adversarial-review-scales-with-blast-radius; peer-review convention held (SPLIT, HOLD)). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Restate the floor reason in adversarial-review-scales-with-blast-radius as proposed (split, hold)?"
 ---
 
 the adversarial-review floor assumes below-the-line artefacts are covered by their gates, and today they were not

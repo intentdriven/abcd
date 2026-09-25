@@ -7,8 +7,8 @@ category: "bug"
 source: "agent-finding"
 found_during: "bughunt-round-1"
 found_at: "hooks/hooks.json"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed on the salvage-hook timeout value (60s default vs 90-120s vs prompt-stall cost), then pin every per-event timeout in a test). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Salvage-hook timeout: keep 60s, or 90-120s at the cost of prompt stalls?"
 ---
 
 hook salvage entries invoke bootstrap.sh with no timeout budget below its 180s curl worst case so a slow-link provision is killed and suppressed for ten minutes

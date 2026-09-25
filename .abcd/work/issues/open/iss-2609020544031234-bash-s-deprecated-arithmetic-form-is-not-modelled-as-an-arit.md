@@ -9,8 +9,8 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/tokenize.go"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: should the guard model bash's deprecated $[ ] arithmetic as a third frame kind, given it fails closed today). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Model bash's deprecated $[ ] as a third frame kind, or accept today's fail-closed behaviour?"
 ---
 
 bash's deprecated $[ … ] arithmetic form is not modelled as an arithmetic context, so a '<<' inside it is read as a here-document redirection: 'echo $[ 1 << EOF ]' followed by any command blocks under heredoc-unterminated on both this branch and v0.7.0, where bash evaluates 1<<0 and runs on. Widening isDelimStart to digits and $-led words (the fix for the fail-open sibling) widens this residual from EOF-shaped operands to every operand, so '$[ 1 << 20 ]' now over-blocks too. Evidence symbol: inArithmetic / the parens stack (internal/core/guard/tokenize.go), which recognises $(( and (( and nothing else. The direction is fail-CLOSED and loud, and the form has been deprecated since bash 2.0, so this is recorded rather than fixed: the fix is a third frame kind on the parens stack ($[ opens, ] closes) and a decision about whether the guard should track a construct bash itself discourages.

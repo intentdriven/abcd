@@ -220,6 +220,15 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.
   <https://github.com/trufflesecurity/trufflehog>
+- **Shape Up (Ryan Singer, Basecamp, 2019, <https://basecamp.com/shapeup>)
+  and the Kubernetes enhancement proposals' graduation criteria
+  (<https://github.com/kubernetes/enhancements>)** — the two precedents for
+  keeping the pieces of a piece of work inside its own record rather than in a
+  child record family: Shape Up's scopes live in the pitch, and a KEP's
+  graduation criteria in the proposal. abcd's steps follow them
+  (adr-2609212115255771, decision 4; itd-2609212103565953): a spec lists its
+  steps under a `## Steps` section (`internal/core/spec/steps.go`), and a
+  remainder carries forward the steps not yet landed.
 
 ## References & sources
 

@@ -12,9 +12,10 @@ the read side and the provenance recorder.
 
 It is a **host-delegated command**: a markdown workflow that runs in the host
 agent, with **no Go verb** behind it. There is no top-level `abcd ingest` verb,
-no bare-status render, and no CLI flags of its own. The ingest sub-verbs of the
-reading and memory verbs, and the intent audit's own ingest path, belong to other
-verbs and validate other inputs, never this corpus.
+no bare-status render, and no CLI flags of its own. Every ingest path the binary
+does have belongs to another verb, validates that verb's own input and never
+writes this corpus; the generated CLI reference lists them, so this chapter
+names none of them.
 
 
 **Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
@@ -25,6 +26,25 @@ that advice can never come true, because there is no Go verb for a rebuild to
 bring in. Every host-delegated page has the same shape, `/abcd:consult` and
 `/abcd:prepare-this-repo` alongside this one. What the note should say is that the
 command runs in the host agent rather than at the CLI.
+
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty: the command takes the link or document as its one argument
+and defines no sub-verb. Because the command is host-delegated, the rule's
+configuration exempts this table from the comparison with the command tree, and
+from nothing else: the table is still required, and any row it carries is still
+format-checked.
 
 ## What it does
 
@@ -82,7 +102,7 @@ The command prefers explicit registrar flags because it has better metadata in
 hand than a bare fetch would. There is **no one-argument quick path** into the
 registrar: no binary sub-verb and no repo-shipped script provides one, so where
 a reader finds such a command it is an operator-local convenience outside the
-corpus contract. The plugin page said otherwise until v0.8.0 and now says this.
+corpus contract.
 
 ## References
 

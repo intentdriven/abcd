@@ -286,6 +286,12 @@ type ReconcileResult struct {
 	// previous attempt left behind — so without this the surface reports a record
 	// it did not write as one it just wrote.
 	RemainderMinted bool `json:"remainder_minted,omitempty"`
+	// RemainderSteps are the steps of the closing spec that were not marked
+	// landed, which this close carried into the remainder it minted, in order
+	// and renumbered from one (itd-2609212103565953). Empty when the closing
+	// spec lists no steps, when every step it lists has landed, and when the
+	// remainder was reused rather than minted: a reused spec is left as found.
+	RemainderSteps []spec.Step `json:"remainder_steps,omitempty"`
 	// ReceiptID is the deterministic fidelity-review receipt parked in the
 	// shipped intent's Audit Notes (empty if the emit failed).
 	ReceiptID string `json:"receipt_id,omitempty"`

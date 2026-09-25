@@ -37,7 +37,7 @@ intents with stated reasons and recorded 1 ideate verdict, every worker in its
 own git worktree. Across all 27 merges the record store's move operations —
 `open/` to `resolved/` and the rest — did not conflict once. That is the
 measurement in
-[iss-2609100508570803](../../../work/issues/open/iss-2609100508570803-the-record-verbs-worked-from-worktrees-throughout-the-run.md),
+[iss-2609100508570803](../../../work/issues/resolved/iss-2609100508570803-the-record-verbs-worked-from-worktrees-throughout-the-run.md),
 filed as a positive finding rather than a defect, and it is what turns this from
 a plumbing question into a shape question. Two storage shapes, one day, one set
 of branches: the one-file-per-entry families produced zero conflicts and the

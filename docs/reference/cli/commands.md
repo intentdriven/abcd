@@ -875,12 +875,16 @@ Check the machine's load before abcd's own tests start; warns, never refuses (ex
 **Usage:** `abcd implement load --site preflight|eval-harness [flags]`
 
 Read the machine's load averages and process table once and warn when a program
-outside the running work has held a near-full core (a lifetime CPU share of 0.9 or
-more) for longer than the stray limit, or when the one-minute load average is above
-the extreme limit. `make preflight` runs it first, and the eval harness runs it once
-at its start; it never runs once per test package. It never refuses, never waits and
-never stops anything, and it exits 0 on every status: ok, warning, skipped (in CI,
-where the line says why) and unchecked (a platform other than macOS and
+outside the running work has used nearly all the CPU it could get for longer than
+the stray limit, or when the one-minute load average is above the extreme limit.
+What a program could get is its fair share: the online cores divided by the
+one-minute load, and never more than one core. A lifetime CPU share of at least 0.9
+of it makes a stray, so forty busy loops on 16 cores, each at 0.4 of a core, are all
+strays, as one loop at a full core of an idle machine is. Your programs and other
+accounts' are judged alike. `make preflight` runs it first, and the eval harness runs
+it once at its start; it never runs once per test package. It never refuses, never
+waits and never stops anything, and it exits 0 on every status: ok, warning, skipped
+(in CI, where the line says why) and unchecked (a platform other than macOS and
 Linux, or a read that failed).
 
 Your own strays are named with their pid, process group, age and CPU share, with
@@ -893,7 +897,7 @@ also written to the run log as a `load` event.
 The limits are per machine, in `~/.abcd/load-limits`, which the check reads and
 never creates. `#` starts a comment; every other line is `<key> <value>`:
 
-  stray-minutes 30   minutes at a near-full core before a program is a stray (1 to 10080)
+  stray-minutes 30   minutes at nearly all its share before a program is a stray (1 to 10080)
   extreme-load 64    the one-minute load above which the machine is overloaded
 
 Either key may be omitted. The defaults are 30 minutes and four times the online
@@ -1510,7 +1514,7 @@ Close a spec (open/ -> closed/); ship its linked intent when no open spec is lef
 ```
       --impact string            product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)
+      --remainder string         kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed
 ```
 
 ### `abcd statusline`
