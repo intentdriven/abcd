@@ -207,6 +207,14 @@ Two consequences follow, and both are stated to the caller rather than guessed.
   deliberate fixture or the residue of the defect above, and only the caller can
   tell those apart. Moving it would destroy the evidence of which it was.
 
+Every verb also says which checkout's ledger it addressed, and the record
+dispatcher says it for an issue id (iss-2609202053570475): one stderr line naming
+the checkout and its branch in the plain render, and a `ledger` member with
+`checkout` and `branch` in the machine-readable one. The checkout is written home-relative where
+it can be. A record filed in another worktree is invisible here, and a refusal
+that says "not found" without naming where it looked sends the reader to the
+wrong conclusion.
+
 ## 3. Ledger structure
 
 Frontmatter, per the issue-ledger schema in `internal/core/issueschema`, which

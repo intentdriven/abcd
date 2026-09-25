@@ -568,6 +568,44 @@ func TestCaptureDeferWritesTheWaiver(t *testing.T) {
 	}
 }
 
+// TestEveryCaptureVerbNamesTheLedgerItAddressed is iss-2609202053570475: the
+// ledger is per checkout, so a record filed in one worktree is "not found" in
+// another with nothing saying which ledger was read. Every capture verb names
+// the checkout and branch it addressed — on stderr in the text render, as a
+// `ledger` member in --json.
+func TestEveryCaptureVerbNamesTheLedgerItAddressed(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	runCLI(t, "capture", "a first observation for the ledger", "--slug", "first")
+
+	text := string(runCLI(t, "capture", "list", "--open"))
+	if !strings.Contains(text, "abcd capture: ledger of ") || !strings.Contains(text, "on branch main") {
+		t.Fatalf("the text render does not name the ledger it addressed:\n%s", text)
+	}
+	for _, args := range [][]string{
+		{"capture", "--json"},
+		{"capture", "list", "--open", "--json"},
+		{"capture", "another observation for the ledger", "--json"},
+	} {
+		var env struct {
+			Ledger struct {
+				Checkout string `json:"checkout"`
+				Branch   string `json:"branch"`
+			} `json:"ledger"`
+		}
+		out := runCLI(t, args...)
+		if err := json.Unmarshal(out, &env); err != nil {
+			t.Fatalf("%v: not JSON: %v\n%s", args, err, out)
+		}
+		if env.Ledger.Branch != "main" || !strings.HasSuffix(env.Ledger.Checkout, filepath.Base(repo)) {
+			t.Fatalf("%v: ledger member = %+v, want the checkout %s on main", args, env.Ledger, filepath.Base(repo))
+		}
+		if strings.Contains(string(out), "abcd capture: ledger of ") {
+			t.Fatalf("%v: the --json render also printed the text line", args)
+		}
+	}
+}
+
 // TestCaptureLapsedAtWritesTheGivenInstant pins the flag half of spc-60: the
 // instant handed to --lapsed-at is the instant committed to the record. The
 // record id is minted from the wall clock, so a surface that dropped, rounded or
@@ -1227,5 +1265,44 @@ func TestCaptureFarMissProseStillWrites(t *testing.T) {
 	runCLI(t, "capture", "nosuchverb", "the", "release", "gate", "before", "cutting")
 	if n := ledgerIssueCount(t, repo); n != 1 {
 		t.Fatalf("prose after an unknown first word wrote %d issue(s), want 1", n)
+	}
+}
+
+// withoutLedgerLine drops the stderr line every capture verb's text render
+// writes naming the ledger it addressed, for a test whose harness merges stderr
+// into the render it asserts on.
+func withoutLedgerLine(s string) string {
+	var keep []string
+	for _, ln := range strings.SplitAfter(s, "\n") {
+		if !strings.HasPrefix(ln, "abcd capture: ledger of ") {
+			keep = append(keep, ln)
+		}
+	}
+	return strings.Join(keep, "")
+}
+
+// TestRecordDispatcherNamesTheLedgerForAnIssue: `abcd iss-N` reads the ledger
+// too, so it names the checkout and branch it read, like every capture verb
+// (iss-2609202053570475).
+func TestRecordDispatcherNamesTheLedgerForAnIssue(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	var rec struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "an observation to describe", "--json"), &rec); err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		Ledger struct {
+			Branch string `json:"branch"`
+		} `json:"ledger"`
+	}
+	out := runCLI(t, rec.ID, "--json")
+	if err := json.Unmarshal(out, &env); err != nil || env.Ledger.Branch != "main" {
+		t.Fatalf("abcd %s --json names no ledger: %v\n%s", rec.ID, err, out)
+	}
+	if text := string(runCLI(t, rec.ID)); !strings.Contains(text, "abcd: ledger of ") {
+		t.Fatalf("abcd %s names no ledger in its text render:\n%s", rec.ID, text)
 	}
 }

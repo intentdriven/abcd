@@ -7,6 +7,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -220,7 +221,24 @@ func NewRootCommand() *cobra.Command {
 					// (itd-2609091416295622): the consult runs only now.
 					return peerHeldRefusal(cwd, "", args[0], err)
 				}
-				return render(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
+				// An issue is read from this checkout's ledger, so the answer
+				// names that ledger as every capture verb does
+				// (iss-2609202053570475): the same id may sit in another
+				// worktree's ledger, in another state.
+				emit := render
+				if strings.HasPrefix(args[0], "iss-") {
+					if root, rerr := capture.LedgerRoot(cwd); rerr == nil {
+						if !asJSON {
+							id := ledgerIdentityOf(root)
+							fmt.Fprintf(cmd.ErrOrStderr(), "abcd: ledger of %s%s\n",
+								termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+						}
+						emit = func(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
+							return renderLedger(w, asJSON, root, v, text)
+						}
+					}
+				}
+				return emit(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
 					// Title and link values come from record files a hostile
 					// clone can shape — sanitise before the terminal.
 					fmt.Fprintf(w, "%s (%s, %s) — %s\n", d.ID, d.Family, d.Status, termsafe.Sanitize(d.Title))
@@ -3155,7 +3173,86 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 	for _, note := range strayStoreNotes(cwd, root, capture.LedgerRelPath, "ledger") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: %s\n", termsafe.Sanitize(note))
 	}
+	// The ledger is per checkout, so every verb says which one it addressed
+	// (iss-2609202053570475): a record filed in another worktree is otherwise
+	// "not found" here with nothing naming where "here" is. The text render
+	// says it on stderr, before the verb runs, so a refusal carries it too;
+	// --json carries it as the envelope's `ledger` member instead
+	// (renderLedger).
+	if asJSON, _ := cmd.Flags().GetBool("json"); !asJSON {
+		id := ledgerIdentityOf(root)
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: ledger of %s%s\n",
+			termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+	}
 	return root, nil
+}
+
+// ledgerIdentity names the checkout whose ledger a verb addressed and the
+// branch checked out there (iss-2609202053570475). The checkout is home-
+// relative where it can be, so the line carries no developer-identity path.
+type ledgerIdentity struct {
+	Checkout string `json:"checkout"`
+	Branch   string `json:"branch"`
+}
+
+// ledgerIdentityOf reads root's identity: its home-redacted path, and the
+// branch git reports ("HEAD" when detached, "" when git cannot answer).
+func ledgerIdentityOf(root string) ledgerIdentity {
+	// symbolic-ref answers on an unborn branch too, where rev-parse cannot; it
+	// fails only when HEAD is detached, which rev-parse then names.
+	branch, err := gitutil.Run(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		if head, herr := gitutil.Run(root, "rev-parse", "--abbrev-ref", "HEAD"); herr == nil {
+			branch = head
+		} else {
+			branch = ""
+		}
+	}
+	return ledgerIdentity{Checkout: fsutil.RedactHome(root), Branch: branch}
+}
+
+// branchPhrase renders the branch half of the identity line.
+func branchPhrase(branch string) string {
+	switch branch {
+	case "":
+		return " (branch unknown)"
+	case "HEAD":
+		return " (detached HEAD)"
+	}
+	return " on branch " + termsafe.Sanitize(branch)
+}
+
+// renderLedger is render for a capture verb: the --json envelope gains a
+// `ledger` member naming the checkout and branch addressed, appended after the
+// result's own members, and the text render is unchanged (captureLedgerRoot has
+// already said it on stderr).
+func renderLedger(w io.Writer, asJSON bool, root string, v any, text func(io.Writer)) error {
+	if !asJSON {
+		text(w)
+		return nil
+	}
+	body, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	ident, err := json.Marshal(ledgerIdentityOf(root))
+	if err != nil {
+		return err
+	}
+	if n := len(body); n >= 2 && body[0] == '{' && body[n-1] == '}' {
+		sep := ","
+		if n == 2 {
+			sep = ""
+		}
+		body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, body, "", "  "); err != nil {
+		return err
+	}
+	buf.WriteByte('\n')
+	_, err = w.Write(buf.Bytes())
+	return err
 }
 
 // strayStoreNotes names a record store sitting BELOW the checkout root, between
@@ -3255,7 +3352,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return render(cmd.OutOrStdout(), *asJSON, board, func(w io.Writer) {
+				return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, board, func(w io.Writer) {
 					// A refused record is in none of the three totals, so the header
 					// counts it beside them (iss-2609120452071388): the reader sees
 					// what the board excluded in the same line as what it counted.
@@ -3396,7 +3493,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
 				// Folder membership is a status only once the file is committed
 				// (iss-2609100508570527): say so at the write, where it is cheap.
@@ -3456,7 +3553,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
 					fmt.Fprintf(w, "%s  %s  %s  %s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss))
 				}
@@ -3493,7 +3590,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
 					termsafe.Sanitize(res.Ref), res.OpenRecords, res.Commits, len(res.Rows))
 				for _, row := range res.Rows {
@@ -3545,7 +3642,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("resolve", err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s%s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path), resolvedByNote(res.ResolvedBy))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 			})
@@ -3599,7 +3696,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				list := "[]"
 				if len(res.BlockedBy) > 0 {
 					list = "[" + strings.Join(res.BlockedBy, ", ") + "]"
@@ -3649,7 +3746,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("promote", err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
 				if res.Linked {
 					verb = "linked"
@@ -3693,7 +3790,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd capture migrate: " + err.Error()}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				mode := "report only — nothing was written; re-run with --apply to write"
 				if res.Applied {
 					mode = "applied"
@@ -3749,7 +3846,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s %s (%s) — %s\n",
 					res.ID, res.Item, res.State, res.Position, termsafe.Sanitize(res.Path))
 				if res.Redacted > 0 {
@@ -3799,7 +3896,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("wontfix", err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 			})
@@ -3835,7 +3932,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  deferred past %s (stays %s) — %s\n", res.ID, res.DeferredAfter, res.Status, termsafe.Sanitize(res.Path))
 				fmt.Fprintf(w, "  reason: %s\n", termsafe.Sanitize(res.DeferralReason))
 				fmt.Fprintf(w, "  the waiver lapses when the next release re-anchors; renew it then, or fix the finding\n")

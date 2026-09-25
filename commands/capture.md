@@ -21,6 +21,12 @@ names it on stderr and leaves it exactly where it is; report that line to the
 user, because the records under it reach no gate and no release cut, and only
 they can tell a deliberate fixture store from one a stray capture left behind.
 
+Every verb also names the ledger it addressed: in the plain render, one stderr
+line `abcd capture: ledger of <checkout> on branch <branch>`; with `--json`, a
+`ledger` member carrying `checkout` and `branch`. The ledger is per checkout, so
+a record filed in another worktree is not found here; when a verb reports an id
+missing, relay which checkout and branch it looked in.
+
 ## Status (bare)
 
 To render recent captures and counts:
