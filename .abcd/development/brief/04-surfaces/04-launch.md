@@ -13,7 +13,11 @@ And it never ships the design record: the payload is default-deny with the whole
 `.abcd/` namespace excluded structurally, so no include line can put it back.
 
 The preview is read-only and always exits 0, because a preview never blocks.
-Bare `abcd launch` refuses with a hint to ask for it.
+Bare `abcd launch` refuses with a hint to ask for it. A repository with no
+launch payload (`.abcd/config/launch-payload.json`) has nothing to preview, and
+the preview says so and names the release path it does have: the scaffolded
+release workflows, the dated CHANGELOG heading the cut writes, and the
+auto-release workflow that tags it.
 
 > **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The full pre-flight gate suite and the remaining release automation are separately scheduled intents (itd-65 gate suite, itd-66 render parity, itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
 
@@ -130,6 +134,8 @@ The **manifest lockstep check** also runs for real, at its `dev` polarity over
 the working tree — the polarity adr-19 requires the committed manifests to
 satisfy, which is that they carry no version key — and folds any drift, or an
 unreadable version-location contract, into what the preview would refuse on.
+The preview's retention plan refuses where the existing release tags could not
+be listed, rather than reading an unread tag set as nothing to prune.
 
 The full gate suite itd-65 designs adds the rest: a deeper opt-in secret scan,
 deep credential verification, a hook-compliance check, marker-block sanity, a

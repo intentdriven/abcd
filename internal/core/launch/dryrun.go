@@ -132,7 +132,17 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 	}
 	existing := req.ExistingTags
 	if existing == nil {
-		existing, _ = GitExistingTags(req.RepoRoot)
+		// A listing that FAILED is not an empty release set: read as one, it
+		// previews "nothing to prune" for a repository whose tags were never
+		// seen, indistinguishable from a genuine nothing-to-prune (iss-194).
+		tags, err := GitExistingTags(req.RepoRoot)
+		if err != nil {
+			return RetentionPlan{
+				Published: pub.Tag(), Line: pub.Line(), Refused: true,
+				RefusalReason: "the existing release tags could not be listed, so the plan cannot say what the release would prune: " + err.Error(),
+			}
+		}
+		existing = tags
 	}
 	return ComputeRetention(pub, existing)
 }

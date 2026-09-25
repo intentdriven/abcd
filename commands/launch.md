@@ -199,6 +199,11 @@ Then summarise the JSON for the user:
 
 This is preview-only: publishing is not driven from this command.
 
+A repository with no `.abcd/config/launch-payload.json` has no plugin payload to
+preview. The preview says so and names the release path such a repository has:
+`launch scaffold`, `launch ship` writing the dated CHANGELOG heading, and the
+auto-release workflow. Relay that; it is not a misconfiguration.
+
 ## Ship — the release cut
 
 A release cut is **three steps over two Go entry points**, with a host-run agent in

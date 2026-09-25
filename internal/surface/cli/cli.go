@@ -310,7 +310,7 @@ func NewRootCommand() *cobra.Command {
 				Receipts: receiptPreflight(cwd),
 			})
 			if err != nil {
-				return err
+				return errors.New("abcd launch --dry-run: " + launchPayloadRefusal(err))
 			}
 			return render(cmd.OutOrStdout(), asJSON, rep, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd launch (dry-run) — version %s\n", rep.Version)

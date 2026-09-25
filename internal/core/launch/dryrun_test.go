@@ -85,7 +85,9 @@ func TestShipCleanWouldPublish(t *testing.T) {
 	// only in the rendered payload.
 	writeLockstepTree(t, root, "", "", "")
 
-	report, err := Ship(ShipRequest{RepoRoot: root, Version: "1.2.3"})
+	// The tag set is injected: the fixture is not a repository, and a tag
+	// listing that fails is a retention refusal (iss-194).
+	report, err := Ship(ShipRequest{RepoRoot: root, Version: "1.2.3", ExistingTags: []Semver{}})
 	if err != nil {
 		t.Fatalf("clean tree must not error: %v (reasons %v)", err, report.BlockReasons)
 	}
