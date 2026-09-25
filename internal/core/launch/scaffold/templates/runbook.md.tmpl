@@ -43,11 +43,11 @@ The `release.yml` `verify` job runs these, in order, on the released commit.
 <%- if .Abcd %>
 <% add (len .ExtraGates) 6 %>. Plugin archive reproduces the committed pin (fail-closed)
 
-The last gate runs after the tag exists, so a refusal there consumes the
-version. `auto-release.yml`'s `detect` job makes the same proof on the pushed
-commit before its `tag` job may run, and checks that the pinned address is this
-repository's own release; a refusal there tags nothing, and the next push to
-`<% .DefaultBranch %>` retries.
+The last gate also checks that the pinned address is this repository's own
+release. On the `auto-release.yml` path every gate here runs before the tag —
+`release.yml`'s `tag` job needs `verify` — so a refusal tags nothing, and the
+next push to `<% .DefaultBranch %>` retries. A hand-pushed tag exists before
+`verify` runs, so a refusal there consumes the version.
 <%- end %>
 
 ## Semantic gates (host-run, before the tag)
