@@ -186,6 +186,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses an intent not shipped.",
 	"abcd intent audit ingest": "Ingest an intent-audit verdict into the shipped intent: " +
 		"Writes its Audit Notes; refuses without --verdict-json.",
+	"abcd intent condition": "Read or disposition a shipped intent's scope conditions: " +
+		"Writes a dated condition block; refuses an unresolved occasion or thin grounds.",
 	"abcd intent hold": "Hold a draft or planned intent so that planning refuses it: " +
 		"Writes the held line with its reason; refuses without --reason.",
 	"abcd intent link": "Link a planned intent to an existing spec: " +

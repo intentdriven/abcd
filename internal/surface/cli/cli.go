@@ -34,6 +34,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lifeboat"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/memory"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/rules"
@@ -249,7 +250,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox()}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(), Oracle: boardOracle(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -265,6 +266,7 @@ func NewRootCommand() *cobra.Command {
 				if board.Inbox != nil {
 					fmt.Fprintf(w, "  inbox:      %s — `abcd inbox`\n", inboxTallyText(*board.Inbox))
 				}
+				renderBoardOracle(w, board.Oracle)
 			})
 		},
 	}
@@ -817,12 +819,17 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	}
 
 	var lessonsJSON string
+	var graveyardRoute *routeFlag
 	graveyardCmd := &cobra.Command{
 		Use:  "graveyard <lifeboat-dir> --lessons-json <file|->",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if lessonsJSON == "" {
 				return &exitError{Code: 2, Msg: "disembark graveyard: --lessons-json <file|-> is required"}
+			}
+			route, err := graveyardRoute.resolve(cmd, "disembark graveyard", graveyardAgent)
+			if err != nil {
+				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
@@ -840,12 +847,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 				fmt.Fprint(w, res.Render())
+				renderReceiptLine(w, route, raw)
 			})
 		},
 	}
 	graveyardCmd.Flags().StringVar(&lessonsJSON, "lessons-json", "", "path to the host-produced lesson JSON (or - for stdin)")
+	graveyardRoute = addRouteFlag(graveyardCmd, graveyardAgent)
 
 	// The three M6 synthesis verbs (itd-88) share one dual-mode shape: WITHOUT the
 	// --*-json flag they run the core's deterministic evidence-only fallback (raw ==
@@ -854,10 +863,15 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	// (ErrPressReleaseUncited) — is a scrubbed exit 2; a per-entry drop is reported
 	// honestly and stays exit 0.
 	var principlesJSON string
+	var principlesRoute *routeFlag
 	principlesCmd := &cobra.Command{
 		Use:  "principles <lifeboat-dir> [--principles-json <file|->]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			route, err := principlesRoute.resolve(cmd, "disembark principles", delegatedAgent(principlesJSON, principlesAgent))
+			if err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -870,18 +884,25 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 				fmt.Fprint(w, res.Render())
+				renderReceiptLine(w, route, raw)
 			})
 		},
 	}
 	principlesCmd.Flags().StringVar(&principlesJSON, "principles-json", "", "path to host-produced principle JSON (or - for stdin); absent runs deterministic mode")
+	principlesRoute = addRouteFlag(principlesCmd, principlesAgent)
 
 	var pressReleaseJSON string
+	var pressReleaseRoute *routeFlag
 	pressReleaseCmd := &cobra.Command{
 		Use:  "press-release <lifeboat-dir> [--press-release-json <file|->]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			route, err := pressReleaseRoute.resolve(cmd, "disembark press-release", delegatedAgent(pressReleaseJSON, pressReleaseAgent))
+			if err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -898,14 +919,17 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 				fmt.Fprint(w, res.Render())
+				renderReceiptLine(w, route, raw)
 			})
 		},
 	}
 	pressReleaseCmd.Flags().StringVar(&pressReleaseJSON, "press-release-json", "", "path to host-produced press-release JSON (or - for stdin); absent runs deterministic mode")
+	pressReleaseRoute = addRouteFlag(pressReleaseCmd, pressReleaseAgent)
 
 	var reviewJSON string
+	var reviewRoute *routeFlag
 	reviewCmd := &cobra.Command{
 		Use: "review <lifeboat-dir> <source-repo> [--review-json <file|->]",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -915,6 +939,10 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			route, err := reviewRoute.resolve(cmd, "disembark review", delegatedAgent(reviewJSON, reviewAgent))
+			if err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -929,12 +957,14 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 				fmt.Fprint(w, res.Render())
+				renderReceiptLine(w, route, raw)
 			})
 		},
 	}
 	reviewCmd.Flags().StringVar(&reviewJSON, "review-json", "", "path to the host-produced review verdict JSON (or - for stdin); absent runs deterministic mode")
+	reviewRoute = addRouteFlag(reviewCmd, reviewAgent)
 
 	disembarkCmd.AddCommand(probeCmd)
 	disembarkCmd.AddCommand(coverageCmd)
@@ -1793,14 +1823,17 @@ func newRulesCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
-domains merged with this repo's .abcd/rules.json. Bare, it renders every active
-domain; a positional DOMAIN (case-insensitive) renders that one domain regardless
-of its state or the kill switch, so a dormant domain is still inspectable.
+domains, overridden by this machine's ~/.abcd/rules.json and then by this repo's
+.abcd/rules.json, each layer per field, so the repo wins a field both set.
+Either file may be absent. Bare, it renders every active domain; a positional
+DOMAIN (case-insensitive) renders that one domain regardless of its state or the
+kill switch, so a dormant domain is still inspectable.
 
-Every domain says which layer it came from. A domain the repo override names —
-its rules replaced, its state changed, or a custom domain declared — renders as
-"## NAME (repo override)" here, in the injected block and in the hook's
-diagnostic, and carries "source": "repo" in --json; an untouched bundled domain
+Every domain says which layer it came from. A domain an override names — its
+rules replaced, its state changed, or a custom domain declared — renders as
+"## NAME (user override)" or "## NAME (repo override)" here, in the injected
+block and in the hook's diagnostic, and carries "source": "user" or "repo" in
+--json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1834,7 +1867,16 @@ renders bare and carries "source": "bundled". Read-only.`,
 			active := rs.Active()
 			return render(cmd.OutOrStdout(), *asJSON, rulesView{Disabled: rs.Disabled, Domains: active}, func(w io.Writer) {
 				if rs.Disabled {
-					fmt.Fprintln(w, "abcd rules — disabled (kill switch set in .abcd/rules.json)")
+					// The switch is sticky across layers, so name every file
+					// that set it: each has to clear it.
+					var files []string
+					for _, src := range rs.KillSwitchSources() {
+						files = append(files, rules.LayerPath(src))
+					}
+					if len(files) == 0 {
+						files = []string{rules.RepoRelPath}
+					}
+					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(files, " and "))
 					return
 				}
 				if out := rules.Render(active); out != "" {
@@ -2023,6 +2065,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "intent plan", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if res.StampOnly {
 					// The identity step alone, over a record already planned: say what
@@ -2041,6 +2084,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.ImpactStamped != "" {
 					fmt.Fprintf(w, "  impact stamped: %s\n", res.ImpactStamped)
 				}
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
@@ -2220,7 +2264,86 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	})
 
 	intentCmd.AddCommand(newIntentAuditCommand(asJSON))
+	intentCmd.AddCommand(newIntentConditionCommand(asJSON))
 	return intentCmd
+}
+
+// newIntentConditionCommand builds `abcd intent condition`, the second writer
+// into the scope-condition disposition surface (spc-2609020626046252). With one
+// operand it renders every condition the intent carries with its standing
+// disposition and the block it came from, and writes nothing; with a condition
+// id it writes one dated disposition block, joined to the reading item or the
+// shipped intent that occasioned it. Both forms are front doors onto
+// internal/core/intent; every refusal exits 2 with nothing written.
+func newIntentConditionCommand(asJSON *bool) *cobra.Command {
+	var disposition, occasionedBy, groundsText, narrowing string
+	cmd := &cobra.Command{
+		Use:   "condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]",
+		Short: "Read a shipped intent's scope-condition standing, or disposition one condition from a reading item or a delivered intent",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			if len(args) == 1 {
+				for _, f := range []string{"disposition", "occasioned-by", "grounds", "narrowing"} {
+					if cmd.Flags().Changed(f) {
+						return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent condition: --%s writes a disposition and needs the condition id: `abcd intent condition <itd-N> <cond-id> ...` (nothing written)", f)}
+					}
+				}
+				v, err := intent.ConditionStanding(repoRoot, args[0])
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd intent condition: " + err.Error()}
+				}
+				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) {
+					fmt.Fprintf(w, "abcd intent condition — %s: %d condition(s), %d disposition(s) recorded\n", v.IntentID, len(v.Standing), len(v.Dispositions))
+					fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(v.Path))
+					renderConditionStanding(w, v.Standing)
+				})
+			}
+			res, err := intent.DispositionCondition(repoRoot, intent.ConditionRequest{
+				IntentID: args[0], ConditionID: args[1], Disposition: disposition,
+				Narrowing: narrowing, OccasionedBy: occasionedBy, Grounds: groundsText,
+				Date: time.Now().UTC().Format(time.DateOnly),
+			})
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent condition: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd intent condition — %s on %s: %s, occasioned by %s (%s)\n",
+					res.ConditionID, res.IntentID, res.Disposition, res.OccasionedBy, res.Date)
+				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
+				renderConditionStanding(w, res.Standing)
+				if c := res.OccasionCitation; c != nil {
+					fmt.Fprintf(w, "  note: %s cites %s, not %s — reported, not refused: the item is the reading's word and the mark is yours\n",
+						c.Occasion, c.Cited, c.Dispositioned)
+				}
+				emitRedactionNote(w, res.Redacted, "")
+			})
+		},
+	}
+	cmd.Flags().StringVar(&disposition, "disposition", "", "the condition's disposition: survived|narrowed|falsified|untested")
+	cmd.Flags().StringVar(&occasionedBy, "occasioned-by", "", "what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)")
+	cmd.Flags().StringVar(&groundsText, "grounds", "", "why: held to the grounds substance floor, redacted before it is written")
+	cmd.Flags().StringVar(&narrowing, "narrowing", "", "what now holds: required on narrowed and refused on every other value")
+	return cmd
+}
+
+// renderConditionStanding writes one line per condition: its standing value and
+// the block it came from, or `untested (no block)` for one no block names.
+func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {
+	for _, e := range standing {
+		if e.Source == "" {
+			fmt.Fprintf(w, "  %s — %s (no block)\n", e.ConditionID, e.Disposition)
+			continue
+		}
+		from := e.Source
+		if e.Date != "" {
+			from += ", " + e.Date
+		}
+		fmt.Fprintf(w, "  %s — %s (from %s)\n", e.ConditionID, e.Disposition, termsafe.Sanitize(from))
+	}
 }
 
 // ledgerDecisionRule is the one-line capture-vs-intent decision rule shown in
@@ -2293,10 +2416,12 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 
 // newIntentAuditCommand builds `abcd intent audit`: `ingest --verdict-json`
 // applies a host-produced intent-audit verdict to the shipped intent's Audit
-// Notes (fail-closed: ingested | dead_letter | noop); bare `audit <itd-N>`
+// Notes (fail-closed: ingested | dead_letter | noop; a re-ingest that renders
+// differently replaces the ingested verdict); bare `audit <itd-N>`
 // re-emits the OWED stub + ephemeral request for a shipped intent.
 func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	var issueDrift, strict bool
+	var auditRoute, ingestRoute *routeFlag
 	auditCmd := &cobra.Command{
 		Use:  "audit [<itd-N>] | audit --issue-drift [--strict]",
 		Args: cobra.MaximumNArgs(1),
@@ -2304,6 +2429,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if issueDrift {
 				if len(args) > 0 {
 					return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: the drift check walks the whole corpus and takes no <itd-N>"}
+				}
+				if _, err := auditRoute.resolve(cmd, "abcd intent audit --issue-drift", ""); err != nil {
+					return err
 				}
 				return runIssueDrift(cmd, *asJSON, strict)
 			}
@@ -2317,17 +2445,29 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := intent.ReEmitAudit(repoRoot, args[0])
+			route, err := auditRoute.resolve(cmd, "abcd intent audit", auditAgent)
+			if err != nil {
+				return err
+			}
+			res, err := intent.ReEmitAuditWith(repoRoot, args[0],
+				intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 			if err != nil {
 				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
 					&exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()})
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			// Only a receipt still owed has a request for the host to act on; a
+			// terminal one is reported as it stands, with no request block.
+			if res.Status != "owed" && res.Status != "already_owed" {
+				route = nil
+			}
+			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n  request: %s\n",
 					res.IntentID, res.Status, res.ReceiptID, res.RequestPath)
+				renderRequestLine(w, route)
 			})
 		},
 	}
+	auditRoute = addRouteFlag(auditCmd, auditAgent)
 
 	var verdictJSON string
 	ingestCmd := &cobra.Command{
@@ -2341,14 +2481,27 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if verdictJSON == "" {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: --verdict-json <path> is required"}
 			}
-			res, err := intent.IngestVerdict(repoRoot, verdictJSON)
+			route, err := ingestRoute.resolve(cmd, "abcd intent audit ingest", auditAgent)
+			if err != nil {
+				return err
+			}
+			// Read once: the ingest validates these bytes and the receipt's
+			// model_reported is read from them, so the two describe one read.
+			payload, err := intent.ReadVerdict(verdictJSON)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			res, err := intent.IngestVerdictBytes(repoRoot, payload)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent audit ingest: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, payload), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent audit ingest — %s (receipt %s, intent %s)\n", res.Status, res.ReceiptID, res.IntentID)
 				switch res.Status {
 				case "ingested":
+					if res.Replaced {
+						fmt.Fprintf(w, "  replaced the verdict already ingested for %s\n", res.ReceiptID)
+					}
 					fmt.Fprintf(w, "  criteria %d: MET %d · MET_WITH_CONCERNS %d · NOT_MET %d · INCONCLUSIVE %d\n",
 						res.Criteria, res.Met, res.MetWithConcern, res.NotMet, res.Inconclusive)
 					// Only an intent that records scope conditions has a disposition
@@ -2360,10 +2513,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				case "dead_letter":
 					fmt.Fprintf(w, "  DEAD_LETTER: %s\n  raw payload: %s\n", res.Reason, res.DeadLetterPath)
 				}
+				// The condition blocks this verdict did not override: its rationale
+				// named none of their occasions (spc-2609020626046252). A re-ingest
+				// for the same receipt naming one replaces the ingested verdict.
+				for _, d := range res.ReadingOccasionedStanding {
+					fmt.Fprintf(w, "  still standing: %s — %s (from %s); name %s in the rationale and ingest again to override it\n",
+						d.ConditionID, d.Disposition, termsafe.Sanitize(d.Source), d.Occasion)
+				}
+				renderReceiptLine(w, route, payload)
 			})
 		},
 	}
 	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON")
+	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
 		"walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0")
@@ -2541,6 +2703,8 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if res.AuditEmitError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
 			}
+			routeCloseRequest(cmd, repoRoot, res)
+			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to repoint the links other files hold; record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
 				if res.Remainder.ID != "" {
@@ -2552,6 +2716,15 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 						verb = "reused existing remainder"
 					}
 					fmt.Fprintf(w, "  %s %s for %s\n  %s\n", verb, res.Remainder.ID, res.Remainder.Intent, termsafe.Sanitize(res.Remainder.Path))
+					// The steps not marked landed travel with the remainder
+					// (itd-2609212103565953); name them, renumbered as the
+					// remainder now lists them. Titles are an author's prose.
+					if n := len(res.RemainderSteps); n > 0 {
+						fmt.Fprintf(w, "  carried %d unlanded step(s) into %s:\n", n, res.Remainder.ID)
+						for _, st := range res.RemainderSteps {
+							fmt.Fprintf(w, "    %d. %s\n", st.Number, termsafe.Sanitize(st.Title))
+						}
+					}
 				}
 				switch {
 				case res.IntentMoved:
@@ -2571,6 +2744,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 				default:
 					fmt.Fprintf(w, "  intent %s already %s (no move)\n", res.Intent.ID, res.To)
 				}
+				emitRelinked(w, res.Relinked)
 				// A close is idempotent, so a re-run against an already-shipped
 				// intent gets the SAME receipt back. Announcing "OWED" each time
 				// reads as a fresh obligation; only the close that actually parked
@@ -2589,7 +2763,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	closeCmd.Flags().StringVar(&closeImpact, "impact", "", "product impact to stamp on an intent that declares none: additive|breaking|fix (an intent may not be internal); accepted only at the close that ships the intent")
-	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned)")
+	closeCmd.Flags().StringVar(&closeRemainder, "remainder", "", "kebab-case slug of a follow-on spec to mint for what this spec did not deliver, attached to the same intent (which then stays planned); it carries the steps not marked landed")
 	closeCmd.Flags().StringVar(&closeMode, "production-mode", "", productionModeFlagHelp)
 	specCmd.AddCommand(closeCmd)
 
@@ -2713,7 +2887,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin or the status-line wiring, so say which optional work it
+				// pin, the status-line wiring or a routing table, so say which optional work it
 				// left, why each needs an answer, and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
 					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
@@ -2730,7 +2904,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
-	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, which needs an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
+	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
@@ -3035,6 +3209,8 @@ func optionalSkipReason(id string) string {
 		return "the pin records the current git identity, so it is only written against an answered prompt"
 	case ahoy.StatusLineOfferGapID:
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
+	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
+		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
 	}
 	return ""
 }
@@ -3510,9 +3686,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("resolve", err)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "capture resolve", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s%s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path), resolvedByNote(res.ResolvedBy))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}
@@ -3759,9 +3937,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("wontfix", err)
 			}
+			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
+				emitRelinked(w, res.Relinked)
 			})
 		},
 	}

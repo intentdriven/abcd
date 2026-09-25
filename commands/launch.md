@@ -185,6 +185,8 @@ Then summarise the JSON for the user:
 - `version` — the version the release would carry.
 - `bundle.files` — the files the bundle would include (an array; report its length as the count).
 - `scan.hard_fails` — secret/PII findings that would block the release.
+  `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
+  present, counts the rest, and `scan.hard_fails` counts every one.
 - `smoke.ok` — whether the payload would install: both plugin manifests parse,
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.
@@ -306,6 +308,29 @@ ignored. The whole verdict is on the cut's `findings` JSON key.
 Never delete the record to clear the gate — the cut refuses under
 `deleted-finding` when you do — and never hand-edit `CHANGELOG.md` to route
 around a refusal.
+
+**Model-tier routing.** Both steps of `launch ship` dispatch the
+`release-changelog-composer` agent, and each resolves that agent's model tier
+before anything else runs: an invocation override, over the repository's
+`.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone. A
+ready cut's `--json` result carries the request block as a `routing` member
+(`agent`, `tier`, `fan_out`, `source`, `origin`, `override`, `connection`,
+`fallback`) and its text a `routing:` line: run the composer at that tier where
+the harness lets you choose one, and pass the same `--route` to the ingest step
+so its receipt records the override. The ingest's `--json` result carries a
+`route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent`, `model_reported`) and its text a
+`route:` line; relay it with the result. When no configured provider can serve
+the tier, one stderr line says the step goes through the harness instead. A
+`--route` naming an agent this invocation does not dispatch, a tier outside the
+set, a connection this machine has not configured, or a routing table that
+cannot be read exits 2 before anything is written. With no table accepted and no
+`--route`, the step asks for `host-decides` and nothing is printed.
 
 ### 2. Compose the prose (host-delegated)
 

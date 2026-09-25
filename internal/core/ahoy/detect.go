@@ -98,6 +98,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectMarkerDrift(abs)...)
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectStatusLine(harness)...)
+		gaps = append(gaps, detectOracleRouting(abs)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
 		// Guard health is computed for every managed or adoptable repo, so a
@@ -460,6 +461,13 @@ func detectMarkerDrift(cwd string) []Gap {
 				ID: "marker.outdated", Category: PluginOwned, Scope: "repo",
 				Title: name + " marker block outdated", Detail: name + " marker block differs from the template.",
 				FixHint: "ahoy install rewrites it to canonical (silent overwrite).", Required: true, Resolvable: true,
+			})
+		case markerUnplaceable:
+			gaps = append(gaps, Gap{
+				ID: "marker.unplaceable", Category: PluginOwned, Scope: "repo",
+				Title:   name + " marker block cannot be placed",
+				Detail:  name + " has no frontmatter or live H1 and ends inside a fenced block or HTML comment nothing closes, so the block would be written where no reader sees it.",
+				FixHint: "Close the open fence or comment (or add an H1 above it); ahoy install then plants the block.", Required: true, Resolvable: false,
 			})
 		}
 	}
