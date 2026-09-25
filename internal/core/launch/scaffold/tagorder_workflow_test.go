@@ -1,8 +1,13 @@
 package scaffold
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/actionsexpr"
 )
 
 // TestTheTagWaitsOnTheVerifyGate holds the release chain to one order: detect,
@@ -71,15 +76,8 @@ func TestTheTagWaitsOnTheVerifyGate(t *testing.T) {
 		if !strings.Contains(publish, "needs: [verify, tag]\n") {
 			t.Errorf("the publish job must need both verify and tag (Abcd=%v)", subs.Abcd)
 		}
-		for _, cond := range []string{
-			"github.event_name != 'workflow_dispatch'",
-			"needs.verify.result == 'success'",
-			"(needs.tag.result == 'success' || needs.tag.result == 'skipped')",
-		} {
-			if !strings.Contains(publish, cond) {
-				t.Errorf("the publish job's if must carry %q (Abcd=%v)", cond, subs.Abcd)
-			}
-		}
+		// The publish job's condition is evaluated, not pattern-matched, by
+		// TestThePublishConditionNeedsAGreenVerify below.
 
 		// File order is job order read by a person: verify, tag, release.
 		v := indexOf(t, rel, "\n  verify:\n", "release.yml")
@@ -89,4 +87,82 @@ func TestTheTagWaitsOnTheVerifyGate(t *testing.T) {
 			t.Errorf("release.yml job order: verify %d < tag %d < release %d must hold (Abcd=%v)", v, tg, p, subs.Abcd)
 		}
 	}
+}
+
+// TestThePublishConditionNeedsAGreenVerify evaluates the publish job's `if:`
+// the way GitHub does, over every combination of the run's state, and holds it
+// to one rule: publish exactly when the run is not a rehearsal, has not been
+// cancelled, its verify gate is green, and its tag was either made or not asked
+// for. The committed workflow and both template profiles are each evaluated.
+//
+// It evaluates rather than matches because the condition's clauses can all be
+// present while it means something else: `(needs.verify.result == 'success' ||
+// !cancelled())` carries the verify clause and publishes after a red verify on
+// every uncancelled run, the tag-push and heal paths included, and a substring
+// assertion passed it (review of the workflows lane, mutant M6).
+func TestThePublishConditionNeedsAGreenVerify(t *testing.T) {
+	committed, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(ReleaseYMLPath)))
+	if err != nil {
+		t.Fatalf("read committed %s: %v", ReleaseYMLPath, err)
+	}
+	sources := map[string]string{ReleaseYMLPath: string(committed)}
+	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main")} {
+		rendered, err := Render(subs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sources[fmt.Sprintf("release.yml.tmpl (Abcd=%v)", subs.Abcd)] = string(rendered.ReleaseYML)
+	}
+
+	results := []string{"success", "failure", "cancelled", "skipped"}
+	for where, wf := range sources {
+		cond := jobIf(t, jobSection(t, wf, "release"), where)
+		for _, event := range []string{"push", "workflow_dispatch"} {
+			for _, verify := range results {
+				for _, tag := range results {
+					for _, cancelled := range []bool{false, true} {
+						ctx := map[string]any{
+							"github.event_name":   event,
+							"needs.verify.result": verify,
+							"needs.tag.result":    tag,
+							"cancelled()":         cancelled,
+							"success()":           !cancelled && verify == "success" && tag == "success",
+							"failure()":           verify == "failure" || tag == "failure",
+						}
+						got, err := actionsexpr.EvalIf(cond, ctx)
+						if err != nil {
+							t.Fatalf("%s: cannot evaluate the publish job's if %q: %v", where, cond, err)
+						}
+						want := event != "workflow_dispatch" && !cancelled && verify == "success" &&
+							(tag == "success" || tag == "skipped")
+						if got != want {
+							t.Errorf("%s: the publish job's if %q is %v for event=%s verify=%s tag=%s "+
+								"cancelled=%v, want %v: a release publishes only after a green verify, "+
+								"with its tag made or not asked for, on an uncancelled non-rehearsal run",
+								where, cond, got, event, verify, tag, cancelled, want)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// jobIf returns the value of a job's own `if:` key, failing when the job has
+// none, more than one, or a block scalar this reader does not fold.
+func jobIf(t *testing.T, job, where string) string {
+	t.Helper()
+	var found []string
+	for _, line := range strings.Split(job, "\n") {
+		if strings.HasPrefix(line, "    if:") {
+			found = append(found, strings.TrimSpace(strings.TrimPrefix(line, "    if:")))
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%s: the job carries %d `if:` keys at job level; want exactly one", where, len(found))
+	}
+	if v := found[0]; v == "" || v[0] == '|' || v[0] == '>' {
+		t.Fatalf("%s: the job's `if:` is a block scalar (%q); write it on one line so it can be evaluated", where, v)
+	}
+	return found[0]
 }

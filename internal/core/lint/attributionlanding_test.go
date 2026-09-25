@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/actionsexpr"
 )
 
 // TestAttributionGatesTheCommitsThatLandOnMain holds attribution.yml's commit
@@ -61,7 +63,7 @@ func TestAttributionGatesTheCommitsThatLandOnMain(t *testing.T) {
 		base, head string
 	}{
 		{"pull_request", pull, prBase, prHead},
-		{"merge_group", queue, mergeGroupBaseSHA, stringify(mergeGroupContext["github.event.merge_group.head_sha"])},
+		{"merge_group", queue, mergeGroupBaseSHA, actionsexpr.Stringify(mergeGroupContext["github.event.merge_group.head_sha"])},
 		{"push", push, pushBeforeSHA, pushHead},
 	} {
 		for key, want := range map[string]string{"BASE_SHA": ev.base, "HEAD_SHA": ev.head} {
@@ -70,13 +72,13 @@ func TestAttributionGatesTheCommitsThatLandOnMain(t *testing.T) {
 				t.Errorf("the commit step declares no %s env", key)
 				continue
 			}
-			got, err := evalWorkflowValue(raw, ev.ctx)
+			got, err := actionsexpr.EvalValue(raw, ev.ctx)
 			if err != nil {
 				t.Errorf("%s on a %s event: cannot evaluate %s: %v", key, ev.name, raw, err)
 				continue
 			}
-			if stringify(got) != want {
-				t.Errorf("%s on a %s event resolves to %q, want %q (%s)", key, ev.name, stringify(got), want, raw)
+			if actionsexpr.Stringify(got) != want {
+				t.Errorf("%s on a %s event resolves to %q, want %q (%s)", key, ev.name, actionsexpr.Stringify(got), want, raw)
 			}
 		}
 	}
