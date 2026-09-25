@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The helpers in this file EXECUTE a workflow step's own `run:` script, read
@@ -114,10 +116,9 @@ func scratchRepo(t *testing.T, n int) (string, []string) {
 	git := func(args ...string) string {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(),
+		cmd.Env = append(gittest.Env(t),
 			"GIT_AUTHOR_NAME=Test Person", "GIT_AUTHOR_EMAIL=person@example.com",
-			"GIT_COMMITTER_NAME=Test Person", "GIT_COMMITTER_EMAIL=person@example.com",
-			"GIT_CONFIG_NOSYSTEM=1", "HOME="+dir)
+			"GIT_COMMITTER_NAME=Test Person", "GIT_COMMITTER_EMAIL=person@example.com")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
