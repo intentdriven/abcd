@@ -209,28 +209,46 @@ func TestPEMHeaderIsMaskedWhole(t *testing.T) {
 	}
 }
 
-// TestRedactPEMBodyConsumerIsBounded pins the bound pem.go states: the
-// consumer takes at most maxPEMBodyLines after the header and reports how
-// many it took; what lies beyond is outside the block it will claim (the
-// documented residual), and the prose after the block is untouched.
+// TestRedactPEMBodyConsumerIsBounded pins the bound pem.go states and what it
+// governs. Past maxPEMBodyLines a block goes on only over lines that carry key
+// material, so the tail of an oversized key is consumed with it
+// (iss-2609020127210042) while a pathological run of body-SHAPED lines that
+// carry none — blank lines, single short tokens — still stops at the bound,
+// and the prose after either is untouched.
 func TestRedactPEMBodyConsumerIsBounded(t *testing.T) {
 	header, body1, _, _, end := pemFixture()
 	const beyond = 3
-	lines := []string{header}
-	for i := 0; i < maxPEMBodyLines+beyond; i++ {
-		lines = append(lines, body1)
-	}
-	lines = append(lines, end, "prose after an oversized block")
-	out := redactAll(t, strings.Join(lines, "\n"))
-	if !strings.Contains(out, pemBodyPlaceholder(maxPEMBodyLines)) {
-		t.Errorf("placeholder does not report the bound: %q", out[len(out)-200:])
-	}
-	if !strings.Contains(out, "prose after an oversized block") {
-		t.Errorf("prose after the block was lost")
-	}
-	if got := strings.Count(out, body1); got != beyond {
-		t.Errorf("body lines beyond the bound: got %d, want %d (the bound is the contract)", got, beyond)
-	}
+	t.Run("key material past the bound is the block's tail", func(t *testing.T) {
+		lines := []string{header}
+		for i := 0; i < maxPEMBodyLines+beyond; i++ {
+			lines = append(lines, body1)
+		}
+		lines = append(lines, end, "prose after an oversized block")
+		out := redactAll(t, strings.Join(lines, "\n"))
+		if !strings.Contains(out, pemBodyPlaceholder(maxPEMBodyLines+beyond+1)) {
+			t.Errorf("placeholder does not report the whole block: %q", out[len(out)-200:])
+		}
+		if !strings.Contains(out, "prose after an oversized block") {
+			t.Errorf("prose after the block was lost")
+		}
+		if got := strings.Count(out, body1); got != 0 {
+			t.Errorf("body lines past the bound survived: %d", got)
+		}
+	})
+	t.Run("body-shaped lines with no key material stop at the bound", func(t *testing.T) {
+		lines := []string{header, body1}
+		for i := 0; i < maxPEMBodyLines+beyond; i++ {
+			lines = append(lines, "ok")
+		}
+		lines = append(lines, "prose after a pathological block")
+		out := redactAll(t, strings.Join(lines, "\n"))
+		if !strings.Contains(out, pemBodyPlaceholder(maxPEMBodyLines)) {
+			t.Errorf("placeholder does not report the bound: %q", out[len(out)-200:])
+		}
+		if got := strings.Count(out, "\nok"); got != beyond+1 {
+			t.Errorf("lines past the bound: got %d surviving, want %d (the bound is the contract)", got, beyond+1)
+		}
+	})
 }
 
 // TestRedactPEMBlockWithGutters: a block pasted with indentation, a diff

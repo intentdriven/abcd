@@ -24,6 +24,22 @@ The online version check hands over to this verb: when an update is available, i
 `next:` line names the command to type, chosen by the same on-disk classification
 this verb dispatches on ([`12-version.md`](12-version.md)).
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty: the verb registers no sub-command. Its one argument is an
+optional release tag.
+
 ## Behaviour
 
 The verb takes an optional release tag; with none, it resolves the latest. The dispatch

@@ -52,9 +52,11 @@ A prompt that matches no domain injects nothing (zero added tokens).
   working tree. Where git cannot answer for that tree — a checkout owned by
   another uid, a container bind mount — the root is recovered from the `.git`
   marker instead, and a root the caller does not own is REFUSED: the session
-  falls back to its own working directory on the bundled defaults (under
-  `~/.abcd/rules.json`, for the rules), and one line on stderr names what was
-  refused. Re-admit such a checkout deliberately, from
+  takes its own working directory as the root, nothing above it is read, and one
+  line on stderr names what was refused. The refusal bounds the walk, not the
+  working directory: a `.abcd/` there is still read, so a session started AT the
+  refused root reads that root's configuration, over `~/.abcd/rules.json` for
+  the rules. Re-admit such a checkout deliberately, from
   an account you control:
   `mkdir -p ~/.abcd && printf '%s\n' '<checkout>' >> ~/.abcd/trusted-roots`
   (one absolute path per line; `#` starts a comment). Only your home declares

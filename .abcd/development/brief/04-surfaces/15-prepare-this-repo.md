@@ -23,6 +23,25 @@ blames a stale binary and asks for a rebuild, which is the wrong reading for a
 surface that is host-delegated by design: what the reader needs is the plugin
 command above.
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+
+The table is empty: the command takes no argument and defines no sub-verb, and
+its four phases run within one invocation. Because the command is
+host-delegated, the rule's configuration exempts this table from the comparison
+with the command tree, and from nothing else: the table is still required, and
+any row it carries is still format-checked.
+
 ## What it does
 
 - **Refuses on repos the user does not own.** The first phase checks the origin

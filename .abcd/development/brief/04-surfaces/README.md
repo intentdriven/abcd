@@ -59,15 +59,18 @@ neither direction: nothing asserts that one has a row here, and nothing notices
 when one is added or removed (iss-110).
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
-file in this directory whose verb registers sub-commands carries a `## Sub-verbs`
-table recording, per verb, its adr-40 bucket (`lint` / `review` / `audit` /
-`gate`, or `—` for a non-assessment verb) and whether it is `shipped` or `staged`.
-The rule checks each table against the committed command-tree snapshot in both
-directions: a `shipped` row must be registered, a `staged` row must not be, a
-registered sub-command must have a row, and a sub-command-bearing verb cannot lack
-a table or a file entirely. Host-delegated surfaces and the bare command are
-exempt from that comparison by explicit configuration, never silently; operator-
-internal verbs are absent from this registry by design.
+file in this directory carries a `## Sub-verbs` table recording, per verb, its
+adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a non-assessment
+verb) and whether it is `shipped` or `staged`. A verb with no sub-verb carries
+the table with its header alone, so an empty table is a recorded fact rather than
+a missing one, and a file without the table is a finding whatever its verb
+registers. The rule checks each table against the committed command-tree
+snapshot in both directions: a `shipped` row must be registered, a `staged` row
+must not be, a registered sub-command must have a row, and a sub-command-bearing
+verb cannot lack a file entirely. Host-delegated surfaces and the bare command are
+exempt from that comparison by explicit configuration, never silently, and from
+nothing else: their tables are still required and format-checked.
+Operator-internal verbs are absent from this registry by design.
 
 The surface-grain `Status` enum stays two-valued: there is no `partial`, because
 the sub-verb rows carry that granularity, so a row may honestly read `shipped`
@@ -141,7 +144,7 @@ verb the binary registers apart from the framework's own `help`.
 |---|---|---|
 | `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no verb: the verb itself is documented only in the generated CLI reference and the repo's own conventions router |
-| `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); documented in [`05-intent.md`](05-intent.md) |
+| `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); documented in [`05-intent.md`](05-intent.md) |
 | `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no entrypoint of its own: the two router entrypoints have no documented home in this brief, and the generated CLI reference omits them by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 | `statusline` | The harness-invoked status-line render: the harness runs it on every refresh with its payload on stdin, and it prints abcd's row in a managed repository or runs the user's recorded previous status command everywhere else. `ahoy install` wires it; no user invokes it. | itd-200 / spc-70 (the presence badge); the row and the state behind it are documented in [`08-abcd.md`](08-abcd.md) |

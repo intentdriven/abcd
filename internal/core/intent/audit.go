@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/condition"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -61,19 +62,25 @@ var verdictEnum = map[string]bool{
 
 // dispositionUntested is the disposition vocabulary's word for the absence of a
 // judgement — the value the quarantine path records, and the only one exempt
-// from the cited-evidence rule.
-const dispositionUntested = "untested"
+// from the cited-evidence rule. It is core/condition's value: the vocabulary is
+// shared with the condition verb and every reader of both writers' blocks.
+const dispositionUntested = condition.Untested
 
 // dispositionNarrowed is the one disposition that requires a stated narrowing —
 // and the only one permitted to carry one.
-const dispositionNarrowed = "narrowed"
+const dispositionNarrowed = condition.Narrowed
 
-// dispositionEnum is the closed set of scope-condition dispositions (spc-59).
-// It is deliberately disjoint from verdictEnum: a condition is not a criterion,
-// and an acceptance verdict is not a judgement about an ex-ante assumption.
-var dispositionEnum = map[string]bool{
-	"survived": true, dispositionNarrowed: true, "falsified": true, dispositionUntested: true,
-}
+// dispositionEnum is the closed set of scope-condition dispositions (spc-59),
+// as a set over core/condition's Enum. It is deliberately disjoint from
+// verdictEnum: a condition is not a criterion, and an acceptance verdict is not
+// a judgement about an ex-ante assumption.
+var dispositionEnum = func() map[string]bool {
+	m := make(map[string]bool, len(condition.Enum))
+	for _, v := range condition.Enum {
+		m[v] = true
+	}
+	return m
+}()
 
 var (
 	// rcpIDRe constrains a receipt id so it can never build a path that escapes
@@ -92,7 +99,10 @@ var (
 	// It is still a byte pattern rather than a grammar: it does not know a fenced
 	// block from prose, so a marker-shaped line inside a fence still matches
 	// (iss-2609020529185438). Both defences are needed; neither is sufficient.
-	markerRe = regexp.MustCompile(`(?m)^<!-- abcd-review: (OWED|INGESTED|DEAD_LETTER) receipt=(rcp-[0-9a-f]+) -->\r?$`)
+	//
+	// The grammar is core/condition's ReviewMarkerRe, shared with the condition
+	// block's reader.
+	markerRe = condition.ReviewMarkerRe
 	// auditPlaceholderRe matches an intent template's Audit Notes placeholder,
 	// dropped when the first real review block lands so a populated audit carries no
 	// stale "Empty" claim. It tolerates both delimiter styles the templates have
@@ -207,6 +217,17 @@ type IngestVerdictResult struct {
 	Untested       int    `json:"untested"`
 	DeadLetterPath string `json:"dead_letter_path,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+	// Replaced is set when the ingest replaced a verdict already ingested for
+	// the receipt: a re-ingest whose payload renders differently from the block
+	// on the record. A re-ingest that renders identically is a noop.
+	Replaced bool `json:"replaced,omitempty"`
+	// ReadingOccasionedStanding is every condition-block disposition the fold
+	// still reports as standing after this write: the verdict did not override
+	// it, because its rationale did not name the block's occasion
+	// (spc-2609020626046252). An auditor who meant to override one names its
+	// occasion in the rationale and ingests again for the same receipt: a
+	// payload that renders differently replaces the ingested block (Replaced).
+	ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +248,20 @@ func receiptFor(intentID, specID, content string) string {
 // receipt already exists (OWED/INGESTED/DEAD_LETTER) the Audit Notes are left
 // untouched. All ids are validated before any path is built.
 func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
+	return emitAuditWith(repoRoot, it, AuditEmitOptions{})
+}
+
+// AuditEmitOptions carries what a front door adds to an emitted request.
+type AuditEmitOptions struct {
+	// RoutingSection is the request block's routing section
+	// (itd-2609170822093401): the tier and fan-out bound the host is asked to
+	// run the auditor at, rendered by the front door from the resolved route.
+	// It lands after the provenance block, outside the hashed prompt, so the
+	// verdict's prompt_hash does not move with the machine's routing.
+	RoutingSection string
+}
+
+func emitAuditWith(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitResult, error) {
 	if !recordid.ValidIntentID(it.ID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", it.ID)
 	}
@@ -262,7 +297,7 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 			// Only an OWED receipt still awaits a verdict: ensure its ephemeral
 			// request still exists (it is gitignored and may have been swept). A
 			// terminal INGESTED/DEAD_LETTER receipt needs no request rewrite.
-			if err := writeAuditRequest(repoRoot, it, rcp, content); err != nil {
+			if err := writeAuditRequest(repoRoot, it, rcp, content, opts); err != nil {
 				return res, err
 			}
 		}
@@ -276,7 +311,7 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 	if err := writeIntentFile(abs, it.Path, updated); err != nil {
 		return AuditEmitResult{}, err
 	}
-	if err := writeAuditRequest(repoRoot, it, rcp, updated); err != nil {
+	if err := writeAuditRequest(repoRoot, it, rcp, updated, opts); err != nil {
 		return AuditEmitResult{}, err
 	}
 	res.Status = "owed"
@@ -293,6 +328,11 @@ func emitAuditForIntent(repoRoot string, it Intent) (AuditEmitResult, error) {
 // discard the recorded audit), so the caller learns the review is already
 // resolved rather than silently receiving a fresh stub.
 func ReEmitAudit(repoRoot, intentID string) (AuditEmitResult, error) {
+	return ReEmitAuditWith(repoRoot, intentID, AuditEmitOptions{})
+}
+
+// ReEmitAuditWith is ReEmitAudit with what the front door adds to the request.
+func ReEmitAuditWith(repoRoot, intentID string, opts AuditEmitOptions) (AuditEmitResult, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
 	}
@@ -310,13 +350,13 @@ func ReEmitAudit(repoRoot, intentID string) (AuditEmitResult, error) {
 	if !spec.HasNum(it.SpecID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: %s has no well-formed spec_id (%q); refusing to emit a review", intentID, it.SpecID)
 	}
-	return emitAuditForIntent(repoRoot, it)
+	return emitAuditWith(repoRoot, it, opts)
 }
 
 // writeAuditRequest writes the ephemeral review request markdown. The request is
 // a prompt over the intent's Acceptance Criteria plus the receipt metadata; the
 // host reads it, runs the reviewer, and produces the verdict JSON.
-func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
+func writeAuditRequest(repoRoot string, it Intent, rcp, content string, opts AuditEmitOptions) error {
 	if !rcpIDRe.MatchString(rcp) {
 		return fmt.Errorf("intent: receipt id %q is malformed; refusing to build a request path", rcp)
 	}
@@ -330,6 +370,9 @@ func writeAuditRequest(repoRoot string, it Intent, rcp, content string) error {
 	}
 	body := auditPromptBody(it, rcp, content, realised)
 	doc := body + auditProvenanceBlock(auditPolicyFor(it, rcp, content, realised))
+	if opts.RoutingSection != "" {
+		doc += "\n## Routing\n\n" + opts.RoutingSection
+	}
 
 	path := filepath.Join(dir, rcp+".request.md")
 	if err := fsutil.WriteFileAtomic(path, []byte(doc), 0o644); err != nil {
@@ -540,7 +583,10 @@ func auditProvenanceBlock(p auditPolicy) string {
 //
 //   - malformed/oversize/unreadable payload with no resolvable receipt -> reject;
 //   - receipt matching no parked marker (unsolicited) -> reject;
-//   - already INGESTED for this receipt -> no-op;
+//   - already INGESTED for this receipt -> no-op when the payload renders to
+//     the block on the record, a replacement in place when it renders
+//     differently, and a refusal with nothing written when it does not
+//     validate (see reingestVerdict);
 //   - schema/semantic validation failure on a resolvable receipt -> DEAD_LETTER
 //     (marker + INCONCLUSIVE criteria + retained raw payload), never partial;
 //   - otherwise -> INGESTED (OWED stub replaced by the rendered verdict).
@@ -549,6 +595,21 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	if err != nil {
 		return IngestVerdictResult{}, err
 	}
+	return IngestVerdictBytes(repoRoot, raw)
+}
+
+// ReadVerdict reads a verdict file the way IngestVerdict does (guarded, capped),
+// for a front door that needs the payload itself as well as its ingest.
+func ReadVerdict(verdictPath string) ([]byte, error) {
+	return readVerdictFile(verdictPath)
+}
+
+// IngestVerdictBytes is IngestVerdict over a payload a front door has already
+// read through ReadVerdict. The front door reads the verdict once and hands the
+// same bytes to the ingest and to whatever else it reports from the payload
+// (the receipt's model_reported), so the two can never describe different
+// reads of a file that changed between them.
+func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error) {
 
 	// Lenient first pass: recover _type + receipt id so we can classify and
 	// resolve the payload. A payload that is not a fidelity verdict at all, or that
@@ -576,7 +637,7 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict receipt %s matches no parked review marker (unsolicited); refusing to ingest", rcp)
 	}
 	if state == "INGESTED" {
-		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
+		return reingestVerdict(repoRoot, raw, it, rcp, content)
 	}
 
 	// The attestation chain must be the pair THIS receipt issued, not merely two
@@ -622,7 +683,51 @@ func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
 		Conditions: len(v.ScopeConditions), Survived: split["survived"],
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
-		Untested: split[dispositionUntested],
+		Untested:                  split[dispositionUntested],
+		ReadingOccasionedStanding: occasionedStanding(updated),
+	}, nil
+}
+
+// reingestVerdict applies a verdict for a receipt already INGESTED. The receipt
+// is the idempotency key, so a payload that renders to the block already on the
+// record is a noop and writes nothing. A payload that renders differently
+// replaces that block in place, after the same checks a first ingest makes:
+// this is how an auditor who has since weighed a reading-occasioned condition
+// block names its occasion and ingests again (the 2026-09-25 ruling in
+// .abcd/work/DECISIONS.md). A payload that does not validate is refused with
+// nothing written rather than dead-lettered: quarantine is for a receipt still
+// owed a verdict, and a bad re-ingest must never replace a good one.
+func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string) (IngestVerdictResult, error) {
+	free, err := newVerdictProse(repoRoot)
+	if err != nil {
+		return IngestVerdictResult{}, err
+	}
+	v, verr := validateVerdict(raw, rcp, content)
+	if verr != nil {
+		return IngestVerdictResult{}, fmt.Errorf("intent: receipt %s is already INGESTED and this verdict does not validate: %s; "+
+			"an ingested verdict is replaced only by a valid one (nothing written)", rcp, free(verr.Error()))
+	}
+	rollup := countVerdicts(v)
+	block := ingestedBlock(rcp, v, rollup, free)
+	if existing, ok := reviewBlockText(content, rcp); ok && existing == block {
+		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
+	}
+	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	updated := upsertReviewBlock(content, rcp, block)
+	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	split := countDispositions(v)
+	return IngestVerdictResult{
+		Status: "ingested", Replaced: true, ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
+		Met: rollup["MET"], MetWithConcern: rollup["MET_WITH_CONCERNS"],
+		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
+		Conditions: len(v.ScopeConditions), Survived: split["survived"],
+		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
+		Untested:                  split[dispositionUntested],
+		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
 }
 
@@ -901,7 +1006,27 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 		Status: "dead_letter", ReceiptID: rcp, IntentID: it.ID,
 		Conditions: len(untested), Untested: len(untested),
 		DeadLetterPath: dlRel, Reason: reason,
+		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
+}
+
+// occasionedStanding lists the condition-block dispositions the fold reports as
+// standing in content, ordered by condition identity so the report is
+// deterministic.
+func occasionedStanding(content string) []condition.Disposition {
+	standing := condition.Standing(content)
+	ids := make([]string, 0, len(standing))
+	for id, d := range standing {
+		if d.Occasion != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	out := make([]condition.Disposition, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, standing[id])
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -951,34 +1076,60 @@ func markerState(content, rcp string) (string, bool) {
 
 // upsertReviewBlock replaces the existing review block for rcp with newBlock, or
 // appends newBlock to the Audit Notes section (creating the section if absent). A
-// review block runs from its marker line to the next marker, the next heading, or
-// end of file.
+// review block runs from its marker line to the next block marker of EITHER
+// grammar (condition.IsBlockMarker), the next heading, or end of file — so a
+// condition block written after an OWED stub survives the stub's replacement
+// rather than being swallowed as part of it (spc-2609020626046252).
 func upsertReviewBlock(content, rcp, newBlock string) string {
 	lines := strings.Split(content, "\n")
-	start := -1
-	for i, ln := range lines {
-		m := markerRe.FindStringSubmatch(strings.TrimRight(ln, "\r"))
-		if m != nil && m[2] == rcp {
-			start = i
-			break
-		}
-	}
-	if start >= 0 {
-		end := len(lines)
-		for j := start + 1; j < len(lines); j++ {
-			t := strings.TrimRight(lines[j], "\r")
-			if markerRe.MatchString(t) || mdrecord.IsHeading(t) {
-				end = j
-				break
-			}
+	if start, end, ok := reviewBlockRange(lines, rcp); ok {
+		// Keep the blank separator the old block ended with, so a block that
+		// follows it is not glued to the replacement.
+		sep := end
+		for sep > start+1 && strings.TrimSpace(lines[sep-1]) == "" {
+			sep--
 		}
 		out := make([]string, 0, len(lines))
 		out = append(out, lines[:start]...)
 		out = append(out, strings.Split(newBlock, "\n")...)
-		out = append(out, lines[end:]...)
+		out = append(out, lines[sep:]...)
 		return strings.Join(out, "\n")
 	}
 	return appendToAuditNotes(content, newBlock)
+}
+
+// reviewBlockRange locates the review block for rcp in lines: from its marker
+// line to the next block marker of either grammar, the next heading, or end of
+// file. It is the one notion of a review block's extent, so the replacement and
+// the idempotency comparison cannot disagree about where a block ends.
+func reviewBlockRange(lines []string, rcp string) (start, end int, ok bool) {
+	for i, ln := range lines {
+		m := markerRe.FindStringSubmatch(strings.TrimRight(ln, "\r"))
+		if m == nil || m[2] != rcp {
+			continue
+		}
+		end = len(lines)
+		for j := i + 1; j < len(lines); j++ {
+			t := strings.TrimRight(lines[j], "\r")
+			if condition.IsBlockMarker(t) || mdrecord.IsHeading(t) {
+				end = j
+				break
+			}
+		}
+		return i, end, true
+	}
+	return 0, 0, false
+}
+
+// reviewBlockText is the review block for rcp as a renderer would have written
+// it: its lines with the trailing blank separator trimmed.
+func reviewBlockText(content, rcp string) (string, bool) {
+	lines := strings.Split(content, "\n")
+	start, end, ok := reviewBlockRange(lines, rcp)
+	if !ok {
+		return "", false
+	}
+	return strings.TrimRight(strings.Join(lines[start:end], "\n"), "\r\n\t "), true
 }
 
 // appendToAuditNotes appends a block to the `## Audit Notes` section, creating
@@ -1014,7 +1165,12 @@ func appendToAuditNotes(content, block string) string {
 		}
 		section = append(section, ln)
 	}
-	// Drop trailing blank lines inside the section, then re-add one separator.
+	// Drop blank lines at both ends of the section, then re-add one separator on
+	// each side: the heading's blank line is written below, so a leading one kept
+	// here would open the section with two.
+	for len(section) > 0 && strings.TrimSpace(section[0]) == "" {
+		section = section[1:]
+	}
 	for len(section) > 0 && strings.TrimSpace(section[len(section)-1]) == "" {
 		section = section[:len(section)-1]
 	}
@@ -1142,14 +1298,7 @@ func renderDispositions(b *strings.Builder, conds []verdictCondition, free prose
 	}
 	b.WriteString("\nScope-condition dispositions:\n")
 	for _, c := range conds {
-		fmt.Fprintf(b, "- %s — %s", oneLine(c.ConditionID), oneLine(c.Disposition))
-		if r := free(c.Rationale); r != "" {
-			fmt.Fprintf(b, ": %s", r)
-		}
-		b.WriteString("\n")
-		if n := free(c.Narrowing); n != "" {
-			fmt.Fprintf(b, "  narrowing: %s\n", n)
-		}
+		writeDispositionBullet(b, oneLine(c.ConditionID), oneLine(c.Disposition), free(c.Rationale), free(c.Narrowing))
 		for _, e := range c.Evidence {
 			fmt.Fprintf(b, "  evidence: %s\n", renderEvidence(e, free))
 		}
