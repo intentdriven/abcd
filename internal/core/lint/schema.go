@@ -1530,6 +1530,13 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 						File: rel, Line: dup.Line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
 					})
 				}
+				for _, n := range setextUnderlineLines(lines) {
+					out = append(out, Finding{
+						File: rel, Line: n, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+						Message: "a bare `---` directly under a paragraph line is a setext underline, not a thematic break: it renders line " +
+							strconv.Itoa(n-1) + " as a heading nobody wrote; put a blank line above it, or remove it",
+					})
+				}
 				fields := frontmatterFields(lines)
 				records = append(records, schemaRecord{
 					rel:    rel,
@@ -1931,4 +1938,35 @@ func refsContain(refs []recordRef, want recordRef) bool {
 		}
 	}
 	return false
+}
+
+// setextUnderlineRe is a `---` run that CommonMark reads as a setext heading's
+// underline when it sits directly under a paragraph line.
+var setextUnderlineRe = regexp.MustCompile(`^ {0,3}-{3,}[ \t]*$`)
+
+// notParagraphRe is a line that opens a block other than a paragraph, under
+// which a `---` is a thematic break rather than an underline: an ATX heading, a
+// blockquote, a list item, a table row, an HTML line, or an indented line (a
+// list continuation or indented code).
+var notParagraphRe = regexp.MustCompile(`^(?:\s{4}|\t| {0,3}(?:#|>|[-*+](?:\s|$)|\d+[.)](?:\s|$)|\||<))`)
+
+// setextUnderlineLines returns the 1-based lines of a record body where a bare
+// `---` sits directly under a paragraph line, so a capture that meant a
+// thematic break renders the paragraph above it as a heading
+// (iss-2608221342508878). Fenced lines are the example text they look like.
+func setextUnderlineLines(lines []string) []int {
+	start := frontmatterBodyStart(lines)
+	mask := fenceMask(lines)
+	var out []int
+	for i := start + 1; i < len(lines); i++ {
+		if mask[i] || mask[i-1] || !setextUnderlineRe.MatchString(lines[i]) {
+			continue
+		}
+		prev := lines[i-1]
+		if strings.TrimSpace(prev) == "" || notParagraphRe.MatchString(prev) || setextUnderlineRe.MatchString(prev) {
+			continue
+		}
+		out = append(out, i+1)
+	}
+	return out
 }
