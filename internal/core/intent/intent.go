@@ -306,7 +306,8 @@ type ReconcileResult struct {
 	Relinked []relink.Rewrite `json:"relinked,omitempty"`
 	// RelinkError is a NON-FATAL report of a repoint that failed part-way: the
 	// records have moved and the close stands, so the surface prints it loudly
-	// and a re-run of the close completes the repoint.
+	// and a re-run of the close repoints the links other files still hold. The
+	// moved records' own links it leaves as written, for links_resolve to name.
 	RelinkError string `json:"relink_error,omitempty"`
 }
 

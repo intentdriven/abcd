@@ -405,9 +405,9 @@ resolved is left as written. The JSON lists each rewrite under `relinked`
 (`file`, `line`, `from`, `to`), and the text render prints them; report them,
 because they are files the close changed beyond the two records. The tree the
 close leaves passes record-lint's `links_resolve` with no hand repair. If the
-repoint fails part-way, the close still stands and a warning on stderr says so;
-re-running the same `spec close` repoints every link other files still hold to
-either old path. The re-run reads the moved records' own links from the folders
+repoint fails part-way, the close still stands and a warning on stderr says so.
+After an attempt that failed before or during the repoint, re-running the same
+`spec close` repoints every link other files still hold to either old path. The re-run reads the moved records' own links from the folders
 they are in, because they may have been edited there since the move, so it
 never rewrites them; any of those the failed attempt left unrewritten is one
 `links_resolve` names, to repair by hand.

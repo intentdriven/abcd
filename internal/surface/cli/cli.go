@@ -2552,7 +2552,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if res.AuditEmitError != "" {
 				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
 			}
-			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to finish the repoint")
+			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to repoint the links other files hold; record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
 				if res.Remainder.ID != "" {
