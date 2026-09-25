@@ -1,5 +1,7 @@
 package issueschema
 
+import "strings"
+
 // The step-2 admission records (itd-189, spc-67).
 //
 // Declining a proposal costs nothing epistemically; ADMITTING one is where the
@@ -9,24 +11,23 @@ package issueschema
 // with careful judgement and with abdication, and only a record that says which
 // happened can tell the two apart.
 //
-// Three shapes are named by the intent and only ONE of them is new here:
+// Three shapes are named by the intent, and two of them are new families:
 //
 //   - The ADMISSION record (adm-N) is new, and this file declares it.
 //   - The DECLINED proposal is not a new record type. It is the disposition
 //     record of reading.go in its `declined` state, which the widening position
 //     already reserves — a second store for a state the disposition vocabulary
 //     holds would be a parallel answer to one question.
-//   - The SURPRISE entry's join key is reserved on the reading-record envelope
-//     (ReservedSurpriseFields, reading.go); what this file adds is its own
-//     family, its own store and its own required set, which is what makes it a
-//     record rather than a field on something else.
+//   - The SURPRISE entry is its own family, its own store and its own required
+//     set, which is what makes it a record rather than a field on something
+//     else. Its join key lives on the surprise record alone: the reservation
+//     spc-58 placed on the reading envelope is retired (spc-2609020626040342).
 //
-// This cycle ships the SCHEMAS, not the commands that write them: no reading has
-// run, so there is nothing to write yet. The shapes are wired to the gate that
-// reads committed records (core/lint's record_schema) rather than to a verb, so
-// a hand-written admission record with a blank `grounds` is a blocker finding
-// from the day this lands. What is hand-run is WHO writes the file, never
-// whether anything checks it.
+// The schemas shipped first and were wired to the gate that reads committed
+// records (core/lint's record_schema), so a hand-written admission with a blank
+// `grounds` is a blocker finding. The verbs that write them are `abcd capture
+// admit` and `abcd capture surprise` (spc-2609020626040342), which cannot write
+// a blank ground; the gate stays for the record written by hand.
 
 // The two families this design adds. Both mint through recordid.Minter.Mint like
 // every other record family in this workstream (adr-45): a UTC stamp plus four
@@ -75,11 +76,42 @@ var AdmissionRequired = []string{"schema_version", "id", "run", "proposal", "gro
 var AdmissionKnown = knownSet(AdmissionRequired)
 
 // SurpriseRequired is every property a surprise entry carries. `occasioned_by`
-// names whatever occasioned it and is the record's whole join: an rdi-N
-// detection, an adm-N admission, or a consequence named in prose. The surprise
-// ITSELF is the record's body, where a reader can write more than a frontmatter
-// value holds.
+// names the record that occasioned it and is the record's whole join. The
+// surprise ITSELF is the record's body, where a reader can write more than a
+// frontmatter value holds.
 var SurpriseRequired = []string{"schema_version", "id", "occasioned_by"}
+
+// SurpriseOccasionFamilies is the CLOSED set of families a surprise's
+// `occasioned_by` may name: a reading item (rdi-N), an admission (adm-N) or a
+// disposition (dsp-N) — and nothing else, prose included
+// (spc-2609020626040342). It is the one list: the surprise verb resolves the
+// occasion over it, and core/lint's srp join holds a committed record to it, so
+// a hand-written prose occasion is a finding rather than a join that joins
+// nothing.
+var SurpriseOccasionFamilies = []string{ReadingItemFamily, AdmissionFamily, DispositionFamily}
+
+// ValidSurpriseOccasion reports whether v is VERBATIM a handle of one of
+// SurpriseOccasionFamilies: the family's own prefix, one hyphen and digits,
+// with nothing around it.
+func ValidSurpriseOccasion(v string) bool {
+	for _, f := range SurpriseOccasionFamilies {
+		rest, ok := strings.CutPrefix(v, f+"-")
+		if !ok || rest == "" {
+			continue
+		}
+		digits := true
+		for i := 0; i < len(rest); i++ {
+			if rest[i] < '0' || rest[i] > '9' {
+				digits = false
+				break
+			}
+		}
+		if digits {
+			return true
+		}
+	}
+	return false
+}
 
 // SurpriseKnown is the surprise entry's allow-list.
 var SurpriseKnown = knownSet(SurpriseRequired)
