@@ -118,6 +118,7 @@ func TestParseStepsRefusesAMalformedSection(t *testing.T) {
 		"empty title":     "## Steps\n\n1. **  **\n",
 		"two sections":    "## Steps\n\n1. A\n\n## Steps\n\n1. B\n",
 		"fenced in steps": "## Steps\n\n```\n1. A\n```\n",
+		"comment in step": "## Steps\n\n1. A\n   <!--\n2. B\n   -->\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if steps, err := ParseSteps(content); err == nil {
@@ -137,6 +138,34 @@ func TestParseStepsIgnoresAFencedHeading(t *testing.T) {
 	steps, err := ParseSteps(content)
 	if err != nil || len(steps) != 0 {
 		t.Fatalf("a fenced heading is not the section: %+v, %v", steps, err)
+	}
+}
+
+// The section's bounds are mdrecord's: a fence closes only on its own marker,
+// so a `~~~` line inside a backtick fence above the section neither closes it
+// nor hides the live `## Steps` below. Read wrong, the section vanishes with
+// no error and `spec close --remainder` drops the unlanded steps.
+func TestParseStepsReadsPastAMixedMarkerFence(t *testing.T) {
+	content := "## Approach\n\n```text\n~~~\nan example\n```\n\n## Steps\n\n1. The parser\n   - packages: internal/core/spec\n2. The loop\n   - packages: internal/core/loop\n\n## Footprint\n\nText.\n"
+	steps, err := ParseSteps(content)
+	if err != nil {
+		t.Fatalf("ParseSteps: %v", err)
+	}
+	if len(steps) != 2 || steps[0].Title != "The parser" || steps[1].Title != "The loop" {
+		t.Fatalf("the live section lists two steps, got %+v", steps)
+	}
+}
+
+// A `## Steps` heading parked inside an HTML comment is not the section, and
+// not a second one: the live heading below it is read.
+func TestParseStepsIgnoresACommentedHeading(t *testing.T) {
+	content := "## Approach\n\n<!--\n## Steps\n\n1. A parked draft\n-->\n\n## Steps\n\n1. The parser\n2. The loop\n"
+	steps, err := ParseSteps(content)
+	if err != nil {
+		t.Fatalf("a commented heading is not a second section: %v", err)
+	}
+	if len(steps) != 2 || steps[0].Title != "The parser" || steps[1].Title != "The loop" {
+		t.Fatalf("the live section lists two steps, got %+v", steps)
 	}
 }
 

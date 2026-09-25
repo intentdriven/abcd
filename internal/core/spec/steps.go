@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
 // StepsHeading is the section a spec lists its steps under
@@ -70,23 +71,29 @@ var (
 // indented under one, a blank line or leading guidance is an error naming the
 // line — never a guess — because the remainder copy writes from this parse
 // (unrecognized-input-never-writes). A second `## Steps` heading is an error
-// too: which one is the section is undecidable. A heading inside a fenced
-// block elsewhere is an example and is not the section.
+// too: which one is the section is undecidable. Which lines are live is
+// mdrecord's answer: a heading inside a fenced block or an HTML comment
+// elsewhere is an example, or parked, and is not the section; a fenced block or
+// comment inside the section is refused, since a step inside one is not a step.
 func ParseSteps(content string) ([]Step, error) {
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
-	start, end, err := stepsSection(lines)
+	mask := mdrecord.Mask(lines)
+	start, end, err := stepsSection(lines, mask)
 	if err != nil || start < 0 {
 		return nil, err
 	}
 	var steps []Step
 	for i := start; i < end; i++ {
 		line := lines[i]
+		if mask[i]&mdrecord.MaskFence != 0 {
+			return nil, fmt.Errorf("spec: %s holds a fenced block (line %d) — a step inside one is an example, not a step", StepsHeading, i+1)
+		}
+		if mask[i]&mdrecord.MaskComment != 0 {
+			return nil, fmt.Errorf("spec: %s holds an HTML comment (line %d) — a step inside one is parked, not a step", StepsHeading, i+1)
+		}
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
-		}
-		if isFence(trimmed) {
-			return nil, fmt.Errorf("spec: %s holds a fenced block (line %d) — a step inside one is an example, not a step", StepsHeading, i+1)
 		}
 		if m := stepItemRe.FindStringSubmatch(line); m != nil {
 			raw := strings.TrimSpace(m[2])
@@ -208,17 +215,14 @@ func RenderSteps(steps []Step) string {
 }
 
 // stepsSection finds the `## Steps` section: the body lines [start, end), or
-// start < 0 when the spec has none. Headings inside fenced blocks are skipped.
-func stepsSection(lines []string) (start, end int, err error) {
+// start < 0 when the spec has none. The section runs to the next live `#` or
+// `##` heading; a deeper heading stays inside it, where ParseSteps refuses it.
+// A masked line (fenced or commented, per mdrecord.Mask) neither opens the
+// section, nor ends it, nor counts as a second heading.
+func stepsSection(lines []string, mask []uint8) (start, end int, err error) {
 	start, end = -1, len(lines)
-	fenced := false
 	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if isFence(trimmed) {
-			fenced = !fenced
-			continue
-		}
-		if fenced {
+		if mask[i] != 0 {
 			continue
 		}
 		if strings.TrimRight(line, " \t") == StepsHeading {
@@ -236,9 +240,4 @@ func stepsSection(lines []string) (start, end int, err error) {
 		return -1, 0, nil
 	}
 	return start, end, nil
-}
-
-// isFence reports whether a trimmed line opens or closes a fenced block.
-func isFence(trimmed string) bool {
-	return strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~")
 }
