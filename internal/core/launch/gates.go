@@ -243,8 +243,10 @@ type proseLine struct {
 // blocks are dropped and inline code spans blanked, so a construct quoted as an
 // example never reads as an assertion. A leading YAML frontmatter block is
 // dropped too, since it is metadata rather than a body — but only a block that
-// closes: a document that opens with a "---" rule and never repeats it has no
-// frontmatter, and is read whole rather than dropped (iss-2609251827296447).
+// closes and reads as YAML: a document that opens with a "---" rule and never
+// repeats it (iss-2609251827296447), or whose block up to the next rule holds
+// prose (iss-2609251940383450), has no frontmatter, and is read whole rather
+// than dropped.
 func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
@@ -253,7 +255,9 @@ func proseLines(data []byte) []proseLine {
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
-				frontEnd = i
+				if isFrontmatter(lines[1:i]) {
+					frontEnd = i
+				}
 				break
 			}
 		}
@@ -272,6 +276,29 @@ func proseLines(data []byte) []proseLine {
 		out = append(out, proseLine{n: i + 1, text: inlineCodeRe.ReplaceAllString(line, "")})
 	}
 	return out
+}
+
+// frontmatterKeyRe opens a YAML mapping entry ("title: x", "tags:").
+var frontmatterKeyRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*\s*:(\s|$)`)
+
+// isFrontmatter reports whether the lines between two "---" rules read as a
+// YAML frontmatter block: at least one "key:" entry, and every other line an
+// indented continuation, a list item, a comment, or blank. A block holding a
+// line of prose is the body between two horizontal rules.
+func isFrontmatter(block []string) bool {
+	keys := 0
+	for _, line := range block {
+		t := strings.TrimSpace(line)
+		switch {
+		case t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "- ") || t == "-":
+		case line[0] == ' ' || line[0] == '\t':
+		case frontmatterKeyRe.MatchString(line):
+			keys++
+		default:
+			return false
+		}
+	}
+	return keys > 0
 }
 
 // markerBlockFindings checks every shipped Markdown file's marker blocks: a

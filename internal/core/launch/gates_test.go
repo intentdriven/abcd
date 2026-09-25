@@ -568,3 +568,30 @@ func TestProseLinesReadsAnUnclosedOpeningRuleAsProse(t *testing.T) {
 		t.Errorf("closed frontmatter must stay metadata:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
 	}
 }
+
+// TestProseLinesReadsARuledDocumentWhole: a document that opens with a "---"
+// rule and repeats one later has no frontmatter unless the block between the
+// two reads as YAML (iss-2609251940383450), so its prose is read, not dropped
+// up to the later rule. Frontmatter with list items, continuations, comments
+// and a blank line stays metadata.
+func TestProseLinesReadsARuledDocumentWhole(t *testing.T) {
+	root := docsFixture(t)
+	writeFile(t, root, "docs/ruled.md", "---\n\nThe verb no longer writes a receipt.\n\n<!-- BEGIN ABCD -->\n\n---\n\nAfter the rule.\n")
+	writeFile(t, root, "docs/front.md", "---\n# metadata\ntitle: Front\ntags:\n  - one\n- two\n\ndescription: >\n  The verb no longer writes a receipt.\n---\n\n# Front\n\nThe tool reads the record.\n")
+
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "1.2.3"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	for _, want := range [][]string{
+		{"change-narration", "docs/ruled.md:3", "no longer"},
+		{"marker-block", "docs/ruled.md:5", "never closed"},
+	} {
+		if !anyContains(report.WouldRefuseOn, want...) {
+			t.Errorf("a ruled document was dropped up to its later rule; missing %v:\n%s", want, strings.Join(report.WouldRefuseOn, "\n"))
+		}
+	}
+	if anyContains(report.WouldRefuseOn, "docs/front.md") {
+		t.Errorf("YAML frontmatter must stay metadata:\n%s", strings.Join(report.WouldRefuseOn, "\n"))
+	}
+}
