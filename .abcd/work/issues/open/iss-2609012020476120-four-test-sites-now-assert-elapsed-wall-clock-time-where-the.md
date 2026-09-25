@@ -9,8 +9,8 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/bootstrap_freshinstall_test.go"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: 'a test asserts behaviour, never a duration' as a principle or a lint refusing time.Since comparisons in _test.go). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Make 'a test asserts behaviour, never a duration' a principle, a lint refusing time.Since in _test.go, or both?"
 ---
 
 Four test sites now assert elapsed wall-clock time where they mean to assert behaviour: iss-2608292246210181 and iss-2608290810037763 in the scanner's adjacency tests, iss-2608301301041887 in the grounds lock test, and the bootstrap fresh-install self-check in internal/surface/cli. Each was found by a CI flake and each is being fixed site by site. Worth deciding whether the rule 'a test asserts behaviour or an operation count, never a duration' graduates to a principle under .abcd/development/principles/ or to a lint rule that refuses a time.Since comparison in a _test.go file, so the fifth site is refused at draft time rather than found by the next flake. This is a design decision and was not taken during autonomous-run-2026-09-01, where it was carried from the session handover; the fourth site was fixed on its own merits.

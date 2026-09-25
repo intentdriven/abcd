@@ -7,8 +7,8 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-fix-delta-ruthless"
 found_at: "internal/core/grounds/record.go"
-deferred_after: "v0.9.0"
-deferral_reason: "Routed to the product thinker by the 2026-09-23 run (hand edit accepted as the repair path (ruling 2026-08-31); what remains is a record-body repair verb, which wants its own intent (see iss-2609100505146979)). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Does the record-body repair verb belong in the errata intent (M25), or its own?"
 ---
 
 an unclosed comment or fence in an issue body still locks the record out of every triage verb and no open record tracks it

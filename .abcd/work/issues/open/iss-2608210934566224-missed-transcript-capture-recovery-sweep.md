@@ -6,8 +6,8 @@ severity: "major"
 category: "future-work-seed"
 source: "user-observation"
 found_during: "plugin-update post-mortem 2026-08-21"
-deferred_after: "v0.9.0"
-deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M7: plan next cycle as its own intent: detect ended-but-unsaved sessions at the next start or health check, and report or save them)."
+deferred_after: "v0.10.0"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Transcript recovery sweep: report the ended-but-unsaved sessions it finds at next start, or save them automatically?"
 ---
 
 Session-end transcript capture is best-effort and its loss is silent: a cancelled or killed SessionEnd hook (update-then-quit, crash, SIGKILL) leaves no trace that a session was never captured into the history store. Add a recovery sweep — at session start or in ahoy doctor — that compares harness transcripts against the history store index and reports (or captures) the gap, turning silent loss into a caught-on-next-start notice. abcd history capture already ingests retroactively.
