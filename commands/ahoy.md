@@ -150,6 +150,23 @@ configuration values and before the status-line offer, and is asked only when
 the config is being created: a repository that already has one keeps its own
 severity.
 
+**The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
+an `artefact.missing` gap: the launch verbs choose what to preview, check and
+scaffold by the kind declared there, and refuse to guess it. Once config changes
+are approved, a repository carrying `.claude-plugin/plugin.json` is declared
+`kind: plugin` without a question. Any other is asked
+`artefact_kind (plugin/binary/application) [application]`: relay it and pass on
+the user's answer, never answering for them. End of input or a bare Enter takes
+`application` — gate plumbing with an empty build job, assuming nothing about the
+build. `--yes` does not ask and declares `application`, and the result's `notes`
+says so. An answer naming none of the three (the `y` of `yes |`) also declares
+`application`, with a note naming what was heard; the user edits the file to
+declare another. The question is the last one the install asks, after the
+status-line offer. A declaration that is present but
+refused by the reader the launch verbs share (an unknown kind, a malformed file)
+is an `artefact.invalid` gap instead: the file is the user's, so the install
+reports it and never overwrites it.
+
 **The status-line offer.** When the harness's user-level settings file exists
 (`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
 `statusLine` is absent or is a command that is not abcd's, the install asks

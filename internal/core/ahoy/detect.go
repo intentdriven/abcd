@@ -115,6 +115,9 @@ func Detect(cwd string) (DetectionResult, error) {
 		// The attribution prompt is opt-in, so this reports nothing at all for a repo
 		// that never adopted it — and a hand-deleted hook for one that did.
 		gaps = append(gaps, detectAttributionHook(abs)...)
+		// What the repository ships, declared once for the launch verbs
+		// (itd-2609150819432059).
+		gaps = append(gaps, detectArtefact(abs)...)
 	}
 
 	sortGaps(gaps)
