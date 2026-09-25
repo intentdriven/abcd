@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -128,12 +129,12 @@ func TestLaunchDryRunFetchBaselineReadsTheVerifiedReleaseAsset(t *testing.T) {
 	archive := launch.PluginArchiveName("abcd", "0.5.0")
 	var origins []string
 	orig := newReleaseAssetFetcher
-	newReleaseAssetFetcher = func(origin string) (launch.ReleaseAssetFetcher, error) {
+	newReleaseAssetFetcher = func(origin string) (launch.ReleaseAssetFetcher, []string, error) {
 		origins = append(origins, origin)
 		return fakeReleaseAssets{assets: map[string][]byte{
 			"checksums.txt": []byte(hex.EncodeToString(sum[:]) + "  " + archive + "\n"),
 			archive:         buf.Bytes(),
-		}}, nil
+		}}, nil, nil
 	}
 	t.Cleanup(func() { newReleaseAssetFetcher = orig })
 
@@ -199,11 +200,11 @@ func TestLaunchDryRunTaglessOrShallowCheckoutIsNotAFirstLaunch(t *testing.T) {
 	sum := sha256.Sum256(buf.Bytes())
 	archive := launch.PluginArchiveName("abcd", "0.4.0")
 	orig := newReleaseAssetFetcher
-	newReleaseAssetFetcher = func(string) (launch.ReleaseAssetFetcher, error) {
+	newReleaseAssetFetcher = func(string) (launch.ReleaseAssetFetcher, []string, error) {
 		return fakeReleaseAssets{assets: map[string][]byte{
 			"checksums.txt": []byte(hex.EncodeToString(sum[:]) + "  " + archive + "\n"),
 			archive:         buf.Bytes(),
-		}}, nil
+		}}, nil, nil
 	}
 	t.Cleanup(func() { newReleaseAssetFetcher = orig })
 	if rep, _ := dryRunJSON(t, r, "--fetch-baseline"); rep.Parity == nil || rep.Parity.Refused || rep.Parity.Source != launch.ParitySourceReleaseAsset {
@@ -249,6 +250,48 @@ func containsPrefix(lines []string, prefix string) bool {
 		}
 	}
 	return false
+}
+
+// failingReleaseAssets fails every fetch in transport, as a dial behind a
+// mandatory proxy does when the proxy is not honoured.
+type failingReleaseAssets struct{}
+
+func (failingReleaseAssets) FetchReleaseAsset(tag, name string) ([]byte, string, bool, error) {
+	return nil, "https://example.com/" + tag + "/" + name, false, errors.New("dial tcp 192.0.2.1:443: i/o timeout")
+}
+
+// TestLaunchDryRunFetchBaselineNamesTheIgnoredEnvironment: the proxy and CA
+// variables the baseline fetch does not honour are named in the plain preview
+// and in --json, as `abcd update` names them, and a fetch that fails says so
+// in its refusal too (iss-2609251902444497).
+func TestLaunchDryRunFetchBaselineNamesTheIgnoredEnvironment(t *testing.T) {
+	r := parityCLIRepo(t)
+	fetcher := launch.ReleaseAssetFetcher(fakeReleaseAssets{assets: map[string][]byte{}})
+	orig := newReleaseAssetFetcher
+	newReleaseAssetFetcher = func(string) (launch.ReleaseAssetFetcher, []string, error) {
+		return fetcher, []string{"HTTPS_PROXY", "SSL_CERT_FILE"}, nil
+	}
+	t.Cleanup(func() { newReleaseAssetFetcher = orig })
+
+	rep, _ := dryRunJSON(t, r, "--fetch-baseline")
+	if rep.Parity == nil || strings.Join(rep.Parity.EnvIgnored, ",") != "HTTPS_PROXY,SSL_CERT_FILE" {
+		t.Fatalf("--json must carry the ignored names, got %+v", rep.Parity)
+	}
+	plain, err := shipIn(t, r, "launch", "--dry-run", "--fetch-baseline")
+	if err != nil || !strings.Contains(string(plain), "ignored from the environment: HTTPS_PROXY, SSL_CERT_FILE") {
+		t.Errorf("the plain preview must name the ignored variables, got %v:\n%s", err, plain)
+	}
+
+	fetcher = failingReleaseAssets{}
+	plain, err = shipIn(t, r, "launch", "--dry-run", "--fetch-baseline")
+	if err != nil || !strings.Contains(string(plain), "ignored HTTPS_PROXY, SSL_CERT_FILE from the environment") {
+		t.Errorf("a failed fetch must say what it ignored, got %v:\n%s", err, plain)
+	}
+
+	// Without the flag nothing is fetched and nothing is named.
+	if rep, _ := dryRunJSON(t, r); rep.Parity == nil || len(rep.Parity.EnvIgnored) != 0 {
+		t.Errorf("a disk-only preview ignores nothing, got %+v", rep.Parity)
+	}
 }
 
 // TestLaunchDryRunDeepSmokeRunsInAnIsolatedSubprocess is AC4 at the preview,

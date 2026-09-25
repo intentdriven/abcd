@@ -222,7 +222,11 @@ Then summarise the JSON for the user:
   repository `plugin.json` names, announces each fetch on stderr, refuses an
   archive whose digest the release's own `checksums.txt` does not vouch for, and
   falls back to a render at the tag, saying so, when the release publishes no
-  archive. Never add the flag on the user's behalf.
+  archive. Its connection honours no proxy or CA variable (`HTTPS_PROXY`,
+  `SSL_CERT_FILE` and their kin), as `abcd update`'s does, and every one that was
+  set is named in `parity.env_ignored`, on the plain preview, and in the refusal
+  when the fetch fails; the environment itself is left as it is. Never add the
+  flag on the user's behalf.
 - `gates` — every release gate and its disposition. Report the whole array,
   not a summary. Each row carries a `status` (`ran`; `not_armed` where the
   repository has not adopted what the gate reads, such as the documentation

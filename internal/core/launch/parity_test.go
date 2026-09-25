@@ -378,6 +378,33 @@ func TestParityUnanchoredBaselineRefusesUnlessTheAssetAnswers(t *testing.T) {
 	}
 }
 
+// TestParityNamesTheTransportOverridesTheFetchIgnored: a fetch that ignored
+// proxy or CA variables says so in the report and its markdown, and a fetch
+// that then fails in transport says so in the refusal, so an operator behind a
+// mandatory proxy reads why the dial failed (iss-2609251902444497).
+func TestParityNamesTheTransportOverridesTheFetchIgnored(t *testing.T) {
+	repo := parityRepo(t)
+	root := repo.Root()
+	ignored := []string{"HTTPS_PROXY", "SSL_CERT_FILE"}
+	rep := PayloadParity(root, resolveOrFatal(t, root), ParityInput{
+		Baseline: "v0.1.0", Fetch: &fakeAssets{err: errors.New("dial tcp 192.0.2.1:443: i/o timeout")}, EnvIgnored: ignored,
+	})
+	if !rep.Refused || !strings.Contains(rep.RefusalReason, "HTTPS_PROXY, SSL_CERT_FILE") {
+		t.Fatalf("a failed fetch must name the overrides it ignored, got %+v", rep)
+	}
+	if strings.Join(rep.EnvIgnored, ",") != "HTTPS_PROXY,SSL_CERT_FILE" || !strings.Contains(rep.Markdown(), "HTTPS_PROXY, SSL_CERT_FILE") {
+		t.Errorf("the report and its markdown must carry the ignored names, got %v\n%s", rep.EnvIgnored, rep.Markdown())
+	}
+
+	rep = PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", Fetch: &fakeAssets{assets: map[string][]byte{}}, EnvIgnored: ignored})
+	if rep.Refused || len(rep.EnvIgnored) != 2 {
+		t.Errorf("a fetch that answered still carries the ignored names, got %+v", rep)
+	}
+	if rep := PayloadParity(root, resolveOrFatal(t, root), ParityInput{Baseline: "v0.1.0", EnvIgnored: ignored}); len(rep.EnvIgnored) != 0 {
+		t.Errorf("no fetch, nothing ignored: got %v", rep.EnvIgnored)
+	}
+}
+
 // TestDryRunCarriesTheParityDiff: the preview reports the diff, and a refused
 // one is on its would-refuse list.
 func TestDryRunCarriesTheParityDiff(t *testing.T) {

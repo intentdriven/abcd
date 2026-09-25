@@ -26,14 +26,15 @@ import (
 )
 
 // newReleaseAssetFetcher builds the fetcher a --fetch-baseline run reads the
-// previous release's assets through. It is a package var so a test can serve
-// the assets from memory: no test reaches the network.
-var newReleaseAssetFetcher = func(origin string) (launch.ReleaseAssetFetcher, error) {
+// previous release's assets through, and names the proxy and CA variables its
+// client does not honour. It is a package var so a test can serve the assets
+// from memory: no test reaches the network.
+var newReleaseAssetFetcher = func(origin string) (launch.ReleaseAssetFetcher, []string, error) {
 	a, err := update.NewReleaseAssets(origin)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return a, nil
+	return a, a.EnvIgnored(), nil
 }
 
 // loudFetcher announces every fetch on stderr before it is made and says what
@@ -85,11 +86,12 @@ func launchParityInput(cwd, configured string, fetch bool, stderr io.Writer) (*l
 		if err != nil {
 			return nil, err
 		}
-		f, err := newReleaseAssetFetcher(origin)
+		f, ignored, err := newReleaseAssetFetcher(origin)
 		if err != nil {
 			return nil, err
 		}
 		in.Fetch = loudFetcher{inner: f, w: stderr, origin: origin}
+		in.EnvIgnored = ignored
 	}
 	return in, nil
 }
@@ -252,8 +254,16 @@ func renderParity(w io.Writer, p *launch.ParityReport) {
 	if baseline == "" {
 		baseline = "(no previous release)"
 	}
+	// The ignored variables are named on a refusal too: a direct connection is
+	// the likeliest reason a fetch behind a mandatory proxy fails.
+	ignored := func() {
+		if len(p.EnvIgnored) > 0 {
+			fmt.Fprintf(w, "    ignored from the environment: %s\n", termsafe.Sanitize(strings.Join(p.EnvIgnored, ", ")))
+		}
+	}
 	if p.Refused {
 		fmt.Fprintf(w, "  parity:         refused against %s — %s\n", termsafe.Sanitize(baseline), termsafe.Sanitize(p.RefusalReason))
+		ignored()
 		return
 	}
 	fmt.Fprintf(w, "  parity:         against %s (%s): %d added, %d changed, %d removed, %d unchanged\n",
@@ -261,6 +271,7 @@ func renderParity(w io.Writer, p *launch.ParityReport) {
 	for _, u := range p.Fetched {
 		fmt.Fprintf(w, "    fetched %s\n", termsafe.Sanitize(u))
 	}
+	ignored()
 	if p.Note != "" {
 		fmt.Fprintf(w, "    note: %s\n", termsafe.Sanitize(p.Note))
 	}

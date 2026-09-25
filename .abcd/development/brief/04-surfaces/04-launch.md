@@ -258,7 +258,10 @@ flag on the preview and on the cut (per
 [adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)): each fetch
 is announced on stderr and named in the report, the archive is refused unless the
 release's own `checksums.txt` vouches for its digest, and a release that
-publishes no archive falls back to the render at the tag, saying so. The two
+publishes no archive falls back to the render at the tag, saying so. The fetch's
+own client honours no proxy or CA override, as the updater's does, without
+unsetting any in the process, and the report names every override that was set,
+as the updater's receipt does; a fetch that fails names them in its refusal. The two
 manifests the release stamps are compared as canonical JSON with their version
 keys removed, because the render re-marshals them and the version bump is the
 cut's own report; the catalog, which the archive leaves out by construction, is

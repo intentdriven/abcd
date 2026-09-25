@@ -118,6 +118,9 @@ type ParityReport struct {
 	Changed   int           `json:"changed"`
 	Removed   int           `json:"removed"`
 	Unchanged int           `json:"unchanged"`
+	// EnvIgnored names the proxy and CA variables the baseline fetch ignored,
+	// as `abcd update` records them, so a fetch never ignores one silently.
+	EnvIgnored []string `json:"env_ignored,omitempty"`
 	// Normalised names the manifests compared with their version stamps removed.
 	Normalised []string `json:"normalised,omitempty"`
 	// NotCompared names payload paths the baseline cannot carry by construction.
@@ -149,6 +152,9 @@ type ParityInput struct {
 	// Fetch, when set, reads the baseline from the tag's release asset first.
 	// Nil keeps the diff disk-only.
 	Fetch ReleaseAssetFetcher
+	// EnvIgnored names the transport-override variables Fetch's client does
+	// not honour; the report carries them whenever Fetch is used.
+	EnvIgnored []string
 }
 
 // checksumsAsset is the release's own digest manifest.
@@ -214,7 +220,7 @@ func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport 
 		}
 		note, err := rep.fillFromAsset(repoRoot, in, current, stamped)
 		if err != nil {
-			return refuse(fmt.Sprintf("the release asset of %s could not be used: %v", in.Baseline, err))
+			return refuse(assetRefusal(in, err))
 		}
 		if note != "" {
 			return refuse(note + ", and " + unreadable + " — fetch the release tags and history (git fetch --tags, with --unshallow in a shallow clone)")
@@ -228,7 +234,7 @@ func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport 
 	if in.Fetch != nil {
 		note, err := rep.fillFromAsset(repoRoot, in, current, stamped)
 		if err != nil {
-			return refuse(fmt.Sprintf("the release asset of %s could not be used: %v", in.Baseline, err))
+			return refuse(assetRefusal(in, err))
 		}
 		if note == "" {
 			return rep
@@ -257,6 +263,7 @@ func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport 
 // archive and nothing was filled; an error means it claims one that cannot be
 // read or verified.
 func (rep *ParityReport) fillFromAsset(repoRoot string, in ParityInput, current map[string]string, stamped map[string][]string) (string, error) {
+	rep.EnvIgnored = in.EnvIgnored
 	baseline, fetched, note, err := assetDigests(repoRoot, in.Baseline, in.Fetch, stamped)
 	rep.Fetched = fetched
 	if err != nil {
@@ -274,6 +281,17 @@ func (rep *ParityReport) fillFromAsset(repoRoot string, in ParityInput, current 
 	}
 	rep.fill(current, baseline)
 	return "", nil
+}
+
+// assetRefusal is the refusal for a release asset that could not be used. A
+// fetch that ignored proxy or CA variables says so, since a direct connection
+// is the likeliest reason a fetch behind a mandatory proxy fails.
+func assetRefusal(in ParityInput, err error) string {
+	reason := fmt.Sprintf("the release asset of %s could not be used: %v", in.Baseline, err)
+	if len(in.EnvIgnored) > 0 {
+		reason += "; the fetch connects directly and ignored " + strings.Join(in.EnvIgnored, ", ") + " from the environment"
+	}
+	return reason
 }
 
 // fill classifies every path of the two digest maps.
@@ -567,6 +585,9 @@ func (rep ParityReport) Markdown() string {
 	fmt.Fprintf(&b, "- baseline: %s (%s)\n", baseline, rep.Source)
 	for _, u := range rep.Fetched {
 		fmt.Fprintf(&b, "- fetched: %s\n", u)
+	}
+	if len(rep.EnvIgnored) > 0 {
+		fmt.Fprintf(&b, "- ignored from the environment: %s\n", strings.Join(rep.EnvIgnored, ", "))
 	}
 	if rep.Note != "" {
 		fmt.Fprintf(&b, "- note: %s\n", rep.Note)

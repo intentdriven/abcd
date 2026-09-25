@@ -13,10 +13,11 @@ import (
 // ReleaseAssets fetches named assets of one repository's releases under the
 // updater's transport policy: the pinned origin, https only, the urlguard
 // address policy, GitHub's own asset hosts as the only legal redirects, and
-// the proxy and CA overrides scrubbed. It is the fetcher `abcd launch`'s parity
-// diff reads a previous release's payload archive and checksums.txt through,
-// and only when the operator asks for it (adr-38 tier 2). It verifies nothing
-// itself: the caller checks the archive against the release's own checksums.
+// the proxy and CA overrides ignored by its own client. It is the fetcher
+// `abcd launch`'s parity diff reads a previous release's payload archive and
+// checksums.txt through, and only when the operator asks for it (adr-38 tier
+// 2). It verifies nothing itself: the caller checks the archive against the
+// release's own checksums.
 type ReleaseAssets struct{ u *Updater }
 
 // githubOriginRe is the only origin the shipping constructor accepts.
@@ -36,8 +37,16 @@ func NewReleaseAssets(origin string) (*ReleaseAssets, error) {
 
 // newReleaseAssets is the test-reachable constructor, mirroring newUpdater's
 // seam: an explicit origin, address policy and scheme policy.
+//
+// Unlike the updater it does not unset the overrides in the process: the
+// launch preview that builds it is a read-only verb, and its client needs no
+// process-wide scrub to ignore them. The proxy is nil by construction, and the
+// root pool is loaded with the CA overrides held out for the load alone
+// (overrideFreeRoots). The names that were set are kept for EnvIgnored, so
+// the caller can say what the fetch did not honour (iss-2609251902444497).
 func newReleaseAssets(origin string, blocked func(net.IP) bool, allowHTTP bool) *ReleaseAssets {
-	return &ReleaseAssets{u: newUpdater(origin, blocked, "", allowHTTP, nil)}
+	ignored := setOverrides()
+	return &ReleaseAssets{u: buildUpdater(origin, blocked, "", allowHTTP, nil, ignored, overrideFreeRoots())}
 }
 
 // FetchReleaseAsset downloads one asset of tag. found is false, with no error,
@@ -62,3 +71,7 @@ func (a *ReleaseAssets) FetchReleaseAsset(tag, name string) ([]byte, string, boo
 	}
 	return data, url, true, nil
 }
+
+// EnvIgnored names the transport-override variables that were set when the
+// fetcher was built and that its client does not honour.
+func (a *ReleaseAssets) EnvIgnored() []string { return a.u.envIgnored }
