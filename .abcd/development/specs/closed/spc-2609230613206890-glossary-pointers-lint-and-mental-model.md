@@ -9,8 +9,8 @@ production_mode: hand-written
 
 ## Summary
 
-The remainder of [itd-2609211913453478](../../intents/planned/itd-2609211913453478-one-page-in-the-glossary-maps-abcd-s-record-families-and-how.md)
-that [spc-2609212131112235](../closed/spc-2609212131112235-one-page-in-the-glossary-maps-abcd-s-record-families-and-how.md) did not deliver. spc-2609212131112235 closed on
+The remainder of [itd-2609211913453478](../../intents/shipped/itd-2609211913453478-one-page-in-the-glossary-maps-abcd-s-record-families-and-how.md)
+that [spc-2609212131112235](spc-2609212131112235-one-page-in-the-glossary-maps-abcd-s-record-families-and-how.md) did not deliver. spc-2609212131112235 closed on
 2026-09-23 with acceptance criterion 3 delivered and criteria 1, 2 and 5 in part: the seven-family table in `glossary/core/record-families.md`, the `bundle` and `step` entries, `batch` defined on the page, the superseded `phase`, `milestone` and `roadmap` entries, and adr-9 marked superseded. This spec carries what did not ship.
 
 ## Scope
