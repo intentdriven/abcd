@@ -460,6 +460,25 @@ type schemaRecord struct {
 	// plainly carries on the following lines, and goes green on a record the
 	// reader refuses and skips (iss-2608300234599781).
 	blocks map[string]string
+	// content is the file as read, kept for the issue store's reader-parity leg,
+	// which hands it to the ledger reader itself rather than re-deriving its
+	// grammar.
+	content string
+}
+
+// scalar decodes a frontmatter value the way this record's own reader does. The
+// issue ledger's reader (capture's decodeScalar) unquotes a double-quoted value
+// and reverses its escapes and keeps a single-quoted one as the token it spells,
+// quotes and all, so the issue store's legs judge that string; the other stores'
+// readers strip either quote pair, which issueScalar mirrors. Judging an issue
+// value with the lenient decoder put `severity: 'minor'` green on a record the
+// reader refuses and `severity: "min\or"` red on one it reads
+// (iss-2608300205044566, iss-2608300234598982).
+func (r schemaRecord) scalar(value string) string {
+	if r.store.prefix == "iss" {
+		return readerScalar(value)
+	}
+	return issueScalar(value)
 }
 
 // handle renders the record's prose handle (adr-12, itd-47).
@@ -572,6 +591,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// they spoke about, so nobody has to keep a second list of which fields those
 		// are, and a leg added later is covered by having said something.
 		judged := map[string]bool{}
+		before := len(out)
 		out = append(out, checkRecordFilename(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordFilenameSlug(r, cfg.Severity, judged)...)
 		out = append(out, checkIssueRecordShape(r, cfg.Severity, judged)...)
@@ -579,6 +599,9 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		out = append(out, checkRecordUnknownFields(r, cfg.Severity)...)
 		out = append(out, checkRecordJoins(r, index, retired, cfg)...)
 		out = append(out, checkRecordBucketField(r, cfg.Severity)...)
+		if len(out) == before {
+			out = append(out, checkIssueReaderParity(r, cfg.Severity)...)
+		}
 
 		// Cross-references: a named record must be in the corpus, or declared
 		// retired by the record that replaced it.
@@ -668,7 +691,7 @@ func checkRecordFilename(r schemaRecord, severity string, judged map[string]bool
 		return nil
 	}
 	want := r.handle()
-	got := issueScalar(f.value)
+	got := r.scalar(f.value)
 	// Compared as a PARSED handle, not as a string: `adr-0012` and `adr-12` are one
 	// id written two ways (the rest of the rule already compares numerically), and
 	// a string comparison would report the record's own zero-padded spelling as a
@@ -750,7 +773,7 @@ func checkRecordFilenameSlug(r schemaRecord, severity string, judged map[string]
 	if !ok {
 		return nil
 	}
-	got := issueScalar(f.value)
+	got := r.scalar(f.value)
 	if fnSlug == got {
 		return nil
 	}
@@ -1245,7 +1268,7 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		if !present || isNull(strings.TrimSpace(f.value)) {
 			continue
 		}
-		v := issueScalar(f.value)
+		v := r.scalar(f.value)
 		if !inSet(v, e.set) {
 			add(e.field, f.line, "invalid "+e.field+" '"+v+"'; capture refuses a value outside {"+strings.Join(e.set, ", ")+"} and skips the record")
 		}
@@ -1254,7 +1277,7 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	// Kebab-slug: the slug becomes a filename, and capture refuses any other shape
 	// — a blank one included, for the reason the enums above are judged blank.
 	if f, present := r.fields["slug"]; present && !isNull(strings.TrimSpace(f.value)) {
-		v := issueScalar(f.value)
+		v := r.scalar(f.value)
 		if !issueschema.SlugRe.MatchString(v) {
 			add("slug", f.line, "invalid slug '"+v+"'; a slug is kebab-case (lower-case alphanumerics joined by single hyphens) and capture refuses any other shape")
 		}
@@ -1307,7 +1330,7 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	lapseField, hasLapseField := r.fields["lapsed_at"]
 	lapsedAt := ""
 	if hasLapseField && !isNull(strings.TrimSpace(lapseField.value)) {
-		lapsedAt = strings.TrimSpace(issueScalar(lapseField.value))
+		lapsedAt = strings.TrimSpace(r.scalar(lapseField.value))
 	}
 	// A key whose own line carries no value may still carry one, on the indented
 	// lines below it. The shared scanner is a same-line scanner, so it reports that
@@ -1365,13 +1388,11 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 // value, and eating it down to nothing puts a missing-property blocker on a
 // property the record plainly carries.
 //
-// On QUOTING the parity is incomplete, and that is a KNOWN GAP rather than a
-// claim: this strips a single-quote pair, capture's decodeScalar unquotes only
-// double quotes, so `severity: 'minor'` is green here and refused there. The
-// divergence is pre-existing and cuts across every shape check that reads a
-// scalar, which is why it is recorded as iss-2608300205044566 — naming this
-// function as the one place to fix it — rather than closed from inside a change
-// about required fields.
+// On QUOTING this is the lenient decoder the reading-family readers share (they
+// strip either quote pair). The issue ledger's reader keeps a single-quoted value
+// as written and decodes a double-quoted one's escapes, so the issue store's legs
+// decode through schemaRecord.scalar, which picks readerScalar for that store
+// (iss-2608300205044566).
 func issueScalar(value string) string {
 	v := strings.TrimSpace(value)
 	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
@@ -1386,12 +1407,14 @@ func issueScalar(value string) string {
 // escaping reversed; anything else — a single-quoted value included — is the bare token it
 // spells, quote characters and all.
 //
-// It exists beside issueScalar rather than replacing it because the two answer
-// different questions. issueScalar compares an enum leniently, where a
-// single-quoted `severity: 'minor'` is a spelling nobody needs a finding about.
-// A free-text value is different: the quote character survives into the value the
-// reader parses, so a gate that strips it judges a string that never existed
-// (iss-2608300927577163).
+// It exists beside issueScalar rather than replacing it because the stores'
+// readers differ: the issue ledger's reader decodes exactly this way, so every
+// issue-store leg reads a value through it (schemaRecord.scalar) — a single-quoted
+// `severity: 'minor'` is the string 'minor' to that reader, out of enum, and the
+// record is skipped — while the reading-family readers strip either quote pair,
+// which issueScalar mirrors. For a free-text value the quote character survives
+// into the value the reader parses, so a gate that strips it judges a string that
+// never existed (iss-2608300927577163).
 func readerScalar(value string) string {
 	v := strings.TrimSpace(value)
 	if len(v) >= 2 && strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`) {
@@ -1560,14 +1583,15 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				}
 				fields := frontmatterFields(lines)
 				records = append(records, schemaRecord{
-					rel:    rel,
-					store:  store,
-					num:    num,
-					bucket: bucket,
-					title:  recordTitle(lines),
-					fields: fields,
-					refs:   recordRefsOf(lines, fields),
-					blocks: frontmatterBlocksOf(lines, fields),
+					rel:     rel,
+					store:   store,
+					num:     num,
+					bucket:  bucket,
+					title:   recordTitle(lines),
+					fields:  fields,
+					refs:    recordRefsOf(lines, fields),
+					blocks:  frontmatterBlocksOf(lines, fields),
+					content: string(content),
 				})
 			}
 			return nil
@@ -1959,4 +1983,48 @@ func refsContain(refs []recordRef, want recordRef) bool {
 		}
 	}
 	return false
+}
+
+// checkIssueReaderParity is the backstop under the issue store's legs: when none
+// of them found anything, it asks capture's ledger reader itself whether it
+// reads the record, and reports the refusal it would skip the record with. The
+// legs above re-derive the reader's grammar one property at a time, and every
+// shape they did not re-derive was lint-green on a record the reader refuses and
+// skips, invisible to every capture surface while it sat in the ledger: a stray
+// indented line after a key, a key whose only continuation is an indented
+// comment, a key led by a Unicode space, a schema_version other than the integer
+// 1, a list where a string belongs (iss-2608300244483405, iss-2608300234598982,
+// iss-2608301519255156). It runs only when the legs are silent, so a defect they
+// name is named once, in their words.
+func checkIssueReaderParity(r schemaRecord, severity string) []Finding {
+	if r.store.prefix != "iss" {
+		return nil
+	}
+	if issueReadRefusal == nil {
+		return nil
+	}
+	err := issueReadRefusal(r.content, r.bucket, r.rel)
+	if err == nil {
+		return nil
+	}
+	return []Finding{{
+		File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: severity,
+		Message: "capture's ledger reader refuses this record (" + err.Error() +
+			") and skips it, so it is invisible to every capture surface while it sits in the ledger",
+	}}
+}
+
+// issueReadRefusal is the ledger reader's verdict on one committed issue record:
+// the error it would skip the record with, or nil. It is capture.ReadRefusal,
+// registered by the front doors that run this gate (cmd/record-lint, and the CLI
+// for `abcd lint`), because this package cannot import core/capture: capture's
+// own tests import this package, and Go refuses the cycle. A caller that
+// registers nothing runs every other leg and not this backstop; the front-door
+// tests pin that both register it.
+var issueReadRefusal func(content, status, path string) error
+
+// SetIssueReader registers the issue ledger's reader for the record_schema
+// reader-parity leg. Pass capture.ReadRefusal.
+func SetIssueReader(fn func(content, status, path string) error) {
+	issueReadRefusal = fn
 }
