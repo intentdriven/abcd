@@ -506,13 +506,19 @@ func (r Registry) check(command string) (Decision, error) {
 	// segments fired, because Tier 2's gate is per segment — a line-wide gate would
 	// let one warn-tier command disarm the fail-safe for everything after it
 	// (adr-42 decision 4).
-	var blockers, warns []string
+	//
+	// An entry that fired only where the program name is wholly unknown
+	// (matchSegmentNamed) is kept apart: it is in Matches, but the verdict
+	// speaks for the substitution unless an entry fired on a name the line
+	// spells.
+	var blockers, warns, unnamedBlockers, unnamedWarns []string
 	matchedSeg := make([]bool, len(segs))
 	for _, id := range ids {
 		p := r.Entries[id].Pattern
-		hit := false
+		hit, named := false, false
 		for i, s := range segs {
-			if !matchSegment(p, s) {
+			segHit, segNamed := matchSegmentNamed(p, s)
+			if !segHit {
 				continue
 			}
 			if p.AfterCD != nil && *p.AfterCD && !precededByCD(segs[:i], s.chain) {
@@ -520,13 +526,20 @@ func (r Registry) check(command string) (Decision, error) {
 			}
 			matchedSeg[i] = true
 			hit = true
+			named = named || segNamed
 		}
-		if hit {
-			if r.Entries[id].Tier == TierBlocker {
-				blockers = append(blockers, id)
-			} else {
-				warns = append(warns, id)
-			}
+		if !hit {
+			continue
+		}
+		switch {
+		case r.Entries[id].Tier == TierBlocker && named:
+			blockers = append(blockers, id)
+		case r.Entries[id].Tier == TierBlocker:
+			unnamedBlockers = append(unnamedBlockers, id)
+		case named:
+			warns = append(warns, id)
+		default:
+			unnamedWarns = append(unnamedWarns, id)
 		}
 	}
 
@@ -549,8 +562,8 @@ func (r Registry) check(command string) (Decision, error) {
 	// Merge by SEVERITY POOL, not a single "registry outranks synthetic" rule: a
 	// synthetic block never hides behind a registry warn, and a registry blocker
 	// still outranks a synthetic warn.
-	blockPool := len(blockers) > 0 || synBlock != nil
-	warnPool := len(warns) > 0 || synWarn != nil
+	blockPool := len(blockers) > 0 || len(unnamedBlockers) > 0 || synBlock != nil
+	warnPool := len(warns) > 0 || len(unnamedWarns) > 0 || synWarn != nil
 	if !blockPool && !warnPool {
 		return Decision{Verdict: VerdictAllow}, nil
 	}
@@ -560,7 +573,8 @@ func (r Registry) check(command string) (Decision, error) {
 	// record of what fired, and a Tier 2 hit that loses the slot to an unrelated
 	// payload warn would vanish from it entirely. That is exactly what the warn
 	// rate is measured from, so the blind spot would have hidden itself.
-	matches := append(append([]string(nil), blockers...), warns...)
+	matches := append(append([]string(nil), blockers...), unnamedBlockers...)
+	matches = append(append(matches, warns...), unnamedWarns...)
 	for i := range signals {
 		if id := signals[i].entryID(); !containsString(matches, id) {
 			matches = append(matches, id)
@@ -572,16 +586,41 @@ func (r Registry) check(command string) (Decision, error) {
 	// only when it is the sole member of the winning pool. A synthetic id must NOT
 	// index r.Entries — that yields a zero Entry and a blank message — so the
 	// winner construction branches on it.
+	//
+	// An entry that fired only on a program name nothing fixes supplies neither:
+	// its lesson is about a program the line never named (killall's "stop it by
+	// pid" for `$(which go) build`), so the verdict carries the substitution's
+	// reason and the way past, spelling the program's name (review4-guard
+	// finding 4). It ranks after an entry the line names and before the
+	// entry-less signals, as the registry match it is.
 	if blockPool {
-		if len(blockers) > 0 {
+		switch {
+		case len(blockers) > 0:
 			return decisionFromEntry(VerdictBlock, r.Entries[blockers[0]], matches), nil
+		case len(unnamedBlockers) > 0:
+			return unknownProgramDecision(VerdictBlock, unnamedBlockers[0], matches), nil
 		}
 		return syntheticDecision(VerdictBlock, *synBlock, matches), nil
 	}
-	if len(warns) > 0 {
+	switch {
+	case len(warns) > 0:
 		return decisionFromEntry(VerdictWarn, r.Entries[warns[0]], matches), nil
+	case len(unnamedWarns) > 0:
+		return unknownProgramDecision(VerdictWarn, unnamedWarns[0], matches), nil
 	}
 	return syntheticDecision(VerdictWarn, *synWarn, matches), nil
+}
+
+// unknownProgramDecision is the verdict for a command whose program name a
+// substitution prints, where the entry id fired only because that name can be
+// any program. It speaks in the substitution family's voice under its own
+// reserved id, names the entry the line can be, and lists that id beside the
+// entries in matches.
+func unknownProgramDecision(v Verdict, id string, matches []string) Decision {
+	if !containsString(matches, unknownProgramEntryID) {
+		matches = append(matches, unknownProgramEntryID)
+	}
+	return syntheticDecision(v, unknownProgramSignal(v, id), matches)
 }
 
 const (

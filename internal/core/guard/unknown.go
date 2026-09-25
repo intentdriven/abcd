@@ -481,6 +481,27 @@ func unknownSitesBlockSignal() payloadSignal {
 	}
 }
 
+// unknownProgramEntryID is the reserved id a command is reported under when
+// the only entries it fired are ones its unknown program name can be. No
+// registry entry may claim it.
+const unknownProgramEntryID = "program-name-unknown"
+
+// unknownProgramSignal is the substitution family's verdict on a command whose
+// program name a substitution prints and whose words fit the entry id. Nothing
+// fixes the name, so it can be the program id names, and the lesson is the
+// substitution's: spell the name, and the guard checks the program that runs.
+func unknownProgramSignal(v Verdict, id string) payloadSignal {
+	return payloadSignal{
+		id:      unknownProgramEntryID,
+		verdict: v,
+		family:  familySubstitution,
+		reason: "This command's program name is the output of a command substitution, so it can be any program, " +
+			"and with the words after it the command reads as one the registry refuses (" + id + ").",
+		successor: "Spell the program's name, and keep a substitution's output in a variable if you need it, " +
+			"so the guard checks the program that actually runs.",
+	}
+}
+
 // arrivalsOf is commandArrivals for a segment, read from its cache when Check
 // has set one (walkSegments).
 func arrivalsOf(s segment) []arrival {

@@ -165,9 +165,12 @@ as one. In command position it is any program its known text still allows:
 `$(echo git) push --force`, `"$(which git)" push --force` and `sudo $(echo git)
 push --force` block, and so does an unknown name followed by a shell's `-c`
 string, a wrapper's options or an alias, because the name can be the shell, the
-wrapper or git. A program name nothing fixes can be `pkill` or `killall`, so an
-unknown name followed by any operand (`"$(which python3)" script.py`) blocks
-under their entries — an accepted over-block; spell the program's name instead.
+wrapper or git. Where the only entries that fire are ones the unknown name can
+be, the block is reported as `program-name-unknown`, with the entries the line
+reads as among its matches, and its way past is to spell the program's name. A
+program name nothing fixes can be `pkill` or `killall`, so an unknown name
+followed by any operand (`"$(which python3)" script.py`, `$(date) x`) blocks —
+an accepted over-block, answered the same way.
 A command with more than eight substitutions where its program name could be is
 a **block** (`substitution-unread`), because the guard stops following them.
 Text written beside one in the same word is also read as bash leaves it when the

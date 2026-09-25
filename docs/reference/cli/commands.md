@@ -538,7 +538,9 @@ taking a value, a shell's `-c` — before the command as well as after it;
 after a value flag (`git -C $(pwd) push`) it is that flag's value; as an
 operand it is one operand; in command position (`$(echo git) push`) it is
 any program its known text allows, so an unknown name with any operand
-reads as `pkill` too. Text beside one in the same word is also read as bash
+reads as `pkill` too; a block that fires only on such a name is reported
+as program-name-unknown, and the way past is to spell the program's name.
+Text beside one in the same word is also read as bash
 leaves it when the output is empty. One nested more than eight
 double-quoted substitutions deep, holding a case command, or more than
 eight of them where the program name could be, is blocked, because the

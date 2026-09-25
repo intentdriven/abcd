@@ -78,7 +78,9 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"after a value flag (`git -C $(pwd) push`) it is that flag's value; as an\n" +
 			"operand it is one operand; in command position (`$(echo git) push`) it is\n" +
 			"any program its known text allows, so an unknown name with any operand\n" +
-			"reads as `pkill` too. Text beside one in the same word is also read as bash\n" +
+			"reads as `pkill` too; a block that fires only on such a name is reported\n" +
+			"as program-name-unknown, and the way past is to spell the program's name.\n" +
+			"Text beside one in the same word is also read as bash\n" +
 			"leaves it when the output is empty. One nested more than eight\n" +
 			"double-quoted substitutions deep, holding a case command, or more than\n" +
 			"eight of them where the program name could be, is blocked, because the\n" +

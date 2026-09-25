@@ -280,6 +280,16 @@ func isAssignment(tok string) bool {
 // left to the literal compare, the same floor `flagMatches` names below.
 // `--forc?` and `--force*` spell the dash and still fire.
 func matchSegment(p Pattern, s segment) bool {
+	hit, _ := matchSegmentNamed(p, s)
+	return hit
+}
+
+// matchSegmentNamed is matchSegment, and whether the entry fired at a place
+// whose command word fixes some of the program's name. A match only at words
+// whose basename ends in a substitution (anyProgram) is a match because the
+// name is unknown, not because the line names the entry's program, and Check
+// reports it as the substitution's, not the entry's (review4-guard finding 4).
+func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 	tally(len(s.tokens))
 	// Every place the command can sit is read (commandArrivals): an unknown word
 	// before it is read every way it can be, and an unknown word in command
@@ -308,11 +318,14 @@ func matchSegment(p Pattern, s segment) bool {
 		m := newEntryMatcher(p, s.tokens, glob)
 		for _, a := range group {
 			if m.matchesAfter(a.idx) {
-				return true
+				hit = true
+				if !anyProgram(s.tokens[a.idx]) {
+					return true, true
+				}
 			}
 		}
 	}
-	return false
+	return hit, false
 }
 
 // entryMatcher answers, for any place a command can sit in one segment, whether

