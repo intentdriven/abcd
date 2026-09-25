@@ -53,6 +53,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -117,14 +118,45 @@ var (
 func (f File) RepoOrigin() string    { return f.RepoRel }
 func (f File) MachineOrigin() string { return "~/.abcd/" + f.MachineRel }
 
-// Roots are the two places the layers are read from. Repo is the checkout root
-// the session resolved (rules.ResolveRoot), never a directory found by walking
-// above it; "" means the invocation is outside a checkout and the repo layer is
+// Roots are the two places the layers are read from. Repo is the directory the
+// repository layer is read at; "" means there is none and the repo layer is
 // absent. Home is the caller's home directory; "" is refused, because an
-// unresolved home would drop the machine layer without a word.
+// unresolved home would drop the machine layer without a word. A front door
+// builds Roots with RootsFor; a test builds them by hand.
 type Roots struct {
 	Repo string
 	Home string
+}
+
+// RootsFor is the one way a front door resolves Roots for a working directory,
+// so every consumer of a layered file (the bare board, the delegating verbs'
+// --route, and the pace, runner, review-route and match-threshold readers that
+// follow) reads the repository layer from the same place.
+//
+// The repository root is the rules loader's (rules.Resolve), not git's
+// toplevel, and that is the choice for a reason: .abcd/rules.json,
+// .abcd/guard.json and .abcd/config.json are already read from that root, so a
+// session's injected rules, its shell guard and its layered configuration can
+// never come from two different directories. The two answers differ in two
+// places, and the rules root is the right one in both: a nested .abcd/ inside
+// the working tree (a monorepo member governs its own subtree, as it already
+// does for its rules), and a repository git will not answer for, where the
+// rules root is bounded by the same shape check and ownership gate (a foreign-
+// uid checkout falls back to the working directory with a note, instead of
+// being read on git's say-so or dropped without one). Outside any repository it
+// is the working directory, walked no higher, exactly as the rules loader reads
+// it.
+//
+// notes are the resolution's refusals (a foreign-owned checkout declined), for
+// the front door to print on stderr; the home is left "" when it cannot be
+// resolved, which Load refuses loudly.
+func RootsFor(cwd string) (Roots, []string) {
+	res := rules.Resolve(cwd)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	return Roots{Repo: res.Root, Home: home}, res.Notes
 }
 
 // MaxFileBytes caps every layer's read. A configuration file is a few hundred
