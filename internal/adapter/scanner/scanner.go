@@ -468,6 +468,52 @@ func junctionProbe(patterns []Pattern) *regexp.Regexp {
 	return combined
 }
 
+// junctionSet is the pair of candidate generators stolenJunctions draws from,
+// chosen by the kind of match it is searching behind (iss-195).
+//
+// Behind a SECRET match every pattern is a candidate: an open-ended token can
+// over-run the leading bytes of anything that abuts it, an address included.
+// Behind a NETWORK match only the secret patterns are. Network tokens do not
+// abut one another with no separator — an address, a MAC and a host name are
+// each delimited — so a network token "found" inside another is never a
+// second token: it is a suffix of the same one ("a9fe::" inside
+// "2001:db8:a9fe::"), which was reported as a duplicate finding per suffix,
+// and offering every hex run of a colon-hex line as a candidate made the
+// search the dominant cost of scanning one. A secret a network match over-ran
+// ("fe80::1" followed directly by an access key) is still sought there and
+// still recovered.
+type junctionSet struct {
+	all    matcher
+	secret matcher // nil when the pattern set has no secret pattern
+}
+
+// newJunctionSet builds both generators for a pattern set.
+func newJunctionSet(patterns []Pattern) junctionSet {
+	js := junctionSet{all: junctionProbe(patterns)}
+	var secret []Pattern
+	for _, p := range patterns {
+		if !isNetworkKind(p.Kind) {
+			secret = append(secret, p)
+		}
+	}
+	if len(secret) > 0 {
+		js.secret = junctionProbe(secret)
+	}
+	return js
+}
+
+// behind returns the generator for the backward search behind a match of
+// pattern p, or nil when nothing can start a token there.
+func (js junctionSet) behind(p Pattern) matcher {
+	if isNetworkKind(p.Kind) {
+		if js.secret == nil {
+			return nil
+		}
+		return js.secret
+	}
+	return js.all
+}
+
 // probeParts splits a compiled pattern's source into its leading inline flag
 // group (if any) and the rest with a leading \b stripped.
 func probeParts(re *regexp.Regexp) (flags, body string) {
@@ -633,7 +679,7 @@ func gallopBudget(line string) int {
 // probe to run after; that is the same pre-existing \b-boundary limitation
 // every bundled pattern already accepts elsewhere in this package, not
 // something this function claims to close.
-func scanAllPatterns(patterns []Pattern, probes []matcher, junctions matcher, line string) []patMatch {
+func scanAllPatterns(patterns []Pattern, probes []matcher, junctions junctionSet, line string) []patMatch {
 	var all []patMatch
 	// One growth budget for the whole line, shared by every probe and the
 	// junction search: see gallopBudget.
@@ -668,7 +714,11 @@ func scanAllPatterns(patterns []Pattern, probes []matcher, junctions matcher, li
 	for qi := 0; qi < len(all); qi++ {
 		m := all[qi]
 		probeAt(m.end)
-		for _, cut := range stolenJunctions(probes[m.patIdx], junctions, line, m, &budget) {
+		behind := junctions.behind(patterns[m.patIdx])
+		if behind == nil {
+			continue
+		}
+		for _, cut := range stolenJunctions(probes[m.patIdx], behind, line, m, &budget) {
 			probeAt(cut)
 		}
 	}
@@ -767,7 +817,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 	for i, cp := range patterns {
 		probes[i] = adjacencyProbe(cp.Re)
 	}
-	junctions := junctionProbe(patterns)
+	junctions := newJunctionSet(patterns)
 	var findings []Finding
 	lineno := 0
 	for _, line := range strings.Split(text, "\n") {

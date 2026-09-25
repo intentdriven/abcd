@@ -38,7 +38,7 @@ const maxPercentDecodePasses = 3
 // copy and mapping each hit back to its raw span is what stops such an identity
 // leak surviving into a committed memory/intent/capture artifact
 // (iss-2608270720336165).
-func decodedLineFindings(patterns []Pattern, probes []matcher, junctions matcher, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
+func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctionSet, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
 	decoded, posMap := percentDecodeBounded(rawLine)
 	if posMap == nil {
 		return nil // nothing was percent-encoded; the raw scan already covers it
