@@ -455,9 +455,13 @@ func mergeSpans(spans []span) []span {
 // or the byte after the ':' of an scp-style "git@host:" remote. The root is
 // found once per span, so asking it of every match inside the span is a
 // lookup rather than a search from the span's start (iss-2609251535277823).
+//
+// user is the span's userinfo — the account a "scheme://user[:password]@host"
+// URL names — or the zero span where it has none.
 type urlSpan struct {
 	span
 	root int
+	user span
 }
 
 // urlSet is a line's URL spans. They are the leftmost non-overlapping matches
@@ -470,7 +474,7 @@ func urlSpans(line string) urlSet {
 	scanMeter.charge(stageIdentity, len(line))
 	var out urlSet
 	for _, loc := range urlSpanRe.FindAllStringIndex(line, -1) {
-		out = append(out, urlSpan{span{loc[0], loc[1]}, urlPathRoot(line, loc[0], loc[1])})
+		out = append(out, urlSpan{span{loc[0], loc[1]}, urlPathRoot(line, loc[0], loc[1]), urlUserinfo(line, loc[0], loc[1])})
 	}
 	return out
 }
@@ -494,6 +498,66 @@ func urlPathRoot(line string, start, end int) int {
 	return -1
 }
 
+// forgeServiceUser is the account every forge's ssh remotes name
+// ("ssh://git@github.com/…"): a service, not the caller, so its userinfo is
+// left inside the URL's suppression.
+const forgeServiceUser = "git"
+
+// urlUserinfo returns the userinfo of the URL line[start:end] — the bytes
+// between "scheme://" and the last '@' of the authority — or the zero span. A
+// URL without "://" (the scp-style "git@host:" remote) has no userinfo here:
+// its user is the forge's service account.
+func urlUserinfo(line string, start, end int) span {
+	u := line[start:end]
+	i := strings.Index(u, "://")
+	if i < 0 {
+		return span{}
+	}
+	auth := u[i+3:]
+	if j := strings.IndexAny(auth, "/?#"); j >= 0 {
+		auth = auth[:j]
+	}
+	scanMeter.charge(stageIdentity, len(auth))
+	at := strings.LastIndexByte(auth, '@')
+	if at <= 0 {
+		return span{}
+	}
+	user := auth[:at]
+	if c := strings.IndexByte(user, ':'); c >= 0 {
+		user = user[:c]
+	}
+	if strings.EqualFold(user, forgeServiceUser) {
+		return span{}
+	}
+	return span{start + i + 3, start + i + 3 + at}
+}
+
+// inUserinfo reports whether line[start:end] lies inside a URL's userinfo.
+func (u urlSet) inUserinfo(start, end int) bool {
+	s := u.at(start)
+	return s != nil && s.user.end > s.user.start && start >= s.user.start && end <= s.user.end
+}
+
+// suppressing returns the URL spans as the username matcher's suppression
+// sees them: every URL byte except its userinfo, which names an account
+// rather than a resource (iss-2609251549447970). Sorted and disjoint.
+func (u urlSet) suppressing() []span {
+	out := make([]span, 0, len(u))
+	for _, s := range u {
+		if s.user.end <= s.user.start {
+			out = append(out, s.span)
+			continue
+		}
+		if s.user.start > s.start {
+			out = append(out, span{s.start, s.user.start})
+		}
+		if s.end > s.user.end {
+			out = append(out, span{s.user.end, s.end})
+		}
+	}
+	return out
+}
+
 // at returns the span containing pos, or nil.
 func (u urlSet) at(pos int) *urlSpan {
 	i := sort.Search(len(u), func(i int) bool { return u[i].end > pos })
@@ -506,15 +570,6 @@ func (u urlSet) at(pos int) *urlSpan {
 
 // contains reports whether pos falls inside a URL span.
 func (u urlSet) contains(pos int) bool { return u.at(pos) != nil }
-
-// spans returns the bare intervals, sorted and disjoint.
-func (u urlSet) spans() []span {
-	out := make([]span, len(u))
-	for i, s := range u {
-		out[i] = s.span
-	}
-	return out
-}
 
 // findings scans one line for identity-derived matches, applying every ported
 // suppression, and returns findings tagged with the merged identity severities.
@@ -672,7 +727,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			}
 			// A generic account name is ordinary vocabulary wherever it does
 			// not stand as an account (iss-236, iss-2609061504302157).
-			if m.localGeneric && !standsAsAccountName(line, loc[0], loc[1], m.homeLiterals) {
+			if m.localGeneric && !urls.inUserinfo(loc[0], loc[1]) && !standsAsAccountName(line, loc[0], loc[1], m.homeLiterals) {
 				return
 			}
 			add(kindLocalUser, loc[0]+1, line[loc[0]:loc[1]],
@@ -978,13 +1033,14 @@ func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 
 // localSuppressionSpans returns spans where a local-username match is not a
 // standalone leak: the caller's own home path (home_path_self, always redacted
-// hard_fail), the exact email, and URLs. home_path_other spans are deliberately
-// NOT included: home_path_other is only a WARN, so suppressing a hard_fail
+// hard_fail), the exact email, and URLs outside their userinfo
+// (urlSet.suppressing). home_path_other spans are deliberately NOT included:
+// home_path_other is only a WARN, so suppressing a hard_fail
 // local_username underneath one would downgrade a username leak (e.g. the
 // "<user>" in "/home/<user>/...") out of the ship-blocking gate. Letting both
 // findings fire keeps the hard_fail signal and still redacts the span.
 func (m identityMatchers) localSuppressionSpans(line string, urls urlSet) []span {
-	spans := urls.spans()
+	spans := urls.suppressing()
 	if m.homeSelf != nil {
 		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
