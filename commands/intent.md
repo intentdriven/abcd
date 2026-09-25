@@ -654,7 +654,9 @@ receipt if the intent had none. An entry whose request cannot be emitted (a
 malformed `spec_id`, an unreadable file) carries `emit_error`, and `next` is
 the first entry after it that emits, so one bad record never blocks the drain;
 no `next` while `owed` is above zero means no listed entry could be emitted.
-It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+It writes: the emit parks the OWED stub in a markerless intent, a committed
+record, so even a look leaves a diff; bare `intent audit` is the read-only
+listing. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
 `--max` without `--owed` is refused, as are `--owed` with an intent id or with
 `--issue-drift`.
 

@@ -307,3 +307,32 @@ func TestIntentAuditOwedBadHeadDoesNotBlock(t *testing.T) {
 		t.Fatalf("want itd-19 with its emit_error and no next:\n%s", stdout)
 	}
 }
+
+// TestIntentAuditOwedRefusesANegativeCapFirst (iss-2609252052384356): a negative
+// --max is refused before the history walk runs (here the walk would fail and
+// say so on stderr), and the flag help says --owed writes.
+func TestIntentAuditOwedRefusesANegativeCapFirst(t *testing.T) {
+	repo := drainRepo(t)
+	cmd := exec.Command("git", "-C", repo, "symbolic-ref", "HEAD", "refs/heads/no-such-branch")
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	_, stderr, err := runCLISplit(t, "intent", "audit", "--owed", "--max", "-1")
+	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "got -1") {
+		t.Fatalf("want exit 2 naming -1, got %v", err)
+	}
+	if strings.Contains(stderr, "shipped days") {
+		t.Fatalf("the history was walked before the cap was refused: %q", stderr)
+	}
+	help := string(runCLI(t, "intent", "audit", "--help"))
+	owedLine := ""
+	for _, l := range strings.Split(help, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "--owed ") {
+			owedLine = l
+		}
+	}
+	if !strings.Contains(owedLine, "writes") {
+		t.Fatalf("the --owed help does not say it writes: %q", owedLine)
+	}
+}

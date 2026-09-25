@@ -69,8 +69,8 @@ type ReviewQueue struct {
 // list at max (0: no cap; negative: refused). shippedOn may be nil, which
 // leaves every day unknown and the queue in mint order. It never writes.
 func OwedQueue(repoRoot string, max int, shippedOn ShippedOn) (ReviewQueue, error) {
-	if max < 0 {
-		return ReviewQueue{}, fmt.Errorf("intent: --max must be zero (no cap) or a positive count, got %d", max)
+	if err := CheckOwedCap(max); err != nil {
+		return ReviewQueue{}, err
 	}
 	corpus, err := Load(repoRoot)
 	if err != nil {
@@ -119,6 +119,15 @@ func OwedQueue(repoRoot string, max int, shippedOn ShippedOn) (ReviewQueue, erro
 	}
 	q.Remaining = q.Owed - len(q.Queue)
 	return q, nil
+}
+
+// CheckOwedCap refuses a negative cap (0 is no cap). A front door calls it
+// before any costlier work, such as the history walk that supplies ShippedOn.
+func CheckOwedCap(max int) error {
+	if max < 0 {
+		return fmt.Errorf("intent: --max must be zero (no cap) or a positive count, got %d", max)
+	}
+	return nil
 }
 
 // DrainStep is one step of the drain: the queue, and the request for the

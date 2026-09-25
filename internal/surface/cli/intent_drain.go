@@ -25,6 +25,10 @@ import (
 // first (so a refusal writes nothing), its section lands in the request, and
 // the JSON next carries the routing member.
 func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFlag) error {
+	// The cap is refused before the history walk, the costliest step here.
+	if err := intent.CheckOwedCap(max); err != nil {
+		return &exitError{Code: 2, Msg: "abcd intent audit --owed: " + err.Error()}
+	}
 	repoRoot, err := intentStoreRoot(cmd)
 	if err != nil {
 		return err
