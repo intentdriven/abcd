@@ -83,15 +83,22 @@ func newSubagentStopCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Diagnostics go to stderr, out of band; stdout stays empty. A
 			// SubagentStop hook's stdout is not a place to speak to the model.
+			var in hookInput // read below; warn names whatever of it was parsed
 			warn := func(format string, a ...any) error {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: "+format+"\n", a...)
+				msg := fmt.Sprintf(format, a...)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: %s\n", msg)
+				// Under --json, the one result line every path writes
+				// (hook_result.go, iss-2608261550596333).
+				emitHookResult(cmd, hookStageResult{Hook: "subagent-stop", Outcome: hookOutcomeNotCaptured,
+					SessionID: termsafe.Sanitize(in.SessionID), AgentID: termsafe.Sanitize(in.AgentID), Reason: termsafe.Sanitize(msg)})
 				return nil // never an error: exit 2 is this event's BLOCKING code
 			}
 
-			in, err := readHookInput(cmd)
+			parsed, err := readHookInput(cmd)
 			if err != nil {
 				return warn("unreadable SubagentStop payload (%v); staging nothing", err)
 			}
+			in = parsed
 			repoRoot, rootSHA, via := resolveSubagentStore(in)
 
 			// The absent-field case comes before the store check has any
@@ -134,13 +141,20 @@ func newSubagentStopCommand() *cobra.Command {
 			if err != nil {
 				return warn("staging sub-agent %s failed (%v); this transcript was not captured", in.AgentID, err)
 			}
+			staged := hookStageResult{Hook: "subagent-stop", Captured: true, Outcome: hookOutcomeStaged,
+				SessionID: termsafe.Sanitize(in.SessionID), AgentID: in.AgentID, Bytes: res.Staged.Bytes}
 			if !res.Wrote {
-				return warn("sub-agent %s already staged with identical bytes (no-op)", in.AgentID)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: sub-agent %s already staged with identical bytes (no-op)\n", in.AgentID)
+				staged.Outcome = hookOutcomeAlreadyStaged
+				emitHookResult(cmd, staged)
+				return nil
 			}
 			verb := "staged"
 			if res.Replaced {
 				verb = "re-staged"
+				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
 			}
+			defer emitHookResult(cmd, staged)
 			// The agent id passed idScalarRe above, but the session id came
 			// straight off the payload and this line goes to a terminal.
 			fmt.Fprintf(cmd.ErrOrStderr(),

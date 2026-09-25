@@ -1377,9 +1377,13 @@ func newHookCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Diagnostics go to stderr, out of band; stdout stays empty, since a
-			// Stop hook's stdout is not a place to speak to the model.
+			// Stop hook's stdout is not a place to speak to the model — unless
+			// the caller asked for --json, when it carries one result line on
+			// every path (hook_result.go, iss-2608261550596333).
 			warn := func(format string, a ...any) error {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: "+format+"\n", a...)
+				msg := fmt.Sprintf(format, a...)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: %s\n", msg)
+				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured, Reason: termsafe.Sanitize(msg)})
 				return nil // never non-zero: a Stop hook must not wedge the session
 			}
 
@@ -1425,8 +1429,12 @@ func newHookCommand() *cobra.Command {
 			if err != nil {
 				return warn("staging failed (%v); this session was not captured", err)
 			}
+			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
 			if !res.Wrote {
-				return warn("session %s already staged with identical bytes (no-op)", res.Staged.SessionID)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: session %s already staged with identical bytes (no-op)\n", res.Staged.SessionID)
+				staged.Outcome = hookOutcomeAlreadyStaged
+				emitHookResult(cmd, staged)
+				return nil
 			}
 			if res.Replaced {
 				// Different bytes for an already-staged session: the later
@@ -1434,10 +1442,14 @@ func newHookCommand() *cobra.Command {
 				// than reporting a no-op that would hide a replaced transcript.
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: re-staged %s (%d bytes), replacing %d stale bytes; the next session redacts and stores it\n",
 					res.Staged.SessionID, res.Staged.Bytes, res.ReplacedBytes)
+				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
+				emitHookResult(cmd, staged)
 				return nil
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: staged %s (%d bytes); the next session redacts and stores it\n",
 				res.Staged.SessionID, res.Staged.Bytes)
+			staged.Outcome = hookOutcomeStaged
+			emitHookResult(cmd, staged)
 			return nil
 		},
 	})
