@@ -30,8 +30,12 @@ type Identity struct {
 	OtherGitUserNames  []string
 	OtherGitUserEmails []string
 	GitRemoteUsername  string
-	HomePath           string
-	HomeUser           string
+	// GitRemoteRepo is the repository name of the same remote. With the owner
+	// it spells the repository's own owner/repo slug, which is public by
+	// construction and is not a github_username finding.
+	GitRemoteRepo string
+	HomePath      string
+	HomeUser      string
 }
 
 // Built-in identity kinds.
@@ -107,9 +111,7 @@ func ProbeIdentity(repoRoot string) Identity {
 	id.OtherGitUserEmails = addIdentityValues(id.GitUserEmail, id.OtherGitUserEmails,
 		os.Getenv("GIT_AUTHOR_EMAIL"), os.Getenv("GIT_COMMITTER_EMAIL"))
 	if remote := git("config", "--get", "remote.origin.url"); remote != "" {
-		if m := githubRemoteRe.FindStringSubmatch(remote); m != nil {
-			id.GitRemoteUsername = m[1]
-		}
+		id.GitRemoteUsername, id.GitRemoteRepo = parseGitHubRemote(remote)
 	}
 	if home := CallerHome(); home != "" {
 		id.HomePath = home
@@ -248,7 +250,7 @@ var (
 	// GitHub username inside a remote URL (https or ssh form). Case-insensitive
 	// on the host: git stores the remote verbatim, so a hand-typed GitHub.com
 	// must still resolve the handle, or github_username redaction never arms.
-	githubRemoteRe = regexp.MustCompile(`(?i)github\.com[:/]([A-Za-z0-9-]+)/`)
+	githubRemoteRe = regexp.MustCompile(`(?i)github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9._-]*)`)
 	// Generic home path. Both boundaries are Go predicates: a leading RE2 \b is
 	// wrong here — it is an ASCII word boundary that requires a WORD character
 	// immediately before the '/', which never holds at line start or after a
@@ -265,6 +267,36 @@ var (
 	// its forms ("id+login@..." and the legacy "login@...").
 	noreplyLoginRe = regexp.MustCompile(`(?i)^(?:[0-9]+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$`)
 )
+
+// parseGitHubRemote returns the owner and repository name of a GitHub remote
+// URL (https, ssh or scp form), or two empty strings for any other remote. The
+// owner is returned even where the repository name cannot be read.
+func parseGitHubRemote(remote string) (owner, repo string) {
+	m := githubRemoteRe.FindStringSubmatch(strings.TrimSpace(remote))
+	if m == nil {
+		return "", ""
+	}
+	return m[1], strings.TrimSuffix(m[2], ".git")
+}
+
+// isOwnRepoSlug reports whether the owner matched at line[start:end] is the
+// owner half of the repository's own owner/repo slug: followed by '/', the
+// repository name (case-insensitively, as the forge compares both), and a byte
+// that cannot continue the name.
+func isOwnRepoSlug(line string, end int, repo string) bool {
+	if repo == "" || end >= len(line) || line[end] != '/' {
+		return false
+	}
+	rest := line[end+1:]
+	if len(rest) < len(repo) || !strings.EqualFold(rest[:len(repo)], repo) {
+		return false
+	}
+	if len(rest) == len(repo) {
+		return true
+	}
+	b := rest[len(repo)]
+	return !(isAlnumByte(b) || b == '-' || b == '_')
+}
 
 // homeBoundary is the trailing-boundary set for a home-path match (ported from
 // the Python lookahead [/\s"'`)\]\}<,;:]).
@@ -506,6 +538,9 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 				continue
 			}
 			if inAnySpan(loc[0], urls) {
+				continue
+			}
+			if isOwnRepoSlug(line, loc[1], m.id.GitRemoteRepo) {
 				continue
 			}
 			add(kindGithubUser, loc[0]+1, line[loc[0]:loc[1]], "(review — may be intentional in repo URL contexts)")
