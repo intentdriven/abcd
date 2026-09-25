@@ -9,8 +9,6 @@ found_during: "autonomous run A, pressbuild fix round 2 (review2-pressbuild)"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/lint/persona.go"
-deferred_after: "v0.9.0"
-deferral_reason: "Deferred out loud by the pressbuild lane, fix round 3 of the 2026-09-23 run (review 3 nit). The fix is to widen personaAttrRe to match `says` as well as `said`, but that one regex is shared: lint.PersonaAttribution also drives record-lint's persona_registry rule over the whole committed record, so widening it for the release page widens that rule everywhere at once. The false positives it would raise across the record (prose that reports what someone says, not a quoted persona) need their own look before the change lands, which is next cycle's work, not this cut's."
 resolution: "personaAttrRe matches said and says, so persona_registry and the release page headline refusal both see a says attribution."
 impact: fix
 resolved_by:
