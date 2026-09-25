@@ -5,16 +5,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/intentdriven/abcd/internal/core/recordid"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -100,42 +99,31 @@ const LedgerName = "the issue ledger"
 // reported success with a repo-relative path that looked ordinary
 // (iss-2609090951291524).
 //
-// The resolution deliberately does not fall through to discoverRepoRoot's marker
-// walk, which accepts any directory merely carrying the name and grew neither
-// the shape check nor the ownership gate its rules-root sibling has
-// (iss-2609090947359464). That walk is unreachable in shipped code, and routing
-// the front doors through it would be the one change that makes it live.
+// discoverRepoRoot, the core's own discovery for a request that names no root,
+// asks the same question through the same function, so the two cannot come to
+// disagree about which directory is a checkout (iss-2609090947359464).
 func LedgerRoot(cwd string) (string, error) {
 	return gitutil.CheckoutRoot(cwd, LedgerName)
 }
 
-// discoverRepoRoot returns the git worktree root containing start, or "".
+// discoverRepoRoot returns the git worktree root containing start, or "" when
+// git will not name one.
+//
+// It is git's answer or no answer, through gitutil.CheckoutRoot — the same
+// isolated `rev-parse --show-toplevel` the front doors resolve through, so an
+// inherited GIT_WORK_TREE or GIT_DIR cannot redirect it. It used to fall back to
+// walking upward and accepting any directory whose .git entry merely existed,
+// with neither the shape check nor the ownership gate the rules-root resolver
+// grew: an empty marker planted in a shared ancestor, or a repository another
+// uid laid there, bounded the ledger root (iss-2609090947359464). The walk is
+// deleted rather than hardened because nothing needs it: every front door
+// resolves through LedgerRoot, which refuses the same states outright.
 func discoverRepoRoot(start string) string {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Dir = start
-	// Isolate: `rev-parse --show-toplevel` honours an inherited GIT_WORK_TREE/GIT_DIR
-	// over cmd.Dir, so without scrubbing an inherited value redirects repo-root
-	// discovery at a DIFFERENT tree — and the derived issuesRoot then reads and
-	// writes the ledger under an attacker-chosen path. Repo discovery needs no
-	// global config, so full isolation is safe.
-	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
-	if err == nil {
-		if root := strings.TrimSpace(string(out)); root != "" {
-			return root
-		}
+	root, err := gitutil.CheckoutRoot(start, LedgerName)
+	if err != nil {
+		return ""
 	}
-	dir := start
-	for {
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
+	return root
 }
 
 var reNonSlug = regexp.MustCompile(`[^a-z0-9]+`)
