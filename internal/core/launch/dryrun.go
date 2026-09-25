@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // versionLocationRelPath is the committed version-location decision artefact.
@@ -172,6 +173,19 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 			return RetentionPlan{
 				Published: pub.Tag(), Line: pub.Line(), Refused: true,
 				RefusalReason: "the existing release tags could not be listed, so the plan cannot say what the release would prune: " + err.Error(),
+			}
+		}
+		// A shallow checkout's listing SUCCEEDS but holds only the tags that
+		// were fetched, so it is not the release set either
+		// (iss-2609251238184553).
+		if shallow, err := gitutil.Run(req.RepoRoot, "rev-parse", "--is-shallow-repository"); err != nil || shallow != "false" {
+			reason := "the checkout is shallow, so its tag listing may hold only the tags that were fetched"
+			if err != nil {
+				reason = "whether the checkout is shallow could not be read: " + err.Error()
+			}
+			return RetentionPlan{
+				Published: pub.Tag(), Line: pub.Line(), Refused: true,
+				RefusalReason: reason + ", and the plan cannot say what the release would prune — fetch the full history and tags first",
 			}
 		}
 		existing = tags

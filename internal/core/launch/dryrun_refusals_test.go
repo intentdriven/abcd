@@ -2,8 +2,11 @@ package launch
 
 import (
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestPreviewRetentionRefusesWhenTagsAreUnreadable is iss-194's code half: a
@@ -44,4 +47,30 @@ func anyReasonContains(reasons []string, fragment string) bool {
 		}
 	}
 	return false
+}
+
+// TestPreviewRetentionRefusesInAShallowCheckout is iss-2609251238184553: in a
+// shallow clone the tag listing SUCCEEDS but holds only the tags that were
+// fetched, so reading it as the release set would preview a prune over releases
+// the checkout never saw.
+func TestPreviewRetentionRefusesInAShallowCheckout(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write(".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "README.md"]}`)
+	r.Write("README.md", "readme\n")
+	writeLockstepTree(t, r.Root(), "", "", "")
+	r.Commit("the payload")
+	r.Git("tag", "v1.2.0")
+	r.Commit("a later change")
+	r.Git("tag", "v1.2.1")
+
+	clone := filepath.Join(t.TempDir(), "shallow")
+	r.Git("clone", "--quiet", "--depth", "1", "--no-tags", "file://"+r.Root(), clone)
+
+	report, err := DryRun(DryRunRequest{RepoRoot: clone, Version: "1.2.2"})
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if !report.Retention.Refused || !strings.Contains(report.Retention.RefusalReason, "shallow") {
+		t.Fatalf("retention = %+v, want a refusal naming the shallow checkout", report.Retention)
+	}
 }

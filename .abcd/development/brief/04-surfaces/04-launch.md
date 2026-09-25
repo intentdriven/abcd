@@ -180,7 +180,8 @@ polarity over the working tree — the polarity adr-19 requires the committed
 manifests to satisfy, which is that they carry no version key — and folds any
 drift, or an unreadable version-location contract, into what the preview would
 refuse on. The preview's retention plan refuses where the existing release tags
-could not be listed, rather than reading an unread tag set as nothing to prune.
+could not be listed or the checkout is shallow, rather than reading an unread or
+partly fetched tag set as the whole release set.
 
 The gate suite does not carry a deeper opt-in secret scan, deep credential
 verification, or a vulnerability check. The scan layers that do ship enforce a
