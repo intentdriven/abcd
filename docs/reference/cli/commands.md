@@ -1047,7 +1047,7 @@ Intent lifecycle; bare invocation is read-only status, quoted text files a draft
 
 #### `abcd intent audit`
 
-Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)
+Intent audit (promise vs delivered): list the owed fidelity reviews (bare), re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)
 
 **Usage:** `abcd intent audit [<itd-N>] | audit --issue-drift [--strict] [flags]`
 

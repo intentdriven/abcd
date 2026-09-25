@@ -44,7 +44,11 @@ form.
 `spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
 and the concrete next move for its lifecycle state. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
-itd-121). A positional on the namespace root is not a `show` sub-verb, so the
+itd-121). For a shipped intent the move is its fidelity-review state, read by
+the intent store's one reader of the review marker (itd-2609150819445595): an
+owed review names its receipt and the re-emit command; a shipped intent with no
+marker owes one too, and the re-emit mints its receipt; a dead-lettered review
+is reported unreviewed with its reason; an ingested one leaves nothing to do. A positional on the namespace root is not a `show` sub-verb, so the
 form stays inside the naming discipline.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command

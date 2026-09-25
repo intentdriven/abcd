@@ -340,10 +340,12 @@ type LinkedPair struct {
 }
 
 // StatusView is the read-only lifecycle summary: intent counts by bucket, spec
-// counts by status, and the linked intent↔spec pairs.
+// counts by status, the linked intent↔spec pairs, and the count of shipped
+// intents whose fidelity review is owed (the Reviews listing's owed total).
 type StatusView struct {
 	Buckets     map[string]int `json:"buckets"`
 	SpecsOpen   int            `json:"specs_open"`
 	SpecsClosed int            `json:"specs_closed"`
 	Linked      []LinkedPair   `json:"linked"`
+	ReviewsOwed int            `json:"reviews_owed"`
 }

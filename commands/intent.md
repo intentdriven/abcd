@@ -18,7 +18,9 @@ invocation **performs zero writes**.
 ```
 
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
-and the intent↔spec links. Nothing is created or moved by this invocation.
+the intent↔spec links, and `reviews_owed` — the shipped intents whose fidelity
+review is owed, the same total bare `intent audit` lists (below). Nothing is
+created or moved by this invocation.
 
 **Every `intent` verb addresses the checkout's store, from anywhere in the
 tree.** The verb resolves the repository root before it reads or writes, so the
@@ -557,9 +559,24 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 ## Review / ingest
 
 ```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --json                               # list the owed fidelity reviews (read-only)
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit <itd-N> --json                       # re-emit a shipped intent's review request
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
 ```
+
+**Bare `intent audit` lists the debt and writes nothing.** Every `spec close`
+that ships an intent parks an OWED review marker, so a fidelity review is owed
+by construction. The listing reads the first marker of every intent in
+`shipped/` and returns one entry per shipped intent (`intent_id`, `state`,
+`receipt_id`, and `re_emit` where the review is owed), with the totals `owed`,
+`dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
+intent with no marker at all owes the review too, and its re-emit mints the
+receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
+with the reason the quarantine recorded, and is not counted as owed; an
+`INGESTED` one is not listed in the text form. Report the owed total and, for
+each owed intent, its receipt and its re-emit command. The listing names the
+re-emit, never the request file: the request lives in the gitignored local tier
+and may have been swept. It exits 0 whatever it finds; no gate reads it.
 
 An intent this checkout does not hold is refused; when a peer holds it (a
 sibling worktree or a local branch, see `/abcd:peers`) the refusal names the

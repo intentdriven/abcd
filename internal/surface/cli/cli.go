@@ -1948,9 +1948,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd intent — drafts %d · planned %d · shipped %d · disciplines %d · superseded %d\n",
+				// The owed count is bare `abcd intent audit`'s owed total, read by the
+				// same reader, so the board and the listing agree.
+				fmt.Fprintf(w, "abcd intent — drafts %d · planned %d · shipped %d · disciplines %d · superseded %d · reviews owed %d\n",
 					v.Buckets[intent.BucketDrafts], v.Buckets[intent.BucketPlanned], v.Buckets[intent.BucketShipped],
-					v.Buckets[intent.BucketDisciplines], v.Buckets[intent.BucketSuperseded])
+					v.Buckets[intent.BucketDisciplines], v.Buckets[intent.BucketSuperseded], v.ReviewsOwed)
 				fmt.Fprintf(w, "  specs: open %d · closed %d\n", v.SpecsOpen, v.SpecsClosed)
 				for _, p := range v.Linked {
 					// p.Spec is the intent file's spec_id frontmatter, not charset-validated.
@@ -2381,13 +2383,14 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 // newIntentAuditCommand builds `abcd intent audit`: `ingest --verdict-json`
 // applies a host-produced intent-audit verdict to the shipped intent's Audit
 // Notes (fail-closed: ingested | dead_letter | noop; a re-ingest that renders
-// differently replaces the ingested verdict); bare `audit <itd-N>`
-// re-emits the OWED stub + ephemeral request for a shipped intent.
+// differently replaces the ingested verdict); `audit <itd-N>` re-emits the OWED
+// stub + ephemeral request for a shipped intent; bare `audit` is the read-only
+// listing of the owed fidelity reviews (itd-2609150819445595).
 func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	var issueDrift, strict bool
 	auditCmd := &cobra.Command{
 		Use:   "audit [<itd-N>] | audit --issue-drift [--strict]",
-		Short: "Intent audit (promise vs delivered): re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)",
+		Short: "Intent audit (promise vs delivered): list the owed fidelity reviews (bare), re-emit a shipped intent's request, ingest a verdict, or check the issue↔intent join (--issue-drift)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if issueDrift {
@@ -2400,7 +2403,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd intent audit: --strict applies to --issue-drift only"}
 			}
 			if len(args) == 0 {
-				return cmd.Help()
+				return runOwedReviews(cmd, *asJSON)
 			}
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
@@ -2469,6 +2472,53 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		"walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0")
 	auditCmd.Flags().BoolVar(&strict, "strict", false, "with --issue-drift: exit 1 when any finding is reported (the CI mode)")
 	return auditCmd
+}
+
+// runOwedReviews is bare `abcd intent audit`: the read-only listing of every
+// shipped intent's fidelity-review debt, from the intent store's one reader of
+// the review marker (itd-2609150819445595). The owed set is OWED plus no marker;
+// a dead-lettered review is listed under its own heading with its reason and is
+// not counted; an ingested one is not listed. It writes nothing and exits 0,
+// and no gate reads it. It names the re-emit command, never the request file:
+// the request lives in the gitignored local tier and may have been swept.
+func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
+	repoRoot, err := intentStoreRoot(cmd)
+	if err != nil {
+		return err
+	}
+	l, err := intent.Reviews(repoRoot)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
+	}
+	return render(cmd.OutOrStdout(), asJSON, l, func(w io.Writer) {
+		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d (of %d shipped)\n",
+			l.Owed, l.DeadLettered, l.Ingested, len(l.Entries))
+		fmt.Fprintln(w, "owed:")
+		if l.Owed == 0 {
+			fmt.Fprintln(w, "  none")
+		}
+		for _, e := range l.Entries {
+			switch {
+			case e.State == intent.ReviewOwed:
+				fmt.Fprintf(w, "  %s  receipt %s — re-emit: %s\n", e.IntentID, e.ReceiptID, e.ReEmit)
+			case e.State == intent.ReviewNone:
+				fmt.Fprintf(w, "  %s  no receipt (one is minted on re-emit) — re-emit: %s\n", e.IntentID, e.ReEmit)
+			}
+		}
+		if l.DeadLettered > 0 {
+			fmt.Fprintln(w, "dead-lettered (unreviewed; not counted as owed):")
+			for _, e := range l.Entries {
+				if e.State != intent.ReviewDeadLetter {
+					continue
+				}
+				reason := termsafe.Sanitize(e.Reason)
+				if reason == "" {
+					reason = "the quarantine block records no reason"
+				}
+				fmt.Fprintf(w, "  %s  receipt %s — %s\n", e.IntentID, e.ReceiptID, reason)
+			}
+		}
+	})
 }
 
 // runIssueDrift is `abcd intent audit --issue-drift`: the bidirectional

@@ -1169,7 +1169,7 @@ func moveIntentToBucket(repoRoot, srcRel, dstBucket string) (string, error) {
 }
 
 // Status builds the read-only lifecycle summary: intent counts by bucket, spec
-// counts by status, and the intent↔spec links (every intent whose spec_id is
+// counts by status, the owed fidelity reviews, and the intent↔spec links (every intent whose spec_id is
 // non-null). Linked pairs are ordered by the corpus load order (bucket, then
 // directory), which is deterministic.
 func Status(repoRoot string) (StatusView, error) {
@@ -1199,6 +1199,13 @@ func Status(repoRoot string) (StatusView, error) {
 			v.SpecsOpen++
 		}
 	}
+	// The owed count is the listing's own total, from the one reader, so the
+	// board and `abcd intent audit` cannot disagree.
+	reviews, err := reviewsOf(repoRoot, corpus)
+	if err != nil {
+		return StatusView{}, err
+	}
+	v.ReviewsOwed = reviews.Owed
 	return v, nil
 }
 

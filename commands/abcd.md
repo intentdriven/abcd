@@ -72,7 +72,11 @@ Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 present), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
-read). A shape-matching id found in no store exits non-zero naming the stores
+read). A shipped intent's move reads its fidelity-review marker: an owed review
+names its receipt and the re-emit command (`abcd intent audit <itd-N>`); a
+shipped intent with no marker owes one too, and the re-emit mints its receipt;
+a dead-lettered review is reported unreviewed with its reason; an ingested
+review leaves nothing to do. A shape-matching id found in no store exits non-zero naming the stores
 searched — unless a peer holds it (a sibling worktree or a local branch, see
 `/abcd:peers`), in which case the refusal names that peer's branch, path and
 folder instead; relay it, and do not recreate the record here. An issue whose

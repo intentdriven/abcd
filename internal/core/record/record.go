@@ -75,6 +75,10 @@ const (
 	// planned-not-ready branch passes through verbatim. It is pinned here so
 	// the anti-drift test covers the pass-through path too.
 	verbIntentLink = "intent link"
+	// verbIntentAudit reaches NextMoves through intent.ReEmitCommand, the
+	// re-emit the review reader attaches to an owed entry; the record tests pin
+	// that the command is built from this path.
+	verbIntentAudit = "intent audit"
 )
 
 // RecommendedVerbPaths enumerates every abcd verb path the next-move table can
@@ -82,7 +86,7 @@ const (
 // for the surface-side anti-drift test.
 func RecommendedVerbPaths() []string {
 	return []string{
-		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbSpecClose,
+		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbIntentAudit, verbSpecClose,
 		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix,
 	}
 }
@@ -281,7 +285,11 @@ func describeIntent(repoRoot, id string) (Description, error) {
 			d.NextMoves = append(d.NextMoves, "re-check with `abcd "+verbIntentReady+" "+id+"`")
 		}
 	case intent.BucketShipped:
-		d.NextMoves = []string{"none — shipped; its audit state lives in the record's Audit Notes"}
+		review, err := intent.ReviewOf(repoRoot, it)
+		if err != nil {
+			return Description{}, err
+		}
+		d.NextMoves = []string{shippedReviewMove(review)}
 	case intent.BucketSuperseded:
 		target := d.Links["superseded_by"]
 		if target == "" {
@@ -306,6 +314,30 @@ func describeIntent(repoRoot, id string) (Description, error) {
 		d.NextMoves = append([]string{move}, d.NextMoves...)
 	}
 	return d, nil
+}
+
+// shippedReviewMove renders a shipped intent's next move from its review state,
+// read by the intent store's one reader of the review marker
+// (itd-2609150819445595): owed names the receipt and the re-emit; a record with
+// no marker owes the review too, and the re-emit mints its receipt; a
+// dead-lettered review is unreviewed and says why; an ingested one owes nothing.
+// The re-emit command is the reader's own (intent.ReEmitCommand), built from
+// verbIntentAudit.
+func shippedReviewMove(r intent.ReviewEntry) string {
+	switch r.State {
+	case intent.ReviewOwed:
+		return "fidelity review owed, receipt " + r.ReceiptID + " — re-emit the request with `" + r.ReEmit + "`"
+	case intent.ReviewNone:
+		return "fidelity review owed, no receipt yet — `" + r.ReEmit + "` mints one and emits the request"
+	case intent.ReviewDeadLetter:
+		reason := r.Reason
+		if reason == "" {
+			reason = "the quarantine block records no reason"
+		}
+		return "fidelity review dead-lettered (unreviewed), receipt " + r.ReceiptID + ": " + reason
+	default:
+		return "none — shipped; fidelity review ingested (receipt " + r.ReceiptID + "), its verdict in the record's Audit Notes"
+	}
 }
 
 // holdMove renders the hold row for a held record, and reports false for a
