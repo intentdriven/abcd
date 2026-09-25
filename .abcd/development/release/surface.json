@@ -215,6 +215,11 @@
       ]
     },
     {
+      "path": "abcd banlist migrate",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd banlist remove",
       "hidden": false,
       "flags": [

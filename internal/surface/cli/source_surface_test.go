@@ -228,3 +228,25 @@ func TestSourceRefreshNeverCreatesTheStore(t *testing.T) {
 		t.Fatalf("refresh of an existing store: %d %s%s", code, out, errs)
 	}
 }
+
+// TestSourceRefreshNamesTheMigrationForALegacyStore: a legacy store is not refreshed,
+// and the refresh says so on one line naming the command that migrates it, with exit
+// 0 so the guard can relay it without calling it a failure. The by-hand sync refuses
+// and names the same command. Neither writes the store.
+func TestSourceRefreshNamesTheMigrationForALegacyStore(t *testing.T) {
+	_, repo := sourceCheckout(t)
+	confidentialCorpus(t)
+	legacy := "# notes\nwidgetworks\n"
+	writeRel(t, repo, ".abcd/.work.local/private-names.txt", legacy)
+	code, stdout, stderr := runSource(t, "sync-banlist", "--refresh")
+	if code != 0 || strings.Count(stdout+stderr, "\n") != 1 || !strings.Contains(stderr, "abcd banlist migrate") {
+		t.Fatalf("refresh over a legacy store: exit %d\n%s%s", code, stdout, stderr)
+	}
+	code, stdout, stderr = runSource(t, "sync-banlist")
+	if code != 2 || !strings.Contains(stdout+stderr, "abcd banlist migrate") {
+		t.Fatalf("by-hand sync over a legacy store: exit %d\n%s%s", code, stdout, stderr)
+	}
+	if body, _ := os.ReadFile(filepath.Join(repo, ".abcd", ".work.local", "private-names.txt")); string(body) != legacy {
+		t.Fatalf("a legacy store was written:\n%s", body)
+	}
+}

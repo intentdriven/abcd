@@ -28,7 +28,7 @@ func newBanlistCommand(asJSON *bool) *cobra.Command {
 		// withholds the token and names the real subcommands instead.
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
-				return fmt.Errorf(`unknown subcommand (its text is withheld — it may be a private value); use "list", "add", or "remove"`)
+				return fmt.Errorf(`unknown subcommand (its text is withheld — it may be a private value); use "list", "add", "remove", or "migrate"`)
 			}
 			return nil
 		},
@@ -56,7 +56,43 @@ func newBanlistCommand(asJSON *bool) *cobra.Command {
 	banlistCmd.AddCommand(newBanlistListCommand(asJSON))
 	banlistCmd.AddCommand(newBanlistAddCommand(asJSON))
 	banlistCmd.AddCommand(newBanlistRemoveCommand(asJSON))
+	banlistCmd.AddCommand(newBanlistMigrateCommand(asJSON))
 	return banlistCmd
+}
+
+// newBanlistMigrateCommand converts a legacy private store to the keyed format in
+// place. It takes no layer flag: only the private layer has a legacy format.
+func newBanlistMigrateCommand(asJSON *bool) *cobra.Command {
+	return &cobra.Command{
+		Use:   "migrate",
+		Short: "Key a legacy private store in place (every line keeps matching what it matched)",
+		Long: "Convert a legacy private store (" + banlist.PrivateRelPath + " with no\n" +
+			"'# abcd-banlist: keyed' first line, every line a whole-line pattern) to the keyed\n" +
+			"format: the declaration becomes line 1, and each pattern keeps its exact bytes under\n" +
+			"the key the guard already names it by, entry-<its line>. Comments and blank lines\n" +
+			"survive. add, remove and `abcd source sync-banlist` refuse a legacy store with entries\n" +
+			"until it is migrated. A keyed store is left alone. No pattern is printed.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			root, err := banlistRoot(cmd.ErrOrStderr())
+			if err != nil {
+				return usageError("abcd banlist migrate", err)
+			}
+			res, err := banlist.MigratePrivate(root)
+			if err != nil {
+				return usageError("abcd banlist migrate", err)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				if res.Migrated {
+					fmt.Fprintf(w, "private banlist — migrated to the keyed format (%d entr%s keyed as entry-<line>, %s)\n",
+						res.Entries, plural(res.Entries), res.Path)
+					return
+				}
+				fmt.Fprintf(w, "private banlist — already keyed, nothing to migrate (%d entr%s, %s)\n",
+					res.Entries, plural(res.Entries), res.Path)
+			})
+		},
+	}
 }
 
 // newBanlistListCommand is the explicit read verb. Unscoped it renders both layers

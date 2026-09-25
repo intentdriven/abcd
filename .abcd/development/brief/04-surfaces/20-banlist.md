@@ -26,6 +26,7 @@ explicitly.
 |---|---|---|
 | `add` | — | shipped |
 | `list` | — | shipped |
+| `migrate` | — | shipped |
 | `remove` | — | shipped |
 
 An add or a remove each names its layer, private or public, and neither
@@ -97,6 +98,15 @@ and on this layer a pattern *is* the secret — and it narrowed an old whole-lin
 pattern to the remainder after its first field. An add and a remove refuse a
 non-empty legacy store for the same reason: writing a keyed line into it would
 change what every *other* line means.
+
+The migration is its own visible act, and every refusal names it. A migrate
+puts the declaration on line 1 and keys each whole-line pattern, byte for byte,
+under the synthetic key the guard already prints for it, `entry-<its line>`, so
+the store matches exactly what it matched and a refusal names the same key
+before and after. Comments and blank lines stay where they were; each composed
+line is proved to parse back to its key and pattern before anything is written;
+a keyed store is left alone, and no pattern is printed. It takes no layer, since
+only the private layer has a legacy form.
 
 The store has a second writer, and the format declaration is what lets the two
 share it. The sources corpus derives patterns from its confidential entries and
@@ -298,7 +308,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd banlist`
 
-Sub-verbs: `abcd banlist add`, `abcd banlist list`, `abcd banlist remove`.
+Sub-verbs: `abcd banlist add`, `abcd banlist list`, `abcd banlist migrate`, `abcd banlist remove`.
 
 Flags: none.
 
@@ -321,6 +331,12 @@ Sub-verbs: none.
 |---|---|
 | `--private` | bool |
 | `--public` | bool |
+
+### `abcd banlist migrate`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd banlist remove`
 

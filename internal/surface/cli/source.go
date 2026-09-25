@@ -436,7 +436,8 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 			"whitespace-flexible, case-insensitive phrases. Lines outside the block survive.\n" +
 			"A corpus whose folders and entries disagree is refused and nothing is written.\n\n" +
 			"--refresh is the pre-commit guard's mode: it updates a private store that already\n" +
-			"exists and never creates one. With no corpus, or no store, it says so on one line and\n" +
+			"exists and declares the keyed format, and never creates one. With no corpus, no store\n" +
+			"or a legacy store (migrate it with `abcd banlist migrate`) it says so on one line and\n" +
 			"exits 0.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -460,6 +461,11 @@ func newSourceSyncBanlistCommand(asJSON *bool, corpusFlag *string) *cobra.Comman
 			}
 			if refresh && errors.Is(err, banlist.ErrNoStore) {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: no private store at %s — the refresh never creates one; run `abcd source sync-banlist` to opt this repository in (skipped)\n",
+					banlist.PrivateRelPath)
+				return nil
+			}
+			if refresh && errors.Is(err, banlist.ErrLegacyStore) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd source sync-banlist: %s predates the keyed format — migrate it once with `abcd banlist migrate` (not refreshed)\n",
 					banlist.PrivateRelPath)
 				return nil
 			}

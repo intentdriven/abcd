@@ -140,6 +140,19 @@ Render the banlist layers; private entries render by key only
       --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
+#### `abcd banlist migrate`
+
+Key a legacy private store in place (every line keeps matching what it matched)
+
+**Usage:** `abcd banlist migrate`
+
+Convert a legacy private store (.abcd/.work.local/private-names.txt with no
+'# abcd-banlist: keyed' first line, every line a whole-line pattern) to the keyed
+format: the declaration becomes line 1, and each pattern keeps its exact bytes under
+the key the guard already names it by, entry-<its line>. Comments and blank lines
+survive. add, remove and `abcd source sync-banlist` refuse a legacy store with entries
+until it is migrated. A keyed store is left alone. No pattern is printed.
+
 #### `abcd banlist remove`
 
 Remove one banned-name entry from the named layer
@@ -1668,7 +1681,8 @@ whitespace-flexible, case-insensitive phrases. Lines outside the block survive.
 A corpus whose folders and entries disagree is refused and nothing is written.
 
 --refresh is the pre-commit guard's mode: it updates a private store that already
-exists and never creates one. With no corpus, or no store, it says so on one line and
+exists and declares the keyed format, and never creates one. With no corpus, no store
+or a legacy store (migrate it with `abcd banlist migrate`) it says so on one line and
 exits 0.
 
 **Flags:**
