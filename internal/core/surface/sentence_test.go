@@ -254,3 +254,28 @@ func TestRouterDefectsNamesADispatcherSentence(t *testing.T) {
 		}
 	}
 }
+
+// TestSentenceChangesNamesEachRewordedVerb: a command whose sentence differs is
+// named, in path order, and one present on a single side, or unchanged, is not.
+func TestSentenceChangesNamesEachRewordedVerb(t *testing.T) {
+	committed := NewSnapshot([]Command{
+		{Path: "abcd capture", Sentence: "Capture: Writes a record; refuses a lone word."},
+		{Path: "abcd lint", Sentence: "Lint: Writes nothing; refuses an error finding."},
+		{Path: "abcd gone", Sentence: "Gone: Writes nothing; refuses any argument."},
+		{Path: "abcd bare"},
+	}, nil)
+	current := NewSnapshot([]Command{
+		{Path: "abcd capture", Sentence: "File an issue: Writes a record; refuses a lone word."},
+		{Path: "abcd lint", Sentence: "Lint: Writes nothing; refuses an error finding."},
+		{Path: "abcd new", Sentence: "New: Writes nothing; refuses any argument."},
+		{Path: "abcd bare", Sentence: "Bare: Writes nothing; refuses any argument."},
+	}, nil)
+	got := strings.Join(SentenceChanges(committed, current), "\n")
+	want := "abcd bare: sentence reworded\nabcd capture: sentence reworded"
+	if got != want {
+		t.Fatalf("SentenceChanges =\n%s\nwant\n%s", got, want)
+	}
+	if again := SentenceChanges(committed, committed); len(again) != 0 {
+		t.Fatalf("SentenceChanges(same, same) = %v, want none", again)
+	}
+}

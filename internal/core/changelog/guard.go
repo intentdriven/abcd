@@ -202,6 +202,11 @@ func currentMatchesHead(root string, current surface.Snapshot) (bool, string, er
 		if moved := surface.PlacementChanges(head, current); len(moved) > 0 {
 			reason += "\nhelp placement differs from HEAD's snapshot:\n  - " + strings.Join(moved, "\n  - ")
 		}
+		// A reworded sentence is the same case: Diff never reads it
+		// (itd-2609212113220149), so this comparison is what names it.
+		if reworded := surface.SentenceChanges(head, current); len(reworded) > 0 {
+			reason += "\nsentence differs from HEAD's snapshot:\n  - " + strings.Join(reworded, "\n  - ")
+		}
 		return false, reason, nil
 	}
 	return true, "", nil

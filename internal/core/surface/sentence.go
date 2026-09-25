@@ -109,3 +109,26 @@ func ParseSentence(s string) (Sentence, error) {
 func opensWith(clause, w string) bool {
 	return clause == w || strings.HasPrefix(clause, w+" ") || strings.HasPrefix(clause, w+",")
 }
+
+// SentenceChanges names every command whose sentence differs between committed
+// and current, one line each in canonical path order: "abcd capture: sentence
+// reworded". It is PlacementChanges' twin for the sentence field: Diff never
+// reads a sentence, because a rewording changes no invocation, so the byte
+// comparison behind the drift test and the release gate's stale-surface refusal
+// is the only thing that sees one, and naming the command is what makes either
+// actionable. A command present on one side only is an addition or a removal,
+// which Diff and the drift test already report, and is not listed.
+func SentenceChanges(committed, current Snapshot) []string {
+	committed, current = canonical(committed), canonical(current)
+	was := make(map[string]string, len(committed.Commands))
+	for _, c := range committed.Commands {
+		was[c.Path] = c.Sentence
+	}
+	var out []string
+	for _, now := range current.Commands {
+		if before, ok := was[now.Path]; ok && before != now.Sentence {
+			out = append(out, now.Path+": sentence reworded")
+		}
+	}
+	return out
+}

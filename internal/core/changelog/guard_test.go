@@ -479,6 +479,34 @@ func TestGuardSurfaceNamesARegroupedVerb(t *testing.T) {
 	}
 }
 
+// TestGuardSurfaceNamesARewordedSentence is the sentence's half of the same
+// refusal (itd-2609212113220149): a rewording changes no invocation, so nothing
+// but the stale-surface comparison sees it, and the refusal names each command
+// whose sentence differs from HEAD's snapshot the way it names a moved verb.
+func TestGuardSurfaceNamesARewordedSentence(t *testing.T) {
+	committed := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Sentence: "Capture an issue: Writes a record; refuses a lone word."},
+	}, nil)
+	r := guardRepo(t, committed, committed, "additive")
+
+	reworded := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Sentence: "File an issue: Writes a record; refuses a lone word."},
+	}, nil)
+	got, err := GuardSurface(r.root, reworded)
+	if err != nil {
+		t.Fatalf("GuardSurface: %v", err)
+	}
+	if got.Status != SurfaceGuardRefused {
+		t.Fatalf("Status = %q (reason %q), want %q", got.Status, got.Reason, SurfaceGuardRefused)
+	}
+	if !strings.Contains(got.Reason, "sentence differs from HEAD's snapshot:\n  - abcd capture") {
+		t.Errorf("Reason = %q, want it to name the command whose sentence was reworded", got.Reason)
+	}
+	if strings.Contains(got.Reason, "abcd:") {
+		t.Errorf("Reason = %q, names a command whose sentence did not change", got.Reason)
+	}
+}
+
 // TestGuardSurfaceReadsAVersionOneBaseline pins the schema bump's compatibility
 // half end to end: the last release tag carries a version-1 snapshot (no
 // placement fields), HEAD carries version 2, and the cut is guarded rather than
