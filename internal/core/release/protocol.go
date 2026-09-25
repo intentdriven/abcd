@@ -40,8 +40,8 @@ func ReceiptsProtocolFor(root string) (ReceiptsProtocol, error) {
 	p := ReceiptsProtocol{Workflow: gate.Workflow, Armed: gate.Armed, RequiredGates: gate.Gates}
 
 	roll := "Ingest the composed changelog (`abcd launch ship --changelog-json <file>`) and commit the " +
-		"result on a release branch. That commit is the content commit: the commit the release publishes " +
-		"from and every receipt names."
+		"result on a release branch. That commit is the content commit: the commit the reviewers read and " +
+		"every receipt names. The release itself publishes from the tagged merge, not from this commit."
 	switch {
 	case !gate.Present:
 		p.Steps = []string{

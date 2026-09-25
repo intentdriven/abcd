@@ -82,3 +82,28 @@ func TestReceiptsProtocolWithNoGateRequiresNoReceipt(t *testing.T) {
 		t.Errorf("a repository with no release workflow must be pointed at the scaffold; steps: %v", p.Steps)
 	}
 }
+
+// TestReceiptsProtocolSaysTheReleasePublishesFromTheTaggedMerge is
+// iss-2609251939476304: the content commit is the one every receipt names, not
+// the one the release publishes from. The release publishes from the tagged
+// merge, as the runbook's last step says, and the roll step must not tell the
+// operator otherwise.
+func TestReceiptsProtocolSaysTheReleasePublishesFromTheTaggedMerge(t *testing.T) {
+	root := t.TempDir()
+	writeWorkflow(t, root, "jobs:\n  verify:\n    steps:\n      - run: |\n"+
+		"          go run ./cmd/record-lint --release-gate \"$content\" \\\n"+
+		"            --require-gate docs-currency-reviewer\n")
+	p, err := release.ReceiptsProtocolFor(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roll := p.Steps[0]
+	if strings.Contains(roll, "publishes from and") {
+		t.Errorf("the roll step says the content commit is what the release publishes from:\n%s", roll)
+	}
+	for _, want := range []string{"every receipt names", "tagged merge"} {
+		if !strings.Contains(roll, want) {
+			t.Errorf("the roll step must carry %q:\n%s", want, roll)
+		}
+	}
+}
