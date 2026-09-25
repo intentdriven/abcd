@@ -437,7 +437,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	}
 	// home_path_other — a generic /Users|/home path that is not the caller's own.
 	for _, loc := range genericHomeRe.FindAllStringIndex(line, -1) {
-		if !leadingBoundaryOK(line, loc[0]) || !trailingBoundaryOK(line, loc[1]) {
+		if !(leadingBoundaryOK(line, loc[0]) || underAbsoluteRoot(line, loc[0])) || !trailingBoundaryOK(line, loc[1]) {
 			continue
 		}
 		matched := line[loc[0]:loc[1]]
@@ -875,6 +875,31 @@ func trailingBoundaryOK(line string, end int) bool {
 		return true
 	}
 	return homeBoundary(rune(line[end]))
+}
+
+// underAbsoluteRoot reports whether a /Users or /home segment at byte offset
+// start, which continues a longer path, sits in an ABSOLUTE local path: the
+// path token it belongs to begins with '/' — a backup volume or a mount
+// ("/Volumes/Backup/Users/<name>", "/mnt/data/home/<name>") — or is a file URL
+// with an empty authority ("file:///home/<name>"). Such a segment is a home
+// directory wherever it falls, and leadingBoundaryOK alone let every one of
+// them through every detector (iss-324, iss-2608291915432717). A RELATIVE
+// token ("docs/Users/guide.md") is not a home, and neither is the path of a
+// web URL ("https://docs.example.com/home/…"), whose authority is a host
+// rather than this machine: both stay declined, which is the false-positive
+// surface the '/'-bearing isPathSegmentByte was guarding.
+func underAbsoluteRoot(line string, start int) bool {
+	i := start
+	for i > 0 && isPathSegmentByte(line[i-1]) {
+		i--
+	}
+	if line[i] != '/' {
+		return false
+	}
+	if i > 0 && line[i-1] == ':' && strings.HasPrefix(line[i:], "//") {
+		return strings.HasPrefix(line[i:], "///")
+	}
+	return true
 }
 
 // leadingBoundaryOK reports whether byte offset start begins a home path rather
