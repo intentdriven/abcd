@@ -210,10 +210,7 @@ func TestGuardHookBrokenRepoConfigKeepsBundledHazardsArmed(t *testing.T) {
 // install, while this one needs a single file write that the guard itself allows.
 func TestGuardHookAnnouncesADisabledRegistry(t *testing.T) {
 	dir := guardRepo(t)
-	cfg := `{"schema_version":1,"disabled":true,"entries":{}}`
-	if err := os.WriteFile(filepath.Join(dir, ".abcd", "guard.json"), []byte(cfg), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	commitGuardConfig(t, dir, `{"schema_version":1,"disabled":true,"entries":{}}`)
 	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", dir), "guard", "hook")
 
 	if code == 2 {

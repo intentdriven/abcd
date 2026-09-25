@@ -82,7 +82,9 @@ The states that can independently be false are reported outside the session, on
 calls is reachable, and whether a hazard registry is armed. A repo
 `.abcd/guard.json` that will not load drops the repo's own overrides while the
 bundled hazards stay armed, and that middle state is reported as itself rather
-than folded into either extreme.
+than folded into either extreme. The three states — clean, repo layer dropped,
+no registry at all — are decided once, in the core, and every caller formats
+the same answer.
 
 The two callers part company on exactly that file, deliberately. **On the hook,
 the session keeps its protection:** the repo's overrides are dropped with a
@@ -106,12 +108,14 @@ running on a registry it cannot trust.
 
 There is no flag, environment variable, or prompt that disarms the guard for a
 session. The file is the only route, so switching the guard off lands in a diff
-somebody reviews. What is not yet enforced is that the diff is *committed*: the
-registry is read from the working tree, so an uncommitted edit takes effect on
-the next command. The mitigation today is loudness rather than refusal — a
-disabled registry makes every command it lets through carry an `UNGUARDED`
-warning naming the file, and `abcd ahoy` reads `OFF`. Refusing a `disabled: true`
-that is not in `HEAD` is a core-side change, tracked as an issue.
+somebody reviews, and the diff must be *committed* before it counts. An edit
+that weakens the registry — switching it off, or changing a blocker's tier or
+pattern — is refused until `HEAD` carries it: the committed registry stays in
+force, the hook announces the refused edit on every command, and the check
+refuses to answer. Where git cannot say what `HEAD` carries, the edit is refused
+too. An edit that only adds or tightens a hazard needs no commit. Once a
+switch-off is committed, every command it lets through carries an `UNGUARDED`
+warning naming the file, and `abcd ahoy` reads `OFF`.
 
 ## What this guard is, and is not
 

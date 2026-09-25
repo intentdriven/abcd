@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -99,10 +100,21 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
-			reg, err := loadGuardRegistry(cmd.ErrOrStderr())
+			ld, err := loadGuardRegistry(cmd.ErrOrStderr())
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
+			// The check answers a person or a script that asked a question, so
+			// any posture but a clean load is a refusal: a verdict drawn from a
+			// registry other than the one the repo declares is worse than being
+			// told the registry is not the one in force.
+			switch ld.Posture {
+			case guard.LoadUnavailable:
+				return &exitError{Code: 2, Msg: "guard check: no hazard registry could be loaded; nothing was checked"}
+			case guard.LoadRepoDropped:
+				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(ld.Err))}
+			}
+			reg := ld.Registry
 			// A disabled registry evaluated nothing, so there is no answer to
 			// render — and a bare `allow` here is indistinguishable from a real
 			// clearance to the CI job or script using this verb as a gate. Same
@@ -227,24 +239,25 @@ func newGuardHookCommand() *cobra.Command {
 				}
 			}
 			sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
-			reg, err := guard.Load(sessionRoot)
-			// A repo-layer error is fail-SAFE, not fail-open: guard.Load returns the
-			// bundled defaults alongside the error, so the built-in hazards stay
-			// armed even though the repo's own overrides were dropped. We check
-			// against that bundled registry rather than running unguarded, and
-			// announce the dropped repo layer loudly so a human learns their
-			// committed guard config is broken (iss-2608261551087492). Only an
-			// EMPTY registry — the bundled layer itself somehow unavailable, which
-			// cannot happen with an embedded default — is the remaining fail-open.
+			// The fail-safe posture is decided in core (guard.LoadRepo,
+			// iss-2608291814576261); the hook only formats it. A dropped repo layer
+			// is fail-SAFE, not fail-open: the registry still holds the bundled
+			// hazards (and the committed repo layer, when only an uncommitted edit
+			// was refused), so the session keeps checking against it and the drop
+			// is announced loudly (iss-2608261551087492). Only an unavailable
+			// registry — unreachable with the embedded defaults — fails open.
+			ld := guard.LoadRepo(sessionRoot)
+			reg := ld.Registry
 			repoDropped := false
-			if err != nil {
-				if len(reg.Entries) == 0 {
-					return failOpen("the hazard registry did not load (%s)", scrubPaths(err))
+			switch ld.Posture {
+			case guard.LoadUnavailable:
+				if ld.Err != nil {
+					return failOpen("the hazard registry did not load (%s)", scrubPaths(ld.Err))
 				}
+				return failOpen("no hazard registry is loaded")
+			case guard.LoadRepoDropped:
 				repoDropped = true
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"abcd guard: the repo %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
-					guard.RepoRelPath, scrubPaths(err))
+				fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the repo", ld.Err))
 			}
 			// A disabled registry allows everything, which makes it an unguarded
 			// session — and it is the CHEAPEST one to reach: the other unguarded
@@ -278,14 +291,13 @@ func newGuardHookCommand() *cobra.Command {
 			// and never subtract one.
 			if wd.Exists {
 				if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
-					wreg, werr := guard.Load(root)
-					if werr != nil && len(wreg.Entries) > 0 {
+					wld := guard.LoadRepo(root)
+					wreg := wld.Registry
+					if wld.Posture == guard.LoadRepoDropped {
 						repoDropped = true
-						fmt.Fprintf(cmd.ErrOrStderr(),
-							"abcd guard: the working directory's %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
-							guard.RepoRelPath, scrubPaths(werr))
+						fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the working directory's", wld.Err))
 					}
-					if !wreg.Disabled && len(wreg.Entries) > 0 {
+					if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
 						if wdec, cerr := wreg.Check(candidate); cerr == nil {
 							dec = guard.Strictest(dec, wdec)
 						}
@@ -392,12 +404,25 @@ func guardCandidate(cmd *cobra.Command, flag string) (string, error) {
 // does — the nearest .abcd directory inside the git working tree, never one
 // planted above it — so `.abcd/guard.json` is honoured from any nested working
 // directory, kill switch included, and only the repo's own file can throw it.
-func loadGuardRegistry(w io.Writer) (guard.Registry, error) {
+func loadGuardRegistry(w io.Writer) (guard.Loaded, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return guard.Registry{}, err
+		return guard.Loaded{}, err
 	}
-	return guard.Load(rulesRoot(cwd, w))
+	return guard.LoadRepo(rulesRoot(cwd, w)), nil
+}
+
+// guardDropNotice is the loud line the hook prints when a repo layer was
+// dropped. which names the layer ("the repo", "the working directory's"). A
+// refused uncommitted edit leaves the committed registry in force, a broken
+// file leaves the bundled one, and the notice says which.
+func guardDropNotice(which string, err error) string {
+	if errors.Is(err, guard.ErrUncommittedOverride) {
+		return fmt.Sprintf("abcd guard: %s %s edit is REFUSED (%s); the committed hazards remain armed.",
+			which, guard.RepoRelPath, scrubPaths(err))
+	}
+	return fmt.Sprintf("abcd guard: %s %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.",
+		which, guard.RepoRelPath, scrubPaths(err))
 }
 
 // guardHealthLine renders ahoy's one-line guard-health verdict. A guard that
@@ -415,10 +440,9 @@ func guardHealthLine(h ahoy.GuardHealth) string {
 			state = fmt.Sprintf("armed (%d bundled hazards) — %s does not load, repo overrides dropped", h.Entries, guard.RepoRelPath)
 		}
 		if h.Disabled {
-			// Loadable and wired, but switched off in .abcd/guard.json. Not a
-			// fault, and not something to report as protection either. The file is
-			// read from the working tree, so this can be true before anyone has
-			// reviewed the edit that made it true (iss-147).
+			// Loadable and wired, but switched off in .abcd/guard.json by a
+			// committed edit (an uncommitted one is refused, iss-147). Not a
+			// fault, and not something to report as protection either.
 			state = "OFF — disabled in " + guard.RepoRelPath
 		}
 		return state

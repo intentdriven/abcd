@@ -30,4 +30,11 @@ var (
 	// ErrInvalidEntry is an entry that fails the registry schema (bad id, no
 	// pattern command, missing successor or why).
 	ErrInvalidEntry = errors.New("guard: invalid entry")
+
+	// ErrUncommittedOverride is a working-tree .abcd/guard.json that WEAKENS the
+	// registry — switches the guard off, or changes a blocker's tier or pattern —
+	// in an edit HEAD does not carry. Weakening the guard is a committed,
+	// reviewable act (spc-16), so the edit is refused and the committed registry
+	// stays in force until it is committed (iss-147).
+	ErrUncommittedOverride = errors.New("guard: uncommitted override")
 )

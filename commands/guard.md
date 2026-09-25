@@ -97,11 +97,14 @@ example `{"tier": "warn"}`) or to declare a new hazard, and set
 
 There is no flag, environment variable, or prompt that turns the guard off for a
 session — the file is the only route, so the change lands in a diff someone
-reviews. Two things follow, and both must be said plainly if a user asks. The
-file is read from the working tree, so an edit takes effect on the very next
-command, before anyone has reviewed it. And a repo whose guard is switched off is
-an unguarded session: every command it lets through carries an UNGUARDED warning
-naming the file, so the state cannot pass unnoticed.
+reviews. Two things follow, and both must be said plainly if a user asks. An
+edit that weakens the guard — `"disabled": true`, or a blocker retiered or its
+pattern changed — takes effect only once it is **committed**: until `HEAD`
+carries it, the edit is refused, the committed registry stays in force, the hook
+says so on every command, and the check exits `2` naming the edit. An edit that
+only adds or tightens a hazard takes effect at once. And a repo whose guard is
+switched off is an unguarded session: every command it lets through carries an
+UNGUARDED warning naming the file, so the state cannot pass unnoticed.
 
 **Never write `.abcd/guard.json` on your own initiative.** Disabling or
 retiering a hazard is the user's decision to make and to review.

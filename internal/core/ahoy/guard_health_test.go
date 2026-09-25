@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // hooksJSONWithGuard is a manifest that also arms the execution-time guard.
@@ -191,7 +192,7 @@ func TestGuardHealthRegistryUnloadable(t *testing.T) {
 // earns trust by stating what it would say if the impossible happened.
 func TestGuardHealthEmptyRegistryIsUnguarded(t *testing.T) {
 	var h GuardHealth
-	reason := applyRegistryHealth(&h, guard.Registry{}, nil)
+	reason := applyRegistryHealth(&h, guard.Loaded{Posture: guard.LoadUnavailable})
 
 	if h.RegistryLoadable {
 		t.Error("an empty registry must report registry_loadable=false")
@@ -218,7 +219,7 @@ func TestGuardHealthEmptyRegistryIsUnguarded(t *testing.T) {
 // reports nothing.
 func TestGuardHealthRepoBrokenFoldIn(t *testing.T) {
 	var h GuardHealth
-	reason := applyRegistryHealth(&h, guard.Defaults(), errors.New(".abcd/guard.json: boom"))
+	reason := applyRegistryHealth(&h, guard.Loaded{Registry: guard.Defaults(), Posture: guard.LoadRepoDropped, Err: errors.New(".abcd/guard.json: boom")})
 	if !h.RegistryLoadable || !h.RepoOverridesDropped {
 		t.Errorf("error + non-empty registry is the dropped-overrides state; got %+v", h)
 	}
@@ -227,7 +228,7 @@ func TestGuardHealthRepoBrokenFoldIn(t *testing.T) {
 	}
 
 	var clean GuardHealth
-	if reason := applyRegistryHealth(&clean, guard.Defaults(), nil); reason != "" {
+	if reason := applyRegistryHealth(&clean, guard.Loaded{Registry: guard.Defaults()}); reason != "" {
 		t.Errorf("a clean load must report nothing; got %q", reason)
 	}
 	if !clean.RegistryLoadable || clean.RepoOverridesDropped {
@@ -276,12 +277,13 @@ func TestGuardHealthDisabledIsReported(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(pluginRoot, "hooks", "hooks.json"), []byte(hooksJSONWithGuard), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
+	// A real repository with the kill switch COMMITTED: an uncommitted one is
+	// refused and the guard stays armed (iss-147).
+	repo := gittest.NewRepo(t)
+	dir := repo.Root()
 	managedRepoAt(t, dir)
-	cfg := `{"schema_version":1,"disabled":true,"entries":{}}`
-	if err := os.WriteFile(filepath.Join(dir, ".abcd", "guard.json"), []byte(cfg), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	repo.Write(".abcd/guard.json", `{"schema_version":1,"disabled":true,"entries":{}}`)
+	repo.Commit("switch the guard off")
 
 	det, err := Detect(dir)
 	if err != nil {
