@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The three tests below are iss-29's acceptance corpus for the
@@ -528,6 +531,40 @@ func TestCaptureSaysTheRecordIsUncommitted(t *testing.T) {
 	}
 	if !strings.Contains(board, "1 record(s) not committed") {
 		t.Fatalf("the board does not count the uncommitted records:\n%s", board)
+	}
+}
+
+// TestCaptureDeferWritesTheWaiver is the surface half of iss-2609181223260994:
+// the verb is reachable from the CLI, writes the waiver onto an open major
+// record, and says the waiver lapses at the next re-anchor.
+func TestCaptureDeferWritesTheWaiver(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	tag := exec.Command("git", "-C", repo, "tag", "v0.2.0")
+	tag.Env = gittest.Env(t)
+	if out, err := tag.CombinedOutput(); err != nil {
+		t.Fatalf("git tag: %v (%s)", err, out)
+	}
+	var rec struct {
+		ID   string `json:"id"`
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "a major finding to carry", "--severity", "major", "--json"), &rec); err != nil {
+		t.Fatal(err)
+	}
+	out := string(runCLI(t, "capture", "defer", rec.ID, "--after", "v0.2.0", "--reason", "the fix lands with the next schema"))
+	if !strings.Contains(out, rec.ID+"  deferred past v0.2.0 (stays open)") || !strings.Contains(out, "lapses when the next release re-anchors") {
+		t.Fatalf("unexpected defer render:\n%s", out)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(rec.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "deferred_after: v0.2.0") || !strings.Contains(string(body), "## Deferral ") {
+		t.Fatalf("the record does not carry the waiver:\n%s", body)
+	}
+	if _, err := runCLIErr(t, "capture", "defer", rec.ID, "--after", "v0.2.0"); err == nil {
+		t.Fatal("a deferral with no --reason must be refused")
 	}
 }
 

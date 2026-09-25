@@ -3814,6 +3814,39 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		"restamp how this record's text was produced: "+provenance.ModeList()+" (default: leave the record's existing stamp alone; refused on a record that predates disclosure)")
 	captureCmd.AddCommand(wontfixCmd)
 
+	// defer — the release cut's waiver, written by a verb (iss-2609181223260994).
+	// The cut's finding guard reads deferred_after and deferral_reason; before
+	// this verb they were a hand edit of frontmatter that no validator saw. The
+	// record stays in open/: a deferral carries a finding past one cut, it
+	// neither fixes nor declines it.
+	var deferAfter, deferReason string
+	deferCmd := &cobra.Command{
+		Use:   "defer <iss-N> --after <vX.Y.Z> --reason <text>",
+		Short: "Carry an open major or critical record past the current release cut (writes deferred_after + deferral_reason; stays in open/)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Defer(capture.DeferRequest{
+				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
+			})
+			if err != nil {
+				return err
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  deferred past %s (stays %s) — %s\n", res.ID, res.DeferredAfter, res.Status, termsafe.Sanitize(res.Path))
+				fmt.Fprintf(w, "  reason: %s\n", termsafe.Sanitize(res.DeferralReason))
+				fmt.Fprintf(w, "  the waiver lapses when the next release re-anchors; renew it then, or fix the finding\n")
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	deferCmd.Flags().StringVar(&deferAfter, "after", "", "the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)")
+	deferCmd.Flags().StringVar(&deferReason, "reason", "", "why the finding is carried past this cut rather than fixed (required)")
+	captureCmd.AddCommand(deferCmd)
+
 	return captureCmd
 }
 

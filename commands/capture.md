@@ -1,7 +1,7 @@
 ---
 name: capture
-description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/link/list/promote/resolve/wontfix act on the ledger, and migrate rewrites retired back-links.
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
+description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; defer/disposition/link/list/promote/resolve/wontfix act on the ledger, and migrate rewrites retired back-links.
+argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
 ---
 
 # `/abcd:capture` — issue ledger
@@ -336,6 +336,29 @@ With no provenance flags the record is byte-identical to a
 plain resolve: provenance is optional, never guessed. The written members come
 back in the JSON as `resolved_by`. `wontfix` takes no provenance — a non-action
 points at nothing.
+
+## Defer a finding past the current release cut
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture defer <iss-N> --after <vX.Y.Z> --reason "<why it is carried past this cut>" --json
+```
+
+The release cut refuses to ship past a `major` or `critical` record captured
+since the last release and still open, and one sanctioned way past it is a
+deferral stated out loud. `defer` writes it: `deferred_after` (the anchor tag)
+and `deferral_reason` in the record's frontmatter, and a dated
+`## Deferral <date>` section appended to its body. The record stays in `open/`.
+Report the `id`, `deferred_after` and `deferral_reason` from the JSON, and tell
+the user that the waiver lapses when the next release re-anchors, so it must be
+renewed then or the finding fixed. Report `redacted` whenever it is non-zero.
+
+`--after` must be the checkout's newest `vX.Y.Z` release tag, which is the anchor
+the cut measures from; any other tag is refused, because the cut would not honour
+it. Both flags are required. Everything the cut would not honour is refused and
+nothing is written: an empty reason, a record that is not open, and a record
+whose severity is neither `major` nor `critical`, since the guard never blocks on
+one. Offer the user the other routes too — fix and resolve it, or `wontfix` it —
+rather than defaulting to a deferral.
 
 ## Answer a reading item
 

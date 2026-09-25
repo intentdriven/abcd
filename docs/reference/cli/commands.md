@@ -173,6 +173,19 @@ Capture issues to the ledger; bare invocation is read-only status
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
+#### `abcd capture defer`
+
+Carry an open major or critical record past the current release cut (writes deferred_after + deferral_reason; stays in open/)
+
+**Usage:** `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
+
+**Flags:**
+
+```
+      --after string    the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)
+      --reason string   why the finding is carried past this cut rather than fixed (required)
+```
+
 #### `abcd capture disposition`
 
 Answer one reading item (a separate record, keyed to the item)

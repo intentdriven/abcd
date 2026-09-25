@@ -281,6 +281,18 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 				}
 			},
 		},
+		"defer": {
+			// The seeded records are minor, so the checkout's ledger answers with
+			// the grade refusal; a subdirectory ledger would not know the id at all.
+			args: func(ids []string, _ string) []string {
+				return []string{"capture", "defer", ids[0], "--after", "v0.1.0", "--reason", "carried past this cut", "--json"}
+			},
+			check: func(t *testing.T, _ string, ids []string, _ string, out []byte, err error) {
+				if err == nil || !strings.Contains(string(out)+err.Error(), "only a major or critical record") {
+					t.Fatalf("capture defer %s from the subdirectory did not read the checkout's record: %v\n%s", ids[0], err, out)
+				}
+			},
+		},
 		"disposition": {
 			args: func(_ []string, item string) []string {
 				return []string{"capture", "disposition", item, "--state", "accepted",

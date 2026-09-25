@@ -304,6 +304,26 @@
       ]
     },
     {
+      "path": "abcd capture defer",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "after",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture disposition",
       "hidden": false,
       "flags": [

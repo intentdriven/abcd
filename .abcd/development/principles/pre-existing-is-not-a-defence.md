@@ -96,7 +96,7 @@ the timestamp inside a record id, so the gate's verdict is not decided by a
 field the record it is judging can edit.
 
 The waiver is the `deferred_after` / `deferral_reason` frontmatter pair on the
-record. `deferred_after` names the anchor tag the deferral was granted against,
+record, written by `abcd capture defer`. `deferred_after` names the anchor tag the deferral was granted against,
 which makes it single-use: when the next release re-anchors, the waiver lapses
 and the finding is re-asked. A waiver that names the wrong anchor, or states no
 reason, leaves the record blocking and says why, in the same fail-safe direction

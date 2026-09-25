@@ -286,8 +286,12 @@ ignored. The whole verdict is on the cut's `findings` JSON key.
    gate with no special case, because the gate looks only at `open/`, and a
    wontfix carries a stated reason. That is the conscious, cited non-action the
    rule asks for, not a loophole in it.
-3. **The waiver pair.** Add `deferred_after: <anchor tag>` and a
-   `deferral_reason:` to the record's frontmatter. Both are schema-accepted keys.
+3. **The waiver pair.** Write it with
+   `"${CLAUDE_PLUGIN_ROOT}/abcd" capture defer <iss-N> --after <anchor tag> --reason "<why>"`,
+   which sets `deferred_after` and `deferral_reason` in the record's frontmatter
+   and appends a dated `## Deferral` section, refusing a tag that is not the
+   current anchor, an empty reason, and a record that is not open or not
+   `major` or `critical`.
    `deferred_after` names the **anchor** — the tag the cut is measured from, not
    the version being derived — which is what makes the waiver single-use: at the
    next release the anchor moves and every waiver written against the old one

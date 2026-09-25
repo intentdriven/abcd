@@ -24,6 +24,7 @@ binary.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `defer` | — | shipped |
 | `disposition` | — | shipped |
 | `link` | — | shipped |
 | `list` | — | shipped |
@@ -168,6 +169,18 @@ it: an intent, a spec, or a commit sha. A fourth, the shipped-in release, is mig
 use only: it names the release that already carried the work, so the record
 stays out of the current cut.
 
+**Deferring** writes the release cut's waiver onto an open record
+(iss-2609181223260994): `deferred_after` naming the anchor tag, `deferral_reason`
+stating why, and a dated `## Deferral` section appended to the body, which is the
+part of the record a reader sees. The record stays in `open/`, because a deferral
+carries a finding past one cut and neither fixes nor declines it. Everything the
+cut's reader would not honour is refused at the write, with nothing written: a
+tag that is not the checkout's newest release tag, an empty reason, a record that
+is not open, and a record whose grade is neither `major` nor `critical`, which
+the guard never blocks on. The grade is judged before the tag. A record deferred
+past an earlier anchor is deferred again: the pair is replaced and a new section
+appended, so each cycle's deferral stays readable in the record.
+
 **Marking an issue wontfix** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
 text only: the token stays `declined`, because a wontfix **is** that non-action.
@@ -232,10 +245,10 @@ resolved_by:               # optional structured pointer to what resolved it
 ---
 ```
 
-`deferred_after` and `deferral_reason` are the release cut's waiver pair, and no
-capture verb writes them: they are added by hand when a `major` or `critical`
-finding is to be carried past a cut open, and the changelog guard reads them.
-The waiver is granted for one cycle and lapses when the next release re-anchors.
+`deferred_after` and `deferral_reason` are the release cut's waiver pair. The
+deferral verb writes them when a `major` or `critical` finding is to be carried
+past a cut open, and the changelog guard reads them. The waiver is granted for
+one cycle and lapses when the next release re-anchors.
 [`04-launch.md`](04-launch.md) owns the rule they answer to.
 
 `lapsed_at` is transcribed from what the source states, never derived from the
@@ -380,7 +393,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -393,6 +406,15 @@ Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`,
 | `--severity` | string |
 | `--slug` | string |
 | `--source` | string |
+
+### `abcd capture defer`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--after` | string |
+| `--reason` | string |
 
 ### `abcd capture disposition`
 
