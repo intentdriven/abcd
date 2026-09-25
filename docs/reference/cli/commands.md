@@ -173,6 +173,18 @@ Capture issues to the ledger; bare invocation is read-only status
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
+#### `abcd capture admit`
+
+Admit one widening proposal: its accepted disposition and its admission record, as one act
+
+**Usage:** `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
+
+**Flags:**
+
+```
+      --grounds string   why the proposal is admitted (free text, held to the grounds floor; on a standing acceptance it must be that acceptance's ground)
+```
+
 #### `abcd capture defer`
 
 Carry an open major or critical record past the current release cut (writes deferred_after + deferral_reason; stays in open/)
@@ -286,6 +298,18 @@ Mark an open issue resolved (open/ -> resolved/), optionally naming what fixed i
       --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
       --shipped-in string        MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start
       --spec string              resolved_by provenance: the spc-N that fixed it (must exist)
+```
+
+#### `abcd capture surprise`
+
+Record one surprise as its own record, keyed to the item, admission or disposition that occasioned it
+
+**Usage:** `abcd capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> "<what was unexpected>" [flags]`
+
+**Flags:**
+
+```
+      --occasioned-by string   the record that occasioned it: a reading item (rdi-N), an admission (adm-N) or a disposition (dsp-N)
 ```
 
 #### `abcd capture wontfix`

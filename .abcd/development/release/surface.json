@@ -304,6 +304,19 @@
       ]
     },
     {
+      "path": "abcd capture admit",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture defer",
       "hidden": false,
       "flags": [
@@ -533,6 +546,19 @@
         },
         {
           "name": "spec",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture surprise",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "occasioned-by",
           "shorthand": "",
           "type": "string",
           "required": false,
