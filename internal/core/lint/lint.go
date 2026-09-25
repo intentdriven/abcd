@@ -551,6 +551,24 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, ro...)
 	}
 
+	// The record-families pair reads the glossary against its one map page and
+	// the record stores' frontmatter keys against the same page, all addressed
+	// repo-relative in the rules' own config, so each runs once here.
+	if gfCfg, ok := cfg.Rules[ruleGlossaryFamilyPointer]; ok && gfCfg.Enabled {
+		gf, err := checkGlossaryFamilyPointer(repoRoot, gfCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, gf...)
+	}
+	if fkCfg, ok := cfg.Rules[ruleRecordFamilyKey]; ok && fkCfg.Enabled {
+		fk, err := checkRecordFamilyKey(repoRoot, fkCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, fk...)
+	}
+
 	// record_provenance reads the same cross-store scan record_schema walks, so
 	// it runs once here rather than per root.
 	if rpCfg, ok := cfg.Rules[ruleRecordProvenance]; ok && rpCfg.Enabled {
