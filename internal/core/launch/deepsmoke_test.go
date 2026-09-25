@@ -94,6 +94,70 @@ func TestRenderPageHelp(t *testing.T) {
 	}
 }
 
+// TestRenderPageHelpLoadsLegalFrontmatter: every shape below is a YAML mapping
+// a harness loads, so the deep tier must load it too and read the name and the
+// description it spells. A refusal here is a cut refused over a page that
+// loads (iss-2609251902438821): the tier reads frontmatter only to judge it,
+// so it must not be stricter than the YAML it judges.
+func TestRenderPageHelpLoadsLegalFrontmatter(t *testing.T) {
+	cases := []struct {
+		shape, page, wantName, wantDesc string
+	}{
+		{"a plain scalar starting on the line below its key",
+			"---\nname: s\ndescription:\n  first line\n  second line\n---\nbody\n", "s", "first line second line"},
+		{"a plain scalar continued on indented lines",
+			"---\nname: s\ndescription: first line\n  second line\n---\nbody\n", "s", "first line second line"},
+		{"a plain scalar whose continuation follows a blank line",
+			"---\nname: s\ndescription: first\n\n  second\n---\nbody\n", "s", "first second"},
+		{"a double-quoted key",
+			"---\n\"name\": s\n\"description\": d\n---\nbody\n", "s", "d"},
+		{"a single-quoted key",
+			"---\n'name': s\n'description': d\n---\nbody\n", "s", "d"},
+		{"a non-ASCII key",
+			"---\nname: s\ndescription: d\nnom-é: x\n描述: y\n---\nbody\n", "s", "d"},
+		{"a block closed by the YAML document end",
+			"---\nname: s\ndescription: d\n...\nbody\n", "s", "d"},
+		{"a double-quoted value spanning lines",
+			"---\nname: s\ndescription: \"first\n  second\"\n---\nbody\n", "s", "first second"},
+		{"a single-quoted value spanning lines",
+			"---\nname: s\ndescription: 'it''s\n  here'\n---\nbody\n", "s", "it's here"},
+		{"a folded block scalar with a chomping indicator",
+			"---\nname: s\ndescription: >-\n  folded\n  text\n---\nbody\n", "s", "folded text"},
+		{"a literal block scalar holding a blank line",
+			"---\nname: s\ndescription: |\n  a\n\n  b\n---\nbody\n", "s", "a b"},
+		{"a nested mapping and an indented sequence beside the fields",
+			"---\nname: s\nmetadata:\n  owner: x\n  tags: [a, b]\nallowed-tools:\n  - Read\n  - Bash\ndescription: d\n---\nbody\n", "s", "d"},
+		{"comment lines and trailing comments",
+			"---\n# heading comment\nname: s # the name\n  # an indented comment\ndescription: d # the description\n---\nbody\n", "s", "d"},
+		{"CRLF line endings throughout",
+			"---\r\nname: s\r\ndescription:\r\n  over\r\n  lines\r\n---\r\nbody\r\n", "s", "over lines"},
+	}
+	for _, tc := range cases {
+		root := t.TempDir()
+		writeFile(t, root, "skills/s/SKILL.md", tc.page)
+		got := RenderPageHelp(root, PageRef{Kind: SurfaceSkill, Path: "skills/s/SKILL.md"})
+		if got.Error != "" || got.Name != tc.wantName || got.Description != tc.wantDesc {
+			t.Errorf("%s: want name %q and description %q, got %+v", tc.shape, tc.wantName, tc.wantDesc, got)
+		}
+	}
+
+	// What is not a mapping still refuses, quoted or not.
+	refused := []struct{ shape, page, wantErr string }{
+		{"a key quoted once and plain once", "---\nname: a\n\"name\": b\ndescription: d\n---\n", "duplicate"},
+		{"a column-0 line continuing nothing", "---\nname: s\ndescription: d\nnot a mapping entry\n---\n", "line 4"},
+		{"a quoted key its line never closes", "---\n\"name: s\ndescription: d\n---\n", "line 2"},
+		{"a block neither delimiter closes", "---\nname: s\ndescription: d\n", "never closed"},
+	}
+	for _, tc := range refused {
+		root := t.TempDir()
+		writeFile(t, root, "skills/s/SKILL.md", tc.page)
+		got := RenderPageHelp(root, PageRef{Kind: SurfaceSkill, Path: "skills/s/SKILL.md"})
+		if !strings.Contains(got.Error, tc.wantErr) {
+			t.Errorf("%s: want an error naming %q, got %+v", tc.shape, tc.wantErr, got)
+		}
+	}
+}
+
 // TestSmokeDeepCatchesAPageThatResolvesButDoesNotLoad is AC4: the light tier
 // passes the fixture (every declared path is carried), and the deep tier,
 // running rooted at the materialised tree, fails it on the page that would not
