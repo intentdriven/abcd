@@ -3491,6 +3491,13 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// record must carry.
 			res, err := capture.Capture(req)
 			if err != nil {
+				// A closed-set value is the caller's flag, so the refusal names
+				// the flag and the set it accepts (iss-2608290810037524).
+				var fv *capture.FieldValueError
+				if errors.As(err, &fv) {
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: --%s %q is not accepted; accepted values: %s (nothing captured)",
+						fv.Field, fv.Value, enumHelp(fv.Accepted))}
+				}
 				return err
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {

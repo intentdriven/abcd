@@ -16,6 +16,7 @@ package capture
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -332,6 +333,22 @@ type StatusResult struct {
 	UncommittedCount int          `json:"uncommitted_count"`
 	RecentOpen       []Issue      `json:"recent_open"` // up to 10, newest first
 	Skipped          []SkipRecord `json:"skipped"`
+}
+
+// FieldValueError is a capture request member outside its closed vocabulary.
+// It names the member, the value and the accepted set, and nothing about
+// frontmatter: the value came from the caller's request, not from a record,
+// so the refusal speaks about the request (iss-2608290810037524). A front door
+// maps Field to its own spelling of the input — the CLI's flag of the same
+// name.
+type FieldValueError struct {
+	Field    string
+	Value    string
+	Accepted []string
+}
+
+func (e *FieldValueError) Error() string {
+	return fmt.Sprintf("capture: %s %q is not accepted; %s (nothing written)", e.Field, e.Value, acceptedValues(e.Accepted))
 }
 
 // Sentinel errors the surface maps to exit codes and messages. Core never

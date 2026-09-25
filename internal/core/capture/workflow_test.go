@@ -245,8 +245,11 @@ func TestCaptureRejectsBadEnumAndSweepsPlaceholder(t *testing.T) {
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: "bogus",
 		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "ctx",
 	})
-	if !errors.Is(err, ErrMalformedFrontmatter) {
-		t.Fatalf("want ErrMalformedFrontmatter, got %v", err)
+	// A request value outside its vocabulary is refused as the request member it
+	// is, never as malformed frontmatter (iss-2608290810037524).
+	var fv *FieldValueError
+	if !errors.As(err, &fv) || fv.Field != "severity" {
+		t.Fatalf("want a FieldValueError on severity, got %v", err)
 	}
 	entries, _ := os.ReadDir(filepath.Join(ir, "open"))
 	for _, e := range entries {
@@ -270,8 +273,9 @@ func TestCaptureAcceptsAgentObservationSourceAndRejectsBogus(t *testing.T) {
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 		Category: "observation", Source: "made-up-source", Slug: "s2", FoundDuring: "ctx",
 	})
-	if !errors.Is(err, ErrMalformedFrontmatter) {
-		t.Fatalf("bogus source want ErrMalformedFrontmatter, got %v", err)
+	var fv *FieldValueError
+	if !errors.As(err, &fv) || fv.Field != "source" {
+		t.Fatalf("bogus source want a FieldValueError on source, got %v", err)
 	}
 }
 

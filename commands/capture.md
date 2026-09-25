@@ -81,7 +81,10 @@ write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 the ledger, and an edge to a record captured later is written afterwards with
 `link`, below), `--production-mode`
 (`hand-written|dictated-and-formatted|scribe-transcribed`, default: the repo's
-declared mode, else `hand-written`). Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
+declared mode, else `hand-written`). `--severity`, `--category` and `--source`
+are closed sets, and their help names every member; a value outside one is
+refused (exit 2, nothing written) with a message naming the flag and the values
+it accepts, so relay the set and pick from it rather than guessing again. Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
 too whenever it is non-zero: it counts the spans rewritten before the text was
 written, and the user needs to know their wording was changed. When
 `uncommitted` is true, say that the record is not in git yet: until it is

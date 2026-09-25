@@ -1331,3 +1331,32 @@ func TestCaptureWithoutFoundAtSaysNoLocationWasNamed(t *testing.T) {
 		t.Fatalf("a capture naming a location still said it named none:\n%s", with)
 	}
 }
+
+// TestCaptureEnumRefusalNamesTheFlagAndItsSet is iss-2608290810037524: a
+// closed-set flag's refusal named the value and blamed "malformed
+// frontmatter" — a layer the caller never wrote. It names the flag and the
+// accepted set instead, for every closed enumeration on the capture path, and
+// writes nothing.
+func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	for _, c := range []struct{ flag, value, member string }{
+		{"--severity", "medium", "critical"},
+		{"--category", "test-flake", "future-work-seed"},
+		{"--source", "ci-signal", "agent-finding"},
+	} {
+		out, err := runCLIErr(t, "capture", "a finding with a guessed value", c.flag, c.value)
+		if err == nil {
+			t.Fatalf("%s %s was accepted:\n%s", c.flag, c.value, out)
+		}
+		msg := err.Error() + string(out)
+		if !strings.Contains(msg, c.flag+" \""+c.value+"\"") || !strings.Contains(msg, c.member) {
+			t.Errorf("%s refusal does not name the flag and its accepted set: %s", c.flag, msg)
+		}
+		if strings.Contains(msg, "malformed frontmatter") {
+			t.Errorf("%s refusal blames frontmatter the caller never wrote: %s", c.flag, msg)
+		}
+	}
+	if n := ledgerIssueCount(t, repo); n != 0 {
+		t.Fatalf("refused captures wrote %d record(s)", n)
+	}
+}

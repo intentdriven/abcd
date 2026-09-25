@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -39,6 +40,13 @@ func mutationPreamble(repoRoot, issuesRoot string) error {
 func Capture(req CaptureRequest) (CaptureResult, error) {
 	repoRoot, issuesRoot, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
+		return CaptureResult{}, err
+	}
+	// The closed enumerations are judged as REQUEST members first, so a value
+	// the caller passed is refused in terms of the request and its accepted set
+	// rather than as malformed frontmatter the caller never wrote
+	// (iss-2608290810037524). Nothing has been written yet.
+	if err := validateRequestEnums(req); err != nil {
 		return CaptureResult{}, err
 	}
 	// A found_at that names a path must name one in THIS checkout
@@ -130,6 +138,21 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 		result.Uncommitted = set[filepath.ToSlash(result.Path)]
 	}
 	return result, nil
+}
+
+// validateRequestEnums refuses a severity, category or source outside its
+// closed vocabulary, naming the member and the accepted set — the same sets,
+// from core/issueschema, the record validator reads.
+func validateRequestEnums(req CaptureRequest) error {
+	switch {
+	case !validSeverities[req.Severity]:
+		return &FieldValueError{Field: "severity", Value: string(req.Severity), Accepted: issueschema.Severities}
+	case !validCategories[req.Category]:
+		return &FieldValueError{Field: "category", Value: string(req.Category), Accepted: issueschema.Categories}
+	case !validSources[req.Source]:
+		return &FieldValueError{Field: "source", Value: string(req.Source), Accepted: issueschema.Sources}
+	}
+	return nil
 }
 
 func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
