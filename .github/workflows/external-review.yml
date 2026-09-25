@@ -84,10 +84,21 @@ jobs:
           # Latest review state per reviewer decides; an approval superseded by
           # CHANGES_REQUESTED does not count. COMMENTED reviews do not change
           # the reviewer's standing verdict either way.
-          approvers="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" --paginate \
-            --jq '[.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")]
-                  | group_by(.user.login) | map(max_by(.submitted_at))
-                  | map(select(.state == "APPROVED") | .user.login) | .[]')"
+          #
+          # The reduction runs over EVERY page (iss-301). `gh --paginate` applies
+          # --jq to each page separately, and --slurp cannot sit beside --jq, so
+          # a per-reviewer reduction written in jq only ever saw one page: a
+          # page-1 APPROVED survived a later page-2 CHANGES_REQUESTED, and an
+          # approval repeated across pages counted twice. jq here only flattens
+          # each review to one tab-separated line; sort and awk then take the
+          # latest state per reviewer across all of them (ISO-8601 UTC times
+          # sort lexically). A failed call fails the step (set -e).
+          reviews="$(gh api "repos/$REPO/pulls/$PR_NUMBER/reviews?per_page=100" --paginate \
+            --jq '.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")
+                  | [.user.login, .submitted_at, .state] | @tsv')"
+          approvers="$(printf '%s\n' "$reviews" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2 \
+            | awk -F '\t' 'NF == 3 { last[$1] = $3 } END { for (u in last) if (last[u] == "APPROVED") print u }' \
+            | LC_ALL=C sort)"
 
           count=0
           for reviewer in $approvers; do
