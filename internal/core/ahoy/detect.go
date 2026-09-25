@@ -779,7 +779,10 @@ func detectVersion(cwd string) []Gap {
 			FixHint: "ahoy install stamps the meta block.", Required: true, Resolvable: true,
 		}}
 	}
-	if current := pluginVersion(); current != "" && setupVersion != current {
+	// Neither side a dev build (iss-2608241115259170): the gap is required, and
+	// against a dev stamp or a dev binary it could never settle — every
+	// release install would re-stamp and every dev install undo it.
+	if current := pluginVersion(); !isDevOrUnknown(current) && !isDevOrUnknown(setupVersion) && setupVersion != current {
 		return []Gap{{
 			ID: "version.upgrade", Category: SafeAutocreate, Scope: "repo",
 			Title:   "plugin upgrade " + setupVersion + " -> " + current,

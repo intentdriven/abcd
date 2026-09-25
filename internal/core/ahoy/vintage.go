@@ -224,11 +224,18 @@ func VersionTransition(cwd string) (recorded, running string, changed bool) {
 // versionTransitionFrom is the pure comparison, split so the change/no-change
 // branches are testable without a fixture config or a re-stamped core.Version.
 func versionTransitionFrom(recorded, running string) (from, to string, changed bool) {
-	if running == "" || running == "dev" || recorded == "" {
+	// A dev build on either side is no transition: a dev stamp can never
+	// reconcile against a release, and re-stamping it would flap the tracked
+	// config between dev and release installs (iss-2608241115259170).
+	if isDevOrUnknown(running) || isDevOrUnknown(recorded) {
 		return recorded, running, false
 	}
 	return recorded, running, recorded != running
 }
+
+// isDevOrUnknown reports a version that cannot take part in a comparison: none
+// recorded, or a local dev build's.
+func isDevOrUnknown(v string) bool { return v == "" || v == "dev" }
 
 // recordedSetupVersion reads meta.setup_version from the repo config, or "" when
 // it is absent or unreadable.
