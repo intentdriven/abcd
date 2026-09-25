@@ -200,11 +200,12 @@ type recordStore struct {
 	// all three legs made the ADR store claim a refusal nobody performs
 	// (iss-2608301656200729). That leg reads readerRefusesDuplicateKey instead.
 	//
-	// The two stores this cycle added have no such reader: the only reader of
-	// admission records honours one carrying nothing but its run and its proposal
-	// (reading_outstanding_test.go), and no reader of surprise records exists at
-	// all — so a message telling their authors the record is skipped and invisible
-	// sends them to look for a refusal nobody performs (iss-2608301411010342).
+	// The two stores this cycle added have no such reader: the outstanding report
+	// honours an admission carrying nothing but its run and its proposal
+	// (reading_outstanding_test.go), and the record dispatcher reads both families
+	// leniently and skips neither — so a message telling their authors the record
+	// is skipped and invisible sends them to look for a refusal nobody performs
+	// (iss-2608301411010342).
 	// Where it is false each leg states what the malformation IS, which is true of
 	// every store, and stops there.
 	readerFailsClosed bool
@@ -304,6 +305,18 @@ type recordJoin struct {
 	// join that ALSO declares sameBucketAs; declared alone it would be inert, which
 	// TestEveryJoinTargetPositionIsADeclaredPosition refuses.
 	targetPosition string
+	// oneOf names the CLOSED set of families this join's value must be a handle
+	// of, verbatim, for a join whose value may name one of several families.
+	// Empty means the join declares no such set.
+	//
+	// The surprise's `occasioned_by` is the one such join: an rdi-N, adm-N or
+	// dsp-N and nothing else (spc-2609020626040342). It used to admit a
+	// consequence named in prose, so a prose value passed the gate while the
+	// surprise verb refuses it — a hand-written record joined to nothing. The set
+	// is issueschema's one declaration (SurpriseOccasionFamilies), so the verb and
+	// this gate cannot disagree about it. A value in the set then resolves on the
+	// ordinary presence leg below.
+	oneOf []string
 }
 
 // bucketed reports whether the store holds its records in lifecycle
@@ -407,7 +420,8 @@ var recordStores = []recordStore{
 		requiredFields: issueschema.SurpriseRequired, knownFields: issueschema.SurpriseKnown,
 		joins: []recordJoin{{
 			field: "occasioned_by",
-			why:   "a surprise is keyed to whatever occasioned it, and a join naming nothing joins nothing",
+			why:   "a surprise is keyed to the record that occasioned it, and a join naming nothing joins nothing",
+			oneOf: issueschema.SurpriseOccasionFamilies,
 		}}},
 }
 
@@ -852,8 +866,8 @@ func checkRecordRequiredFields(r schemaRecord, severity string, judged map[strin
 // — invisible to every surface of its own family while it still sits in the store.
 // That second account is gated on readerFailsClosed for the reason the
 // missing-property account is: the admission reader COUNTS a record carrying an
-// unknown key, and no reader of surprise records exists at all
-// (iss-2608301519254418).
+// unknown key, and the one reader of surprise records — the record dispatcher —
+// reads them leniently and skips none (iss-2608301519254418).
 func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 	if r.store.knownFields == nil {
 		return nil
@@ -936,10 +950,10 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 // queries. It is declared per join AND per target family (sameBucketAs), because
 // that pair-keying is a property of the family and the message names it.
 //
-// Prose is legitimate and stays silent WHERE THE JOIN DECLARES NO FAMILY. A
-// surprise is keyed to whatever occasioned it — a detection, an admission, or a
-// consequence that has no id — so only a value that is a record handle of a store
-// this scan reads is resolved. A handle a record declares it PRUNED is resolved
+// Prose is legitimate and stays silent WHERE THE JOIN DECLARES NO FAMILY AND NO
+// CLOSED SET: only a value that is a record handle of a store this scan reads is
+// resolved. A surprise's occasion is NOT such a join — it declares its closed set
+// (oneOf), so a prose occasion is a finding (spc-2609020626040342). A handle a record declares it PRUNED is resolved
 // too, on the same terms the cross-reference loop resolves it, so one rule gives
 // one answer about it.
 func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
@@ -973,6 +987,17 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 					join.sameBucketAs + "-<N>, lower case with nothing around it); what reads this " +
 					r.noun() + " matches the value as written against the name the " + noun +
 					"'s own file carries, so a value that is not one of those names admits nothing",
+			})
+			continue
+		}
+		// The closed set, where the join declares one: the value must be verbatim a
+		// handle of one of its families, so prose and a fourth family are findings
+		// rather than the silence an undeclared join gives them.
+		if len(join.oneOf) > 0 && !spellsHandleOfAny(join.oneOf, value) {
+			out = append(out, Finding{
+				File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+				Message: join.field + " declares '" + value + "', which is not a handle of " + handleList(join.oneOf) +
+					" (lower case with nothing around it); " + join.why,
 			})
 			continue
 		}
@@ -1117,6 +1142,26 @@ func spellsHandleOf(family, value string) bool {
 		}
 	}
 	return true
+}
+
+// spellsHandleOfAny reports whether value is verbatim a handle of one of
+// families.
+func spellsHandleOfAny(families []string, value string) bool {
+	for _, f := range families {
+		if spellsHandleOf(f, value) {
+			return true
+		}
+	}
+	return false
+}
+
+// handleList renders a family set as the handles a message names.
+func handleList(families []string) string {
+	names := make([]string, 0, len(families))
+	for _, f := range families {
+		names = append(names, f+"-<N>")
+	}
+	return strings.Join(names, ", ")
 }
 
 // joinFamilyNoun renders the record kind a join's declared family holds, for the
@@ -1495,7 +1540,8 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				// The refusal half is gated on readerRefusesDuplicateKey rather than on
 				// readerFailsClosed, because the two come apart on this malformation
 				// alone: the admission reader COUNTS a record carrying a duplicated key,
-				// no reader of surprise records exists, and the ADR dispatcher — which
+				// the record dispatcher reads surprise records with the lenient scanner
+				// on its first value, and the ADR dispatcher — which
 				// does validate the id — reads the frontmatter with the lenient scanner
 				// and never sees the second line, so naming a refusal on any of the three
 				// sends the author looking for one nobody performs (iss-2608301519254418,
