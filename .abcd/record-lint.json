@@ -216,7 +216,14 @@
     },
     "links_resolve": {
       "enabled": true,
-      "severity": "blocker"
+      "severity": "blocker",
+      "extra_roots": [
+        ".abcd/work"
+      ],
+      "exempt": [
+        ".abcd/work/reviews/*",
+        ".abcd/work/reviews/*/*"
+      ]
     },
     "no_brittle_line_refs": {
       "enabled": true,

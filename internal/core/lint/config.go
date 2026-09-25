@@ -77,8 +77,15 @@ type RuleConfig struct {
 	Severity string `json:"severity"`
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
-	// Exempt is the directory_coverage glob allowlist.
+	// Exempt is the directory_coverage glob allowlist. links_resolve reads it too,
+	// over its ExtraRoots only: a repo-relative glob naming files whose links the
+	// extra walk skips.
 	Exempt []string `json:"exempt"`
+	// ExtraRoots are repo-relative trees links_resolve walks for links ALONE,
+	// beyond Roots: the working tier (.abcd/work) holds relative links in the issue
+	// ledger, DECISIONS.md and CONTEXT.md, and adding it to Roots would arm every
+	// content rule there too (iss-2608230752354927).
+	ExtraRoots []string `json:"extra_roots"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name
 	// the same directory share one scan of it. spec_lifecycle also reads it to
@@ -611,6 +618,9 @@ func (c Config) validateConfiguredPaths() error {
 		// this check does not depend on validateRecordStores having already refused an
 		// unknown prefix — a reordering of parseConfig would otherwise leave an
 		// unknown store's path unjudged.
+		for _, r := range rc.ExtraRoots {
+			fields = append(fields, configuredPath{"extra_roots entry", r})
+		}
 		prefixes := make([]string, 0, len(rc.RecordStores))
 		for prefix := range rc.RecordStores {
 			prefixes = append(prefixes, prefix)

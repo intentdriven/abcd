@@ -387,6 +387,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 	}
 
+	// links_resolve's extra roots are walked for links alone, once, outside the
+	// per-root loop (iss-2608230752354927).
+	if linksOn && len(linksCfg.ExtraRoots) > 0 {
+		lx, err := checkLinksExtraRoots(repoRoot, linksCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, lx...)
+	}
+
 	// stray_root_docs is repo-root scoped and non-recursive — independent of
 	// cfg.Roots, so it runs once, outside the per-root loop.
 	if strayCfg, ok := cfg.Rules["stray_root_docs"]; ok && strayCfg.Enabled {
