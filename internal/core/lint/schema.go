@@ -1078,7 +1078,9 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 						" is keyed on a pair nothing ever queries: it counts for nothing, and no line reports " +
 						"that an answer was written for the " + target.noun() + " it names",
 				})
-				continue
+				// No continue: a target both at the wrong position and in another
+				// bucket is reported on both counts, so the author converges in one
+				// round rather than two (iss-2608301808197261).
 			}
 		}
 		// The bucket obligation, where the join declares one. The target is of the
