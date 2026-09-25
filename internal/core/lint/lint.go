@@ -22,6 +22,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -2744,21 +2745,15 @@ func contentExempt(rel string, fields map[string]fmField, cfg Config) bool {
 // to capture and a malformed impact to this lint.
 func isNull(v string) bool { return frontmatter.IsNull(v) }
 
-// fenceMask marks lines that are inside (or are a marker for) a triple-backtick
-// fenced code block.
-func fenceMask(lines []string) []bool {
-	mask := make([]bool, len(lines))
-	inFence := false
-	for i, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "```") {
-			mask[i] = true
-			inFence = !inFence
-			continue
-		}
-		mask[i] = inFence
-	}
-	return mask
-}
+// fenceMask marks the lines inside a fenced code block, delimiters included, for
+// the rules that skip example text. It is mdrecord's reading, the tree's one
+// notion of a fence (iss-2609250955209513): a tilde fence is a fence, a closer
+// is a run of the opener's character at least as long, and a backtick line
+// inside a tilde block is content. A line is masked only where every mdrecord
+// rule agrees it is fenced, because a rule that masks live prose misses a
+// finding silently while one that reads an example as prose says so. HTML
+// comments are not masked: the rules read commented text.
+func fenceMask(lines []string) []bool { return mdrecord.FencedUnderEveryRule(lines) }
 
 // hasMarkdownExt reports whether name ends in the markdown extension, folding
 // case. A record renamed to `.MD`/`.Md`/`.mD` is the same record to every

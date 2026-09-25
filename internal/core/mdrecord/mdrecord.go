@@ -145,6 +145,23 @@ func (r Reading) Unclosed() (line int, flag uint8, ok bool) {
 	return r.openLine, r.openFlag, r.openLine >= 0
 }
 
+// FencedUnderEveryRule reports, per line, whether EVERY rule reads that line as
+// inside a fence (its delimiters included). It is the reading for a reader that
+// must never hide live text behind a disagreement between the rules — a gate
+// whose missed finding is silent, a floor whose missed heading travels — so a
+// line either rule reads as live is live to it. HTML comments are not consulted:
+// what a comment hides is the caller's question, and the readers that ask this
+// one read commented text.
+func FencedUnderEveryRule(lines []string) []bool {
+	top := Read(lines, TopLevel).Mask
+	nested := Read(lines, ListNested).Mask
+	out := make([]bool, len(lines))
+	for i := range out {
+		out[i] = top[i]&MaskFence != 0 && nested[i]&MaskFence != 0
+	}
+	return out
+}
+
 // nestedFenceRe matches a fence delimiter at any indent, for ListNested.
 var nestedFenceRe = regexp.MustCompile("^([ \t]*)(`{3,}|~{3,})(.*)$")
 

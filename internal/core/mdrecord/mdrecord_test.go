@@ -493,3 +493,14 @@ func TestMaskAndUnclosedAreTheTopLevelReading(t *testing.T) {
 		t.Fatalf("Unclosed = (%d, %d, %v), Read(TopLevel).Unclosed = (%d, %d, %v)", l1, f1, ok1, l2, f2, ok2)
 	}
 }
+
+// TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree: a line either rule
+// reads as live is live, and a comment is not a fence.
+func TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree(t *testing.T) {
+	ls := lines("```\nx\n```\n- item\n  ```\n  code\n# Heading\n<!--\nparked\n-->\n")
+	got := FencedUnderEveryRule(ls)
+	want := []bool{true, true, true, false, true, true, false, false, false, false, false}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("FencedUnderEveryRule = %v, want %v", got, want)
+	}
+}
