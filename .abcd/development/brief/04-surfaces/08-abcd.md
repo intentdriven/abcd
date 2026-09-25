@@ -10,6 +10,27 @@ It complements the per-verb bare renders (`/abcd:ahoy`, `/abcd:capture`, and the
 rest), each of which is scoped to its own surface. This one is the cross-verb
 answer.
 
+## Sub-verbs
+
+> _Machine-checked (`surface_coverage`, spc-27): each row records the verb's
+> adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a
+> non-assessment verb) and its existence (`shipped` / `staged`). The existence
+> fact is verified against the committed command-tree snapshot in both
+> directions. The bucket cell is checked for membership of the closed adr-40
+> vocabulary only: the snapshot carries no bucket field, so a bucket that is
+> wrong but legal passes, and that cell stays a review-grain claim._
+
+| Verb | Bucket | Status |
+|---|---|---|
+| `mode` | — | shipped |
+| `peers` | — | shipped |
+
+This is the bare command's chapter, so the rule compares its table with the
+command tree in neither direction: the surfaces index is what covers the
+top-level verbs. The rows are the two top-level verbs this chapter documents
+beneath the board, and neither registers a sub-verb of its own. The record-id
+form is a positional on the root, not a sub-verb.
+
 ## What ships today
 
 Two read-only forms, and no third.

@@ -59,15 +59,18 @@ neither direction: nothing asserts that one has a row here, and nothing notices
 when one is added or removed (iss-110).
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
-file in this directory whose verb registers sub-commands carries a `## Sub-verbs`
-table recording, per verb, its adr-40 bucket (`lint` / `review` / `audit` /
-`gate`, or `—` for a non-assessment verb) and whether it is `shipped` or `staged`.
-The rule checks each table against the committed command-tree snapshot in both
-directions: a `shipped` row must be registered, a `staged` row must not be, a
-registered sub-command must have a row, and a sub-command-bearing verb cannot lack
-a table or a file entirely. Host-delegated surfaces and the bare command are
-exempt from that comparison by explicit configuration, never silently; operator-
-internal verbs are absent from this registry by design.
+file in this directory carries a `## Sub-verbs` table recording, per verb, its
+adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a non-assessment
+verb) and whether it is `shipped` or `staged`. A verb with no sub-verb carries
+the table with its header alone, so an empty table is a recorded fact rather than
+a missing one, and a file without the table is a finding whatever its verb
+registers. The rule checks each table against the committed command-tree
+snapshot in both directions: a `shipped` row must be registered, a `staged` row
+must not be, a registered sub-command must have a row, and a sub-command-bearing
+verb cannot lack a file entirely. Host-delegated surfaces and the bare command are
+exempt from that comparison by explicit configuration, never silently, and from
+nothing else: their tables are still required and format-checked.
+Operator-internal verbs are absent from this registry by design.
 
 The surface-grain `Status` enum stays two-valued: there is no `partial`, because
 the sub-verb rows carry that granularity, so a row may honestly read `shipped`
