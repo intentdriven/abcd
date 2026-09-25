@@ -44,16 +44,20 @@ import (
 // ends in body bytes would keep two bytes of key.
 //
 // Residuals, stated rather than hidden. A body line the shape rule declines —
-// a gutter this list does not know — ends the block early and survives, and
+// a frame this list does not know — ends the block early and survives, and
 // the stage-two rescan cannot see a headerless base64 line any more than
 // stage one could (iss-96 tracks the entropy residue). The rule is wide
-// enough for a pasted, indented, quoted, diffed or line-numbered block.
+// enough for a pasted, indented, quoted, diffed or line-numbered block, and
+// for the renderings iss-2609020127210042 named: log-prefixed lines, CSV
+// cells, one XML element per line, a trailing comment, a source-string
+// concatenation, and (on the header's own line, in patterns.go) a JSON array
+// and doubly escaped newlines. Its width is the price: inside a block that
+// has opened, a line such as "[main] done" or "7,ok" is body-shaped too.
 //
-// One more. The same-line pattern's `open` alternative (patterns.go) takes a
-// short final padding chunk only where it ENDS the line, so a one-line key
-// rendering with no END marker that is followed by prose keeps that chunk —
-// "… QQQ= and then prose" stores "QQQ=". That is residual (a) of
-// iss-2609020127210042 and is not fixed here.
+// The same-line pattern's `open` alternative (patterns.go) judges a short
+// final chunk on its own alphabet, so a one-line key with no END marker and
+// prose after it no longer keeps a padded or digit-bearing tail; a
+// letters-only tail followed by prose is the part left to an entropy rule.
 //
 // The over-claim on the other side of the line — sub-residual (b) of that
 // record — IS fixed here, and the shape of the fix is the point. The opener
@@ -97,29 +101,55 @@ import (
 // the maintainer rather than one to settle inside a block consumer.
 
 // maxPEMBodyLines bounds the lines one block consumer may take after the
-// header. A PGP private-key block with several subkeys runs to a few hundred
-// lines; the bound clears that by an order of magnitude and still caps a
-// pathological block at a fraction of any transcript.
+// header that carry no key material. A PGP private-key block with several
+// subkeys runs to a few hundred lines; the bound clears that by an order of
+// magnitude and still caps a pathological run of blank lines or single short
+// tokens at a fraction of any transcript. Lines that do carry key material
+// continue a block past it (pemBlockEnd), so an oversized key has no tail.
 const maxPEMBodyLines = 4096
 
-// pemGutter and pemTrailer are the optional frame a pasted line carries: the
-// indentation, diff or quote marker, line number or opening quote in front of
-// its content, and the quoting a serialiser leaves after it. One definition,
-// shared by every rule below that reads a whole line — the body-shape rule,
-// the armour rule and the pasted-header rule — so a frame one of them learns
+// pemGutter, pemPrefix, pemTrailer and pemComment are the optional frame a
+// pasted line carries: the indentation, diff or quote marker, line number or
+// opening quote in front of its content; the fields a log line or a CSV row
+// puts before it; the quoting, escape and concatenation a serialiser or a
+// source file leaves after it; and a trailing comment. One definition, shared
+// by every rule below that reads a whole line — the body-shape rule, the
+// armour rule and the pasted-header rule — so a frame one of them learns
 // cannot be a frame another has never heard of.
+//
+// The prefix fields are named shapes, not "anything before the run": an ISO
+// date and time, a clock time, a bracketed field ("[main]", "[WARN]"), a log
+// level, a process tag ("sshd[42]:"), and a CSV cell ending in its separator.
+// A word followed by a colon is deliberately NOT one — "Owner: platform." is a
+// sentence, and an open block must not take it for a body line
+// (iss-2609020127210042).
 const (
-	pemGutter  = `[\s\d+\-|>:"'` + "`" + `│]*`
-	pemTrailer = `[\s"',;\\]*`
+	pemGutter  = `[\s\d+\-|>:"'` + "`" + `│(]*`
+	pemPrefix  = `(?:(?:\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?|\d{2}:\d{2}:\d{2}(?:[.,]\d+)?|\[[^\]]{0,64}\]|(?:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL)|[A-Za-z][\w.-]{0,31}\[\d+\]:)\s+|(?:"[^"]{0,64}"|'[^']{0,64}'|[A-Za-z0-9_.-]{0,64})[,;]\s*)*`
+	pemOpenTag = `(?:<[A-Za-z_][\w:.-]*(?:\s[^<>]*)?>)?`
+	pemEndTag  = `(?:</[A-Za-z_][\w:.-]*>)?`
+	pemTrailer = `(?:\\[nr]|[\s"',;\\+&.|)\]])*`
+	pemComment = `(?:\s+(?:#|//).*)?`
+	// pemFrameHead and pemFrameTail wrap a line's content in the whole frame.
+	pemFrameHead = `^` + pemGutter + pemPrefix + `[\s"'` + "`" + `(]*` + pemOpenTag
+	pemFrameTail = pemEndTag + pemTrailer + pemComment + `$`
+	// pemArmourTags are the header tags a legacy encrypted PEM, a PGP block
+	// and an RFC 4716 block carry ("x-" is RFC 4716's private-use prefix).
+	pemArmourTags = `(?:Proc-Type|DEK-Info|Version|Comment|Charset|Hash|MessageID|Subject|[xX]-[A-Za-z0-9-]+):`
+	// pemBegin and pemEnd are the two armour markers: the five-dash form of
+	// RFC 7468, OpenSSH and PGP, and the four-dash form of RFC 4716, which an
+	// SSH2 private key carries — the same pair the bundled pattern opens on.
+	pemBegin = `(?:-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
+	pemEnd   = `(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----|---- END (?:[A-Z0-9]+ )*PRIVATE KEY ----)`
 )
 
 var (
-	// pemEndRe is the END line of any PEM/PGP private-key block; a line that
-	// carries it closes the block and is consumed with it.
-	pemEndRe = regexp.MustCompile(`-----END (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----`)
-	// pemBodyLineRe is one body-shaped line: an optional gutter, then a base64
-	// run or an armour header or nothing at all, then optional quoting.
-	pemBodyLineRe = regexp.MustCompile(`^` + pemGutter + `(?:[A-Za-z0-9+/=]+|(?:Proc-Type|DEK-Info|Version|Comment|Charset|Hash|MessageID):.*)?` + pemTrailer + `$`)
+	// pemEndRe is the END line of any PEM/PGP/RFC 4716 private-key block; a
+	// line that carries it closes the block and is consumed with it.
+	pemEndRe = regexp.MustCompile(pemEnd)
+	// pemBodyLineRe is one body-shaped line: the frame, then a base64 run or
+	// an armour header or nothing at all.
+	pemBodyLineRe = regexp.MustCompile(pemFrameHead + `(?:[A-Za-z0-9+/=]+|` + pemArmourTags + `.*)?` + pemFrameTail)
 	// pemPastedHeaderRe is a BEGIN marker that is the WHOLE content of its
 	// line, behind the same frame every other rule here allows: the header of
 	// a block someone PASTED, as against one NAMED inside a sentence. What
@@ -129,7 +159,7 @@ var (
 	// the line rather than the marker also keeps the rule blind to where the
 	// paste came from: it survives the indentation, quoting, diff markers and
 	// speaker punctuation a block picks up on its way into a transcript.
-	pemPastedHeaderRe = regexp.MustCompile(`^` + pemGutter + `-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----` + pemTrailer + `$`)
+	pemPastedHeaderRe = regexp.MustCompile(pemFrameHead + pemBegin + pemFrameTail)
 	// pemBase64RunRe is a run from the base64 alphabet long enough to be key
 	// material — the SAME rule the same-line pattern applies before it reaches
 	// past a header (patterns.go).
@@ -147,8 +177,8 @@ var (
 	// two lines survive, pemNarrowKeyRun where only one does.
 	pemOpenerRunRe = regexp.MustCompile(`[A-Za-z0-9+/=]{40,}`)
 	// pemArmourRe is an armour header at the head of a line, behind the same
-	// optional gutter pemBodyLineRe allows.
-	pemArmourRe = regexp.MustCompile(`^` + pemGutter + `(?:Proc-Type|DEK-Info|Version|Comment|Charset|Hash|MessageID):`)
+	// frame pemBodyLineRe allows.
+	pemArmourRe = regexp.MustCompile(pemFrameHead + pemArmourTags)
 )
 
 // pemEvidenceWindow is how far past the header the consumer looks for evidence
@@ -283,6 +313,12 @@ func pemBodyEvidence(lines []string, h int) bool {
 	return false
 }
 
+// pemContinues reports whether an RFC 4716 header line continues onto the
+// next: its last non-blank byte is a backslash.
+func pemContinues(line string) bool {
+	return strings.HasSuffix(strings.TrimRight(line, " \t\r"), `\`)
+}
+
 // pemBodyPlaceholder is the one line a consumed block collapses to.
 func pemBodyPlaceholder(n int) string {
 	return fmt.Sprintf("[redacted-pem-body: %d lines]", n)
@@ -351,18 +387,42 @@ func consumePEMBodies(original, lines []string, findings []Finding) ([]string, i
 // window (pemBodyEvidence), which is what keeps a header that is merely NAMED
 // in a rotation note from swallowing the prose after it. Only when there is
 // neither is nothing consumed.
+//
+// Two rules extend the walk. An armour header whose value ends in a backslash
+// continues onto the next line (RFC 4716 §3.3), and that line is part of the
+// header whatever its shape. And the bound governs lines that carry no key
+// material: past maxPEMBodyLines the block goes on over lines that do, so the
+// tail of an oversized key is consumed with it rather than written out
+// verbatim, while a pathological run of blank lines or single short tokens
+// still stops at the bound (iss-2609020127210042).
 func pemBlockEnd(lines []string, h int) int {
 	limit := h + 1 + maxPEMBodyLines
 	if limit > len(lines) {
 		limit = len(lines)
 	}
 	j := h + 1
+	continued := false
 	for ; j < limit; j++ {
 		if pemEndRe.MatchString(lines[j]) {
 			return j + 1 // closed: the END marker is the evidence
 		}
+		if continued {
+			continued = pemContinues(lines[j])
+			continue
+		}
 		if !pemBodyLineRe.MatchString(lines[j]) {
 			break
+		}
+		continued = pemArmourRe.MatchString(lines[j]) && pemContinues(lines[j])
+	}
+	if j == limit {
+		for ; j < len(lines); j++ {
+			if pemEndRe.MatchString(lines[j]) {
+				return j + 1
+			}
+			if !pemBodyLineRe.MatchString(lines[j]) || !pemKeyRun(lines[j], pemBase64RunRe) {
+				break
+			}
 		}
 	}
 	if !pemBodyEvidence(lines, h) {
