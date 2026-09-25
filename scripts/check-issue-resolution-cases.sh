@@ -388,6 +388,44 @@ git -C "$d" add -A
 git -C "$d" commit -qm "chore: resolve citing an unreachable commit"
 expect fail "$d" "RS002 stamp naming a real but unreachable commit" -- commits main HEAD
 
+# --- RS006: a resolution names only tests that exist -------------------------
+
+# resolve_with_note moves the fixture into resolved/ with a resolution naming
+# the tests given, and stages a test file defining the ones listed in $3.
+resolve_with_note() {
+	local d="$1" note="$2" defined="$3"
+	resolve_record "$d"
+	python3 - "$d/$ISS_DIR/resolved/iss-999-a-fixture.md" "$note" <<'PY'
+import sys
+p, note = sys.argv[1], sys.argv[2]
+s = open(p).read()
+s = s.replace('id: "iss-999"\n', 'id: "iss-999"\nresolution: "%s"\n' % note)
+open(p, "w").write(s)
+PY
+	if [ -n "$defined" ]; then
+		mkdir -p "$d/pkg"
+		{
+			echo "package pkg"
+			for t in $defined; do printf '\nfunc %s(t *testing.T) {}\n' "$t"; done
+		} >"$d/pkg/x_test.go"
+	fi
+	git -C "$d" add -A
+	git -C "$d" commit -qm "chore: resolve"
+}
+
+d="$(newrepo rs006-bad)"
+resolve_with_note "$d" "fixed; TestRealGuard and TestInventedGuard pin it" "TestRealGuard"
+expect_refusal_naming "$d" "RS006 resolution naming a test no file defines" \
+	"RS006 iss-999's resolution names TestInventedGuard" -- commits main HEAD
+
+d="$(newrepo rs006-good)"
+resolve_with_note "$d" "fixed; TestRealGuard pins it" "TestRealGuard"
+expect pass "$d" "RS006 resolution naming a test that exists" -- commits main HEAD
+
+d="$(newrepo rs006-none)"
+resolve_with_note "$d" "fixed by rewording the message" ""
+expect pass "$d" "RS006 resolution naming no test" -- commits main HEAD
+
 # --- RS003: the ledger's existing stamps stay reachable ----------------------
 
 d="$(newrepo rs003-good)"
