@@ -180,6 +180,8 @@ Then summarise the JSON for the user:
 - `version` — the version the release would carry.
 - `bundle.files` — the files the bundle would include (an array; report its length as the count).
 - `scan.hard_fails` — secret/PII findings that would block the release.
+  `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
+  present, counts the rest, and `scan.hard_fails` counts every one.
 - `smoke.ok` — whether the payload would install: both plugin manifests parse,
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.

@@ -97,6 +97,10 @@ type ScanResult struct {
 	// "zip" and is decoded as one, which the record names as the defect in the
 	// old name-keyed label.
 	ContentFormat map[string]string `json:"content_format,omitempty"`
+	// FindingsOmitted counts the findings dropped past maxBundleFindings. They
+	// are counted in HardFails all the same, so a truncated list never reads
+	// as a smaller verdict.
+	FindingsOmitted int `json:"findings_omitted,omitempty"`
 }
 
 // maxBinaryScanBytes caps how much of a skip-listed (binary) bundle file the
@@ -110,13 +114,27 @@ type ScanResult struct {
 // coverage stays honest.
 const maxBinaryScanBytes = 4 << 20
 
+// maxTextScanBytes caps a text bundle file the same way, and for the same
+// reason: the text branch runs the full rule set, whose percent-decode
+// pre-pass is the memory cost the binary cap was measured on. A text file over
+// it is an Unscanned gap with its reason, which the launch gate refuses on,
+// rather than an unbounded read (iss-2608291849371769).
+const maxTextScanBytes = maxBinaryScanBytes
+
+// maxBundleFindings caps the findings one ScanBundle keeps. Each finding
+// carries its source line, so an uncapped list grew with the payload's worst
+// file rather than with anything a reader could use; past the cap they are
+// counted (FindingsOmitted, and HardFails in full) and not kept.
+const maxBundleFindings = 10000
+
 // plaintextNames is the allow-list of skip-listed names known to carry no
 // compressed region, so a byte scan covers all of their content and they may
 // be reported as ScannedBinary. The polarity is deliberate: the byte branch
 // defaults to ContentUnverified, and only a name listed here is promoted.
 // Keyed on the final path element's extension as filepath.Ext reports it, so a
 // skip FILENAME such as .gitignore (a dotfile, whose Ext is the whole name)
-// qualifies. Nothing on defaultSkipExtensions qualifies: .ico can embed PNG,
+// qualifies when a repo's config skip-lists it; by default .gitignore is not
+// skip-listed and takes the full text rules. Nothing on defaultSkipExtensions qualifies: .ico can embed PNG,
 // .wav can carry a compressed codec, .tar holds compressed entries, .pyc is
 // marshalled bytecode, and .so/.dylib/.dll/.exe/.sqlite/.db can all hold
 // packed sections or blobs. A config-added skip extension (.jar, say) reaches
@@ -173,7 +191,9 @@ var (
 		".pyc", ".pyo", ".so", ".dylib", ".dll", ".exe",
 		".sqlite", ".db",
 	}
-	defaultSkipFilenames = []string{".DS_Store", "Thumbs.db", ".gitignore"}
+	// .gitignore is text and is scanned as text: on this list it took the
+	// byte rules, which drop the prose identity rules (iss-2608291849371769).
+	defaultSkipFilenames = []string{".DS_Store", "Thumbs.db"}
 	defaultSkipFragments = []string{".abcd/.work.local/logs/pii-scan/", ".abcd/.work.local/logs/audit-history/"}
 	repoConfigRelPath    = filepath.Join(".abcd", "config", "pii.json")
 )
@@ -1044,12 +1064,13 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 			res.ContentUnverifiedWhy[f.LogicalPath] = why
 			continue
 		}
-		data, err := os.ReadFile(f.ResolvedPath)
+		data, err := fsutil.ReadGuarded(f.ResolvedPath, maxTextScanBytes)
 		if err != nil {
-			// An unreadable file is skipped, not fatal — but surfaced in Unscanned
-			// with the same visibility as a binary-skipped file, so a read-skipped
-			// file cannot silently vanish from the bundle's coverage.
-			unscanned(f.LogicalPath, "unreadable")
+			// An unreadable, oversized or non-regular file is skipped, not
+			// fatal — but surfaced in Unscanned with its reason, the same
+			// visibility as a skip-listed file the byte branch could not read,
+			// so it cannot silently vanish from the bundle's coverage.
+			unscanned(f.LogicalPath, guardedReadWhy(err))
 			continue
 		}
 		if !isText(data) {
@@ -1065,6 +1086,16 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 		}
 	}
 	sortFindings(res.Findings)
+	if n := len(res.Findings); n > maxBundleFindings {
+		// The verdict is counted over every finding above; only the list is
+		// cut, hard fails first so the kept ones are the ones that refuse.
+		sort.SliceStable(res.Findings, func(i, j int) bool {
+			return res.Findings[i].Severity == SeverityHardFail && res.Findings[j].Severity != SeverityHardFail
+		})
+		res.FindingsOmitted = n - maxBundleFindings
+		res.Findings = res.Findings[:maxBundleFindings:maxBundleFindings]
+		sortFindings(res.Findings)
+	}
 	// Zero-coverage sentinel: a bundle with files but none scanned with the
 	// FULL rule set (every file skip-listed or unscannable, however that came
 	// about — an over-broad skip config, an all-binary tree) means the prose
