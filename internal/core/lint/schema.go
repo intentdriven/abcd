@@ -91,6 +91,9 @@ var (
 	// it carries rather than by a directory.
 	admissionFileNumRe = recordid.FilenameNumRe(issueschema.AdmissionFamily)
 	surpriseFileNumRe  = recordid.FilenameNumRe(issueschema.SurpriseFamily)
+	// The reframe store is flat for the surprise store's reason: a reframe is
+	// keyed by the occasion and the fingerprints it carries (spc-2609020626048705).
+	reframeFileNumRe = recordid.FilenameNumRe(issueschema.ReframeFamily)
 	// A YAML block-scalar header and nothing else: `|`, `>`, with the chomping and
 	// indentation indicators the spelling allows (`|-`, `>+`, `|2-`). A key
 	// carrying one holds its value on the lines BELOW it, so the same-line scanner
@@ -423,6 +426,19 @@ var recordStores = []recordStore{
 			why:   "a surprise is keyed to the record that occasioned it, and a join naming nothing joins nothing",
 			oneOf: issueschema.SurpriseOccasionFamilies,
 		}}},
+	// The reframe record (spc-2609020626048705). Its schema comes from
+	// core/issueschema's one declaration, its occasion is a closed join over
+	// the families the verb resolves, and checkReframeRecordShape judges what
+	// the required-fields leg cannot: each fingerprint's shape, the after half
+	// together or not at all, and `changed` drawn from the three surface names.
+	{prefix: "rfm", noun: "reframe", nodeType: "reframe",
+		fileNumRe: reframeFileNumRe, fileFamily: "rfm", filename: "rfm-<N>.md",
+		requiredFields: issueschema.ReframeRequired, knownFields: issueschema.ReframeKnown,
+		joins: []recordJoin{{
+			field: "occasioned_by",
+			why:   "a reframe is keyed to the reading record that occasioned it, and a join naming nothing joins nothing",
+			oneOf: issueschema.ReframeOccasionFamilies,
+		}}},
 }
 
 // storeByPrefix returns the code-side store for a prefix.
@@ -587,6 +603,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		out = append(out, checkRecordFilename(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordFilenameSlug(r, cfg.Severity, judged)...)
 		out = append(out, checkIssueRecordShape(r, cfg.Severity, judged)...)
+		out = append(out, checkReframeRecordShape(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordRequiredFields(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordUnknownFields(r, cfg.Severity)...)
 		out = append(out, checkRecordJoins(r, index, retired, cfg)...)
@@ -1981,4 +1998,78 @@ func refsContain(refs []recordRef, want recordRef) bool {
 		}
 	}
 	return false
+}
+
+// checkReframeRecordShape judges a reframe record's values the way the reframe
+// writer's validateReframeStrict does (spc-2609020626048705), so a record
+// written by hand is refused where a written one would be: every fingerprint a
+// 64-hex SHA-256, the after half — the three after fingerprints and `changed` —
+// present together or not at all, and `changed` a non-empty list drawn from the
+// three surface names. An ABSENT required value is the required-fields leg's
+// business, so a blank is skipped here.
+func checkReframeRecordShape(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	if r.store.prefix != issueschema.ReframeFamily {
+		return nil
+	}
+	var out []Finding
+	add := func(field string, line int, msg string) {
+		if line == 0 {
+			line = 1
+		}
+		mark(judged, field)
+		out = append(out, Finding{
+			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity, Message: msg,
+		})
+	}
+	present := 0
+	for _, n := range issueschema.FrameSurfaceNames {
+		for _, half := range []string{"_before", "_after"} {
+			f, ok := r.fields[n+half]
+			if !ok {
+				continue
+			}
+			if half == "_after" {
+				present++
+			}
+			if isNull(strings.TrimSpace(f.value)) {
+				continue
+			}
+			if v := issueScalar(f.value); !issueschema.ValidFingerprint(v) {
+				add(n+half, f.line, n+half+" '"+v+"' is not a 64-hex SHA-256 fingerprint; the reframe writer "+
+					"records each surface's content fingerprint in that shape and nothing else")
+			}
+		}
+	}
+	ch, hasChanged := r.fields["changed"]
+	if hasChanged {
+		present++
+	}
+	if present != 0 && present != len(issueschema.FrameSurfaceNames)+1 {
+		line := ch.line
+		if !hasChanged {
+			line = 1
+		}
+		add("changed", line, "a reframe's after half is the three after fingerprints and `changed` together, "+
+			"or none of them while the record is open; this record carries part of it")
+	}
+	if hasChanged {
+		v := strings.TrimSpace(ch.value)
+		inner, isList := strings.CutPrefix(v, "[")
+		inner, closed := strings.CutSuffix(inner, "]")
+		switch {
+		case !isList || !closed:
+			add("changed", ch.line, "changed '"+v+"' is not an inline list of the surfaces that moved")
+		case strings.TrimSpace(inner) == "":
+			add("changed", ch.line, "changed is empty; a completed reframe in which no surface moved records no reframe")
+		default:
+			for _, item := range strings.Split(inner, ",") {
+				name := issueScalar(strings.TrimSpace(item))
+				if !issueschema.ValidFrameSurface(name) {
+					add("changed", ch.line, "changed names '"+name+"', which is not one of the frame's surfaces ("+
+						strings.Join(issueschema.FrameSurfaceNames, ", ")+")")
+				}
+			}
+		}
+	}
+	return out
 }
