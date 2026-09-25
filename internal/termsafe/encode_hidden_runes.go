@@ -47,3 +47,29 @@ func EncodeHiddenRunes(s string) string {
 	}
 	return b.String()
 }
+
+// EncodeHiddenRunesBlock is EncodeHiddenRunes for multi-line prose bound for a
+// committed record — a capture body, a resolution note, a press release. It
+// encodes every rune EncodeHiddenRunes encodes EXCEPT the three that are the
+// prose's own structure: the line feed, the tab, and a carriage return that is
+// half of a CRLF pair. A bare carriage return is encoded, because it is the
+// terminal overwrite a record must not carry (iss-2608301206073609).
+//
+// It is SanitizeBlock's counterpart at the record boundary: the render path masks,
+// the record path encodes, and both keep the line structure the prose was
+// written with.
+func EncodeHiddenRunesBlock(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		cr := ""
+		if i < len(lines)-1 && strings.HasSuffix(l, "\r") {
+			l, cr = l[:len(l)-1], "\r"
+		}
+		cells := strings.Split(l, "\t")
+		for j, c := range cells {
+			cells[j] = EncodeHiddenRunes(c)
+		}
+		lines[i] = strings.Join(cells, "\t") + cr
+	}
+	return strings.Join(lines, "\n")
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // mutationPreamble runs the idempotent pre-mutation steps: sweep orphan
@@ -92,6 +93,16 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	// Hidden runes — a bidi override, a zero-width rune, a C1 control, DEL — are
+	// percent-encoded in the free text the record commits (iss-2608301206073609),
+	// with termsafe's one encoder for that boundary. It runs AFTER the slug is
+	// derived, because the slug derivation already drops them as separators and
+	// an encoded form would put its hex digits into the filename. The line feed
+	// and tab stay as they are: the body's structure is not a hidden rune, and a
+	// scalar carrying one is still refused by the serialiser as before.
+	req.Text = termsafe.EncodeHiddenRunesBlock(req.Text)
+	req.FoundAt = termsafe.EncodeHiddenRunesBlock(req.FoundAt)
+	req.FoundDuring = termsafe.EncodeHiddenRunesBlock(req.FoundDuring)
 
 	// The mint is timestamp-numeric (adr-45; mechanics per spc-33): it consults
 	// no maximum, so the refs-union scan the max+1 allocator needed (iss-115,
@@ -481,6 +492,9 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		// redacted — before it is written into the record, never after, so no
 		// rewritten span can reach a field the validator has already passed.
 		redNote, redacted, degraded := redactLedgerText(rr, note)
+		// Hidden runes are encoded at the record boundary, as the capture body's
+		// are (iss-2608301206073609).
+		redNote = termsafe.EncodeHiddenRunesBlock(redNote)
 		newContent, err := setScalarField(content, field, redNote)
 		if err != nil {
 			return err

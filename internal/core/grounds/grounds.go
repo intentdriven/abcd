@@ -12,8 +12,9 @@
 // no reading of the grammar and imports nothing from here. It imports core/mdrecord — the record-body machinery the
 // `## Grounds` section is read and written through — and core/frontmatter, for
 // the one rule about where a record's frontmatter stops and its body begins;
-// otherwise only the standard library: no filesystem, no transport, no record
-// store.
+// and internal/termsafe, whose hidden-rune encoder a written text passes
+// through; otherwise only the standard library: no filesystem, no transport, no
+// record store.
 //
 // The grounds name the CONJECTURE being acted on, not the route taken. "Planned
 // it because it is next" restates the decision; "planned it because we expect a
@@ -30,6 +31,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Token is one of the three recorded dispositions a ground may carry. The set is
@@ -247,7 +250,29 @@ func New(tok Token, text string) (Grounds, error) {
 	if err := ValidateText(folded); err != nil {
 		return Grounds{}, err
 	}
-	return Grounds{Token: t, Text: folded}, nil
+	return Grounds{Token: t, Text: termsafe.EncodeHiddenRunes(folded)}, nil
+}
+
+// NewDerived builds a Grounds whose text is DERIVED from another required value
+// rather than supplied to the argument — a wontfix's `declined:` entry stamped
+// from its reason. It takes the same path New does with the substance floor left
+// off: the text is folded, refused for the control characters ValidateText
+// refuses, and hidden runes are encoded. The floor stays with what a caller
+// supplies, because the value it is derived from has its own contract and a
+// terse reason is a legal one (iss-2608301244450106).
+func NewDerived(tok Token, text string) (Grounds, error) {
+	t, err := ParseToken(string(tok))
+	if err != nil {
+		return Grounds{}, err
+	}
+	folded := Fold(text)
+	if folded == "" {
+		return Grounds{}, fmt.Errorf("grounds text is empty; name the conjecture being acted on, not the route taken")
+	}
+	if err := validateControl(folded); err != nil {
+		return Grounds{}, err
+	}
+	return Grounds{Token: t, Text: termsafe.EncodeHiddenRunes(folded)}, nil
 }
 
 // Fold collapses every run of whitespace to a single space and trims the ends —
@@ -293,12 +318,8 @@ func ValidateText(text string) error {
 	// minted and an orphan left behind. Refusing what yamlScalar refuses, before
 	// anything is written, closes the class for all three writers
 	// (iss-2608301206032013).
-	for _, r := range text {
-		if r < 0x20 {
-			return fmt.Errorf(
-				"grounds text carries the control character U+%04X, which the frontmatter "+
-					"serialiser refuses; remove it and restate the conjecture being acted on", r)
-		}
+	if err := validateControl(text); err != nil {
+		return err
 	}
 	units := textUnits(text)
 	// The floor is measured in lexical units, not in runes: a rune count is
@@ -352,6 +373,19 @@ func ValidateText(text string) error {
 	if onlyDegenerate {
 		return fmt.Errorf(
 			"grounds text %q only repeats the vocabulary or the verb's own name; name the conjecture being acted on, not the route taken", text)
+	}
+	return nil
+}
+
+// validateControl is ValidateText's control-character half, held once so a
+// derived text (NewDerived) is refused by exactly the check a supplied one is.
+func validateControl(text string) error {
+	for _, r := range text {
+		if r < 0x20 {
+			return fmt.Errorf(
+				"grounds text carries the control character U+%04X, which the frontmatter "+
+					"serialiser refuses; remove it and restate the conjecture being acted on", r)
+		}
 	}
 	return nil
 }

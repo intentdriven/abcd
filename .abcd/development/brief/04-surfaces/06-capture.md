@@ -254,6 +254,14 @@ above is correct under both. Where a merge produces two reachable candidates,
 prefer the commit that carries the change over the merge commit, whose diff is
 the whole pull request rather than the fix.
 
+Free text is written losslessly but never invisibly. A bidi override, a
+zero-width rune, a C1 control, DEL or any other character a terminal would hide
+is percent-encoded as its UTF-8 bytes wherever a verb writes caller text into a
+record: the capture body and its location and context fields, a resolution or
+wontfix note, and every grounds entry, on this surface and in the intent drafts
+promotion and `abcd intent` mint. A line break and a tab in the body are left as
+they are, because they are its structure (iss-2608301206073609).
+
 The record body is free-form. One part of it is not, and it is where grounds
 land.
 
