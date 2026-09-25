@@ -944,6 +944,69 @@ func TestPreCommitHook_LinkedWorktreeStoreWinsOverThePrimary(t *testing.T) {
 	})
 }
 
+// noticeLines returns the hook's name-guard NOTICE lines: every `abcd name-guard:`
+// line, which is the success-path announcement. Refusals and the loud banners carry
+// their own prefixes and are not counted.
+func noticeLines(out string) []string {
+	var got []string
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, "abcd name-guard:") {
+			got = append(got, l)
+		}
+	}
+	return got
+}
+
+// TestPreCommitHook_AnnouncesOncePerCommit is iss-2609181122202952. The guard
+// announced each store it read on two lines (the format before the parse, the count
+// after it) and prefixed an inherited store with a third, so a clean commit from a
+// linked worktree printed three notice lines, and five once the worktree carried a
+// store of its own. A notice that repeats reads as a hook running several times. One
+// commit, one notice line, however many stores were read — and that line still names
+// each store's format, its count, and where an inherited one lives.
+func TestPreCommitHook_AnnouncesOncePerCommit(t *testing.T) {
+	t.Run("standalone checkout", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("note.md", "nothing sensitive here\n")
+		r.git("add", "note.md")
+		if blocked, out := r.commit(); blocked {
+			t.Fatalf("clean content was refused\n%s", out)
+		} else if got := noticeLines(out); len(got) != 1 {
+			t.Errorf("a clean commit printed %d name-guard notice lines, want 1\n%s", len(got), out)
+		} else if !strings.Contains(got[0], "keyed store") || !strings.Contains(got[0], "1 entry") {
+			t.Errorf("the notice does not name the format and the count it read\n%s", got[0])
+		}
+	})
+
+	for name, local := range map[string]string{
+		"linked worktree inheriting":                "",
+		"linked worktree inheriting beside its own": "legacy-name\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, linked := newWorktreeCase(t, keyedBanlist)
+			if local != "" {
+				linked.writeBanlist(local)
+			}
+			linked.write("note.md", "nothing sensitive here\n")
+			linked.git("add", "note.md")
+			blocked, out := linked.commit()
+			if blocked {
+				t.Fatalf("clean content was refused\n%s", out)
+			}
+			got := noticeLines(out)
+			if len(got) != 1 {
+				t.Fatalf("a clean commit from a linked worktree printed %d name-guard notice lines, want 1\n%s", len(got), out)
+			}
+			if !strings.Contains(got[0], "primary checkout") || !strings.Contains(got[0], "keyed store") {
+				t.Errorf("the one notice does not say which store was inherited and in what format\n%s", got[0])
+			}
+			if local != "" && !strings.Contains(got[0], "legacy store") {
+				t.Errorf("the one notice does not name the worktree's own store beside the inherited one\n%s", got[0])
+			}
+		})
+	}
+}
+
 // TestPreCommitHook_LinkedWorktreeSaysWhereTheEntryCameFrom: an inherited refusal
 // names a key the developer will not find in the checkout they are standing in, so
 // the guard says which store it came from. Without it the remedy — edit the primary
@@ -1256,4 +1319,95 @@ func TestPreCommitHook_AMirrorInsideAnotherCheckoutDoesNotInheritItsStore(t *tes
 			}
 		})
 	}
+}
+
+// TestPreCommitHook_ResistsInheritedShellState holds this repository's own guard to
+// the hardening the scaffolded template received on 2026-08-26 and this copy never
+// did. Four ways hostile inherited state, or an attacker-authored staged path, got a
+// banned name past the guard or forged its output; each is driven through BASH_ENV,
+// which bash reads at startup whatever its version.
+func TestPreCommitHook_ResistsInheritedShellState(t *testing.T) {
+	const banned = "the widgetworks deal closes friday\n"
+	bashEnv := func(t *testing.T, body string) string {
+		p := filepath.Join(t.TempDir(), "hostile.sh")
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return "BASH_ENV=" + p
+	}
+	withEnv := func(r *hookRepo, extra string) *hookRepo {
+		return &hookRepo{t: r.t, dir: r.dir, env: append(append([]string{}, r.env...), extra)}
+	}
+
+	// read and echo shadowed: the parse loop read zero entries, every diagnostic went
+	// quiet, and the banned name was committed.
+	t.Run("read and echo shadowed", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("a.md", banned)
+		r.git("add", "a.md")
+		blocked, out := withEnv(r, bashEnv(t, "read() { :; }\necho() { :; }\n")).commit()
+		if !blocked {
+			t.Fatalf("the guard passed a banned name under a read/echo shadow\n%s", out)
+		}
+		if !strings.Contains(out, "widget-partner") {
+			t.Errorf("the refusal does not name the key\n%s", out)
+		}
+	})
+
+	// declare and exit shadowed: a surviving exit function turned every refusal into
+	// a printed BLOCKED that committed anyway.
+	t.Run("declare and exit shadowed", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("seed.md", "nothing sensitive here\n")
+		r.git("add", "seed.md")
+		if blocked, out := r.commit(); blocked {
+			t.Fatalf("seed refused\n%s", out)
+		}
+		r.write("b.md", banned)
+		r.git("add", "b.md")
+		withEnv(r, bashEnv(t, "declare() { return 0; }\nexit() { return 0; }\n")).commit()
+		if tree := r.git("ls-tree", "-r", "--name-only", "HEAD"); strings.Contains(tree, "b.md") {
+			t.Fatalf("the banned commit landed in history despite the refusal\n%s", tree)
+		}
+	})
+
+	// A gitlink whose PATH is a banned name: the path was appended after the gitlink
+	// skip, so a submodule path was never scanned.
+	t.Run("gitlink path", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		r.write("seed.md", "nothing sensitive here\n")
+		r.git("add", "seed.md")
+		if blocked, out := r.commit(); blocked {
+			t.Fatalf("seed refused\n%s", out)
+		}
+		head := strings.TrimSpace(r.git("rev-parse", "HEAD"))
+		if out, err := r.tryGit("update-index", "--add", "--cacheinfo", "160000,"+head+",widgetworks-vendored"); err != nil {
+			t.Skipf("cannot stage a gitlink in this sandbox: %v\n%s", err, out)
+		}
+		blocked, out := r.commit()
+		if !blocked {
+			t.Fatalf("the guard passed a gitlink named with a banned path\n%s", out)
+		}
+		if !strings.Contains(out, "widget-partner") {
+			t.Errorf("the refusal does not name the key\n%s", out)
+		}
+	})
+
+	// A refused path carrying control bytes was echoed raw, so an escape sequence could
+	// redraw or forge the refusal text around it.
+	t.Run("control bytes scrubbed", func(t *testing.T) {
+		r := newHookRepo(t, keyedBanlist)
+		evil := ".abcd/.work.local/\x1b[2Kevil.txt"
+		r.write(evil, "x\n")
+		if out, err := r.tryGit("add", "-f", evil); err != nil {
+			t.Skipf("cannot stage a control-byte path here: %v\n%s", err, out)
+		}
+		blocked, out := r.commit()
+		if !blocked {
+			t.Fatalf("a file inside the gitignored local tier was committed\n%s", out)
+		}
+		if strings.ContainsRune(out, '\x1b') {
+			t.Errorf("a raw ESC byte from the staged path reached the output\n%q", out)
+		}
+	})
 }

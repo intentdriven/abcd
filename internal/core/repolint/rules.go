@@ -11,5 +11,6 @@ func DefaultRules() []Rule {
 		docsCurrency{},
 		privacyHygiene{},
 		identityPositioning{},
+		siteGates{},
 	}
 }

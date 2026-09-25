@@ -52,8 +52,7 @@ const statuslineFallbackEnv = "ABCD_STATUSLINE_FALLBACK"
 // blank on a bad payload hides the parked stop the badge exists to show.
 func newStatuslineCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "statusline",
-		Short: "Render abcd's status-line row from the harness payload on stdin (harness-invoked)",
+		Use: "statusline",
 		Long: "Render abcd's row for the host harness's status line.\n\n" +
 			"The harness runs this on every status refresh, with its JSON status\n" +
 			"payload on stdin, and shows what it prints. In a checkout abcd manages the\n" +

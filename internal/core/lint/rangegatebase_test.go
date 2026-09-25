@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/actionsexpr"
 )
 
 // The shas each event carries in the simulated contexts below. They are
@@ -145,15 +147,15 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 
 		t.Run(fmt.Sprintf("%s:%d", strings.NewReplacer("/", "_", " ", "_").Replace(step.name), step.line), func(t *testing.T) {
 			for _, ev := range events {
-				got, err := evalWorkflowValue(raw, ev.ctx)
+				got, err := actionsexpr.EvalValue(raw, ev.ctx)
 				if err != nil {
 					t.Errorf("%s line %d, step %q: cannot evaluate BASE_SHA %s for a %s event: %v\n\n"+
 						"This gate fails closed — an expression it cannot resolve is reported rather "+
-						"than assumed correct. Simplify the expression, or teach evalWorkflowValue "+
+						"than assumed correct. Simplify the expression, or teach internal/actionsexpr "+
 						"the shape.", rel, step.envLine["BASE_SHA"], step.name, raw, ev.name, err)
 					continue
 				}
-				if stringify(got) == ev.want {
+				if actionsexpr.Stringify(got) == ev.want {
 					continue
 				}
 				t.Errorf("%s line %d, step %q resolves the wrong base on a %s event.\n\n"+
@@ -164,7 +166,7 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 					"and decisions-append checks announce that they were skipped and exit 0, and "+
 					"record-lint drops its unbumped-edit arm. Extend the fallback chain so this "+
 					"event resolves a base, or make the step judge the event itself.",
-					rel, step.envLine["BASE_SHA"], step.name, ev.name, raw, stringify(got), ev.want, ev.why)
+					rel, step.envLine["BASE_SHA"], step.name, ev.name, raw, actionsexpr.Stringify(got), ev.want, ev.why)
 			}
 
 			// The chain hands the all-zeroes placeholder straight through (the

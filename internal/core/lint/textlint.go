@@ -4,7 +4,7 @@ package lint
 //
 // The banned-token family (check A) is the linter's one rule that is about
 // WORDS rather than about record shape, and it is the one rule another surface
-// legitimately needs: `abcd site check` runs the docs-lint bans over the text
+// legitimately needs: `abcd lint site` runs the docs-lint bans over the text
 // the website composes, which is selected out of several trees and never was a
 // file the linter walks (adr-47 decision 3).
 //

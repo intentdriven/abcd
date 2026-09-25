@@ -23,10 +23,9 @@ import (
 var newUpdater = update.NewGitHubUpdater
 
 func newUpdateCommand(asJSON *bool) *cobra.Command {
-	var yes bool
+	var yes, check bool
 	cmd := &cobra.Command{
-		Use:   "update [tag]",
-		Short: "Complete a chosen update: fetch, verify, and swap the PATH-installed binary",
+		Use: "update [tag]",
 		Long: "Fetches the named release (or resolves the latest, naming it before acting),\n" +
 			"verifies the platform binary against the same release's checksums.txt, and\n" +
 			"swaps the PATH-installed copy atomically. The verb is the only ask: abcd\n" +
@@ -35,9 +34,23 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"command that owns them. The file being replaced must be provably abcd's:\n" +
 			"the binary running the command, an install ~/.abcd/path-entry records, or\n" +
 			"a digest a published release still names. Anything else is refused with a\n" +
-			"remedy that reinstalls over it — never one that deletes it.",
+			"remedy that reinstalls over it — never one that deletes it.\n\n" +
+			"With --check it only asks: it fetches the latest release's tag once, says\n" +
+			"whether this binary is behind and which command takes the update for this\n" +
+			"install's shape, and swaps nothing.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// --check is the explicit release check (itd-2609212130136102,
+			// which moved it here from `version --check`): one fetch of the
+			// latest release, compared through the shared comparator. It
+			// reports and swaps nothing, so it never constructs the updater and
+			// takes no tag — the latest is what it asks about.
+			if check {
+				if len(args) > 0 {
+					return &exitError{Code: 2, Msg: "update --check asks about the latest release and takes no tag; run `abcd update --check`"}
+				}
+				return runVersion(cmd, *asJSON, true)
+			}
 			requested := ""
 			if len(args) == 1 {
 				requested = args[0]
@@ -90,6 +103,8 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the TTY confirmation of a freshly resolved tag")
+	cmd.Flags().BoolVar(&check, "check", false, "fetch the latest release once and compare it with this binary, swapping nothing (the only network touch besides the update itself; abcd never fetches implicitly — adr-38); names its source and the command that takes the update")
+	cmd.MarkFlagsMutuallyExclusive("check", "yes")
 	return cmd
 }
 

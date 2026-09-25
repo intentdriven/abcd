@@ -26,7 +26,7 @@ name: site-screenshots
 # not rendered into a managed repo: it audits THIS repository's website, which is
 # a thing only this repository has.
 #
-# `abcd site check`'s `mobile` gate is the STATIC counterpart — viewport meta,
+# `abcd lint site`'s `mobile` gate is the STATIC counterpart — viewport meta,
 # overflow containers, image constraints, inline widths — and that one DOES run in
 # the build path and does block a release. It reads emitted HTML and CSS, so it
 # cannot see layout. This one measures a laid-out document and gates nothing. The

@@ -1,7 +1,8 @@
 ---
 name: embark
-description: Unpack a packed lifeboat's record families back into a target repository — probe read-only first, then write. The lifeboat is verified against its manifest, writes land only in the known record families, a conflict refuses the whole write, and the coverage blanks a human must answer come first.
+description: "Unpack a verified lifeboat into a target repository, probing first: Writes only its record families and marker block; refuses the whole write on any conflict."
 argument-hint: "probe <lifeboat> [target] | from <lifeboat> [target]"
+block: people
 ---
 
 # `/abcd:embark` — unpack a lifeboat into a repo

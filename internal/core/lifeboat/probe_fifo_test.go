@@ -67,3 +67,89 @@ func TestReadLifeboatFileDoesNotBlockOnFifo(t *testing.T) {
 		t.Fatal("readLifeboatFile hung on a FIFO (open must not block)")
 	}
 }
+
+// TestWalkDescentDoesNotBlockOnFifo is iss-337: both walks descend into a child
+// directory by name after the parent's ReadDir reported it as a directory, and a
+// hostile tree can swap that directory for a FIFO in the window between the two.
+// os.Root.OpenRoot opens its final component with neither O_DIRECTORY nor
+// O_NONBLOCK, so the descent would block in the kernel until a writer appeared.
+// The race itself cannot be scheduled deterministically, so the test hands the
+// descent the state the race produces — a FIFO where a directory was listed —
+// and requires a prompt refusal. A real directory still opens (the ok: side).
+func TestWalkDescentDoesNotBlockOnFifo(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "swapped")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skipf("mkfifo unsupported: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatalf("OpenRoot: %v", err)
+	}
+	defer root.Close()
+
+	type result struct {
+		sub *os.Root
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		sub, e := openWalkDir(root, "swapped")
+		done <- result{sub, e}
+	}()
+	select {
+	case r := <-done:
+		if r.err == nil {
+			r.sub.Close()
+			t.Fatal("openWalkDir opened a FIFO as a directory; it must refuse it")
+		}
+	case <-time.After(3 * time.Second):
+		// Release the blocked open so the leaked goroutine can finish.
+		if w, err := os.OpenFile(fifo, os.O_RDWR, 0); err == nil {
+			w.Close()
+		}
+		t.Fatal("openWalkDir hung on a FIFO (the descent must not block)")
+	}
+
+	sub, err := openWalkDir(root, "real")
+	if err != nil {
+		t.Fatalf("openWalkDir refused a real directory: %v", err)
+	}
+	sub.Close()
+}
+
+// TestWalkFilesStartDoesNotBlockOnFifo is the start-directory half of iss-337: a
+// FIFO planted at the start path of a walk must return promptly with nothing,
+// not block the open that descends into the start.
+func TestWalkFilesStartDoesNotBlockOnFifo(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "trap")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skipf("mkfifo unsupported: %v", err)
+	}
+	ctx, err := newSourceContext(dir)
+	if err != nil {
+		t.Fatalf("newSourceContext: %v", err)
+	}
+	defer ctx.Close()
+
+	done := make(chan []string, 1)
+	go func() {
+		paths, _ := ctx.WalkFiles("trap")
+		done <- paths
+	}()
+	select {
+	case paths := <-done:
+		if len(paths) != 0 {
+			t.Fatalf("WalkFiles from a FIFO start returned %v, want nothing", paths)
+		}
+	case <-time.After(3 * time.Second):
+		if w, err := os.OpenFile(fifo, os.O_RDWR, 0); err == nil {
+			w.Close()
+		}
+		t.Fatal("WalkFiles hung on a FIFO start (the descent must not block)")
+	}
+}

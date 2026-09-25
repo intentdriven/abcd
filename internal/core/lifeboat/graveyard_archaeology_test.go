@@ -604,10 +604,10 @@ func TestArchRevertCapTruncates(t *testing.T) {
 	}
 	// The cap contract: the last retained finding of a truncated signal says so.
 	last := rev[len(rev)-1]
-	want := fmt.Sprintf("(+2 further findings omitted; capped at %d)", maxGraveyardFindingsPerSignal)
-	if !gvEvidenceContains(last, want) {
-		t.Errorf("truncated signal did not note the cap: last finding %s evidence = %v, want a line containing %q",
-			last.ID, last.Evidence, want)
+	want := fmt.Sprintf("+2 further findings omitted; capped at %d", maxGraveyardFindingsPerSignal)
+	if !gvNoticesContain(last, want) {
+		t.Errorf("truncated signal did not note the cap: last finding %s notices = %v, want a line containing %q",
+			last.ID, last.Notices, want)
 	}
 	j, err := json.Marshal(a)
 	if err != nil || !json.Valid(j) {
@@ -693,9 +693,9 @@ func TestArchUnmergedBranchProbeCapNotesTruncation(t *testing.T) {
 		t.Fatalf("unmerged-branch findings = %d, want the probe bound %d", len(br), maxGraveyardFindingsPerSignal)
 	}
 	last := br[len(br)-1]
-	want := fmt.Sprintf("(+%d further findings omitted; capped at %d)", extra, maxGraveyardFindingsPerSignal)
-	if !gvEvidenceContains(last, want) {
-		t.Errorf("pre-truncated probe did not note the cap: last finding %s evidence = %v, want a line containing %q",
-			last.ID, last.Evidence, want)
+	want := fmt.Sprintf("+%d further findings omitted; capped at %d", extra, maxGraveyardFindingsPerSignal)
+	if !gvNoticesContain(last, want) {
+		t.Errorf("pre-truncated probe did not note the cap: last finding %s notices = %v, want a line containing %q",
+			last.ID, last.Notices, want)
 	}
 }

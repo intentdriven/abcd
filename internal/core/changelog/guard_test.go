@@ -452,3 +452,81 @@ func TestGuardSurfaceRejectsUnreadableBaseline(t *testing.T) {
 		t.Fatal("GuardSurface = nil error, want a corrupt baseline to be an error, not a pass")
 	}
 }
+
+// TestGuardSurfaceNamesARegroupedVerb is itd-146 criterion 4 at the release
+// gate. A verb moved to another help group without the snapshot being
+// regenerated leaves the binary's surface disagreeing with HEAD's, which the gate
+// already refuses; what it did not do was say WHERE. The refusal names the verb
+// and both placements, so the operator does not diff two long files by hand.
+func TestGuardSurfaceNamesARegroupedVerb(t *testing.T) {
+	committed := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Group: "records", Block: "people"},
+	}, nil)
+	r := guardRepo(t, committed, committed, "additive")
+
+	moved := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Group: "checks", Block: "people"},
+	}, nil)
+	got, err := GuardSurface(r.root, moved)
+	if err != nil {
+		t.Fatalf("GuardSurface: %v", err)
+	}
+	if got.Status != SurfaceGuardRefused {
+		t.Fatalf("Status = %q (reason %q), want %q", got.Status, got.Reason, SurfaceGuardRefused)
+	}
+	if !strings.Contains(got.Reason, "abcd capture: group records → checks") {
+		t.Errorf("Reason = %q, want it to name the regrouped verb and both groups", got.Reason)
+	}
+}
+
+// TestGuardSurfaceNamesARewordedSentence is the sentence's half of the same
+// refusal (itd-2609212113220149): a rewording changes no invocation, so nothing
+// but the stale-surface comparison sees it, and the refusal names each command
+// whose sentence differs from HEAD's snapshot the way it names a moved verb.
+func TestGuardSurfaceNamesARewordedSentence(t *testing.T) {
+	committed := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Sentence: "Capture an issue: Writes a record; refuses a lone word."},
+	}, nil)
+	r := guardRepo(t, committed, committed, "additive")
+
+	reworded := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Sentence: "File an issue: Writes a record; refuses a lone word."},
+	}, nil)
+	got, err := GuardSurface(r.root, reworded)
+	if err != nil {
+		t.Fatalf("GuardSurface: %v", err)
+	}
+	if got.Status != SurfaceGuardRefused {
+		t.Fatalf("Status = %q (reason %q), want %q", got.Status, got.Reason, SurfaceGuardRefused)
+	}
+	if !strings.Contains(got.Reason, "sentence differs from HEAD's snapshot:\n  - abcd capture") {
+		t.Errorf("Reason = %q, want it to name the command whose sentence was reworded", got.Reason)
+	}
+	if strings.Contains(got.Reason, "abcd:") {
+		t.Errorf("Reason = %q, names a command whose sentence did not change", got.Reason)
+	}
+}
+
+// TestGuardSurfaceReadsAVersionOneBaseline pins the schema bump's compatibility
+// half end to end: the last release tag carries a version-1 snapshot (no
+// placement fields), HEAD carries the current version, and the cut is guarded
+// rather than failing to decode its own baseline.
+func TestGuardSurfaceReadsAVersionOneBaseline(t *testing.T) {
+	r := newFixtureRepo(t)
+	r.write(surface.SnapshotPath, `{"schema_version":1,"commands":[{"path":"abcd","hidden":false,"flags":[]}],"manifest":[]}`+"\n")
+	r.commit("a version-1 baseline, as every release before itd-146 carries")
+	r.git("tag", "v0.4.0")
+	current := surface.NewSnapshot([]surface.Command{
+		cmdOf("abcd"), {Path: "abcd capture", Group: "records", Block: "people"},
+	}, nil)
+	writeSurface(r, current)
+	r.commit("regenerate the surface snapshot at version 2")
+
+	got, err := GuardSurface(r.root, current)
+	if err != nil {
+		t.Fatalf("GuardSurface: %v, want a version-1 baseline to stay readable", err)
+	}
+	if got.Status != SurfaceGuardPassed {
+		t.Fatalf("Status = %q (reason %q), want %q", got.Status, got.Reason, SurfaceGuardPassed)
+	}
+}

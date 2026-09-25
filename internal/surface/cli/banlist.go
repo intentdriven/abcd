@@ -20,8 +20,7 @@ import (
 // into committed config is the exact accident this feature exists to prevent.
 func newBanlistCommand(asJSON *bool) *cobra.Command {
 	banlistCmd := &cobra.Command{
-		Use:   "banlist",
-		Short: "Banned-names layers (bare renders both, read-only); add/remove maintain them",
+		Use: "banlist",
 		// NOT cobra.NoArgs: on an unknown token that validator's message quotes the
 		// token verbatim (`unknown command "<token>"`), which on this verb may be a
 		// would-be private value landing in stderr, scrollback, and logs. This one
@@ -64,9 +63,8 @@ func newBanlistCommand(asJSON *bool) *cobra.Command {
 func newBanlistListCommand(asJSON *bool) *cobra.Command {
 	var private, public bool
 	listCmd := &cobra.Command{
-		Use:   "list [--private | --public]",
-		Short: "Render the banlist layers; private entries render by key only",
-		Args:  cobra.NoArgs,
+		Use:  "list [--private | --public]",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
@@ -118,9 +116,8 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 	var private, public bool
 	var severity, successor string
 	addCmd := &cobra.Command{
-		Use:   "add --private|--public <key> <pattern|->",
-		Short: "Add one banned-name entry to the named layer (pattern `-` reads one line from stdin)",
-		Args:  cobra.ExactArgs(2),
+		Use:  "add --private|--public <key> <pattern|->",
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
@@ -174,9 +171,8 @@ func newBanlistAddCommand(asJSON *bool) *cobra.Command {
 func newBanlistRemoveCommand(asJSON *bool) *cobra.Command {
 	var private, public bool
 	removeCmd := &cobra.Command{
-		Use:   "remove --private|--public <key>",
-		Short: "Remove one banned-name entry from the named layer",
-		Args:  cobra.ExactArgs(1),
+		Use:  "remove --private|--public <key>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := banlistRoot(cmd.ErrOrStderr())
 			if err != nil {
@@ -484,7 +480,7 @@ func renderPublicLayer(w io.Writer, rep banlist.PublicReport) {
 	if len(rep.Entries) == 0 {
 		fmt.Fprintln(w, "  no entries")
 	}
-	fmt.Fprintln(w, "  reach: enforced deterministically by `abcd docs lint` in CI, with the per-line escape")
+	fmt.Fprintln(w, "  reach: enforced deterministically by `abcd lint docs` in CI, with the per-line escape")
 }
 
 // stdinPattern is the pattern argument that means "read the pattern from stdin".

@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/release"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -322,10 +323,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var changelogJSON string
 	var payloadDir string
 	var allowDirty, fetchBaseline bool
+	var shipRoute *routeFlag
 	cmd := &cobra.Command{
-		Use:   "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline]",
-		Short: "Cut a release: derive the version and the record set from what shipped (exit 1 when the cut refuses)",
-		Args:  cobra.NoArgs,
+		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline]",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -346,6 +347,20 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: --fetch-baseline reads the baseline a payload render's parity " +
 					"diff compares against, and the deterministic emit step renders no payload"}
 			}
+			// Both steps dispatch the composer: the emit step hands the host
+			// its request block, the ingest step returns its receipt. The route
+			// is resolved first, so a refused --route or routing table stops
+			// the verb before anything is read, staged or written.
+			route, err := shipRoute.resolve(cmd, "abcd launch ship", changelogAgent)
+			if err != nil {
+				return err
+			}
+			// The cut is a fact about the repository, not about the directory
+			// the operator stands in (iss-2609251713073532).
+			root, err := gitutil.CheckoutRoot(cwd, "the release record")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
 			// Read the payload before anything else: it is untrusted host input,
 			// and reading it through the shared guarded-operand path keeps the
 			// ingest seam behind exactly the trust boundary the other delegated
@@ -355,15 +370,20 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, cwd, raw, payloadDir, allowDirty, fetchBaseline, *asJSON)
+				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route)
 			}
 
-			cut, err := emitCut(cwd)
+			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
-			if rerr := render(cmd.OutOrStdout(), *asJSON, cut, func(w io.Writer) {
+			// A refused cut goes to no composer, so it carries no request block.
+			if !cut.Ready {
+				route = nil
+			}
+			if rerr := render(cmd.OutOrStdout(), *asJSON, withRequest(cut, route), func(w io.Writer) {
 				renderCut(w, "abcd launch ship", cut)
+				renderRequestLine(w, route)
 			}); rerr != nil {
 				return rerr
 			}
@@ -383,6 +403,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&fetchBaseline, "fetch-baseline", false,
 		"read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt "+
 			"(a network fetch; default: a fresh render at the tag)")
+	shipRoute = addRouteFlag(cmd, changelogAgent)
 	return cmd
 }
 
@@ -395,7 +416,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 // contract alone: only a release workflow that uploads the archive makes the
 // pinned address resolve, and a managed repository's scaffolded workflows
 // upload none, so a catalog pinned there would 404 on every install.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool) error {
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -555,8 +576,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
 		}
 	}
-	if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+	if rerr := render(cmd.OutOrStdout(), asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 		renderIngest(w, res)
+		renderReceiptLine(w, route, raw)
 	}); rerr != nil {
 		return rerr
 	}
@@ -580,15 +602,19 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 // reader asked for, not a gate they tripped. The gate is the ship verb.
 func newChangelogCommand(asJSON *bool) *cobra.Command {
 	return &cobra.Command{
-		Use:   "changelog",
-		Short: "Preview the next release cut — derived version, records, guardrail (read-only, no prose)",
-		Args:  cobra.NoArgs,
+		Use:  "changelog",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			cut, err := emitCut(cwd)
+			// The same root the ship verb reads, from wherever it is run.
+			root, err := gitutil.CheckoutRoot(cwd, "the release record")
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
+			}
+			cut, err := emitCut(root)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd changelog: " + scrubPaths(err)}
 			}

@@ -1,7 +1,8 @@
 ---
 name: update
-description: Complete a chosen update of the PATH-installed abcd binary — fetch the named (or resolved) release, verify it against the release's own checksums, swap atomically. The verb is the explicit ask; abcd never updates on its own.
+description: "Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's."
 argument-hint: "[tag]"
+block: people
 ---
 
 # `/abcd:update`
@@ -11,10 +12,22 @@ meaning IS the fetch: it resolves the latest release (or takes an explicit
 tag), verifies the platform binary against the same release's
 `checksums.txt`, and swaps the PATH copy atomically, printing a receipt with
 the origin, tag, digest, and old→new versions. abcd never checks for or
-applies updates on its own — this verb, and `version --check`, are the only
-two commands that reach the release origin, and each only when invoked.
+applies updates on its own — this verb is the only command that reaches the
+release origin, and only when invoked.
 
-Run:
+**Only asking.** When the user wants to know whether a newer release exists
+without taking it, run the check, which fetches the latest release's tag once
+and swaps nothing:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" update --check --json
+```
+
+Relay `version`, `vintage` and the `check` object: its `verdict`, the `latest`
+tag and its `source`, and — when an update is available — `next_step`, verbatim,
+which names the command that takes the update for this install's shape.
+
+To take the update, run:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" update --yes --json

@@ -387,3 +387,160 @@ func BenchmarkOpensCommentTypicalLine(b *testing.B) {
 		}
 	}
 }
+
+// TestReadListNestedAdmitsAFenceIndentedUnderAListItem is the one extension the
+// tree takes to CommonMark's top-level fence rule. A fence written inside a list
+// item sits at the item's content indent, which may be four columns or more, and
+// a reader that saw only the left margin reads the fence's own `#` lines as
+// headings. TopLevel keeps CommonMark's 0-3 space rule, under which the same run
+// is indented code and not a delimiter.
+func TestReadListNestedAdmitsAFenceIndentedUnderAListItem(t *testing.T) {
+	ls := lines("- item\n\n    ```sh\n    # a shell comment\n    ```\n\n# Real\n")
+	nested := Read(ls, ListNested).Mask
+	for i := 2; i <= 4; i++ {
+		if nested[i]&MaskFence == 0 {
+			t.Fatalf("ListNested: line %d of the list-item fence is live: %v", i, nested)
+		}
+	}
+	if nested[6] != 0 {
+		t.Fatalf("ListNested: the heading after the fence is masked: %v", nested)
+	}
+	if top := Read(ls, TopLevel).Mask; top[2] != 0 || top[3] != 0 {
+		t.Fatalf("TopLevel: a run indented four columns was read as a fence: %v", top)
+	}
+}
+
+// TestReadFollowsCommonMarkOnRunLengthCharacterAndInfoString holds under both
+// rules: a closer is a run of the opener's character at least as long, with
+// nothing after it. A shorter run, the other character, or a run carrying an
+// info string is content.
+func TestReadFollowsCommonMarkOnRunLengthCharacterAndInfoString(t *testing.T) {
+	for _, rule := range []Rule{TopLevel, ListNested} {
+		for name, tc := range map[string]struct {
+			body string
+			live int // a line index that must be live
+			dark int // a line index that must be fenced
+		}{
+			"four-backtick fence quoting a three-backtick line": {"````\n```\n# quoted\n```\n````\n# Real\n", 5, 2},
+			"tilde fence holding a backtick line":               {"~~~\n```go\n~~~\nlive\n", 3, 1},
+			"backtick fence holding a tilde line":               {"```\n~~~\n```\nlive\n", 3, 1},
+			"indented list-item fence closes at its own indent": {"- a\n  ```\n  # x\n  ```\nlive\n", 4, 2},
+		} {
+			m := Read(lines(tc.body), rule).Mask
+			if m[tc.live] != 0 || m[tc.dark]&MaskFence == 0 {
+				t.Fatalf("rule %d, %s: mask %v, want line %d live and line %d fenced", rule, name, m, tc.live, tc.dark)
+			}
+		}
+		if line, flag, ok := Read(lines("```\nx\n```go\nstill inside\n"), rule).Unclosed(); !ok || line != 0 || flag != MaskFence {
+			t.Fatalf("rule %d: a closer carrying an info string closed the fence: (%d, %d, %v)", rule, line, flag, ok)
+		}
+	}
+}
+
+// TestReadListNestedEndsAFenceWithItsListItem: a fenced block cannot continue
+// lazily, so a non-blank line at column 0 ends the list item holding the fence
+// and the fence with it (CommonMark 5.2).
+func TestReadListNestedEndsAFenceWithItsListItem(t *testing.T) {
+	ls := lines("- item\n\n    ```\n    code\n# Heading\nbody\n")
+	nested := Read(ls, ListNested)
+	if nested.Mask[4] != 0 {
+		t.Fatalf("ListNested: the column-0 heading after the item is masked: %v", nested.Mask)
+	}
+	if _, _, ok := nested.Unclosed(); ok {
+		t.Fatal("ListNested: a fence its list item ended is reported unclosed")
+	}
+	if want := []Span{{Start: 2, End: 4, Closed: true}}; !reflect.DeepEqual(nested.Fences, want) {
+		t.Fatalf("ListNested fences = %+v, want %+v", nested.Fences, want)
+	}
+	// A run indented four or more past the opener is content, not a closer.
+	deep := Read(lines("- a\n\n    ```\n        ```\n    x\n    ```\nlive\n"), ListNested)
+	if want := []Span{{Start: 2, End: 6, Closed: true}}; !reflect.DeepEqual(deep.Fences, want) {
+		t.Fatalf("ListNested: a run indented past the closer's reach closed the fence: %+v", deep.Fences)
+	}
+}
+
+// TestReadListNestedReadsAShallowRunAsTopLevelDoes: whether a run at one to
+// three columns sits in a list item turns on the list around it, which this
+// package does not parse. Both exported rules take the top-level reading —
+// the one a committed record depends on, whose indented closer is followed by a
+// column-0 line inside the same fence — and the list-item reading is left to
+// FencedUnderEveryRule.
+func TestReadListNestedReadsAShallowRunAsTopLevelDoes(t *testing.T) {
+	ls := lines("```\n---\na: |\n  ```\nkey: v\n  ```\n---\n```\nlive\n")
+	top, nested := Read(ls, TopLevel), Read(ls, ListNested)
+	if !reflect.DeepEqual(top, nested) {
+		t.Fatalf("TopLevel = %+v\nListNested = %+v", top, nested)
+	}
+	if want := []Span{{0, 4, true}, {5, 8, true}}; !reflect.DeepEqual(top.Fences, want) {
+		t.Fatalf("Fences = %+v, want %+v", top.Fences, want)
+	}
+}
+
+// TestReadReportsEachFenceAsItsOwnSpan: two fences back to back are two blocks,
+// which a per-line mask cannot say — the renderer needs to know where one
+// fence's closer ends it.
+func TestReadReportsEachFenceAsItsOwnSpan(t *testing.T) {
+	r := Read(lines("```\na\n```\n~~~\nb\n~~~\nlive\n```\nopen\n"), TopLevel)
+	want := []Span{{0, 3, true}, {3, 6, true}, {7, 10, false}}
+	if !reflect.DeepEqual(r.Fences, want) {
+		t.Fatalf("Fences = %+v, want %+v", r.Fences, want)
+	}
+}
+
+// TestMaskAndUnclosedAreTheTopLevelReading: the existing entry points are the
+// TopLevel rule, so every reader that already calls them keeps its answer.
+func TestMaskAndUnclosedAreTheTopLevelReading(t *testing.T) {
+	ls := lines("- a\n    ```\n    x\n<!-- c\n```\n")
+	r := Read(ls, TopLevel)
+	if !reflect.DeepEqual(Mask(ls), r.Mask) {
+		t.Fatalf("Mask = %v, Read(TopLevel).Mask = %v", Mask(ls), r.Mask)
+	}
+	l1, f1, ok1 := Unclosed(ls)
+	l2, f2, ok2 := r.Unclosed()
+	if l1 != l2 || f1 != f2 || ok1 != ok2 {
+		t.Fatalf("Unclosed = (%d, %d, %v), Read(TopLevel).Unclosed = (%d, %d, %v)", l1, f1, ok1, l2, f2, ok2)
+	}
+}
+
+// TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree: a line any reading reads
+// as live is live — including the list-item reading of a shallow run, under
+// which a column-0 line ends the item and its fence — and a comment is not a
+// fence.
+func TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree(t *testing.T) {
+	ls := lines("```\nx\n```\n- item\n  ```\n  code\n# Heading\n  ```\n<!--\nparked\n-->\n")
+	got := FencedUnderEveryRule(ls)
+	want := []bool{true, true, true, false, true, true, false, true, false, false, false, false}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("FencedUnderEveryRule = %v, want %v", got, want)
+	}
+	if m := Read(ls, TopLevel).Mask; m[6]&MaskFence == 0 {
+		t.Fatalf("TopLevel reads the heading as fenced, which is the disagreement under test: %v", m)
+	}
+}
+
+// FirstContent is the one leading-comment locator: the first line, and the
+// column in it, holding anything but blanks and HTML comments, comments read
+// as Read reads them.
+func TestFirstContentSkipsBlanksAndComments(t *testing.T) {
+	for name, tc := range map[string]struct {
+		lines     []string
+		line, col int
+	}{
+		"no preamble":                {[]string{"---", "id: x"}, 0, 0},
+		"blank lines":                {[]string{"", "  ", "---"}, 2, 0},
+		"a one-line comment":         {[]string{"<!-- a -->", "---"}, 1, 0},
+		"a multi-line comment":       {[]string{"<!--", "text", "-->", "---"}, 3, 0},
+		"two comments on one line":   {[]string{"<!-- a --> <!-- b -->", "x"}, 1, 0},
+		"content after a comment":    {[]string{"<!-- a --> ---", "x"}, 0, 11},
+		"content after a closer":     {[]string{"<!--", "a --> ---"}, 1, 6},
+		"a byte-order mark":          {[]string{"\ufeff<!-- a -->", "---"}, 1, 0},
+		"a code span quoting a mark": {[]string{"`<!--` is an opener", "x"}, 0, 0},
+		"nothing but comments":       {[]string{"<!-- a -->", ""}, 2, 0},
+		"an unclosed comment":        {[]string{"<!-- a", "b"}, 2, 0},
+	} {
+		line, col := FirstContent(tc.lines)
+		if line != tc.line || col != tc.col {
+			t.Errorf("%s: FirstContent = (%d, %d), want (%d, %d)", name, line, col, tc.line, tc.col)
+		}
+	}
+}

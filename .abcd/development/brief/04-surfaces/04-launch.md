@@ -139,16 +139,24 @@ The **hard-fail** gates refuse the release:
 - **Change narration** over the shipped doc bodies — Markdown under `docs/` and
   at the payload root, the changelog and the release page excepted: a sentence
   carrying "changed from … to" or "migrated from" is named with its file, line
-  and text, and so is one carrying a construct that reads as narration only in
-  one of its uses: "used to" as the past habit ("the tool used to print"), not
-  as a passive or a participle ("the token used to authenticate the request is
-  read"); "no longer" and "renamed … to" beside a subject naming abcd or its
-  behaviour (a command, a flag, a hook, the default), not beside anything else
-  ("files that are no longer present"); and "previously … now" beside a
-  past-tense change verb, not "as previously noted". Bare "now" and bare
-  "previously" are present-tense prose and pass, alone or together; a
-  construct inside code, or on a line carrying the docs-lint escape, is exempt,
-  and every finding names that escape.
+  and text, and so is one carrying "no longer", "renamed … to", "previously …
+  now" or "used to", each refused except in the present-state readings it has:
+  "no longer" as a comparative ("no longer than one screen"), in a relative
+  clause over "is"/"are" ("files that are no longer present"), or in a clause
+  a subordinator opens ("retry until the error no longer appears", "if the
+  path no longer exists", "branches whose upstream no longer exists");
+  "renamed … to" in the purpose form ("the output is renamed to match the
+  tag"); "previously … now" with no change verb beside either word and
+  "previously" not opening its clause ("Now, as previously noted, …"), where
+  the form split at a sentence end ("Previously, the ledger was a flat file.
+  Now it is a folder.") is refused as one; and "used to" as a passive or a
+  participle ("the token used to authenticate the request is read"), where the
+  past habit ("the tool used to print", "until v0.6 the dry-run used to skip
+  the tags") is refused. Bare "now" and bare "previously" are present-tense
+  prose and pass, alone or together. A pair the words cannot tell apart is
+  refused, not passed: the tier is a release gate, and a construct inside
+  code, or on a line carrying the docs-lint escape, is exempt, and every
+  finding names that escape.
   The changelog is derived from the records
   ([adr-37](../../decisions/adrs/0037-changelog-driven-releases.md)), so the
   remedy is to rephrase the doc, not to move the sentence into the changelog.
@@ -379,7 +387,12 @@ tagged.
 **Surface-diff guardrail.** The cut snapshots the command, flag and manifest
 surface and compares it to the previous release. A removed or altered surface
 with no breaking intent in the release fails the launch under `surface-guard`: a
-mislabelled impact cannot ship a compatibility lie.
+mislabelled impact cannot ship a compatibility lie. The snapshot also records each
+verb's help group and block (itd-146) and its sentence (itd-2609212113220149).
+A regroup or a rewording is not a break, so the diff never reads them, but a
+binary whose placement or sentence disagrees with the snapshot committed at
+`HEAD` is refused as stale, and the refusal names each moved verb and each
+reworded sentence.
 
 **Unfixed-findings guardrail.** The cut and the read-only `changelog` preview
 both ask one further question of the cut: of the findings **this cycle**
@@ -652,6 +665,30 @@ performed by a human and by CI.
   **with** the dirty-tree override it proceeds and its pre-flight report
   records the override and every path it carried.
 
+**Model-tier routing.** Both steps of the cut dispatch the changelog composer,
+and each resolves the model-tier route (itd-2609170822093401,
+spc-2609180535002478) of the agent it dispatches before anything else runs,
+through the shared resolver (`internal/core/oracle` over
+`internal/core/layered`): the invocation's routing override, which the appendix
+lists and which names one agent as `<agent>=<tier>[@<connection>][?k=v,...]`,
+over the repository's `.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over the bundled proposal, which applies only
+once a table is accepted. The emit step's result carries the request block when
+the cut is ready: a `routing` member in the JSON and a `routing:` line in the
+text, naming the tier, the fan-out bound, the deciding layer and its origin, the
+override, and the leg. The ingest step's result carries the receipt. A step no
+configured provider can serve at its tier goes to the harness with the tier
+named in its request, and one stderr line says so. The receipt is a `route`
+member in the JSON and a `route:` line in the text, carrying `tier_asked`,
+`connection_tried`, `connection_used`, `fallback_reason`, `override`,
+`settings_sent` and `model_reported`, the last read from the payload's own
+`model` field (a reading's `instrument.model`) and empty when the payload names
+none. A routing table that cannot be read, an override naming an agent this
+invocation does not dispatch, a tier outside `local`, `economy`, `frontier` and
+`host-decides`, or a connection this machine has not configured exits 2 before
+anything is written. With no table accepted and no override, the step asks for
+`host-decides` on the harness and nothing is printed.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface
@@ -698,6 +735,7 @@ Sub-verbs: none.
 | `--changelog-json` | string |
 | `--fetch-baseline` | bool |
 | `--payload-dir` | string |
+| `--route` | stringArray |
 
 ### `abcd launch smoke-pages`
 
