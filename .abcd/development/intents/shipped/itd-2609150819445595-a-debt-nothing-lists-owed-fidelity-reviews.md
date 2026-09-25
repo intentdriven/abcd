@@ -10,6 +10,7 @@ severity: major
 related_issues: [iss-2609100509537730]
 origin: extracted-from-record
 production_mode: hand-written
+impact: additive
 ---
 
 # A shipped intent's owed fidelity review is listed, so the debt is paid
@@ -63,7 +64,8 @@ _None open; the four decisions above settle the interview's questions._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-dd80727d7bd1 -->
+Fidelity review OWED (receipt rcp-dd80727d7bd1).
 
 ## Grounds
 

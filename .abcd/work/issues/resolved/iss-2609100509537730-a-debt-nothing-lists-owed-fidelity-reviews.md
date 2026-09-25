@@ -12,6 +12,12 @@ deferred_after: "v0.8.0"
 deferral_reason: "Owed fidelity reviews accumulate and nothing counts them. Fixing it means deciding where the count belongs and what it should do: a number on a status board is one answer, a refusal at the cut is another, and they differ in how much a debt is allowed to block. The record's own line is the argument, that a debt nothing lists is a debt nobody pays, and it deserves a considered surface rather than a counter bolted to whichever verb was nearest."
 found_at: "internal (intent audit receipts, status render, lint)"
 related_intents: [itd-2609150819445595]
+resolution: "Owed fidelity reviews are listed: bare abcd intent audit names every shipped intent whose review is owed (OWED plus no marker) with its receipt and re-emit command, a dead-lettered review under its own heading with its reason; bare abcd intent carries the owed count; abcd <itd-N> names the owed review as the next move. Delivered by itd-2609150819445595; no gate reads it."
+impact: additive
+resolved_by:
+  intent: "itd-2609150819445595"
+  spec: "spc-2609202112205096"
+  commit: "8338164ccbc6aaf29e3a179ab0fbf6d8f04e166b"
 ---
 
 A debt nothing lists is a debt nobody pays. Every shipped intent in a managed repository carries an owed fidelity review, and no surface counts them.
@@ -36,3 +42,5 @@ the session closed the loop by grepping the decision log for receipt ids. Its
 ask is a read-only listing, `abcd intent audit --owed`, so a session can find
 what is outstanding without enumerating shipped intents by hand. Same shape as
 the filing; the number this time was twelve, all paid, found by grep.
+
+- pursued: we expect a count of owed fidelity reviews on the bare status surfaces to be enough to make the debt get paid, because the debt was invisible rather than resisted; it is shown wrong if the count is rendered and the debt still accumulates, which would mean visibility was not the constraint
