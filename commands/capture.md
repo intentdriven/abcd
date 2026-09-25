@@ -452,8 +452,12 @@ signal is the keyed disposition, and it has no folder to name.
 minting, writing both halves — the record into the draft's `related_issues`, the
 draft into the record's `related_intents` — the repair path when a stamp failed after the mint (the error
 names the orphan draft and this exact remedy, the promotion's own `--grounds`
-included, so it runs as printed), and the path for "I already
-filed the intent by hand; link them". Report the `issue_id`, the minted (or
+included when it was given any, so it runs as printed; the remedy is a code span
+whose fence the grounds cannot close, so copy everything between the fences), and
+the path for "I already filed the intent by hand; link them". When the stamp
+failed because a concurrent promotion of the same record got there first, the
+error names the intent that won and says to delete the duplicate draft instead:
+linking it would be refused as already promoted. Report the `issue_id`, the minted (or
 linked) `intent_id`, and both paths from the JSON.
 
 Link mode never touches the draft's `origin`, which was stamped at mint — a

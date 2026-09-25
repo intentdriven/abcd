@@ -330,6 +330,10 @@ var (
 	ErrAllocatorContention = errors.New("allocator contention")
 	// ErrChecksumMismatch means a concurrent edit occurred during a transition.
 	ErrChecksumMismatch = errors.New("checksum mismatch")
+	// ErrAlreadyPromoted means the issue already names, and is named by, an
+	// intent other than the one this call is joining — refused rather than
+	// promoted twice.
+	ErrAlreadyPromoted = errors.New("already promoted")
 	// ErrGroundsRefused means the triage's grounds argument was absent, outside
 	// the closed vocabulary, malformed, or below the substance floor. It is one
 	// sentinel for every one of those because they are one thing to a caller —

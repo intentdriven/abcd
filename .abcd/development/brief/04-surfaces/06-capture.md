@@ -313,7 +313,9 @@ for ad-hoc scribbles.
   in its `related_issues`, appends the intent to the issue's `related_intents`,
   and leaves the issue in its folder; an issue already
   promoted is refused with the existing intent id, and a post-mint stamp failure
-  names the orphan draft and the repair flag.
+  names the orphan draft and the repair flag — or, when a concurrent promotion
+  of the same issue won the race, names the winner and says to delete the
+  duplicate draft (iss-258).
 - **Given** a reading item with no disposition, **when** the user records one,
   **then** a disposition record is written under
   `.abcd/work/issues/dispositions/`; a second answer to the same item is refused
