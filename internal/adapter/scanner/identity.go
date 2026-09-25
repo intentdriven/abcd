@@ -550,8 +550,9 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	}
 	// home_path_other — a generic /Users|/home path that is not the caller's own.
 	scanMeter.charge(stageIdentity, len(line))
+	homeTokens := pathTokens{line: line}
 	for _, loc := range genericHomeRe.FindAllStringIndex(line, -1) {
-		if !(leadingBoundaryOK(line, loc[0]) || underAbsoluteRoot(line, loc[0])) || !trailingBoundaryOK(line, loc[1]) {
+		if !(leadingBoundaryOK(line, loc[0]) || underAbsoluteRoot(line, loc[0], &homeTokens)) || !trailingBoundaryOK(line, loc[1]) {
 			continue
 		}
 		matched := line[loc[0]:loc[1]]
@@ -723,14 +724,18 @@ var accountRootPrefixes = []string{"/users/", "/home/", `\users\`, "-users-", "-
 // home_path_self's leading anchor declines). These are the positions a real
 // home path or login leaks from, so a generic account name is still reported
 // there, at its hard_fail floor.
+//
+// Every test reads a bounded window beside the match — the home literal's
+// length behind its end, each prefix's length behind its start, at most
+// maxLocalPart bytes ahead — and folds only that window. Lower-casing the
+// whole line prefix for every match made a line dense in a generic login cost
+// the square of its length (iss-2609251535090117).
 func standsAsAccountName(line string, start, end int, home string) bool {
-	scanMeter.charge(stageIdentity, end+start)
-	if home != "" && strings.HasSuffix(strings.ToLower(line[:end]), strings.ToLower(home)) {
+	if home != "" && endsWithFold(line[:end], home) {
 		return true
 	}
-	lower := strings.ToLower(line[:start])
 	for _, p := range accountRootPrefixes {
-		if strings.HasSuffix(lower, p) {
+		if endsWithFold(line[:start], p) {
 			return true
 		}
 	}
@@ -738,10 +743,23 @@ func standsAsAccountName(line string, start, end int, home string) bool {
 		return true
 	}
 	hi := end
-	for hi < len(line) && isLocalPartByte(line[hi]) {
+	for hi < len(line) && hi-end < maxLocalPart && isLocalPartByte(line[hi]) {
 		hi++
 	}
+	scanMeter.charge(stageIdentity, hi-end)
 	return hi+1 < len(line) && line[hi] == '@' && isAlnumByte(line[hi+1])
+}
+
+// maxLocalPart is the longest local part an address can carry (RFC 5321
+// section 4.5.3.1.1), and so the furthest standsAsAccountName looks ahead for
+// the '@' that makes a match a login.
+const maxLocalPart = 64
+
+// endsWithFold reports whether s ends with suffix under Unicode case folding,
+// reading only the len(suffix) bytes at the end of s.
+func endsWithFold(s, suffix string) bool {
+	scanMeter.charge(stageIdentity, len(suffix))
+	return len(s) >= len(suffix) && strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 
 // isLocalPartByte is the byte class of an address's local part as it appears
@@ -1035,12 +1053,13 @@ func trailingBoundaryOK(line string, end int) bool {
 // web URL ("https://docs.example.com/home/…"), whose authority is a host
 // rather than this machine: both stay declined, which is the false-positive
 // surface the '/'-bearing isPathSegmentByte was guarding.
-func underAbsoluteRoot(line string, start int) bool {
-	i := start
-	for i > 0 && isPathSegmentByte(line[i-1]) {
-		i--
-	}
-	scanMeter.charge(stageIdentity, start-i)
+//
+// The token start comes from toks, which walks the line once for every match
+// on it: walking back from each match to its token's start cost the token's
+// length per match, so a path of nested homes cost the square of its length
+// (iss-2609251535090117).
+func underAbsoluteRoot(line string, start int, toks *pathTokens) bool {
+	i := toks.startOf(start)
 	if line[i] != '/' {
 		return false
 	}
@@ -1048,6 +1067,30 @@ func underAbsoluteRoot(line string, start int) bool {
 		return strings.HasPrefix(line[i:], "///")
 	}
 	return true
+}
+
+// pathTokens finds the start of the path token holding an offset — the first
+// byte of the run of isPathSegmentByte bytes that reaches it — for offsets
+// asked in increasing order, walking the line forward once across all of them.
+// An offset below the last one asked restarts the walk from the line's start.
+type pathTokens struct {
+	line       string
+	pos, start int
+}
+
+// startOf returns the start of the path token that position p continues: p
+// itself when the byte before it is not a path byte.
+func (t *pathTokens) startOf(p int) int {
+	if p < t.pos {
+		t.pos, t.start = 0, 0
+	}
+	scanMeter.charge(stageIdentity, p-t.pos+1)
+	for ; t.pos < p; t.pos++ {
+		if !isPathSegmentByte(t.line[t.pos]) {
+			t.start = t.pos + 1
+		}
+	}
+	return t.start
 }
 
 // leadingBoundaryOK reports whether byte offset start begins a home path rather

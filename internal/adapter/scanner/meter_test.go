@@ -57,6 +57,13 @@ var meterFixtures = []meterFixture{
 	{"footers_after_prose", Identity{}, func(n int) string { return strings.Repeat("prose ", n) + "generated with [x](y)" }},
 	{"percent_encoded", meterNamedID, rep("%2Fhome%2Fzq8home ")},
 	// Identity matchers.
+	{"generic_login_words", meterGenericID, rep("dev ")},
+	{"generic_login_dotted_run", meterGenericID, rep("dev.")},
+	{"generic_login_in_urls", meterGenericID, rep("https://h.example/x dev ")},
+	{"generic_login_tilde_users", meterGenericID, rep("~dev ")},
+	{"generic_login_addresses", meterGenericID, rep("dev@h.example ")},
+	{"generic_login_home_segments", meterGenericID, rep("/home/dev/x ")}, // abcd-audit:allow
+	{"nested_other_homes", Identity{}, rep("/home/a")},                   // abcd-audit:allow
 	{"named_login_words", meterNamedID, rep("zq8home ")},
 	{"named_login_dotted_run", meterNamedID, rep("zq8home.")},
 	{"named_login_in_urls", meterNamedID, rep("https://h.example/x zq8home ")},
