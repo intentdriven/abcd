@@ -302,6 +302,28 @@ Never delete the record to clear the gate — the cut refuses under
 `deleted-finding` when you do — and never hand-edit `CHANGELOG.md` to route
 around a refusal.
 
+**Model-tier routing.** Both steps of `launch ship` dispatch the
+`release-changelog-composer` agent, and each resolves that agent's model tier
+before anything else runs: an invocation override, over the repository's
+`.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, repeatable, with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone. A
+ready cut's `--json` result carries the request block as a `routing` member
+(`agent`, `tier`, `fan_out`, `source`, `origin`, `override`, `connection`,
+`fallback`) and its text a `routing:` line: run the composer at that tier where
+the harness lets you choose one, and pass the same `--route` to the ingest step
+so its receipt records the override. The ingest's `--json` result carries a
+`route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent`, `model_reported`) and its text a
+`route:` line; relay it with the result. When no configured provider can serve
+the tier, one stderr line says the step goes through the harness instead. A
+`--route` naming an agent this invocation does not dispatch, a tier outside the
+set, a connection this machine has not configured, or a routing table that
+cannot be read exits 2 before anything is written. With no table accepted and no
+`--route`, the step asks for `host-decides` and nothing is printed.
+
 ### 2. Compose the prose (host-delegated)
 
 Run the **`release-changelog-composer`** agent
