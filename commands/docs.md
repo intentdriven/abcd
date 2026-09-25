@@ -2,6 +2,7 @@
 name: docs
 description: Lint this repo's documentation for currency — change-narration ("previously", "formerly", …), broken relative links, stray root markdown, and citation health — by invoking the abcd binary. `lint` is read-only; `cite refresh` and `cite confirm` maintain the citation baseline.
 argument-hint: "[lint | cite refresh | cite confirm <url>...]"
+block: agents
 ---
 
 # `/abcd:docs` documentation currency and citations

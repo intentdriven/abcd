@@ -2,6 +2,7 @@
 name: inbox
 description: Read the reports managed repositories filed back to abcd, and promote one to a capture carrying the sender's root-commit key and never its name, by invoking the abcd binary. The bare form and show are read-only; promote is the one act that files anything.
 argument-hint: "[show <id> | promote <id>]"
+block: agents
 ---
 
 # `/abcd:inbox` — read and promote reports

@@ -2,6 +2,7 @@
 name: site
 description: Render this repository's website — the landing page composed from repository text under the single-source rule, and the record export derived from the record, git history and the changelog — by invoking the abcd binary. The bare form performs zero writes; build and check write only inside the output directory (check renders the site first when the directory has no index.html).
 argument-hint: "[build|check]"
+block: agents
 ---
 
 # `/abcd:site` the website as a surface of the record

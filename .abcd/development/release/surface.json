@@ -1,10 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "commands": [
     {
       "path": "abcd",
       "hidden": false,
       "flags": [
+        {
+          "name": "agent",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "json",
           "shorthand": "",
@@ -24,6 +31,8 @@
     {
       "path": "abcd ahoy",
       "hidden": false,
+      "group": "set-up",
+      "block": "people",
       "flags": []
     },
     {
@@ -158,6 +167,8 @@
     {
       "path": "abcd banlist",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -237,6 +248,8 @@
     {
       "path": "abcd capture",
       "hidden": false,
+      "group": "records",
+      "block": "people",
       "flags": [
         {
           "name": "blocked-by",
@@ -543,16 +556,22 @@
     {
       "path": "abcd changelog",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
       "path": "abcd decide",
       "hidden": false,
+      "group": "records",
+      "block": "people",
       "flags": []
     },
     {
       "path": "abcd disembark",
       "hidden": false,
+      "group": "portability",
+      "block": "people",
       "flags": []
     },
     {
@@ -654,6 +673,8 @@
     {
       "path": "abcd docs",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -738,6 +759,8 @@
     {
       "path": "abcd embark",
       "hidden": false,
+      "group": "portability",
+      "block": "people",
       "flags": []
     },
     {
@@ -753,6 +776,8 @@
     {
       "path": "abcd guard",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -771,11 +796,14 @@
     {
       "path": "abcd guard hook",
       "hidden": false,
+      "block": "agents",
       "flags": []
     },
     {
       "path": "abcd history",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -947,11 +975,14 @@
     {
       "path": "abcd ideate",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
       "path": "abcd ideate record",
       "hidden": false,
+      "block": "agents",
       "flags": [
         {
           "name": "verdict-json",
@@ -965,6 +996,8 @@
     {
       "path": "abcd identity",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -1016,6 +1049,8 @@
     {
       "path": "abcd implement",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -1222,6 +1257,8 @@
     {
       "path": "abcd inbox",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -1237,6 +1274,8 @@
     {
       "path": "abcd intent",
       "hidden": false,
+      "group": "records",
+      "block": "people",
       "flags": [
         {
           "name": "impact",
@@ -1284,6 +1323,7 @@
     {
       "path": "abcd intent audit ingest",
       "hidden": false,
+      "block": "agents",
       "flags": [
         {
           "name": "verdict-json",
@@ -1358,6 +1398,8 @@
     {
       "path": "abcd launch",
       "hidden": false,
+      "group": "release",
+      "block": "people",
       "flags": [
         {
           "name": "dry-run",
@@ -1438,6 +1480,8 @@
     {
       "path": "abcd lint",
       "hidden": false,
+      "group": "checks",
+      "block": "people",
       "flags": [
         {
           "name": "root",
@@ -1471,6 +1515,8 @@
     {
       "path": "abcd memory",
       "hidden": false,
+      "group": "records",
+      "block": "people",
       "flags": []
     },
     {
@@ -1528,16 +1574,22 @@
     {
       "path": "abcd mode",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
       "path": "abcd peers",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
       "path": "abcd reading",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
@@ -1590,6 +1642,8 @@
     {
       "path": "abcd report",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": [
         {
           "name": "template",
@@ -1603,11 +1657,15 @@
     {
       "path": "abcd rules",
       "hidden": false,
+      "group": "set-up",
+      "block": "people",
       "flags": []
     },
     {
       "path": "abcd site",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": [
         {
           "name": "out",
@@ -1675,6 +1733,8 @@
     {
       "path": "abcd spec",
       "hidden": false,
+      "group": "records",
+      "block": "people",
       "flags": []
     },
     {
@@ -1707,11 +1767,15 @@
     {
       "path": "abcd statusline",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": []
     },
     {
       "path": "abcd update",
       "hidden": false,
+      "group": "set-up",
+      "block": "people",
       "flags": [
         {
           "name": "yes",
@@ -1725,6 +1789,8 @@
     {
       "path": "abcd version",
       "hidden": false,
+      "group": "agents",
+      "block": "agents",
       "flags": [
         {
           "name": "check",

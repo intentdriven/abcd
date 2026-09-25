@@ -116,6 +116,38 @@ snapshot and every appendix. Keep flags and sub-verb spellings out of the prose:
 say what the surface is for, and let the appendix say how it is spelled.
 
 
+## How the help lists the verbs
+
+`abcd --help` lists the verbs a person runs under five labelled groups, with one
+line above them saying that `abcd --help --agent` expands the list. With
+`--agent` the help renders two blocks: the person's groups, then the verbs agents
+and hosts call, each line naming the command page an agent reads next (itd-146).
+Every other command's help is the framework's own.
+
+| Block | Group | Verbs |
+|---|---|---|
+| people | set-up | `ahoy`, `rules`, `update`, and the framework's `help` and `completion` |
+| people | records | `capture`, `decide`, `intent`, `memory`, `spec` |
+| people | checks | `lint` |
+| people | portability | `disembark`, `embark` |
+| people | release | `launch` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `site`, `statusline`, `version` |
+
+The placement is presentation. No verb is hidden, renamed, moved or nested by
+it, every verb runs the same whichever block lists it, and the group titles
+carry no adr-40 bucket meaning. The product thinker placed the people's verbs
+and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
+[`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
+
+It is gated like every other surface claim. The committed command-tree snapshot
+records each visible top-level verb's group and each listed entry's block, so a
+regroup shows in its diff; the drift test and the release gate's stale-surface
+refusal name every verb whose placement moved without a regeneration. A test in
+`internal/surface/cli` fails on a visible top-level verb registered with no
+group, and another holds each command page's `block:` frontmatter to the tree.
+A regroup is not a break: the surface diff never reads the placement, because it
+changes no invocation.
+
 ## Bare invocation
 
 Typing a verb with no arguments is how a person finds out where they stand

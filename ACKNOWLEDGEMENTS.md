@@ -42,6 +42,14 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   normalised modes, stored uncompressed), because its digest is committed by the
   ship and must be reproduced from the tagged commit before the release can
   publish (adr-2609231048308186).
+- **The grouped command lists of kubectl and Terraform** — kubectl's help lists
+  its commands under labelled sections (beginner, intermediate, deploy, cluster
+  management) and Terraform's separates its main commands from all the others.
+  abcd's help takes the same shape (itd-146, `internal/surface/cli/helpgroups.go`):
+  the person's verbs under five labelled groups, and the verbs agents and hosts
+  call in a second block behind one flag. The mechanism is the command groups
+  of the CLI framework abcd already uses, so the pattern arrives with no new
+  dependency.
 - **The NO_COLOR convention (<https://no-color.org>)** — the environment
   variable that asks a program to emit no colour, and specifically its rule
   that the variable counts when *present and not empty*, whatever its value.

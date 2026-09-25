@@ -88,7 +88,11 @@ func commandSurface(cmd *cobra.Command) []surface.Command {
 	out := []surface.Command{{
 		Path:   cmd.CommandPath(),
 		Hidden: cmd.Hidden,
-		Flags:  commandFlags(cmd),
+		// The help placement (itd-146): recorded so a regroup is visible in
+		// the committed tree even though it changes no invocation.
+		Group: helpGroup(cmd),
+		Block: helpBlock(cmd),
+		Flags: commandFlags(cmd),
 	}}
 	for _, child := range cmd.Commands() {
 		out = append(out, commandSurface(child)...)
