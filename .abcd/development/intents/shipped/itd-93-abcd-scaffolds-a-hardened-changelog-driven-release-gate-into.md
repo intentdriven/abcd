@@ -9,6 +9,7 @@ builds_on: []
 related_adrs: [adr-37]
 severity: minor
 related_issues: [iss-327]
+impact: additive
 ---
 
 # abcd Scaffolds a Release Gate That Works on the First Try
@@ -219,4 +220,5 @@ queued in `../../plans/2026-07-24-next-run-queue.md` (Track 1)._
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-1957b22ad5cc -->
+Fidelity review OWED (receipt rcp-1957b22ad5cc).
