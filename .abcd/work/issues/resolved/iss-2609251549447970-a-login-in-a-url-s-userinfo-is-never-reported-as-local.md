@@ -15,8 +15,8 @@ resolved_by:
   commit: "077b3d75"
 ---
 
-A login in a URL's userinfo is never reported as local_username, for any login. localSuppressionSpans (internal/adapter/scanner/identity.go) suppresses the username matcher inside every URL span, so https://<login>@host/ and https://<login>:<password>@host/ pass the scanner with the caller's login intact; the userinfo is the one part of a URL that names an account rather than a resource, and a clone URL or a proxy setting quoted in a transcript carries it. Pre-existing: the suppression predates the scanner-cluster lane, whose review found it (item 6).
+A login in a URL's userinfo is never reported as local_username, for any login. localSuppressionSpans (internal/adapter/scanner/identity.go) suppresses the username matcher inside every URL span, so https://LOGIN@host/ and https://LOGIN:PASSWORD@host/ pass the scanner with the caller's login intact; the userinfo is the one part of a URL that names an account rather than a resource, and a clone URL or a proxy setting quoted in a transcript carries it. Pre-existing: the suppression predates the scanner-cluster lane, whose review found it (item 6).
 
 ## Grounds
 
-- pursued: a login in a URL's userinfo is reported as local_username while the rest of the URL stays suppressed; a scheme://<login>@host URL passing ScanText with no finding, or a URL path segment being flagged, would show it wrong.
+- pursued: a login in a URL's userinfo is reported as local_username while the rest of the URL stays suppressed; a scheme://LOGIN@host URL passing ScanText with no finding, or a URL path segment being flagged, would show it wrong.
