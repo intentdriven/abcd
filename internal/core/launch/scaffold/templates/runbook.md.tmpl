@@ -12,6 +12,9 @@ heading is a no-op.
 The whole path runs on the built-in `GITHUB_TOKEN` — no personal access token,
 no standing secret. Tags are immutable; a publish is idempotent and self-healing
 (a missing Release is re-cut from the tagged commit, never a moved-on HEAD).
+The one tag it does not heal is a hand-pushed tag its own `verify` refused:
+rebuilding that commit would fail the same way, so `auto-release.yml` refuses
+loudly and names the re-cut, a new dated version.
 
 ## Before the first real release: run the rehearsal
 

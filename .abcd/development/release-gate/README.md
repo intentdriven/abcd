@@ -42,7 +42,8 @@ that touches the payload renders another digest. A refusal tags nothing and
 leaves the version free — land a follow-up pull request that re-pins (the
 refusal names the rendered digest) or reverts the payload change, and its push
 retries. A hand-pushed tag exists before `verify` runs, so a refusal there
-consumes the version; prove it on the release branch first: `go run ./cmd/abcd launch
+consumes the version, and `auto-release.yml` then refuses to rebuild it and
+names the re-cut, a new dated version; prove it on the release branch first: `go run ./cmd/abcd launch
 archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
 naming the repository the tag will be pushed to, exits 0 when the release will
 pass. Without `--repository` a pin whose address names another repository (a
