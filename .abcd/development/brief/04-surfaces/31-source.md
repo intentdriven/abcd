@@ -184,7 +184,7 @@ cannot perform.
 - The trust boundary: [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md),
   brief invariant 9
   ([`../02-constraints/03-invariants.md`](../02-constraints/03-invariants.md))
-- Consuming intent: [itd-76](../../intents/planned/itd-76-source-provenance-ledger.md)
+- Consuming intent: [itd-76](../../intents/shipped/itd-76-source-provenance-ledger.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

@@ -58,3 +58,8 @@ None stated.
 
 - Ledger ownership once work spans machines: **explicitly deferred** (maintainer ruling, 2026-08-16) — per-repo files in the user-level corpus serve one machine; revisit when a second machine actually exists.
 - The share/ingest questions that previously lived here (conflict shape between teammates, provenance marks on ingested entries) travel with [itd-126](../drafts/itd-126-a-team-shares-one-bibliography-without-sharing-anyone-s-corp.md).
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-595934bbc552 -->
+Fidelity review OWED (receipt rcp-595934bbc552).
