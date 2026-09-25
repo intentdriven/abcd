@@ -42,6 +42,23 @@ func TestReceiptGateRefusesADuplicateKey(t *testing.T) {
 	}
 }
 
+// TestReceiptGateRefusesACaseTwinOfAKey: encoding/json binds a struct field
+// case-insensitively, last-wins, so "VerificationResult" after
+// "verificationResult" is the same field read twice: the reviewer sees REJECT and
+// the gate would read PROMOTE (iss-2609252251311346).
+func TestReceiptGateRefusesACaseTwinOfAKey(t *testing.T) {
+	root, cfg, put := receiptFixture(t)
+	const sha, gate = "0123456789abcdef0123456789abcdef01234567", "iss35-brief-surface-crosscheck"
+	for _, twin := range []string{"VerificationResult", "VERIFICATIONRESULT", `\u0056erificationResult`} {
+		put(strings.Replace(manifestReceipt(sha, gate, releaseTierFull, "x", `[]`),
+			`"verificationResult": "PROMOTE",`, `"verificationResult": "REJECT", "`+twin+`": "PROMOTE",`, 1))
+		fs := runReceiptGate(t, root, cfg)
+		if !findingWith(fs, filepath.Join(".abcd", "work", "reviews", sha, gate+".json"), "receipt_gate", "duplicate key") {
+			t.Fatalf("a receipt carrying %q beside verificationResult was not refused as a duplicate key: %+v", twin, fs)
+		}
+	}
+}
+
 func TestReceiptGateReadsTheManifestGuarded(t *testing.T) {
 	root, cfg, _ := receiptFixture(t)
 	// The manifest replaced by a symlink: the guarded read refuses the leaf, and
