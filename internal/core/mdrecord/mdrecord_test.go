@@ -517,3 +517,30 @@ func TestFencedUnderEveryRuleMasksOnlyWhereTheRulesAgree(t *testing.T) {
 		t.Fatalf("TopLevel reads the heading as fenced, which is the disagreement under test: %v", m)
 	}
 }
+
+// FirstContent is the one leading-comment locator: the first line, and the
+// column in it, holding anything but blanks and HTML comments, comments read
+// as Read reads them.
+func TestFirstContentSkipsBlanksAndComments(t *testing.T) {
+	for name, tc := range map[string]struct {
+		lines     []string
+		line, col int
+	}{
+		"no preamble":                {[]string{"---", "id: x"}, 0, 0},
+		"blank lines":                {[]string{"", "  ", "---"}, 2, 0},
+		"a one-line comment":         {[]string{"<!-- a -->", "---"}, 1, 0},
+		"a multi-line comment":       {[]string{"<!--", "text", "-->", "---"}, 3, 0},
+		"two comments on one line":   {[]string{"<!-- a --> <!-- b -->", "x"}, 1, 0},
+		"content after a comment":    {[]string{"<!-- a --> ---", "x"}, 0, 11},
+		"content after a closer":     {[]string{"<!--", "a --> ---"}, 1, 6},
+		"a byte-order mark":          {[]string{"\ufeff<!-- a -->", "---"}, 1, 0},
+		"a code span quoting a mark": {[]string{"`<!--` is an opener", "x"}, 0, 0},
+		"nothing but comments":       {[]string{"<!-- a -->", ""}, 2, 0},
+		"an unclosed comment":        {[]string{"<!-- a", "b"}, 2, 0},
+	} {
+		line, col := FirstContent(tc.lines)
+		if line != tc.line || col != tc.col {
+			t.Errorf("%s: FirstContent = (%d, %d), want (%d, %d)", name, line, col, tc.line, tc.col)
+		}
+	}
+}

@@ -327,6 +327,55 @@ func opensCommentFrom(ln string, start int) bool {
 	return false
 }
 
+// FirstContent is the tree's one leading-comment locator: the first line
+// holding anything but blanks and HTML comments, and the byte column in that
+// line where the content starts. A byte-order mark on line 0 is not content.
+// Comments are read as Read reads them: the first `-->` closes one, a line may
+// hold several, and content after a closer is content. It returns
+// (len(lines), 0) when there is nothing else — a document of blanks and
+// comments, or one whose comment never closes.
+//
+// Four readers once skipped a leading attribution comment each by its own
+// walk on HasPrefix and Contains, and each read a closer followed by text, or
+// two comments on one line, its own way (iss-2609251517210637).
+func FirstContent(lines []string) (line, col int) {
+	inComment := false
+	for i, raw := range lines {
+		ln := strings.TrimRight(raw, "\r")
+		pos := 0
+		if i == 0 && strings.HasPrefix(ln, "\ufeff") {
+			pos = len("\ufeff")
+		}
+		if inComment {
+			k := strings.Index(ln[pos:], "-->")
+			if k < 0 {
+				continue
+			}
+			pos += k + len("-->")
+			inComment = false
+		}
+		for {
+			for pos < len(ln) && (ln[pos] == ' ' || ln[pos] == '\t') {
+				pos++
+			}
+			if pos == len(ln) || !strings.HasPrefix(ln[pos:], "<!--") {
+				break
+			}
+			k := strings.Index(ln[pos+len("<!--"):], "-->")
+			if k < 0 {
+				inComment = true
+				pos = len(ln)
+				break
+			}
+			pos += len("<!--") + k + len("-->")
+		}
+		if pos < len(ln) {
+			return i, pos
+		}
+	}
+	return len(lines), 0
+}
+
 // masked reports whether a line is not live markdown, for any reason. It is the
 // package's own predicate: every consumer asks a question about a SECTION, a
 // BULLET or a RANGE (AnyMasked), and none has ever needed to ask about one line.
