@@ -114,8 +114,9 @@ type DrainStep struct {
 // the queue: the head's request is (re-)written and named, and a markerless
 // head has its receipt minted, which the queue then reports. Only the head is
 // emitted; nothing runs a reviewer. The next step, after the host ingests the
-// head's verdict, finds the queue one shorter.
-func NextOwedAudit(repoRoot string, max int, shippedOn ShippedOn) (DrainStep, error) {
+// head's verdict, finds the queue one shorter. opts is what the front door adds
+// to the request, as it adds it to a single audit's (the routing section).
+func NextOwedAudit(repoRoot string, max int, shippedOn ShippedOn, opts AuditEmitOptions) (DrainStep, error) {
 	q, err := OwedQueue(repoRoot, max, shippedOn)
 	if err != nil {
 		return DrainStep{}, err
@@ -125,7 +126,7 @@ func NextOwedAudit(repoRoot string, max int, shippedOn ShippedOn) (DrainStep, er
 		return step, nil
 	}
 	head := q.Queue[0].IntentID
-	res, err := ReEmitAudit(repoRoot, head)
+	res, err := ReEmitAuditWith(repoRoot, head, opts)
 	if err != nil {
 		return DrainStep{}, fmt.Errorf("intent: emitting the request for %s, the oldest of %d owed review(s): %w; "+
 			"`abcd intent audit` lists every owed review and its re-emit", head, q.Owed, err)

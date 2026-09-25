@@ -151,7 +151,7 @@ func TestNextOwedAuditEmitsTheHead(t *testing.T) {
 	root := t.TempDir()
 	seedReviewStates(t, root)
 	days := map[string]string{"itd-11-owed.md": "2026-03-01", "itd-14-bare.md": "2026-01-15"}
-	step, err := NextOwedAudit(root, 0, shippedOnFrom(days))
+	step, err := NextOwedAudit(root, 0, shippedOnFrom(days), AuditEmitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestNextOwedAuditOnNothingOwedWritesNothing(t *testing.T) {
 	writeFile(t, root, shippedDir+"/itd-12-ingested.md", shippedWithNotes("itd-12", "ingested",
 		"<!-- abcd-review: INGESTED receipt="+ingestedRcp+" -->\nFidelity review — receipt "+ingestedRcp+"."))
 	before := snapshotTree(t, root)
-	step, err := NextOwedAudit(root, 0, nil)
+	step, err := NextOwedAudit(root, 0, nil, AuditEmitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

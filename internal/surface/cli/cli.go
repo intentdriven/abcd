@@ -2446,7 +2446,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: "abcd intent audit --owed: the drain walks the whole owed set and takes no <itd-N>; " +
 						"`abcd intent audit " + args[0] + "` emits that one intent's request"}
 				}
-				return runOwedDrain(cmd, *asJSON, maxOwed)
+				return runOwedDrain(cmd, *asJSON, maxOwed, auditRoute)
 			}
 			if cmd.Flags().Changed("max") {
 				return &exitError{Code: 2, Msg: "abcd intent audit: --max applies to --owed only (it caps the drain queue)"}

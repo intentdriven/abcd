@@ -645,9 +645,10 @@ Report the returned split alongside the acceptance rollup.
 entered `shipped/`; one shipped in the working tree and not yet committed has
 none and comes last), at most `max` of them — with `owed`, the whole total, and
 `remaining`, how many the cap left out. `next` names the oldest one's
-`request_path`: the command has just emitted that request, exactly as
-`intent audit <itd-N>` does, minting the receipt if the intent had none. It
-runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+`request_path` and its `routing`: the command has just emitted that request,
+exactly as `intent audit <itd-N>` does — its routing section included, and a
+`--route intent-auditor=<tier>` override applied the same way — minting the
+receipt if the intent had none. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
 `--max` without `--owed` is refused, as are `--owed` with an intent id or with
 `--issue-drift`.
 
@@ -661,9 +662,9 @@ auditor at a time are what bound the cost:
    owed left owed: no intent-auditor available — <what the host said>"). A
    refused launch part-way through stops the loop the same way, and the
    summary names the entries it did not reach.
-2. **For each entry in `queue`, in order:** run `intent audit <itd-N> --json`
-   (for the first entry the request is already written, and the re-emit is
-   idempotent), hand the whole request file to the `intent-auditor` agent,
+2. **For each entry in `queue`, in order:** run `intent audit <itd-N> --json`,
+   with the same `--route` when the drain was given one (for the first entry
+   the request is already written, and the re-emit is idempotent), hand the whole request file to the `intent-auditor` agent,
    write the verdict it returns to `.abcd/.work.local/scratch/`, and run
    `intent audit ingest --verdict-json <file> --json`. The verdict lands exactly
    as a single audit's does — the Audit Notes block, the receipt, the scope-

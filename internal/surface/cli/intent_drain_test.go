@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -182,5 +183,52 @@ func TestIntentAuditOwedFlagRefusals(t *testing.T) {
 		if !strings.Contains(err.Error()+string(out), c.want) {
 			t.Errorf("%v: refusal lacks %q: %v\n%s", c.args, c.want, err, out)
 		}
+	}
+}
+
+// TestIntentAuditOwedCarriesTheRouting (iss-2609252052385551): the drain's head
+// is emitted the way `audit <itd-N>` emits it, so the request the host hands the
+// auditor carries its routing section, the JSON next carries the routing
+// member, and a --route override reaches both rather than being dropped.
+func TestIntentAuditOwedCarriesTheRouting(t *testing.T) {
+	repo := drainRepo(t)
+	stdout, stderr, err := runCLISplit(t, "intent", "audit", "--owed", "--json", "--route", "intent-auditor=economy")
+	if err != nil {
+		t.Fatalf("--owed --route must exit 0: %v\n%s", err, stderr)
+	}
+	var got struct {
+		Next struct {
+			IntentID    string                 `json:"intent_id"`
+			RequestPath string                 `json:"request_path"`
+			Routing     *oracle.RequestRouting `json:"routing"`
+		} `json:"next"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, stdout)
+	}
+	if got.Next.IntentID != "itd-21" || got.Next.Routing == nil ||
+		got.Next.Routing.Tier != oracle.Economy || got.Next.Routing.Override != "intent-auditor=economy" {
+		t.Fatalf("next carries no routing for the override:\n%s", stdout)
+	}
+	doc, err := os.ReadFile(filepath.Join(repo, got.Next.RequestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(doc), "## Routing\n\nrouting:\n  agent: intent-auditor\n  tier: economy\n") {
+		t.Fatalf("the drain's request carries no routing section:\n%s", doc)
+	}
+
+	text, _, err := runCLISplit(t, "intent", "audit", "--owed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "routing: intent-auditor at tier host-decides") {
+		t.Fatalf("the human rendering carries no routing line:\n%s", text)
+	}
+
+	// A --route naming an agent the drain does not dispatch is refused, as the
+	// single audit refuses it.
+	if _, _, err := runCLISplit(t, "intent", "audit", "--owed", "--route", "lifeboat-reviewer=economy"); exitCodeOf(err) != 2 {
+		t.Fatalf("a --route for another agent must exit 2, got %v", err)
 	}
 }
