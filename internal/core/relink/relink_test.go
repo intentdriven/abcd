@@ -51,12 +51,16 @@ func TestRepointRewritesLinksToAndFromTheMovedFile(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, openA, "[b](b.md) [gone](nope.md) [self](a.md#x) [web](https://example.com/a.md) [top](#top)\n")
 	write(t, root, "specs/open/b.md", "[a](a.md) [a again](./a.md#part)\n")
-	write(t, root, "specs/closed/c.md", "[a](../open/a.md)\n")
+	// Two links name a file called a.md that is not the moved record: one that
+	// exists in another folder and one that never resolved. Neither is the
+	// move's, so both stay exactly as written.
+	write(t, root, "specs/closed/c.md", "[a](../open/a.md) [x](../archive/a.md) [y](../gone/a.md)\n")
+	write(t, root, "specs/archive/a.md", "an unrelated record with the same name\n")
 	write(t, root, "docs/guide.md", "See [a](../specs/open/a.md \"title\").\n\n[a-ref]: ../specs/open/a.md\n\n```\n[fenced](../specs/open/a.md)\n```\n")
 	write(t, root, "docs/other.md", "[b](../specs/open/b.md) mentions a.md only in prose\n")
 	move(t, root, openA, closedA)
 
-	got, err := Repoint(root, []Move{{From: openA, To: closedA}})
+	got, err := Repoint(root, []Move{{From: openA, To: closedA, MovedNow: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +68,7 @@ func TestRepointRewritesLinksToAndFromTheMovedFile(t *testing.T) {
 	want := map[string]string{
 		closedA:             "[b](../open/b.md) [gone](nope.md) [self](a.md#x) [web](https://example.com/a.md) [top](#top)\n",
 		"specs/open/b.md":   "[a](../closed/a.md) [a again](../closed/a.md#part)\n",
-		"specs/closed/c.md": "[a](a.md)\n",
+		"specs/closed/c.md": "[a](a.md) [x](../archive/a.md) [y](../gone/a.md)\n",
 		"docs/guide.md":     "See [a](../specs/closed/a.md \"title\").\n\n[a-ref]: ../specs/closed/a.md\n\n```\n[fenced](../specs/closed/a.md)\n```\n",
 		"docs/other.md":     "[b](../specs/open/b.md) mentions a.md only in prose\n",
 	}
@@ -88,7 +92,7 @@ func TestRepointRewritesLinksToAndFromTheMovedFile(t *testing.T) {
 	}
 
 	// A second call over the same moves finds nothing left to do.
-	again, err := Repoint(root, []Move{{From: openA, To: closedA}})
+	again, err := Repoint(root, []Move{{From: openA, To: closedA, MovedNow: true}})
 	if err != nil || len(again) != 0 {
 		t.Fatalf("a re-run must be a no-op: %+v, %v", again, err)
 	}
@@ -103,8 +107,8 @@ func TestRepointFollowsTwoMovesAtOnce(t *testing.T) {
 	move(t, root, "intents/planned/i.md", "intents/shipped/i.md")
 
 	if _, err := Repoint(root, []Move{
-		{From: "specs/open/s.md", To: "specs/closed/s.md"},
-		{From: "intents/planned/i.md", To: "intents/shipped/i.md"},
+		{From: "specs/open/s.md", To: "specs/closed/s.md", MovedNow: true},
+		{From: "intents/planned/i.md", To: "intents/shipped/i.md", MovedNow: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +117,36 @@ func TestRepointFollowsTwoMovesAtOnce(t *testing.T) {
 	}
 	if g := read(t, root, "intents/shipped/i.md"); g != "[s](../../specs/closed/s.md)\n" {
 		t.Errorf("intent: %q", g)
+	}
+}
+
+// A move an earlier call made (MovedNow false — a verb's re-run finding the
+// record already in its new folder) still repoints every OTHER file's link to
+// the old path, so a re-run finishes an interrupted repoint; but the moved
+// file's own links are read from the folder it is in, because they may have
+// been written there since. Re-reading them from the folder it left would
+// resolve a bare link to a different file of the same name.
+func TestRepointReadsAnEarlierMovesOwnLinksWhereTheFileIs(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "specs/open/README.md", "# open\n")
+	write(t, root, "specs/closed/README.md", "# closed\n")
+	own := "[index](README.md) [b](../open/b.md)\n"
+	write(t, root, closedA, own)
+	write(t, root, "specs/open/b.md", "[a](a.md)\n")
+
+	got, err := Repoint(root, []Move{{From: openA, To: closedA}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := read(t, root, closedA); g != own {
+		t.Errorf("the moved file's own links were re-read from the folder it left: %q", g)
+	}
+	if g := read(t, root, "specs/open/b.md"); g != "[a](../closed/a.md)\n" {
+		t.Errorf("a stale link to the old path was not repointed: %q", g)
+	}
+	want := []Rewrite{{File: "specs/open/b.md", Line: 1, From: "a.md", To: "../closed/a.md"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("rewrites:\n got %+v\nwant %+v", got, want)
 	}
 }
 
@@ -131,7 +165,7 @@ func TestRepointStaysOutOfForeignTreesAndAppendOnlyLogs(t *testing.T) {
 	write(t, root, ".abcd/work/reviews/2026-01-01-x/00-summary.md", link)
 	move(t, root, openA, closedA)
 
-	got, err := Repoint(root, []Move{{From: openA, To: closedA}})
+	got, err := Repoint(root, []Move{{From: openA, To: closedA, MovedNow: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +188,7 @@ func TestRepointIgnoresMovesThatDidNotHappenAndRefusesUnsafePaths(t *testing.T) 
 	write(t, root, openA, "a\n")
 	write(t, root, "specs/open/b.md", "[a](a.md)\n")
 
-	got, err := Repoint(root, []Move{{From: openA, To: closedA}})
+	got, err := Repoint(root, []Move{{From: openA, To: closedA, MovedNow: true}})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("a move that did not happen must rewrite nothing: %+v, %v", got, err)
 	}

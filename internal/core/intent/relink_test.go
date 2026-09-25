@@ -47,7 +47,9 @@ func readRel(t *testing.T, root, rel string) string {
 // closed linking the spec about to close through ../open/, an ADR and a plan
 // linking the intent's planned/ path, and a draft linking both — plus the
 // closing spec's own links, which were written from open/ and name a still-open
-// sibling bare. Closing spc-2 ships itd-10, so both records move.
+// sibling bare. Closing spc-2 ships itd-10, so both records move. Two links in
+// the ADR name the intent's filename in a folder it never lived in — one to an
+// existing unrelated file, one dead — and neither is the move's to rewrite.
 func relinkFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -66,7 +68,9 @@ func relinkFixture(t *testing.T) string {
 		specNaming("spc-3", "other", "itd-11")+"\nSibling of [spc-2](spc-2-rest.md).\n")
 	writeFile(t, root, ".abcd/development/decisions/adrs/0001-choice.md",
 		"# choice\n\nSee [itd-10](../../intents/planned/itd-10-alpha.md) and [the spec](../../specs/open/spc-2-rest.md).\n"+
-			"Unmoved: [itd-11](../../intents/planned/itd-11-other.md).\n")
+			"Unmoved: [itd-11](../../intents/planned/itd-11-other.md).\n"+
+			"Same name, other file: [x](../../archive/itd-10-alpha.md). Same name, dead: [y](../../gone/itd-10-alpha.md).\n")
+	writeFile(t, root, ".abcd/development/archive/itd-10-alpha.md", "# an unrelated record with the moved intent's name\n")
 	writeFile(t, root, ".abcd/development/plans/2026-01-01-plan.md",
 		"# plan\n\n- [itd-10](../intents/planned/itd-10-alpha.md)\n\n[ref]: ../intents/planned/itd-10-alpha.md\n")
 	writeFile(t, root, draftsDir+"/itd-12-draft.md",
@@ -82,11 +86,11 @@ func relinkFixture(t *testing.T) string {
 // in the same operation — the already-closed sibling spec included.
 func TestReconcileRepointsLinksToTheMovedRecords(t *testing.T) {
 	root := relinkFixture(t)
-	// The fixture's one deliberate dead link is the baseline: it is not the
-	// close's to repair, and it proves the rewrite leaves a link alone when its
-	// target never resolved.
-	if got := linksResolveFindings(t, root); len(got) != 1 {
-		t.Fatalf("fixture baseline: want exactly the one deliberate dead link, got %+v", got)
+	// The fixture's two deliberate dead links are the baseline: they are not
+	// the close's to repair, and they prove the rewrite leaves a link alone when
+	// its target never resolved.
+	if got := linksResolveFindings(t, root); len(got) != 2 {
+		t.Fatalf("fixture baseline: want exactly the two deliberate dead links, got %+v", got)
 	}
 
 	res, err := Reconcile(root, "spc-2", "", RemainderRequest{})
@@ -112,8 +116,13 @@ func TestReconcileRepointsLinksToTheMovedRecords(t *testing.T) {
 	}
 
 	got := linksResolveFindings(t, root)
-	if len(got) != 1 || !strings.Contains(got[0].Message, "spc-9-gone.md") {
-		t.Fatalf("after spec close only the pre-existing dead link may remain; links_resolve found %+v", got)
+	if len(got) != 2 {
+		t.Fatalf("after spec close only the two pre-existing dead links may remain; links_resolve found %+v", got)
+	}
+	for _, f := range got {
+		if !strings.Contains(f.Message, "spc-9-gone.md") && !strings.Contains(f.Message, "gone/itd-10-alpha.md") {
+			t.Errorf("after spec close only the two pre-existing dead links may remain; links_resolve found %+v", f)
+		}
 	}
 
 	for rel, want := range map[string][]string{
@@ -121,7 +130,7 @@ func TestReconcileRepointsLinksToTheMovedRecords(t *testing.T) {
 		specsClosed + "/spc-2-rest.md":                    {"(../../intents/shipped/itd-10-alpha.md#acceptance-criteria)", "(spc-1-alpha.md)", "(../open/spc-3-other.md)", "(spc-9-gone.md)"},
 		specsOpen + "/spc-3-other.md":                     {"(../closed/spc-2-rest.md)"},
 		shippedDir + "/itd-10-alpha.md":                   {"(../../specs/closed/spc-2-rest.md)"},
-		".abcd/development/decisions/adrs/0001-choice.md": {"(../../intents/shipped/itd-10-alpha.md)", "(../../specs/closed/spc-2-rest.md)", "(../../intents/planned/itd-11-other.md)"},
+		".abcd/development/decisions/adrs/0001-choice.md": {"(../../intents/shipped/itd-10-alpha.md)", "(../../specs/closed/spc-2-rest.md)", "(../../intents/planned/itd-11-other.md)", "[x](../../archive/itd-10-alpha.md)", "[y](../../gone/itd-10-alpha.md)"},
 		".abcd/development/plans/2026-01-01-plan.md":      {"(../intents/shipped/itd-10-alpha.md)", "[ref]: ../intents/shipped/itd-10-alpha.md"},
 		draftsDir + "/itd-12-draft.md":                    {"(../shipped/itd-10-alpha.md)", "(../../specs/closed/spc-2-rest.md)"},
 		".abcd/work/CONTEXT.md":                           {"(../development/intents/shipped/itd-10-alpha.md)"},
@@ -151,6 +160,41 @@ func TestReconcileRerunRepointsWhatAnEarlierCloseLeft(t *testing.T) {
 	}
 	if len(res.Relinked) != 1 || res.Relinked[0].To != "../specs/closed/spc-2-rest.md" {
 		t.Fatalf("the re-run must repoint the stale link: %+v", res.Relinked)
+	}
+}
+
+// A re-run reads the records it did NOT move where they are: a bare link added
+// to the closed spec after its close names a file in closed/, and the re-run
+// leaves it as written rather than re-reading it from the open/ folder the spec
+// left — where a file of the same name also exists.
+func TestReconcileRerunLeavesTheClosedRecordsOwnLinksAlone(t *testing.T) {
+	root := relinkFixture(t)
+	writeFile(t, root, specsOpen+"/README.md", "# open specs\n")
+	writeFile(t, root, specsClosed+"/README.md", "# closed specs\n")
+	writeFile(t, root, plannedDir+"/README.md", "# planned intents\n")
+	writeFile(t, root, shippedDir+"/README.md", "# shipped intents\n")
+	if _, err := Reconcile(root, "spc-2", "", RemainderRequest{}); err != nil {
+		t.Fatal(err)
+	}
+	specLine := "\nSee [the closed index](README.md).\n"
+	intentLine := "\nSee [the shipped index](README.md).\n"
+	spec := readRel(t, root, specsClosed+"/spc-2-rest.md") + specLine
+	intent := readRel(t, root, shippedDir+"/itd-10-alpha.md") + intentLine
+	writeFile(t, root, specsClosed+"/spc-2-rest.md", spec)
+	writeFile(t, root, shippedDir+"/itd-10-alpha.md", intent)
+
+	res, err := Reconcile(root, "spc-2", "", RemainderRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Relinked) != 0 || res.RelinkError != "" {
+		t.Fatalf("a re-run must rewrite nothing it did not move: %+v %q", res.Relinked, res.RelinkError)
+	}
+	if got := readRel(t, root, specsClosed+"/spc-2-rest.md"); got != spec {
+		t.Errorf("the closed spec's own link was rewritten:\n%s", got)
+	}
+	if got := readRel(t, root, shippedDir+"/itd-10-alpha.md"); got != intent {
+		t.Errorf("the shipped intent's own link was rewritten:\n%s", got)
 	}
 }
 

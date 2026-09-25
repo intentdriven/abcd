@@ -19,6 +19,12 @@
 //     closing spec's bare link to a sibling still in open/;
 //   - a link from a moved record to another record moved in the same operation.
 //
+// The second and third classes read the moved record's links from the folder it
+// left, which is sound only when the caller moved it in this operation
+// (Move.MovedNow). A move an earlier operation made — a verb's re-run — still
+// repoints the first class, but the moved record's own links are read where it
+// is, because it may have been edited there since.
+//
 // A link is rewritten only when it resolved before the move, so a link that
 // never pointed anywhere stays exactly as written: repairing that is not the
 // move's business, and a rewrite would disguise it. Links inside fenced code
@@ -88,6 +94,14 @@ var (
 type Move struct {
 	From string `json:"from"`
 	To   string `json:"to"`
+	// MovedNow says the caller made this rename in the same operation, so the
+	// moved file's own relative links were written from From's folder and are
+	// re-relativised against To's. A move an earlier operation made (a verb's
+	// re-run finding the record already moved) leaves it false: the file may
+	// have been edited in its new folder since, so its own links are read from
+	// where it is, and only other files' links to From are repointed. The zero
+	// value is the conservative reading.
+	MovedNow bool `json:"moved_now,omitempty"`
 }
 
 // Rewrite is one link destination this package changed.
@@ -108,7 +122,8 @@ type Rewrite struct {
 // line order. It runs AFTER the moves: a move whose destination is absent, or
 // whose source is still present, did not happen as described and is ignored,
 // which is also what makes a second call over the same moves a no-op — a verb
-// may re-run it on a retry without double-rewriting anything.
+// may re-run it on a retry without double-rewriting anything. A moved file's own
+// links are re-relativised only for a move marked MovedNow; see Move.
 //
 // A move naming a path that is not a clean repo-relative slash path is refused
 // before anything is read. An error part-way through the walk returns the
@@ -169,7 +184,10 @@ func Repoint(repoRoot string, moves []Move) ([]Rewrite, error) {
 
 // activeMoves validates the moves and keeps the ones the tree shows happened:
 // the destination is present and the source is gone. It returns the forward map
-// (old path → new) and its inverse (new path → old).
+// (old path → new) and the inverse (new path → old) for the moves made in this
+// operation only (MovedNow): the inverse is what re-reads a moved file's own
+// links from the folder it left, which is sound only for a file the caller has
+// just moved.
 func activeMoves(root *os.Root, moves []Move) (map[string]string, map[string]string, error) {
 	movedTo := map[string]string{}
 	oldPath := map[string]string{}
@@ -188,7 +206,9 @@ func activeMoves(root *os.Root, moves []Move) (map[string]string, map[string]str
 			continue
 		}
 		movedTo[from] = to
-		oldPath[to] = from
+		if m.MovedNow {
+			oldPath[to] = from
+		}
 	}
 	return movedTo, oldPath, nil
 }

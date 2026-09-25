@@ -549,7 +549,7 @@ func repointMovedIssue(repoRoot, src, dst string) ([]relink.Rewrite, string) {
 	if err1 != nil || err2 != nil || !filepath.IsLocal(from) || !filepath.IsLocal(to) {
 		return nil, ""
 	}
-	rw, err := relink.Repoint(repoRoot, []relink.Move{{From: from, To: to}})
+	rw, err := relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: true}})
 	if err != nil {
 		return rw, err.Error()
 	}
