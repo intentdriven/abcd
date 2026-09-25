@@ -9,6 +9,10 @@ found_during: "2026-09-06 use in a managed repo"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal"
+resolution: "The capture and store redactors share the local_username detector, which no longer reports a generic account name as a bare word (iss-236's floor), so the word, a hyphenated term and a flag built on it are written as authored; the finding's suggestion names its source ($HOME) for a specific name that still fires."
+impact: fix
+resolved_by:
+  commit: "f05623e7bf66faa787f1c1e81380c9d00265accc"
 ---
 
 The capture-time scanner redacts an ordinary word when the local account name happens to be that word. On a machine whose account name is a common three-letter abbreviation for development, a capture containing the phrase 'the source checkout's <that word> build' came back with the word replaced by [redacted-user] and redacted: 1 in the JSON. The private-names layer is doing what it was told, but a banned name that is also a dictionary word or a conventional abbreviation needs a word-boundary and context rule, or at least a diagnostic naming which layer and which entry fired, so the author can tell a real leak from a false positive without reopening the file.
@@ -23,3 +27,7 @@ session's ask matches this record's: a whole-word or context rule for a banned
 name that is also a dictionary word, or at least a diagnostic naming the span
 so the author can reword before the record is written. The launch-payload half
 of the same collision is iss-2608291444328326.
+
+## Grounds
+
+- pursued: a capture whose prose uses a word equal to a generic account name is stored unredacted while the same name after a home root is still masked; a stored record with the word rewritten on such a machine would show it wrong
