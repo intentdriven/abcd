@@ -271,14 +271,21 @@ cut's own report; the catalog, which the archive leaves out by construction, is
 named as not compared against an archive. A tree whose `CHANGELOG.md` dates no
 release and that holds no release tag is a first launch: every path is added and
 the report says why, as it does for a tag that declared no payload. A checkout
-that cannot read the previous release from its own tags is not a first launch —
-a clone holding no release tag while `CHANGELOG.md` dates one, or a shallow
-clone, whose tag listing holds only the tags it fetched. Its baseline is the
-newest release `CHANGELOG.md` dates (or a newer tag the listing holds), and the
-diff refuses by naming it and both remedies: fetch the tags and the history, or
-read the release's published archive by flag, which is then the only baseline,
-since there is no tag to render at. A baseline that cannot be read is a named
-refusal, never an empty diff.
+that cannot read the previous release from its own tags is not a first launch,
+and is not measured against an older release — a clone holding no release tag
+while `CHANGELOG.md` dates one, a shallow clone, whose tag listing holds only
+the tags it fetched, or a fork or mirror whose newest tag is older than the
+release `CHANGELOG.md` dates newest. Its baseline is the newest release
+`CHANGELOG.md` dates (or a newer tag the listing holds), and the diff refuses by
+naming it and both remedies: fetch the tags and the history, or read the
+release's published archive by flag, which is then the only baseline, since
+there is no tag to render at. The window between a cut and its tag reads the
+same way, with the opposite meaning: the dated release is the one just cut and
+the newest tag is the right baseline. The preview refuses there too, calling the
+release not tagged yet rather than the previous one and naming the explicit
+baseline that measures against the release before it; the cut is not blocked,
+because it diffs before it writes its heading. A baseline that cannot be read is
+a named refusal, never an empty diff.
 
 Every preview, and every cut that renders a payload, writes its pre-flight
 report (§ 4). The scan gate is side-effect-free with respect to the repo: its

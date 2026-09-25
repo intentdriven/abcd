@@ -207,10 +207,16 @@ Then summarise the JSON for the user:
   tag's published plugin archive, fetched only with `--fetch-baseline`) or
   `none` (no previous release: a first launch, and every path is `added`, with
   `parity.note` saying why). A checkout missing the previous release's tag —
-  cloned without tags, or shallow — while `CHANGELOG.md` dates a release is not
-  a first launch: `parity.refused` names that release and the remedy (fetch the
-  tags and history, or `--fetch-baseline`, whose verified archive is then the
-  only baseline, since there is no tag to render at). `parity.entries` lists
+  cloned without tags, shallow, or a fork or mirror whose newest tag is older
+  than the release `CHANGELOG.md` dates newest — is not a first launch and is
+  not measured against an older release: `parity.refused` names the release
+  `CHANGELOG.md` dates and the remedy (fetch the tags and history, or
+  `--fetch-baseline`, whose verified archive is then the only baseline, since
+  there is no tag to render at). Between a cut and its tag the checkout reads
+  the same way — `CHANGELOG.md` dates the release just cut, which has no tag
+  yet — so the preview refuses there too, naming the release as not tagged yet
+  and `--baseline <newest tag>`, which measures against the release before it;
+  the cut itself diffs before it writes its heading. `parity.entries` lists
   every path `added`, `changed` or `removed` with its `digest` and
   `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the
