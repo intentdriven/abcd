@@ -125,8 +125,7 @@ func HarnessLeakPatterns() []Pattern {
 			// rest of the line: scanning the remainder let an unrelated
 			// example.com link later in the line disarm a genuine footer.
 			SkipAt: func(line string, start, end int) bool {
-				scanMeter.charge(stageSkipAt, start)
-				return !footerLinePrefixRe.MatchString(line[:start]) ||
+				return !footerOwnsItsLine(line, start) ||
 					hasReservedDocHost(footerLinkTarget(line, end))
 			},
 			Suggestion: "replace the tool footer with the repository's own disclosure trailer " +
@@ -146,15 +145,50 @@ func IsHarnessLeakKind(kind string) bool {
 	return false
 }
 
+// footerOwnsItsLine reports whether only footerLinePrefixRe's indentation and
+// markers precede a footer match at start. Every byte that regex admits is in
+// footerPrefixByte, so the walk back stops at the first byte of prose and the
+// regex runs only over a prefix made entirely of markers: running it over the
+// whole line before every match cost the line's length per footer
+// (iss-2609251535277823).
+func footerOwnsItsLine(line string, start int) bool {
+	i := start
+	for i > 0 && footerPrefixByte(line[i-1]) {
+		i--
+	}
+	scanMeter.charge(stageSkipAt, start-i)
+	return i == 0 && footerLinePrefixRe.MatchString(line[:start])
+}
+
+// footerPrefixByte is every byte footerLinePrefixRe can match.
+func footerPrefixByte(b byte) bool {
+	switch b {
+	case ' ', '\t', '>', '-', '*', '+', '.':
+		return true
+	}
+	return isASCIIDigit(b)
+}
+
+// maxFooterLinkText bounds how far past the matched `generated with [` the link
+// target is looked for. A footer's link text is a tool's name; the bound keeps
+// a line packed with footer openings from searching the rest of the line for
+// every one of them (iss-2609251535277823). A target beyond it is not found, so
+// the reserved-host exemption does not apply and the footer is reported.
+const maxFooterLinkText = 256
+
 // footerLinkTarget returns the target of the markdown link the footer opens —
 // the `…](TARGET)` that follows the matched `generated with [`. It is the only
 // URL the reserved-documentation test may consider: a footer is not excused by
 // some other link further along the line.
 func footerLinkTarget(line string, end int) string {
 	rest := line[end:]
-	i := strings.Index(rest, "](")
+	window := rest
+	if len(window) > maxFooterLinkText+2 {
+		window = window[:maxFooterLinkText+2]
+	}
+	i := strings.Index(window, "](")
 	if i < 0 {
-		scanMeter.charge(stageSkipAt, len(rest))
+		scanMeter.charge(stageSkipAt, len(window))
 		return ""
 	}
 	scanMeter.charge(stageSkipAt, i+2)

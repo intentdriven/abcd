@@ -117,36 +117,19 @@ func homeStandsAsPath(text string, at, end int) bool {
 // a module path ending in /root) was rewritten and hard-failed as the
 // caller's home (iss-2608292005445725). A home of two or more segments is
 // unaffected, since homeStandsAsPath never asks its leading anchor.
-func homeSweepable(text string, at, end int, urls []span) bool {
-	if atURLPathRoot(text, at, urls) {
+func homeSweepable(text string, at, end int, urls urlSet) bool {
+	if atURLPathRoot(at, urls) {
 		return !nameContinues(text, end)
 	}
 	return homeStandsAsPath(text, at, end)
 }
 
 // atURLPathRoot reports whether offset at is the first byte of the path of a
-// URL span on text: the first '/' after "scheme://" and the authority, or the
-// byte after the ':' of an scp-style "git@host:" remote.
-func atURLPathRoot(text string, at int, urls []span) bool {
-	for k, s := range urls {
-		if at < s.start || at >= s.end {
-			continue
-		}
-		u := text[s.start:s.end]
-		if i := strings.Index(u, "://"); i >= 0 {
-			p := strings.IndexByte(u[i+3:], '/')
-			scanMeter.charge(stageIdentity, k+1+len(u))
-			return p >= 0 && s.start+i+3+p == at
-		}
-		scanMeter.charge(stageIdentity, k+1+len(u))
-		if strings.HasPrefix(u, "git@") {
-			c := strings.IndexByte(u, ':')
-			return c >= 0 && s.start+c+1 == at
-		}
-		return false
-	}
-	scanMeter.charge(stageIdentity, len(urls))
-	return false
+// URL span: the first '/' after "scheme://" and the authority, or the byte
+// after the ':' of an scp-style "git@host:" remote (urlPathRoot).
+func atURLPathRoot(at int, urls urlSet) bool {
+	s := urls.at(at)
+	return s != nil && s.root == at
 }
 
 // nameContinues is the ONE rule the home-path anchor uses for "the name goes

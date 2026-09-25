@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"math/bits"
 	"os"
 	"os/exec"
 	"regexp"
@@ -399,23 +400,99 @@ func newIdentityMatchers(id Identity) identityMatchers {
 // span is a half-open byte interval on a line.
 type span struct{ start, end int }
 
+// inAnySpan reports whether pos falls inside one of spans, which are sorted by
+// start and disjoint (urlSet.spans, mergeSpans). The lookup is a binary search:
+// a scan of the list for every match made a line dense in both matches and
+// spans cost their product (iss-2609251535277823).
 func inAnySpan(pos int, spans []span) bool {
-	for i, s := range spans {
-		if s.start <= pos && pos < s.end {
-			scanMeter.charge(stageIdentity, i+1)
-			return true
-		}
-	}
-	scanMeter.charge(stageIdentity, len(spans))
-	return false
+	i := sort.Search(len(spans), func(i int) bool { return spans[i].end > pos })
+	scanMeter.charge(stageIdentity, searchCost(len(spans)))
+	return i < len(spans) && spans[i].start <= pos
 }
 
+// searchCost is what a binary search over n entries visits.
+func searchCost(n int) int { return bits.Len(uint(n)) + 1 }
+
+// mergeSpans sorts spans by start and merges the overlapping ones, which is the
+// shape inAnySpan searches: the same positions, as a sorted disjoint list.
+func mergeSpans(spans []span) []span {
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+	scanMeter.charge(stageIdentity, len(spans)*searchCost(len(spans)))
+	out := spans[:0]
+	for _, s := range spans {
+		if n := len(out); n > 0 && s.start <= out[n-1].end {
+			if s.end > out[n-1].end {
+				out[n-1].end = s.end
+			}
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// urlSpan is one URL-like span on a line with the offset its path begins at,
+// or -1 where it has none: the first '/' after "scheme://" and the authority,
+// or the byte after the ':' of an scp-style "git@host:" remote. The root is
+// found once per span, so asking it of every match inside the span is a
+// lookup rather than a search from the span's start (iss-2609251535277823).
+type urlSpan struct {
+	span
+	root int
+}
+
+// urlSet is a line's URL spans. They are the leftmost non-overlapping matches
+// of one regexp, so they come sorted by start and disjoint, and a position is
+// found by binary search.
+type urlSet []urlSpan
+
 // urlSpans returns the URL-like spans on a line.
-func urlSpans(line string) []span {
+func urlSpans(line string) urlSet {
 	scanMeter.charge(stageIdentity, len(line))
-	var out []span
+	var out urlSet
 	for _, loc := range urlSpanRe.FindAllStringIndex(line, -1) {
-		out = append(out, span{loc[0], loc[1]})
+		out = append(out, urlSpan{span{loc[0], loc[1]}, urlPathRoot(line, loc[0], loc[1])})
+	}
+	return out
+}
+
+// urlPathRoot returns the offset at which the URL line[start:end] begins its
+// path, or -1.
+func urlPathRoot(line string, start, end int) int {
+	u := line[start:end]
+	scanMeter.charge(stageIdentity, len(u))
+	if i := strings.Index(u, "://"); i >= 0 {
+		if p := strings.IndexByte(u[i+3:], '/'); p >= 0 {
+			return start + i + 3 + p
+		}
+		return -1
+	}
+	if strings.HasPrefix(u, "git@") {
+		if c := strings.IndexByte(u, ':'); c >= 0 {
+			return start + c + 1
+		}
+	}
+	return -1
+}
+
+// at returns the span containing pos, or nil.
+func (u urlSet) at(pos int) *urlSpan {
+	i := sort.Search(len(u), func(i int) bool { return u[i].end > pos })
+	scanMeter.charge(stageIdentity, searchCost(len(u)))
+	if i < len(u) && u[i].start <= pos {
+		return &u[i]
+	}
+	return nil
+}
+
+// contains reports whether pos falls inside a URL span.
+func (u urlSet) contains(pos int) bool { return u.at(pos) != nil }
+
+// spans returns the bare intervals, sorted and disjoint.
+func (u urlSet) spans() []span {
+	out := make([]span, len(u))
+	for i, s := range u {
+		out[i] = s.span
 	}
 	return out
 }
@@ -532,7 +609,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
 			}
-			if inAnySpan(loc[0], urls) {
+			if urls.contains(loc[0]) {
 				continue
 			}
 			add(kindRealName, loc[0]+1, line[loc[0]:loc[1]], "(remove or replace with persona)")
@@ -545,7 +622,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
 			}
-			if inAnySpan(loc[0], urls) {
+			if urls.contains(loc[0]) {
 				continue
 			}
 			if isOwnRepoSlug(line, loc[1], m.id.GitRemoteRepo) {
@@ -754,8 +831,8 @@ func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {
 // local_username underneath one would downgrade a username leak (e.g. the
 // "<user>" in "/home/<user>/...") out of the ship-blocking gate. Letting both
 // findings fire keeps the hard_fail signal and still redacts the span.
-func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span {
-	spans := append([]span(nil), urls...)
+func (m identityMatchers) localSuppressionSpans(line string, urls urlSet) []span {
+	spans := urls.spans()
 	if m.homeSelf != nil {
 		scanMeter.charge(stageIdentity, len(line))
 		for _, loc := range m.homeSelf.FindAllStringIndex(line, -1) {
@@ -771,7 +848,7 @@ func (m identityMatchers) localSuppressionSpans(line string, urls []span) []span
 			spans = append(spans, span{loc[0], loc[1]})
 		}
 	}
-	return spans
+	return mergeSpans(spans)
 }
 
 // encodedMatches finds the path-encoded username with the ported custom
@@ -862,13 +939,19 @@ func isSystemPathSegment(line string, start, end int) bool {
 // the generic-account floor (isGenericAccountName).
 func isDottedNamespaceComponent(line string, start, end int) bool {
 	lo, hi := start, end
-	for lo > 0 && isDottedIdentifierByte(line[lo-1]) {
+	for lo > 0 && start-lo < maxDottedIdentifier && isDottedIdentifierByte(line[lo-1]) {
 		lo--
 	}
-	for hi < len(line) && isDottedIdentifierByte(line[hi]) {
+	for hi < len(line) && hi-end < maxDottedIdentifier && isDottedIdentifierByte(line[hi]) {
 		hi++
 	}
 	scanMeter.charge(stageIdentity, 2*(hi-lo))
+	// A run longer than any identifier is not one, and walking it whole for
+	// every login inside it cost the run's length per match
+	// (iss-2609251535277823): the bound leaves the finding standing.
+	if (lo > 0 && isDottedIdentifierByte(line[lo-1])) || (hi < len(line) && isDottedIdentifierByte(line[hi])) {
+		return false
+	}
 	// A dotted local part is an address, not a namespace.
 	if hi < len(line) && line[hi] == '@' {
 		return false
@@ -896,6 +979,11 @@ func isDottedNamespaceComponent(line string, start, end int) bool {
 	}
 	return whole && components >= 3
 }
+
+// maxDottedIdentifier is the longest stretch either side of a match that
+// isDottedNamespaceComponent reads: a domain name is at most 253 bytes, and a
+// bundle id or package path is far shorter.
+const maxDottedIdentifier = 255
 
 // isDottedIdentifierByte reports whether b can be part of a dotted identifier —
 // the component bytes plus the '.' that separates them. It is deliberately

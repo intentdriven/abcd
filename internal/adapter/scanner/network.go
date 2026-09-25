@@ -535,53 +535,69 @@ func insideLongerColonRun(line string, start, end int) bool {
 	if end < len(line) && isHexDigit(line[end]) {
 		return true
 	}
-	return colonRunGroups(line, start, end) > maxRunGroups
+	return colonRunGroups(line, start, end, maxRunGroups+1) > maxRunGroups
 }
 
 // colonRunGroups counts the NON-EMPTY colon-separated groups of the maximal
-// hex/colon run containing [start,end). An empty group carries no hex at all, so
-// counting it (the "::" compression, the colon a tool prints after an address)
-// inflated a run by a group it never held: a fully expanded eight-hextet address
-// beside one colon measured nine groups and was suppressed as a digest.
-func colonRunGroups(line string, start, end int) int {
-	start = colonRunStart(line, start)
-	for end < len(line) && isColonRunByte(line[end]) {
-		end++
-	}
-	scanMeter.charge(stageSkipAt, 2*(end-start))
+// hex/colon run containing [start,end), and stops counting at limit. An empty
+// group carries no hex at all, so counting it (the "::" compression, the colon
+// a tool prints after an address) inflated a run by a group it never held: a
+// fully expanded eight-hextet address beside one colon measured nine groups and
+// was suppressed as a digest.
+//
+// The caller asks only whether the run is longer than an address, so the walk
+// either side of the candidate stops at limit: walking and splitting the whole
+// run for every candidate inside it cost the run's length per candidate, and a
+// fingerprint is nothing but candidates (iss-2609251535277823). The candidate's
+// own ends are group boundaries — insideLongerColonRun has already refused a
+// hex byte on either side — so the three parts count independently.
+//
+// Walking back refuses hex bytes that belong to a LARGER WORD. "IPv6:" ends in
+// a hex digit, but that '6' is the tail of the label, not a group of the run:
+// taking it added a phantom group to every labelled address. A hex byte
+// preceded by a non-hex word byte is part of a word, not of the run.
+func colonRunGroups(line string, start, end, limit int) int {
 	n := 0
 	for _, g := range strings.Split(line[start:end], ":") {
 		if g != "" {
 			n++
 		}
 	}
-	return n
-}
-
-// colonRunStart walks back to the beginning of the hex/colon run, refusing to
-// absorb hex bytes that belong to a LARGER WORD. "IPv6:" ends in a hex digit,
-// but that '6' is the tail of the label, not a group of the run: taking it added
-// a phantom group to every labelled address. A hex byte preceded by a non-hex
-// word byte is part of a word, not of the run.
-func colonRunStart(line string, start int) int {
-	for start > 0 {
-		if line[start-1] == ':' {
-			start--
+	lo := start
+	for lo > 0 && n < limit {
+		if line[lo-1] == ':' {
+			lo--
 			continue
 		}
-		if !isHexDigit(line[start-1]) {
-			return start
+		if !isHexDigit(line[lo-1]) {
+			break
 		}
-		i := start
+		i := lo
 		for i > 0 && isHexDigit(line[i-1]) {
 			i--
 		}
 		if i > 0 && isWordByte(line[i-1]) {
-			return start // the hex bytes are a word's tail, not a group
+			break // the hex bytes are a word's tail, not a group
 		}
-		start = i
+		lo = i
+		n++
 	}
-	return start
+	hi := end
+	for hi < len(line) && n < limit {
+		if line[hi] == ':' {
+			hi++
+			continue
+		}
+		if !isHexDigit(line[hi]) {
+			break
+		}
+		for hi < len(line) && isHexDigit(line[hi]) {
+			hi++
+		}
+		n++
+	}
+	scanMeter.charge(stageSkipAt, hi-lo+end-start)
+	return n
 }
 
 func isColonRunByte(b byte) bool { return b == ':' || isHexDigit(b) }
