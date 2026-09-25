@@ -26,7 +26,7 @@ precondition for trusting the gate with a real tag: it proves the gate can be
 satisfied before the repo goes public, closing the private→public activation gap
 that otherwise surfaces only at the first real release.
 
-<%- if not .Abcd %>
+<% if not .Abcd -%>
 ## Merge gate — this repository's CI checks
 
 Merging the release pull request is the release decision, so the checks that
@@ -80,8 +80,13 @@ The `release.yml` `verify` job runs these, in order, on the released commit.
 <%- end %>
 <%- if .Abcd %>
 <% add (len .ExtraGates) 6 %>. Plugin archive reproduces the committed pin (fail-closed)
+<%- end %>
+<%- if .SemanticGates %>
+<% if .Abcd %><% add (len .ExtraGates) 7 %><% else %><% add (len .ExtraGates) 6 %><% end %>. The release tag names the released CHANGELOG version (fail-closed)
+<%- end %>
+<%- if .Abcd %>
 
-The last gate also checks that the pinned address is this repository's own
+The plugin-archive gate also checks that the pinned address is this repository's own
 release. On the `auto-release.yml` path every gate here runs before the tag —
 `release.yml`'s `tag` job needs `verify` — so a refusal tags nothing, and the
 next push to `<% .DefaultBranch %>` retries. A hand-pushed tag exists before

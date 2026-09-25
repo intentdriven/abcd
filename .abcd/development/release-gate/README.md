@@ -27,6 +27,13 @@ this list is the human-readable mirror.
 8. Reviews-charter discipline (RD001-RD003)
 9. Smoke every command (self-discovering harness)
 10. Plugin archive reproduces the committed pin (fail-closed)
+11. The release tag names the released CHANGELOG version (fail-closed)
+
+Gate 11 runs on a real release only too: it refuses unless the release tag is
+`v` plus the version `record-lint --released-version` reads from the released
+tree, the reader the semantic receipts are bound with. Gate 10 refuses such a
+tag first on this repository's own release; gate 11 is the check a scaffolded
+repository, which has no archive gate, relies on (iss-2609251945586202).
 
 Gate 10 runs on a real release only (a rehearsal has no release tag to bind). It
 re-renders the release's plugin archive from the tagged commit and refuses unless
