@@ -124,3 +124,23 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 		t.Errorf("only %d summary items were printed:\n%s", shown, s)
 	}
 }
+
+// TestAhoyInstallYesKeepsValuePromptsOffStdout pins iss-2609012039114508: under
+// --yes with no terminal, a value question no flag answered is still asked, and
+// it must be asked on the diagnostic stream. A scripted install reads stdout as
+// the run's output, so a question there would read as a receipt line.
+func TestAhoyInstallYesKeepsValuePromptsOffStdout(t *testing.T) {
+	hermeticEnv(t)
+	repo := gittest.NewRepo(t).Root()
+	t.Chdir(repo)
+	out, errOut, err := runCLIPipedStdinSplit(t, "", "ahoy", "install", "--yes", "--adopt")
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
+	}
+	if strings.Contains(string(out), "visibility (private/public)") {
+		t.Errorf("a value prompt landed on stdout:\n%s", out)
+	}
+	if !strings.Contains(string(errOut), "visibility (private/public) []: <no answer>") {
+		t.Errorf("the value prompt was not asked on stderr:\n%s", errOut)
+	}
+}
