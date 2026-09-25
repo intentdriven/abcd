@@ -37,7 +37,7 @@ func TestRenderPayloadSatisfiesPublicLockstep(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "payload")
 
 	res, err := RenderPayload(PayloadRenderRequest{
-		RepoRoot: root, Dest: dest, Version: "0.4.0", Entry: sampleEntry(),
+		RepoRoot: root, Dest: dest, Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 	})
 	if err != nil {
 		t.Fatalf("render must succeed on a clean tree: %v", err)
@@ -105,7 +105,7 @@ func TestRenderPayloadLeavesSourceTreeUnversioned(t *testing.T) {
 
 	dest := filepath.Join(t.TempDir(), "payload")
 	if _, err := RenderPayload(PayloadRenderRequest{
-		RepoRoot: root, Dest: dest, Version: "9.9.9", Entry: sampleEntry(),
+		RepoRoot: root, Dest: dest, Version: "9.9.9", Entry: sampleEntry(), Dirty: DirtySkip,
 	}); err != nil {
 		t.Fatalf("render this repository's payload: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestRenderPayloadRefusals(t *testing.T) {
 			root := renderFixture(t)
 			req := PayloadRenderRequest{
 				RepoRoot: root, Dest: filepath.Join(t.TempDir(), "payload"),
-				Version: "0.4.0", Entry: sampleEntry(),
+				Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 			}
 			tc.mutate(t, root, &req)
 			_, err := RenderPayload(req)
@@ -208,7 +208,7 @@ func TestRenderPayloadRefusesWhenManifestsAreNotShipped(t *testing.T) {
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["README.md"]}`)
 	_, err := RenderPayload(PayloadRenderRequest{
 		RepoRoot: root, Dest: filepath.Join(t.TempDir(), "payload"),
-		Version: "0.4.0", Entry: sampleEntry(),
+		Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 	})
 	if err == nil || !strings.Contains(err.Error(), "not in the payload") {
 		t.Fatalf("expected a refusal naming the missing manifest, got %v", err)
@@ -224,7 +224,7 @@ func TestRenderPayloadRefusesAnUnstampableMarketplace(t *testing.T) {
 	writeFile(t, root, ".claude-plugin/marketplace.json", `{"plugins": []}`)
 	_, err := RenderPayload(PayloadRenderRequest{
 		RepoRoot: root, Dest: filepath.Join(t.TempDir(), "payload"),
-		Version: "0.4.0", Entry: sampleEntry(),
+		Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 	})
 	if err == nil || !strings.Contains(err.Error(), "out of range") {
 		t.Fatalf("expected a refusal naming the unwritable pointer, got %v", err)
@@ -276,7 +276,7 @@ func TestRenderPayloadRefusesOnItsOwnDrift(t *testing.T) {
 
 	res, err := RenderPayload(PayloadRenderRequest{
 		RepoRoot: root, Dest: filepath.Join(t.TempDir(), "payload"),
-		Version: "0.4.0", Entry: sampleEntry(),
+		Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 	})
 	if !errors.Is(err, ErrPayloadDrift) {
 		t.Fatalf("expected ErrPayloadDrift, got %v", err)

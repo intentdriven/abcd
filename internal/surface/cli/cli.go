@@ -342,12 +342,17 @@ func NewRootCommand() *cobra.Command {
 					if g.Name == "citation-baseline" && g.Status == "ran" {
 						fmt.Fprintf(w, "  citations:      %s\n", termsafe.Sanitize(g.Detail))
 					}
-					// The semantic-receipt gate refuses releases and CI cannot run it,
-					// so the plain render must not stay silent about it either: a row
-					// only --json shows is invisible to everyone who does not know to
-					// ask (iss-2608231226342272).
-					if g.Name == "semantic-receipts" {
-						fmt.Fprintf(w, "  receipts:       %s\n", termsafe.Sanitize(g.Detail))
+				}
+				// Every row that did not run — host-run, not_armed,
+				// not_implemented — is staged here with its status and why: a
+				// row only --json shows is invisible to everyone who does not
+				// know to ask (iss-2608231226342272, iss-2609251827290265). The
+				// semantic-receipt row is among them, and is the one a release
+				// fails on most expensively.
+				for _, g := range rep.Gates {
+					if g.Status != "ran" {
+						fmt.Fprintf(w, "  not run:        %s (%s) — %s\n",
+							termsafe.Sanitize(g.Name), termsafe.Sanitize(g.Status), termsafe.Sanitize(g.Detail))
 					}
 				}
 				renderDeepSmoke(w, rep.DeepSmoke)

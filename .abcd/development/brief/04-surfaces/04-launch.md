@@ -76,7 +76,10 @@ address and digest, and unless that address lies under the releasing
 repository's own release downloads for the tag — removing the archive on either
 refusal, so nothing unpinned can be published. `auto-release.yml` runs it on the
 pushed commit before the tag is made, and the release workflow runs it again on
-the tagged commit, each run bound to the repository the workflow runs in.
+the tagged commit, each run bound to the repository the workflow runs in. Bound
+to the pin, the render leaves the dirty-tree gate to it — a payload file that
+differs from the commit changes the digest and refuses; unbound, it runs the
+gate, and an uncommitted change refuses the render.
 
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent, including the release page's retry loop. The
@@ -135,10 +138,17 @@ The **hard-fail** gates refuse the release:
   is not a marker.
 - **Change narration** over the shipped doc bodies — Markdown under `docs/` and
   at the payload root, the changelog and the release page excepted: a sentence
-  carrying "changed from … to", "no longer", "migrated from", "renamed … to",
-  "previously … now" or an active "used to" is named with its file, line and
-  text. Bare "now" and bare "previously" are present-tense prose and pass; a
-  construct inside code, or on a line carrying the docs-lint escape, is exempt.
+  carrying "changed from … to" or "migrated from" is named with its file, line
+  and text, and so is one carrying a construct that reads as narration only in
+  one of its uses: "used to" as the past habit ("the tool used to print"), not
+  as a passive or a participle ("the token used to authenticate the request is
+  read"); "no longer" and "renamed … to" beside a subject naming abcd or its
+  behaviour (a command, a flag, a hook, the default), not beside anything else
+  ("files that are no longer present"); and "previously … now" beside a
+  past-tense change verb, not "as previously noted". Bare "now" and bare
+  "previously" are present-tense prose and pass, alone or together; a
+  construct inside code, or on a line carrying the docs-lint escape, is exempt,
+  and every finding names that escape.
   The changelog is derived from the records
   ([adr-37](../../decisions/adrs/0037-changelog-driven-releases.md)), so the
   remedy is to rephrase the doc, not to move the sentence into the changelog.
@@ -148,7 +158,9 @@ The **hard-fail** gates refuse the release:
   it carried. A tree whose state git cannot read refuses whatever the flag
   says. The preview has no override, so a dirty tree is on its would-refuse
   list. The cut runs this gate before it writes anything; the render after its
-  writes skips it, because by then the cut's own output is on disk.
+  writes skips it, because by then the cut's own output is on disk. Skipping is
+  a render caller's stated choice: a render that states no policy runs the gate
+  and refuses a dirty tree.
 - **The installability smoke** at its light tier, and at its deep tier on the
   cut and on a preview that asks for it (below).
 - **The payload parity diff**, which refuses only when its baseline cannot be
@@ -163,7 +175,8 @@ which makes each warning a refusal:
   `.abcd/docs-lint.json`.
 - **Hook compliance**: every payload file a hook command invokes is executable
   in the payload, every command handler names a command, and every timeout is a
-  positive number.
+  positive number. A hooks config that cannot be read or parsed is a concern of
+  the row, never a row with nothing to judge.
 
 Two rows report without a tier. The **citation baseline** tallies cited claims
 against their receipts and refuses on a broken, unreceipted or overdue one. The
@@ -174,7 +187,9 @@ one-commit release branch reach a tag and fail-close there
 (iss-2608231226342272).
 
 The plain-text preview prints the version, the file count bundled, scan
-hard-fails, citations, receipts and whether it would publish, then a
+hard-fails, citations, a line for every gate row that did not run (its name,
+its status — `host-run`, `not_armed`, `not_implemented` — and why; the
+semantic-receipts row is always one) and whether it would publish, then a
 would-refuse-on line per refusal, a warning line per warn-tier concern, and
 where its report landed. The JSON carries the gate detail.
 
@@ -204,7 +219,9 @@ the payload proves nothing. Every entry records which register declared it. This
 is not the compatibility surface, which records manifest keys and discards
 values; installability is the mirror question, over the values.
 
-The **light tier** ships: both manifests parse, each local marketplace source
+The **light tier** ships: both manifests and every hooks config the payload
+carries parse (a host registers no hook from a config it cannot parse), each
+local marketplace source
 resolves to a manifest whose name matches the listing (a pinned archive source
 resolves to the payload root it is rendered from, and its pin must be an https
 `.zip` URL with a 64-hex digest), and every declared path

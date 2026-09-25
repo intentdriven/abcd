@@ -97,6 +97,16 @@ func newLaunchArchiveCommand(asJSON *bool) *cobra.Command {
 			}
 			defer func() { _ = os.RemoveAll(scratch) }()
 			req.Dest = filepath.Join(scratch, "payload")
+			// The dirty-tree policy is stated, never inherited. With --verify
+			// the committed pin is the dirt gate: a payload file that differs
+			// from the commit changes the archive's digest and refuses, while
+			// the release workflows' own outputs beside the checkout are not
+			// the payload. Without --verify nothing else judges the tree, so
+			// a dirty one refuses.
+			req.Dirty = launch.DirtyRefuse
+			if verify {
+				req.Dirty = launch.DirtySkip
+			}
 
 			a, _, err := launch.RenderPluginArchive(req, out)
 			if err != nil {

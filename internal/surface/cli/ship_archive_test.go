@@ -236,6 +236,26 @@ func TestLaunchArchiveWithoutVerifyWritesTheArchive(t *testing.T) {
 	}
 }
 
+// TestLaunchArchiveWithoutVerifyRefusesADirtyTree is iss-2609251827294854 at
+// the archive verb: the render states its dirty-tree policy, and without
+// --verify nothing else judges the tree, so an uncommitted change refuses and
+// nothing is left in --out.
+func TestLaunchArchiveWithoutVerifyRefusesADirtyTree(t *testing.T) {
+	r := shipArchiveRepo(t)
+	r.Write("notes.txt", "scratch\n")
+	outDir := t.TempDir()
+	out, err := shipIn(t, r, "launch", "archive", "--out", outDir)
+	if code := exitCodeOf(err); code != 2 {
+		t.Fatalf("exit = %d, want 2\n%s\n%v", code, out, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "uncommitted") || !strings.Contains(err.Error(), "notes.txt") {
+		t.Errorf("the refusal must name the uncommitted file, got %v", err)
+	}
+	if entries, _ := os.ReadDir(outDir); len(entries) != 0 {
+		t.Errorf("a refused render must leave nothing in --out, found %v", entries)
+	}
+}
+
 // TestLaunchShipPinsOnlyOnTheDeclaration is the other side of the pin: a
 // repository with the version-location contract but no declaration that its
 // release publishes the archive — the managed repository whose scaffolded

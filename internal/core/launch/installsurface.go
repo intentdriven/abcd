@@ -209,8 +209,9 @@ var declarationKeys = []struct {
 // marketplace listings with their sources resolved, and the union of the
 // convention and manifest surface entries.
 //
-// It returns an error only when a manifest is PRESENT and cannot be read or
-// parsed — a payload whose declarations cannot even be enumerated. Everything
+// It returns an error only when a manifest or a hooks config is PRESENT and
+// cannot be read or parsed — a payload whose declarations cannot even be
+// enumerated. Everything
 // else, including a declaration pointing at nothing, is DATA: it becomes an
 // entry, and judging it is the assertion tier's job, not resolution's.
 //
@@ -246,7 +247,11 @@ func ResolveInstallSurface(tree PayloadTree) (InstallSurface, error) {
 
 	entries := conventionEntries(tree)
 	entries = append(entries, manifestEntries(tree, plugin)...)
-	entries = append(entries, hookCommandEntries(tree, plugin, surface.PluginName, entries)...)
+	hookEntries, err := hookCommandEntries(tree, plugin, surface.PluginName, entries)
+	if err != nil {
+		return surface, err
+	}
+	entries = append(entries, hookEntries...)
 	surface.Entries = dedupeEntries(entries)
 	return surface, nil
 }
@@ -434,23 +439,25 @@ func normaliseDeclared(decl string) string {
 // then fails at runtime. Only the `$CLAUDE_PLUGIN_ROOT`-rooted references are
 // resolvable — anything else is a PATH lookup on the user's machine, which no
 // release gate can assert.
-func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName string, found []SurfaceEntry) []SurfaceEntry {
+//
+// A hooks config the payload carries and that cannot be read or parsed is an
+// error, exactly as an unparseable plugin manifest is: the host registers no
+// hook from it on any install, so skipping it would let the loudest hook
+// failure read as a payload that declares no hooks (iss-2609251827104081).
+func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName string, found []SurfaceEntry) ([]SurfaceEntry, error) {
 	var docs []any
 	if len(plugin) > 0 {
 		docs = append(docs, plugin["hooks"])
 	}
 	for _, e := range found {
-		if e.Kind != SurfaceHook || e.Requirement != RequirePayload {
-			continue
-		}
-		data, err := tree.Read(e.Path)
-		if err != nil {
+		if !isHookConfig(e) || !tree.Has(e.Path) {
 			continue // absence is the existence check's finding, not this one's
 		}
-		var doc any
-		if json.Unmarshal(data, &doc) == nil {
-			docs = append(docs, doc)
+		doc, err := readHookConfig(tree, e.Path)
+		if err != nil {
+			return nil, err
 		}
+		docs = append(docs, doc)
 	}
 
 	var out []SurfaceEntry
@@ -469,7 +476,32 @@ func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName stri
 			}
 		}
 	}
-	return out
+	return out, nil
+}
+
+// isHookConfig reports whether an entry is a hooks config file the payload is
+// responsible for: a hook entry named directly (by convention or a manifest
+// key), or a JSON file swept from a declared hooks directory. Any other file a
+// directory declaration sweeps up (a script beside the config) is not a
+// config and is never parsed as one.
+func isHookConfig(e SurfaceEntry) bool {
+	if e.Kind != SurfaceHook || e.Origin == OriginHookCommand || e.Requirement != RequirePayload {
+		return false
+	}
+	return e.DeclaredAs == "" || strings.EqualFold(path.Ext(e.Path), ".json")
+}
+
+// readHookConfig reads and decodes one hooks config from the payload.
+func readHookConfig(tree PayloadTree, rel string) (any, error) {
+	data, err := tree.Read(rel)
+	if err != nil {
+		return nil, fmt.Errorf("%s is not readable in the payload: %w", rel, err)
+	}
+	var doc any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("%s does not parse as JSON, so the host would register none of its hooks: %w", rel, err)
+	}
+	return doc, nil
 }
 
 // collectCommandStrings walks a decoded hooks document and returns every
