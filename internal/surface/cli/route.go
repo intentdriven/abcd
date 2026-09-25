@@ -160,6 +160,15 @@ func (w withMember) MarshalJSON() ([]byte, error) {
 	if len(base) < 2 || base[0] != '{' || base[len(base)-1] != '}' {
 		return nil, fmt.Errorf("a %s member needs a JSON object to join, got %.20s", w.key, base)
 	}
+	// The member is written after the verb's own, so a result already carrying
+	// the key would hold it twice, which a reader resolves last-wins, silently.
+	var own map[string]json.RawMessage
+	if err := json.Unmarshal(base, &own); err != nil {
+		return nil, err
+	}
+	if _, dup := own[w.key]; dup {
+		return nil, fmt.Errorf("the verb's result already carries a %q member, so the %s block cannot join it", w.key, w.key)
+	}
 	add, err := json.Marshal(w.val)
 	if err != nil {
 		return nil, err

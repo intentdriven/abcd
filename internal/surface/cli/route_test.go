@@ -245,3 +245,25 @@ func TestDisembarkIngestsCarryTheReceipt(t *testing.T) {
 		})
 	}
 }
+
+// TestWithMemberRefusesADuplicateKey: the joined member is added after the
+// verb's own, so a result that already carries the key would yield an object
+// with the key twice, which most readers resolve last-wins, silently. The join
+// refuses instead, and joins cleanly where the key is absent.
+func TestWithMemberRefusesADuplicateKey(t *testing.T) {
+	type result struct {
+		Route  string `json:"route"`
+		Status string `json:"status"`
+	}
+	if _, err := json.Marshal(withMember{v: result{Route: "own", Status: "ok"}, key: "route", val: 1}); err == nil ||
+		!strings.Contains(err.Error(), `already carries a "route" member`) {
+		t.Fatalf("a duplicate route member was joined: err %v", err)
+	}
+	out, err := json.Marshal(withMember{v: result{Route: "own", Status: "ok"}, key: "routing", val: 1})
+	if err != nil || string(out) != `{"route":"own","status":"ok","routing":1}` {
+		t.Fatalf("out %s err %v", out, err)
+	}
+	if out, err := json.Marshal(withMember{v: struct{}{}, key: "route", val: 1}); err != nil || string(out) != `{"route":1}` {
+		t.Fatalf("an empty base: out %s err %v", out, err)
+	}
+}
