@@ -328,11 +328,9 @@ The bare board names the same adapter as an optional gap
 adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 Declining is not running `connect`, and it changes nothing.
 
-```bash
-abcd ahoy connect <provider> --base-url <url> --model <model> [--model <model>…] --home abcd [--key <name>] < <a file holding only the key>
-```
-
-**This writes, under `~/.abcd/` alone.** It verifies the provider with one call
+The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
+[--model <model>…] --home abcd [--key <name>]`, with the key piped in on stdin
+from a file or a variable. **This writes, under `~/.abcd/` alone.** It verifies the provider with one call
 to the first model listed, and only when that call succeeds writes the key into
 the owner-only `~/.abcd/credentials.json` and the provider block (the base URL,
 the key's name and the models, the allowlist) into `~/.abcd/config.json`.
