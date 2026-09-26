@@ -590,6 +590,11 @@ func mergedBranches(root, defaultRef string) map[string]bool {
 	return set
 }
 
+// DefaultRef is the full ref of the repository's default branch, as last
+// fetched and with no network: the ref a branch is judged merged into here, and
+// the one the implement loop cuts a lane's branch from. "" when none resolves.
+func DefaultRef(root string) string { return resolveDefaultRef(root) }
+
 // resolveDefaultRef is the ref a branch is judged merged into, as last fetched
 // and with no network: origin/HEAD's target, then the conventional names on the
 // remote, then the same names locally. "" when none resolves.

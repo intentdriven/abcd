@@ -1199,6 +1199,12 @@ that does not is refused naming what is missing, with the lane left where it was
 step whose verifier this abcd does not carry is refused naming the spec piece that
 delivers it.
 
+An implementer's receipt is read strictly (one JSON object, no field the brief does not
+name, within its size cap, never through a symlink) and verifies only when every commit
+it names is on the lane's branch past its base, the definition of done's output exists
+in the lane's directory with a zero exit code, and the report exists there. A receipt
+that verifies moves the lane's head to its branch's tip.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a locked run state.
 
@@ -1268,7 +1274,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 #### `abcd implement step`
 
-Perform the next step of an implement loop run and exit: Writes the run's state; refuses a step whose body this abcd does not carry.
+Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.
 
 **Usage:** `abcd implement step [--run <run-id>] [flags]`
 
@@ -1278,6 +1284,13 @@ and the path its receipt goes to; the lane then advances only on
 `abcd implement receipt`, and asking for a step again re-tells the same thing and
 moves nothing. When a lane is done the spec's next pending step opens the next lane.
 A complete run says so.
+
+The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
+store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
+cut from the default branch; brief renders the lane's brief from that base (the intent,
+the spec, the conventions of AGENTS.md and the decisions the intent cites) into the
+lane's directory of the run; implement hands the lane to a fresh implementer and awaits
+its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A step that fails leaves the state as it was,

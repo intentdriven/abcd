@@ -540,8 +540,8 @@ func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 }
 
 // TestAStepThisBuildDoesNotCarryIsRefusedByName: the production sequence names
-// every step; one whose body is not built is refused with the piece that
-// delivers it, and the run is unchanged.
+// every step; one whose body is not built (here, every body stripped) is
+// refused with the piece that delivers it, and the run is unchanged.
 func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -549,7 +549,11 @@ func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := stateBytes(t, repo.Root(), start.RunID)
-	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	bare := DefaultSteps()
+	for i := range bare {
+		bare[i].Run, bare[i].Verify = nil, nil
+	}
+	_, err = Advance(repo.Root(), start.RunID, bare, Options{})
 	r := mustRefusal(t, err)
 	if r.Step != string(StepWorktree) || r.Lane != "lane-1" || !strings.Contains(r.Reason, "piece 6") {
 		t.Fatalf("want the unbuilt step and its piece named: %+v", r)
