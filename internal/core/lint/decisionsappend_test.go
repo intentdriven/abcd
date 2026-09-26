@@ -696,6 +696,76 @@ func TestDecisionsAppendText(t *testing.T) {
 	}
 }
 
+// TestDecisionsAppendIgnoresRepoDiffConfig holds the verdict to the committed
+// diff, not to the repository's diff configuration. The rules read -U0 hunk
+// headers arithmetically, so any config that reshapes a hunk changes what they
+// see: diff.interHunkContext folds two neighbouring hunks into one with context
+// lines between them, which merges two DA002 findings into one whose span
+// counts the context; diff.indentHeuristic=false slides an ambiguous insertion,
+// which moves the line a DA001 finding names. Each fixture's findings with the
+// hostile config set must match its findings without it, and the unconfigured
+// findings are asserted first so a fixture that finds nothing cannot pass
+// vacuously.
+func TestDecisionsAppendIgnoresRepoDiffConfig(t *testing.T) {
+	// Two rewords of committed lines two lines apart: two -U0 hunks.
+	twoHunks := func(t *testing.T) *gittest.Repo {
+		r := daRepo(t)
+		daEdit(t, r, func(ls []string) []string {
+			ls[4] = "- 2026-01-01 — The first decision, quietly reworded."
+			ls[7] = "  a continuation line, quietly changed."
+			return ls
+		})
+		daCommitAll(t, r, "reword two entries")
+		return r
+	}
+	// An insertion git can place after either of two identical lines; which
+	// one it picks is the indent heuristic's call.
+	slidable := func(t *testing.T) *gittest.Repo {
+		t.Helper()
+		const header = "# DECISIONS\n\nAppend-only, one line per decision, newest last. Date-prefixed.\n\n"
+		r := gittest.NewRepo(t)
+		r.Write(daLedger, header+"- c\n- c\n\n- c\n- a\n- c\n- c\n")
+		r.Git("add", "-A")
+		r.Git("commit", "-qm", "baseline: the ledger")
+		r.Git("checkout", "-q", "-b", "work")
+		r.Write(daLedger, header+"- c\n- c\n  b\n\n- c\n\n- c\n- a\n- c\n- c\n")
+		daCommitAll(t, r, "insert an entry")
+		return r
+	}
+	cases := []struct {
+		name, key, value string
+		build            func(t *testing.T) *gittest.Repo
+		want             []string // rule ids, in order, of the unconfigured findings
+	}{
+		{"diff.interHunkContext cannot fold two hunks into one", "diff.interHunkContext", "5", twoHunks, []string{"DA001", "DA002", "DA002"}},
+		{"diff.indentHeuristic cannot move an insertion", "diff.indentHeuristic", "false", slidable, []string{"DA001"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := c.build(t)
+			plain, err := lint.CheckDecisionsAppend(r.Root(), "main", "work")
+			if err != nil {
+				t.Fatalf("unconfigured: %v", err)
+			}
+			var ids []string
+			for _, f := range plain.Findings {
+				ids = append(ids, f.RuleID)
+			}
+			if strings.Join(ids, ",") != strings.Join(c.want, ",") {
+				t.Fatalf("unconfigured findings = %v, want %v:\n%s", ids, c.want, daRender(plain.Findings))
+			}
+			r.Git("config", c.key, c.value)
+			hostile, err := lint.CheckDecisionsAppend(r.Root(), "main", "work")
+			if err != nil {
+				t.Fatalf("with %s=%s: %v", c.key, c.value, err)
+			}
+			if got, want := daRender(hostile.Findings), daRender(plain.Findings); got != want {
+				t.Fatalf("with %s=%s the findings changed.\nwithout:\n%swith:\n%s", c.key, c.value, want, got)
+			}
+		})
+	}
+}
+
 func TestDecisionsAppendCleanShapes(t *testing.T) {
 	cases := []daCase{
 		{"a pure append at the tail passes", "pass", onWork("append an entry", func(t *testing.T, r *gittest.Repo) {

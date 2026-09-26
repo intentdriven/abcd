@@ -379,8 +379,22 @@ func (g *decisionsGate) analyse(commit, parent string, pc ledgerCopy) ([]rawFind
 	// driver or a textconv filter configured for the path would otherwise decide
 	// what the gate sees. --diff-algorithm=myers pins the hunk shape the rules and
 	// their cases were written against, whatever a repository's config prefers.
+	//
+	// --inter-hunk-context=0 and --indent-heuristic pin the two other hunk-shaping
+	// settings a repository's config supplies (diff.interHunkContext,
+	// diff.indentHeuristic), each at git's own default. The old-line arithmetic
+	// below assumes every hunk holds only removed and added lines: a non-zero
+	// inter-hunk context folds neighbouring hunks into one with context lines
+	// between them, which merges two findings and miscounts both spans, and an
+	// indent heuristic switched off slides an ambiguous hunk to another line.
+	// diff.context is overridden by --unified=0; diff.relative cannot narrow a
+	// diff run from the top level; the prefix settings (diff.noprefix,
+	// diff.mnemonicPrefix, diff.srcPrefix, diff.dstPrefix) change only the
+	// file headers, which the reader never parses; and the colour settings are
+	// switched off wholesale by --no-color.
 	out, err := gitutil.RunCappedBytes(g.root, decisionsMaxBytes, "diff", "--unified=0", "--no-color",
 		"--no-ext-diff", "--no-textconv", "--no-renames", "--text", "--diff-algorithm=myers",
+		"--inter-hunk-context=0", "--indent-heuristic",
 		parent, commit, "--", DecisionsLedger)
 	if err != nil {
 		return nil, fmt.Errorf("git diff failed for %s against %s — refusing rather than reporting a vacuous pass: %w", short(commit), short(parent), err)
