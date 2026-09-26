@@ -24,7 +24,7 @@ this list is the human-readable mirror.
 5. Test (race, internal)
 6. Record-lint (design-record drift gate)
 7. Docs-lint (docs-currency gate)
-8. Reviews-charter discipline (RD001-RD003)
+8. Reviews-charter discipline (RD001-RD004)
 9. Smoke every command (self-discovering harness)
 10. Plugin archive reproduces the committed pin (fail-closed)
 

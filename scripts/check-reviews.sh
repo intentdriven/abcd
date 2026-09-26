@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD003).
+# Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD004).
 #
 # Stopgap: enforces the machine-checkable half of the reviews-folder charter
 # until these codes are implemented in `internal/core/lint` (Go). The semantic
@@ -71,7 +71,49 @@ for d in "$ROOT"/*/; do
   printf '%s' "$base" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$' \
     || { note "RD001 $d — directory name must be <YYYY-MM-DD>-<kebab-scope>"; fail=1; }
   [ -f "${d}00-summary.md" ] \
-    || { note "RD001 $d — missing required 00-summary.md"; fail=1; }
+    || { note "RD001 $d — missing required 00-summary.md"; fail=1; continue; }
+  # RD004 — the pin (itd-28): the summary's leading frontmatter block names the
+  # commit the review read, `review_of_commit: <full sha>`, so the status board
+  # can say how far the default branch has moved since. The reading is the
+  # board's own (internal/core/reviews.Pin): a block opened on line 1 and closed
+  # by the next `---`, the first `review_of_commit` key in it, and a bare full
+  # object name in git's lowercase hex, optionally followed by a comment. A
+  # folder from before the rule is named as legacy and not refused; the legacy
+  # set is closed, and a folder added after the rule cannot join it.
+  case "$base" in
+  2026-07-06-plan-consistency | 2026-07-07-roadmap-consistency | 2026-08-19-pr-294-null-predicate)
+    echo "  RD004 legacy $d — predates the review_of_commit pin; named, not refused"
+    continue
+    ;;
+  esac
+  pin_line=""
+  lineno=0
+  opened=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    lineno=$((lineno + 1))
+    line="${line%$'\r'}"
+    [ "$lineno" -eq 1 ] && line="${line#$'\xef\xbb\xbf'}"
+    trimmed="${line%"${line##*[! $'\t']}"}"
+    if [ "$lineno" -eq 1 ]; then
+      [ "$trimmed" = "---" ] || break
+      opened=1
+      continue
+    fi
+    if [ "$trimmed" = "---" ]; then
+      opened=2
+      break
+    fi
+    if [ -z "$pin_line" ] && printf '%s' "$line" | grep -Eq '^review_of_commit[ 	]*:'; then
+      pin_line="$line"
+    fi
+  done <"${d}00-summary.md"
+  if [ "$opened" -ne 2 ] || [ -z "$pin_line" ]; then
+    note "RD004 $d — 00-summary.md names no review_of_commit in its frontmatter (the full sha of the commit the review read)"
+    fail=1
+  elif ! printf '%s' "$pin_line" | grep -Eq '^review_of_commit[ 	]*:[ 	]*([0-9a-f]{40}|[0-9a-f]{64})([ 	]+#.*)?[ 	]*$'; then
+    note "RD004 $d — review_of_commit is not a bare full sha in lowercase hex"
+    fail=1
+  fi
 done
 
 # RD002 — append-only: no post-creation modify/rename/delete in committed
@@ -118,7 +160,7 @@ for f in "${files[@]:-}"; do
 done
 
 if [ "$fail" -ne 0 ]; then
-  echo "check-reviews: FAILED — reviews-charter discipline (RD001-RD003)" >&2
+  echo "check-reviews: FAILED — reviews-charter discipline (RD001-RD004)" >&2
   exit 1
 fi
-echo "check-reviews: OK — $ROOT (${#files[@]} review files), RD001-RD003 clean"
+echo "check-reviews: OK — $ROOT (${#files[@]} review files), RD001-RD004 clean"

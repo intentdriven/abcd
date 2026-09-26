@@ -144,7 +144,7 @@ jobs:
       - name: Docs-lint (docs-currency gate)
         run: go run ./cmd/abcd lint docs --release-gate
 
-      - name: Reviews-charter discipline (RD001-RD003)
+      - name: Reviews-charter discipline (RD001-RD004)
         run: bash scripts/check-reviews.sh
 
       - name: Smoke every command (self-discovering harness)

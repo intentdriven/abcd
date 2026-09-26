@@ -130,6 +130,31 @@ orphan row and a clamped fan-out are reported on stderr, and a routing file that
 cannot be read omits the lines with its reason there; the board itself never
 fails on one.
 
+**The reviews block** (itd-28, spc-2609211854150455) says how stale each
+review has become. Every folder under `.abcd/work/reviews/` is a row: a dated
+review names the commit it read in its summary's frontmatter
+(`review_of_commit: <full sha>`), and a semantic-gate receipt directory is
+keyed by the commit it gates, so its name is its pin. Per pin the board counts
+the commits the default branch has moved since (`git rev-list --count
+<pin>..<default>`, the default branch resolved as the peers reader resolves it,
+HEAD where none does) and flags a row past twenty for a re-run. The text render
+carries a `reviews:` heading — how many folders, how many flagged, the branch
+counted against — and one line per folder, stalest first: `!` on a flagged row,
+the count, the pin's short sha, and the folder, or `receipt:` and the gates it
+holds. A review of a spec carries the spec's id in its folder name,
+`<YYYY-MM-DD>-<spc-N>-<slug>/`, and the row reads it from there. A pin this
+history does not hold (a sha a squash or a rewrite left behind) is
+`unreachable` and a folder from before the pin rule is `unpinned`; neither is
+counted, and both come after the counted rows. The JSON carries a `reviews`
+object with `threshold`, `default_ref` and `rows`, each row `folder`, `kind`
+(`review` or `receipt`), `scope`, `spec` when the name carries one,
+`review_of_commit`, `state` (`pinned`, `unreachable`, `unpinned`),
+`commits_since` (null unless pinned) and `stale`. The block is absent when the
+tree holds no folder, and a tree that cannot be read omits it with the reason
+on stderr. The reader is `internal/core/reviews`; the reviews-charter gate's
+`RD004` refuses a dated review filed without the pin, so every row after the
+rule can be counted.
+
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in

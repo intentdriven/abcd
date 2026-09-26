@@ -57,6 +57,18 @@ no table is accepted, and every delegated step then runs through the harness at
 to the agent's ceiling are reported on stderr; a routing file that cannot be
 read omits the lines and says why there.
 
+When review folders sit under `.abcd/work/reviews/`, the board carries a
+`reviews` object (`threshold`, `default_ref`, `rows`), rendered as a
+`reviews:` heading and one line per folder, stalest first. Each row names the
+folder (`folder`, `kind` — `review` or `receipt` — `scope`, and `spec` when the
+folder is a spec's review), the commit it read (`review_of_commit`), and how
+many commits the default branch has moved since (`commits_since`); `stale` is
+true past the threshold of twenty, marked `!` in the text. A row whose `state`
+is `unreachable` names a commit this history no longer holds, and one that is
+`unpinned` predates the pin rule; neither has a count. Relay the stale rows as
+reviews to re-run before they are trusted. The field is omitted when the tree
+holds no folder.
+
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is

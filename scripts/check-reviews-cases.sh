@@ -44,6 +44,9 @@ trap 'rm -rf "$tmproot"' EXIT
 
 REV_DIR=".abcd/work/reviews"
 SCOPE="$REV_DIR/2026-01-01-a-scope"
+# Any full object name serves as the fixture pin: RD004 judges the key's shape,
+# and the board, not the gate, asks git how far behind it is.
+PIN="0123456789abcdef0123456789abcdef01234567"
 
 # expect <want: pass|fail|fault> <repo> <label> [needle]
 #
@@ -102,7 +105,7 @@ newrepo() {
 	git -C "$d" config user.name t
 	git -C "$d" config user.email t@example.invalid
 	git -C "$d" config commit.gpgsign false
-	printf '# Review summary\n\nA fixture review.\n' >"$d/$SCOPE/00-summary.md"
+	printf -- '---\nreview_of_commit: %s\n---\n# Review summary\n\nA fixture review.\n' "$PIN" >"$d/$SCOPE/00-summary.md"
 	printf '# Findings\n\nA fixture finding.\n' >"$d/$SCOPE/01-findings.md"
 	printf '# Reviews charter\n\nThe root README is mutable.\n' >"$d/$REV_DIR/README.md"
 	git -C "$d" add -A
@@ -165,6 +168,63 @@ printf 'An amendment to the charter.\n' >>"$d/$REV_DIR/README.md"
 git -C "$d" add -A
 git -C "$d" commit -qm "amend the charter"
 expect pass "$d" "the root README stays mutable"
+
+# --- RD004: every review names the commit it read (itd-28) --------------------
+
+# addreview <repo> <dir-name> <summary-text> commits one new review folder.
+addreview() {
+	mkdir -p "$1/$REV_DIR/$2"
+	printf '%s' "$3" >"$1/$REV_DIR/$2/00-summary.md"
+	git -C "$1" add -A
+	git -C "$1" commit -qm "add review $2"
+}
+
+# A review filed without the pin is refused: its age can never be told.
+d="$(newrepo rd004-missing)"
+addreview "$d" 2026-09-26-no-pin $'# Review summary\n\nNo frontmatter at all.\n'
+expect fail "$d" "RD004 a review summary without review_of_commit" "RD004"
+
+# The key in the body is not the key: only the leading frontmatter block counts,
+# the board's one reading of it (internal/core/reviews.Pin).
+d="$(newrepo rd004-body)"
+addreview "$d" 2026-09-26-in-body "# Review summary
+
+review_of_commit: $PIN
+"
+expect fail "$d" "RD004 the key in the body, not the frontmatter" "RD004"
+
+# An abbreviated sha names no commit for certain, and a quoted one is a string
+# the board does not read as a pin; both are refused, so gate and board agree.
+d="$(newrepo rd004-short)"
+addreview "$d" 2026-09-26-short $'---\nreview_of_commit: 0123456\n---\n# S\n'
+expect fail "$d" "RD004 an abbreviated sha" "RD004"
+d="$(newrepo rd004-quoted)"
+addreview "$d" 2026-09-26-quoted "---
+review_of_commit: \"$PIN\"
+---
+# S
+"
+expect fail "$d" "RD004 a quoted sha" "RD004"
+
+# The pinned shape passes, a review of a spec among them (<date>-<spc-N>-<slug>),
+# with a trailing comment and CRLF line ends, which the board reads the same way.
+d="$(newrepo rd004-pinned)"
+addreview "$d" 2026-09-26-spc-2609211854150455-rp-reviews "---"$'\r\n'"review_of_commit: $PIN # the tree read"$'\r\n'"---"$'\r\n'"# S"$'\r\n'
+expect pass "$d" "RD004 a pinned review of a spec"
+
+# A folder from before the rule is named as legacy, not refused. The legacy set
+# is closed: these three names and no others.
+d="$(newrepo rd004-legacy)"
+addreview "$d" 2026-07-06-plan-consistency $'# Legacy summary\n'
+expect pass "$d" "RD004 a legacy folder is named, not refused" "RD004 legacy"
+
+# A sha-keyed receipt directory is pinned by its own name and has no summary.
+d="$(newrepo rd004-receipt)"
+mkdir -p "$d/$REV_DIR/$PIN"
+printf '{}\n' >"$d/$REV_DIR/$PIN/gate.json"
+git -C "$d" add -A
+git -C "$d" commit -qm "add a receipt"
+expect pass "$d" "RD004 a receipt directory is exempt"
 
 # --- environment polarities --------------------------------------------------
 

@@ -167,7 +167,7 @@ func TestAbcdRunbookNumbersExtraGates(t *testing.T) {
 	for _, want := range []string{
 		"6. Record-lint (design-record drift gate)",
 		"7. Docs-lint (docs-currency gate)",
-		"8. Reviews-charter discipline (RD001-RD003)",
+		"8. Reviews-charter discipline (RD001-RD004)",
 		"9. Smoke every command (self-discovering harness)",
 	} {
 		if !strings.Contains(book, want) {
