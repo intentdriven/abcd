@@ -170,3 +170,28 @@ func TestBlockValueKeepsABalancedLeadingCodeSpan(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockValueKeepsATripleBacktickSpanAProseLine (iss-2609262309556167): a
+// balanced leading run of three or more backticks is left unescaped, which is
+// sound only while the renderer reads it as the span it is. A backtick run
+// whose info string holds a backtick opens no fence, so each value renders as
+// a paragraph carrying its text — never an empty command block, never a
+// refused page.
+func TestBlockValueKeepsATripleBacktickSpanAProseLine(t *testing.T) {
+	for s, text := range map[string]string{
+		"``` ```":       "<code>",
+		"```x```":       "<code>x</code>",
+		"``` x ```":     "<code>x</code>",
+		"```` ``` ````": "<code>```</code>",
+	} {
+		got := mdBlock(s)
+		html, err := siteRender(t, got)
+		if err != nil {
+			t.Errorf("mdBlock(%q) = %q does not render: %v", s, got, err)
+			continue
+		}
+		if strings.Contains(html, `class="cmd"`) || !strings.Contains(html, "<p>"+text) {
+			t.Errorf("mdBlock(%q) = %q rendered %q, want a paragraph holding %q", s, got, html, text)
+		}
+	}
+}

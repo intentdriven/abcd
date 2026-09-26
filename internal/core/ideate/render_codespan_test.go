@@ -82,3 +82,28 @@ func TestBlockTextEscapesAnOrderedMarkerFaithfully(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockTextLeavesATripleBacktickSpanAProseLine (iss-2609262309556167): a
+// balanced leading run of three or more backticks is left unescaped, which is
+// sound only while the renderer reads it as the span it is. A backtick run
+// whose info string holds a backtick opens no fence, so each of these renders
+// as a paragraph carrying its text — never an empty command block, never a
+// refused page.
+func TestBlockTextLeavesATripleBacktickSpanAProseLine(t *testing.T) {
+	for s, text := range map[string]string{
+		"``` ```":       "<code>",
+		"```x```":       "<code>x</code>",
+		"``` x ```":     "<code>x</code>",
+		"```` ``` ````": "<code>```</code>",
+	} {
+		got := blockText(s)
+		html, err := renderMarkdown(got)
+		if err != nil {
+			t.Errorf("blockText(%q) = %q does not render: %v", s, got, err)
+			continue
+		}
+		if strings.Contains(html, `class="cmd"`) || !strings.Contains(html, "<p>"+text) {
+			t.Errorf("blockText(%q) = %q rendered %q, want a paragraph holding %q", s, got, html, text)
+		}
+	}
+}

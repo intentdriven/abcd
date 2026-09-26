@@ -35,9 +35,8 @@ var fenceWriters = map[string]fenceWriter{
 	"internal/core/history/reconstruct_render.go":   {1, "a WRITER: writeFenced opens a fence longer than any backtick run in the body, the floor of three; it reads no fences"},
 	"internal/core/lifeboat/sources_conventions.go": {3, "judges one line or the whole text: a README prose measure skips a delimiter line, and a presence test asks whether any fence exists; neither tracks which lines a fence covers"},
 	"internal/core/reading/project.go":              {2, "fenceDelimiterRe judges one frontmatter line and refuses it; which lines a fence covers is floorFences, which reads mdrecord"},
-	"internal/core/mdrender/render.go":              {10, "the site renderer: it renders a block Blocks already cut by mdrecord's reading, refuses a fence form it does not render (tilde, four or more backticks), a list line that opens a fence and an indented code block; it keeps no fence state of its own"},
+	"internal/core/mdrender/render.go":              {9, "the site renderer: it renders a block Blocks already cut by mdrecord's reading, refuses a fence form it does not render (tilde, four or more backticks), a list line that opens a fence and an indented code block; its patterns name a line's form, whether the line opens a fence is OpensFence's to say, and it keeps no fence state of its own"},
 	"internal/core/release/page.go":                 {2, "a presence test: a headline carrying any delimiter is refused; it tracks nothing"},
-	"internal/core/site/compose.go":                 {1, "judges one block the site's Blocks already cut by mdrecord's reading: does it open with a fence"},
 	"internal/surface/cli/history_reconstruct.go":   {2, "a WRITER: the telemetry block is emitted inside one json fence; it reads no fences"},
 	"internal/surface/cli/reference.go":             {4, "a WRITER: the reference page emits its flag and example blocks as fences; it reads no fences"},
 }

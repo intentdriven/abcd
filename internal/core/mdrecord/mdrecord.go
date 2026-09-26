@@ -210,6 +210,29 @@ func fenceOpener(ln string, rule Rule) (run, rest string, indent int, ok bool) {
 	return m[1], m[2], indentWidth(ln), true
 }
 
+// opensFence is the tree's one fence-opener predicate: a delimiter under the
+// rule, except a backtick run whose info string holds a backtick, which is a
+// code span and opens nothing (CommonMark). Read opens every fence through it.
+func opensFence(ln string, rule Rule) (run string, indent int, ok bool) {
+	run, rest, indent, ok := fenceOpener(ln, rule)
+	if !ok || (run[0] == '`' && strings.Contains(rest, "`")) {
+		return "", 0, false
+	}
+	return run, indent, true
+}
+
+// OpensFence reports whether a line, read outside any open fence or comment,
+// opens a fenced code block under a rule. It is the opener Read applies,
+// exported for a reader that judges one line rather than walking a body — the
+// site renderer asking whether the block the walk handed it opens with a fence
+// — so that reader takes the walk's rule instead of a prefix test of its own,
+// which read a balanced span such as three backticks, x, three backticks as a
+// fence (iss-2609262309556167).
+func OpensFence(ln string, rule Rule) bool {
+	_, _, ok := opensFence(strings.TrimRight(ln, "\r"), rule)
+	return ok
+}
+
 // inItem reports whether a rule reads a fence opened at this indent as held by
 // a list item.
 func inItem(rule Rule, indent int) bool {
@@ -265,8 +288,7 @@ func Read(lines []string, rule Rule) Reading {
 				closeFence(i + 1)
 			}
 		default:
-			// A backtick opener's info string may not itself contain a backtick.
-			if run, rest, indent, ok := fenceOpener(ln, rule); ok && !(run[0] == '`' && strings.Contains(rest, "`")) {
+			if run, indent, ok := opensFence(ln, rule); ok {
 				fenceOpen, fenceIndent, fenceStart = run, indent, i
 				r.Mask[i] |= MaskFence
 				r.openLine, r.openFlag = i, MaskFence

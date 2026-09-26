@@ -100,3 +100,39 @@ func TestRenderBlockKeepsTheFencesItAlreadyRendered(t *testing.T) {
 		}
 	}
 }
+
+// A backtick run whose info string holds a backtick opens no fence (CommonMark,
+// and mdrecord's rule, by which the walk cut the block): the line is a
+// paragraph opening with a code span. The renderer read any three-backtick
+// prefix as a fence, so it rendered an empty command block with the text lost,
+// or refused the whole page over an info string the line never had
+// (iss-2609262309556167). A real fence still renders as one. (The span of a
+// lone space renders empty: the inline renderer trims a multi-backtick span's
+// spaces, a reading of its own this does not touch.)
+func TestRenderBlockReadsABacktickRunHoldingABacktickAsProse(t *testing.T) {
+	for md, want := range map[string]string{
+		"``` ```":              "<p><code></code></p>",
+		"```x```":              "<p><code>x</code></p>",
+		"``` x ```":            "<p><code>x</code></p>",
+		"```` ``` ````":        "<p><code>```</code></p>",
+		"```x``` after":        "<p><code>x</code> after</p>",
+		"prose\n```x``` after": "<p>prose\n<code>x</code> after</p>",
+	} {
+		got, err := testRenderer().RenderBlocks("docs/page.md", Blocks(md, 1))
+		if err != nil {
+			t.Errorf("%q: %v", md, err)
+			continue
+		}
+		if got != want {
+			t.Errorf("%q rendered %q, want %q", md, got, want)
+		}
+	}
+	for md, code := range map[string]string{
+		"```sh\nabcd lint\n```": `<code class="language-sh">abcd lint` + "\n</code>",
+		"```\n```x```\n```":     "<code>```x```\n</code>",
+	} {
+		if got := render(t, md); !strings.Contains(got, `<div class="cmd"><pre>`+code+`</pre>`) {
+			t.Errorf("%q: rendered %s, want the command block holding %q", md, got, code)
+		}
+	}
+}

@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/mdrender"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -1028,7 +1029,7 @@ func (c *composer) install(p *docPage, ch Chapter) (string, error) {
 		bl := Blocks(s.Body, s.BodyLine)
 		hasCode := false
 		for _, b := range bl {
-			if strings.HasPrefix(b.Text, "```") {
+			if mdrender.OpensFence(b) {
 				hasCode = true
 			}
 		}

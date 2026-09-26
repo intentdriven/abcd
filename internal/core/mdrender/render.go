@@ -161,6 +161,24 @@ var unrenderedFenceRe = regexp.MustCompile("^[ \t]*(~{3,}|`{4,})")
 // of indent. Four or more spaces is an indented code block, refused on its own.
 var indentedFenceRe = regexp.MustCompile("^ {0,3}```")
 
+// opensFence reports whether a line opens a fence by mdrecord's rule, the rule
+// the walk that cut the block read it by. The two form patterns above only say
+// which form a line has; whether it opens anything is this rule's to say. A
+// backtick run whose info string holds a backtick is a code span, not a fence:
+// read by a prefix test, a line such as three backticks, x, three backticks
+// rendered as an empty command block, its text lost, or refused the page over
+// an info string it never had (iss-2609262309556167). ListNested admits any
+// indent, and the form patterns decide which indents the renderer accepts.
+func opensFence(ln string) bool { return mdrecord.OpensFence(ln, mdrecord.ListNested) }
+
+// OpensFence reports whether a block the walk cut opens with a fence this
+// renderer renders as a command block: a three-backtick run at the left margin
+// that opens a fence by mdrecord's rule.
+func OpensFence(blk Block) bool {
+	first, _, _ := strings.Cut(blk.Text, "\n")
+	return strings.HasPrefix(first, "```") && !unrenderedFenceRe.MatchString(first) && opensFence(first)
+}
+
 // RenderBlock renders one top-level block.
 func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	at := Source{Path: path, Line: blk.Line}
@@ -173,10 +191,10 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	// arriving here would render as a paragraph, delimiters and code inlined
 	// into prose, with no error, so it is refused. A three-backtick fence's own
 	// body is code and is not read (iss-2609251514129841).
-	opensFence := indentedFenceRe.MatchString(first) && !unrenderedFenceRe.MatchString(first)
-	if !opensFence {
+	opens := indentedFenceRe.MatchString(first) && !unrenderedFenceRe.MatchString(first) && opensFence(first)
+	if !opens {
 		for i, ln := range lines {
-			if unrenderedFenceRe.MatchString(ln) {
+			if unrenderedFenceRe.MatchString(ln) && opensFence(ln) {
 				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block opened by a tilde or a run of four or more backticks",
 					"only a three-backtick fence renders; any other opener renders as a paragraph"}
 			}
@@ -189,16 +207,16 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	// arrives here most often as the fence of a loose list item, cut from its
 	// item by the blank line above it. Rendered as a paragraph it inlined the
 	// delimiters and the code into prose (iss-2609251600023777).
-	if opensFence && !strings.HasPrefix(first, "```") {
+	if opens && !strings.HasPrefix(first, "```") {
 		return r.indentedFence(path, blk, lines)
 	}
 
 	// An indented opener below the first line of a block that is not a list —
 	// whose items the list renderer dedents and reads fences in — is a fence
 	// without a blank line before it, refused as the one at the margin is below.
-	if !opensFence && !IsUnorderedItem(first) && !OrderedItemRe.MatchString(first) {
+	if !opens && !IsUnorderedItem(first) && !OrderedItemRe.MatchString(first) {
 		for i, ln := range lines {
-			if indentedFenceRe.MatchString(ln) {
+			if indentedFenceRe.MatchString(ln) && opensFence(ln) {
 				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block without a blank line before it",
 					"a fence opens its own block; without the blank line the code renders as part of the paragraph above"}
 			}
@@ -209,9 +227,9 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	// walk never sees it start, so the whole run — prose, backticks and code —
 	// arrives here as one paragraph, and every backtick would be escaped into the
 	// page as visible punctuation with the code inlined into the sentence.
-	if !strings.HasPrefix(first, "```") {
+	if !opens {
 		for i, ln := range lines {
-			if strings.HasPrefix(ln, "```") {
+			if strings.HasPrefix(ln, "```") && opensFence(ln) {
 				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block without a blank line before it",
 					"a fence opens its own block; without the blank line the code renders as part of the paragraph above"}
 			}
@@ -219,7 +237,7 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	}
 
 	switch {
-	case strings.HasPrefix(first, "```"):
+	case opens:
 		return r.fence(at, lines)
 	case strings.HasPrefix(strings.TrimSpace(first), "<!--"):
 		return r.commentBlock(at, lines)
@@ -522,7 +540,7 @@ func (r *Renderer) listItem(at Source, body []string) (string, error) {
 	split := len(body)
 	for i := 1; i < len(body); i++ {
 		t := strings.TrimLeft(body[i], " \t")
-		if IsUnorderedItem(t) || OrderedItemRe.MatchString(t) || strings.HasPrefix(t, "```") ||
+		if IsUnorderedItem(t) || OrderedItemRe.MatchString(t) || (strings.HasPrefix(t, "```") && opensFence(t)) ||
 			strings.HasPrefix(t, ">") || strings.HasPrefix(t, "|") || HeadingRe.MatchString(t) {
 			split = i
 			break
