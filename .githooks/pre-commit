@@ -73,8 +73,10 @@ case $- in *x*) set +x ;; esac
 # builtins this hook steers on; a shadowed `continue` or `break` changes which lines
 # a loop reads or never ends it, so they are pinned with the tools (parity with
 # .githooks/commit-msg, where a no-op `continue` once cut the judged message to nothing).
+# `go`, `cd`, `pwd` and `trap` are on it for the sources refresh below, which builds
+# this checkout's abcd (parity with .githooks/commit-msg).
 unset -f git grep mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ \
-  declare continue break return local export set true 2>/dev/null || true
+  declare continue break return local export set true go cd pwd trap 2>/dev/null || true
 # A field separator the caller cannot choose: an inherited IFS changes how every
 # unquoted expansion below splits — including the sweep loop's, so it is pinned
 # before the sweep runs.
@@ -100,6 +102,19 @@ unset _fn 2>/dev/null || true
 # committer's environment. The Go parser pins the same ASCII-only reading.
 LC_ALL=C
 export LC_ALL
+# The Go toolchain for the sources refresh below, which builds this checkout's own
+# abcd, is resolved on the INHERITED PATH, to an absolute path, before the pin: it
+# lives wherever its installer put it. The same deliberate boundary as
+# .githooks/commit-msg draws, and it takes the Go environment with it (GOFLAGS,
+# GOROOT, GOTOOLCHAIN, GOCACHE are the committer's). The refresh only ever WIDENS
+# what this guard refuses from a store it already has, and a missing toolchain is
+# one warning line, never a refusal.
+go_bin=$(command -v go 2>/dev/null || true)
+case "$go_bin" in /*) ;; *) go_bin="" ;; esac
+# Where this hook was committed, resolved before the directory change below: its
+# parent is the checkout whose ./cmd/abcd the refresh builds.
+hook_dir="${0%/*}"
+case "$hook_dir" in /*) ;; *) hook_dir="$PWD/$hook_dir" ;; esac
 # PATH is pinned to the standard system directories. A repo-scoped PATH prepend — a
 # direnv file, an editor task, a shell rc a repo asked to be sourced — shipping a
 # fake `grep` that always exits 1 would leave this guard announcing its entry count
@@ -396,16 +411,6 @@ refuse_store_copy() {
   fi
 }
 
-# Refresh the generated block from the user-level sources corpus when present
-# (itd-76 dogfood): keeps the banlist as fresh as the current commit. No-op on
-# machines without the corpus; a failed refresh falls back to the existing
-# (possibly stale) banlist with a warning rather than blocking the commit.
-sync_banlist="$HOME/.abcd/sources/bin/sync-banlist"
-if [ -x "$sync_banlist" ]; then
-  "$sync_banlist" "$(pwd)" >/dev/null 2>&1 \
-    || echo "pre-commit: warning — banlist refresh failed; checking existing banlist." >&2
-fi
-
 # A path that exists but is not a REGULAR FILE is tampering, not non-adoption: a
 # symlink (which `git add -f` can commit, so a checkout materialises it) swaps or
 # empties the guard, and a directory or FIFO there would take the "absent" branch
@@ -444,6 +449,136 @@ refuse_non_regular_store "$banlist" "$banlist_dir" "$banlist"
 if [ -n "$primary_banlist" ]; then
   refuse_non_regular_store "$primary_banlist" "$primary_dir" "$primary_label"
 fi
+
+# --- itd-76: refresh the sources corpus's generated block ----------------------
+# The user-level sources corpus (`abcd source`) projects every confidential
+# source's title and aliases (and, where an entry opts in, its authors) into a
+# generated block of this working tree's private store. The block is refreshed
+# HERE, after the store has passed the tampering refusals above and before it is
+# read, so the check is never more than this commit stale.
+#
+# Never a failure, never silent, and never a store this commit did not already
+# have. Each branch below is ONE line and the commit proceeds:
+#   * no corpus — CI, a fresh clone, every machine that never made one;
+#   * no private store in this working tree — the refresh updates a store, it never
+#     creates one, because creating it writes every confidential title into this
+#     repository's local tier, which is the person's act (`abcd source
+#     sync-banlist`, by hand), not a side effect of a commit;
+#   * a legacy store — named with its migration on the first commit that meets it
+#     and not again, because a line printed on every commit is a line the
+#     committer learns to skip (the store's own format line below says "legacy" on
+#     every commit regardless);
+#   * a tree that does not build.
+# Otherwise the refresh runs and its own output is RELAYED, never discarded: its
+# one-line count is how a refresh that wrote fewer patterns than the last one
+# becomes visible, and its refusals name keys only.
+#
+# The binary is THIS checkout's own ./cmd/abcd, built the way .githooks/commit-msg
+# builds it, and never an installed abcd: in a source checkout an installed abcd is
+# whatever was last released, stale by construction and possibly without the
+# `source` verb at all. The corpus location is the default one; relocating the
+# user-level home is a separate design (itd-77).
+sources_corpus="${HOME:-}/.abcd/sources"
+sources_noticed="$banlist_dir/sources-legacy-noticed"
+
+# sources_relay runs one refresh binary and relays what it says, prefixed. A binary
+# that has no `source sync-banlist --refresh` is ONE line naming the remedy, not a
+# failure, and its own error text is not relayed.
+sources_relay() {
+  _bin="$1"
+  _what="$2"
+  _rc=0
+  _out=$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX
+    "$_bin" source sync-banlist --refresh 2>&1) || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    _help=$("$_bin" source sync-banlist --help 2>&1 || true)
+    case $_help in
+      *--refresh*) ;;
+      *)
+        echo "pre-commit: $_what has no 'source sync-banlist --refresh', so the sources banlist block was not refreshed (skipped)" >&2
+        return 0
+        ;;
+    esac
+  fi
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    if [ -n "$_line" ]; then
+      printf 'pre-commit: %s\n' "$_line" >&2
+    fi
+  done <<<"$_out"
+  if [ "$_rc" -ne 0 ]; then
+    echo "pre-commit: warning — the sources banlist refresh failed; the banlist is checked as it stands." >&2
+  fi
+}
+
+# sources_refresh builds this checkout's abcd into a scratch directory and runs the
+# refresh with it. Every way the build cannot happen is one warning line.
+sources_refresh() {
+  _src=""
+  for _cand in "$hook_dir/.." "$toplevel"; do
+    if [ -f "$_cand/go.mod" ] && [ -d "$_cand/cmd/abcd" ]; then
+      _src="$(cd "$_cand" && pwd)"
+      break
+    fi
+  done
+  if [ -z "$_src" ]; then
+    echo "pre-commit: warning — no abcd source (./cmd/abcd) beside this hook or in this working tree to build the sources refresh from; the banlist is checked as it stands." >&2
+    return 0
+  fi
+  if [ -z "$go_bin" ]; then
+    echo "pre-commit: warning — go is not on PATH, so ./cmd/abcd could not be built for the sources refresh; the banlist is checked as it stands." >&2
+    return 0
+  fi
+  # -overlay swaps source files and -toolexec runs every compile step through
+  # another program: with either, the build is not this checkout's source, and its
+  # binary is not run. go splits GOFLAGS on blanks and quotes; so does this.
+  _goflags=$(cd "$_src" && "$go_bin" env GOFLAGS 2>/dev/null) || _goflags="-toolexec"
+  _goflags=${_goflags//[\"\']/ }
+  _goflags=${_goflags//$'\r'/ }
+  set -f
+  for _flag in $_goflags; do
+    case "$_flag" in
+      -overlay | -overlay=* | --overlay | --overlay=* | -toolexec | -toolexec=* | --toolexec | --toolexec=*)
+        set +f
+        echo "pre-commit: warning — could not build ./cmd/abcd from this checkout for the sources refresh (GOFLAGS carries -overlay or -toolexec, or go env failed); the banlist is checked as it stands." >&2
+        return 0
+        ;;
+    esac
+  done
+  set +f
+  _work=$(mktemp -d "${TMPDIR:-/tmp}/abcd-pre-commit.XXXXXX") || {
+    echo "pre-commit: warning — could not create a scratch directory to build ./cmd/abcd for the sources refresh; the banlist is checked as it stands." >&2
+    return 0
+  }
+  trap 'rm -rf "$_work"' EXIT INT TERM HUP
+  if (cd "$_src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+    "$go_bin" build -buildvcs=false -o "$_work/abcd" ./cmd/abcd) >/dev/null 2>&1 && [ -x "$_work/abcd" ]; then
+    sources_relay "$_work/abcd" "the abcd built from this checkout"
+  else
+    echo "pre-commit: warning — could not build ./cmd/abcd from this checkout (run 'go build ./cmd/abcd' to see why), so the sources banlist block was not refreshed; the banlist is checked as it stands." >&2
+  fi
+  rm -rf "$_work"
+  trap - EXIT INT TERM HUP
+}
+
+if [ -z "${HOME:-}" ] || [ ! -d "$sources_corpus" ]; then
+  echo "pre-commit: no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)" >&2
+elif [ ! -f "$banlist" ]; then
+  echo "pre-commit: this working tree has no private store at $banlist, and the sources refresh never creates one; run 'abcd source sync-banlist' here to opt in (skipped)" >&2
+else
+  sources_first=""
+  IFS= read -r sources_first < "$banlist" || true
+  if declares_format "$sources_first"; then
+    sources_refresh
+  elif [ ! -e "$sources_noticed" ] && [ ! -L "$sources_noticed" ]; then
+    echo "pre-commit: $banlist predates the keyed format, so the sources banlist block is not refreshed into it; migrate it once with 'abcd banlist migrate' (said once per working tree)" >&2
+    # Created with O_EXCL (noclobber), in a directory the refusals above proved is
+    # not a symlink, so the marker can never truncate a file it points at.
+    (set -C; : >"$sources_noticed") 2>/dev/null || true
+  fi
+fi
+# --- end itd-76 refresh -------------------------------------------------------
 
 # Which stores does this checkout actually have? Two at most: this working tree's
 # own, and — in a linked worktree — the primary checkout's, inherited.

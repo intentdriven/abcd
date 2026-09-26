@@ -601,14 +601,16 @@ func RemovePrivate(repoRoot, key string) (PrivateResult, error) {
 	return res, nil
 }
 
-// legacyStoreRefusal words the one migration a verb will not perform. Writing a
-// KEY<space>PATTERN line into a legacy store would not merely add an entry: the
-// next reader that sees a declaration reinterprets every OTHER line, so a store of
-// whole-line patterns would silently start matching remainders. The user adds one
-// line and keeps control of what their patterns mean.
+// legacyStoreRefusal words the one migration a mutating verb will not perform on
+// the side. Writing a KEY<space>PATTERN line into a legacy store would not merely
+// add an entry: the next reader that sees a declaration reinterprets every OTHER
+// line, so a store of whole-line patterns would silently start matching
+// remainders. The migration is its own visible act (MigratePrivate, `abcd banlist
+// migrate`), which keys every line so it keeps matching what it matched.
 func legacyStoreRefusal(verb string) error {
 	return fmt.Errorf("%w: %s predates the keyed format, so every line in it is a whole-line pattern; "+
-		"to %s it, add this as the file's FIRST line and give each existing line a key — %s",
+		"to %s it, migrate it once with `abcd banlist migrate`, which keys every line as entry-<line> and changes nothing it matches "+
+		"(or add %q as its FIRST line and key each line by hand)",
 		ErrLegacyStore, PrivateRelPath, verb, privateFormatDecl)
 }
 

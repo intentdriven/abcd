@@ -95,6 +95,7 @@ var helpPlacements = map[string]helpPlacement{
 	"intent":    {group: groupRecords},
 	"memory":    {group: groupRecords},
 	"spec":      {group: groupRecords},
+	"source":    {group: groupRecords},
 	"lint":      {group: groupChecks},
 	"disembark": {group: groupPortability},
 	"embark":    {group: groupPortability},

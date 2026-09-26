@@ -253,7 +253,13 @@ func TestEveryExclusiveFlagGroupRefusesAsAUsageError(t *testing.T) {
 		args := append([]string{}, g.path...)
 		for _, name := range g.flags[:2] {
 			args = append(args, "--"+name)
-			if f := findByPath(root, g.path).Flags().Lookup(name); f.Value.Type() != "bool" {
+			// A placeholder the flag's own type parses, so the refusal is the
+			// group's and never the value's.
+			switch f := findByPath(root, g.path).Flags().Lookup(name); f.Value.Type() {
+			case "bool":
+			case "int", "int64", "uint", "uint64":
+				args = append(args, "1")
+			default:
 				args = append(args, "v0.0.0")
 			}
 		}

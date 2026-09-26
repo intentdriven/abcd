@@ -455,6 +455,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))
+	root.AddCommand(newSourceCommand(&asJSON))
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newRulesCommand(&asJSON))
 	root.AddCommand(newHookCommand())
@@ -491,6 +492,7 @@ func NewRootCommand() *cobra.Command {
 	// them the token may be a private pattern. Applied here rather than in the verb
 	// so the ordering is explicit — the generic pass would otherwise overwrite it.
 	applyBanlistFlagErrors(root)
+	applySourceFlagErrors(root)
 	// Also after the generic tagging: the assemble verb's flag refusal names the
 	// two operands the design admits, because the operand it most often refuses
 	// is one it used to take (adr-2609021016286571).

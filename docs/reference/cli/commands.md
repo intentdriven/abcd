@@ -140,6 +140,19 @@ Render the banned-names layers, private entries by key only: Writes nothing; ref
       --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
+#### `abcd banlist migrate`
+
+Key a legacy private store in place, every line matching what it matched: Writes the private store; refuses when no private store exists.
+
+**Usage:** `abcd banlist migrate`
+
+Convert a legacy private store (.abcd/.work.local/private-names.txt with no
+'# abcd-banlist: keyed' first line, every line a whole-line pattern) to the keyed
+format: the declaration becomes line 1, and each pattern keeps its exact bytes under
+the key the guard already names it by, entry-<its line>. Comments and blank lines
+survive. add, remove and `abcd source sync-banlist` refuse a legacy store with entries
+until it is migrated. A keyed store is left alone. No pattern is printed.
+
 #### `abcd banlist remove`
 
 Remove one banned-name entry from the layer a flag names: Writes that layer's store; refuses a public entry curated by hand.
@@ -1756,6 +1769,166 @@ Take the website from this checkout to a live address: Writes its files, and the
       --domain string   custom domain to route to the host when the composition names none
       --name string     host name when the composition names none (default: the repository's name)
       --yes             confirm the forge and host changes without being asked; without it an unanswered run declines them
+```
+
+### `abcd source`
+
+Render the sources corpus and its ledgers, read-only: Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.
+
+**Usage:** `abcd source`
+
+The personal sources corpus: documents you may consult, a CSL-JSON bibliography, and one
+append-only influence ledger per repository, in a local-only git repository with no
+remote (~/.abcd/sources by default; --corpus names another). The folder a source sits
+in — confidential/<key>/ or public/<key>/ — is its classification.
+
+Consult freely, cite deliberately: confidential entries are projected into this
+repository's untracked private banlist (sync-banlist), which the committed pre-commit
+guard refreshes and enforces; cite-check clears text before it leaves the machine; and
+a ledger line becomes a public citation only when the source permits it AND a person
+flips the line (adr-41). No output names a confidential source except by key.
+
+Bare `abcd source` is read-only. Exit 3 when there is no corpus, on every verb but init.
+
+**Flags:**
+
+```
+      --corpus string   the corpus directory (absolute; default ~/.abcd/sources)
+```
+
+#### `abcd source add`
+
+Register a source under its class folder, with its entry and text: Writes the corpus and commits it; refuses without one of --confidential or --public.
+
+**Usage:** `abcd source add [document] [flags]`
+
+Register a source: write its CSL-JSON entry (with the custom block), store the document
+as original.<ext> and its extracted text as text.md under confidential/<key>/ or
+public/<key>/, and commit the corpus. The class is declared here, once: exactly one
+of --confidential or --public is required. abcd converts nothing and fetches nothing:
+a Markdown or text document is its own text, any other needs --text, and a URL
+alone registers a metadata stub.
+
+A confidential entry's title, aliases and (under --ban-authors) authors become banned
+phrases, so each must hold at least three letters or digits, and its key must not
+contain any of them — the key is what every refusal and scan prints. Pass those
+strings with --meta FILE (or --meta - on stdin) to keep them out of argv and shell
+history.
+
+**Flags:**
+
+```
+      --alias stringArray      another identifying name for a confidential source (repeatable)
+      --author stringArray     an author, "Family, Given" or a literal name (repeatable)
+      --ban-authors            also ban the authors' names (a confidential source whose authorship is itself identifying)
+      --confidential           file the source under confidential/ (exclusive with --public)
+      --key string             the source key: lowercase, opaque for a confidential source (e.g. conf2026a)
+      --keywords stringArray   retrieval keywords, comma-separated (repeatable)
+      --meta string            a JSON file (or - for stdin) with "title", "aliases", "author" and "keywords"
+      --permission string      permission_status: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default by class)
+      --public                 file the source under public/ (exclusive with --confidential)
+      --text string            the extracted text of a non-text document
+      --title string           the exact title (for a confidential source prefer --meta)
+      --type string            the CSL item type (default document)
+      --url string             the canonical URL (recorded, never fetched)
+      --venue string           the container title (journal, site, publisher)
+      --year int               the year of issue
+```
+
+#### `abcd source cite-check`
+
+Scan text for confidential sources and report each hit by key only: Writes nothing; refuses without a corpus, and exits 1 on a hit.
+
+**Usage:** `abcd source cite-check <file|->`
+
+Scan a file, or stdin with -, for every confidential source's title, aliases and
+opted-in authors, through the private banlist's matcher — the engine the pre-commit
+guard runs. Offenders are reported by key, field, line and byte offset, never by the
+text matched, so the report is safe to relay. The offset counts bytes from the start
+of the whole text, not from the start of the line, to the start of the matched span,
+which can be the one byte before the phrase that bounds it. Exit 1 when anything is found.
+
+#### `abcd source declassify`
+
+Move a published confidential source to public/ in one visible commit: Writes the corpus and commits it; refuses a key that is not confidential.
+
+**Usage:** `abcd source declassify <key> [flags]`
+
+Declassify a confidential source once it is published: `git mv` its folder from
+confidential/ to public/ and set the entry's confidential flag and permission_status
+(citable unless --permission says otherwise), in one corpus commit. The next
+sync-banlist drops its strings, and its ledger lines become flippable.
+
+**Flags:**
+
+```
+      --permission string   permission_status after the move: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default citable)
+```
+
+#### `abcd source init`
+
+Create an empty sources corpus, a git repository with no remote: Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.
+
+**Usage:** `abcd source init`
+
+Create the corpus at its location (0700): a git repository with no remote, an empty
+sources.json and a README, in one commit. Refuses an existing corpus, a non-empty
+directory, and a location inside another repository's working tree.
+
+#### `abcd source ledger`
+
+Append an influence line to this repository's ledger, or flip one to cited: Writes one ledger line; refuses a flip for a source that is not public and citable.
+
+**Usage:** `abcd source ledger [flags]`
+
+Append one influence record — {ts, repo, decision_ref, claim, source_key, locator,
+influence, cited_publicly: false} — to this repository's ledger in the corpus, and
+commit it. The ledger is append-only: a correction is a new line (--corrects N).
+
+--flip N is the person's act of citing line N publicly. It checks the source first
+(adr-41 gate 1: the folder is public/ and permission_status is citable), refuses
+naming the failing gate, and on success appends a NEW line with cited_publicly true.
+An agent never runs it. --list prints the ledger, numbered.
+
+The repository is named by its root commit's first twelve hex digits unless --repo
+names it.
+
+**Flags:**
+
+```
+      --claim string          what was decided or claimed
+      --corrects int          the line this record corrects
+      --decision string       the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text
+      --flip int              cite line N publicly (the person's act; checks the source's permission first)
+      --influence string      the influence: supports | contradicts | method | background
+      --list                  print the ledger, numbered (read-only)
+      --locator string        where in the source (pp., §)
+      --repo string           the ledger's repository handle (default: this checkout's root commit, 12 hex digits)
+      --source string         the source key
+      --used-in stringArray   a repository-relative path the influence landed in (repeatable)
+```
+
+#### `abcd source sync-banlist`
+
+Project confidential titles and aliases into the private banlist: Writes the store's generated block; refuses a corpus whose folders and entries disagree.
+
+**Usage:** `abcd source sync-banlist [flags]`
+
+Regenerate the corpus's block in this repository's untracked private banlist
+(.abcd/.work.local/private-names.txt, the banlist verb's private layer): every
+confidential source's title and aliases, and its authors under ban_authors, as
+whitespace-flexible, case-insensitive phrases. Lines outside the block survive.
+A corpus whose folders and entries disagree is refused and nothing is written.
+
+--refresh is the pre-commit guard's mode: it updates a private store that already
+exists and declares the keyed format, and never creates one. With no corpus, no store
+or a legacy store (migrate it with `abcd banlist migrate`) it says so on one line and
+exits 0.
+
+**Flags:**
+
+```
+      --refresh   the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0
 ```
 
 ### `abcd spec`

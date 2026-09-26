@@ -268,6 +268,12 @@
       ]
     },
     {
+      "path": "abcd banlist migrate",
+      "hidden": false,
+      "sentence": "Key a legacy private store in place, every line matching what it matched: Writes the private store; refuses when no private store exists.",
+      "flags": []
+    },
+    {
       "path": "abcd banlist remove",
       "hidden": false,
       "sentence": "Remove one banned-name entry from the layer a flag names: Writes that layer's store; refuses a public entry curated by hand.",
@@ -2067,6 +2073,251 @@
         },
         {
           "name": "yes",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd source",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Render the sources corpus and its ledgers, read-only: Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.",
+      "flags": [
+        {
+          "name": "corpus",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd source add",
+      "hidden": false,
+      "sentence": "Register a source under its class folder, with its entry and text: Writes the corpus and commits it; refuses without one of --confidential or --public.",
+      "flags": [
+        {
+          "name": "alias",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "author",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "ban-authors",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "confidential",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "key",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "keywords",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "meta",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "permission",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "public",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "text",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "title",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "type",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "url",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "venue",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "year",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd source cite-check",
+      "hidden": false,
+      "sentence": "Scan text for confidential sources and report each hit by key only: Writes nothing; refuses without a corpus, and exits 1 on a hit.",
+      "flags": []
+    },
+    {
+      "path": "abcd source declassify",
+      "hidden": false,
+      "sentence": "Move a published confidential source to public/ in one visible commit: Writes the corpus and commits it; refuses a key that is not confidential.",
+      "flags": [
+        {
+          "name": "permission",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd source init",
+      "hidden": false,
+      "sentence": "Create an empty sources corpus, a git repository with no remote: Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
+      "flags": []
+    },
+    {
+      "path": "abcd source ledger",
+      "hidden": false,
+      "sentence": "Append an influence line to this repository's ledger, or flip one to cited: Writes one ledger line; refuses a flip for a source that is not public and citable.",
+      "flags": [
+        {
+          "name": "claim",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "corrects",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "decision",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "flip",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "influence",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "list",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "locator",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "repo",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "source",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "used-in",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd source sync-banlist",
+      "hidden": false,
+      "sentence": "Project confidential titles and aliases into the private banlist: Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
+      "flags": [
+        {
+          "name": "refresh",
           "shorthand": "",
           "type": "bool",
           "required": false,

@@ -43,6 +43,8 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses without exactly one of --private or --public.",
 	"abcd banlist list": "Render the banned-names layers, private entries by key only: " +
 		"Writes nothing; refuses --private and --public together.",
+	"abcd banlist migrate": "Key a legacy private store in place, every line matching what it matched: " +
+		"Writes the private store; refuses when no private store exists.",
 	"abcd banlist remove": "Remove one banned-name entry from the layer a flag names: " +
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
@@ -251,6 +253,21 @@ var sentences = map[string]string{
 		"Writes only inside that directory; refuses a non-empty directory it did not write.",
 	"abcd site setup": "Take the website from this checkout to a live address: " +
 		"Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
+
+	"abcd source": "Render the sources corpus and its ledgers, read-only: " +
+		"Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.",
+	"abcd source add": "Register a source under its class folder, with its entry and text: " +
+		"Writes the corpus and commits it; refuses without one of --confidential or --public.",
+	"abcd source cite-check": "Scan text for confidential sources and report each hit by key only: " +
+		"Writes nothing; refuses without a corpus, and exits 1 on a hit.",
+	"abcd source declassify": "Move a published confidential source to public/ in one visible commit: " +
+		"Writes the corpus and commits it; refuses a key that is not confidential.",
+	"abcd source init": "Create an empty sources corpus, a git repository with no remote: " +
+		"Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
+	"abcd source ledger": "Append an influence line to this repository's ledger, or flip one to cited: " +
+		"Writes one ledger line; refuses a flip for a source that is not public and citable.",
+	"abcd source sync-banlist": "Project confidential titles and aliases into the private banlist: " +
+		"Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
 
 	"abcd spec": "Render the spec store's status: " +
 		"Writes nothing; refuses outside a git checkout.",
