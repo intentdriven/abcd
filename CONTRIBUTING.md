@@ -60,8 +60,10 @@ inbound = outbound statement is the whole of it.
   PATH. The repository
   ships its hooks in [`.githooks/`](.githooks/); they are per-machine opt-in —
   run `git config core.hooksPath .githooks` once per clone to arm the
-  pre-commit name guard, the commit-msg outbound check (it refuses a live
-  agent-session URL or a tool's attribution footer in a commit message, through
+  pre-commit name guard (it reads this machine's private banlist,
+  `.abcd/.work.local/private-names.txt`, which `abcd banlist add --private`
+  provisions; with no banlist it warns loudly and lets the commit through),
+  the commit-msg outbound check (it refuses a live agent-session URL or a tool's attribution footer in a commit message, through
   this checkout's own `abcd lint outbound`, built from `./cmd/abcd`, and refuses the commit when it cannot run
   the check) and the pre-push receipt check: a push of a commit the remote does
   not hold yet needs a passing `make preflight` run on that commit with nothing

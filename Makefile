@@ -227,8 +227,12 @@ lint-decisions:
 
 # Deterministic docs-currency gate (itd-60): the same internal/core/lint engine,
 # driven over docs/ and the repo root via the transport-agnostic `abcd lint docs`
-# verb. Blocking: change-narration in a doc body, a broken relative link, or a
-# stray root markdown file fails preflight and CI.
+# verb. Blocking: change-narration in a doc body, a broken relative link, a
+# persona the roster does not hold, or a stray root markdown file fails
+# preflight and CI. The link check also walks every other committed markdown
+# file record-lint does not — the root prose, the agent prompts, the plugin
+# command pages and the READMEs — through links_resolve's extra_roots in
+# .abcd/docs-lint.json (iss-46).
 docs-lint:
 	@go run ./cmd/abcd lint docs
 
