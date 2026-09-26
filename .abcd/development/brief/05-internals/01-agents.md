@@ -190,7 +190,7 @@ definition names the right paths, not that a host assembled the right context.
 Mechanical assembly belongs to `abcd scribe assemble`, which builds the context
 from an allow list derived from the ledger's own directory list and parks it with
 a manifest of every path passed; a third test holds the definition's list to
-that function ([`04-surfaces/31-scribe.md`](../04-surfaces/31-scribe.md)).
+that function ([`04-surfaces/32-scribe.md`](../04-surfaces/32-scribe.md)).
 
 The mechanical path exists beside the scribe: `abcd reading ingest` validates the
 output a reading returned and writes its reading records, `abcd capture
