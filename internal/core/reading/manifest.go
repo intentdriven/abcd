@@ -44,8 +44,12 @@ import (
 // `context_stamp`, the per-run token naming the reading kind, the run and a
 // digest of the item set, which a transcript retains and the separation check
 // reads (adr-2609021016275803, spc-2609020626045177); the manifest is untouched
-// and is restamped by the shared constant.
-const SchemaVersion = 10
+// and is restamped by the shared constant. At version 11 the closed `Kind`
+// vocabulary gains `principle`, which `DecodeManifest` refuses when it does not
+// know it, so a manifest carrying a principle item is a shape the previous
+// version cannot read; the bundle is restamped by the shared constant
+// (adr-2609021016270132, spc-2609020626042471).
+const SchemaVersion = 11
 
 // The two artefact type tags. They are carried in the documents themselves so a
 // reader of a loose file can tell the two apart without its filename.

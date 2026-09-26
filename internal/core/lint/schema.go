@@ -95,6 +95,10 @@ var (
 	// The reframe store is flat for the surprise store's reason: a reframe is
 	// keyed by the occasion and the fingerprints it carries (spc-2609020626048705).
 	reframeFileNumRe = recordid.FilenameNumRe(issueschema.ReframeFamily)
+	// The principles family is SLUG-KEYED (adr-2609021016270132): a principle's
+	// filename stem is its identity and it carries no ordinal, so the pattern
+	// captures the whole kebab stem where the numbered stores capture a number.
+	principleFileRe = regexp.MustCompile(`^([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
 	// A YAML block-scalar header and nothing else: `|`, `>`, with the chomping and
 	// indentation indicators the spelling allows (`|-`, `>+`, `|2-`). A key
 	// carrying one holds its value on the lines BELOW it, so the same-line scanner
@@ -243,6 +247,13 @@ type recordStore struct {
 	// field, so a disagreement is the record contradicting itself about which set
 	// it joined. Empty means the store makes no such double claim.
 	bucketField string
+	// slugKeyed declares a store whose records are keyed by their filename stem
+	// rather than by an ordinal: the handle is `<prefix>-<stem>`, fileNumRe's
+	// submatch 1 is the stem, and the store issues no number and so has no
+	// allocation high-water mark. The principles family is the one such store
+	// (adr-2609021016270132): its entries are prose files keyed by filename, and
+	// minting ordinals for them would cost every existing reference its handle.
+	slugKeyed bool
 }
 
 // recordJoin is one keying field a store declares, with what the join is FOR —
@@ -440,6 +451,14 @@ var recordStores = []recordStore{
 			why:   "a reframe is keyed to the reading record that occasioned it, and a join naming nothing joins nothing",
 			oneOf: issueschema.ReframeOccasionFamilies,
 		}}},
+	// The principles family (adr-2609021016270132, spc-2609020626042471): flat,
+	// slug-keyed, and declaring no required set here, because an untyped entry —
+	// a prose file with no frontmatter, which is every entry the family held when
+	// it was declared — is a legal state. What a typed entry must carry is judged
+	// by principle_claims (principles.go), which reads the four claim keys this
+	// rule does not; the one key this rule judges is the id, against the stem.
+	{prefix: "prn", noun: "principle", nodeType: "principle",
+		fileNumRe: principleFileRe, filename: "<slug>.md", slugKeyed: true},
 }
 
 // storeByPrefix returns the code-side store for a prefix.
@@ -466,9 +485,12 @@ func recordStorePrefixes() map[string]bool {
 // schemaRecord is one record file as the schema rule sees it: which store and
 // bucket hold it, the id number its FILENAME claims, and its frontmatter.
 type schemaRecord struct {
-	rel    string
-	store  recordStore
-	num    int
+	rel   string
+	store recordStore
+	num   int
+	// slug is the filename stem of a record in a slug-keyed store, and empty for
+	// every numbered one; num is zero where slug is set.
+	slug   string
 	bucket string
 	// title is the record's H1, or — for a store whose records carry none, the
 	// issue ledger — its first body line. The schema rule never reads it; it is
@@ -491,8 +513,12 @@ type schemaRecord struct {
 	blocks map[string]string
 }
 
-// handle renders the record's prose handle (adr-12, itd-47).
+// handle renders the record's prose handle (adr-12, itd-47), or for a
+// slug-keyed store the prefix and the filename stem (prn-fix-the-detector).
 func (r schemaRecord) handle() string {
+	if r.store.slugKeyed {
+		return r.store.prefix + "-" + r.slug
+	}
 	return r.store.prefix + "-" + strconv.Itoa(r.num)
 }
 
@@ -543,10 +569,18 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// (iss-2608270908346940). For the prose-handle stores the id-unique rules
 	// (issue_id_unique, intent_lifecycle, spec_id_unique) catch the frontmatter-id
 	// collision; the ADR store has no such rule, so this is its only guard.
-	index := map[recordRef]schemaRecord{}
+	//
+	// The index keys on the RENDERED handle, not on (prefix, ordinal): a
+	// slug-keyed store issues no ordinal, so keying on the pair would read every
+	// principle as prn-0 and report a clean store as thirty collisions. For a
+	// numbered store the rendered handle is the prefix-N string the pair spelled,
+	// so nothing about those stores moves; for the slug-keyed store it is
+	// prn-<stem>, which a filename-keyed directory can only hold once, so the leg
+	// reports nothing there today and stands guard over a second such store.
+	index := map[string]schemaRecord{}
 	highWater := map[string]int{}
 	for _, r := range records {
-		ref := recordRef{r.store.prefix, r.num}
+		ref := r.handle()
 		if first, dup := index[ref]; dup {
 			out = append(out, Finding{
 				File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: cfg.Severity,
@@ -556,7 +590,8 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		} else {
 			index[ref] = r
 		}
-		if r.num > highWater[r.store.prefix] {
+		// A slug-keyed store issues no ordinals and so has no high-water mark.
+		if !r.store.slugKeyed && r.num > highWater[r.store.prefix] {
 			highWater[r.store.prefix] = r.num
 		}
 	}
@@ -615,7 +650,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		for _, field := range recordRefFields {
 			f := r.fields[field]
 			for _, h := range r.refs[field] {
-				if _, ok := index[h]; ok || retired[h] {
+				if _, ok := index[h.String()]; ok || retired[h] {
 					continue
 				}
 				add(r.rel, f.line, field+" names '"+h.String()+"', which is not a record in the corpus and no record declares it superseded; a cross-reference is a claim that the record exists")
@@ -627,7 +662,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// resolvable everywhere else in the corpus.
 		sup := r.fields["supersedes"]
 		for _, h := range r.refs["supersedes"] {
-			if _, ok := index[h]; ok {
+			if _, ok := index[h.String()]; ok {
 				continue
 			}
 			if h.num >= 1 && h.num <= highWater[h.prefix] {
@@ -649,7 +684,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		for _, h := range targets {
-			target, ok := index[h]
+			target, ok := index[h.String()]
 			if !ok {
 				add(r.rel, sb.line, "superseded_by names '"+h.String()+"', which is not a record in the corpus; a successor decision must be present")
 				continue
@@ -667,7 +702,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	for _, r := range records {
 		sup := r.fields["supersedes"]
 		for _, h := range r.refs["supersedes"] {
-			target, ok := index[h]
+			target, ok := index[h.String()]
 			if !ok {
 				continue
 			}
@@ -699,6 +734,23 @@ func checkRecordFilename(r schemaRecord, severity string, judged map[string]bool
 	}
 	want := r.handle()
 	got := issueScalar(f.value)
+	// A slug-keyed store's handle carries the stem verbatim, so it is compared as
+	// the string it is: there is no ordinal to parse and no padding to forgive.
+	if r.store.slugKeyed {
+		if got == want {
+			return nil
+		}
+		line := f.line
+		if line == 0 {
+			line = 1
+		}
+		mark(judged, "id")
+		return []Finding{{
+			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity,
+			Message: "filename claims id '" + want + "' but frontmatter declares '" + got +
+				"'; a " + r.noun() + " is keyed by its filename, so its id is '" + r.store.prefix + "-' and the stem of " + r.store.filename,
+		}}
+	}
 	// Compared as a PARSED handle, not as a string: `adr-0012` and `adr-12` are one
 	// id written two ways (the rest of the rule already compares numerically), and
 	// a string comparison would report the record's own zero-padded spelling as a
@@ -769,6 +821,11 @@ func mark(judged map[string]bool, field string) {
 // filename grammar to match belongs on that record, because it changes what the
 // gate refuses across all four stores.
 func checkRecordFilenameSlug(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	// A slug-keyed store's filename IS its slug and it carries no slug property to
+	// disagree with; its one identity question is the id, asked above.
+	if r.store.slugKeyed {
+		return nil
+	}
 	f := r.fields["slug"]
 	// isNull, not isAbsentValue, for checkRecordFilename's reason: an empty slug
 	// is a value that disagrees, and the stores that would otherwise catch it
@@ -974,7 +1031,7 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 // (oneOf), so a prose occasion is a finding (spc-2609020626040342). A handle a record declares it PRUNED is resolved
 // too, on the same terms the cross-reference loop resolves it, so one rule gives
 // one answer about it.
-func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
+func checkRecordJoins(r schemaRecord, index map[string]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
 	var out []Finding
 	for _, join := range r.store.joins {
 		f := r.fields[join.field]
@@ -1035,7 +1092,7 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			continue
 		}
 		ref := recordRef{prefix, num}
-		target, ok := index[ref]
+		target, ok := index[ref.String()]
 		if !ok {
 			// A handle a record declares it PRUNED resolves to that declaration rather
 			// than to a file, exactly as the cross-reference loop in checkRecordSchema
@@ -1535,9 +1592,15 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 						"); the filename is the handle every cross-reference resolves through")
 					continue
 				}
-				num, err := strconv.Atoi(m[1])
-				if err != nil {
-					continue
+				num, slug := 0, ""
+				if store.slugKeyed {
+					slug = m[1]
+				} else {
+					n, err := strconv.Atoi(m[1])
+					if err != nil {
+						continue
+					}
+					num = n
 				}
 				content, err := os.ReadFile(filepath.Join(bucketAbs, e.Name()))
 				if err != nil {
@@ -1598,6 +1661,7 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 					rel:    rel,
 					store:  store,
 					num:    num,
+					slug:   slug,
 					bucket: bucket,
 					title:  recordTitle(lines),
 					fields: fields,

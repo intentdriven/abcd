@@ -58,7 +58,7 @@ func readingRepoAt(t *testing.T, root string) string {
 `)
 	write(".abcd/record-lint.json", `{"schema_version": 1, "rules": {"record_schema": {"enabled": true,
   "severity": "blocker", "record_stores": {"itd": ".abcd/development/intents", "spc": ".abcd/development/specs",
-  "rdi": ".abcd/work/issues/readings"}}}}`)
+  "rdi": ".abcd/work/issues/readings", "prn": ".abcd/development/principles"}}}}`)
 	write(".abcd/development/brief/01-product/06-framing.md", "# Framing\n\n## Construal\n\nA gap in the record.\n")
 	write(".abcd/development/brief/02-constraints/03-invariants.md", "# Invariants\n\n1. One core.\n")
 	// The rest of brief current text (itd-194). A walk row's source directory

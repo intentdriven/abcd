@@ -715,6 +715,43 @@ var coverage = []coverageRow{
 		Falsifier: "drop the admissions directory from issueschema.LedgerDirs, so the derived admissions row disappears",
 		Caught:    caughtFamily,
 	},
+	// ---- the knowledge record (spc-2609020626042471) ----
+	{
+		// The five rows below were each watched red on a scratch copy.
+		Rule:      "principles are admitted as their statement at the three assembling positions",
+		Falsifier: "delete the principle row from Table",
+		Caught:    caughtCarrier,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		Rule:      "the four principle claim keys never travel",
+		Falsifier: "delete the four claim-key rows from Exclusions",
+		Caught:    caughtLeak,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		// Watched: with the whole file admitted, the **Why.** paragraph's record
+		// handle reaches the principle item and verifyPrincipleItem refuses the
+		// run. Were that refusal also gone, the class would leak.
+		Rule:      "a principle's citations never travel: it is projected to its statement",
+		Falsifier: "project the whole file on the principle row (empty its Fields)",
+		Caught:    caughtRefusal,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		Rule:      "a link in a principle's statement travels as its label",
+		Falsifier: "stop unwrapping links in the labelled-paragraph resolution",
+		Caught:    caughtLeak,
+		Classes:   []string{"PRINCIPLE-CITATION"},
+	},
+	{
+		// Watched: with the row admitted at comparative the floor's comparative
+		// directory row refuses the run by path; with that row gone too, the
+		// family-absence oracle names the manifest that stopped asserting it.
+		Rule:      "the principle row is not admitted at the comparative position, and its manifest says so",
+		Falsifier: "add the comparative position to the principle row and delete the principles directory row from Exclusions",
+		Caught:    caughtFamily,
+	},
 	{
 		Rule:      "surprises never reach the comparative reading",
 		Falsifier: "add an include row for the surprises directory at comparative",

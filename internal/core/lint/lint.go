@@ -557,6 +557,15 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, ro...)
 	}
 
+	// The four principle rules read the same cross-store scan, and one run
+	// serves all four so the principles store, the shipped intents' condition
+	// markers and the corpus's handles are read once (spc-2609020626042471).
+	pr, err := checkPrinciples(repoRoot, cfg)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, pr...)
+
 	// record_provenance reads the same cross-store scan record_schema walks, so
 	// it runs once here rather than per root.
 	if rpCfg, ok := cfg.Rules[ruleRecordProvenance]; ok && rpCfg.Enabled {

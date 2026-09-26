@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -184,10 +185,16 @@ func deterministicPrinciples(abs string) ([]Principle, []PrincipleDrop, error) {
 			return
 		}
 		seen[adrID] = true
+		// The fallback carries what it can establish and invents nothing: the
+		// ADR it distilled from is what the principle is about, and the claim
+		// kind and the comparison are the record's words to state, not this
+		// function's, so they are declined as null (spc-2609020626042471).
+		reference := adrID
 		out = append(out, Principle{
 			ID:         prnID,
 			Principle:  principle,
 			Confidence: ConfidenceHigh,
+			Reference:  &reference,
 			Evidence:   []string{adrID, p},
 		})
 	})
@@ -221,6 +228,16 @@ func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, [
 	if len(pf.Principles) > maxPrinciples {
 		return nil, "", nil, fmt.Errorf("too many principles (%d > %d)", len(pf.Principles), maxPrinciples)
 	}
+	// The same entries read raw, so an absent key and a null one are told apart:
+	// the typed decode reads both as nil, and they are different claims — a key
+	// considered and declined is null, an absent key is a claim not carried, and
+	// schema version 2 requires every entry to carry all four.
+	var raws struct {
+		Principles []map[string]json.RawMessage `json:"principles"`
+	}
+	if err := json.Unmarshal(raw, &raws); err != nil || len(raws.Principles) != len(pf.Principles) {
+		return nil, "", nil, errors.New("malformed principles JSON: the entries cannot be read as objects")
+	}
 
 	valid, err := buildPrincipleEvidenceSet(abs)
 	if err != nil {
@@ -230,7 +247,7 @@ func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, [
 	var survivors []Principle
 	var drops []PrincipleDrop
 	seen := map[string]bool{}
-	for _, in := range pf.Principles {
+	for i, in := range pf.Principles {
 		drop := func(reason string) { drops = append(drops, PrincipleDrop{ID: in.ID, Reason: reason}) }
 		if len(in.ID) > maxSynthIDLen || !prnIDRe.MatchString(in.ID) {
 			drop("malformed principle id")
@@ -242,6 +259,11 @@ func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, [
 		}
 		if in.Confidence != ConfidenceHigh && in.Confidence != ConfidenceMedium && in.Confidence != ConfidenceLow {
 			drop("unknown confidence")
+			continue
+		}
+		claims, reason := principleClaims(raws.Principles[i], in)
+		if reason != "" {
+			drop(reason)
 			continue
 		}
 		refs := filterSynthEvidence(in.Evidence, valid)
@@ -262,10 +284,50 @@ func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, [
 			ID:         in.ID,
 			Principle:  clean,
 			Confidence: in.Confidence,
+			ClaimType:  claims.ClaimType,
+			Reference:  claims.Reference,
+			Comparison: claims.Comparison,
 			Evidence:   refs,
 		})
 	}
 	return survivors, pf.PromptVersion, drops, nil
+}
+
+// principleClaims validates one delegated entry's three claim keys against its
+// raw object and returns them cleaned, or the reason the entry is dropped.
+// Every key must be present; null is allowed on the three; claim_type is one of
+// the record's three claim kinds, with the shipped intent token `mechanism`
+// read as, and written back as, `causal`; a stated reference or comparison is
+// sanitised prose that must survive sanitising.
+func principleClaims(raw map[string]json.RawMessage, in Principle) (Principle, string) {
+	for _, k := range append([]string{}, lint.PrincipleKeys...) {
+		if _, ok := raw[k]; !ok {
+			return Principle{}, "missing " + k + " key (a claim considered and declined is null)"
+		}
+	}
+	var out Principle
+	if in.ClaimType != nil {
+		ct, ok := lint.CanonicalClaimType(*in.ClaimType)
+		if !ok {
+			return Principle{}, "unknown claim_type (want " + strings.Join(lint.ClaimTypes, ", ") + " or null)"
+		}
+		out.ClaimType = &ct
+	}
+	for _, f := range []struct {
+		key string
+		in  *string
+		out **string
+	}{{"reference", in.Reference, &out.Reference}, {"comparison", in.Comparison, &out.Comparison}} {
+		if f.in == nil {
+			continue
+		}
+		clean := cleanSynthProse(*f.in)
+		if clean == "" {
+			return Principle{}, "empty " + f.key + " (a claim considered and declined is null)"
+		}
+		*f.out = &clean
+	}
+	return out, ""
 }
 
 // buildPrincipleEvidenceSet is the union R∪F∪P a delegated principle's evidence
@@ -332,11 +394,23 @@ func renderPrinciplesMarkdown(f PrinciplesFile) string {
 	for _, p := range f.Principles {
 		fmt.Fprintf(&b, "## %s (%s)\n\n", sanitize(p.ID), sanitize(string(p.Confidence)))
 		fmt.Fprintf(&b, "%s\n\n", sanitize(p.Principle))
+		fmt.Fprintf(&b, "Claim type: %s\n\n", claimOrNone(p.ClaimType))
+		fmt.Fprintf(&b, "Reference: %s\n\n", claimOrNone(p.Reference))
+		fmt.Fprintf(&b, "Comparison: %s\n\n", claimOrNone(p.Comparison))
 		if len(p.Evidence) > 0 {
 			fmt.Fprintf(&b, "Evidence: %s\n\n", strings.Join(sanitizeAll(p.Evidence), ", "))
 		}
 	}
 	return b.String()
+}
+
+// claimOrNone renders a claim key for principles.md: its sanitised value, or
+// the words a declined claim reads as.
+func claimOrNone(v *string) string {
+	if v == nil {
+		return "none stated"
+	}
+	return sanitize(*v)
 }
 
 // ---------------------------------------------------------------------------

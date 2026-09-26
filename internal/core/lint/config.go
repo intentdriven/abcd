@@ -391,6 +391,10 @@ var knownRules = map[string]bool{
 	ruleProseCitationResolves:   true,
 	ruleReadingOutstanding:      true,
 	ruleRecordProvenance:        true,
+	rulePrincipleUntyped:        true,
+	rulePrincipleClaims:         true,
+	rulePrincipleInheritance:    true,
+	rulePrincipleFalsified:      true,
 	ruleRecordSchema:            true,
 }
 

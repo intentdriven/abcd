@@ -14,7 +14,7 @@ production_mode: dictated-and-formatted
 
 # A principle carries typed claims, its reference, its comparison and its evidence, its statement is readable cold, and it inherits only what held
 
-Typed links: `builds_on` [itd-181](../shipped/itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) (scope-condition disposition), [itd-177](../shipped/itd-177-an-intent-s-claims-are-typed-and-its-scope-conditions-keep-t.md) (claim typing), [itd-190](../disciplines/itd-190-the-claim-recording-gradient-an-intent-s-three-claim-kinds-c.md) (the claim recording gradient), [itd-183](../shipped/itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (field projection); `refines` [itd-181](../shipped/itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) (the first consumer of a condition's disposition).
+Typed links: `builds_on` [itd-181](itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) (scope-condition disposition), [itd-177](itd-177-an-intent-s-claims-are-typed-and-its-scope-conditions-keep-t.md) (claim typing), [itd-190](../disciplines/itd-190-the-claim-recording-gradient-an-intent-s-three-claim-kinds-c.md) (the claim recording gradient), [itd-183](itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (field projection); `refines` [itd-181](itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) (the first consumer of a condition's disposition).
 
 ## Press Release
 
@@ -26,7 +26,7 @@ Typed links: `builds_on` [itd-181](../shipped/itd-181-a-shipped-intent-s-scope-c
 
 The cold-reading design schedules the knowledge-record extension for Iteration 2: claim typing, reference entity, comparison and evidence on `principles/` entries. It names `principles/` as a hard case: in Iteration 2 the knowledge record is a read object, so principle statements sit on the cold side, while their citations back to the ADRs they were distilled from are derivational and excluded, which requires a projection rule rather than a path rule. Today the family is denied to the assembler structurally by the `.abcd` segment and appears on neither the include table nor the declared exclusions, so the manifest is silent about it.
 
-[itd-181](../shipped/itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) shipped the scope-condition disposition so that later work inherits only what held, and its fidelity verdict found that nothing consumes a disposition: a falsified condition blocks nothing. The consumer the design has in mind is the knowledge record. A principle is what a project carries forward, and a principle resting on an assumption that delivery falsified is exactly the inheritance the disposition exists to prevent.
+[itd-181](itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) shipped the scope-condition disposition so that later work inherits only what held, and its fidelity verdict found that nothing consumes a disposition: a falsified condition blocks nothing. The consumer the design has in mind is the knowledge record. A principle is what a project carries forward, and a principle resting on an assumption that delivery falsified is exactly the inheritance the disposition exists to prevent.
 
 ## Decisions flagged for the maintainer
 
@@ -73,7 +73,7 @@ We expect typed evidence on principles to make the knowledge record checkable be
 
 ## Prior Art
 
-- [itd-181](../shipped/itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) (scope-condition disposition), [itd-177](../shipped/itd-177-an-intent-s-claims-are-typed-and-its-scope-conditions-keep-t.md) (claim typing), [itd-190](../disciplines/itd-190-the-claim-recording-gradient-an-intent-s-three-claim-kinds-c.md) (the gradient), [itd-183](../shipped/itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (field projection), the `disembark` family.
+- [itd-181](itd-181-a-shipped-intent-s-scope-conditions-are-dispositioned-by-the.md) (scope-condition disposition), [itd-177](itd-177-an-intent-s-claims-are-typed-and-its-scope-conditions-keep-t.md) (claim typing), [itd-190](../disciplines/itd-190-the-claim-recording-gradient-an-intent-s-three-claim-kinds-c.md) (the gradient), [itd-183](itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (field projection), the `disembark` family.
 - The cold-reading rulings of 2026-08-28 in the decision log.
 
 ## Open Questions
@@ -82,7 +82,8 @@ None. The flagged decisions are adopted as adr-2609021016270132.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-df264ca3973f -->
+Fidelity review OWED (receipt rcp-df264ca3973f).
 
 ## Grounds
 

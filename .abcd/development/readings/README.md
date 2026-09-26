@@ -131,6 +131,7 @@ disclosed as residue.
 | widening, entailment, detection | `.abcd/development/specs` | `.md` | none | the whole file | `spc` | every | `spec` | `parsed` | The design record a capability was built against |
 | entailment | `.abcd/development/intents/drafts` | `.md` | none | `Press Release`, `Acceptance Criteria`, `Scope Conditions`, `Mechanism`, `spec_id` | `itd` | `drafts` | `intent-projection` | `parsed` | Assembler rule 2: articulation precedes selection, so entailment sees the candidate set and the reading asked to widen it does not |
 | entailment | `.abcd/development/intents/planned` | `.md` | none | `Press Release`, `Acceptance Criteria`, `Scope Conditions`, `Mechanism`, `spec_id` | `itd` | `planned` | `intent-projection` | `parsed` | Assembler rule 2: articulation precedes selection, so entailment sees the candidate set and the reading asked to widen it does not |
+| widening, entailment, detection | `.abcd/development/principles` | `.md` | none | `The rule` | `prn` | every | `principle` | `parsed` | The knowledge record is a read object: a principle travels as its statement, and its keys and citations are genealogy (adr-2609021016270132) |
 | widening, entailment, detection | `.` | none | `_test.go` | the whole file | every | every | `test` | `unscanned` | Admitted where a committed preset entry names this kind, and never examined: an item admitted here travels whole and marked `unscanned` in the manifest, because the exclusion floor's key and heading signals are record shapes only a markdown file carries |
 | widening, entailment, detection | `.` | `.go` | none | the whole file | every | every | `source` | `unscanned` | Admitted where a committed preset entry names this kind, and never examined: an item admitted here travels whole and marked `unscanned` in the manifest, because the exclusion floor's key and heading signals are record shapes only a markdown file carries |
 | widening, entailment, detection | `.` | `.md` | none | the whole file | every | every | `doc` | `parsed` | Assembler rule 1: the shipped tree is the delivered documentation and the root prose, with the record denied structurally |
@@ -143,6 +144,10 @@ disclosed as residue.
 | --- | --- | --- | --- |
 | `origin` | frontmatter key | field projection | every position |
 | `production_mode` | frontmatter key | field projection | every position |
+| `claim_type` | frontmatter key | field projection | every position |
+| `reference` | frontmatter key | field projection | every position |
+| `comparison` | frontmatter key | field projection | every position |
+| `evidence` | frontmatter key | field projection | every position |
 | `Audit Notes` | heading | field projection | every position |
 | `Open Questions` | heading | field projection | every position |
 | `Why This Matters` | heading | field projection | every position |
@@ -155,6 +160,7 @@ disclosed as residue.
 | `.abcd/development/research/notes` | directory | absent from the positive walk | every position |
 | `.abcd/work/issues` | directory | no include names a directory containing a record family | widening, entailment, detection |
 | `.abcd/work/DECISIONS.md` | file | absent from the positive walk | every position |
+| `record handles and links in a principle` | citation | the statement is knowledge and the citations are genealogy | every position |
 | `.abcd/.work.local` | directory | no reading consumes the local ledger side, unconditionally and under no flag (brief invariant 14) | every position |
 | `the lapse log` | record type in a denied path | absent from the positive walk | every position |
 | `the reframe record` | record type in a denied path | absent from the positive walk | every position |
@@ -167,6 +173,7 @@ disclosed as residue.
 | `.abcd/development/intents/drafts` | directory | a reading's object excludes what it exists to change | widening, comparative, detection |
 | `.abcd/development/intents/planned` | directory | a reading's object excludes what it exists to change | widening, comparative, detection |
 | `.abcd/development/intents/shipped` | directory | the widening object as the design documents state it | widening |
+| `.abcd/development/principles` | directory | the comparative reading receives the candidates and the criteria alone | comparative |
 | `.abcd/work/issues/open` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
 | `.abcd/work/issues/resolved` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
 | `.abcd/work/issues/wontfix` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
