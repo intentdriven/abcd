@@ -7,6 +7,10 @@ category: "inconsistency"
 source: "impl-review"
 found_during: "itd-189 build review, 2026-08-30"
 found_at: "internal/core/lint/readingoutstanding.go, internal/core/issueschema/disposition.go"
+resolution: "recordid.BareFilenameNumRe is the one filename grammar for reading items and dispositions, in record_schema and in the outstanding report, matching the readers that open <handle>.md; a slugged file is refused at the walk and a join naming it resolves to nothing. TestReadingItemAndDispositionFilenamesAreBareHandles and TestABucketJoinOnASluggedItemFileIsRefusedAtTheFile pin it."
+impact: internal
+resolved_by:
+  commit: "47a76a91"
 ---
 
 The outstanding report's filename grammar for reading items and dispositions (readingItemFileRe, DispositionFileID) is stricter than the record_schema gate's FilenameNumRe, so a hand-written rdi-N-slug.md or dsp-N-slug.md passes the gate and is then invisible to the report; for those two families the divergence fails toward silence rather than a false claim. One grammar, the resolver's, for every family the report walks.
@@ -24,3 +28,6 @@ report it, and reporting it would be a claim about a file the reader does not
 consume. The silence belongs to this record, not to the spelling leg: close
 this and the shape stops existing.
 
+## Grounds
+
+- pursued: every reading-item or disposition file the gate accepts is one the readers open; a file record-lint passes that the report or capture never reads would show it wrong

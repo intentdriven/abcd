@@ -12,10 +12,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
+
+// init registers the issue ledger's reader and the site renderer's body check
+// with the lint, so record_schema refuses exactly the issue records capture
+// refuses and skips, and the bodies the site render refuses.
+func init() {
+	lint.SetIssueReader(capture.ReadRefusal)
+	lint.SetRecordBodyCheck(site.CheckRecordBody)
+}
 
 func main() {
 	configPath := flag.String("config", "", "path to record-lint.json (default: <root>/.abcd/record-lint.json)")

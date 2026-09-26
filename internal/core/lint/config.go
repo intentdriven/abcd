@@ -77,8 +77,15 @@ type RuleConfig struct {
 	Severity string `json:"severity"`
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
-	// Exempt is the directory_coverage glob allowlist.
+	// Exempt is the directory_coverage glob allowlist. links_resolve reads it too,
+	// over its ExtraRoots only: a repo-relative glob naming files whose links the
+	// extra walk skips.
 	Exempt []string `json:"exempt"`
+	// ExtraRoots are repo-relative trees links_resolve walks for links ALONE,
+	// beyond Roots: the working tier (.abcd/work) holds relative links in the issue
+	// ledger, DECISIONS.md and CONTEXT.md, and adding it to Roots would arm every
+	// content rule there too (iss-2608230752354927).
+	ExtraRoots []string `json:"extra_roots"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name
 	// the same directory share one scan of it. spec_lifecycle also reads it to
@@ -360,38 +367,40 @@ func ArmAgentDiff(cfg Config, diffRange string) Config {
 // ArmedChecks, and runs nothing. A rule added to LintAt and not here is refused
 // the first time a config names it, which fails loud rather than green.
 var knownRules = map[string]bool{
-	"links_resolve":             true,
-	"no_git_metadata":           true,
-	"no_brittle_line_refs":      true,
-	"persona_registry":          true,
-	"directory_coverage":        true,
-	"intent_lifecycle":          true,
-	"intent_impact_valid":       true,
-	"spec_lifecycle":            true,
-	"spec_id_unique":            true,
-	"forbidden_synonyms":        true,
-	"stray_root_docs":           true,
-	"context_status_free":       true,
-	"surface_coverage":          true,
-	"index_drift":               true,
-	"receipt_gate":              true,
-	"gate_lockstep":             true,
-	"issue_id_unique":           true,
-	"issue_impact_valid":        true,
-	ruleAgentContract:           true,
-	ruleCitationFootnotes:       true,
-	ruleCitationCrosswalkRows:   true,
-	ruleCitationURLSyntax:       true,
-	ruleCitationSourcePolicy:    true,
-	ruleCitationBaseline:        true,
-	ruleContextCitationCurrency: true,
-	ruleCrossStoreIDClaim:       true,
-	ruleDeliveryState:           true,
-	ruleHarnessLeak:             true,
-	ruleProseCitationResolves:   true,
-	ruleReadingOutstanding:      true,
-	ruleRecordProvenance:        true,
-	ruleRecordSchema:            true,
+	"links_resolve":              true,
+	"no_git_metadata":            true,
+	"no_brittle_line_refs":       true,
+	"persona_registry":           true,
+	"directory_coverage":         true,
+	"intent_lifecycle":           true,
+	"intent_impact_valid":        true,
+	"spec_lifecycle":             true,
+	"spec_id_unique":             true,
+	"forbidden_synonyms":         true,
+	"stray_root_docs":            true,
+	"context_status_free":        true,
+	"surface_coverage":           true,
+	"index_drift":                true,
+	"receipt_gate":               true,
+	"gate_lockstep":              true,
+	"issue_id_unique":            true,
+	"issue_impact_valid":         true,
+	ruleAgentContract:            true,
+	ruleCitationFootnotes:        true,
+	ruleCitationCrosswalkRows:    true,
+	ruleCitationURLSyntax:        true,
+	ruleCitationSourcePolicy:     true,
+	ruleCitationBaseline:         true,
+	ruleContextCitationCurrency:  true,
+	ruleCrossStoreIDClaim:        true,
+	ruleDeliveryState:            true,
+	ruleHarnessLeak:              true,
+	ruleIntentSOTA:               true,
+	ruleChangelogUnreleasedEmpty: true,
+	ruleProseCitationResolves:    true,
+	ruleReadingOutstanding:       true,
+	ruleRecordProvenance:         true,
+	ruleRecordSchema:             true,
 }
 
 // validateRuleNames refuses a rule the lint does not run, enabled or not, and
@@ -610,6 +619,9 @@ func (c Config) validateConfiguredPaths() error {
 		// this check does not depend on validateRecordStores having already refused an
 		// unknown prefix — a reordering of parseConfig would otherwise leave an
 		// unknown store's path unjudged.
+		for _, r := range rc.ExtraRoots {
+			fields = append(fields, configuredPath{"extra_roots entry", r})
+		}
 		prefixes := make([]string, 0, len(rc.RecordStores))
 		for prefix := range rc.RecordStores {
 			prefixes = append(prefixes, prefix)

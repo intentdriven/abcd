@@ -10,6 +10,11 @@ found_at: ".abcd/development/research/notes/01-harness-interface.md"
 details: "research/notes/01-harness-interface.md is titled 'ADR-01: Harness Interface Design' and declares 'Status: Accepted (Phase 0 lock)', but it lives in research/notes/, carries no record frontmatter, collides with the real adr-1 (three-layer-mental-model), and describes a Python architecture (harness.py, pluggy, abc.ABC, anthropic.types.Message) that adr-21 superseded on 2026-07-06. Two inbound references point at it and at a sibling that does not exist."
 suggested_fix: "Decide the document's status, then make its location and shape say so: either promote it to a real ADR with frontmatter and an explicit superseded_by pointing at adr-21/adr-23, or retitle it as the dated research note it actually is and drop the ADR-01 claim. Repair the two dangling references either way."
 related_issues: ["iss-2608230752354926", "iss-2608230752354927"]
+resolution: "Already fixed on main by f1644d47: the note's status block says it is Phase 0 evidence stating no current architecture, the ADR-01 title and Accepted status are gone, and both dangling references (the brief's 0001-harness-interface.md example and itd-6's 02-mcpbridge-implementation-contract.md citation) were repaired. cross_store_id_claim (itd-161) runs clean over the note at e076c8e3."
+impact: internal
+shipped_in: v0.6.2
+resolved_by:
+  commit: "f1644d47"
 ---
 
 a superseded Phase-0 pseudo-ADR sits in research/notes/ claiming ADR-01, outside every record gate
@@ -49,3 +54,7 @@ happened once in review.
 Note on discoverability: the harness-name normalisation (PR #442) rewrote 22
 occurrences in this file, so its git mtime now suggests active maintenance. The
 content is unchanged by that sweep and remains superseded.
+
+## Grounds
+
+- pursued: the note no longer presents as a decision; a record-lint run at e076c8e3 with cross_store_id_claim armed reports nothing on it, and a reintroduced ADR-01 title would show it wrong by tripping that rule

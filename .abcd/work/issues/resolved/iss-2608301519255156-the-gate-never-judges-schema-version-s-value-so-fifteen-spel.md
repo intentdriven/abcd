@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-189-round-3-security"
 found_at: "internal/core/lint/schema.go"
+resolution: "record_schema's issue-store legs decode values as capture's reader does (schemaRecord.scalar), and a reader-parity leg calls capture.ReadRefusal on any issue record the other legs pass, registered by cmd/record-lint and the CLI. TestRecordSchemaAgreesWithTheLedgerReader asserts each case against the reader itself; TestRecordLintRegistersTheLedgerReader and TestCLIRegistersTheLedgerReader pin the wiring."
+impact: fix
+resolved_by:
+  commit: "35600e96"
 ---
 
 the gate never judges schema_version's value so fifteen spellings the ledger reader refuses are lint-green
@@ -28,3 +32,7 @@ This is a FOURTH instance of "the gate checks presence where the reader checks
 type", and it belongs on one record with iss-2608300224316569 (`lapsed_at: []`)
 rather than being chased on this branch. The A/B against 24860b61 is identical
 on all 252 combinations, so round 3 neither caused nor worsened it.
+
+## Grounds
+
+- pursued: record_schema and capture's ledger reader give one verdict on every committed issue record; a record capture list skips that record-lint passes, or the reverse, would show it wrong

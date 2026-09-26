@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-189-round-5-security"
 found_at: "internal/core/lint/readingoutstanding.go"
+resolution: "reading_outstanding appends the capture-refuses clause to an Unsafe finding only off the admissions and surprises families, which core/capture never reads. TestAnUnsafeAdmissionsPathClaimsNoCaptureRefusal pins it."
+impact: internal
+resolved_by:
+  commit: "a1992bbf"
 ---
 
 the unsafe finding on an admissions path tells the operator abcd capture refuses it too when capture has no admissions code at all
@@ -41,3 +45,7 @@ Remedy: drop the clause on the admissions path, or gate it the way
 record_schema's own legs are gated — `readerFailsClosed` for the two that read a
 record's properties, `readerRefusesDuplicateKey` for the duplicate, which is a
 separate reader question (iss-2608301656200729).
+
+## Grounds
+
+- pursued: an unsafe admissions or surprises path names no second gate; such a finding mentioning abcd capture would show it wrong

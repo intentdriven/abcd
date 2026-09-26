@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-189-round-5-builder"
 found_at: "internal/core/lint/schema.go"
+resolution: "The padding and bucket legs (schema.go) end on the position leg's wording: the record counts for nothing and no line reports an answer was written for the item it names. TestTheJoinLegsClaimNothingAboutTheReportTheyDidNotRead pins both legs."
+impact: internal
+resolved_by:
+  commit: "ed4da1e1"
 ---
 
 the shared unanswered tail on the padding and bucket legs is not true of an item whose disposition is declined or held
@@ -36,3 +40,6 @@ phrasing, which is the shape the other three should follow -- it says only that
 the record counts for nothing and that no line reports an answer was written,
 both of which the walk does establish.
 
+## Grounds
+
+- pursued: no record_schema message asserts what the reading report says about an item; a join-leg finding saying an item is reported as unanswered would show it wrong

@@ -40,8 +40,11 @@ const ruleReadingOutstanding = "reading_outstanding"
 const severityInfo = "info"
 
 var (
-	readingRunDirRe   = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
-	readingItemFileRe = regexp.MustCompile(`^(` + issueschema.ReadingItemFamily + `-[0-9]+)\.md$`)
+	readingRunDirRe = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
+	// The item filename grammar is the one record_schema holds the store to,
+	// recordid.BareFilenameNumRe, so the gate and the report cannot disagree about
+	// which files are items (iss-2608300929274006).
+	readingItemFileRe = recordid.BareFilenameNumRe(issueschema.ReadingItemFamily)
 	// The admission filename grammar is the RESOLVER's, the same value
 	// record_schema holds the store to — never a local copy. A stricter one here
 	// would pass a record through the gate and then report the proposal it admits
@@ -213,6 +216,13 @@ func (r OutstandingReadings) Empty() bool {
 func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, error) {
 	var report OutstandingReadings
 	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(issuesDir))
+	// Every directory below the store is checked for a link; the store root is
+	// checked for leaving the repository, or a symlinked root carries the whole
+	// walk out of the tree (iss-2609261019593167).
+	if err := resolvedInsideRoot(repoRoot, issuesRoot); err != nil {
+		report.Unsafe = append(report.Unsafe, UnsafePath{Path: filepath.ToSlash(issuesDir), Reason: err.Error()})
+		return report, nil
+	}
 	readingsRoot := filepath.Join(issuesRoot, issueschema.ReadingsDir)
 	if !realDir(readingsRoot) {
 		report.Unsafe = append(report.Unsafe, UnsafePath{
@@ -268,7 +278,7 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			if e.IsDir() || m == nil {
 				continue
 			}
-			item := m[1]
+			item := strings.TrimSuffix(e.Name(), ".md")
 			rel := filepath.Join(issuesDir, issueschema.ReadingsDir, run.Name(), e.Name())
 			// The item file itself, on the same terms as everything below it. A
 			// symlinked rdi-N.md was admitted as a real item, so the board reported
@@ -687,11 +697,18 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	for _, u := range report.Unsafe {
+		msg := "the reading walk did not read this — " + u.Reason + ". " +
+			"What it holds is neither reported outstanding nor confirmed answered, because a path nobody read " +
+			"supports no claim either way"
+		// The capture clause is true of the trees core/capture reads before it
+		// writes (readings, dispositions). It reads no admission and no surprise,
+		// so on those paths the clause would send the operator looking for a
+		// second gate's agreement nobody performs (iss-2608301649337920).
+		if !underFamilyDir(u.Path, issueschema.AdmissionsDir, issueschema.SurprisesDir) {
+			msg += ". `abcd capture` refuses the same paths outright, because its read is followed by a write"
+		}
 		out = append(out, Finding{
-			File: u.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo,
-			Message: "the reading walk did not read this — " + u.Reason + ". " +
-				"What it holds is neither reported outstanding nor confirmed answered, because a path nobody read " +
-				"supports no claim either way. `abcd capture` refuses the same paths outright, because its read is followed by a write",
+			File: u.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo, Message: msg,
 		})
 	}
 	for _, c := range report.Contested {
@@ -721,4 +738,17 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	return out, nil
+}
+
+// underFamilyDir reports whether a slash-separated ledger path has one of the
+// named family directories as a path segment.
+func underFamilyDir(path string, dirs ...string) bool {
+	for _, seg := range strings.Split(path, "/") {
+		for _, d := range dirs {
+			if seg == d {
+				return true
+			}
+		}
+	}
+	return false
 }
