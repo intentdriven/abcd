@@ -275,7 +275,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	// surface, and a reader that has to tell `null` from `[]` is a reader that
 	// will one day get it wrong.
 	res := CheckResult{
-		OutDir: outDir, Checks: CheckNames,
+		OutDir: displayOutDir(repoRoot, outDir), Checks: CheckNames,
 		Pages: []string{}, Composed: []string{},
 		Findings: []CheckFinding{}, Notes: []CheckFinding{},
 	}

@@ -32,7 +32,8 @@ emits `{ "manifest": …, "ui_strings": …, "baseline": …, "out_dir": … }`:
 - `baseline` and `baseline_entries` — the committed unresolved-reference
   ratchet and its size.
 - `version`, `commit` — what a render would stamp the footer with.
-- `out_dir`, `out_exists`, `out_files` — where a render writes, and what is
+- `out_dir`, `out_exists`, `out_files` — where a render writes (relative to the
+  repository inside it, with the home directory as `~` outside it), and what is
   there now.
 
 Report the declared inputs first, then the output directory's state. It writes

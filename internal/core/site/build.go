@@ -465,7 +465,7 @@ func Build(req Request) (Result, error) {
 	}
 
 	res := Result{
-		OutDir:     outDir,
+		OutDir:     displayOutDir(repoRoot, outDir),
 		Records:    len(export.Nodes),
 		Links:      len(export.Edges),
 		Mentions:   len(export.Mentions),
@@ -606,7 +606,7 @@ func Describe(repoRoot, outDir string) (Status, error) {
 	if outDir == "" {
 		outDir = DefaultOutDir
 	}
-	st := Status{OutDir: outDir, Commit: HeadCommit(repoRoot), BaselinePath: BaselineRelPath}
+	st := Status{OutDir: displayOutDir(repoRoot, outDir), Commit: HeadCommit(repoRoot), BaselinePath: BaselineRelPath}
 	baselineRel := ""
 	m, err := LoadManifest(repoRoot)
 	switch {
@@ -660,7 +660,7 @@ func Describe(repoRoot, outDir string) (Status, error) {
 	if gerr != nil {
 		// Redacted at the source, so the text board and --json agree on this
 		// field: OutRefused never carries an absolute developer-identity path
-		// (iss-81; OutDir itself is captured as iss-2608291957114882).
+		// (iss-81); OutDir reaches the same end through displayOutDir.
 		st.OutRefused = fsutil.RedactHome(fsutil.RedactRoot(gerr.Error(), repoRoot, "."))
 		return st, nil
 	}
