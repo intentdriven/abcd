@@ -23,7 +23,17 @@ import (
 // ordinary session, so the old bound refused real work rather than a pathology.
 // The fixture is just over 8 MiB, which fails against the old constant and
 // passes against the transcript cap.
+//
+// It skips under -race. The capture is one goroutine running the scanner's two
+// passes over 9 MiB, so the detector has nothing to watch, and instrumenting
+// those passes cost 125s against 6s uninstrumented on the same machine: a third
+// of this package's race time, on the macOS leg whose job is held to the merge
+// queue's 30-minute cap (iss-2609261924541555). The uninstrumented lane asserts
+// the same cap on both CI legs.
 func TestHistoryCaptureAcceptsWhatTheHooksAccept(t *testing.T) {
+	if raceEnabled {
+		t.Skip("one goroutine over 9 MiB gains nothing under -race; the uninstrumented run asserts the cap")
+	}
 	repo, rootSHA := sessionEndRepo(t)
 
 	// Just over the old 8 MiB operand cap, well under the 64 MiB transcript cap.
