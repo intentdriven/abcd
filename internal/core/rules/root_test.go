@@ -688,3 +688,34 @@ func TestResolveRootRefusalBeneathTheRootStillSaysTheRootWentUnread(t *testing.T
 		t.Errorf("a plain directory beneath the refused root must be told the root's configuration went unread: %s", note)
 	}
 }
+
+// TestResolveRootRefusalNeverSaysASymlinkedAbcdIsRead (iss-2609261753290536):
+// the note's "IS read" branch must ask the question the loaders ask. A .abcd at
+// the working directory that is a symlink is refused by the repo-layer read
+// (readRepoLayer Lstat-refuses it), so a note that followed the link and said
+// its configuration governs the session would tell the user the opposite of
+// what the loader does.
+func TestResolveRootRefusalNeverSaysASymlinkedAbcdIsRead(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+	ownedByAnother(t, plant)
+	elsewhere := mustDir(t, filepath.Join(filepath.Dir(plant), "elsewhere"))
+	plantConfiguration(t, elsewhere)
+	if err := os.Symlink(filepath.Join(elsewhere, ".abcd"), filepath.Join(victim, ".abcd")); err != nil {
+		t.Fatal(err)
+	}
+
+	res := Resolve(victim)
+	if res.Root != victim {
+		t.Fatalf("Resolve(%q).Root = %q, want the working directory", victim, res.Root)
+	}
+	if _, err := Load(res.Root); err == nil {
+		t.Fatalf("fixture: the loader read a symlinked .abcd at %q; the note's claim rests on its refusing it", res.Root)
+	}
+	note := noteMentioning(res.Notes, "REFUSED")
+	if note == "" {
+		t.Fatalf("the refusal is silent; notes = %q", res.Notes)
+	}
+	if strings.Contains(note, "IS read") || !strings.Contains(note, "NOT read") {
+		t.Errorf("the note says a symlinked .abcd the loader refuses is read: %s", note)
+	}
+}

@@ -307,7 +307,10 @@ func foreignOwnerRefusal(marker, cwd string) []string {
 	outcome := fmt.Sprintf("so %s and .abcd/guard.json there were NOT read and nothing above %s governs this session "+
 		"(injected rules and the loader kill switch fall back to the bundled defaults under the user scope's %s, the hazard registry to the bundled defaults)",
 		RepoRelPath, termsafe.Sanitize(cwd), UserDisplayPath)
-	if fi, serr := os.Stat(filepath.Join(cwd, ".abcd")); serr == nil && fi.IsDir() {
+	// Lstat, not Stat: the repo-layer read refuses a symlinked .abcd
+	// (readRepoLayer), so a note that followed the link would say a layer is
+	// read that the loader refuses (iss-2609261753290536).
+	if fi, serr := os.Lstat(filepath.Join(cwd, ".abcd")); serr == nil && fi.IsDir() {
 		outcome = fmt.Sprintf("so nothing above %s governs this session — but the refusal bounds the walk, not the working directory, "+
 			"so the .abcd/ at %s itself IS read: its %s and .abcd/guard.json govern this session",
 			termsafe.Sanitize(cwd), termsafe.Sanitize(cwd), RepoRelPath)
