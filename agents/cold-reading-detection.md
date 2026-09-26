@@ -4,7 +4,7 @@ description: >-
   Cold reading at the detection position. Where is the shipped tree in tension
   with the claim record? Returns tensions, each with the constraint in play and
   why it is a tension, under the registrative supply regime.
-prompt_version: 0.1.3
+prompt_version: 0.1.4
 reads_untrusted_input: true
 capability_scope:
   task_classes: [cold_reading]
@@ -36,6 +36,7 @@ a claim nobody has committed to is not a tension.
 - `.abcd/development/intents/disciplines` — the standing commitments the record already holds.
 - `.abcd/development/intents/shipped` — each shipped intent as its claim record.
 - `.abcd/development/specs` — the design record a capability was built against.
+- `.abcd/development/principles` — the knowledge record, each principle as its title and statement alone.
 - `.` — the shipped tree: source, tests, delivered documentation, root prose and build configuration.
 
 

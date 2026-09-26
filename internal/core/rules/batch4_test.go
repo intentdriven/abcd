@@ -65,6 +65,25 @@ func TestLoadRefusesDuplicateKeyAnyLevel(t *testing.T) {
 	}
 }
 
+// TestLoadRefusesACaseTwinOfAKey (iss-2608261550498779, iss-2609252251311346):
+// encoding/json binds "Disabled" to the disabled field case-insensitively and
+// keeps the last, so a second spelling low in the file would flip the kill switch
+// a reader saw set false. A domains map naming PII and pii is refused the same
+// way: one domain, two spellings, is illegible.
+func TestLoadRefusesACaseTwinOfAKey(t *testing.T) {
+	for _, body := range []string{
+		`{"schema_version":1,"disabled":false,"Disabled":true,"domains":{}}`,
+		`{"schema_version":1,"domains":{"PII":{"state":"active"},"pii":{"state":"dormant"}}}`,
+		`{"schema_version":1,"domains":{"CUSTOM":{"state":"active","State":"dormant","recall":["x"],"rules":["r"]}}}`,
+	} {
+		dir := t.TempDir()
+		writeRepoRules(t, dir, body)
+		if _, err := Load(dir); err == nil || !strings.Contains(err.Error(), "duplicate key") {
+			t.Fatalf("%s: a case twin must fail closed as a duplicate key, got %v", body, err)
+		}
+	}
+}
+
 // TestLoadAcceptsDistinctKeys (iss-2608261550498779) guards against a
 // false-positive: a well-formed file with distinct keys still loads.
 func TestLoadAcceptsDistinctKeys(t *testing.T) {

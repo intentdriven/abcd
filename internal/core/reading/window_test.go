@@ -737,7 +737,7 @@ func TestTwoAssembliesOfOneEntryAreByteIdentical(t *testing.T) {
 	for _, p := range AssemblingPositions() {
 		first := assembleFixture(t, root, p)
 		second := assembleFixture(t, root, p)
-		if string(mustEncodeBundle(t, first.Bundle)) != string(mustEncodeBundle(t, second.Bundle)) {
+		if !identicalButForRun(t, first.Bundle, second.Bundle) {
 			t.Errorf("two assemblies of the committed %s entry produced different bundles", p)
 		}
 		a := decodedManifest(t, first.Manifest)
@@ -842,6 +842,36 @@ func TestDuplicatePositionKeysAreRefused(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), string(PositionWidening)) {
 		t.Errorf("the refusal does not name the duplicated position: %v", err)
+	}
+}
+
+// TestKeysRepeatedInsideAPositionEntryAreRefused widens the review-evasion
+// refusal to every depth (iss-2609252251317108): a second "kinds" or "window"
+// inside a reviewed entry is read last-wins by the strict decoder exactly as a
+// second entry would be, and a case twin ("Kinds") is the same field to
+// encoding/json.
+func TestKeysRepeatedInsideAPositionEntryAreRefused(t *testing.T) {
+	entry := v2Entry("widening", `"brief-section"`, "", "", 10)
+	for name, body := range map[string]string{
+		"a second kinds":  strings.Replace(entry, `"kinds": ["brief-section"],`, `"kinds": ["brief-section"], "kinds": ["source", "test", "doc"],`, 1),
+		"a case twin":     strings.Replace(entry, `"kinds": ["brief-section"],`, `"kinds": ["brief-section"], "Kinds": ["source", "test", "doc"],`, 1),
+		"a nested repeat": strings.Replace(entry, `"tokens_est": 10,`, `"tokens_est": 10, "tokens_est": 999999,`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if body == entry {
+				t.Fatal("fixture did not change the entry")
+			}
+			root := fixtureRepo(t)
+			writeFile(t, root, PresetConfigPath, v2Preset(body))
+			gitCommitAll(t, root)
+			_, err := LoadPresets(root)
+			if err == nil {
+				t.Fatal("an entry repeating a key loaded; the last would win silently")
+			}
+			if !strings.Contains(err.Error(), "more than once") {
+				t.Errorf("the refusal does not name the duplication: %v", err)
+			}
+		})
 	}
 }
 

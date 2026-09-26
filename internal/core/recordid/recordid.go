@@ -38,3 +38,13 @@ func idRe(prefix string) *regexp.Regexp {
 // filenames against exactly this pattern rather than a looser local copy that
 // accepted an arbitrary tail (iss-2608270908346617).
 func FilenameNumRe(prefix string) *regexp.Regexp { return idRe(prefix) }
+
+// BareFilenameNumRe is the filename grammar of a family whose readers open a
+// record by its bare handle alone, <prefix>-<N>.md, capturing N: the reading
+// items and dispositions, which the outstanding report, the item locator and
+// capture's disposition walk each find as `<handle>.md` and nothing else. A gate
+// holding such a family to FilenameNumRe passed a `<prefix>-<N>-<slug>.md` no
+// reader ever opens (iss-2608300929274006).
+func BareFilenameNumRe(prefix string) *regexp.Regexp {
+	return regexp.MustCompile(`^` + regexp.QuoteMeta(prefix) + `-([0-9]+)\.md$`)
+}

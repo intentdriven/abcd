@@ -40,8 +40,16 @@ import (
 // derivation now admits a run whose own records were committed since it read, so
 // the run's target and the assembly's can differ and a reader needs both to
 // check the selection (iss-2609021833302981). The bundle is untouched and is
-// restamped by the shared constant once more.
-const SchemaVersion = 9
+// restamped by the shared constant once more. At version 10 the BUNDLE gains
+// `context_stamp`, the per-run token naming the reading kind, the run and a
+// digest of the item set, which a transcript retains and the separation check
+// reads (adr-2609021016275803, spc-2609020626045177); the manifest is untouched
+// and is restamped by the shared constant. At version 11 the closed `Kind`
+// vocabulary gains `principle`, which `DecodeManifest` refuses when it does not
+// know it, so a manifest carrying a principle item is a shape the previous
+// version cannot read; the bundle is restamped by the shared constant
+// (adr-2609021016270132, spc-2609020626042471).
+const SchemaVersion = 11
 
 // The two artefact type tags. They are carried in the documents themselves so a
 // reader of a loose file can tell the two apart without its filename.
@@ -74,14 +82,24 @@ type BundleItem struct {
 
 // Bundle is the assembled input: the reading's entire working set.
 //
-// It carries no run identifier and no timestamp, so two assemblies of one
-// repository state at one commit are byte-identical — the property itd-187's
-// eval falsifies independently, and the reason the run identifier lives on the
-// manifest alone.
+// It carries no timestamp and exactly one run-dependent value, the context
+// stamp, so two assemblies of one repository state at one commit are
+// byte-identical but for the run segment of that stamp — the property itd-187's
+// eval falsifies independently, with the stamp set aside and held to agree in
+// kind and digest.
 type Bundle struct {
-	Type          string   `json:"_type"`
-	SchemaVersion int      `json:"schema_version"`
-	Position      Position `json:"position"`
+	Type          string `json:"_type"`
+	SchemaVersion int    `json:"schema_version"`
+	// ContextStamp is the per-run context stamp: the reading kind, the run this
+	// bundle was assembled for, and the first twelve hex digits of the sha256
+	// over its own item set (adr-2609021016275803). A session that was handed
+	// this bundle through a tool the host retains carries the stamp in its
+	// transcript, and that is what the transcript store's separation check reads.
+	//
+	// It is a TOKEN and not a path, so brief invariant 15 holds: core/sessionkind
+	// parses it exactly, and it names no location and selects nothing.
+	ContextStamp string   `json:"context_stamp"`
+	Position     Position `json:"position"`
 	// Preset is what THIS run was given, and it is the reading's own fact
 	// rather than the auditor's. A reader told its object is the shipped tree
 	// and handed a tenth of it will report the missing nine tenths as a

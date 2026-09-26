@@ -25,7 +25,6 @@ package lint
 // orientation doc claims to describe what is true right now.
 
 import (
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -88,7 +87,7 @@ func checkContextCitationCurrency(repoRoot string, cfg RuleConfig) ([]Finding, e
 	}
 
 	fileAbs := filepath.Join(repoRoot, filepath.FromSlash(target))
-	content, err := os.ReadFile(fileAbs)
+	content, err := readRepoFile(repoRoot, target, maxRepoFileBytes)
 	if err != nil {
 		return nil, &configError{ruleContextCitationCurrency + ": reading " + target + ": " + err.Error()}
 	}

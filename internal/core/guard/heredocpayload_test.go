@@ -111,11 +111,11 @@ func TestNestedHereDocumentPayloadIsRead(t *testing.T) {
 }
 
 // TestBacktickHereDocumentPayloadIsRead — iss-2609252310310823. A backtick is
-// command substitution in its other spelling, so “ `cat <<'F' … F` “ prints
-// its document as `$(cat <<'F' … F)` does, and bash 3.2 and 5.3 run it in the
-// same places. Where the text between the backticks holds no backslash — the
-// one byte a backtick treats otherwise — its output is read as the dollar
-// form's is.
+// command substitution in its other spelling, so cat <<'F' … F wrapped in
+// backticks prints its document as `$(cat <<'F' … F)` does, and bash 3.2 and
+// 5.3 run it in the same places. Where the text between the backticks holds
+// no backslash — the one byte a backtick treats otherwise — its output is read
+// as the dollar form's is.
 func TestBacktickHereDocumentPayloadIsRead(t *testing.T) {
 	const push = "git push --force origin main"
 	tick := func(body string) string { return "`cat <<'F'\n" + body + "\nF\n`" }

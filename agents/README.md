@@ -13,6 +13,10 @@ side never executes these prompts.
   carries at least one `injection-canary.json`.
 - `CHANGELOG.md` — one entry per agent per version bump (itd-5).
 
+The layout is flat. A markdown file anywhere below the top level, outside a
+`fixtures/` directory, is a misfiled prompt, and record-lint's `agent_contract`
+rule refuses it rather than skipping it.
+
 The four M6 synthesis agents (itd-88) — dispatched by the `/abcd:disembark`
 orchestration sections:
 

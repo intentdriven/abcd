@@ -53,6 +53,10 @@ type excludedKey struct {
 var excludedKeys = []excludedKey{
 	{Key: "origin", Source: "itd-183 exclusion list: `origin`, detected by frontmatter key"},
 	{Key: "production_mode", Source: "itd-183 exclusion list: production mode, detected by frontmatter key"},
+	{Key: "claim_type", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
+	{Key: "reference", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
+	{Key: "comparison", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
+	{Key: "evidence", Source: "spc-2609020626042471: a principle's claim keys are genealogy, and it travels as its statement"},
 }
 
 // excludedHeading is one heading the record refuses.
@@ -100,10 +104,10 @@ var excludedFamilies = []excludedFamily{
 		Path:      ".abcd/work/issues",
 		Positions: []string{posWidening, posEntailment, posDetection},
 		Source: "itd-183 exclusion list: work/issues/ in every state, reading records and " +
-			"dispositions included, admission and selection grounds, and the lapse log. " +
-			"Not at comparative: adr-2609021016272867 admits one derived widening run's " +
-			"items there, so the container row withdraws and the six rows below name each " +
-			"family individually — a narrower assertion, not a weaker one",
+			"dispositions included, admission and selection grounds, reframe records, and the " +
+			"lapse log. Not at comparative: adr-2609021016272867 admits one derived widening " +
+			"run's items there, so the container row withdraws and the seven rows below name " +
+			"each family individually — a narrower assertion, not a weaker one",
 	},
 	// The comparative position's ledger rows, one per family. They mirror the
 	// rows the assembler derives from the ledger's own directory list, and they
@@ -141,6 +145,13 @@ var excludedFamilies = []excludedFamily{
 		Positions: []string{posComparative},
 		Source:    "adr-2609021016272867: a surprise is the researcher's own act, recorded warm",
 	},
+	{
+		Path:      ".abcd/work/issues/reframes",
+		Positions: []string{posComparative},
+		Source: "spc-2609020626048705: a reframe record is the researcher's pointer to a " +
+			"rewrite of the frame, warm at every position; its directory joins the ledger's " +
+			"list and so the comparative rows by derivation",
+	},
 	{Path: ".abcd/work/DECISIONS.md", Source: "itd-183 assembler rule 1: .abcd/ is excluded but for what the include list names"},
 	{
 		Path:   ".abcd/development/readings",
@@ -166,6 +177,12 @@ var excludedFamilies = []excludedFamily{
 		Source: "itd-194: the framework's widening object and the readings companion's section " +
 			"5.2 both state that object without the shipped intents, so the widening position " +
 			"withdraws from the row and the floor asserts the withdrawal (iss-2609012259587904)",
+	},
+	{
+		Path:      ".abcd/development/principles",
+		Positions: []string{posComparative},
+		Source: "spc-2609020626042471: at the comparative position the include table admits the " +
+			"candidates and the criteria alone, so the knowledge record is not among its sources",
 	},
 }
 
@@ -217,6 +234,12 @@ var admittedRecordPaths = []admittedRecordPath{
 	},
 	{Path: ".abcd/development/intents/disciplines", Source: "itd-183 include list"},
 	{Path: ".abcd/development/specs", Source: "itd-183 include list"},
+	{
+		Path:      ".abcd/development/principles",
+		Positions: []string{posWidening, posEntailment, posDetection},
+		Source: "spc-2609020626042471: the knowledge record is a read object, admitted as each " +
+			"principle's statement at the three positions that read repository material",
+	},
 	{
 		Path:      ".abcd/development/intents/drafts",
 		Positions: []string{posEntailment},
@@ -350,6 +373,12 @@ var materialClasses = []materialClass{
 		Under:  []string{".abcd/development/specs"},
 		Match:  []string{".md"},
 		Source: "itd-183 include list: the design record a capability was built against",
+	},
+	{
+		Kind:   "principle",
+		Under:  []string{".abcd/development/principles"},
+		Match:  []string{".md"},
+		Source: "spc-2609020626042471: a principle of the knowledge record, projected to its statement",
 	},
 	{
 		Kind:   "test",
@@ -631,16 +660,16 @@ func requireOracleTables(t *testing.T) {
 		got  int
 		want int
 	}{
-		{"sentinelClasses", len(sentinelClasses), 21},
-		{"carriers", len(carriers), 19},
-		{"materialClasses", len(materialClasses), 11},
-		{"holes", len(holes), 3},
+		{"sentinelClasses", len(sentinelClasses), 23},
+		{"carriers", len(carriers), 20},
+		{"materialClasses", len(materialClasses), 12},
+		{"holes", len(holes), 4},
 		{"refusals", len(refusals), 8},
-		{"excludedKeys", len(excludedKeys), 2},
+		{"excludedKeys", len(excludedKeys), 6},
 		{"excludedHeadings", len(excludedHeadings), 4},
-		{"excludedFamilies", len(excludedFamilies), 22},
-		{"admittedRecordPaths", len(admittedRecordPaths), 13},
-		{"coverage", len(coverage), 79},
+		{"excludedFamilies", len(excludedFamilies), 24},
+		{"admittedRecordPaths", len(admittedRecordPaths), 14},
+		{"coverage", len(coverage), 89},
 	} {
 		if tbl.got != tbl.want {
 			t.Fatalf("the %s table holds %d row(s), and this eval is written against %d; "+

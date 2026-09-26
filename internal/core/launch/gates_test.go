@@ -492,6 +492,27 @@ func TestWritePreflightReportLandsInTheLocalTier(t *testing.T) {
 	}
 }
 
+// TestWritePreflightReportThroughASymlinkedCheckoutPath: the launch verbs hand
+// the writer the shell's working directory, and a checkout entered through a
+// symlinked path (`cd ~/proj` where ~/proj -> ~/src/proj) is the user's own, so
+// the report is written rather than refused at the path it was entered through
+// (the iss-2609261108448674 sweep).
+func TestWritePreflightReportThroughASymlinkedCheckoutPath(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "proj")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	rep := PreflightReport{Mode: ModePreview, At: time.Date(2026, 9, 26, 12, 0, 0, 0, time.UTC), Version: "1.2.3", Verdict: VerdictClear}
+	rel, err := WritePreflightReport(link, rep)
+	if err != nil {
+		t.Fatalf("WritePreflightReport through a symlinked checkout path: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(real, filepath.FromSlash(rel), "preflight.json")); err != nil {
+		t.Errorf("the report is not in the checkout: %v", err)
+	}
+}
+
 // TestHookRowFindsAnUnparseableHooksConfig is iss-2609251827104081: a hooks
 // config the host cannot parse registers no hook on any install, so it is a
 // finding of the hook-compliance row (AC5: the concern is surfaced) and the

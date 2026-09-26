@@ -350,3 +350,55 @@ func TestEnsureRealDirAllRefusesAnUnrealBase(t *testing.T) {
 		t.Errorf("the walk created %d entr(ies) through the symlinked base", len(entries))
 	}
 }
+
+// TestProbeRealDirAllRefusesWhatEnsureRealDirAllRefuses: the read-only walk
+// refuses the level the creating walk would refuse, naming it in the same
+// *os.PathError, and creates nothing on any path. A missing level is not a
+// refusal: there is nothing under it to read.
+func TestProbeRealDirAllRefusesWhatEnsureRealDirAllRefuses(t *testing.T) {
+	base, elsewhere := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "a", "b"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := ProbeRealDirAll(base, "a/b"); !ok || err != nil {
+		t.Errorf("a real chain = %v, %v; want true, nil", ok, err)
+	}
+	if ok, err := ProbeRealDirAll(base, "a/b/c/d"); ok || err != nil {
+		t.Errorf("a missing level = %v, %v; want false, nil", ok, err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(base, "a", "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(elsewhere, "c"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "a", "file"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for rel, refused := range map[string]string{
+		"a/link":   filepath.Join(base, "a", "link"),
+		"a/link/c": filepath.Join(base, "a", "link"),
+		"a/file":   filepath.Join(base, "a", "file"),
+	} {
+		ok, err := ProbeRealDirAll(base, rel)
+		var pe *os.PathError
+		if ok || !errors.Is(err, ErrNotRealDir) || !errors.As(err, &pe) || pe.Path != refused {
+			t.Errorf("ProbeRealDirAll(%q) = %v, %v; want ErrNotRealDir naming %s", rel, ok, err, refused)
+		}
+		if werr := EnsureRealDirAll(base, rel, 0o700); !errors.As(werr, &pe) || pe.Path != refused {
+			t.Errorf("EnsureRealDirAll(%q) = %v; the probe and the create disagree on %s", rel, werr, refused)
+		}
+	}
+	link := filepath.Join(base, "a", "link")
+	if ok, err := ProbeRealDirAll(link, "c"); ok || !errors.Is(err, ErrNotRealDir) {
+		t.Errorf("a symlinked base = %v, %v; want ErrNotRealDir", ok, err)
+	}
+	for _, rel := range []string{"", "/etc", "../x"} {
+		if ok, err := ProbeRealDirAll(base, rel); ok || err == nil {
+			t.Errorf("rel %q = %v, %v; want a refusal", rel, ok, err)
+		}
+	}
+	if entries, _ := os.ReadDir(filepath.Join(elsewhere, "c")); len(entries) != 0 {
+		t.Errorf("a walk created %d entr(ies) through the link", len(entries))
+	}
+}

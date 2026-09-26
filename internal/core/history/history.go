@@ -34,6 +34,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -92,6 +93,17 @@ type Record struct {
 	// makes an adoption a property of the artefact rather than of a run's
 	// output.
 	AdoptedProject string `json:"adopted_project,omitempty"`
+
+	// ContextStamps are the per-run context stamps the raw transcript carried
+	// when it was captured, distinct and in first-seen order
+	// (adr-2609021016275803). A session handed a reading bundle or a scribe
+	// context through a tool the host retains carries that context's stamp, and
+	// recording it here as METADATA is what lets the separation check stay out of
+	// the bodies, as brief invariant 15's consumer list requires.
+	//
+	// Optional on read, so a record captured before the field existed parses
+	// with none and recordSchemaVersion does not move.
+	ContextStamps []string `json:"context_stamps,omitempty"`
 }
 
 // CaptureMeta is everything Capture stamps onto a record besides the bytes and
@@ -194,6 +206,11 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 
 	sum := sha256.Sum256(raw)
 	sourceSHA := hex.EncodeToString(sum[:])
+	// The per-run context stamps are read off the RAW transcript, before
+	// redaction: a stamp carries no secret, and scanning what the store keeps
+	// would make the record's metadata depend on what a redactor happened to
+	// touch (adr-2609021016275803).
+	stamps := sessionkind.Find(raw)
 
 	// Idempotency: re-capturing the SAME source for the SAME session, agent and
 	// kind is a no-op. Keying on the source SHA alone would silently attribute a
@@ -350,6 +367,7 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 		SpawnAttribution: meta.SpawnAttribution,
 		SpawnDepth:       meta.SpawnDepth,
 		AdoptedProject:   meta.AdoptedProject,
+		ContextStamps:    stamps,
 	}
 	if err := fsutil.WriteFileAtomic(path, marshalRecord(rec, body), 0o644); err != nil {
 		return CaptureResult{}, fmt.Errorf("history: write record: %w", err)

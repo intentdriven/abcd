@@ -21,6 +21,7 @@ func TestLedgerDirsNamesEveryConstant(t *testing.T) {
 		issueschema.DispositionsDir,
 		issueschema.AdmissionsDir,
 		issueschema.SurprisesDir,
+		issueschema.ReframesDir,
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("LedgerDirs() = %v, want %v", got, want)
@@ -38,7 +39,7 @@ func TestLedgerDirsNamesEveryConstant(t *testing.T) {
 	// without a line above fails rather than passing silently.
 	for _, sibling := range []string{
 		issueschema.ReadingsDir, issueschema.DispositionsDir,
-		issueschema.AdmissionsDir, issueschema.SurprisesDir,
+		issueschema.AdmissionsDir, issueschema.SurprisesDir, issueschema.ReframesDir,
 	} {
 		if !slices.Contains(got, sibling) {
 			t.Errorf("LedgerDirs() omits the sibling family directory %q", sibling)

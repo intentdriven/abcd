@@ -40,8 +40,11 @@ const ruleReadingOutstanding = "reading_outstanding"
 const severityInfo = "info"
 
 var (
-	readingRunDirRe   = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
-	readingItemFileRe = regexp.MustCompile(`^(` + issueschema.ReadingItemFamily + `-[0-9]+)\.md$`)
+	readingRunDirRe = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
+	// The item filename grammar is the one record_schema holds the store to,
+	// recordid.BareFilenameNumRe, so the gate and the report cannot disagree about
+	// which files are items (iss-2608300929274006).
+	readingItemFileRe = recordid.BareFilenameNumRe(issueschema.ReadingItemFamily)
 	// The admission filename grammar is the RESOLVER's, the same value
 	// record_schema holds the store to — never a local copy. A stricter one here
 	// would pass a record through the gate and then report the proposal it admits
@@ -123,6 +126,28 @@ type OpenHold struct {
 	Path          string `json:"path"`
 }
 
+// WideningRun is one widening run's answer count (spc-2609020626040342): how many
+// proposals it returned, how many were admitted, declined and held, and which
+// carry neither an admission nor a `declined` or `held` disposition. It makes
+// the admitted-against-declined count — the evidence that the admission
+// asymmetry is being exercised — a query rather than an inspection.
+//
+// It is reported only for a run whose every widening item's answer the walk
+// could read without ambiguity. A run holding an unreadable item, an unreadable
+// admission, an answer the walk declined to read, or a contested, cyclic or
+// illegible disposition supports no count, so its summary stands down; the
+// report's other lists already name what stood in the way.
+type WideningRun struct {
+	Run      string `json:"run"`
+	Items    int    `json:"items"`
+	Admitted int    `json:"admitted"`
+	Declined int    `json:"declined"`
+	Held     int    `json:"held"`
+	// Outstanding names the proposals carrying neither an admission nor a
+	// `declined` or `held` disposition, sorted. Never null.
+	Outstanding []string `json:"outstanding"`
+}
+
 // OutstandingReadings is the whole report, ordered deterministically.
 type OutstandingReadings struct {
 	Undispositioned []OutstandingItem `json:"undispositioned"`
@@ -167,6 +192,9 @@ type OutstandingReadings struct {
 	// and the item simply vanished from the board — and an item whose only answer
 	// is unreadable is the case most in need of a line, not least.
 	Unreadable []UnreadableAnswer `json:"unreadable,omitempty"`
+	// WideningRuns is the per-run answer count of every widening run whose
+	// answers the walk could read, ordered by run.
+	WideningRuns []WideningRun `json:"widening_runs,omitempty"`
 }
 
 // UnsafePath is one path the walk declined to read, with the reason it declined.
@@ -194,6 +222,12 @@ type ContestedItem struct {
 	Path string `json:"path"`
 	// Standing is every standing id, sorted — the whole fault, not a sample.
 	Standing []string `json:"standing"`
+	// Illegible names the standing ids whose record no reader can read. The
+	// prescribed hand repair — write supersedes_disposition into the records no
+	// longer meant to stand — is inert on such a record, whose supersession is
+	// discarded with the rest of its frontmatter, so the reader has to know
+	// which ones need their frontmatter repaired first (iss-2608300848049813).
+	Illegible []string `json:"illegible,omitempty"`
 }
 
 // Empty reports whether there is nothing outstanding — the ordinary state of a
@@ -202,7 +236,7 @@ type ContestedItem struct {
 func (r OutstandingReadings) Empty() bool {
 	return len(r.Undispositioned) == 0 && len(r.Unadmitted) == 0 && len(r.OpenHolds) == 0 &&
 		len(r.Unsafe) == 0 && len(r.Cyclic) == 0 && len(r.Contested) == 0 &&
-		len(r.Unreadable) == 0
+		len(r.Unreadable) == 0 && len(r.WideningRuns) == 0
 }
 
 // ReadReadingOutstanding builds the report from the ledger at issuesDir
@@ -213,6 +247,13 @@ func (r OutstandingReadings) Empty() bool {
 func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, error) {
 	var report OutstandingReadings
 	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(issuesDir))
+	// Every directory below the store is checked for a link; the store root is
+	// checked for leaving the repository, or a symlinked root carries the whole
+	// walk out of the tree (iss-2609261019593167).
+	if err := resolvedInsideRoot(repoRoot, issuesRoot); err != nil {
+		report.Unsafe = append(report.Unsafe, UnsafePath{Path: filepath.ToSlash(issuesDir), Reason: err.Error()})
+		return report, nil
+	}
 	readingsRoot := filepath.Join(issuesRoot, issueschema.ReadingsDir)
 	if !realDir(readingsRoot) {
 		report.Unsafe = append(report.Unsafe, UnsafePath{
@@ -226,7 +267,11 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 		if os.IsNotExist(err) {
 			return report, nil
 		}
-		return report, err
+		report.Unsafe = append(report.Unsafe, UnsafePath{
+			Path:   filepath.ToSlash(filepath.Join(issuesDir, issueschema.ReadingsDir)),
+			Reason: unreadableReason(err),
+		})
+		return report, nil
 	}
 	// The dispositions family root answers for every item below, so a link there
 	// silently empties the standing set of ALL of them — every item would read as
@@ -261,14 +306,26 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 		}
 		entries, err := os.ReadDir(runDir)
 		if err != nil {
-			return OutstandingReadings{}, err
+			// A run the walk cannot list is a path it did not read, on the same
+			// terms as a file it cannot read — never an abort of the whole report
+			// (iss-2608300848049813).
+			report.Unsafe = append(report.Unsafe, UnsafePath{
+				Path:   filepath.ToSlash(filepath.Join(issuesDir, issueschema.ReadingsDir, run.Name())),
+				Reason: unreadableReason(err),
+			})
+			continue
 		}
+		// The run's widening summary. It stands down — withheld, not zeroed —
+		// the moment any fact it would count cannot be read, because a count
+		// over a partial read is a confident false statement about the run.
+		summary := WideningRun{Run: run.Name(), Outstanding: []string{}}
+		standDown := !dispositionsReadable || admissions.unknown(run.Name())
 		for _, e := range entries {
 			m := readingItemFileRe.FindStringSubmatch(e.Name())
 			if e.IsDir() || m == nil {
 				continue
 			}
-			item := m[1]
+			item := strings.TrimSuffix(e.Name(), ".md")
 			rel := filepath.Join(issuesDir, issueschema.ReadingsDir, run.Name(), e.Name())
 			// The item file itself, on the same terms as everything below it. A
 			// symlinked rdi-N.md was admitted as a real item, so the board reported
@@ -284,9 +341,16 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 				report.Unsafe = append(report.Unsafe, UnsafePath{
 					Path: filepath.ToSlash(rel), Reason: unreadableReason(rerr),
 				})
+				// An item nobody could read may be a widening proposal, so the
+				// run's count is not known.
+				standDown = true
 				continue
 			}
 			position := readingPosition(string(content))
+			widening := position == issueschema.PositionWidening
+			if widening {
+				summary.Items++
+			}
 			if !dispositionsReadable {
 				// The item's answer is unreadable, which is not the same fact as
 				// "unanswered" — reporting it outstanding would be a confident
@@ -310,7 +374,7 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			case len(answer.contested) > 1:
 				report.Contested = append(report.Contested, ContestedItem{
 					Item: item, Run: run.Name(), Path: filepath.ToSlash(rel),
-					Standing: answer.contested,
+					Standing: answer.contested, Illegible: answer.illegible,
 				})
 			case answer.standing == nil:
 				// A widening proposal carrying an admission is answered: the
@@ -378,6 +442,26 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			// because a hold is not an alternative to the facts above; it is an
 			// additional one.
 			report.OpenHolds = append(report.OpenHolds, answer.holds...)
+
+			if widening {
+				switch {
+				case admissions.admits(run.Name(), item):
+					summary.Admitted++
+				case len(answer.unsafe) > 0 || answer.cyclic || len(answer.contested) > 1 ||
+					(answer.standing != nil && !answer.standing.wellFormed):
+					standDown = true
+				case answer.standing != nil && answer.standing.state == issueschema.DispositionDeclined:
+					summary.Declined++
+				case answer.standing != nil && answer.standing.state == issueschema.DispositionHeld:
+					summary.Held++
+				default:
+					summary.Outstanding = append(summary.Outstanding, item)
+				}
+			}
+		}
+		if summary.Items > 0 && !standDown {
+			sort.Strings(summary.Outstanding)
+			report.WideningRuns = append(report.WideningRuns, summary)
 		}
 	}
 
@@ -394,6 +478,7 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 	sort.Slice(report.Contested, func(i, j int) bool { return report.Contested[i].Item < report.Contested[j].Item })
 	sort.Slice(report.Unreadable, func(i, j int) bool { return report.Unreadable[i].Item < report.Unreadable[j].Item })
 	sort.Slice(report.Unsafe, func(i, j int) bool { return report.Unsafe[i].Path < report.Unsafe[j].Path })
+	sort.Slice(report.WideningRuns, func(i, j int) bool { return report.WideningRuns[i].Run < report.WideningRuns[j].Run })
 	return report, nil
 }
 
@@ -558,6 +643,8 @@ type itemAnswer struct {
 	standing *standingRecord
 	// contested is every standing id when more than one stands.
 	contested []string
+	// illegible is the contested ids whose record no reader can read.
+	illegible []string
 	// cyclic reports records present with none standing — a supersession cycle.
 	cyclic bool
 	// holds is every standing record that is a hold, so an exit condition is
@@ -584,7 +671,12 @@ func standingDisposition(issuesRoot, issuesDir, item string) (itemAnswer, error)
 		if os.IsNotExist(err) {
 			return answer, nil
 		}
-		return answer, err
+		// Unlistable is unknown, not unanswered, and not an abort either.
+		answer.unsafe = append(answer.unsafe, UnsafePath{
+			Path:   filepath.ToSlash(filepath.Join(issuesDir, issueschema.DispositionsDir, item)),
+			Reason: unreadableReason(err),
+		})
+		return answer, nil
 	}
 	var records []issueschema.DispositionRecord
 	byID := map[string]issueschema.DispositionRecord{}
@@ -640,6 +732,11 @@ func standingDisposition(issuesRoot, issuesDir, item string) (itemAnswer, error)
 		// judgement, and there is nothing here to make it from; choosing one would
 		// publish a verdict the ledger does not contain.
 		answer.contested = standing
+		for _, id := range standing {
+			if !byID[id].WellFormed {
+				answer.illegible = append(answer.illegible, id)
+			}
+		}
 		return answer, nil
 	}
 
@@ -674,8 +771,23 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 			Message: o.Item + " (run " + o.Run + ") is a widening proposal with neither an admission nor a decline — outstanding. " +
 				"At the widening position acceptance IS admission, and the grounds an admission was made on live in an " +
 				"admission record (`" + issueschema.AdmissionFamily + "-N` under " + issueschema.AdmissionsDir + "/" + o.Run +
-				"/), because uniform adoption of everything a reading proposes is equally consistent with judgement and with abdication. " +
+				"/), because uniform adoption of everything a reading proposes is equally consistent with judgement and with abdication; " +
+				"write it with `abcd capture admit " + o.Item + " --grounds \"<why>\"`, which on a standing acceptance writes the admission alone. " +
 				"Declining costs nothing epistemically and is recorded as a disposition in the `" + issueschema.DispositionDeclined + "` state",
+		})
+	}
+	for _, w := range report.WideningRuns {
+		msg := w.Run + ": " + strconv.Itoa(w.Items) + " widening proposal(s) — " +
+			strconv.Itoa(w.Admitted) + " admitted, " + strconv.Itoa(w.Declined) + " declined, " +
+			strconv.Itoa(w.Held) + " held, " + strconv.Itoa(len(w.Outstanding)) + " outstanding"
+		if len(w.Outstanding) > 0 {
+			msg += " (" + strings.Join(w.Outstanding, ", ") + "): an outstanding proposal carries neither an admission nor a `" +
+				issueschema.DispositionDeclined + "` or `" + issueschema.DispositionHeld + "` disposition; admit it with `abcd capture admit <rdi-N> --grounds \"<why>\"` " +
+				"or decline it with `abcd capture disposition <rdi-N> --state " + issueschema.DispositionDeclined + " --grounds \"<why>\"`"
+		}
+		out = append(out, Finding{
+			File: filepath.ToSlash(filepath.Join(issuesDirOf(cfg), issueschema.ReadingsDir, w.Run)), Line: 1,
+			RuleID: ruleReadingOutstanding, Severity: severityInfo, Message: msg,
 		})
 	}
 	for _, u := range report.Unreadable {
@@ -687,18 +799,36 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	for _, u := range report.Unsafe {
+		msg := "the reading walk did not read this — " + u.Reason + ". " +
+			"What it holds is neither reported outstanding nor confirmed answered, because a path nobody read " +
+			"supports no claim either way"
+		// The capture clause is true of the trees core/capture reads before it
+		// writes (readings, dispositions). It reads no admission and no surprise,
+		// so on those paths the clause would send the operator looking for a
+		// second gate's agreement nobody performs (iss-2608301649337920).
+		if !underFamilyDir(u.Path, issueschema.AdmissionsDir, issueschema.SurprisesDir) {
+			msg += ". `abcd capture` refuses the same paths outright, because its read is followed by a write"
+		}
 		out = append(out, Finding{
-			File: u.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo,
-			Message: "the reading walk did not read this — " + u.Reason + ". " +
-				"What it holds is neither reported outstanding nor confirmed answered, because a path nobody read " +
-				"supports no claim either way. `abcd capture` refuses the same paths outright, because its read is followed by a write",
+			File: u.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo, Message: msg,
 		})
 	}
 	for _, c := range report.Contested {
+		illegible := map[string]bool{}
+		for _, id := range c.Illegible {
+			illegible[id] = true
+		}
+		named := make([]string, len(c.Standing))
+		for i, id := range c.Standing {
+			named[i] = id
+			if illegible[id] {
+				named[i] = id + " (not well-formed: repair its frontmatter first, since a supersession written into it is discarded with the rest)"
+			}
+		}
 		out = append(out, Finding{
 			File: c.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo,
 			Message: c.Item + " (run " + c.Run + ") has " + strconv.Itoa(len(c.Standing)) +
-				" standing answers, none superseding another: " + strings.Join(c.Standing, ", ") +
+				" standing answers, none superseding another: " + strings.Join(named, ", ") +
 				". Which one is in force is a judgement the ledger does not contain, so nothing here picks one. " +
 				"`abcd capture disposition " + c.Item + "` refuses until exactly one stands: write " +
 				"`supersedes_disposition` into the records that are no longer meant to stand, by hand — a new " +
@@ -721,4 +851,17 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	return out, nil
+}
+
+// underFamilyDir reports whether a slash-separated ledger path has one of the
+// named family directories as a path segment.
+func underFamilyDir(path string, dirs ...string) bool {
+	for _, seg := range strings.Split(path, "/") {
+		for _, d := range dirs {
+			if seg == d {
+				return true
+			}
+		}
+	}
+	return false
 }

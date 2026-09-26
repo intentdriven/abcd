@@ -14,7 +14,7 @@ impact: internal
 The core/disembark glossary term links its counterpart to interview/embark (the grill-session opening, a different bounded context) rather than the /abcd:embark unpack surface, misdirecting the reader
 ## Evidence
 
-- `.abcd/development/brief/glossary/core/disembark.md:37-38` — "counterpart to [embark](../interview/embark.md)'s inbound opening; together they bracket the portability boundary".
+- `.abcd/development/brief/glossary/core/disembark.md:37-38` — "counterpart to `[embark](../interview/embark.md)`'s inbound opening; together they bracket the portability boundary".
 - `interview/embark.md:5` (`bounded_context: interview`) defines embark as "the opening move of a grill session" — a different bounded context.
 - disembark's true inbound counterpart is `/abcd:embark` unpack (`04-surfaces/03-embark.md`), which has no `core/` glossary term (`find glossary -iname 'embark*'` → only `interview/embark.md`).
 

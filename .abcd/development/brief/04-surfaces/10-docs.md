@@ -84,6 +84,19 @@ promotion is reachable only by a human typing the flag.
   describe present state warn advisorily rather than block. Docs are present
   tense: what *is*, never what *was superseded*.
 - **Broken relative links.** Every relative link resolves to a file in the tree.
+  The rule's own `exempt` globs (repo-relative, `*` staying inside one
+  directory) excuse a file from this check alone: a tool-mandated mirror of a
+  root file, such as a byte-identical copy of `AGENTS.md` a tool reads from
+  `.github/`, carries links that resolve from the root and not from the
+  mirror's directory. The configuration's `exempt_paths` does not reach this
+  rule, because it excuses how a record is written, never whether its links
+  resolve.
+- **Broken heading anchors.** A link's `#fragment` names a heading or an
+  explicit HTML anchor of the markdown page it resolves to, or of the linking
+  page for a bare `#fragment`: the `link_anchors` rule slugs the target's ATX
+  headings as the forge renders them (a repeated heading suffixed `-1`, `-2`)
+  and reports a fragment that names none. It is its own rule so it lands at
+  warning beside the blocking file check, and reads the same `exempt` globs.
 - **Stray root markdown.** Markdown at the repo root belongs under `docs/`
   unless it is one of the allowlisted files. A root markdown **symlink** is
   judged by its resolved target's stem rather than by its own name, which is
@@ -112,10 +125,20 @@ promotion is reachable only by a human typing the flag.
   material a page must be able to show, and a line carrying the
   `abcd-lint:allow` waiver is deliberately illustrative.
 
+A gitignored path under a root is not the repository's documentation, so the
+walk prunes it: the lint asks git once per root which untracked paths it
+ignores and reads none of them, the way a cached clone a fetch script writes
+under a root would otherwise be linted file by file. A committed file is never
+pruned, because git ignores no tracked file, and outside a repository nothing
+is. The lint names what it pruned, so a smaller tree is never read as a clean
+one; `record-lint` prunes the same way and names the paths on stderr.
+
 ## Output
 
 The JSON payload carries `blockers` (a count) and `findings` (each with
-`File`, `Line`, `RuleID`, `Severity`, `Message`). A `blockers` value of zero
+`File`, `Line`, `RuleID`, `Severity`, `Message`), and `pruned`, the gitignored
+paths the walk skipped (a wholly ignored directory once, with its trailing
+slash), absent when it skipped none; the text render names them on one line. A `blockers` value of zero
 means the docs are currency-clean. The command exits non-zero when a blocker is
 present, so it composes directly into CI and the release gate.
 

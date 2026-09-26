@@ -1,5 +1,5 @@
 // Package record is the read side of `abcd <id>`: dispatch on a record id —
-// iss-N, itd-N, spc-N, adr-N — and report what the record is, its links, and
+// iss-N, itd-N, spc-N, adr-N, and the ledger's adm-N, srp-N and rfm-N — and report what the record is, its links, and
 // the concrete next move for its lifecycle state (spc-26). It is a leaf
 // package over the capture, intent, and spec read paths plus a thin adr
 // reader; nothing imports it back, and nothing here writes or knows a
@@ -20,13 +20,20 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
 // IDRe is the family gate: the only positional shapes the root command routes
 // here. Anything else stays on the unknown-command path, byte-for-byte.
-var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr)-[0-9]+$`)
+//
+// adm, srp and rfm joined in one edit (spc-2609020626040342): rfm because the
+// reframe spec (spc-2609020626048705) landed after it and inherited the gate
+// rather than making a second edit; describeReframe is that spec's. The
+// reading families rdi, dsp and rdg stay outside it, the residual spc-67 names.
+var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$`)
 
 // adrsRelDir is where decisions live. A file is <N>-<slug>.md carrying an
 // `id: adr-N` frontmatter line, in either of the store's two id vintages: the
@@ -50,9 +57,9 @@ var ErrSkippedRecord = errors.New("skipped on read")
 // superseded_by) as present.
 type Description struct {
 	ID        string            `json:"id"`
-	Family    string            `json:"family"` // issue | intent | spec | adr
+	Family    string            `json:"family"` // issue | intent | spec | adr | admission | surprise | reframe
 	Title     string            `json:"title"`
-	Status    string            `json:"status"` // folder/bucket, directory-as-truth
+	Status    string            `json:"status"` // folder/bucket, directory-as-truth; admitted | recorded | open | complete for the folderless ledger families
 	Path      string            `json:"path"`
 	Links     map[string]string `json:"links,omitempty"`
 	NextMoves []string          `json:"next_moves,omitempty"`
@@ -70,6 +77,7 @@ const (
 	verbCapturePromote = "capture promote"
 	verbCaptureResolve = "capture resolve"
 	verbCaptureWontfix = "capture wontfix"
+	verbCaptureReframe = "capture reframe"
 	// verbIntentLink is never written by this package directly: it reaches
 	// NextMoves through intent.Ready's spec_link remedies, which the
 	// planned-not-ready branch passes through verbatim. It is pinned here so
@@ -83,7 +91,7 @@ const (
 func RecommendedVerbPaths() []string {
 	return []string{
 		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbSpecClose,
-		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix,
+		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix, verbCaptureReframe,
 	}
 }
 
@@ -93,7 +101,7 @@ func RecommendedVerbPaths() []string {
 func Describe(repoRoot, id string) (Description, error) {
 	m := IDRe.FindStringSubmatch(id)
 	if m == nil {
-		return Description{}, fmt.Errorf("record: id %q does not match ^(iss|itd|spc|adr)-[0-9]+$", id)
+		return Description{}, fmt.Errorf("record: id %q does not match %s", id, IDRe.String())
 	}
 	switch m[1] {
 	case "iss":
@@ -102,6 +110,12 @@ func Describe(repoRoot, id string) (Description, error) {
 		return describeIntent(repoRoot, id)
 	case "spc":
 		return describeSpec(repoRoot, id)
+	case "adm":
+		return describeAdmission(repoRoot, id)
+	case "srp":
+		return describeSurprise(repoRoot, id)
+	case "rfm":
+		return describeReframe(repoRoot, id)
 	default:
 		return describeADR(repoRoot, id)
 	}
@@ -462,6 +476,179 @@ func describeADR(repoRoot, id string) (Description, error) {
 	return Description{}, fmt.Errorf("record: %s not found in %s", canonical, adrsRelDir)
 }
 
+// describeAdmission renders one admission read-only: the grounds as its title,
+// and its joins — the run, the proposal and where it sits, and the standing
+// disposition over the proposal. The family has no folder, so its status is
+// `admitted`; it emits no next move, because an admission is an answer already
+// given.
+func describeAdmission(repoRoot, id string) (Description, error) {
+	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(capture.LedgerRelPath))
+	_, path, err := readingitem.LocateAdmission(issuesRoot, id)
+	if err != nil {
+		return Description{}, fmt.Errorf("record: %s not found in %s/%s: %w", id, capture.LedgerRelPath, issueschema.AdmissionsDir, err)
+	}
+	fields, _ := readRecordHead(path, id)
+	d := Description{
+		ID:     id,
+		Family: "admission",
+		Title:  headValue(fields, "grounds", id),
+		Status: "admitted",
+		Path:   filepath.ToSlash(relTo(repoRoot, path)),
+		Links:  map[string]string{},
+	}
+	run, proposal := headValue(fields, "run", ""), headValue(fields, "proposal", "")
+	if run != "" {
+		d.Links["run"] = run
+	}
+	if proposal != "" {
+		d.Links["proposal"] = proposal
+		if _, ppath, err := readingitem.Locate(issuesRoot, proposal); err == nil {
+			d.Links["proposal_path"] = filepath.ToSlash(relTo(repoRoot, ppath))
+		}
+		if recordid.ValidReadingRunID(run) {
+			if fate, err := capture.ItemFate(repoRoot, run, proposal); err == nil && len(fate.Dispositions) > 0 {
+				d.Links["disposition"] = strings.Join(fate.Dispositions, ", ")
+			}
+		}
+	}
+	return d, nil
+}
+
+// describeSurprise renders one surprise read-only: its body — the surprise
+// itself — as its title, and the occasion it is keyed to. The family has no
+// folder, so its status is `recorded`; it emits no next move.
+func describeSurprise(repoRoot, id string) (Description, error) {
+	if !recordid.ValidSurpriseID(id) {
+		return Description{}, fmt.Errorf("record: malformed srp id %q", id)
+	}
+	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(capture.LedgerRelPath))
+	dir := filepath.Join(issuesRoot, issueschema.SurprisesDir)
+	if err := readingitem.RefuseSymlinkedDir(dir); err != nil {
+		return Description{}, fmt.Errorf("record: %s: %w", id, err)
+	}
+	path := filepath.Join(dir, id+".md")
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return Description{}, fmt.Errorf("record: %s not found in %s/%s", id, capture.LedgerRelPath, issueschema.SurprisesDir)
+	}
+	fields, body := readRecordHeadAndBody(path)
+	d := Description{
+		ID:     id,
+		Family: "surprise",
+		Title:  firstLine(body, id),
+		Status: "recorded",
+		Path:   filepath.ToSlash(relTo(repoRoot, path)),
+		Links:  map[string]string{},
+	}
+	if occ := headValue(fields, "occasioned_by", ""); occ != "" {
+		d.Links["occasioned_by"] = occ
+		fams := make([]readingitem.Family, 0, len(issueschema.SurpriseOccasionFamilies))
+		for _, f := range issueschema.SurpriseOccasionFamilies {
+			fams = append(fams, readingitem.Family(f))
+		}
+		if issueschema.ValidSurpriseOccasion(occ) {
+			if opath, err := readingitem.ResolveOccasion(repoRoot, occ, fams...); err == nil {
+				d.Links["occasion_path"] = filepath.ToSlash(relTo(repoRoot, opath))
+			}
+		}
+	}
+	return d, nil
+}
+
+// describeReframe renders a reframe record (spc-2609020626048705): its
+// occasion and where that resolves, the three before fingerprints and, once
+// complete, the three after fingerprints and the surfaces that moved. Its
+// status is `open` while the after half is absent and `complete` once it is
+// present; an open record's one next move is the completion.
+func describeReframe(repoRoot, id string) (Description, error) {
+	if !recordid.ValidReframeID(id) {
+		return Description{}, fmt.Errorf("record: malformed rfm id %q", id)
+	}
+	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(capture.LedgerRelPath))
+	dir := filepath.Join(issuesRoot, issueschema.ReframesDir)
+	if err := readingitem.RefuseSymlinkedDir(dir); err != nil {
+		return Description{}, fmt.Errorf("record: %s: %w", id, err)
+	}
+	path := filepath.Join(dir, id+".md")
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return Description{}, fmt.Errorf("record: %s not found in %s/%s", id, capture.LedgerRelPath, issueschema.ReframesDir)
+	}
+	fields, _ := readRecordHead(path, "")
+	occ := headValue(fields, "occasioned_by", "")
+	d := Description{
+		ID:     id,
+		Family: "reframe",
+		Title:  "reframe occasioned by " + occ,
+		Status: "open",
+		Path:   filepath.ToSlash(relTo(repoRoot, path)),
+		Links:  map[string]string{},
+	}
+	if occ == "" {
+		d.Title = "reframe"
+	} else {
+		d.Links["occasioned_by"] = occ
+		if issueschema.ValidReframeOccasion(occ) {
+			fams := make([]readingitem.Family, 0, len(issueschema.ReframeOccasionFamilies))
+			for _, f := range issueschema.ReframeOccasionFamilies {
+				fams = append(fams, readingitem.Family(f))
+			}
+			if opath, err := readingitem.ResolveOccasion(repoRoot, occ, fams...); err == nil {
+				d.Links["occasion_path"] = filepath.ToSlash(relTo(repoRoot, opath))
+			}
+		}
+	}
+	for _, n := range issueschema.FrameSurfaceNames {
+		if v := headValue(fields, n+"_before", ""); v != "" {
+			d.Links[n+"_before"] = v
+		}
+	}
+	if headValue(fields, "construal_after", "") != "" {
+		d.Status = "complete"
+		for _, n := range issueschema.FrameSurfaceNames {
+			if v := headValue(fields, n+"_after", ""); v != "" {
+				d.Links[n+"_after"] = v
+			}
+		}
+		if v := inlineList(headValue(fields, "changed", "")); v != "" {
+			d.Links["changed"] = v
+		}
+		return d, nil
+	}
+	d.NextMoves = []string{
+		"commit the rewrite, then `abcd " + verbCaptureReframe + " --complete " + id + "`",
+	}
+	return d, nil
+}
+
+// inlineList renders a one-line flow sequence (`["a", "b"]`) as `a, b`.
+func inlineList(v string) string {
+	v = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(v), "["), "]")
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		if item = strings.Trim(strings.TrimSpace(item), `"'`); item != "" {
+			out = append(out, item)
+		}
+	}
+	return strings.Join(out, ", ")
+}
+
+// headValue reads one frontmatter value, unquoted, or fallback when it is absent
+// or null.
+func headValue(fields map[string]frontmatter.Field, key, fallback string) string {
+	v := strings.Trim(strings.TrimSpace(fields[key].Value), `"'`)
+	if v == "" || frontmatter.IsNull(v) {
+		return fallback
+	}
+	return v
+}
+
+// relTo renders abs relative to repoRoot, or abs itself when it is not under it.
+func relTo(repoRoot, abs string) string {
+	if rel, err := filepath.Rel(repoRoot, abs); err == nil && !strings.HasPrefix(rel, "..") {
+		return rel
+	}
+	return abs
+}
+
 // maxRecordHeadBytes bounds the head read (trust boundary, mirroring the
 // stores' own caps).
 const maxRecordHeadBytes = 256 * 1024
@@ -476,28 +663,54 @@ const maxRecordHeadBytes = 256 * 1024
 // vet the intent/spec paths before this function ever sees them; the adr path
 // has no store of its own, so this is its only guard.
 func readRecordHead(absPath, fallbackTitle string) (map[string]frontmatter.Field, string) {
-	none := map[string]frontmatter.Field{}
-	f, err := os.OpenFile(absPath, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
-	if err != nil {
-		return none, fallbackTitle
+	fields, lines, ok := readGuardedLines(absPath)
+	if !ok {
+		return fields, fallbackTitle
 	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxRecordHeadBytes {
-		return none, fallbackTitle
-	}
-	data, err := io.ReadAll(io.LimitReader(f, maxRecordHeadBytes+1))
-	if err != nil || len(data) > maxRecordHeadBytes {
-		return none, fallbackTitle
-	}
-	lines := strings.Split(string(data), "\n")
-	fields := frontmatter.Fields(lines)
 	for _, ln := range lines {
 		if strings.HasPrefix(ln, "# ") {
 			return fields, strings.TrimSpace(strings.TrimPrefix(ln, "# "))
 		}
 	}
 	return fields, fallbackTitle
+}
+
+// readRecordHeadAndBody reads a record file on readRecordHead's guarded terms
+// and returns its frontmatter fields and the body after the closing delimiter.
+// A refused file yields no fields and an empty body.
+func readRecordHeadAndBody(absPath string) (map[string]frontmatter.Field, string) {
+	fields, lines, ok := readGuardedLines(absPath)
+	if !ok || len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return fields, ""
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return fields, strings.Join(lines[i+1:], "\n")
+		}
+	}
+	return fields, ""
+}
+
+// readGuardedLines is the guarded read both head readers share: O_NOFOLLOW and
+// O_NONBLOCK on open, the same descriptor validated as a regular file under the
+// size cap, and a bounded read.
+func readGuardedLines(absPath string) (map[string]frontmatter.Field, []string, bool) {
+	none := map[string]frontmatter.Field{}
+	f, err := os.OpenFile(absPath, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return none, nil, false
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > maxRecordHeadBytes {
+		return none, nil, false
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxRecordHeadBytes+1))
+	if err != nil || len(data) > maxRecordHeadBytes {
+		return none, nil, false
+	}
+	lines := strings.Split(string(data), "\n")
+	return frontmatter.Fields(lines), lines, true
 }
 
 // firstLine returns the first non-blank line of body, whitespace-collapsed,

@@ -315,6 +315,11 @@ func TestPagePayloadRefusals(t *testing.T) {
 			p.Headlines[0].Text = `Nobody types a version any more, said Iris, a product thinker.`
 			return marshalPage(t, "v0.4.1", pageEntries(), p)
 		}, ReasonBlockquote},
+		{"a persona attributed in headline prose with says", func(t *testing.T) []byte {
+			p := goodPage()
+			p.Headlines[0].Text = `Nobody types a version any more, says Iris, a product thinker.`
+			return marshalPage(t, "v0.4.1", pageEntries(), p)
+		}, ReasonBlockquote},
 		{"an outbound-policy leak", func(t *testing.T) []byte {
 			p := goodPage()
 			p.Headlines[0].Text = "Composed at " + sessionURL

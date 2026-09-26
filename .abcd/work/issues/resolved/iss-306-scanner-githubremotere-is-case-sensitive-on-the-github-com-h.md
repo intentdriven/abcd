@@ -13,7 +13,7 @@ impact: fix
 
 scanner githubRemoteRe is case-sensitive on the github.com host, disabling the github_username detector on a mixed-case remote and spuriously hard-failing when name==handle
 ## Evidence
-`internal/adapter/scanner/identity.go:94` — `githubRemoteRe = regexp.MustCompile(`+"`"+`github\.com[:/]([A-Za-z0-9-]+)/`+"`"+`)` has no `(?i)`. git stores `remote.origin.url` byte-verbatim, so `git@GitHub.com:Alex/repo.git` or `https://GITHUB.COM/...` yields an empty capture. `ProbeIdentity` (`:56-73`) then leaves `GitRemoteUsername` empty, `m.github` (`:160`) is never compiled, and the `github_username` warn detector is silently disabled for that checkout.
+`internal/adapter/scanner/identity.go:94` — `githubRemoteRe` compiles the pattern `github\.com[:/]([A-Za-z0-9-]+)/`, which has no `(?i)`. git stores `remote.origin.url` byte-verbatim, so `git@GitHub.com:Alex/repo.git` or `https://GITHUB.COM/...` yields an empty capture. `ProbeIdentity` (`:56-73`) then leaves `GitRemoteUsername` empty, `m.github` (`:160`) is never compiled, and the `github_username` warn detector is silently disabled for that checkout.
 
 The neighbouring matchers `m.homeSelf/m.email/m.name/m.github` and both noreply regexes all carry `(?i)` with comments naming this exact case-fold reason — the extractor feeding them is the missed site.
 

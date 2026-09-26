@@ -89,8 +89,9 @@ func TestEveryDelegatingVerbCarriesRoute(t *testing.T) {
 }
 
 func principlesPayload(t *testing.T) string {
-	return synthPayloadFile(t, `{"schema_version":1,"mode":"delegated","prompt_version":"0.1.0",`+
-		`"principles":[{"id":"prn-cascade","principle":"the cascade is fixed","confidence":"high","evidence":["adr-12"]}]}`)
+	return synthPayloadFile(t, `{"schema_version":2,"mode":"delegated","prompt_version":"0.2.0",`+
+		`"principles":[{"id":"prn-cascade","principle":"the cascade is fixed","confidence":"high",`+
+		`"claim_type":"causal","reference":"adr-12","comparison":null,"evidence":["adr-12"]}]}`)
 }
 
 // TestRouteRefusalsExitTwoBeforeAnyStep is AC 7's refusal half at the surface:

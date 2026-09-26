@@ -47,7 +47,7 @@ the ruling is that the PROMISE was correct and the BEHAVIOUR should change.
 Implementing this therefore reverses that prose correction, deliberately.
 
 It is the same stance as
-[`the-users-directory-is-theirs`](../../development/principles/the-users-directory-is-theirs.md)
+[`the-users-directory-is-theirs`](../../../development/principles/the-users-directory-is-theirs.md)
 and adr-2609091248200336, one level in: a tool does not create directories in
 space the user did not hand it, and it does not write its own name into files
 the user will commit under their project's history either.

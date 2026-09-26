@@ -693,11 +693,16 @@ const retiredFourthConditionSentence = "Items come back unordered and unweighted
 // states the derivation rule — the only one of the four that has one to state —
 // and the rule now reaches a widening run at an ancestor of the target. A shared
 // edit still moves all four together; this one was not shared.
+//
+// The three assembling positions other than comparative moved PATCH together
+// with spc-2609020626042471: their object's source list gains the knowledge
+// record, which the include table admits there and not at comparative, so the
+// comparative definition did not move.
 var promptVersions = map[Position]string{
-	PositionWidening:    "0.2.2",
-	PositionEntailment:  "0.1.2",
+	PositionWidening:    "0.2.3",
+	PositionEntailment:  "0.1.3",
 	PositionComparative: "0.1.3",
-	PositionDetection:   "0.1.3",
+	PositionDetection:   "0.1.4",
 }
 
 // TestDetectionItemShapeCitesAConditionIdentity is spc-2609020626046252's

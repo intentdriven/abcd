@@ -541,3 +541,163 @@ func TestACommonWordNameIsNotScrubbedAsAWord(t *testing.T) {
 		t.Errorf("a distinctive name is no longer scrubbed: %q", got)
 	}
 }
+
+// TestAnInboxPathThatIsNotARealDirectoryIsARefusal: a symlink or a file where
+// the inbox belongs is refused on purpose, so every verb that meets it answers
+// with ErrRefused (exit 2 at the front door), whether it only reads the inbox
+// or would create it, and nothing is written through it
+// (iss-2609260552250826).
+func TestAnInboxPathThatIsNotARealDirectoryIsARefusal(t *testing.T) {
+	for _, occupant := range []string{"symlink", "file"} {
+		t.Run(occupant, func(t *testing.T) {
+			home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
+			ledger := abcdCheckout(t)
+			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			inbox := filepath.Join(home, ".abcd", "inbox")
+			elsewhere := t.TempDir()
+			switch occupant {
+			case "symlink":
+				if err := os.Symlink(elsewhere, inbox); err != nil {
+					t.Fatal(err)
+				}
+			case "file":
+				if err := os.WriteFile(inbox, []byte("not an inbox\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id := "rpt-2609260900000001"
+			if _, err := List(); !errors.Is(err, ErrRefused) {
+				t.Errorf("List = %v, want a refusal", err)
+			}
+			if _, err := Count(); !errors.Is(err, ErrRefused) {
+				t.Errorf("Count = %v, want a refusal", err)
+			}
+			if _, err := Show(id); !errors.Is(err, ErrRefused) {
+				t.Errorf("Show = %v, want a refusal", err)
+			}
+			if _, err := Promote(ledger.Root(), id); !errors.Is(err, ErrRefused) {
+				t.Errorf("Promote = %v, want a refusal", err)
+			}
+			if _, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"}); !errors.Is(err, ErrRefused) {
+				t.Errorf("File = %v, want a refusal", err)
+			}
+			if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+				t.Errorf("a refused verb wrote through the link: %v", entries)
+			}
+		})
+	}
+}
+
+// TestAnInboxRefusalNamesTheLevelItRefused: the refusal names the level a
+// symlink occupies, home-redacted — the home itself, ~/.abcd (the dotfiles
+// case), the inbox, or its promoted folder — so the reader is sent to the path
+// that is wrong, not to an inbox that may not exist (iss-2609261106286306).
+func TestAnInboxRefusalNamesTheLevelItRefused(t *testing.T) {
+	for _, level := range []string{"", ".abcd", ".abcd/inbox", ".abcd/inbox/promoted"} {
+		t.Run("~/"+level, func(t *testing.T) {
+			home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
+			elsewhere := t.TempDir()
+			if level == "" {
+				// The home itself is the link: HOME names a symlink to a real
+				// directory.
+				link := filepath.Join(t.TempDir(), "home")
+				if err := os.Symlink(home, link); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("HOME", link)
+			} else {
+				if parent := filepath.Dir(filepath.Join(home, level)); parent != home {
+					if err := os.MkdirAll(parent, 0o700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := os.Symlink(elsewhere, filepath.Join(home, filepath.FromSlash(level))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"})
+			if !errors.Is(err, ErrRefused) {
+				t.Fatalf("File = %v, want a refusal", err)
+			}
+			want := strings.TrimSuffix("~/"+level, "/") + " is not a real directory"
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("File refusal = %q, want it to name %q", err, want)
+			}
+			if strings.Contains(err.Error(), home) {
+				t.Errorf("File refusal carries the absolute home: %q", err)
+			}
+		})
+	}
+}
+
+// TestTheInboxReadersRefuseWhatTheWritersRefuse: a symlinked ~/.abcd with an
+// inbox behind it is refused by the reading verbs as by the filing ones, and a
+// symlinked promoted folder by every verb, so nothing is read through a link
+// the writers would not write through. A symlinked ~/.abcd with no inbox
+// behind it holds nothing to read and reads as no inbox, as the rules loader
+// reads ~/.abcd/rules.json behind one (iss-2609261106287078).
+func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
+	file := func(t *testing.T) {
+		t.Helper()
+		if _, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readers := func(t *testing.T, want string) {
+		t.Helper()
+		id := "rpt-2609260900000001"
+		for name, err := range map[string]error{
+			"List":  second(List()),
+			"Count": second(Count()),
+			"Show":  second(Show(id)),
+		} {
+			if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), want+" is not a real directory") {
+				t.Errorf("%s = %v, want a refusal naming %s", name, err, want)
+			}
+		}
+	}
+	t.Run("symlinked ~/.abcd holding an inbox", func(t *testing.T) {
+		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
+		file(t)
+		dotfiles := filepath.Join(t.TempDir(), "abcd")
+		if err := os.Rename(filepath.Join(home, ".abcd"), dotfiles); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(dotfiles, filepath.Join(home, ".abcd")); err != nil {
+			t.Fatal(err)
+		}
+		readers(t, "~/.abcd")
+	})
+	t.Run("symlinked promoted folder", func(t *testing.T) {
+		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
+		file(t)
+		promoted := filepath.Join(home, ".abcd", "inbox", "promoted")
+		if err := os.Remove(promoted); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(t.TempDir(), promoted); err != nil {
+			t.Fatal(err)
+		}
+		readers(t, "~/.abcd/inbox/promoted")
+	})
+	t.Run("symlinked ~/.abcd with no inbox behind it", func(t *testing.T) {
+		home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
+		if err := os.Symlink(t.TempDir(), filepath.Join(home, ".abcd")); err != nil {
+			t.Fatal(err)
+		}
+		if list, err := List(); err != nil || len(list) != 0 {
+			t.Errorf("List = %v, %v; want an empty inbox", list, err)
+		}
+		if tally, err := Count(); err != nil || tally.Reports != 0 {
+			t.Errorf("Count = %+v, %v; want zero", tally, err)
+		}
+		if _, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"}); !errors.Is(err, ErrRefused) {
+			t.Errorf("File = %v, want a refusal: it would create the inbox through the link", err)
+		}
+	})
+}
+
+// second is the error of a two-value call.
+func second[T any](_ T, err error) error { return err }

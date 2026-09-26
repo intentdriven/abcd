@@ -2,6 +2,7 @@
 id: spc-1
 intent: itd-1
 origin: ABCD-EVAL-SENTINEL-WARM-KEY
+evidence: [ABCD-EVAL-SENTINEL-PRINCIPLE-CITATION]
 ---
 
 # A design record

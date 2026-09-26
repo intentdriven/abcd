@@ -54,6 +54,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -311,80 +312,34 @@ func parse(raw []byte, f File) (map[string]json.RawMessage, error) {
 	return root, nil
 }
 
-// refuseDuplicateKeys walks the token stream and refuses any object that names
-// a key twice. Silent last-wins lets a block further down a reviewed file
-// replace the one a reader saw first. Invalid JSON is left to the decoder,
-// which reports it with a position.
+// refuseDuplicateKeys refuses any object that names a key twice, at any depth,
+// through the one canonical check (jsonstrict): a repeat is judged the way
+// encoding/json binds a key, so a case twin ("Pace" after "pace") counts. Silent
+// last-wins lets a block further down a reviewed file replace the one a reader
+// saw first. Invalid JSON is left to the decoder, which reports it with a
+// position.
 func refuseDuplicateKeys(raw []byte) error {
-	if !json.Valid(raw) {
-		return nil
+	var dk *jsonstrict.DuplicateKeyError
+	if err := jsonstrict.NoDuplicateKeys(raw); !errors.As(err, &dk) {
+		return err
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	// Each frame is one open container: its key set when it is an object (nil
-	// for an array), whether the next string token is a key, and its path.
-	type frame struct {
-		keys    map[string]bool
-		wantKey bool
-		path    string
-		lastKey string
+	prefix := ""
+	for _, seg := range dk.Path {
+		if seg == "[]" {
+			prefix += "[]"
+			continue
+		}
+		prefix = joinKey(prefix, seg)
 	}
-	var stack []*frame
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			return nil
-		}
-		var top *frame
-		if len(stack) > 0 {
-			top = stack[len(stack)-1]
-		}
-		switch t := tok.(type) {
-		case json.Delim:
-			switch t {
-			case '{', '[':
-				p := ""
-				if top != nil {
-					p = top.path + "[]"
-					if top.keys != nil {
-						p = joinKey(top.path, top.lastKey)
-					}
-					if top.keys != nil {
-						top.wantKey = true
-					}
-				}
-				fr := &frame{path: p}
-				if t == '{' {
-					fr.keys = map[string]bool{}
-					fr.wantKey = true
-				}
-				stack = append(stack, fr)
-			case '}', ']':
-				stack = stack[:len(stack)-1]
-				if len(stack) > 0 && stack[len(stack)-1].keys != nil {
-					stack[len(stack)-1].wantKey = true
-				}
-			}
-		case string:
-			if top != nil && top.keys != nil && top.wantKey {
-				if top.keys[t] {
-					return fmt.Errorf("it names %q more than once; the last would win silently, "+
-						"so a block further down the file could replace the one a reader saw first",
-						BoundKey(joinKey(top.path, t)))
-				}
-				top.keys[t] = true
-				top.lastKey = t
-				top.wantKey = false
-				continue
-			}
-			if top != nil && top.keys != nil {
-				top.wantKey = true
-			}
-		default:
-			if top != nil && top.keys != nil {
-				top.wantKey = true
-			}
-		}
+	if dk.Key != dk.First {
+		return fmt.Errorf("it names %q more than once, the second time as %q, a spelling encoding/json "+
+			"binds to the same key; the last would win silently, so a block further down the file could "+
+			"replace the one a reader saw first",
+			BoundKey(joinKey(prefix, dk.First)), BoundKey(dk.Key))
 	}
+	return fmt.Errorf("it names %q more than once; the last would win silently, "+
+		"so a block further down the file could replace the one a reader saw first",
+		BoundKey(joinKey(prefix, dk.Key)))
 }
 
 func joinKey(prefix, k string) string {

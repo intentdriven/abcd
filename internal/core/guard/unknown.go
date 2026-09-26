@@ -446,6 +446,20 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			if r.operand {
 				operands(st.pos, st.wrapper, st.noglob)
 			}
+			// An unknown dash-word's output is split into words when it stands
+			// unquoted, so it can print the wrapper's mandatory operands after
+			// its own flags: `timeout --$(x) pkill` runs pkill when x prints
+			// `foreground 5` (iss-2609260543090196). Each count of operands it
+			// may print leaves the rest to the words after it.
+			if isUnknown(tok) && strings.HasPrefix(tok, "-") {
+				for left := wrapperOperands[st.wrapper] - 1; left >= 0; left-- {
+					if left == 0 {
+						push(state{pos: st.pos + 1, mode: walkArrive, noglob: st.noglob})
+					} else {
+						push(state{pos: st.pos + 1, mode: walkOperands, wrapper: st.wrapper, left: left, noglob: st.noglob})
+					}
+				}
+			}
 		case walkOperands:
 			next := state{pos: st.pos + 1, mode: walkOperands, wrapper: st.wrapper, left: st.left, noglob: st.noglob}
 			if vanishable(tok) {

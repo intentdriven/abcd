@@ -222,6 +222,12 @@ var sentinelClasses = []sentinelClass{
 		Name: "EXHAUST",
 		Homes: []string{
 			"repo:.abcd/development/readings/rdg-2608300900000001/manifest.json",
+			// The scribe's manifest, promoted beside the run it transcribed for
+			// (spc-2609020626045177). It names ledger paths by construction, so
+			// it is planted as a regression guard: a row or segment change that
+			// let the readings family travel would carry the ledger with it
+			// (itd-2609020625402599 ac-8).
+			"repo:.abcd/development/readings/rdg-2608300900000001/scribe-manifest.json",
 			"repo:.abcd/work/issues/readings/rdi-1-a-prior-reading.md",
 			"repo:.abcd/work/issues/dispositions/dsp-1-a-prior-disposition.md",
 			// The SECOND widening run's items. The comparative exception admits
@@ -232,7 +238,7 @@ var sentinelClasses = []sentinelClass{
 			"repo:.abcd/work/issues/readings/" + dispositionedWideningRun + "/rdi-201.md",
 			"repo:.abcd/work/issues/readings/" + dispositionedWideningRun + "/rdi-202.md",
 		},
-		Count: 5,
+		Count: 6,
 		Why: "itd-183: manifests, reading records and dispositions are warm on the next " +
 			"run, so the instrument's own output is never its input — with the one " +
 			"positional exception adr-2609021016272867 states, which reaches ONE run",
@@ -298,6 +304,44 @@ var sentinelClasses = []sentinelClass{
 		Why: "the researcher's judgement on a candidate — a disposition, an admission, a " +
 			"surprise — is warm, and a reading that saw it would be reading what it exists " +
 			"to inform",
+	},
+	{
+		// The reframe record (spc-2609020626048705): a committed pointer to a
+		// reframe whose content stays local. It is warm at every position — the
+		// ledger's container row refuses it at the three cold positions, and the
+		// derived per-family row does at comparative — and its grounds are the
+		// researcher's reasoning about the frame, which no reading may see.
+		Name: "LEDGER-REFRAME",
+		// Twice in one record: in the grounds the writer records, and in a body
+		// only a hand-written record carries. The body is what an admitting row
+		// would pass, so it is the half that makes the exclusion falsifiable.
+		Homes: []string{"repo:.abcd/work/issues/reframes/rfm-1.md"},
+		Count: 2,
+		Why: "spc-2609020626048705: a reframe record is warm and reaches no reading; its " +
+			"exclusion is asserted in every manifest, by the ledger rows and by the floor's " +
+			"own reframe row",
+	},
+	{
+		// The knowledge record's genealogy (spc-2609020626042471). A typed
+		// principle carries it in three homes: a claim key (`evidence`), the
+		// reasoning below the statement (`**Why.**`, beside a record handle),
+		// and a link TARGET inside the statement itself. The statement travels
+		// and every one of the three stays behind: the reasoning by the
+		// projection, and the link target by the projection's unwrapping to the
+		// label. The key is stripped by the floor, but a projected principle
+		// never carries its frontmatter at all, so the key rows need a home on
+		// a record that travels WHOLE to be falsifiable — the fourth plant, an
+		// `evidence` key on the spec, on the same ground an excluded heading
+		// keeps a home on one (testdata/cold-reading/README.md). Warm at every
+		// position.
+		Name: "PRINCIPLE-CITATION",
+		Homes: []string{
+			"repo:.abcd/development/principles/a-typed-principle.md",
+			"repo:.abcd/development/specs/open/spc-1-a-design-record.md",
+		},
+		Count: 4,
+		Why: "adr-2609021016270132: a principle is read cold by its statement and never by " +
+			"its citations, which are genealogy",
 	},
 	{
 		Name:  "DEFINITION",
@@ -452,6 +496,20 @@ var holes = []hole{
 		Positions: []string{posComparative},
 		Why: "the derived widening run's items are admitted at the comparative position and " +
 			"projected to two body fields, so a fate relocated into one of those fields travels",
+	},
+	{
+		// The knowledge record's control (spc-2609020626042471, ac-7). The
+		// link-target plant in the baseline cannot leak while the unwrapper
+		// stands, so it falsifies the unwrapping alone; this relocation is what
+		// exercises the read block over the statement — the citation class
+		// moved into the `**The rule.**` paragraph as a bare token, which the
+		// projection carries into the bundle and the control must report.
+		Class:     "PRINCIPLE-CITATION",
+		From:      ".abcd/development/principles/a-typed-principle.md",
+		To:        ".abcd/development/principles/a-typed-principle.md",
+		Positions: []string{posWidening, posEntailment, posDetection},
+		Why: "a principle's statement is projected to every position whose entry admits the " +
+			"knowledge record, so a token relocated into it travels",
 	},
 }
 
@@ -827,6 +885,22 @@ var carriers = []carrier{
 		Scan:      "parsed",
 		Why: "the criteria discipline, which the assembler narrows the disciplines row to at " +
 			"this position; a comparative reading with no criteria characterises against nothing",
+	},
+	{
+		// The knowledge record's carrier (spc-2609020626042471). The fixture
+		// preset admits the principle kind at the three assembling positions, so
+		// the principle row is falsifiable by presence: deleting it leaks nothing
+		// and only this floor sees it go. Fields pins the projection to the one
+		// statement field, so a row projecting the whole file is told apart from
+		// one projecting the statement.
+		Path:      ".abcd/development/principles/a-typed-principle.md",
+		Positions: []string{posWidening, posEntailment, posDetection},
+		Markers:   []string{"ABCD-EVAL-PRINCIPLE-STATEMENT travels as the knowledge record"},
+		Fields:    []string{"The rule"},
+		Scan:      "parsed",
+		Classes:   []string{"PRINCIPLE-CITATION"},
+		Why: "a typed principle, admitted as its statement; the carrier is what makes the " +
+			"principles row falsifiable",
 	},
 	{
 		// The live leak's own shape: a Go test file carrying record-shaped

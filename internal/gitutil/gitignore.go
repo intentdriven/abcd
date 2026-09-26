@@ -10,6 +10,7 @@
 package gitutil
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -68,4 +69,34 @@ func CheckIgnored(root string, candidates []string) map[string]struct{} {
 func IsIgnored(root, path string) bool {
 	_, ok := CheckIgnored(root, []string{path})[path]
 	return ok
+}
+
+// IgnoredUnder lists the untracked paths git ignores beneath the repo-relative
+// directory rel, in ONE isolated `git ls-files --others --ignored
+// --exclude-standard --directory` call. A wholly ignored directory is reported
+// once, as its own path with a trailing slash, rather than file by file, so a
+// caller walking the tree can prune it without descending. Only untracked paths
+// are listed: git never ignores a tracked file, so a committed file a pattern
+// happens to match is not reported and stays the caller's to read. Paths are
+// relative to root, slash-separated, and sorted.
+//
+// Like CheckIgnored it neutralises core.excludesFile, so a developer's personal
+// ignore file cannot change what abcd reads, and it fails open: when git is
+// unavailable or root is not a repository the result is empty.
+func IgnoredUnder(root, rel string) []string {
+	cmd := isolatedGit(root, "-c", "core.excludesFile=",
+		"ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory",
+		"--", rel)
+	data, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(string(data), "\x00") {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }

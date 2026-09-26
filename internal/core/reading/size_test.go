@@ -270,8 +270,11 @@ func TestBundleGainsNoFieldFromTheReport(t *testing.T) {
 	// handed a tenth of it reports the missing nine tenths as a finding. What
 	// must stay out is the size report, which is the operator's fact and not
 	// the reading's.
-	want := map[string]bool{"_type": true, "schema_version": true, "position": true,
-		"preset": true, "items": true}
+	// "context_stamp" is expected too: it is the per-run token a transcript
+	// retains so the separation check can see which run a session held
+	// (adr-2609021016275803). It is a token parsed exactly, never a report.
+	want := map[string]bool{"_type": true, "schema_version": true, "context_stamp": true,
+		"position": true, "preset": true, "items": true}
 	for key := range top {
 		if !want[key] {
 			t.Errorf("the bundle carries the top-level key %q; the report rides on the result alone", key)

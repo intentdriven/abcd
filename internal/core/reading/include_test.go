@@ -305,7 +305,7 @@ func TestBriefEvidenceChapterIsNeverAdmitted(t *testing.T) {
 // insufficient no longer matters: updating this literal without moving the core
 // can no longer make a manifest lie, because the manifest's digest is not this
 // literal.
-const includeTableDigest = "3c58dd09fa1298856e4b35bba114f9d6ccbed0899a19893ec6bd80be0e0eaa39"
+const includeTableDigest = "cacc591ff9d463fe20118ddc72b5a12363aaca145d3810c3c0221f416114a75a"
 
 // TestAssemblerVersionCoversTheIncludeTable puts the core semver in front of
 // whoever changed the table. It is ADVISORY by construction — the fix for a red

@@ -159,7 +159,10 @@ present only when no transcript tier grounded the package, so an unmarked
 lifeboat marshals as it always has and embark can say which it is.
 
 The synthesis sub-verbs add the rest afterwards: the press release writes
-`press-release.{json,md}`, the principles write `principles.{json,md}`, the review
+`press-release.{json,md}`, the principles write `principles.{json,md}` (schema
+version 2: each principle carries `claim_type`, `reference` and `comparison`
+beside its evidence, a declined claim as `null`, per
+[adr-2609021016270132](../../decisions/adrs/2609021016270132-the-principles-family-is-a-declared-record-store-whose-entri.md)), the review
 writes the verdict artefact, and the graveyard validates and writes the lesson
 JSON. None of these exist at pack time.
 
