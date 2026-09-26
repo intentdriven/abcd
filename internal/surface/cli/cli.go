@@ -3634,8 +3634,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					// grounds or by a decline, so it gets its own line: the
 					// disposition-only line above would name the wrong remedy.
 					for _, o := range board.Outstanding.Unadmitted {
-						fmt.Fprintf(w, "  unadmitted %s (run %s) — a widening proposal with neither an admission nor a decline\n",
-							termsafe.Sanitize(o.Item), termsafe.Sanitize(o.Run))
+						fmt.Fprintf(w, "  unadmitted %s (run %s) — a widening proposal with neither an admission nor a decline; `abcd capture admit %s --grounds \"<why>\"` writes the admission\n",
+							termsafe.Sanitize(o.Item), termsafe.Sanitize(o.Run), termsafe.Sanitize(o.Item))
 					}
 					// More than one standing answer is named in full, never resolved
 					// by picking one: which is in force is a judgement the ledger
@@ -3662,6 +3662,16 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					for _, u := range board.Outstanding.Unsafe {
 						fmt.Fprintf(w, "  unread %s — %s; what it holds is neither outstanding nor answered\n",
 							termsafe.Sanitize(u.Path), termsafe.Sanitize(u.Reason))
+					}
+					// The per-run count makes the admitted-against-declined
+					// balance a query rather than an inspection.
+					for _, r := range board.Outstanding.WideningRuns {
+						line := fmt.Sprintf("  widening %s — %d proposal(s): %d admitted, %d declined, %d held, %d outstanding",
+							termsafe.Sanitize(r.Run), r.Items, r.Admitted, r.Declined, r.Held, len(r.Outstanding))
+						if len(r.Outstanding) > 0 {
+							line += " (" + termsafe.Sanitize(strings.Join(r.Outstanding, ", ")) + ")"
+						}
+						fmt.Fprintln(w, line)
 					}
 					for _, h := range board.Outstanding.OpenHolds {
 						fmt.Fprintf(w, "  held %s (%s) — exits when: %s\n",
@@ -4123,6 +4133,81 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	dispositionCmd.Flags().StringVar(&dispHoldMoscow, "hold-moscow", "", "RESERVED (dormant): must | should | could | wont; a populated value is refused until activation is ruled")
 	captureCmd.AddCommand(dispositionCmd)
 
+	// admit — one admission as one act (spc-2609020626040342): the widening
+	// item's `accepted` disposition and the admission record joining it to its
+	// run's candidate set, under one lock, carrying one ground. The ruled order
+	// (characterise first, admit second) is the core's refusal, not this door's.
+	var admitGrounds string
+	admitCmd := &cobra.Command{
+		Use:   "admit <rdi-N> --grounds \"<why>\"",
+		Short: "Admit one widening proposal: its accepted disposition and its admission record, as one act",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
+			if err != nil {
+				return err
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  %s admitted into %s — %s\n",
+					res.Admission, res.Item, res.Run, termsafe.Sanitize(res.Path))
+				if res.DispositionWritten {
+					fmt.Fprintf(w, "  %s  accepted — %s\n", res.Disposition, termsafe.Sanitize(res.DispositionPath))
+				} else {
+					fmt.Fprintf(w, "  %s  accepted (already standing; the admission is written alone)\n", res.Disposition)
+				}
+				if res.Redacted > 0 {
+					fmt.Fprintf(w, "  redacted %d span(s) before writing (home paths and identifiers are never committed)\n", res.Redacted)
+				}
+				if res.Degraded != "" {
+					fmt.Fprintf(w, "  WARNING: %s\n", termsafe.Sanitize(res.Degraded))
+				}
+			})
+		},
+	}
+	// --grounds carries no default and is not cobra-required, on the disposition
+	// verb's shape: the core refuses an empty or degenerate ground and writes
+	// nothing.
+	admitCmd.Flags().StringVar(&admitGrounds, "grounds", "", "why the proposal is admitted (free text, held to the grounds floor; on a standing acceptance it must be that acceptance's ground)")
+	captureCmd.AddCommand(admitCmd)
+
+	// surprise — one surprise entry, its own record keyed to the reading item,
+	// admission or disposition that occasioned it (spc-2609020626040342). Never
+	// a field on a disposition.
+	var surpriseOccasion string
+	surpriseCmd := &cobra.Command{
+		Use:   "surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what was unexpected>\"",
+		Short: "Record one surprise as its own record, keyed to the item, admission or disposition that occasioned it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(surpriseOccasion) == "" {
+				return &exitError{Code: 2, Msg: "abcd capture surprise: --occasioned-by <rdi-N|adm-N|dsp-N> is required — a surprise is keyed to the record that occasioned it (nothing written)"}
+			}
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
+			if err != nil {
+				return err
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  occasioned by %s — %s\n", res.ID, res.OccasionedBy, termsafe.Sanitize(res.Path))
+				if res.Redacted > 0 {
+					fmt.Fprintf(w, "  redacted %d span(s) before writing (home paths and identifiers are never committed)\n", res.Redacted)
+				}
+				if res.Degraded != "" {
+					fmt.Fprintf(w, "  WARNING: %s\n", termsafe.Sanitize(res.Degraded))
+				}
+			})
+		},
+	}
+	surpriseCmd.Flags().StringVar(&surpriseOccasion, "occasioned-by", "", "the record that occasioned it: a reading item (rdi-N), an admission (adm-N) or a disposition (dsp-N)")
+	captureCmd.AddCommand(surpriseCmd)
+
 	// wontfix — open -> wontfix with a reason. It needs no required --grounds:
 	// the reason is already mandatory, so a wontfix could never be recorded
 	// without grounds — what it lacked was the TYPE, which it stamps as
@@ -4531,6 +4616,9 @@ func captureBoardOf(repoRoot string, st capture.StatusResult) (captureBoard, err
 	}
 	if report.Unsafe == nil {
 		report.Unsafe = []lint.UnsafePath{}
+	}
+	if report.WideningRuns == nil {
+		report.WideningRuns = []lint.WideningRun{}
 	}
 	if report.Cyclic == nil {
 		report.Cyclic = []lint.OutstandingItem{}

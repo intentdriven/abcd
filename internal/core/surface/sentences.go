@@ -48,6 +48,8 @@ var sentences = map[string]string{
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
+	"abcd capture admit": "Admit one widening proposal into its run's candidate set: " +
+		"Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
 	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
 		"Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
 	"abcd capture disposition": "Answer one reading item with a disposition record: " +
@@ -64,6 +66,8 @@ var sentences = map[string]string{
 		"Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
 	"abcd capture resolve": "Move an open issue to resolved/, naming what fixed it: " +
 		"Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
+	"abcd capture surprise": "Record one surprise a reading item, admission or disposition occasioned: " +
+		"Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 

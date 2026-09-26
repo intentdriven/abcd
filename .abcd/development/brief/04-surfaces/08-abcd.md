@@ -41,8 +41,14 @@ and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
 form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
-`spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
-and the concrete next move for its lifecycle state. Bare answers *what can I
+`spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
+record is, where it lives, and the concrete next move for its lifecycle state.
+An admission and a surprise are the issue ledger's two folderless families
+(spc-2609020626040342): their status reads `admitted` and `recorded`, their links
+are the records they join to, and neither has a next move. `rfm-N` is admitted by
+the gate for the reframe record, whose description lands with it
+(spc-2609020626048705); until then it is refused naming that. The reading
+families have no record dispatch. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). A positional on the namespace root is not a `show` sub-verb, so the
 form stays inside the naming discipline. For an issue id it also names the

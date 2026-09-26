@@ -42,6 +42,7 @@ type Family string
 const (
 	FamilyItem        Family = issueschema.ReadingItemFamily // rdi-N, a reading item
 	FamilyDisposition Family = issueschema.DispositionFamily // dsp-N, a disposition
+	FamilyAdmission   Family = issueschema.AdmissionFamily   // adm-N, an admission
 	FamilyIntent      Family = "itd"                         // itd-N, a shipped intent
 )
 
@@ -146,10 +147,50 @@ func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
 	}
 }
 
+// LocateAdmission finds the one admission record carrying id across every run
+// bucket under admissions/, and the run it is filed under. An admission is
+// bucketed by RUN, so the walk is Paths' walk over the admission store: every
+// run bucket is checked for a symlink, and the id is unique to the ledger.
+func LocateAdmission(issuesRoot, id string) (run, path string, err error) {
+	if !recordid.ValidAdmissionID(id) {
+		return "", "", fmt.Errorf("invalid %s-N identifier: %q", issueschema.AdmissionFamily, id)
+	}
+	root := filepath.Join(issuesRoot, issueschema.AdmissionsDir)
+	if err := RefuseSymlinkedDir(root); err != nil {
+		return "", "", err
+	}
+	runs, err := os.ReadDir(root)
+	if err != nil && !os.IsNotExist(err) {
+		return "", "", err
+	}
+	var found []string
+	for _, e := range runs {
+		if !recordid.ValidReadingRunID(e.Name()) {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		if err := RefuseSymlinkedDir(dir); err != nil {
+			return "", "", err
+		}
+		cand := filepath.Join(dir, id+".md")
+		if fi, err := os.Lstat(cand); err == nil && fi.Mode().IsRegular() {
+			found = append(found, cand)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", "", fmt.Errorf("%w: %s is not an admission this ledger holds", ErrUnknown, id)
+	case 1:
+		return filepath.Base(filepath.Dir(found[0])), found[0], nil
+	default:
+		return "", "", fmt.Errorf("%w: %s is present under more than one run", ErrDuplicate, id)
+	}
+}
+
 // ResolveOccasion resolves id in one of the families the caller admits and
 // returns the path of the record it names. An id outside those families is
-// refused by shape before any path is built. A reading item or a disposition
-// resolves through the ledger walk above, under repoRoot's issue ledger; an
+// refused by shape before any path is built. A reading item, a disposition or an
+// admission resolves through the ledger walk above, under repoRoot's issue ledger; an
 // intent resolves only in repoRoot's intent store's shipped/ bucket, and a
 // record in any other bucket is refused naming the bucket.
 func ResolveOccasion(repoRoot, id string, families ...Family) (string, error) {
@@ -172,6 +213,9 @@ func ResolveOccasion(repoRoot, id string, families ...Family) (string, error) {
 		return path, err
 	case FamilyDisposition:
 		_, path, err := LocateDisposition(issuesRoot, id)
+		return path, err
+	case FamilyAdmission:
+		_, path, err := LocateAdmission(issuesRoot, id)
 		return path, err
 	case FamilyIntent:
 		return resolveShippedIntent(repoRoot, id)

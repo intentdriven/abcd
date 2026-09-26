@@ -10,7 +10,7 @@ production_mode: dictated-and-formatted
 ## Summary
 
 spc-2609020626040342 delivers
-[itd-2609020625400194](../../intents/planned/itd-2609020625400194-an-admission-and-a-surprise-are-written-by-a-verb-and-the-or.md).
+[itd-2609020625400194](../../intents/shipped/itd-2609020625400194-an-admission-and-a-surprise-are-written-by-a-verb-and-the-or.md).
 `abcd capture admit <rdi-N> --grounds "<text>"` records an admission as one
 act under the ledger lock: The item's `accepted` disposition carrying the
 grounds, and the admission record joining it to its run's candidate set. Where
@@ -33,7 +33,7 @@ The flagged decision is built under its flagged reading: Admission is the
 refines
 [itd-180](../../intents/shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md)
 and closes the state
-[spc-67](../closed/spc-67-what-the-widening-reading-proposes-is-admitted-or-declined-o.md)
+[spc-67](spc-67-what-the-widening-reading-proposes-is-admitted-or-declined-o.md)
 left, where an `accepted` item was still reported unadmitted.
 
 ## Scope
@@ -52,7 +52,7 @@ Out: The scanner fix for absence as a class
 [iss-2608301744268001](../../../work/issues/resolved/iss-2608301744268001-a-trailing-comment-on-a-frontmatter-key-defeats-every-blank.md));
 the disposition vocabulary; the comparative channel and the committed
 comparative run it produces, which
-[spc-2609020626039834](../closed/spc-2609020626039834-a-comparative-reading-receives-the-widening-run-s-items-as-i.md)
+[spc-2609020626039834](spc-2609020626039834-a-comparative-reading-receives-the-widening-run-s-items-as-i.md)
 defines and this gate only reads; the reading-item locator leaf, which
 spc-2609020626046252 introduces and this spec calls; enforcing that a session
 ended.

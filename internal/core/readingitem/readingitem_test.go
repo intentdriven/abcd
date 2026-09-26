@@ -147,3 +147,38 @@ func TestResolveOccasionReadsOnlyTheIntentStore(t *testing.T) {
 		t.Errorf("a root holding no intent store: err = %v, want ErrUnknown", err)
 	}
 }
+
+// TestLocateAdmissionFindsOneAcrossRuns is the admission half of the occasion
+// resolver (spc-2609020626040342): a surprise may be occasioned by an admission,
+// and an admission is bucketed by run, so the locator walks every run bucket
+// exactly as Locate walks the reading store.
+func TestLocateAdmissionFindsOneAcrossRuns(t *testing.T) {
+	root, ir := repo(t)
+	write(t, filepath.Join(ir, "admissions", "rdg-1", "adm-11.md"), "a")
+	write(t, filepath.Join(ir, "admissions", "rdg-2", "adm-22.md"), "b")
+	run, path, err := LocateAdmission(ir, "adm-22")
+	if err != nil || run != "rdg-2" || filepath.Base(path) != "adm-22.md" {
+		t.Fatalf("LocateAdmission = %q %q %v", run, path, err)
+	}
+	if _, _, err := LocateAdmission(ir, "adm-33"); !errors.Is(err, ErrUnknown) {
+		t.Errorf("an absent admission: err = %v, want ErrUnknown", err)
+	}
+	write(t, filepath.Join(ir, "admissions", "rdg-3", "adm-22.md"), "c")
+	if _, _, err := LocateAdmission(ir, "adm-22"); !errors.Is(err, ErrDuplicate) {
+		t.Errorf("an admission in two runs: err = %v, want ErrDuplicate", err)
+	}
+	if _, _, err := LocateAdmission(ir, "adm-../x"); err == nil || !strings.Contains(err.Error(), "invalid adm-N") {
+		t.Errorf("a malformed id: err = %v", err)
+	}
+	if got, err := ResolveOccasion(root, "adm-11", FamilyItem, FamilyAdmission, FamilyDisposition); err != nil || filepath.Base(got) != "adm-11.md" {
+		t.Errorf("ResolveOccasion(adm-11) = %q, %v", got, err)
+	}
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "adm-44.md"), "d")
+	if err := os.Symlink(outside, filepath.Join(ir, "admissions", "rdg-4")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LocateAdmission(ir, "adm-44"); !errors.Is(err, ErrPathUnsafe) {
+		t.Errorf("a symlinked run bucket: err = %v, want ErrPathUnsafe", err)
+	}
+}

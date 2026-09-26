@@ -17,6 +17,8 @@ var (
 	specIDRe        = regexp.MustCompile(`^spc-[0-9]+$`)
 	readingRunIDRe  = regexp.MustCompile(`^rdg-[0-9]+$`)
 	readingItemIDRe = regexp.MustCompile(`^rdi-[0-9]+$`)
+	admissionIDRe   = regexp.MustCompile(`^adm-[0-9]+$`)
+	surpriseIDRe    = regexp.MustCompile(`^srp-[0-9]+$`)
 )
 
 // ValidIntentID reports whether id is a well-formed intent id (itd-N).
@@ -43,6 +45,19 @@ func ValidReadingRunID(id string) bool { return readingRunIDRe.MatchString(id) }
 // two copies of one grammar is how the writer and the deleter come to disagree
 // about which files belong to a run.
 func ValidReadingItemID(id string) bool { return readingItemIDRe.MatchString(id) }
+
+// ValidAdmissionID reports whether id is a well-formed admission id (adm-N).
+//
+// The admission verb builds `admissions/<run>/adm-N.md` out of it and the record
+// dispatcher walks to that file by it, so it joins the grammars above for their
+// reason: no path is built from an id nothing has matched
+// (spc-2609020626040342).
+func ValidAdmissionID(id string) bool { return admissionIDRe.MatchString(id) }
+
+// ValidSurpriseID reports whether id is a well-formed surprise id (srp-N), on
+// the same terms as ValidAdmissionID: the surprise verb writes
+// `surprises/srp-N.md` and the dispatcher reads it back.
+func ValidSurpriseID(id string) bool { return surpriseIDRe.MatchString(id) }
 
 // recordFilenameRe splits a record filename into its family prefix (group 1,
 // with its hyphen; empty for the ADR store's bare numeric form), its id number

@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1111,10 +1112,9 @@ func TestAdmissionStoreBucketsByRun(t *testing.T) {
 // the standing-disposition reader, and a disposition in the surprise store would
 // be an answer nobody reads.
 func TestSurpriseRecordIsNotADisposition(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, root, "rec/.keep", "")
+	root := admissionCorpus(t)
 	writeFile(t, root, "work/issues/surprises/srp-4.md",
-		"---\nschema_version: 1\nid: srp-4\noccasioned_by: a consequence nobody predicted\n---\n\n")
+		"---\nschema_version: 1\nid: srp-4\noccasioned_by: rdi-2\n---\n\n")
 	writeFile(t, root, "work/issues/dispositions/rdi-2/srp-5.md",
 		"---\nschema_version: 1\nid: srp-5\noccasioned_by: a consequence nobody predicted\n---\n\n")
 	writeFile(t, root, "work/issues/surprises/dsp-6.md",
@@ -1137,12 +1137,11 @@ func TestSurpriseRecordIsNotADisposition(t *testing.T) {
 	}
 }
 
-// occasioned_by is the surprise's whole join. Where it names a RECORD, that
-// record must be in the corpus: a join naming nothing joins nothing, and the
+// occasioned_by is the surprise's whole join, and it names a RECORD: that record
+// must be in the corpus, because a join naming nothing joins nothing and the
 // surprise then sits beside the thing it claims to have arisen from with no way
-// back to it. Prose naming a consequence is legitimate and stays silent — a
-// surprise is keyed to whatever occasioned it, and not everything that occasions
-// one has an id.
+// back to it. Prose is not an occasion — the form is closed to rdi-N, adm-N and
+// dsp-N (spc-2609020626040342) — so a prose value is a finding too.
 func TestSurpriseOccasionedByResolves(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "rec/.keep", "")
@@ -1164,8 +1163,11 @@ func TestSurpriseOccasionedByResolves(t *testing.T) {
 	if !findingWith(fs, filepath.Join("work", "issues", "surprises", "srp-6.md"), ruleRecordSchema, "rdi-9999") {
 		t.Errorf("an occasioned_by naming no record in the corpus must be a finding: %+v", fs)
 	}
-	if n := countRule(fs, ruleRecordSchema); n != 1 {
-		t.Fatalf("expected exactly 1 finding (the dangling join), got %d: %+v", n, fs)
+	if !findingWith(fs, filepath.Join("work", "issues", "surprises", "srp-5.md"), ruleRecordSchema, "not a handle of") {
+		t.Errorf("a prose occasioned_by must be a finding: %+v", fs)
+	}
+	if n := countRule(fs, ruleRecordSchema); n != 2 {
+		t.Fatalf("expected exactly 2 findings (the dangling join and the prose occasion), got %d: %+v", n, fs)
 	}
 }
 
@@ -1594,7 +1596,13 @@ func TestBucketJoinBlockerAssertsNoIDCollision(t *testing.T) {
 // than to a file — which the cross-reference loop has always read that way. The
 // join check did not, so `related_adrs: [adr-5]` was accepted on one record while
 // `occasioned_by: adr-5` was a blocker on the next (iss-2608301327012166).
+//
+// No production join can name an ADR any more — the surprise's occasion is a
+// closed set (spc-2609020626040342) — but the resolution leg is generic, so it is
+// exercised on a join declaring no family and no closed set, the shape it was
+// built on.
 func TestJoinsResolveARetiredHandleTheWayCrossReferencesDo(t *testing.T) {
+	withOpenSurpriseJoin(t)
 	root := admissionCorpus(t)
 	// adr-25 declares it replaced adr-5, which is therefore pruned rather than
 	// missing. Its ordinal also puts adr-5 below the store's high-water mark, so
@@ -1913,32 +1921,28 @@ func TestClosedSchemaAndDuplicateKeyClaimNoReaderWhereTheStoreHasNone(t *testing
 	}
 }
 
-// A join names a family this scan does not read, in both the ways a value can:
-// a prefix no store declares at all, and a store this configuration does not
-// point at. Neither supports a verdict — the record might be perfectly present in
-// a store nobody configured — so reporting it missing would be a confident false
-// statement, and `occasioned_by`, which declares no family, keeps the prose
-// tolerance its leg is built on.
+// A join names a family this scan does not read. That supports no verdict —
+// the record might be perfectly present in a store nobody configured — so
+// reporting it missing would be a confident false statement.
 //
 // The stand-down was correct code no test killed: deleting it left the suite
 // green while `occasioned_by: spike-3` drew a blocker saying it is not a record
-// in the corpus (iss-2608301519254240).
+// in the corpus (iss-2608301519254240). The surprise's occasion is a closed set
+// now (spc-2609020626040342), so the stand-down is reached through a family in
+// that set whose store this configuration does not point at.
 //
-// It is killed as a WHOLE, and the two halves are not separably killable. A
-// configuration naming a store no prefix declares is refused by LoadConfig's
+// A configuration naming a store no prefix declares is refused by LoadConfig's
 // validateRecordStores, so for any configuration a production caller can hold, an
 // unread family is also an unknown one: the `!known` half is defence against a
-// hand-built Config alone, and deleting it on its own leaves this test green.
+// hand-built Config alone, and is exercised below on a join declaring no family.
 func TestAJoinIsSilentOnAFamilyThisScanDoesNotRead(t *testing.T) {
 	root := admissionCorpus(t)
-	writeFile(t, root, "work/issues/surprises/srp-4.md",
-		"---\nschema_version: 1\nid: srp-4\noccasioned_by: spike-3\n---\n\n")
 	writeFile(t, root, "work/issues/surprises/srp-5.md",
-		"---\nschema_version: 1\nid: srp-5\noccasioned_by: adr-9999\n---\n\n")
+		"---\nschema_version: 1\nid: srp-5\noccasioned_by: adm-9999\n---\n\n")
 
 	cfg := admissionSchemaConfig()
 	rule := cfg.Rules[ruleRecordSchema]
-	delete(rule.RecordStores, "adr")
+	delete(rule.RecordStores, "adm")
 	cfg.Rules[ruleRecordSchema] = rule
 
 	fs, err := Lint(cfg, root)
@@ -1948,6 +1952,42 @@ func TestAJoinIsSilentOnAFamilyThisScanDoesNotRead(t *testing.T) {
 	if n := countRule(fs, ruleRecordSchema); n != 0 {
 		t.Fatalf("a family this scan does not read supports no verdict either way, got %d finding(s): %+v", n, fs)
 	}
+
+	t.Run("a prefix no store declares, on a join declaring no family", func(t *testing.T) {
+		withOpenSurpriseJoin(t)
+		root := admissionCorpus(t)
+		writeFile(t, root, "work/issues/surprises/srp-4.md",
+			"---\nschema_version: 1\nid: srp-4\noccasioned_by: spike-3\n---\n\n")
+		fs, err := Lint(admissionSchemaConfig(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := countRule(fs, ruleRecordSchema); n != 0 {
+			t.Fatalf("a prefix no store declares supports no verdict, got %d finding(s): %+v", n, fs)
+		}
+	})
+}
+
+// withOpenSurpriseJoin swaps the surprise store's join, for one test, for the
+// shape the generic join legs were built on: a join declaring no family and no
+// closed set, whose value may be prose or a handle of any store. No production
+// store declares that shape any more (spc-2609020626040342), but the legs are
+// store-declared and generic, so they are kept honest on it.
+func withOpenSurpriseJoin(t *testing.T) {
+	t.Helper()
+	for i := range recordStores {
+		if recordStores[i].prefix != "srp" {
+			continue
+		}
+		orig := recordStores[i].joins
+		recordStores[i].joins = []recordJoin{{
+			field: "occasioned_by",
+			why:   "a surprise is keyed to whatever occasioned it, and a join naming nothing joins nothing",
+		}}
+		t.Cleanup(func() { recordStores[i].joins = orig })
+		return
+	}
+	t.Fatal("no srp store")
 }
 
 // The reader of the family keys on the FILENAME, not on the record's `id`
@@ -2675,5 +2715,45 @@ func TestRetiredPromoteStampIsNamedWithItsMigration(t *testing.T) {
 	if !findingWith(fs, filepath.Join("work", "issues", "open", "iss-2-a-finding.md"), ruleRecordSchema,
 		"'related_intents'; run `abcd capture migrate --apply`") {
 		t.Fatalf("a retired promoted_to must be a finding naming its successor and the migration: %+v", fs)
+	}
+}
+
+// TestSurpriseOccasionMustResolve: a surprise's `occasioned_by` is a CLOSED form
+// (spc-2609020626040342) — an rdi-N, adm-N or dsp-N handle that resolves in the
+// corpus, and nothing else. A prose occasion, a handle of a fourth family, and a
+// handle naming no record are findings; each of the three families resolving is
+// green.
+func TestSurpriseOccasionMustResolve(t *testing.T) {
+	root := admissionCorpus(t)
+	writeFile(t, root, "work/issues/dispositions/rdi-2/dsp-3.md",
+		"---\nschema_version: 1\nid: dsp-3\nitem: rdi-2\nstate: accepted\ndisposition_grounds: worth acting on\n---\n\n")
+	writeFile(t, root, "work/issues/admissions/rdg-1/adm-2.md", wellFormedAdmission)
+	for i, occ := range []string{"rdi-2", "adm-2", "dsp-3"} {
+		writeFile(t, root, fmt.Sprintf("work/issues/surprises/srp-%d.md", 10+i),
+			fmt.Sprintf("---\nschema_version: 1\nid: srp-%d\noccasioned_by: %s\n---\n\nsomething unexpected\n", 10+i, occ))
+	}
+	bad := map[string]string{
+		"srp-20": "a consequence nobody predicted",
+		"srp-21": "itd-7",
+		"srp-22": "RDI-2",
+		"srp-23": "rdi-9999",
+		"srp-24": "adm-9999",
+	}
+	for id, occ := range bad {
+		writeFile(t, root, "work/issues/surprises/"+id+".md",
+			"---\nschema_version: 1\nid: "+id+"\noccasioned_by: "+occ+"\n---\n\nsomething unexpected\n")
+	}
+
+	fs, err := Lint(admissionSchemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, occ := range bad {
+		if !findingWith(fs, filepath.Join("work", "issues", "surprises", id+".md"), ruleRecordSchema, occ) {
+			t.Errorf("occasioned_by %q must be a finding naming it: %+v", occ, fs)
+		}
+	}
+	if n := countRule(fs, ruleRecordSchema); n != len(bad) {
+		t.Fatalf("expected exactly %d findings (the bad occasions), got %d: %+v", len(bad), n, fs)
 	}
 }

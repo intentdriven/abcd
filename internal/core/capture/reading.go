@@ -56,10 +56,6 @@ type ReadingItem struct {
 	// (issueschema.ReadingBodyFields). A field from another position's body is
 	// refused: one record type, four bodies, and an item belongs to one of them.
 	Body map[string]string
-	// OccasionedBy is RESERVED and dormant — the join key of the surprise entry,
-	// populated in Iteration 2. A populated value is refused until the shape is
-	// ruled, so the reservation is a behaviour rather than a comment.
-	OccasionedBy string
 }
 
 // IngestReadingRequest writes one run's items into the ledger. Position and
@@ -305,72 +301,215 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 	// position would let a disposition assert the very rule it must satisfy. An
 	// orphan disposition (no such item) is refused by this same path, because the
 	// check has no position to reason with.
-	position, err := readingItemPosition(issuesRoot, req.Item)
+	//
+	// This read is the PRE-FLIGHT: it lets a malformed request refuse before the
+	// lock is taken. Everything that decides the write is read again under it.
+	head, err := readItemHead(issuesRoot, req.Item)
 	if err != nil {
+		return DispositionResult{}, err
+	}
+	// Redaction happens outside the lock, as IngestReading's does: a scanner
+	// probes the machine identity and shells out to do it, and nothing under the
+	// lock needs one.
+	clean, redacted, degraded := redactDispositionRequest(repoRoot, req)
+	if err := prevalidateDisposition(clean, head.position); err != nil {
 		return DispositionResult{}, err
 	}
 
-	id, err := minter.Mint(issueschema.DispositionFamily)
-	if err != nil {
-		return DispositionResult{}, err
-	}
-	fields, fm, redacted, degraded, err := dispositionFields(repoRoot, id, req)
-	if err != nil {
-		return DispositionResult{}, err
-	}
-	if err := validateDispositionStrict(fm, position); err != nil {
-		return DispositionResult{}, err
-	}
-	content, err := buildIssueText(fields, "")
-	if err != nil {
-		return DispositionResult{}, err
-	}
-
-	itemDir := filepath.Join(issuesRoot, issueschema.DispositionsDir, req.Item)
-	path := filepath.Join(itemDir, id+".md")
+	var written writtenDisposition
 	err = withLedgerLock(repoRoot, issuesRoot, func() error {
-		if err := ensureFamilyDir(issuesRoot, issueschema.DispositionsDir, req.Item); err != nil {
-			return err
-		}
-		// A second answer to one item must say which one it replaces, and it must
-		// be checked HERE, under the lock: the standing disposition is a property of
-		// the directory as it is at the moment of the write.
-		standing, err := standingDispositions(itemDir)
+		locked, err := readItemHead(issuesRoot, req.Item)
 		if err != nil {
 			return err
 		}
-		// More than one standing answer is refused outright, exactly as promote
-		// refuses it. A new disposition cannot untangle a contest: --supersedes
-		// retires one id and adds its own, so the set never shrinks and the caller
-		// is sent round a loop. Writing supersedes_disposition into the surplus
-		// records is the only thing that reduces it, and only a person can decide
-		// which of the standing answers is the surplus.
-		if len(standing) > 1 {
-			return fmt.Errorf("%w: %s has %d standing answers (%s), so a new disposition cannot say which is in force — "+
-				"a fresh answer supersedes at most one of them and adds its own. Write `supersedes_disposition` into the "+
-				"records that are no longer meant to stand, by hand, until exactly one does",
-				ErrInvariantViolation, req.Item, len(standing), renderList(standing))
-		}
-		if req.Supersedes != "" && !containsString(standing, req.Supersedes) {
-			return fmt.Errorf("%w: supersedes_disposition names %q, which is not a standing disposition of %s (standing: %s)",
-				ErrInvariantViolation, req.Supersedes, req.Item, renderList(standing))
-		}
-		if req.Supersedes == "" && len(standing) > 0 {
-			return fmt.Errorf("%w: %s already carries a standing disposition (%s); a second answer must cite the one it replaces (supersedes_disposition), so the record can say which is in force",
-				ErrInvariantViolation, req.Item, renderList(standing))
-		}
-		if err := refuseExistingRecord(path, id); err != nil {
-			return err
-		}
-		return writeContained(ledgerBase(repoRoot, issuesRoot), path, []byte(content))
+		written, err = writeDispositionLocked(repoRoot, issuesRoot, locked, clean)
+		return err
 	})
 	if err != nil {
 		return DispositionResult{}, err
 	}
 	return DispositionResult{
-		ID: id, Item: req.Item, State: req.State, Position: position,
-		Path: fsutil.RepoRel(repoRoot, path), Redacted: redacted, Degraded: degraded,
+		ID: written.id, Item: req.Item, State: req.State, Position: written.position,
+		Path: fsutil.RepoRel(repoRoot, written.path), Redacted: redacted, Degraded: degraded,
 	}, nil
+}
+
+// itemHead is what the disposition and admission writers read off one reading
+// record: its position, the run that returned it, and where it sits.
+type itemHead struct {
+	item     string
+	position string
+	run      string
+	path     string
+}
+
+// readItemHead locates one reading item and validates it strictly, returning the
+// facts every writer keyed to it decides on. The run is read off the record's
+// own `run` and must agree with the directory it sits in: a record that says
+// two things about which run returned it cannot say which candidate set it
+// belongs to, and the ordering gate and the admission store are both keyed on
+// that run.
+func readItemHead(issuesRoot, item string) (itemHead, error) {
+	path, err := findReadingItem(issuesRoot, item)
+	if err != nil {
+		return itemHead{}, err
+	}
+	content, err := readRecordGuarded(path)
+	if err != nil {
+		return itemHead{}, err
+	}
+	fm, _, err := parseFrontmatterAndBody(content)
+	if err != nil {
+		return itemHead{}, err
+	}
+	if err := validateReadingStrict(fm); err != nil {
+		return itemHead{}, err
+	}
+	run := asString(fm["run"])
+	if dir := filepath.Base(filepath.Dir(path)); dir != run {
+		return itemHead{}, fmt.Errorf("%w: %s declares run %s but is filed under %s; the record contradicts itself about which run returned it",
+			ErrInvariantViolation, item, run, dir)
+	}
+	return itemHead{item: item, position: asString(fm["position"]), run: run, path: path}, nil
+}
+
+// redactDispositionRequest redacts every free-text value a disposition carries,
+// with one scanner, before the lock is taken.
+func redactDispositionRequest(repoRoot string, req DispositionRequest) (DispositionRequest, int, string) {
+	r := newLedgerRedactor(repoRoot)
+	total := 0
+	scrub := func(s string) string {
+		if s == "" {
+			return s
+		}
+		out, n := r.redact(s)
+		total += n
+		return out
+	}
+	req.Grounds = scrub(req.Grounds)
+	req.ExitCondition = scrub(req.ExitCondition)
+	return req, total, r.Degraded()
+}
+
+// dispositionPlaceholderID is a well-formed id the pre-flight validates with
+// before the real one is minted under the lock. It is never written.
+const dispositionPlaceholderID = issueschema.DispositionFamily + "-0"
+
+// prevalidateDisposition runs the schema check against the pre-flight position,
+// so a request the writer would refuse refuses before the lock is taken and
+// before anything is minted. The writer runs the same check again, under the
+// lock, against the minted id and the position it re-read there.
+func prevalidateDisposition(req DispositionRequest, position string) error {
+	_, fm := dispositionFields(dispositionPlaceholderID, req)
+	return validateDispositionStrict(fm, position)
+}
+
+// writtenDisposition is what the shared writer landed.
+type writtenDisposition struct {
+	id       string
+	position string
+	path     string
+}
+
+// writeDispositionLocked is the ONE disposition write in this binary: every verb
+// that answers a reading item — `capture disposition`, `capture admit`, and the
+// scribe's ingest after it — routes through it, so every disposition passes one
+// validator path and one ordering gate (spc-2609020626040342). It must be
+// called under the ledger lock, with the item head read under that lock, and
+// req already redacted.
+//
+// In order: the standing-set rules (a contest refuses; a second answer must cite
+// the one it replaces), the ordering gate, the mint — under the lock, so the
+// mint sees the tree it writes into, as mintUnusedItemID's does — the schema
+// check against the minted id, and the write.
+func writeDispositionLocked(repoRoot, issuesRoot string, head itemHead, req DispositionRequest) (writtenDisposition, error) {
+	itemDir := filepath.Join(issuesRoot, issueschema.DispositionsDir, head.item)
+	// A second answer to one item must say which one it replaces, and it must
+	// be checked HERE, under the lock: the standing disposition is a property of
+	// the directory as it is at the moment of the write.
+	standing, err := standingDispositions(itemDir)
+	if err != nil {
+		return writtenDisposition{}, err
+	}
+	// More than one standing answer is refused outright, exactly as promote
+	// refuses it. A new disposition cannot untangle a contest: --supersedes
+	// retires one id and adds its own, so the set never shrinks and the caller
+	// is sent round a loop. Writing supersedes_disposition into the surplus
+	// records is the only thing that reduces it, and only a person can decide
+	// which of the standing answers is the surplus.
+	if len(standing) > 1 {
+		return writtenDisposition{}, fmt.Errorf("%w: %s has %d standing answers (%s), so a new disposition cannot say which is in force — "+
+			"a fresh answer supersedes at most one of them and adds its own. Write `supersedes_disposition` into the "+
+			"records that are no longer meant to stand, by hand, until exactly one does",
+			ErrInvariantViolation, head.item, len(standing), renderList(standing))
+	}
+	if req.Supersedes != "" && !containsString(standing, req.Supersedes) {
+		return writtenDisposition{}, fmt.Errorf("%w: supersedes_disposition names %q, which is not a standing disposition of %s (standing: %s)",
+			ErrInvariantViolation, req.Supersedes, head.item, renderList(standing))
+	}
+	if req.Supersedes == "" && len(standing) > 0 {
+		return writtenDisposition{}, fmt.Errorf("%w: %s already carries a standing disposition (%s); a second answer must cite the one it replaces (supersedes_disposition), so the record can say which is in force",
+			ErrInvariantViolation, head.item, renderList(standing))
+	}
+	if err := requireCharacterised(repoRoot, head); err != nil {
+		return writtenDisposition{}, err
+	}
+
+	id, err := minter.Mint(issueschema.DispositionFamily)
+	if err != nil {
+		return writtenDisposition{}, err
+	}
+	fields, fm := dispositionFields(id, req)
+	if err := validateDispositionStrict(fm, head.position); err != nil {
+		return writtenDisposition{}, err
+	}
+	content, err := buildIssueText(fields, "")
+	if err != nil {
+		return writtenDisposition{}, err
+	}
+	if err := ensureFamilyDir(issuesRoot, issueschema.DispositionsDir, head.item); err != nil {
+		return writtenDisposition{}, err
+	}
+	path := filepath.Join(itemDir, id+".md")
+	if err := refuseExistingRecord(path, id); err != nil {
+		return writtenDisposition{}, err
+	}
+	if err := writeReadingRecord(ledgerBase(repoRoot, issuesRoot), path, []byte(content)); err != nil {
+		return writtenDisposition{}, err
+	}
+	return writtenDisposition{id: id, position: head.position, path: path}, nil
+}
+
+// requireCharacterised is the ordering gate: at the widening position nothing is
+// dispositioned and nothing is admitted until a committed comparative run names
+// the item's run. The design characterises first and admits second (Step 2
+// precedes Step 4; companion section 8.3), and under the rule that commands are
+// the write path a fixed order is a refusal in the writer, not a sentence in a
+// protocol.
+//
+// It is keyed on the position alone. Every other position is answered with no
+// comparative run anywhere, because the order is the widening reading's.
+//
+// The probe is ComparativeRunFor, which reads the committed run records the
+// comparative channel writes. A comparative run committed with an empty item set
+// — the position not exercised — satisfies it exactly as a characterising run
+// does, and nothing else does: no mutable file anywhere records the outcome.
+func requireCharacterised(repoRoot string, head itemHead) error {
+	if head.position != issueschema.PositionWidening {
+		return nil
+	}
+	comp, err := ComparativeRunFor(repoRoot, head.run)
+	if err != nil {
+		return err
+	}
+	if comp != "" {
+		return nil
+	}
+	return fmt.Errorf("%w: %s is a widening proposal of %s, and no committed comparative run names %s as its candidate_run yet; "+
+		"the design characterises first and admits second, so no disposition (accepted, declined or held) and no admission is written "+
+		"at the widening position until the comparative reading over %s is ingested — a comparative run committed with an empty item set, "+
+		"the position not exercised, satisfies this too (nothing written)",
+		ErrNotCharacterised, head.item, head.run, head.run, head.run)
 }
 
 // readingFields assembles one reading record's ordered frontmatter and the map
@@ -414,9 +553,6 @@ func readingFields(id, manifest string, req IngestReadingRequest, item ReadingIt
 		}
 		fm[f] = v
 	}
-	if item.OccasionedBy != "" {
-		fm["occasioned_by"] = item.OccasionedBy
-	}
 	return fields, fm
 }
 
@@ -431,10 +567,7 @@ func redactReadingItem(r *ledgerRedactor, item ReadingItem) (ReadingItem, int) {
 		total += n
 		return out
 	}
-	out := ReadingItem{
-		Pattern:      scrub(item.Pattern),
-		OccasionedBy: item.OccasionedBy,
-	}
+	out := ReadingItem{Pattern: scrub(item.Pattern)}
 	if item.Body != nil {
 		out.Body = make(map[string]string, len(item.Body))
 		for k, v := range item.Body {
@@ -444,19 +577,10 @@ func redactReadingItem(r *ledgerRedactor, item ReadingItem) (ReadingItem, int) {
 	return out, total
 }
 
-// dispositionFields assembles one disposition's ordered frontmatter and map.
-func dispositionFields(repoRoot, id string, req DispositionRequest) ([]kv, map[string]any, int, string, error) {
-	redacted := 0
-	degraded := ""
-	scrub := func(s string) string {
-		out, n, d := redactLedgerText(repoRoot, s)
-		redacted += n
-		if d != "" {
-			degraded = d
-		}
-		return out
-	}
-
+// dispositionFields assembles one disposition's ordered frontmatter and map. It
+// does no redaction: the request reaching it is already redacted
+// (redactDispositionRequest), because it runs under the ledger lock.
+func dispositionFields(id string, req DispositionRequest) ([]kv, map[string]any) {
 	fields := []kv{
 		{"schema_version", 1},
 		{"id", id},
@@ -473,9 +597,8 @@ func dispositionFields(repoRoot, id string, req DispositionRequest) ([]kv, map[s
 		if value == "" {
 			return
 		}
-		s := scrub(value)
-		fields = append(fields, kv{key, s})
-		fm[key] = s
+		fields = append(fields, kv{key, value})
+		fm[key] = value
 	}
 	add("disposition_grounds", req.Grounds)
 	add("exit_condition", req.ExitCondition)
@@ -495,7 +618,7 @@ func dispositionFields(repoRoot, id string, req DispositionRequest) ([]kv, map[s
 	if req.HoldMoscow != "" {
 		fm["hold_moscow"] = req.HoldMoscow
 	}
-	return fields, fm, redacted, degraded, nil
+	return fields, fm
 }
 
 // ValidateReadingRecord parses one committed reading record and validates it
@@ -584,12 +707,6 @@ func validateReadingStrict(fm map[string]any) error {
 		}
 	}
 
-	for _, f := range issueschema.ReservedSurpriseFields {
-		if v, present := fm[f]; present && strings.TrimSpace(asString(v)) != "" {
-			return fmt.Errorf("%w: %q is reserved and dormant — the surprise entry is a distinct record shape, populated once its shape is ruled; a populated value is refused rather than silently accepted",
-				ErrInvariantViolation, f)
-		}
-	}
 	if v, present := fm["related_intents"]; present {
 		items, isList := v.([]string)
 		if !isList {
@@ -685,28 +802,6 @@ func validateDispositionStrict(fm map[string]any, position string) error {
 		}
 	}
 	return nil
-}
-
-// readingItemPosition reads the position off a reading record, located by its id
-// across every run directory. An id no run returned is an unknown item — the
-// same sentinel an unknown issue id raises, because the fault is the same shape.
-func readingItemPosition(issuesRoot, item string) (string, error) {
-	path, err := findReadingItem(issuesRoot, item)
-	if err != nil {
-		return "", err
-	}
-	content, err := readRecordGuarded(path)
-	if err != nil {
-		return "", err
-	}
-	fm, _, err := parseFrontmatterAndBody(content)
-	if err != nil {
-		return "", err
-	}
-	if err := validateReadingStrict(fm); err != nil {
-		return "", err
-	}
-	return asString(fm["position"]), nil
 }
 
 // findReadingItem locates a reading record by id across the run directories.
@@ -896,9 +991,13 @@ func recordIDs(records []ReadingRecordRef) []string {
 	return out
 }
 
-// readingWriteHook, when non-nil, replaces the atomic write inside IngestReading.
-// It is a test-only seam (nil in production, zero overhead) used to force a
-// deterministic mid-batch write failure, mirroring stampWriteHook in promote.go.
+// readingWriteHook, when non-nil, replaces the atomic write of every reading-ledger
+// record this package writes: IngestReading's items, the shared disposition
+// writer's record, and the admission and surprise records. It is a test-only
+// seam (nil in production, zero overhead) used to force a deterministic write
+// failure, mirroring stampWriteHook in promote.go — and, because every
+// disposition passes through it, to prove that `capture disposition` and
+// `capture admit` share one write path.
 var readingWriteHook func(path string, data []byte) error
 
 func writeReadingRecord(base, path string, data []byte) error {
@@ -970,9 +1069,6 @@ func requireNonBlankString(fm map[string]any, key string) error {
 // reading record carries whatever its position.
 func isReadingEnvelopeField(key string) bool {
 	if containsString(issueschema.ReadingRequired, key) {
-		return true
-	}
-	if containsString(issueschema.ReservedSurpriseFields, key) {
 		return true
 	}
 	return key == "related_intents"

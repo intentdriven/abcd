@@ -173,6 +173,18 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
+#### `abcd capture admit`
+
+Admit one widening proposal into its run's candidate set: Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.
+
+**Usage:** `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
+
+**Flags:**
+
+```
+      --grounds string   why the proposal is admitted (free text, held to the grounds floor; on a standing acceptance it must be that acceptance's ground)
+```
+
 #### `abcd capture defer`
 
 Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.
@@ -286,6 +298,18 @@ Move an open issue to resolved/, naming what fixed it: Writes the moved record; 
       --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
       --shipped-in string        MIGRATION USE: the release that already carried this work (vX.Y.Z), leaving the record out of the current cut; unnecessary in a repo abcd managed from the start
       --spec string              resolved_by provenance: the spc-N that fixed it (must exist)
+```
+
+#### `abcd capture surprise`
+
+Record one surprise a reading item, admission or disposition occasioned: Writes one srp-N record; refuses an unresolved occasion or a text below the floor.
+
+**Usage:** `abcd capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> "<what was unexpected>" [flags]`
+
+**Flags:**
+
+```
+      --occasioned-by string   the record that occasioned it: a reading item (rdi-N), an admission (adm-N) or a disposition (dsp-N)
 ```
 
 #### `abcd capture wontfix`

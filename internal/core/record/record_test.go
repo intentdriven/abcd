@@ -745,3 +745,97 @@ func TestDescribeSkippedIssueMatchesTheRosterByNumber(t *testing.T) {
 		}
 	})
 }
+
+// The ledger families spc-2609020626040342 adds to the dispatcher: admissions
+// and surprises. rfm is admitted by the gate here and described by the reframe
+// spec that lands after; the reading families stay outside it.
+func TestIDReAdmitsTheThreeNewFamilies(t *testing.T) {
+	for _, id := range []string{"adm-1", "srp-2609251200001234", "rfm-3"} {
+		if !IDRe.MatchString(id) {
+			t.Errorf("IDRe refuses %s", id)
+		}
+	}
+}
+
+func TestIDReStillRefusesTheReadingFamilies(t *testing.T) {
+	for _, id := range []string{"rdi-1", "dsp-1", "rdg-1", "adm-", "ADM-1", "srp-1-slug"} {
+		if IDRe.MatchString(id) {
+			t.Errorf("IDRe admits %s, which stays outside the dispatcher", id)
+		}
+	}
+}
+
+// admissionLedger lays out a widening item, its accepted disposition and one
+// admission joining them, and returns the repo root.
+func admissionLedger(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	ledger := filepath.FromSlash(capture.LedgerRelPath)
+	write(t, repo, filepath.Join(ledger, "readings", "rdg-7", "rdi-11.md"),
+		"---\nschema_version: 1\nid: \"rdi-11\"\nrun: \"rdg-7\"\nposition: \"widening\"\n---\n")
+	write(t, repo, filepath.Join(ledger, "dispositions", "rdi-11", "dsp-21.md"),
+		"---\nschema_version: 1\nid: \"dsp-21\"\nitem: \"rdi-11\"\nstate: \"accepted\"\ndisposition_grounds: \"the frame is engaged\"\n---\n")
+	write(t, repo, filepath.Join(ledger, "admissions", "rdg-7", "adm-31.md"),
+		"---\nschema_version: 1\nid: \"adm-31\"\nrun: \"rdg-7\"\nproposal: \"rdi-11\"\ngrounds: \"the frame is engaged\"\n---\n")
+	return repo
+}
+
+// ac-8: `abcd adm-N` reports the record and the records it joins to — the run,
+// the proposal and its path, and the standing disposition — and emits no next
+// move. It writes nothing.
+func TestDescribeAdmission(t *testing.T) {
+	repo := admissionLedger(t)
+	before := treeSnapshot(t, repo)
+	d, err := Describe(repo, "adm-31")
+	if err != nil {
+		t.Fatalf("Describe(adm-31): %v", err)
+	}
+	if d.Family != "admission" || d.Status != "admitted" || d.Title != "the frame is engaged" {
+		t.Fatalf("description = %+v", d)
+	}
+	if want := filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "admissions", "rdg-7", "adm-31.md")); d.Path != want {
+		t.Errorf("path = %q, want %q", d.Path, want)
+	}
+	for k, want := range map[string]string{
+		"run": "rdg-7", "proposal": "rdi-11", "disposition": "dsp-21",
+		"proposal_path": filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "readings", "rdg-7", "rdi-11.md")),
+	} {
+		if d.Links[k] != want {
+			t.Errorf("links[%s] = %q, want %q", k, d.Links[k], want)
+		}
+	}
+	if len(d.NextMoves) != 0 {
+		t.Errorf("an admission emits no next move; got %v", d.NextMoves)
+	}
+	if _, err := Describe(repo, "adm-99"); err == nil || !strings.Contains(err.Error(), "adm-99") {
+		t.Errorf("an absent admission must fault naming it; got %v", err)
+	}
+	assertZeroWrites(t, repo, before)
+}
+
+// ac-8's surprise half: `abcd srp-N` reports the surprise, its body as the
+// title, and the occasion it joins to.
+func TestDescribeSurprise(t *testing.T) {
+	repo := admissionLedger(t)
+	write(t, repo, filepath.Join(filepath.FromSlash(capture.LedgerRelPath), "surprises", "srp-41.md"),
+		"---\nschema_version: 1\nid: \"srp-41\"\noccasioned_by: \"adm-31\"\n---\n\nthe proposal nobody expected ranked first\n")
+	before := treeSnapshot(t, repo)
+	d, err := Describe(repo, "srp-41")
+	if err != nil {
+		t.Fatalf("Describe(srp-41): %v", err)
+	}
+	if d.Family != "surprise" || d.Status != "recorded" || d.Title != "the proposal nobody expected ranked first" {
+		t.Fatalf("description = %+v", d)
+	}
+	if d.Links["occasioned_by"] != "adm-31" ||
+		d.Links["occasion_path"] != filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "admissions", "rdg-7", "adm-31.md")) {
+		t.Errorf("links = %v", d.Links)
+	}
+	if len(d.NextMoves) != 0 {
+		t.Errorf("a surprise emits no next move; got %v", d.NextMoves)
+	}
+	if _, err := Describe(repo, "srp-99"); err == nil || !strings.Contains(err.Error(), "srp-99") {
+		t.Errorf("an absent surprise must fault naming it; got %v", err)
+	}
+	assertZeroWrites(t, repo, before)
+}

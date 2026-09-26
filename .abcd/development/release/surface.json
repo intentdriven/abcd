@@ -361,6 +361,20 @@
       ]
     },
     {
+      "path": "abcd capture admit",
+      "hidden": false,
+      "sentence": "Admit one widening proposal into its run's candidate set: Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
+      "flags": [
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture defer",
       "hidden": false,
       "sentence": "Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
@@ -598,6 +612,20 @@
         },
         {
           "name": "spec",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture surprise",
+      "hidden": false,
+      "sentence": "Record one surprise a reading item, admission or disposition occasioned: Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
+      "flags": [
+        {
+          "name": "occasioned-by",
           "shorthand": "",
           "type": "string",
           "required": false,

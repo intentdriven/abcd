@@ -112,7 +112,7 @@ func duplicateKeyReaderRows() []readerRow {
 		probe:  probeChangelogIssue,
 	}, {
 		store:  "rdi",
-		reader: "capture.Disposition → readingItemPosition → parseFrontmatterAndBody",
+		reader: "capture.Disposition → readItemHead → parseFrontmatterAndBody",
 		want:   refuses,
 		probe:  probeReadingItemDisposition,
 	}, {
@@ -147,8 +147,8 @@ func duplicateKeyReaderRows() []readerRow {
 		probe:  probeAdmission,
 	}, {
 		store:  "srp",
-		reader: "none",
-		want:   unread,
+		reader: "record.Describe → describeSurprise → readRecordHeadAndBody → frontmatter.Fields",
+		want:   keepsFirst,
 		probe:  probeSurprise,
 	}}
 }
@@ -488,8 +488,8 @@ func probeAdmission(t *testing.T) answer {
 	return ""
 }
 
-// probeReadingRun and probeSurprise bound an ABSENCE. No reader outside this rule
-// opens either store's content, so there is nothing to exercise — what the probe
+// probeReadingRun bounds an ABSENCE. No reader outside this rule opens the
+// store's content, so there is nothing to exercise — what the probe
 // can do instead is run the readers that WALK a store unprompted over a corpus
 // holding the record, and show that its content reaches none of them.
 //
@@ -507,9 +507,17 @@ func probeReadingRun(t *testing.T) answer {
 		"---\nschema_version: 1\nid: rdg-1\nmanifest: FIRST-MARKER\nmanifest: SECOND-MARKER\n---\n\n")
 }
 
+// probeSurprise reads a surprise through the record dispatcher, the one reader
+// the family has (spc-2609020626040342): `abcd srp-N` renders its occasion.
 func probeSurprise(t *testing.T) answer {
-	return probeUnread(t, ".abcd/work/issues/surprises/srp-6.md",
-		"---\nschema_version: 1\nid: srp-6\noccasioned_by: FIRST-MARKER\noccasioned_by: SECOND-MARKER\n---\n\n")
+	root := t.TempDir()
+	writeRel(t, root, ".abcd/work/issues/surprises/srp-6.md",
+		"---\nschema_version: 1\nid: srp-6\noccasioned_by: FIRST-MARKER\noccasioned_by: SECOND-MARKER\n---\n\nunexpected\n")
+	d, err := record.Describe(root, "srp-6")
+	if err != nil {
+		return refuses
+	}
+	return which(t, d.Links["occasioned_by"], "FIRST-MARKER", "SECOND-MARKER")
 }
 
 func probeUnread(t *testing.T, rel, body string) answer {

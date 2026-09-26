@@ -24,6 +24,7 @@ binary.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `admit` | — | shipped |
 | `defer` | — | shipped |
 | `disposition` | — | shipped |
 | `link` | — | shipped |
@@ -32,6 +33,7 @@ binary.
 | `migrate` | — | shipped |
 | `promote` | — | shipped |
 | `resolve` | — | shipped |
+| `surprise` | — | shipped |
 | `wontfix` | — | shipped |
 
 
@@ -164,6 +166,37 @@ researcher recognises as one that has come round before says so as a recurrence,
 naming the earlier items it recurs from; that is a recorded recognition, never a
 join a machine derived. Two hold-shaping flags are reserved and dormant, and a
 populated value is refused until activation is ruled.
+
+**At the widening position the order is fixed: characterise first, admit
+second** (itd-2609020625400194, spc-2609020626040342). No disposition in any
+state, and no admission, is written for a widening item until a committed
+comparative run names the item's run; a comparative run committed with an empty
+item set, the position not exercised, satisfies this as a characterising run
+does. The refusal names the run it is waiting on. It is one gate in the one
+disposition writer every verb routes through, so the disposition verb, the
+admission verb and a scribe's ingest all refuse the same way. The other
+positions are answered with no comparative run anywhere.
+
+**Admitting** a widening proposal is one act that writes two records under the
+ledger lock: the item's `accepted` disposition and the admission record
+(`adm-N`, under `admissions/<run-id>/`) that joins it to its run's candidate
+set, both carrying the one ground the verb was given. Where an `accepted`
+disposition already stands, the admission is written alone, and only on the
+ground that disposition states. The ground is free text held to the same
+substance floor as every grounds primitive. Everything else is refused with
+nothing written: an item at any other position, an item already admitted, a
+standing disposition in any other state (named with its state), a contested or
+cyclic disposition set, a blank or degenerate ground, and any admission before
+characterisation. If the admission fails to write, the disposition this act
+wrote is removed.
+
+**Recording a surprise** writes one surprise entry (`srp-N`, under
+`surprises/`) as its own record, the surprise itself as its body and
+`occasioned_by` as its whole join. The occasion is a reading item, an admission
+or a disposition this ledger holds, and nothing else: prose, a record of any
+other family, and a handle naming nothing are refused before anything is
+minted. No disposition is written on this path. The record gate holds a
+hand-written surprise to the same closed form.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with
@@ -361,6 +394,20 @@ for ad-hoc scribbles.
   unless it cites the standing one, empty grounds (or a hold with no exit
   condition) is refused, and a state the item's position does not make available
   is refused with the availability rule named.
+- **Given** a widening item with no admission and no disposition, and a
+  committed comparative run over its run, **when** the user admits it with a
+  ground above the floor, **then** an `accepted` disposition and one admission
+  record exist naming the item and the run; a second admission refuses, a
+  standing `declined` or `held` refuses naming the disposition, and before any
+  comparative run names the run both the admission and a disposition refuse
+  naming what they wait for.
+- **Given** a surprise whose occasion resolves to a reading item, an admission
+  or a disposition, **when** the user records it, **then** one surprise record
+  exists as its own file and no disposition was touched.
+- **Given** a run of widening items, **when** the bare board or `abcd lint`
+  runs, **then** it counts the run's admitted, declined and held proposals and
+  names each one carrying neither an admission nor a `declined` or `held`
+  disposition.
 - **Given** a reading item carrying no disposition, **when** the user tries to
   promote it, **then** the promote is refused and no draft is minted: acceptance
   is one record, and the action it licenses is a separate admission. The same
@@ -397,15 +444,15 @@ the only caller that writes them (see [`23-reading.md`](23-reading.md)). That
 sequencing is spc-58's own, and it is why the ingest primitive is exported
 rather than made a verb of this surface.
 
-Admission and surprise records (itd-189, spc-67) ship as **schemas only**,
-declared beside the reading families and wired to `record_schema` rather than to
-a verb. A declined proposal is no third record type: it is the disposition in
-its `declined` state. This surface has no sub-verb that writes either shape, so
-what is armed today is the committed-tree gate: a blank grounds, an absent
-proposal, an occasioned-by pointer naming no record, and either family filed in
-the other's store are each a blocker. The command-side write is a later
-iteration, and the sequencing is the reading families' own: no reading has run,
-so there is nothing to write yet.
+Admission and surprise records (itd-189, spc-67) have their schemas beside the
+reading families, wired to `record_schema`, and their writers in
+`internal/core/capture/admit.go` and `surprise.go` (spc-2609020626040342). A
+declined proposal is no third record type: it is the disposition in its
+`declined` state. The committed-tree gate stays armed for a record written by
+hand: a blank grounds, an absent proposal, an occasion outside the closed form
+or naming no record, and either family filed in the other's store are each a
+blocker. `abcd <adm-N>` and `abcd <srp-N>` describe the record and its joins;
+the reading families `rdi`, `dsp` and `rdg` have no record dispatch.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
@@ -415,7 +462,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -428,6 +475,14 @@ Sub-verbs: `abcd capture defer`, `abcd capture disposition`, `abcd capture link`
 | `--severity` | string |
 | `--slug` | string |
 | `--source` | string |
+
+### `abcd capture admit`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--grounds` | string |
 
 ### `abcd capture defer`
 
@@ -511,6 +566,14 @@ Sub-verbs: none.
 | `--production-mode` | string |
 | `--shipped-in` | string |
 | `--spec` | string |
+
+### `abcd capture surprise`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--occasioned-by` | string |
 
 ### `abcd capture wontfix`
 
