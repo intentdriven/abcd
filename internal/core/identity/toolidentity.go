@@ -40,11 +40,22 @@ var (
 // commits under the harness's default identity is flagged wherever the identity
 // gate runs, before the attribution gate refuses the pull request in CI.
 func IsToolIdentity(role Role, name, email string) bool {
-	if aiNameRe.MatchString(name) || aiMailRe.MatchString(email) ||
-		machineNameRe.MatchString(name) || machineMailRe.MatchString(email) {
-		return true
-	}
-	return role == RoleAuthor && authorOnlyMailRe.MatchString(email)
+	return aiNameRe.MatchString(name) || aiMailRe.MatchString(email) ||
+		IsMachineName(name) || IsMachineAddress(role, email)
+}
+
+// IsMachineName reports the STRUCTURAL name signal alone: the `[bot]` suffix the
+// forge stamps on an app's account name. It names no vendor, so a reader that
+// must not decide on a vendor token (the contributors page) can use it.
+func IsMachineName(name string) bool { return machineNameRe.MatchString(name) }
+
+// IsMachineAddress reports the STRUCTURAL address signals alone, in role: a bot
+// mailbox in either role, and a mailbox named for not being read as the author.
+// The mailbox is the discriminator, never the host: a person's forge privacy
+// address (`1234+name@users.noreply.github.com`) is not a machine's.
+func IsMachineAddress(role Role, email string) bool {
+	return machineMailRe.MatchString(email) ||
+		(role == RoleAuthor && authorOnlyMailRe.MatchString(email))
 }
 
 // mustParseToolIdentities reads the embedded list's `key=pattern` lines. The

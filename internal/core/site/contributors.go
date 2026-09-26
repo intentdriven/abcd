@@ -32,6 +32,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -40,20 +41,17 @@ const maxShortlogBytes = 4 << 20
 
 var (
 	shortlogRe = regexp.MustCompile(`^\s*(\d+)\s+(.*?)\s*<([^>]*)>\s*$`)
-	botNameRe  = regexp.MustCompile(`\[bot\]$`)
 )
 
-// machineAddrRe matches an address that is structurally a machine's: a mailbox
-// literally named for not being read, a forge bot's own account, or a known
-// automation domain.
-//
-// It reads the LOCAL PART, never the host, and that distinction is the point. A
-// person routinely commits from `1234+name@users.noreply.github.com` — the forge's
-// privacy address, whose host says noreply but whose mailbox is the user's own
-// account — and treating that host as a machine signal would demote exactly the
-// contributors the page exists to credit. The mailbox `noreply@` names no account
-// at all.
-var machineAddrRe = regexp.MustCompile(`(?i)^(?:no-?reply|do-?not-?reply)@|\[bot\]@|@dependabot\.com$`)
+// The structural machine signals — the forge's `[bot]` name suffix and the
+// machine mailboxes — are identity.IsMachineName and identity.IsMachineAddress,
+// read from the one list the CI attribution gate reads too
+// (internal/core/identity/tool-identities.txt), so this page and the gate cannot
+// disagree about what a machine's address looks like. They read the LOCAL PART,
+// never the host: a person routinely commits from
+// `1234+name@users.noreply.github.com`, the forge's privacy address, and treating
+// that host as a machine signal would demote exactly the contributors the page
+// exists to credit.
 
 // The `Assisted-by:` trailer's grammar, held as the value half alone.
 //
@@ -283,8 +281,8 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 			continue
 		}
 		au := Author{Name: m[2], Commits: n, Profile: profileURL(m[3]), email: m[3]}
-		if botNameRe.MatchString(au.Name) ||
-			(vendors[au.Name] && machineAddrRe.MatchString(au.email)) {
+		if identity.IsMachineName(au.Name) ||
+			(vendors[au.Name] && identity.IsMachineAddress(identity.RoleAuthor, au.email)) {
 			a.Bots = append(a.Bots, au)
 			continue
 		}
