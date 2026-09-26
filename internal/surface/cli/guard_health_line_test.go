@@ -17,15 +17,15 @@ func TestGuardHealthLineNeverAssertsWhatItCannotKnow(t *testing.T) {
 		PluginRootResolved: false,
 		RegistryLoadable:   true,
 		Entries:            6,
-		Detail:             "plugin root not resolvable, so the hook manifest cannot be read",
+		Detail:             "abcd looked for the folder its plugin was installed into and found none, so it cannot check the automatic hooks that run it",
 	}
 	line := guardHealthLine(h)
 
 	if strings.Contains(line, "hook not installed") || strings.Contains(line, "binary unreachable") {
 		t.Errorf("the line asserts facts that were never checked: %q", line)
 	}
-	if !strings.Contains(line, "plugin root") {
-		t.Errorf("the line must carry the reason the state is unknown; got %q", line)
+	if !strings.Contains(line, "UNKNOWN") || !strings.Contains(line, h.Detail) {
+		t.Errorf("the line must say the state is unknown and carry the reason; got %q", line)
 	}
 }
 

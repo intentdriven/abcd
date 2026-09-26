@@ -173,6 +173,12 @@ func gitPresent(cwd string) bool {
 	return err == nil
 }
 
+// pluginFilesMissing is the one sentence for the state in which abcd cannot find
+// the folder its plugin was installed into. The plugin.root_missing gap and the
+// guard-health reason both say it, because one render shows both, and a state
+// worded two ways reads as two problems (iss-2609260057111298).
+const pluginFilesMissing = "abcd looked for the folder its plugin was installed into and found none, so it cannot check the automatic hooks that run it"
+
 func detectPluginRoot(ok bool) []Gap {
 	if ok {
 		return nil
@@ -184,7 +190,7 @@ func detectPluginRoot(ok bool) []Gap {
 		// Plain words for the person, not the mechanism (iss-164): the two
 		// environment names are named only in the fix hint, with what they are.
 		Title:   "abcd's plugin files were not found on this machine",
-		Detail:  "abcd looked for the folder its plugin was installed into and found none, so it cannot check the automatic hooks that run it.",
+		Detail:  pluginFilesMissing + ".",
 		FixHint: "Reinstall the abcd plugin in your AI assistant; or, to point abcd at a plugin folder by hand, set the ABCD_PLUGIN_ROOT environment variable to that folder (the assistant normally supplies it as CLAUDE_PLUGIN_ROOT).",
 	}}
 }
