@@ -60,7 +60,7 @@ inbound = outbound statement is the whole of it.
   run `git config core.hooksPath .githooks` once per clone to arm the
   pre-commit name guard, the commit-msg outbound check (it refuses a live
   agent-session URL or a tool's attribution footer in a commit message, through
-  `go run ./cmd/abcd lint outbound`, and refuses the commit when it cannot run
+  this checkout's own `abcd lint outbound`, built from `./cmd/abcd`, and refuses the commit when it cannot run
   the check) and the pre-push receipt check: a push of a commit the remote does
   not hold yet needs a passing `make preflight` run on that commit with nothing
   uncommitted beside it, and the hook checks the receipt that run mints rather
