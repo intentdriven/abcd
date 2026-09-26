@@ -10,7 +10,7 @@ It is also the family the implement loop is driven through (itd-2609201916151817
 decision 8): `build` is what a person types, and the loop's status, step and
 receipt are sub-verbs of this verb, which a driving session calls. The loop's
 own state lives in the checkout's local tier, not in the shared run state below;
-[`31-build.md`](31-build.md) is its chapter. The pacing intent
+[`34-build.md`](34-build.md) is its chapter. The pacing intent
 (itd-2609201925079472) reads the loop's window clock.
 
 ## Sub-verbs
@@ -205,7 +205,7 @@ signals anything.
 ## The implement loop
 
 Three sub-verbs drive the loop a build starts, each over the run's state file in
-the checkout's local tier ([`31-build.md`](31-build.md) states the file, the
+the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
 named, and writes nothing. The step performs the current lane's next step and
 exits; at a step that hands work to an agent it names the agent, the brief and
