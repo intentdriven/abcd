@@ -1542,7 +1542,9 @@ records, commits and URLs, never at a location on a machine. abcd names the
 file from the time and this repository's root-commit key; the verb prints the
 report's id and where it landed.
 
-Exit 2 on a refusal, with nothing filed.
+Exit 2 on a refusal, with nothing filed. Exit 1 when filing fails (the inbox
+cannot be created, every id drawn this second is taken, the write fails), with
+nothing filed. After the editor ran, both name where what was written is kept.
 
 **Flags:**
 

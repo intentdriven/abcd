@@ -50,7 +50,9 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 			"records, commits and URLs, never at a location on a machine. abcd names the\n" +
 			"file from the time and this repository's root-commit key; the verb prints the\n" +
 			"report's id and where it landed.\n\n" +
-			"Exit 2 on a refusal, with nothing filed.",
+			"Exit 2 on a refusal, with nothing filed. Exit 1 when filing fails (the inbox\n" +
+			"cannot be created, every id drawn this second is taken, the write fails), with\n" +
+			"nothing filed. After the editor ran, both name where what was written is kept.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			skeleton := report.Template(core.NewVersion().Version)
@@ -80,10 +82,11 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 					err = fmt.Errorf("%w: cannot read the report file: %v", report.ErrRefused, fsutil.RedactHome(err.Error()))
 				}
 			}
-			// refuse says where the editor's text is kept, on every refusal
-			// after the editor ran, so a rejected report is never lost.
+			// refuse says where the editor's text is kept, on every refusal and
+			// every failure after the editor ran, so a report that was not filed
+			// is never lost unannounced (iss-2609260552256523).
 			refuse := func(err error) error {
-				if kept != "" && errors.Is(err, report.ErrRefused) {
+				if kept != "" {
 					where := fsutil.RedactHome(kept)
 					err = fmt.Errorf("%w; what you wrote is kept at %s — fix it and run `abcd report %s`", err, where, where)
 				}
@@ -98,7 +101,7 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
-				return err
+				return refuse(err)
 			}
 			root, err := gitutil.CheckoutRoot(cwd, reportStore)
 			if err != nil {

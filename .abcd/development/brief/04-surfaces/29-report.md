@@ -35,8 +35,9 @@ a flag and the filled report is a positional; neither is a sub-verb.
 - Bare `abcd report` opens the skeleton in `$VISUAL` or `$EDITOR` when both ends
   of the session are a terminal, from a private temporary file outside both
   repositories, and files what is saved. Without a terminal or an editor it
-  refuses and names the two other ways in. A refused edit keeps the file and
-  names it, so what the reporter wrote is never lost.
+  refuses and names the two other ways in. An edit that is refused, or fails
+  to file, keeps the file and names it, so what the reporter wrote is never
+  lost.
 
 ## The template
 
@@ -117,7 +118,9 @@ silent when nothing waits.
 
 ## Exit codes
 
-`0` filed; `2` refused, with nothing filed. The JSON output holds on every path:
+`0` filed; `1` filing failed (the inbox cannot be created, every id drawn this
+second is taken, the write fails), with nothing filed; `2` refused, with nothing
+filed. After the editor ran, a failure names the kept file as a refusal does. The JSON output holds on every path:
 a refusal is the `{"abcd":"error",…}` envelope on stdout.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

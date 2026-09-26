@@ -400,3 +400,52 @@ func TestAnInboxPathThatIsNotARealDirectoryExitsTwo(t *testing.T) {
 		t.Errorf("report into a symlinked inbox = %v, want an exit-2 refusal filing nothing", err)
 	}
 }
+
+// TestAReportThatFailsAfterTheEditorNamesTheKeptDraft: a failure to file after
+// the editor ran (here the inbox cannot be created) is not a refusal, so it
+// exits 1, and it still names where what the reporter wrote is kept, so the
+// text is never lost unannounced (iss-2609260552256523).
+func TestAReportThatFailsAfterTheEditorNamesTheKeptDraft(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory mode the failure needs")
+	}
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	skeleton := string(runCLI(t, "report", "--template"))
+	filledPath := filepath.Join(t.TempDir(), "filled.md")
+	if err := os.WriteFile(filledPath, []byte(fillTemplate(t, skeleton, "inbox unwritable", "Written in the editor.")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(t.TempDir(), "editor.sh")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\ncat '"+filledPath+"' > \"$1\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VISUAL", editor)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	prev := reportInteractive
+	reportInteractive = func() bool { return true }
+	t.Cleanup(func() { reportInteractive = prev })
+
+	dot := filepath.Join(home, ".abcd")
+	if err := os.MkdirAll(dot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dot, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dot, 0o700) })
+
+	_, err := runCLIErr(t, "report")
+	var coded interface{ ExitCode() int }
+	if err == nil || (errors.As(err, &coded) && coded.ExitCode() == 2) {
+		t.Fatalf("err = %v, want a failure that is not a refusal", err)
+	}
+	drafts, _ := filepath.Glob(filepath.Join(tmp, "abcd-report-*.md"))
+	if len(drafts) != 1 {
+		t.Fatalf("drafts kept = %v, want the one the editor wrote", drafts)
+	}
+	if !strings.Contains(err.Error(), "what you wrote is kept at") || !strings.Contains(err.Error(), filepath.Base(drafts[0])) {
+		t.Errorf("failure = %q, want it to name the kept draft %s", err, filepath.Base(drafts[0]))
+	}
+}
