@@ -191,10 +191,17 @@ at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
 because its one operand is the quoted title it mints a record from. Bare `abcd
 identity` and bare `abcd ahoy remote` answer with the invocation their report
 moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
-release, because their sub-verbs stay. And `abcd
+release, because their sub-verbs stay. Bare `abcd report` opens the editor on a
+terminal and refuses anywhere else, because it files a report rather than
+rendering one, and bare `abcd statusline` renders nothing without the payload
+the harness hands it on stdin. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
-rather than restating it.
+rather than restating it. Each exception is also recorded with its reason in
+the front door's exception table, and a test runs every other top-level verb
+bare and fails when one renders no state, so a verb added later is either a
+render or a recorded exception, and this paragraph must name every exception
+the table holds.
 
 ## Operator-internal verbs
 
