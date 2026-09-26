@@ -535,7 +535,7 @@ fingerprinted — not the unversioned working tree.
   older harnesses fail to install it, and very old ones fail to load the
   marketplace. The install instructions and the release notes state the floor.
 - **Contributors** load the plugin from their own checkout rather than through a
-  second catalog entry (`CONTRIBUTING.md`).
+  second catalog entry (`.github/CONTRIBUTING.md`).
 
 **Anti-drift.** The two manifests in the artefact describe one release, so the
 version at the selected location and the marketplace entry must agree. A

@@ -141,9 +141,10 @@ The build reads the repository and nothing else — no network at any point. Its
 inputs are the composition declaration and the interface-string allowlist; the
 record itself, read through the record-lint engine's own frontmatter scan so there
 is one parser rather than two; the bibliography and the glossary through their own
-parsers; one pass of git history; `CHANGELOG.md`; the two root prose files whose
-text the site publishes, which are the acknowledgements behind the references page
-and the authorship section of the contribution guide behind the contributors page;
+parsers; one pass of git history; `CHANGELOG.md`; the two prose files whose
+text the site publishes, which are the acknowledgements at the root behind the
+references page and the authorship section of the contribution guide in `.github/`
+behind the contributors page;
 and `docs/` with its committed assets. It writes the landing page, the record explorer, the machine-readable
 record export, the install script from its committed template, the redirect and
 header maps, the stylesheets and scripts, every referenced raster, and its own

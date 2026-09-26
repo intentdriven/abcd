@@ -13,7 +13,7 @@ they live in `go.mod` and the licence notices they carry.
 Development of abcd has been assisted by Claude Code (Anthropic). Per-commit
 disclosure uses an `Assisted-by:` trailer; the human contributor is the author of
 record and is responsible for all AI-assisted output — its correctness, licensing,
-and fit for the project. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+and fit for the project. See [`CONTRIBUTING.md`](.github/CONTRIBUTING.md).
 
 External reports sharpen the record, and fix commits credit their reporters with
 a `Reported-by:` trailer. [Andy Woods (@andytwoods)](https://github.com/andytwoods)

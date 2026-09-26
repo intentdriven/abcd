@@ -50,11 +50,12 @@ reads exactly this set — `.abcd/site.json`, `site-src/ui.json`,
 `.abcd/development/` and the opted-in issue ledger, git history,
 `CHANGELOG.md`, the composed pages and assets under `docs/`, the static inputs
 `site-src/{site.css,site.js,record.js,redirects,headers}` and the served
-`site-src/install.sh.tmpl`, the credit sources `CONTRIBUTING.md` and
-`ACKNOWLEDGEMENTS.md` (and the existence of `SECURITY.md` and `CITATION.cff`
-for the footer), `.abcd/site-baseline.json` (the ratchet the health block
-counts against), and `.claude-plugin/plugin.json` (the forge URL, licence and
-author the links and footer use) — and writes the landing page, the record
+`site-src/install.sh.tmpl`, the credit sources `.github/CONTRIBUTING.md` and
+`ACKNOWLEDGEMENTS.md` (and the existence of `SECURITY.md` — in `.github/`, at
+the root or in `docs/` — and `CITATION.cff` for the footer),
+`.abcd/site-baseline.json` (the ratchet the health block counts against), and
+`.claude-plugin/plugin.json` (the forge URL, licence and author the links and
+footer use) — and writes the landing page, the record
 export, the redirect and header maps, the stylesheet, the two scripts, the
 `install.sh`, and every referenced raster into the output directory, and
 nowhere else. It reaches no network. The default output directory is `site`,
