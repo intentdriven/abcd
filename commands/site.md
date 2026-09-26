@@ -106,8 +106,9 @@ sets up the site of a repository abcd manages, in three stages, and emits
 - `environments` — the forge's `site-render` and `site` deployment
   environments, each admitting only the default branch and tags `v*`, created
   through `gh` as you. An existing environment is never rewritten (the forge's
-  write would replace its required reviewers): one already restricted to named
-  branches and tags gains the rules it lacks, and one that admits more is
+  write would replace its required reviewers): one on named rules and no rule
+  beyond those two gains the rules it lacks, and one that admits more, through
+  its protection mode or a rule of its own such as branch `*`, is
   `unrestricted`, with restricting it listed in `remaining`.
 - `host` — with a hosting credential stored on this machine, the host is
   created and the domain routed to it, and `address` is the live address.

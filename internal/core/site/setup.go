@@ -546,7 +546,8 @@ func desiredPolicies(branch string) []BranchPolicy {
 // an existing one it would drop the required reviewers and wait timer a person
 // put there. An existing environment on custom policies only gains the
 // policies it lacks (their own endpoint, which touches nothing else); one that
-// admits more refs than that is left as it is, and restricting it is a step.
+// admits more refs than that, through its protection mode or through a custom
+// rule beyond the two it needs, is left as it is, and restricting it is a step.
 func setupEnvironments(ctx context.Context, forge Forge, branch string, asker Asker) ([]EnvironmentOutcome, string, string, []string) {
 	names := []string{EnvRender, EnvDeploy}
 	outcomes := make([]EnvironmentOutcome, len(names))
@@ -584,6 +585,22 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 		if exists {
 			if have, err = forge.Policies(ctx, env); err != nil {
 				return fail("the deployment policy read for "+env, err)
+			}
+			// A rule of the environment's own beyond the two it needs admits
+			// more refs than they do (a branch `*`, for one), so the
+			// environment is as open as one on no custom rules at all.
+			var extra []string
+			for _, h := range have {
+				if !containsPolicy(desiredPolicies(branch), h) {
+					extra = append(extra, h.Type+" "+h.Name)
+				}
+			}
+			if len(extra) > 0 {
+				outcomes[i].Status = RemoteUnrestricted
+				steps = append(steps, fmt.Sprintf("restrict the existing environment %s to branch %s and tags v*: in the forge's settings "+
+					"for %s, remove its deployment rules for %s, then re-run `abcd site setup` to add any rule it lacks. "+
+					"abcd does not remove a rule a person put on an environment that exists", env, branch, env, strings.Join(extra, ", ")))
+				continue
 			}
 		}
 		p := plan{put: !exists}

@@ -420,20 +420,27 @@ func TestADeclinedRunWritesNothingRemote(t *testing.T) {
 // replaces the environment's whole protection set, so an environment that
 // already exists is never written through it. One that admits more than the
 // default branch and release tags is left as it is and named as a remaining
-// step, ahead of any secret step; one already on custom policies only gains
-// the policies it lacks. An absent environment is still created.
+// step, ahead of any secret step — whether it admits more through its
+// protection mode or through a custom rule of its own; one already on custom
+// policies and nothing broader only gains the policies it lacks. An absent
+// environment is still created.
 func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 	cases := []struct {
-		name  string
-		state EnvironmentState
+		name     string
+		state    EnvironmentState
+		policies []BranchPolicy
+		names    string
 	}{
-		{"admits every ref", EnvironmentState{}},
-		{"admits protected branches", EnvironmentState{ProtectedBranches: true}},
+		{"admits every ref", EnvironmentState{}, nil, ""},
+		{"admits protected branches", EnvironmentState{ProtectedBranches: true}, nil, ""},
+		{"admits every branch through a custom rule", EnvironmentState{CustomBranchPolicies: true},
+			[]BranchPolicy{{Name: "main", Type: "branch"}, {Name: "*", Type: "branch"}}, "branch *"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			h := newHarness(t)
 			h.forge.envs[EnvDeploy] = c.state
+			h.forge.policies[EnvDeploy] = c.policies
 			h.forge.protection[EnvDeploy] = []string{"required reviewers: example-reviewer"}
 			res := h.run(t)
 
@@ -472,6 +479,8 @@ func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 			if restrict < 0 || secret < 0 || restrict > secret {
 				t.Errorf("the restriction step is missing or follows a secret step (restrict %d, secret %d):\n%s",
 					restrict, secret, strings.Join(res.Remaining, "\n"))
+			} else if c.names != "" && !strings.Contains(res.Remaining[restrict], c.names) {
+				t.Errorf("the restriction step does not name the rule %q it has to remove:\n%s", c.names, res.Remaining[restrict])
 			}
 		})
 	}
