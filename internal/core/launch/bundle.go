@@ -22,6 +22,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -61,11 +62,15 @@ const (
 )
 
 // IncludedFile is a resolved payload file. Paths are repo-relative POSIX;
-// ResolvedPath is the absolute on-disk (dereferenced) path.
+// ResolvedPath is the absolute on-disk (dereferenced) path every reader opens
+// the file through, and it never reaches machine output (iss-81):
+// DisplayResolvedPath is the same file named relative to the repository, which
+// is what a report carries as resolved_path (iss-2609261954288630).
 type IncludedFile struct {
-	LogicalPath  string `json:"logical_path"`
-	ResolvedPath string `json:"resolved_path"`
-	GitMode      string `json:"git_mode"` // "100644" | "100755"
+	LogicalPath         string `json:"logical_path"`
+	ResolvedPath        string `json:"-"`
+	DisplayResolvedPath string `json:"resolved_path"`
+	GitMode             string `json:"git_mode"` // "100644" | "100755"
 }
 
 // ExcludedFile is a benign exclusion.
@@ -318,6 +323,18 @@ func (r *resolver) classifyRegular(rel, abs string, info os.FileInfo, deref bool
 	})
 }
 
+// included is the Included entry for one surviving candidate: the working
+// absolute path every reader opens, and the same file named relative to the
+// repository for the report.
+func (r *resolver) included(c candidate) IncludedFile {
+	return IncludedFile{
+		LogicalPath:         c.logical,
+		ResolvedPath:        c.resolved,
+		DisplayResolvedPath: fsutil.DisplayPath(r.root, c.resolved),
+		GitMode:             c.gitMode,
+	}
+}
+
 // handleSymlink resolves a symlink structurally (escape/cycle/deny) and, when
 // accepted, dereferences it: a file is classified under its logical path; a
 // directory is walked with its contents emitted under the symlink's prefix. A
@@ -498,7 +515,7 @@ func (r *resolver) finalize() {
 		group := byLogical[logical]
 		if len(group) == 1 {
 			c := group[0]
-			r.result.Included = append(r.result.Included, IncludedFile{LogicalPath: c.logical, ResolvedPath: c.resolved, GitMode: c.gitMode})
+			r.result.Included = append(r.result.Included, r.included(c))
 			continue
 		}
 		// Same logical path from multiple sources: same inode → dedup with a
@@ -513,7 +530,7 @@ func (r *resolver) finalize() {
 		}
 		if sameInode {
 			r.result.Warnings = append(r.result.Warnings, "duplicate provenance for "+logical+" (same inode); kept one")
-			r.result.Included = append(r.result.Included, IncludedFile{LogicalPath: first.logical, ResolvedPath: first.resolved, GitMode: first.gitMode})
+			r.result.Included = append(r.result.Included, r.included(first))
 		} else {
 			r.result.Rejected = append(r.result.Rejected, RejectedFile{LogicalPath: logical, Reason: RejectedDuplicate})
 		}

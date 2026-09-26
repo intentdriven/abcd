@@ -761,7 +761,7 @@ func renderIngest(w io.Writer, res shipResult) {
 	}
 	// The staged path is an operator-supplied absolute location, so it is
 	// reported through the same sanitiser every other outside string uses.
-	fmt.Fprintf(w, "  payload:    %s\n", termsafe.Sanitize(res.Payload.Dest))
+	fmt.Fprintf(w, "  payload:    %s\n", termsafe.Sanitize(res.Payload.DisplayDest))
 	fmt.Fprintf(w, "    %d file(s), version %s in %s\n",
 		res.Payload.Files, res.Payload.Version, strings.Join(res.Payload.Manifests, ", "))
 }
