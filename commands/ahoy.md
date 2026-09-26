@@ -173,7 +173,7 @@ minutes, and a timeout kills that group; a process the step moves out of the
 group (`setsid`) escapes the kill and can outlive the run, so abcd stops
 waiting on its output 10 seconds after the step ends and reports a step that
 left one behind as failed. `--yes` never installs a tool, and a run with `CI` set
-installs none and is not asked. A name that is not a tool `ahoy install` checks
+to any value, or with `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool `ahoy install` checks
 for is refused, naming the ones it does.
 
 **The house-style question.** When the install seeds `.abcd/docs-lint.json`,

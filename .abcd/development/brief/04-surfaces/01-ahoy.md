@@ -364,7 +364,9 @@ a program on the machine, so it is asked only of a person at a terminal, after
 the tool registry's explanation is shown, and its default is no. Off a terminal
 the answer is a flag naming the tool, which is how a host relays the answer its
 own question tool got; the approve-everything flag never installs a tool, and a
-run with `CI` set never installs one and is not asked. What runs is the
+CI runner never installs one and is not asked: the canonical CI detector
+(`internal/cienv`, `GITHUB_ACTIONS=true` or a truthy `CI`) refuses, and so does
+`CI` set to any value, `false` and `0` included. What runs is the
 registry's fixed argv for the platform, never a shell string and never a command
 composed from input, and only when the package manager resolves on `PATH`
 outside the repository (`internal/core/tools`). The step runs in a process group

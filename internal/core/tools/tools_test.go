@@ -271,17 +271,24 @@ func TestInstallNeverRunsWithoutAConfirmation(t *testing.T) {
 }
 
 // TestInstallNeverRunsInCI: CI never installs, whatever the confirmation says,
-// and the confirmation is not even asked.
+// and the confirmation is not even asked. Every environment the canonical CI
+// detector names refuses (a runner that sets only GITHUB_ACTIONS included,
+// iss-2609261604499090), and so does any non-empty CI, "false" and "0"
+// included: the installer is deliberately stricter than the detector.
 func TestInstallNeverRunsInCI(t *testing.T) {
-	fx := &fakeExec{}
-	asked := false
-	in := testInstaller(t, fx, binDir(t, "brew"), map[string]string{"CI": "true"})
-	r := in.Install("gitleaks", TranscriptScan, func(e Explanation) Answer { asked = true; return yes(e) })
-	if r.Ran || len(fx.calls) != 0 || asked {
-		t.Fatalf("CI installed or asked: %+v asked=%v", r, asked)
-	}
-	if !strings.Contains(r.Summary(), "CI") || !strings.Contains(r.Summary(), "continuing on") {
-		t.Fatalf("CI refusal is not said: %q", r.Summary())
+	for _, env := range []map[string]string{
+		{"CI": "true"}, {"CI": "1"}, {"GITHUB_ACTIONS": "true"}, {"CI": "false"}, {"CI": "0"},
+	} {
+		fx := &fakeExec{}
+		asked := false
+		in := testInstaller(t, fx, binDir(t, "brew"), env)
+		r := in.Install("gitleaks", TranscriptScan, func(e Explanation) Answer { asked = true; return yes(e) })
+		if r.Ran || len(fx.calls) != 0 || asked || !r.Declined {
+			t.Fatalf("%v: CI installed or asked: %+v asked=%v", env, r, asked)
+		}
+		if !strings.Contains(r.Summary(), "CI") || !strings.Contains(r.Summary(), "continuing on") {
+			t.Fatalf("%v: CI refusal is not said: %q", env, r.Summary())
+		}
 	}
 }
 

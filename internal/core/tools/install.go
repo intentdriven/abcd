@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/cienv"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -155,9 +156,19 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 	}
 	r.step = strings.Join(e.Step, " ")
 	r.verify = strings.Join(e.Verify, " ")
-	if ci := in.Getenv("CI"); ci != "" {
+	if reason, ci := cienv.Runner(in.Getenv); ci {
 		r.Declined = true
-		r.Why = "CI is set: abcd never installs a tool in CI"
+		r.Why = "a CI runner (" + reason + "): abcd never installs a tool in CI"
+		return r
+	}
+	// Stricter than the canonical detector, on purpose: it counts CI=false and
+	// CI=0 as no runner, which is right for a check that only skips a warning,
+	// but an install changes the machine and abcd cannot undo it, so any CI
+	// value refuses here. A person who exports CI=false is told why and can
+	// unset it; a runner that set it is never installed on.
+	if v := in.Getenv("CI"); v != "" {
+		r.Declined = true
+		r.Why = "CI is set: abcd never installs a tool in CI, whatever CI's value"
 		return r
 	}
 	if confirm == nil {
