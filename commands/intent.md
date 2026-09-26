@@ -1,15 +1,17 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
 # `/abcd:intent` — intent lifecycle
 
 `abcd --help` lists `intent` in the person's records group. `intent audit
-ingest`, which applies a host-produced audit verdict, is in the agents-and-hosts
-block of `abcd --help --agent`, and its line there names this page.
+ingest`, which applies a host-produced audit verdict, and `intent consistency
+ingest`, which files host-produced consistency findings, are in the
+agents-and-hosts block of `abcd --help --agent`, and their lines there name
+this page.
 
 The write side of the intent record store under `.abcd/development/intents/`.
 Every intent gets a stable `itd-N` id and directory-as-truth lifecycle state
@@ -23,7 +25,13 @@ invocation **performs zero writes**.
 ```
 
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
-and the intent↔spec links. Nothing is created or moved by this invocation.
+the intent↔spec links, and `reviews_owed` — the shipped intents whose fidelity
+review is owed, the same total bare `intent audit` lists (below). The `intents`
+array lists every intent with its `id`, `title`, `bucket`, `ac_state` (`real`
+when its Acceptance Criteria hold at least one bullet, `seeded` when they are
+still the placeholder, so it cannot be planned yet) and `filed` (the date a
+timestamp id encodes; null for an ordinal id): a planning sweep reads it rather
+than opening the files. Nothing is created or moved by this invocation.
 
 **Every `intent` verb addresses the checkout's store, from anywhere in the
 tree.** The verb resolves the repository root before it reads or writes, so the
@@ -272,7 +280,11 @@ after planning still reaches the mint. That re-run also takes `--impact`,
 under the rules step 10 gives, so a planned record filed without a judgement
 gets one before its close through the verb rather than an editor. With nothing
 unmarked (and no judgement to add) it refuses and says so, rather than exiting
-quietly having done nothing. The
+quietly having done nothing. A planned intent whose `spec_id` is null — planned
+before the spec seam existed — is the one exception: the same call mints and
+links its spec as it would for a draft, on the same Acceptance Criteria bar,
+and still moves no bucket; the readiness gate's remedy for a missing spec names
+that call. The
 identities are rendered by `abcd intent ready <itd-N> --json` under
 `conditions`, which is where a consumer reads them; bare `abcd intent` is a
 corpus-wide count-and-link status and carries no per-record body.
@@ -366,6 +378,30 @@ gate that will refuse the move mechanically is a recorded seed until built.
    stays owed to the close that ships. On an intent already in `planned/` the
    flag works the same way alongside the identity stamp.
 
+   **Several drafts as one bundle.** When the interview settles that two or
+   more drafts are distinct user moments that only make sense delivered
+   together, they are planned as one bundle: ONE shared spec, every member
+   moved together. Ask the human for the bundle's name — a short kebab-case
+   name, which every member carries as `bundle: <name>` and which becomes the
+   shared spec's slug — and pass their answer; never invent one. The CLI
+   refuses several intents without `--bundle`, and `--bundle` with one:
+
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-A> <itd-B> [<itd-C>…] --bundle <name> [--impact <additive|breaking|fix>] --json
+   ```
+
+   It mints one spec whose frontmatter lists every member (`intents: [itd-A,
+   itd-B]` beside `intent: itd-A`, and `bundle: <name>`), stamps
+   `kind: bundle-member`, `bundle: <name>`, the scope-condition identities and
+   `spec_id` on each, and moves them all `drafts/ → planned/`. `--impact`
+   applies to every member under the rules above. A member that names another
+   in `blocked_by` is refused naming the edge — a bundle cannot contain its own
+   blocker, since its members ship at one moment — and so is a member that is
+   not a plannable draft, is held, already names another bundle, or is already
+   realised by a spec, and a name another record already carries. Every refusal
+   leaves every member where it was and mints nothing. The JSON carries the
+   `bundle`, the shared `spec`, and each member under `members`.
+
    **"Plan" means this act and nothing else here.** The build plan the phase
    docs hold, a dated design plan, and a session's planning brief are three
    other senses — see the glossary entry
@@ -433,6 +469,19 @@ it ships on the close after which no open spec names it. A close that ships
 nothing refuses `--impact`, because that judgement is written only at the close
 that ships (adr-2609151513118583, invariant 17). Report the specs the close
 names as still open — they are the reason the intent did not move.
+
+**A bundle's shared spec ships every member together.** Closing the spec a
+bundle plan minted moves every member whose `bundle:` matches the spec's
+`planned/ → shipped/` in the one close, each under the impact rule a single
+intent's close applies, and emits one fidelity-review request per member —
+review runs per member against the same delivery. The members move together or
+not at all: a member the impact rule refuses, a held member, or a member still
+realised by another open spec stops the close before anything moves (close that
+other spec first; it ships nothing while the bundle's spec is open). A member
+superseded out of the bundle is passed over and named. `--remainder` is refused
+on a bundle's spec, because a remainder belongs to one intent. The JSON lists
+each member under `members` (with its move and receipt) and the passed-over
+ones under `skipped`.
 
 **The close repoints every link that named a record it moved.** A record's
 folder is its status, so the close renames two files — the spec out of
@@ -550,6 +599,48 @@ accepts but the verb never writes (`held : "…"`, a space before the colon) is
 honoured as a hold and refused by `unhold` as a hand repair, never reported as
 a lift that did not happen.
 
+## Reclassify
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent reclassify <itd-N> --kind standalone [--reason "<why>"] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent reclassify <itd-N> --kind bundle-member --bundle <name> [--reason "<why>"] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent reclassify <itd-N> --kind superseded --by <itd-M|adr-N> --reason "<why>" --json
+```
+
+The one verb that changes a record's kind after planning set it, so a late
+change is one command rather than a hand edit that leaves a one-way link. Every
+change is appended to the record's `reclassification_history` as
+`{ date, from, to, reason }`; the reason is one line, redacted before it is
+written.
+
+- **A kind change**, `standalone` ↔ `bundle-member`, on a draft or a planned
+  record: the shelf stays, and the kind (and `bundle:`, set or cleared) is
+  rewritten. Joining a bundle names one another record already carries; a
+  new bundle is planned with the bundle form of `plan`, never started here. A
+  planned member whose spec is its bundle's shared spec does not leave the
+  bundle this way — that would dissolve it, which this verb does not do.
+- **A supersession**, `--kind superseded --by <itd-M|adr-N> --reason`, on any
+  live record: the record moves to `superseded/` with `superseded_by`,
+  `kind_at_supersession` (the kind it had) and the supersession note under its
+  title, and the successor's `supersedes` gains the record **in the same
+  write**, so the link is never one-way. The successor must be present and in
+  force. Superseding one member of a bundle of two leaves the other a
+  `bundle-member` whose history says the bundle now has one member, and the
+  retired member keeps the bundle it left as `bundle_at_supersession` with
+  `bundle: null`.
+- **A shipped intent never changes kind.** `--kind discipline` on a shipped
+  record is refused with the remedy: file a discipline that supersedes it, then
+  supersede the shipped record by that discipline. The verb writes no
+  discipline on any shelf — a discipline is a `## Rule` record, not a
+  relabelled press release.
+
+The write is all-or-nothing under the intent store's lock: every refusal comes
+before the first write, and a failure part way through puts back every file
+already written. Report the paths from `moved` and `written`, the `survivor`
+when there is one, and any `open_specs` — an open spec still naming a record
+just superseded is a fact to act on (close it, or retire it by hand), not
+something the verb decides.
+
 ## Link
 
 ```bash
@@ -562,9 +653,25 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 ## Review / ingest
 
 ```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --json                               # list the owed fidelity reviews (read-only)
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed [--max <n>] --json            # drain them oldest first (see Drain below)
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit <itd-N> --json                       # re-emit a shipped intent's review request
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
 ```
+
+**Bare `intent audit` lists the debt and writes nothing.** Every `spec close`
+that ships an intent parks an OWED review marker, so a fidelity review is owed
+by construction. The listing reads the first marker of every intent in
+`shipped/` and returns one entry per shipped intent (`intent_id`, `state`,
+`receipt_id`, and `re_emit` where the review is owed), with the totals `owed`,
+`dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
+intent with no marker at all owes the review too, and its re-emit mints the
+receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
+with the reason the quarantine recorded, and is not counted as owed; an
+`INGESTED` one is not listed in the text form. Report the owed total and, for
+each owed intent, its receipt and its re-emit command. The listing names the
+re-emit, never the request file: the request lives in the gitignored local tier
+and may have been swept. It exits 0 whatever it finds; no gate reads it.
 
 An intent this checkout does not hold is refused; when a peer holds it (a
 sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
@@ -594,7 +701,7 @@ choose one. The section sits outside the hashed prompt, so it never moves
 `prompt_hash`. The request `spec close` emits when it ships an intent carries
 the same section; a routing table that cannot be read leaves that request
 without one, one stderr warning names `intent audit <itd-N>` as the re-emit that
-adds it, and the close stands. `--issue-drift` dispatches no agent and refuses `--route`. The
+adds it, and the close stands. The bare listing and `--issue-drift` dispatch no agent and refuse `--route`. The
 ingest's `--json` result carries a `route` receipt (`tier_asked`,
 `connection_tried`, `connection_used`, `fallback_reason`, `override`,
 `settings_sent`, `model_reported`, and `provider_call`, null until a provider
@@ -621,6 +728,74 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+## Drain: pay the owed reviews, oldest first
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed --max <n> --json
+```
+
+`--owed` is the bounded command that pays the review debt. It returns `queue`
+— the owed reviews, oldest shipped first (`shipped` is the day the intent
+entered `shipped/`, and `shipped_state` says which fact holds: `dated`;
+`uncommitted`, shipped in the working tree and not yet committed, with no day
+and last; or `unknown`, when the history could not be read, which leaves every
+day unknown and the queue in mint order), at most `max` of them — with `owed`, the whole total, and
+`remaining`, how many the cap left out. `next` names the oldest one's
+`request_path` and its `routing`: the command has just emitted that request,
+exactly as `intent audit <itd-N>` does — its routing section included, and a
+`--route intent-auditor=<tier>` override applied the same way — minting the
+receipt if the intent had none. An entry whose request cannot be emitted (a
+malformed `spec_id`, an unreadable file) carries `emit_error`, and `next` is
+the first entry after it that emits, so one bad record never blocks the drain;
+no `next` while `owed` is above zero means no listed entry could be emitted.
+It writes: the emit parks the OWED stub in a markerless intent, a committed
+record, so even a look leaves a diff; bare `intent audit` is the read-only
+listing. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+`--max` without `--owed` is refused, as are `--owed` with an intent id or with
+`--issue-drift`.
+
+Run the loop one audit at a time, never in parallel — the cap and the one
+auditor at a time are what bound the cost:
+
+1. **Check for an auditor first.** The `intent-auditor` agent must be in the
+   host's agent listing. When it is not, or its launch is refused, run no
+   audit: every entry stays owed, nothing is marked failed or dead-lettered for
+   want of a reviewer, and the summary says why nothing ran ("0 audited; 12
+   owed left owed: no intent-auditor available — <what the host said>"). A
+   refused launch part-way through stops the loop the same way, and the
+   summary names the entries it did not reach.
+2. **For each entry in `queue`, in order:** an entry carrying `emit_error`
+   is not audited — report it with its error, as needing a hand fix, and take
+   the next. Otherwise run `intent audit <itd-N> --json`, with the same
+   `--route` when the drain was given one (for the entry `next` names the
+   request is already written, and the re-emit is idempotent), hand the whole
+   request file to the `intent-auditor` agent, write the verdict it returns to
+   `.abcd/.work.local/scratch/`, and run
+   `intent audit ingest --verdict-json <file> --json`. The verdict lands exactly
+   as a single audit's does — the Audit Notes block, the receipt, the scope-
+   condition dispositions. Report the ingest's status, then take the next
+   entry; start the next audit only after this ingest has returned.
+3. **A NOT_MET verdict is captured, never fixed.** Every intent the drain
+   reaches has already shipped, so a criterion it did not meet is a finding
+   against delivered work: file it with
+   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup`,
+   naming the receipt, and continue the loop. The drain changes no code and
+   re-opens nothing; the fix round belongs to the build that owns the work. A
+   `dead_letter` ingest is reported with its reason and is listed apart by
+   bare `intent audit` from then on.
+4. **Summarise:** how many were audited, the ingest outcome of each, the
+   captures filed for NOT_MET (their ids), the entries skipped for an
+   `emit_error`, how many stay owed — the command's `remaining` plus any entry
+   the loop did not reach — and why the loop
+   stopped: the queue ran out, the cap was reached, or no auditor was
+   available.
+
+A host without this page drives the same pair by hand: the text form prints
+the ordered list and the `next:` request path, and after the verdict is
+ingested the next `--owed` run finds the queue one shorter. Nothing starts the
+drain on its own: the spec close still only parks the OWED marker, and no hook,
+gate or schedule runs a reviewer.
 
 ## Condition: disposition one scope condition from a reading or a delivery
 
@@ -686,6 +861,58 @@ key — `/abcd:capture migrate --apply` rewrites it). Report the finding count,
 each finding's kind and records, and the receipt path the run left under
 `.abcd/.work.local/logs/audit/`. It writes to neither store. `--strict` without
 `--issue-drift` is refused.
+
+## Consistency: where do two records contradict each other?
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency --json                               # the brief and every intent
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency <itd-N> --json                       # one intent against the rest
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <file> --json # file the findings
+```
+
+The cross-document pass (the intent-auditor's Role 2). The first form reads the
+whole corpus — every brief page, and every intent outside `superseded/` as its
+title, press release, scope, decisions and rule — and the second narrows it to
+one intent against the rest. Neither judges anything: each assembles the corpus
+into `corpus_path` and writes the request to `request_path`, both under
+`.abcd/.work.local/reviews/`, names the commit the tree stood at
+(`review_of_commit`), and writes nothing else. A superseded or unknown intent is
+refused. The corpus is read from the working tree, so when a corpus document is
+edited, untracked or deleted relative to that commit the emit says `dirty: true`,
+names the paths in `dirty_paths`, and the report carries the mark beside its pin
+rather than refusing. The ingest reads the tree again against the pinned commit
+and marks the report with every path either reading names, so a mark edited out
+of the request, or an edit committed since the emit, never leaves the report
+clean.
+
+Then run the pass, one request at a time:
+
+1. Dispatch the `intent-auditor` agent with its **Role 2** section, handing it
+   the whole request file and the corpus file it names. Relay the request's
+   `## Routing` tier where the harness lets you choose one; `--route` works as
+   it does for the audit above.
+2. Save the single JSON block it returns to a file, unedited.
+3. Run the ingest on that file and report its result.
+
+The ingest validates before it writes anything. It refuses, with nothing
+written: a receipt no request here was issued for, a corpus that moved since the
+request (re-emit and run the pass again), provenance hashes the request did not
+state, a class or severity outside its set, an end whose path is not a corpus
+document or whose quote is not in it (twelve characters at least), and a
+finding with fewer or more than two ends or one that repeats another. A scoped
+run also refuses a finding with no end in its intent.
+
+A payload that validates is written in two places. Each finding is filed as one
+issue (`inconsistency`, from an `agent-finding`, located at its first end, with
+the report as its evidence) — unless an open record already quotes either end
+and names its document, in which case it is linked to that record and nothing
+is filed. And one dated report lands on the reviews shelf,
+`.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
+commit the pass read, listing every finding with both ends quoted and located
+and the record it was filed as or linked to; a second run the same day takes
+the next free suffix. Report `status`, `report_path`, and the `filed` and
+`linked` ids. The same findings ingested again are a `noop` naming the report.
+The brief and the intents are never edited: act on a finding through its issue.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
