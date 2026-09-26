@@ -70,8 +70,12 @@ run the probe's command yourself and redirect its output into those files as
 Each `- retract: \`<literal>\`` line in `corrections.md` is searched for across the
 lab's own documents; `corrections` lists each with `applied` and every
 `instances` file and line. An unapplied correction fails the sweep (exit 1) and
-halts the lab with a gate finding. Report every instance; the fix is to remove
-the claim everywhere it stands, then sweep again.
+halts the lab with a gate finding. `not_swept` lists every document the sweep
+could not read (too large, binary, or not a regular file), by path; while any
+correction is recorded, one such document fails the sweep too. Report every
+instance and every document not swept; the fix is to remove the claim
+everywhere it stands, and to make an unread document readable or move it out
+of the lab home, then sweep again.
 
 **Harvest** the lab:
 

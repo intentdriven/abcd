@@ -77,9 +77,14 @@ the verb. A probe is recorded once and never overwritten.
 The **retraction sweep** reads every correction the lab recorded and searches
 the lab's own documents for its literal — the pattern, not the instance —
 listing every file and line where it still stands. The snapshot, the lab's
-HOME and binaries, transcripts and probe records are not swept: they are the
-world and the instruments, not claims. A correction whose literal is shorter
-than three characters is refused as noise.
+HOME and binaries, transcripts and each probe's five capture files are not
+swept: they are the world and the instruments, not claims. A probe's
+`record.md` is prose the harvest cites, and is swept. The sweep is fail-closed:
+a document it cannot read — larger than it reads, binary (a NUL byte in its
+head), or not a regular file — is listed by path, and while any correction is
+recorded that fails the sweep, since a retracted claim may stand in it unseen.
+A correction whose literal is shorter than three characters is refused as
+noise.
 
 The **harvest** assembles the lab's harvest in the lifeboat's section shape —
 intention, method, what worked, what is open, candidates, coverage — from the

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -80,19 +81,37 @@ func parseCorrections(doc string) []Correction {
 }
 
 // sweepSkipDirs are the lab-home directories that hold no claims: the world
-// under study, the lab's HOME and binaries, raw transcripts, and the probe
-// records, which are instrument output rather than prose.
+// under study, the lab's HOME and binaries, and raw transcripts.
 var sweepSkipDirs = map[string]bool{
-	snapshotDir: true, labHomeDir: true, binDir: true, "transcripts": true, probesDir: true,
+	snapshotDir: true, labHomeDir: true, binDir: true, "transcripts": true,
 }
 
 // sweepSkipFiles hold the patterns by design.
 var sweepSkipFiles = map[string]bool{correctionsName: true, sweepMD: true}
 
+// isCaptureFile reports whether p is one of the five capture files of a probe
+// record — the probe's input, command line, exit status and output, which are
+// instrument output rather than claims. Everything else in a probe record,
+// record.md's observation first, is prose the harvest cites, and is swept.
+func isCaptureFile(p string) bool {
+	rest, ok := strings.CutPrefix(p, probesDir+"/")
+	if !ok {
+		return false
+	}
+	name, file, ok := strings.Cut(rest, "/")
+	return ok && probeNameRe.MatchString(name) && slices.Contains(probeFiles, file)
+}
+
+// unswept is the check a sweep fails when a document it could not read might
+// still carry a retracted claim.
+const unswept = "unswept"
+
 // Sweep verifies every correction the lab recorded is applied: each retracted
 // literal is searched for across the lab's own documents — the pattern, not
 // the instance — and every place it still stands is listed. An unapplied or
-// unreadable correction fails the sweep, which halts the lab and records the
+// unreadable correction fails the sweep, and so does any document the sweep
+// could not read while a correction is recorded (fail-closed: it is listed by
+// path, never passed over). A failed sweep halts the lab and records the
 // refusal as a finding (ErrHalted); a passing sweep lifts a standing sweep halt.
 // The artefact and the finding name a correction by its number, never by its
 // text, so neither becomes a new instance.
@@ -126,7 +145,12 @@ func Sweep(repoRoot, id string) (Swept, error) {
 			}
 			return nil
 		}
-		if !d.Type().IsRegular() || sweepSkipFiles[p] || strings.HasPrefix(p, "state/halt-") {
+		if sweepSkipFiles[p] || strings.HasPrefix(p, "state/halt-") || isCaptureFile(p) {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			// A link or a device is a document the sweep never reads.
+			res.NotSwept = append(res.NotSwept, p+" (not a regular file)")
 			return nil
 		}
 		data, rerr := fsutil.ReadGuardedInRoot(l.root, p, maxDocBytes)
@@ -135,7 +159,8 @@ func Sweep(repoRoot, id string) (Swept, error) {
 			return nil
 		}
 		if bytes.IndexByte(data[:min(len(data), 8000)], 0) >= 0 {
-			return nil // a binary file carries no claim
+			res.NotSwept = append(res.NotSwept, p+" (binary: a NUL byte in its first 8000 bytes)")
+			return nil
 		}
 		files = append(files, file{rel: p, lines: bytes.Split(data, []byte("\n"))})
 		return nil
@@ -165,8 +190,14 @@ func Sweep(repoRoot, id string) (Swept, error) {
 			failed = append(failed, fmt.Sprintf("correction-%d", c.N))
 		}
 	}
-	res.Passed = len(failed) == 0
+	// Fail-closed: a document the sweep could not read may carry any correction
+	// the log records, so with a correction to check it is a refusal, never a
+	// pass with a footnote.
 	sort.Strings(res.NotSwept)
+	if len(res.Corrections) > 0 && len(res.NotSwept) > 0 {
+		failed = append(failed, unswept)
+	}
+	res.Passed = len(failed) == 0
 	if err := l.writeDoc(sweepMD, sweepDoc(l.entry, res)); err != nil {
 		return Swept{}, err
 	}
@@ -188,8 +219,15 @@ func Sweep(repoRoot, id string) (Swept, error) {
 			fmt.Fprintf(&detail, "- correction %d (corrections.md line %d) still stands in %d place(s): %s\n", c.N, c.Line, len(c.Instances), instanceList(c.Instances, 5))
 		}
 	}
+	title := "Halted: the retraction sweep found unapplied corrections"
+	if failed[len(failed)-1] == unswept {
+		fmt.Fprintf(&detail, "- %d document(s) could not be swept, so a retracted claim may stand in them unseen: %s\n", len(res.NotSwept), strings.Join(first(res.NotSwept, 5), ", "))
+		if len(failed) == 1 {
+			title = "Halted: the retraction sweep could not read every document"
+		}
+	}
 	fid, err := l.haltAndRecord("sweep", failed,
-		"Halted: the retraction sweep found unapplied corrections",
+		title,
 		strings.TrimRight(detail.String(), "\n"), sweepMD)
 	if err != nil {
 		return Swept{}, err

@@ -554,6 +554,80 @@ func TestSweepListsEveryInstanceAndFailsOnAnUnappliedCorrection(t *testing.T) {
 	}
 }
 
+// The sweep is fail-closed (iss-2609261004260522): a probe's record.md is prose
+// the harvest cites and is swept; only the five capture files are instrument
+// output.
+func TestSweepReadsAProbeRecordButNotItsCaptureFiles(t *testing.T) {
+	r, home := fixture(t)
+	m := mint(t, r)
+	dir := labDir(home, m)
+	if _, err := Record(r.Root(), m.ID, "p5"); err != nil {
+		t.Fatal(err)
+	}
+	pdir := filepath.Join(dir, "state", "probes", "p5")
+	write(t, filepath.Join(dir, "corrections.md"), "- retract: `the guard returned 500`\n")
+	write(t, filepath.Join(pdir, "record.md"), read(t, filepath.Join(pdir, "record.md"))+"\nthe guard returned 500 here\n")
+	write(t, filepath.Join(pdir, "stdout"), "the guard returned 500\n")
+	res, err := Sweep(r.Root(), m.ID)
+	if !errors.Is(err, ErrHalted) || len(res.Corrections) != 1 {
+		t.Fatalf("Sweep = %+v, %v; want a halt on the probe record", res, err)
+	}
+	if is := res.Corrections[0].Instances; len(is) != 1 || is[0].File != "state/probes/p5/record.md" {
+		t.Errorf("instances = %+v, want the probe's record.md alone", is)
+	}
+}
+
+// A document the sweep cannot read fails it while a correction stands to be
+// checked, listed by path: over the read cap, a NUL in its head, or a link.
+// With nothing retracted there is nothing to miss, and the same tree passes.
+func TestSweepFailsOnADocumentItCannotRead(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		plant func(t *testing.T, dir string)
+	}{
+		{"over-cap.md", func(t *testing.T, dir string) {
+			write(t, filepath.Join(dir, "over-cap.md"), strings.Repeat("x", maxDocBytes)+"\nthe guard returned 500\n")
+		}},
+		{"nul-head.md", func(t *testing.T, dir string) {
+			write(t, filepath.Join(dir, "nul-head.md"), "\x00the guard returned 500\n")
+		}},
+		{"linked.md", func(t *testing.T, dir string) {
+			elsewhere := filepath.Join(t.TempDir(), "elsewhere.md")
+			write(t, elsewhere, "the guard returned 500\n")
+			if err := os.Symlink(elsewhere, filepath.Join(dir, "linked.md")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, home := fixture(t)
+			m := mint(t, r)
+			dir := labDir(home, m)
+			tc.plant(t, dir)
+			write(t, filepath.Join(dir, "corrections.md"), "- retract: `the guard returned 500`\n")
+			res, err := Sweep(r.Root(), m.ID)
+			if !errors.Is(err, ErrHalted) || res.Passed {
+				t.Fatalf("Sweep = %+v, %v; want a halt on the document not swept", res, err)
+			}
+			if len(res.NotSwept) != 1 || !strings.HasPrefix(res.NotSwept[0], tc.name+" (") {
+				t.Errorf("not swept = %q, want %s listed by path", res.NotSwept, tc.name)
+			}
+			fs := parseFindings(read(t, filepath.Join(dir, "findings.md")))
+			if len(fs) != 1 || fs[0].Gate != "sweep/unswept" {
+				t.Errorf("findings = %+v, want the sweep's unswept gate finding", fs)
+			}
+			if !strings.Contains(read(t, filepath.Join(dir, "state", "sweep.md")), "- "+tc.name+" (") {
+				t.Errorf("the artefact does not list %s as not swept", tc.name)
+			}
+
+			write(t, filepath.Join(dir, "corrections.md"), "")
+			if res, err := Sweep(r.Root(), m.ID); err != nil || !res.Passed || res.Lifted == "" {
+				t.Errorf("Sweep with nothing retracted = %+v, %v; want a pass that lifts the halt", res, err)
+			}
+		})
+	}
+}
+
 func TestSweepRefusesAPatternTooShortToMean(t *testing.T) {
 	r, home := fixture(t)
 	m := mint(t, r)
