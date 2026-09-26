@@ -70,7 +70,10 @@ unreadable report, one already promoted (the refusal names its capture), an id
 with no report, a capture the ledger refuses (the report still waits), or a
 symlink or a file where a level of the inbox belongs (the home, `~/.abcd`, the
 inbox or its `promoted/` folder), which every inbox verb refuses, naming that
-level; relay the level it names. A
+level; relay the level it names. A symlink or a file at the home or at
+`~/.abcd` with no inbox behind it holds nothing to read, so the reading verbs
+read it as no inbox (the list says nothing waits, and `show` and `promote` find
+no report) while `abcd report` still refuses, naming the level. A
 failure after the capture is written exits 1 and names the capture: if the
 promotion could not be recorded, the report still waits, and that capture is
 deleted before promoting again; if the report could not be moved, promoting it
