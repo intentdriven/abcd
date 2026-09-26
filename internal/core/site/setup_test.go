@@ -31,12 +31,17 @@ type fakeForge struct {
 	secrets  map[string][]string
 	fail     map[string]error
 	writes   []string
+	// protection is each environment's protection rules other than its
+	// deployment policy (required reviewers, a wait timer). The forge's
+	// environment write replaces the whole set, so PutEnvironment clears it,
+	// as the real endpoint would.
+	protection map[string][]string
 }
 
 func newFakeForge() *fakeForge {
 	return &fakeForge{
 		envs: map[string]EnvironmentState{}, policies: map[string][]BranchPolicy{},
-		secrets: map[string][]string{}, fail: map[string]error{},
+		secrets: map[string][]string{}, fail: map[string]error{}, protection: map[string][]string{},
 	}
 }
 
@@ -66,6 +71,7 @@ func (f *fakeForge) PutEnvironment(_ context.Context, env string) error {
 	}
 	f.writes = append(f.writes, "put "+env)
 	f.envs[env] = EnvironmentState{CustomBranchPolicies: true}
+	delete(f.protection, env)
 	return nil
 }
 
@@ -408,6 +414,85 @@ func TestADeclinedRunWritesNothingRemote(t *testing.T) {
 			t.Errorf("environment %s is %q, want declined", e.Name, e.Status)
 		}
 	}
+}
+
+// TestAnExistingEnvironmentIsNeverRewritten: the forge's environment write
+// replaces the environment's whole protection set, so an environment that
+// already exists is never written through it. One that admits more than the
+// default branch and release tags is left as it is and named as a remaining
+// step, ahead of any secret step; one already on custom policies only gains
+// the policies it lacks. An absent environment is still created.
+func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
+	cases := []struct {
+		name  string
+		state EnvironmentState
+	}{
+		{"admits every ref", EnvironmentState{}},
+		{"admits protected branches", EnvironmentState{ProtectedBranches: true}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.forge.envs[EnvDeploy] = c.state
+			h.forge.protection[EnvDeploy] = []string{"required reviewers: example-reviewer"}
+			res := h.run(t)
+
+			for _, w := range h.forge.writes {
+				if strings.HasSuffix(w, " "+EnvDeploy) || strings.Contains(w, " "+EnvDeploy+" ") {
+					t.Errorf("the existing environment %s was written: %q (all writes %v)", EnvDeploy, w, h.forge.writes)
+				}
+			}
+			if got := h.forge.protection[EnvDeploy]; len(got) != 1 {
+				t.Errorf("the existing environment's reviewers were lost: %v", got)
+			}
+			if !reflect.DeepEqual(h.forge.writes, []string{
+				"put " + EnvRender, "policy " + EnvRender + " branch main", "policy " + EnvRender + " tag v*",
+			}) {
+				t.Errorf("forge writes = %v, want only the absent %s created", h.forge.writes, EnvRender)
+			}
+			var deploy EnvironmentOutcome
+			for _, e := range res.Environments {
+				if e.Name == EnvDeploy {
+					deploy = e
+				}
+			}
+			if deploy.Status != RemoteUnrestricted {
+				t.Errorf("%s status = %q, want %q", EnvDeploy, deploy.Status, RemoteUnrestricted)
+			}
+			restrict, secret := -1, -1
+			for i, r := range res.Remaining {
+				if restrict < 0 && strings.Contains(r, "restrict the existing environment "+EnvDeploy) &&
+					strings.Contains(r, "branch main and tags v*") {
+					restrict = i
+				}
+				if secret < 0 && strings.Contains(r, "gh secret set") {
+					secret = i
+				}
+			}
+			if restrict < 0 || secret < 0 || restrict > secret {
+				t.Errorf("the restriction step is missing or follows a secret step (restrict %d, secret %d):\n%s",
+					restrict, secret, strings.Join(res.Remaining, "\n"))
+			}
+		})
+	}
+	t.Run("already on custom policies", func(t *testing.T) {
+		h := newHarness(t)
+		h.forge.envs[EnvDeploy] = EnvironmentState{CustomBranchPolicies: true}
+		h.forge.policies[EnvDeploy] = []BranchPolicy{{Name: "main", Type: "branch"}}
+		h.forge.protection[EnvDeploy] = []string{"required reviewers: example-reviewer"}
+		h.run(t)
+		for _, w := range h.forge.writes {
+			if w == "put "+EnvDeploy {
+				t.Errorf("the existing environment %s was rewritten (writes %v)", EnvDeploy, h.forge.writes)
+			}
+		}
+		if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}) {
+			t.Errorf("%s policies = %v, want the missing tag policy added", EnvDeploy, h.forge.policies[EnvDeploy])
+		}
+		if len(h.forge.protection[EnvDeploy]) != 1 {
+			t.Errorf("the existing environment's reviewers were lost: %v", h.forge.protection[EnvDeploy])
+		}
+	})
 }
 
 func TestEveryForgeFailureIsReportedAndStopsTheRemoteWrites(t *testing.T) {

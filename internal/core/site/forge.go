@@ -20,7 +20,9 @@ type Forge interface {
 	Environments(ctx context.Context) (map[string]EnvironmentState, error)
 	// Policies reads one environment's deployment branch and tag policies.
 	Policies(ctx context.Context, env string) ([]BranchPolicy, error)
-	// PutEnvironment creates env, or updates it, restricted to custom policies.
+	// PutEnvironment creates env restricted to custom policies. The forge's
+	// write replaces an environment's whole protection set, so setup calls it
+	// only for an environment that does not exist.
 	PutEnvironment(ctx context.Context, env string) error
 	// AddPolicy admits one branch or tag pattern to env.
 	AddPolicy(ctx context.Context, env string, p BranchPolicy) error

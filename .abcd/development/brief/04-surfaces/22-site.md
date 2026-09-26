@@ -61,8 +61,13 @@ abcd's: a copy that differs refuses the whole run, with nothing written and
 nothing remote attempted, unless the run is told to replace it.
 
 **The forge.** Two deployment environments, one for the render and one for the
-deploy, each admitting only the default branch and release tags, created or
-corrected through the forge's API as the person running the verb.
+deploy, each admitting only the default branch and release tags, created
+through the forge's API as the person running the verb. An environment that
+already exists is never rewritten, because the forge's environment write
+replaces its whole protection set, required reviewers included: one already
+restricted to named branches and tags gains the rules it lacks, and one that
+admits more is reported `unrestricted`, with restricting it named as a step
+ahead of any secret step.
 
 **The host.** With a hosting credential on this machine, the provider adapter
 creates the host, routes the custom domain to it and reports the live address.

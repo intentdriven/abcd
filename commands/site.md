@@ -105,7 +105,10 @@ sets up the site of a repository abcd manages, in three stages, and emits
   writes is `refused`, the whole run writes nothing, and `--confirm` replaces it.
 - `environments` — the forge's `site-render` and `site` deployment
   environments, each admitting only the default branch and tags `v*`, created
-  through `gh` as you.
+  through `gh` as you. An existing environment is never rewritten (the forge's
+  write would replace its required reviewers): one already restricted to named
+  branches and tags gains the rules it lacks, and one that admits more is
+  `unrestricted`, with restricting it listed in `remaining`.
 - `host` — with a hosting credential stored on this machine, the host is
   created and the domain routed to it, and `address` is the live address.
   Without one, `status` is `no_credential` and nothing is contacted.

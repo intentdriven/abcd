@@ -76,7 +76,9 @@ const abcdReleaseRepo = "intentdriven/abcd"
 const (
 	// StatusChanged: something was written, locally or remotely.
 	StatusChanged = "changed"
-	// StatusNoChange: every file, environment and host was already current.
+	// StatusNoChange: nothing was written, because every file, environment and
+	// host was already current or is left to a remaining step (an existing
+	// environment setup does not rewrite).
 	StatusNoChange = "no_change"
 	// StatusDeclined: a confirmation was declined, so a remote write did not
 	// happen.
@@ -93,6 +95,12 @@ const (
 	RemoteRefused     = "refused"
 	RemoteUnreachable = "unreachable"
 	RemoteNotReached  = "not_reached"
+	// RemoteUnrestricted: the environment exists and admits more than the
+	// default branch and release tags. The forge's environment write replaces
+	// an environment's whole protection set (its required reviewers and wait
+	// timer with it), so setup never rewrites one that exists: restricting it
+	// is a remaining step.
+	RemoteUnrestricted = "unrestricted"
 )
 
 // Host outcome statuses.
@@ -247,8 +255,9 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			EnvRender, EnvDeploy, branch))
 	} else {
 		res.Repo = forge.Repo()
-		envs, st, note := setupEnvironments(ctx, forge, branch, req.Asker)
+		envs, st, note, steps := setupEnvironments(ctx, forge, branch, req.Asker)
 		res.Environments = envs
+		res.Remaining = append(res.Remaining, steps...)
 		switch st {
 		case RemoteWritten:
 			changed = true
@@ -524,17 +533,27 @@ func desiredPolicies(branch string) []BranchPolicy {
 }
 
 // setupEnvironments reads both environments, asks once for every change, and
-// applies them in order, stopping at the first failure.
-func setupEnvironments(ctx context.Context, forge Forge, branch string, asker Asker) ([]EnvironmentOutcome, string, string) {
+// applies them in order, stopping at the first failure. It returns the
+// outcomes, the stage's status, a note on a refusal, and the steps left for
+// the person.
+//
+// Only an ABSENT environment is written through the forge's environment
+// endpoint: that write replaces the environment's whole protection set, so on
+// an existing one it would drop the required reviewers and wait timer a person
+// put there. An existing environment on custom policies only gains the
+// policies it lacks (their own endpoint, which touches nothing else); one that
+// admits more refs than that is left as it is, and restricting it is a step.
+func setupEnvironments(ctx context.Context, forge Forge, branch string, asker Asker) ([]EnvironmentOutcome, string, string, []string) {
 	names := []string{EnvRender, EnvDeploy}
 	outcomes := make([]EnvironmentOutcome, len(names))
-	fail := func(what string, err error) ([]EnvironmentOutcome, string, string) {
+	var steps []string
+	fail := func(what string, err error) ([]EnvironmentOutcome, string, string, []string) {
 		for i := range outcomes {
 			if outcomes[i].Status == "" || outcomes[i].Status == RemoteNotReached {
 				outcomes[i] = EnvironmentOutcome{Name: names[i], Status: RemoteRefused, Changes: outcomes[i].Changes}
 			}
 		}
-		return outcomes, RemoteRefused, "the forge refused " + what + ", so the remaining forge and host steps were not attempted: " + err.Error()
+		return outcomes, RemoteRefused, "the forge refused " + what + ", so the remaining forge and host steps were not attempted: " + err.Error(), steps
 	}
 	envs, err := forge.Environments(ctx)
 	if err != nil {
@@ -549,13 +568,21 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 	for i, env := range names {
 		outcomes[i] = EnvironmentOutcome{Name: env, Status: RemoteNotReached}
 		st, exists := envs[env]
+		if exists && (!st.CustomBranchPolicies || st.ProtectedBranches) {
+			outcomes[i].Status = RemoteUnrestricted
+			steps = append(steps, fmt.Sprintf("restrict the existing environment %s to branch %s and tags v*: in the forge's settings "+
+				"for %s, admit selected branches and tags only, then re-run `abcd site setup` to add the two rules. "+
+				"abcd does not rewrite an environment that exists, because the forge's environment write replaces its "+
+				"protection rules, required reviewers included", env, branch, env))
+			continue
+		}
 		var have []BranchPolicy
-		if exists && st.CustomBranchPolicies {
+		if exists {
 			if have, err = forge.Policies(ctx, env); err != nil {
 				return fail("the deployment policy read for "+env, err)
 			}
 		}
-		p := plan{put: !exists || !st.CustomBranchPolicies || st.ProtectedBranches}
+		p := plan{put: !exists}
 		for _, want := range desiredPolicies(branch) {
 			if !containsPolicy(have, want) {
 				p.missing = append(p.missing, want)
@@ -563,9 +590,7 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 		}
 		plans[i] = p
 		if !exists {
-			outcomes[i].Changes = append(outcomes[i].Changes, "create "+env)
-		} else if p.put {
-			outcomes[i].Changes = append(outcomes[i].Changes, "restrict "+env+" to named branches and tags")
+			outcomes[i].Changes = append(outcomes[i].Changes, "create "+env+" admitting named branches and tags only")
 		}
 		for _, m := range p.missing {
 			outcomes[i].Changes = append(outcomes[i].Changes, "admit "+m.Type+" "+m.Name+" to "+env)
@@ -576,18 +601,18 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 		}
 	}
 	if len(all) == 0 {
-		return outcomes, RemoteCurrent, ""
+		return outcomes, RemoteCurrent, "", steps
 	}
 	if asker == nil || !asker.Confirm("Change the deployment environments on "+forge.Repo()+"? ("+strings.Join(all, "; ")+")") {
 		for i := range outcomes {
-			if outcomes[i].Status != RemoteCurrent {
+			if outcomes[i].Status != RemoteCurrent && outcomes[i].Status != RemoteUnrestricted {
 				outcomes[i].Status = RemoteDeclined
 			}
 		}
-		return outcomes, RemoteDeclined, ""
+		return outcomes, RemoteDeclined, "", steps
 	}
 	for i, env := range names {
-		if outcomes[i].Status == RemoteCurrent {
+		if outcomes[i].Status == RemoteCurrent || outcomes[i].Status == RemoteUnrestricted {
 			continue
 		}
 		if plans[i].put {
@@ -602,7 +627,7 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 		}
 		outcomes[i].Status = RemoteWritten
 	}
-	return outcomes, RemoteWritten, ""
+	return outcomes, RemoteWritten, "", steps
 }
 
 func containsPolicy(have []BranchPolicy, want BranchPolicy) bool {
