@@ -8,7 +8,7 @@ status: draft
 introduced_in: v0.0
 starts_when: null
 ends_when: null
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->

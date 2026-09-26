@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/brief
+not_to_be_confused_with: [core/brief, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not call the brief's purpose or scope the construal; those are products of th
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [brief](../core/brief.md)
 - [position](position.md), the widening reading being the one that reads the construal to widen

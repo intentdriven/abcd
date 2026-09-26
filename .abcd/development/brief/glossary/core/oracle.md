@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/transport
+not_to_be_confused_with: [core/transport, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -45,5 +45,6 @@ transport that delivers context to it.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [transport](transport.md) — the mechanism that delivers context to the oracle
 - [intent](intent.md) — one of the artefact types that oracles review
