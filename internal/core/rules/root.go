@@ -287,13 +287,24 @@ func foreignOwnerRefusal(marker, cwd string) []string {
 	if err != nil {
 		because = "its owning uid could not be read (" + termsafe.Sanitize(err.Error()) + ")"
 	}
+	// What the session reads instead depends on the working directory, because
+	// the refusal bounds the WALK and the root falls back to cwd: a .abcd there
+	// is read whatever lies above it (iss-2609251522588539). So the note says
+	// which of the two happened rather than promising the bundled defaults — at
+	// the refused root itself, cwd's .abcd IS the refused root's.
+	outcome := fmt.Sprintf("so %s and .abcd/guard.json there were NOT read and nothing above %s governs this session "+
+		"(injected rules and the loader kill switch fall back to the bundled defaults under the user scope's %s, the hazard registry to the bundled defaults)",
+		RepoRelPath, termsafe.Sanitize(cwd), UserDisplayPath)
+	if fi, serr := os.Stat(filepath.Join(cwd, ".abcd")); serr == nil && fi.IsDir() {
+		outcome = fmt.Sprintf("so nothing above %s governs this session — but the refusal bounds the walk, not the working directory, "+
+			"so the .abcd/ at %s itself IS read: its %s and .abcd/guard.json govern this session",
+			termsafe.Sanitize(cwd), termsafe.Sanitize(cwd), RepoRelPath)
+	}
 	return append(notes, fmt.Sprintf(
-		"rules: REFUSED %s as this session's configuration root — %s, and git would not answer for it, "+
-			"so %s and .abcd/guard.json there were NOT read and nothing above %s governs this session "+
-			"(injected rules and the loader kill switch fall back to the bundled defaults under the user scope's %s, the hazard registry to the bundled defaults). "+
+		"rules: REFUSED %s as this session's configuration root — %s, and git would not answer for it, %s. "+
 			"If that checkout really is yours to trust — a foreign-uid checkout, a container bind mount, a shared CI checkout — "+
 			"declare it once, from an account you control: mkdir -p ~/.abcd && printf '%%s\\n' '%s' >> %s",
-		termsafe.Sanitize(marker), because, RepoRelPath, termsafe.Sanitize(cwd), UserDisplayPath,
+		termsafe.Sanitize(marker), because, outcome,
 		termsafe.Sanitize(marker), TrustedRootsDisplay))
 }
 

@@ -473,11 +473,16 @@ second falls back to the `.git` marker, under two bounds:
 | **ownership** | a marker root whose owner is not the caller. Shape alone is not a trust boundary: `git init` in a shared world-writable directory produces a genuine repository, and git's refusal on ownership is the same signal in that attack as in the legitimate foreign-uid case (iss-2609020259564193) | a declaration, once, per foreign-uid checkout |
 
 A refused root is refused **loudly and fail-closed**: the session resolves to its
-own working directory with no walk, the bundled rule defaults (under the user
-layer, which is the caller's own) and bundled hazard registry stand in for the
-repository's, and every front door prints one line naming
-the refused directory, the two uids, and the exact command that re-admits it
+own working directory with no walk, and every front door prints one line naming
+the refused directory, the two uids, what the session reads instead, and the
+exact command that re-admits it
 ([`../../principles/loud-staging.md`](../../principles/loud-staging.md)). The
+refusal bounds the walk, not the working directory. From a directory with no
+`.abcd/` of its own, the bundled rule defaults (under the user layer, which is
+the caller's own) and the bundled hazard registry stand in for the repository's.
+A `.abcd/` at the working directory is still read, so a session started at the
+refused root reads that root's configuration, and the line says so rather than
+promising the defaults. The
 ownership bound applies only to the git-refused fallback: where git answers, the
 toplevel it named stands whoever owns it, because that is a repository git itself
 vouched for.
