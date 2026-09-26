@@ -513,6 +513,22 @@ func TestEveryForgeFailureIsReportedAndStopsTheRemoteWrites(t *testing.T) {
 			if h.host.Writes() != 0 {
 				t.Fatalf("the host was written after the forge failed: %v", h.host.CallLog())
 			}
+			// The secret steps are still printed, so the step that protects
+			// the environment they land in comes first: without it the
+			// workflow's first run creates site with no deployment policy.
+			create, secret := -1, -1
+			for i, r := range res.Remaining {
+				if create < 0 && strings.Contains(r, "create the forge environments "+EnvRender+" and "+EnvDeploy) {
+					create = i
+				}
+				if secret < 0 && strings.Contains(r, "gh secret set") {
+					secret = i
+				}
+			}
+			if create < 0 || secret < 0 || create > secret {
+				t.Fatalf("a refused forge stage must name the environment step before any secret step (create %d, secret %d):\n%s",
+					create, secret, strings.Join(res.Remaining, "\n"))
+			}
 		})
 	}
 	t.Run("SecretNames", func(t *testing.T) {

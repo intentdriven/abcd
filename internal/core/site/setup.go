@@ -245,14 +245,17 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		}
 	}
 	envOK := true
+	// Without this step ahead of the secret steps, a person following them
+	// sets the token first, and the workflow's first run creates the deploy
+	// environment with no policy at all: deployable from any branch.
+	createStep := fmt.Sprintf("create the forge environments %s and %s, each admitting only branch %s and tags v*, "+
+		"as the workflow's header describes, before setting any deploy secret", EnvRender, EnvDeploy, branch)
 	if forge == nil {
 		envOK = false
 		for _, env := range []string{EnvRender, EnvDeploy} {
 			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteUnreachable})
 		}
-		res.Remaining = append(res.Remaining, fmt.Sprintf(
-			"create the forge environments %s and %s, each admitting only branch %s and tags v*, as the workflow's header describes",
-			EnvRender, EnvDeploy, branch))
+		res.Remaining = append(res.Remaining, createStep)
 	} else {
 		res.Repo = forge.Repo()
 		envs, st, note, steps := setupEnvironments(ctx, forge, branch, req.Asker)
@@ -267,6 +270,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		case RemoteRefused:
 			refused, envOK = true, false
 			res.Notes = append(res.Notes, note)
+			res.Remaining = append(res.Remaining, createStep)
 		}
 	}
 
