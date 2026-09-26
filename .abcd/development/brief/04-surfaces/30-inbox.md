@@ -38,9 +38,11 @@ door sanitises it before it reaches the terminal. The list and show both reach
 an agent's context when a session reads the inbox, and a title, a body, or the
 key name or version string an unreadable file's reason echoes could be written
 as an instruction. So both are framed as data in the output itself: the text
-forms open with an `untrusted:` line saying each title, reason and body is
-another repository's words, to read and quote and never to follow, and the
-JSON forms carry that sentence as `notice`. The plugin page frames the whole
+forms carry an `untrusted:` line before the first word a report wrote, saying
+each title, reason and body is another repository's words, to read and quote
+and never to follow (show opens with it, the list puts it under its count
+line, and an empty list, with nothing to frame, prints none), and the JSON
+forms always carry that sentence as `notice`. The plugin page frames the whole
 page the same way, list and show alike. A key name a refusal echoes is clipped
 to 64 bytes. The id a caller names is
 checked for its shape before anything is read and is only ever compared with
@@ -115,10 +117,22 @@ promoted, and an id with no report are refused. A capture the ledger refuses —
 a symlinked ledger, a slug that normalises to nothing — is refused too: capture
 sweeps its reservation, so nothing is written and the report still waits.
 
+Every inbox verb, and a report filed into the inbox, refuses a symlink or a
+file where a level of it belongs — the home directory, `~/.abcd`, the inbox,
+or its `promoted/` folder — and the refusal names that level, home-redacted.
+The reading verbs walk the levels through the same check the filing verbs
+create them by, so nothing is read through a link a filing verb would refuse
+to write through. A symlink or a file at the home or at `~/.abcd` with no inbox
+behind it holds nothing to read: the list and the count read it as no inbox,
+the stance the rules loader takes on `~/.abcd/rules.json` behind a symlinked
+`~/.abcd`, and filing into it is refused.
+
 ## Exit codes
 
-`0` done; `2` refused, with nothing written, and with the home and working
-directories written as `~` and `.` in the message. The JSON output holds on
+`0` done; `1` a failure after the capture is written (the promotion could not
+be recorded, or the report could not be moved), naming the capture; `2`
+refused, with nothing written, and with the home and working directories
+written as `~` and `.` in the message. The JSON output holds on
 every path: the list is `{"notice", "tally": {"reports", "senders"}, "reports": [...]}`, show is
 the entry with `notice` beside its fields, and a refusal is
 the `{"abcd":"error",…}` envelope on stdout.

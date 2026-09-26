@@ -88,7 +88,13 @@ func newPreflightReport(mode string, at time.Time, version string, refusals, war
 // report's instant, and returns that directory repo-relative. Two runs in one
 // second get two directories: the directory is created exclusively, never
 // reused.
+//
+// repoRoot is resolved through its symlinks before the directory proof: the
+// launch verbs hand in the shell's logical working directory, and a checkout
+// entered through a symlinked path is the user's own, so only a symlink at or
+// below the checkout's .abcd is refused (the iss-2609261108448674 sweep).
 func WritePreflightReport(repoRoot string, rep PreflightReport) (string, error) {
+	repoRoot = fsutil.RealExistingPath(repoRoot)
 	if err := fsutil.EnsureRealDirAll(repoRoot, filepath.FromSlash(preflightReportRelDir), 0o755); err != nil {
 		return "", fmt.Errorf("the pre-flight report directory: %w", err)
 	}

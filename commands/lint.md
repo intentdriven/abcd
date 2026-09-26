@@ -8,8 +8,11 @@ block: people
 # `/abcd:lint` repo-conformance check
 
 Run the abcd binary's read-only conformance lint for the current repo and
-present the result. This command performs **zero writes** — it reports gaps, it
-never fixes them (remediation stays with `/abcd:prepare-this-repo`).
+present the result. Bare `lint` and every target but one perform **zero
+writes**; `lint site` renders the site into its `--out` directory (default
+`./site`, under the working directory) when that directory holds no
+`index.html`, and leaves the render there. It reports gaps, it never fixes
+them (remediation stays with `/abcd:prepare-this-repo`).
 
 `lint` is the one check, with targets. Bare, it runs every target that judges
 the repository: the working conventions, the docs (`docs-currency`), the identity

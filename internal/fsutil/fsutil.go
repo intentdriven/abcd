@@ -543,6 +543,36 @@ func EnsureRealDirAll(base, rel string, perm os.FileMode) error {
 	return nil
 }
 
+// ProbeRealDirAll is EnsureRealDirAll's read-only counterpart: it walks rel
+// under base one level at a time, creating nothing, so a reader refuses exactly
+// the levels the creating walk refuses. ok is true when base and every level of
+// rel stand as real directories. A missing level ends the walk with ok false and
+// a nil error — there is nothing under it to read. A level a symlink or a
+// non-directory occupies, base included, is ErrNotRealDir inside an
+// *os.PathError naming that level, the error EnsureRealDirAll returns for it, so
+// a reading verb and a writing verb refuse the same path in the same terms. Any
+// other lstat failure is returned, so the probe fails closed.
+func ProbeRealDirAll(base, rel string) (ok bool, err error) {
+	if !ValidRelPath(rel) {
+		return false, &os.PathError{Op: "proberealdir", Path: rel, Err: os.ErrInvalid}
+	}
+	dir := base
+	for _, seg := range append([]string{""}, strings.Split(rel, "/")...) {
+		dir = filepath.Join(dir, seg)
+		fi, err := os.Lstat(dir)
+		if notPresent(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+			return false, &os.PathError{Op: "ensurerealdir", Path: dir, Err: ErrNotRealDir}
+		}
+	}
+	return true, nil
+}
+
 // CreateExclusiveIn writes data to rel INSIDE root, failing if rel already
 // exists. It is the canonical primitive for a durable write that must (a) stay
 // contained under a directory even against a symlinked ancestor, and (b) never

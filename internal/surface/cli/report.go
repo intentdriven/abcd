@@ -50,7 +50,9 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 			"records, commits and URLs, never at a location on a machine. abcd names the\n" +
 			"file from the time and this repository's root-commit key; the verb prints the\n" +
 			"report's id and where it landed.\n\n" +
-			"Exit 2 on a refusal, with nothing filed.",
+			"Exit 2 on a refusal, with nothing filed. Exit 1 when filing fails (the inbox\n" +
+			"cannot be created, every id drawn this second is taken, the write fails), with\n" +
+			"nothing filed. After the editor ran, both name where what was written is kept.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			skeleton := report.Template(core.NewVersion().Version)
@@ -80,10 +82,11 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 					err = fmt.Errorf("%w: cannot read the report file: %v", report.ErrRefused, fsutil.RedactHome(err.Error()))
 				}
 			}
-			// refuse says where the editor's text is kept, on every refusal
-			// after the editor ran, so a rejected report is never lost.
+			// refuse says where the editor's text is kept, on every refusal and
+			// every failure after the editor ran, so a report that was not filed
+			// is never lost unannounced (iss-2609260552256523).
 			refuse := func(err error) error {
-				if kept != "" && errors.Is(err, report.ErrRefused) {
+				if kept != "" {
 					where := fsutil.RedactHome(kept)
 					err = fmt.Errorf("%w; what you wrote is kept at %s — fix it and run `abcd report %s`", err, where, where)
 				}
@@ -98,7 +101,7 @@ func newReportCommand(asJSON *bool) *cobra.Command {
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
-				return err
+				return refuse(err)
 			}
 			root, err := gitutil.CheckoutRoot(cwd, reportStore)
 			if err != nil {
@@ -199,22 +202,43 @@ func inboxTallyText(t report.Tally) string {
 	return fmt.Sprintf("%d report(s) from %s", t.Reports, managedRepos(t.Senders))
 }
 
-// inboxGreeting is the session-start line, or "" when nothing waits.
-func inboxGreeting() string {
+// inboxGreeting is the session-start line, or "" when nothing waits. When the
+// inbox cannot be counted, the line is "" and notice names why, for the hook's
+// stderr: a refused inbox is not silent, and it is not an empty one
+// (iss-2609261106287627).
+func inboxGreeting() (line, notice string) {
 	t, err := report.Count()
-	if err != nil || t.Reports == 0 {
-		return ""
+	if err != nil {
+		return "", inboxCountNotice(err)
 	}
-	return "abcd: " + inboxTallyText(t) + " wait in the inbox; `abcd inbox` lists them."
+	if t.Reports == 0 {
+		return "", ""
+	}
+	return "abcd: " + inboxTallyText(t) + " wait in the inbox; `abcd inbox` lists them.", ""
 }
 
-// boardInbox is the board's inbox row, or nil when nothing waits.
-func boardInbox() *report.Tally {
+// boardInbox is the board's inbox row, or nil when nothing waits. An inbox that
+// cannot be counted has no row, and the reason goes to stderr under the board's
+// prefix, as the presence line's failure does.
+func boardInbox(stderr io.Writer) *report.Tally {
 	t, err := report.Count()
-	if err != nil || t.Reports == 0 {
+	if err != nil {
+		fmt.Fprintln(stderr, inboxCountNotice(err))
+		return nil
+	}
+	if t.Reports == 0 {
 		return nil
 	}
 	return &t
+}
+
+// inboxCountNotice is the one line naming why the inbox could not be counted:
+// the refusal's own words, with the home and working directories written as
+// `~` and `.` and the text sanitised for the terminal. The words are abcd's, and
+// the only path they name is a level of the inbox, never a report's text.
+func inboxCountNotice(err error) string {
+	msg := strings.TrimPrefix(scrubPaths(err), report.ErrRefused.Error()+": ")
+	return "abcd: the inbox is not counted — " + termsafe.Sanitize(msg) + "; `abcd inbox` names the same refusal"
 }
 
 // inboxUntrustedNotice frames what the inbox prints. The list and show both
