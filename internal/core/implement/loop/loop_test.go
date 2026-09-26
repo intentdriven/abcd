@@ -540,8 +540,8 @@ func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 }
 
 // TestAStepThisBuildDoesNotCarryIsRefusedByName: the production sequence names
-// every step; one whose body is not built is refused with the piece that
-// delivers it, and the run is unchanged.
+// every step; one whose body is not built (here, every body stripped) is
+// refused with the piece that delivers it, and the run is unchanged.
 func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -549,7 +549,11 @@ func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := stateBytes(t, repo.Root(), start.RunID)
-	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	bare := DefaultSteps()
+	for i := range bare {
+		bare[i].Run, bare[i].Verify = nil, nil
+	}
+	_, err = Advance(repo.Root(), start.RunID, bare, Options{})
 	r := mustRefusal(t, err)
 	if r.Step != string(StepWorktree) || r.Lane != "lane-1" || !strings.Contains(r.Reason, "piece 6") {
 		t.Fatalf("want the unbuilt step and its piece named: %+v", r)
@@ -695,5 +699,43 @@ func TestRefusalRendersStepReasonAndRemedy(t *testing.T) {
 	r := &Refusal{Step: "check", Check: CheckHold, Reason: "itd-10 is held", Remedy: "run `abcd intent unhold itd-10`"}
 	if got := r.Error(); got != "refused at check (hold): itd-10 is held; remedy: run `abcd intent unhold itd-10`" {
 		t.Fatalf("Error() = %q", got)
+	}
+}
+
+// TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited: the host may
+// reach the checkout through a symlinked spelling of its path (macOS's /var
+// and /tmp are symlinks) while the loop's root is git's resolved toplevel; the
+// receipt the lane awaits is the same file under either spelling, and is
+// taken rather than refused as "not at the path given" (iss-2609261534097255).
+func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[StepName]int{}}
+	var res StepResult
+	for range 3 {
+		if res, err = Advance(repo.Root(), start.RunID, f.steps(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if res.Awaiting == nil {
+		t.Fatalf("want the lane awaiting: %+v", res)
+	}
+	if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "checkout")
+	if err := os.Symlink(repo.Root(), link); err != nil {
+		t.Fatal(err)
+	}
+	via := filepath.Join(link, filepath.Base(res.Awaiting.Receipt))
+	got, err := Receipt(repo.Root(), start.RunID, via, f.steps(), Options{})
+	if err != nil {
+		t.Fatalf("the awaited receipt named through a symlinked path is the same receipt: %v", err)
+	}
+	if got.Performed != StepImplement {
+		t.Fatalf("the receipt completes the step: %+v", got)
 	}
 }
