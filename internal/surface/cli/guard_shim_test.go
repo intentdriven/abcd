@@ -74,6 +74,19 @@ func runShim(t *testing.T, command, pluginRoot, pathDir string) (stderr string, 
 // own the home the shim reads.
 func runShimHome(t *testing.T, command, pluginRoot, pathDir, home string) (stderr string, code int) {
 	t.Helper()
+	return runShimPayload(t, command, pluginRoot, pathDir, home, shellPayload)
+}
+
+// shellPayload and questionPayload are the two tool calls the PreToolUse entry
+// is matched for: a shell command and a question to the human.
+const (
+	shellPayload    = `{"tool_name":"Bash","tool_input":{"command":"ls"}}`
+	questionPayload = `{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Ship it?"}]}}`
+)
+
+// runShimPayload is runShimHome with the hook payload the shim reads on stdin.
+func runShimPayload(t *testing.T, command, pluginRoot, pathDir, home, payload string) (stderr string, code int) {
+	t.Helper()
 	pathEnv := "/usr/bin:/bin"
 	if pathDir != "" {
 		pathEnv = pathDir + ":" + pathEnv
@@ -103,7 +116,7 @@ func runShimHome(t *testing.T, command, pluginRoot, pathDir, home string) (stder
 		"PATH="+pathEnv,
 		"HOME="+home,
 		"CLAUDE_PLUGIN_ROOT="+pluginRoot)
-	cmd.Stdin = strings.NewReader(`{"tool_name":"Bash","tool_input":{"command":"ls"}}`)
+	cmd.Stdin = strings.NewReader(payload)
 	var se strings.Builder
 	cmd.Stderr = &se
 	cmd.Stdout = &strings.Builder{}
@@ -168,6 +181,53 @@ func TestGuardShimFailsOpenLoud(t *testing.T) {
 				t.Errorf("a broken guard must be unmissable; stderr = %q", stderr)
 			}
 		})
+	}
+}
+
+// TestGuardShimNamesTheToolItLetThrough (iss-2609260100391018): the entry
+// guards two tools, so when the binary is missing or broken the warning names
+// the one whose call is going through unchecked. A question is not a shell
+// command, and telling the reader "shell commands run UNGUARDED" on a question
+// call names the wrong hole.
+func TestGuardShimNamesTheToolItLetThrough(t *testing.T) {
+	_, command := preToolUseGuardCommand(t)
+	for _, script := range []string{"", "exit 3"} {
+		for _, tc := range []struct {
+			payload, want, not string
+		}{
+			{shellPayload, "shell commands run UNGUARDED", "AskUserQuestion"},
+			{questionPayload, "AskUserQuestion", "shell commands"},
+		} {
+			stderr, code := runShimPayload(t, command, fakePluginRoot(t, script), "", t.TempDir(), tc.payload)
+			if code == 2 {
+				t.Errorf("a broken guard must never block (script %q); stderr = %q", script, stderr)
+			}
+			if !strings.Contains(stderr, "UNGUARDED") || !strings.Contains(stderr, tc.want) {
+				t.Errorf("script %q, payload %s: the warning must name %q and say UNGUARDED; stderr = %q", script, tc.payload, tc.want, stderr)
+			}
+			if strings.Contains(stderr, tc.not) {
+				t.Errorf("script %q, payload %s: the warning names %q, which was not called; stderr = %q", script, tc.payload, tc.not, stderr)
+			}
+		}
+	}
+}
+
+// TestGuardShimHandsTheBinaryThePayload: the shim reads the payload to name
+// the tool in its warnings, and the binary still receives it byte for byte.
+func TestGuardShimHandsTheBinaryThePayload(t *testing.T) {
+	_, command := preToolUseGuardCommand(t)
+	root := fakePluginRoot(t, `cat > "${0%/abcd}/stdin"; exit 0`)
+	for _, payload := range []string{shellPayload, questionPayload} {
+		if stderr, code := runShimPayload(t, command, root, "", t.TempDir(), payload); code != 0 {
+			t.Fatalf("exit %d; stderr = %q", code, stderr)
+		}
+		got, err := os.ReadFile(filepath.Join(root, "stdin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != payload {
+			t.Errorf("the binary read %q, want the payload %q", got, payload)
+		}
 	}
 }
 

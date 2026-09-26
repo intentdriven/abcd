@@ -95,7 +95,9 @@ A broken guard never bricks a session and never silently stops protecting one.
 The installed hook wraps the binary in a shim: the binary's own three statuses
 pass through untouched, and anything else means the binary did not run at all,
 which the shim reports as an unmissable `UNGUARDED` warning while letting the
-command through.
+call through. The warning names the tool whose call went through unchecked —
+shell commands, or questions through the host's question tool — read from the
+hook payload, which the shim then hands to the binary unchanged.
 
 The states that can independently be false are reported outside the session, on
 `abcd ahoy`'s `guard:` line: whether the hook is installed, whether the binary it
