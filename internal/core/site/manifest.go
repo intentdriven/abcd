@@ -201,6 +201,13 @@ type Manifest struct {
 	// MEASURES the unresolved references and publishes the count; the ratchet
 	// that refuses a larger one is that verb's.
 	Checks ManifestGate `json:"checks"`
+	// Pages switches pages of the closed page set off (itd-2609061543533170).
+	// Absent, every page renders; the set is the same for every repository and
+	// a switch can only take a page away, never add one.
+	Pages PageSwitches `json:"pages"`
+	// Hosting names where `abcd site setup` puts the rendered site. Absent,
+	// setup derives it; the build never reads it.
+	Hosting *Hosting `json:"hosting,omitempty"`
 }
 
 // BlockRef selects a span of a file by heading.
@@ -440,7 +447,10 @@ func (m Manifest) validate() error {
 	if err := m.validateDeferred(bad); err != nil {
 		return err
 	}
-	return nil
+	if err := m.Pages.validate(bad); err != nil {
+		return err
+	}
+	return m.Hosting.validate(bad)
 }
 
 // validateDeferred checks the keys this build does not act on yet.

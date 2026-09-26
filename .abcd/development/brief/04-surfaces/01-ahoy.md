@@ -135,6 +135,10 @@ user-scope directory for machine-local state.
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
+  credentials.json               external credentials by name (a hosting token for
+                                 setting up a site), mode 0600, read-only; abcd never
+                                 creates it. The interim source the credential store
+                                 replaces (itd-2609221017023290)
   rules.json                     the machine's rule conventions, the user layer
                                  between the bundled domains and each repo's
                                  .abcd/rules.json, read-only; abcd never creates it

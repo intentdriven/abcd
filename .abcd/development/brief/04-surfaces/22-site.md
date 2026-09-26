@@ -41,6 +41,58 @@ production renders from the tag, with the released bytes.
 | Verb | Bucket | Status |
 |---|---|---|
 | `build` | — | shipped |
+| `setup` | — | shipped |
+
+## Setting up a managed repository's site
+
+Setting up takes a repository abcd manages from the checkout to a live address
+(itd-2609061543533170). It refuses a folder abcd does not manage, and works in
+three stages, each reported whether or not the next one runs.
+
+**The repository.** It writes the composition declaration, derived from the
+recorded identity block and the documentation's front page (it refuses, naming
+the step, where either is missing); the site's static inputs under `site-src/`,
+copied from abcd's own; a workflow that renders the site from each published
+release with abcd's checksum- and attestation-verified binary and deploys the
+rendered archive from a second job; and the provider's host configuration. The
+composition and the static inputs are the repository's own once they exist, so
+a later run keeps them as they are. The workflow and the host configuration are
+abcd's: a copy that differs refuses the whole run, with nothing written and
+nothing remote attempted, unless the run is told to replace it.
+
+**The forge.** Two deployment environments, one for the render and one for the
+deploy, each admitting only the default branch and release tags, created
+through the forge's API as the person running the verb. An environment that
+already exists is never rewritten, because the forge's environment write
+replaces its whole protection set, required reviewers included: one on named
+rules and no rule beyond those two gains the rules it lacks, and one that
+admits more, through its protection mode or a rule of its own such as branch
+`*`, is reported `unrestricted`, with restricting it named as a step ahead of
+any secret step.
+
+**The host.** With a hosting credential on this machine, the provider adapter
+creates the host, routes the custom domain to it and reports the live address.
+Without one, the stage stops and says what remains: store the credential and
+re-run, or create the host in the provider's console.
+
+Both remote stages write only after a confirmation that names each change, and
+an unanswered run declines them. The deploy environment's secrets are never
+set by abcd, because the value would pass through it: the verb reads which
+secret names are present and prints the exact command for each one that is not.
+The credential is read by name from the machine and never written into the
+repository or the report. A second run over an unchanged repository and host
+writes nothing and says so. One provider ships, behind an adapter seam
+([`05-internals/02-adapters.md`](../05-internals/02-adapters.md#hosting-providers)).
+
+## The page set
+
+Every repository gets the same pages: the landing page, the record explorer,
+one page per record, the relationship graph, the timeline, the glossary and the
+status page. The composition declaration's `pages` block switches pages off and
+cannot add one. A page switched off takes its navigation entry and every link to
+it with it, and switching the explorer off takes every explorer page. The landing
+page and the record pages carry the site, so a declaration switching either off
+beneath the explorer is refused.
 
 ## The single-source rule
 
@@ -197,7 +249,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd site`
 
-Sub-verbs: `abcd site build`.
+Sub-verbs: `abcd site build`, `abcd site setup`.
 
 | Flag | Type |
 |---|---|
@@ -214,5 +266,16 @@ Sub-verbs: none.
 | `--out` | string |
 | `--preview` | bool |
 | `--version` | string |
+
+### `abcd site setup`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--confirm` | bool |
+| `--domain` | string |
+| `--name` | string |
+| `--yes` | bool |
 
 <!-- surface-appendix:end -->

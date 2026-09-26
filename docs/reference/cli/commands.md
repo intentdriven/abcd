@@ -1598,6 +1598,21 @@ Render the website into the output directory: Writes only inside that directory;
       --version string   version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
 ```
 
+#### `abcd site setup`
+
+Take the website from this checkout to a live address: Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.
+
+**Usage:** `abcd site setup [flags]`
+
+**Flags:**
+
+```
+      --confirm         replace a workflow or host configuration that differs from what setup writes
+      --domain string   custom domain to route to the host when the composition names none
+      --name string     host name when the composition names none (default: the repository's name)
+      --yes             confirm the forge and host changes without being asked; without it an unanswered run declines them
+```
+
 ### `abcd spec`
 
 Render the spec store's status: Writes nothing; refuses outside a git checkout.

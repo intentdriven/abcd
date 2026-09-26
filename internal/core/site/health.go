@@ -41,7 +41,7 @@ const isolatedListCap = 20
 // Without records and without a history there is no check to run, and the page
 // and its navigation entry are omitted (itd-140: graceful absence).
 func (e *explorer) hasHealth() bool {
-	return len(e.export.Nodes) > 0 || e.export.Authorship.Commits > 0
+	return e.pages.status && (len(e.export.Nodes) > 0 || e.export.Authorship.Commits > 0)
 }
 
 // healthPage renders `/record/health/`: one panel per family of finding.

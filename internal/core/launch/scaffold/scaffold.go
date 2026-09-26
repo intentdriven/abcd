@@ -38,6 +38,9 @@ const (
 	// sibling was hand-edited) or a write faulted first, so it was NOT written. The
 	// scaffold is all-or-nothing, so this reports honestly that nothing landed.
 	StatusSkipped FileStatus = "skipped"
+	// StatusKept — a seed file (PlannedFile.Seed) that already exists: it is the
+	// repository's own, so it was left exactly as it is.
+	StatusKept FileStatus = "kept"
 )
 
 // disposition is the pre-write classification of a target: what it is on disk,
@@ -113,43 +116,72 @@ func Scaffold(req Request) (Report, error) {
 	}
 
 	report := Report{Substitutions: subs, DefaultBranch: branch, GoVersion: goVersion, CIChecks: subs.CIChecks}
-	planned := []struct {
-		rel  string
-		data []byte
-	}{
-		{ReleaseYMLPath, rendered.ReleaseYML},
-		{AutoReleaseYMLPath, rendered.AutoReleaseYML},
-		{RunbookPath, rendered.Runbook},
-		{CheckReviewsPath, rendered.CheckReviews},
+	outcomes, wrote, refused, err := WriteFiles(req.RepoRoot, []PlannedFile{
+		{Path: ReleaseYMLPath, Data: rendered.ReleaseYML},
+		{Path: AutoReleaseYMLPath, Data: rendered.AutoReleaseYML},
+		{Path: RunbookPath, Data: rendered.Runbook},
+		{Path: CheckReviewsPath, Data: rendered.CheckReviews},
+	}, req.Confirm)
+	report.Files, report.Wrote, report.Refused = outcomes, wrote, refused
+	if err != nil {
+		return report, err
 	}
+	report.NoOp = wrote == 0
+	return report, nil
+}
 
+// PlannedFile is one file a WriteFiles run places, at a slash-separated
+// repo-relative Path.
+type PlannedFile struct {
+	Path string
+	Data []byte
+	// Seed marks a file the repository owns once it exists: written when
+	// absent, and otherwise left exactly as it is (StatusKept), never refused
+	// and never overwritten, --confirm or not. Machinery is the opposite: abcd
+	// owns its bytes, so a copy that differs is refused or, confirmed, replaced.
+	Seed bool
+}
+
+// WriteFiles is the scaffold's writer, shared with every verb that lays
+// machinery into a managed repository (`abcd site setup` is the second). It is
+// idempotent and fail-safe:
+//
+//   - a file absent on disk is written;
+//   - a file byte-identical to the planned bytes is a no-op (StatusCurrent);
+//   - a machinery file that exists and DIFFERS is REFUSED and left untouched
+//     unless confirm is set, in which case it is overwritten;
+//   - a seed file that exists is kept (StatusKept) whatever it holds.
+//
+// A run that refuses any file writes NOTHING and returns ErrScaffoldBlocked with
+// the outcomes, so the caller can render exactly what was and was not touched —
+// no partial half-write.
+func WriteFiles(repoRoot string, planned []PlannedFile, confirm bool) (outcomes []FileOutcome, wrote, refused int, err error) {
 	// First pass: classify every file WITHOUT writing. A refusal on any file with
-	// Confirm unset aborts the whole run before a single write, so the scaffold is
+	// confirm unset aborts the whole run before a single write, so the scaffold is
 	// all-or-nothing rather than half-applied. Nothing is marked "written" here —
 	// a planned write is only tentative until the second pass commits it, so the
 	// report never claims a file landed that did not (the StatusWritten contract).
-	outcomes := make([]FileOutcome, len(planned))
+	outcomes = make([]FileOutcome, len(planned))
 	writeNeeded := make([]bool, len(planned))
 	overwrite := make([]bool, len(planned))
-	refused := 0
 	for i, p := range planned {
-		abs := filepath.Join(req.RepoRoot, filepath.FromSlash(p.rel))
-		disp, detail := classify(abs, p.data)
-		switch disp {
-		case dispCurrent:
-			outcomes[i] = FileOutcome{Path: p.rel, Status: StatusCurrent}
-		case dispAbsent:
+		abs := filepath.Join(repoRoot, filepath.FromSlash(p.Path))
+		disp, detail := classify(abs, p.Data)
+		switch {
+		case disp == dispCurrent:
+			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusCurrent}
+		case disp == dispAbsent:
 			writeNeeded[i] = true
-			outcomes[i] = FileOutcome{Path: p.rel, Status: StatusSkipped} // provisional until written
-		case dispDiffers:
-			if req.Confirm {
-				writeNeeded[i] = true
-				overwrite[i] = true
-				outcomes[i] = FileOutcome{Path: p.rel, Status: StatusSkipped} // provisional until written
-			} else {
-				refused++
-				outcomes[i] = FileOutcome{Path: p.rel, Status: StatusRefused, Detail: detail}
-			}
+			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusSkipped} // provisional until written
+		case p.Seed:
+			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusKept, Detail: "present: the repository's own, left as it is"}
+		case confirm:
+			writeNeeded[i] = true
+			overwrite[i] = true
+			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusSkipped} // provisional until written
+		default:
+			refused++
+			outcomes[i] = FileOutcome{Path: p.Path, Status: StatusRefused, Detail: detail}
 		}
 	}
 
@@ -162,28 +194,23 @@ func Scaffold(req Request) (Report, error) {
 				outcomes[i].Detail = "not written: the run refused because another file was hand-edited (all-or-nothing)"
 			}
 		}
-		report.Files = outcomes
-		report.Refused = refused
-		return report, ErrScaffoldBlocked
+		return outcomes, 0, refused, ErrScaffoldBlocked
 	}
 
 	// Second pass: commit the writes. Every file that reaches here is either a
 	// create or a confirmed overwrite; a file becomes StatusWritten only once its
 	// write actually succeeds.
-	wrote := 0
 	for i, p := range planned {
 		if !writeNeeded[i] {
 			continue
 		}
-		abs := filepath.Join(req.RepoRoot, filepath.FromSlash(p.rel))
-		if err := fsutil.WriteFileAtomicPreserveMode(abs, p.data); err != nil {
+		abs := filepath.Join(repoRoot, filepath.FromSlash(p.Path))
+		if err := fsutil.WriteFileAtomicPreserveMode(abs, p.Data); err != nil {
 			// The atomic writer never leaves a half-written file; the files written
 			// before this fault are marked written, this one and any later planned
 			// file stay StatusSkipped (not written), so the report matches disk.
 			outcomes[i].Detail = "not written: a write faulted on this file"
-			report.Files = outcomes
-			report.Wrote = wrote
-			return report, fmt.Errorf("scaffold: write %s: %w", p.rel, err)
+			return outcomes, wrote, 0, fmt.Errorf("scaffold: write %s: %w", p.Path, err)
 		}
 		outcomes[i].Status = StatusWritten
 		if overwrite[i] {
@@ -191,11 +218,7 @@ func Scaffold(req Request) (Report, error) {
 		}
 		wrote++
 	}
-
-	report.Files = outcomes
-	report.Wrote = wrote
-	report.NoOp = wrote == 0
-	return report, nil
+	return outcomes, wrote, 0, nil
 }
 
 // classify reports whether abs is absent (→ dispAbsent, write it), byte-equal to
