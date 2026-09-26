@@ -25,6 +25,7 @@ package lint
 // exact defect the broad exemption used to hide).
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1606,6 +1607,17 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 
 		for _, e := range entries {
 			rel := filepath.Join(storeRel, e.Name())
+			// A declared bucket that is a link is named, never skipped. A symlink
+			// DirEntry is not a directory, so without this it fell to the markdown
+			// suffix test below and a whole lifecycle state went unchecked with
+			// nothing said (iss-2609261133371466). It is not followed either: the
+			// reading walk refuses a linked directory, capture's allocator refuses
+			// a linked open/, and the release cut reads git trees, where a link is
+			// one blob that ls-tree never descends.
+			if e.Type()&fs.ModeSymlink != 0 && store.declaresBucket(e.Name()) {
+				add(rel, "declared bucket '"+e.Name()+"' is a link; nothing in it is checked")
+				continue
+			}
 			if e.IsDir() {
 				// A dot-directory is tooling state (an editor's, a scanner's), never
 				// a lifecycle the record authored — the record's own buckets are all

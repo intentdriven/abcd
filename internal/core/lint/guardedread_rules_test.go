@@ -150,6 +150,56 @@ func TestRecordSchemaDeclinesSymlinkedAndOversizedRecords(t *testing.T) {
 	})
 }
 
+// A declared bucket that is itself a link is one finding naming the bucket, not
+// a silent skip: a symlink DirEntry is not a directory, so the store-root walk
+// once dropped it at the markdown suffix test and a whole lifecycle state went
+// unchecked with nothing said (iss-2609261133371466). The honest record in the
+// other bucket is still read, and nothing behind the link surfaces.
+func TestRecordSchemaNamesASymlinkedBucket(t *testing.T) {
+	cfg := Config{Rules: map[string]RuleConfig{
+		ruleRecordSchema: {Enabled: true, Severity: "blocker", RecordStores: map[string]string{"iss": "work/issues"}},
+	}}
+	forged := "---\nid: \"iss-9\"\nseverity: \"SECRET-TARGET\"\n---\n"
+	for _, tc := range []struct{ linked, honest string }{
+		{"open", "resolved"},
+		{"resolved", "open"},
+	} {
+		t.Run(tc.linked, func(t *testing.T) {
+			root := t.TempDir()
+			// The honest record is missing required fields, so it draws findings:
+			// proof that the other bucket is still walked.
+			writeFile(t, root, "work/issues/"+tc.honest+"/iss-5-a.md", "---\nid: \"iss-5\"\n---\n")
+			symlinkDirOut(t, root, "work/issues/"+tc.linked, map[string]string{"iss-9-x.md": forged})
+			fs, err := lintWithin(t, cfg, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "declared bucket '" + tc.linked + "' is a link; nothing in it is checked"
+			n, honest := 0, false
+			for _, f := range fs {
+				if strings.Contains(f.Message, "SECRET-TARGET") || strings.Contains(f.File, "iss-9") {
+					t.Fatalf("a record behind the linked bucket was read: %+v", f)
+				}
+				if f.RuleID == ruleRecordSchema && f.Message == want {
+					if f.File != filepath.Join("work", "issues", tc.linked) {
+						t.Errorf("the finding must sit on the bucket, got %q", f.File)
+					}
+					n++
+				}
+				if strings.HasSuffix(f.File, "iss-5-a.md") {
+					honest = true
+				}
+			}
+			if n != 1 {
+				t.Fatalf("want exactly one finding %q, got %d in %+v", want, n, fs)
+			}
+			if !honest {
+				t.Fatalf("the unlinked %s bucket must still be checked: %+v", tc.honest, fs)
+			}
+		})
+	}
+}
+
 func assertSingleSafeReadFinding(t *testing.T, fs []Finding, file string) {
 	t.Helper()
 	n := 0
