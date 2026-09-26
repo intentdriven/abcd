@@ -2,6 +2,8 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -110,6 +112,54 @@ func TestHookPlaneFailsOpenOnEveryUsageError(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestHookPlaneFlagGroupRefusalFailsOpen is iss-2609251755278758. A flag-group
+// refusal (two flags of a mutually exclusive group set at once) comes from
+// neither FlagErrorFunc nor Args: markUsageErrorsExitTwo checks the groups in
+// the PreRunE it installs on every command and codes the refusal 2, and the
+// hook plane reset the other two and not that one. No hook command declares a
+// group today, so the test declares one on each hook-reachable command, as a
+// future flag would, and asks that the refusal still fail open at exit 1.
+func TestHookPlaneFlagGroupRefusalFailsOpen(t *testing.T) {
+	paths := hookReachablePaths(t)
+	t.Chdir(t.TempDir())
+	for _, path := range paths {
+		name := strings.Join(path, " ")
+		t.Run(strings.ReplaceAll(name, " ", "_"), func(t *testing.T) {
+			root := NewRootCommand()
+			cmd := findByPath(root, path)
+			if cmd == nil {
+				t.Fatalf("abcd %s is not in the command tree", name)
+			}
+			if !cmd.Runnable() {
+				t.Skipf("abcd %s runs nothing, so no PreRunE of it runs", name)
+			}
+			cmd.Flags().Bool("zz-a", false, "")
+			cmd.Flags().Bool("zz-b", false, "")
+			cmd.MarkFlagsMutuallyExclusive("zz-a", "zz-b")
+			root.SetArgs(append(append([]string{}, path...), "--zz-a", "--zz-b"))
+			root.SetIn(strings.NewReader(""))
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("abcd %s --zz-a --zz-b ran; a flag-group violation must still refuse", name)
+			}
+			code := 1
+			var coded interface{ ExitCode() int }
+			if errors.As(err, &coded) {
+				code = coded.ExitCode()
+			}
+			if code != 1 {
+				t.Fatalf("abcd %s --zz-a --zz-b exited %d, want 1: on the hook plane a usage error abcd "+
+					"cannot answer must not be the host's blocking status (iss-269)\n%v", name, code, err)
+			}
+			if !strings.Contains(err.Error(), "none of the others can be") && !strings.Contains(err.Error(), "zz-a") {
+				t.Fatalf("the refusal no longer names the group it refused: %v", err)
+			}
+		})
 	}
 }
 
