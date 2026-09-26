@@ -21,8 +21,11 @@ name: site
 #                         every push to <% .DefaultBranch %> and calls `release` inside
 #                         its own run, and a hand-pushed tag runs `release` with
 #                         the tag as its head branch. A completion that
-#                         released nothing redeploys the latest release over
-#                         itself, which changes nothing.
+#                         released nothing redeploys the latest published
+#                         release: the same bytes the site already serves,
+#                         unless a dispatch rolled it back to an older tag,
+#                         which the next such completion replaces with the
+#                         latest release again.
 #   workflow_dispatch     a redeploy by hand; an empty tag means the latest
 #                         published release.
 #
