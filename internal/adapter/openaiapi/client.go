@@ -16,8 +16,10 @@
 //     than waited on;
 //   - the key travels only as the Authorization header of a request to the
 //     pinned base URL. No error, result or log line carries it: a provider's
-//     own error text is bounded, sanitised and scrubbed of the key before it
-//     can reach an error, because a provider may echo what it was sent;
+//     own text (its error and the model it reports) is decoded, bounded,
+//     sanitised and scrubbed of every representation of the key (Scrub)
+//     before it can reach an error or a result, because a provider may echo
+//     what it was sent, in whatever encoding its stack applies;
 //   - a setting the protocol does not take is refused before any call, and the
 //     answer is judged by the caller's output contract, the same one the host
 //     sub-agent's payload is judged by, so an answer that does not satisfy it is
@@ -34,13 +36,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -109,6 +114,7 @@ type Result struct {
 type Client struct {
 	endpoint string
 	key      string
+	forms    []string // every representation of key the scrub removes
 	host     string
 	timeout  time.Duration
 	hc       *http.Client
@@ -140,6 +146,7 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 	c := &Client{
 		endpoint: strings.TrimSuffix(u.String(), "/") + "/chat/completions",
 		key:      key,
+		forms:    keyForms(key),
 		host:     u.Host,
 		timeout:  DefaultTimeout,
 	}
@@ -308,7 +315,9 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if len(cc.Choices) == 0 {
 		return Result{}, c.fail(c.host + " answered with no choice, so there is no answer to read")
 	}
-	res := Result{ModelAsked: asked, ModelReported: cleanModel(cc.Model)}
+	// The reported model is the provider's own text, recorded and quoted in a
+	// denylist refusal, so it is scrubbed like any other.
+	res := Result{ModelAsked: asked, ModelReported: cleanModel(c.scrub(cc.Model))}
 	content := ""
 	if p := cc.Choices[0].Message.Content; p != nil {
 		content = *p
@@ -317,7 +326,7 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if contract != nil {
 		if err := contract(res.Content); err != nil {
 			return Result{}, c.fail("the answer does not satisfy the output contract, so it is refused rather than used: " +
-				termsafe.Sanitize(bound(err.Error())))
+				termsafe.Sanitize(bound(c.scrub(err.Error()))))
 		}
 	}
 	return res, nil
@@ -344,7 +353,12 @@ func unfence(s string) string {
 
 // providerSaid is a provider's own error message, bounded, sanitised and
 // scrubbed of the key: the protocol's error.message when the body carries
-// one, else the body's first bytes.
+// one, else the body itself. A provider may echo the key in any field and in
+// any encoding its stack applies, so the text is decoded before the scrub: a
+// JSON body is re-rendered from its decoded values (every \u, \/ and other
+// escape undone) and HTML character references are resolved, which leaves
+// the key, wherever it was, in the one literal form the scrub matches, and
+// the scrub removes its escaped forms besides.
 func (c *Client) providerSaid(raw []byte) string {
 	var env struct {
 		Error json.RawMessage `json:"error"`
@@ -363,10 +377,29 @@ func (c *Client) providerSaid(raw []byte) string {
 		}
 	}
 	if said == "" {
-		said = string(raw)
+		said = decodedBody(raw)
 	}
-	said = c.scrub(said)
+	said = c.scrub(html.UnescapeString(said))
 	return termsafe.Sanitize(bound(strings.TrimSpace(said)))
+}
+
+// decodedBody is a body as text with its JSON escapes undone: a JSON document
+// is decoded and rendered again without escaping anything JSON does not
+// require, and anything else is returned as it is.
+func decodedBody(raw []byte) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil || dec.More() {
+		return string(raw)
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(v) != nil {
+		return string(raw)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 func (c *Client) transportError(err error) error {
@@ -394,12 +427,78 @@ func (c *Client) fail(msg string) error {
 	return errors.New("openaiapi: " + c.scrub(msg))
 }
 
-// scrub replaces the key wherever it appears.
-func (c *Client) scrub(s string) string {
-	if c.key == "" {
-		return s
+// scrub replaces every representation of the key wherever it appears.
+func (c *Client) scrub(s string) string { return replaceForms(s, c.forms) }
+
+// Scrub replaces every representation of key in s with "[credential]": the
+// key itself and the forms an encoder in a provider's stack or in abcd's own
+// error path may give it (JSON with and without HTML escaping, with '/'
+// escaped and with non-ASCII escaped, Go's quoting, HTML escaping, URL query
+// and path escaping, and the terminal-safe renderings). An empty key scrubs
+// nothing. A front door that formats an error built from a provider's text
+// scrubs it with this a last time.
+func Scrub(s, key string) string { return replaceForms(s, keyForms(key)) }
+
+func replaceForms(s string, forms []string) string {
+	for _, f := range forms {
+		s = strings.ReplaceAll(s, f, "[credential]")
 	}
-	return strings.ReplaceAll(s, c.key, "[credential]")
+	return s
+}
+
+// keyForms is key and each escaped form of it, distinct and longest first, so
+// a longer form is replaced whole before a shorter one could cut into it.
+func keyForms(key string) []string {
+	if key == "" {
+		return nil
+	}
+	unquote := func(q string) string { return q[1 : len(q)-1] }
+	jsonForm := func(escapeHTML bool) string {
+		var b bytes.Buffer
+		enc := json.NewEncoder(&b)
+		enc.SetEscapeHTML(escapeHTML)
+		_ = enc.Encode(key)
+		return unquote(strings.TrimSuffix(b.String(), "\n"))
+	}
+	var quoted []string
+	for _, j := range []string{jsonForm(true), jsonForm(false)} {
+		quoted = append(quoted, j, asciiEscape(j))
+	}
+	quoted = append(quoted, unquote(strconv.Quote(key)), unquote(strconv.QuoteToASCII(key)))
+	forms := []string{key, html.EscapeString(key), url.QueryEscape(key), url.PathEscape(key),
+		termsafe.Sanitize(key), termsafe.EncodeHiddenRunes(key)}
+	for _, q := range quoted {
+		forms = append(forms, q, strings.ReplaceAll(q, "/", `\/`))
+	}
+	seen := map[string]bool{}
+	out := forms[:0]
+	for _, f := range forms {
+		if f != "" && !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
+}
+
+// asciiEscape writes every non-ASCII rune of a JSON string body as a \u
+// escape (a surrogate pair above the Basic Multilingual Plane), the form an
+// encoder that emits ASCII only gives it.
+func asciiEscape(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r < utf8.RuneSelf:
+			b.WriteRune(r)
+		case r > 0xFFFF:
+			r -= 0x10000
+			fmt.Fprintf(&b, `\u%04x\u%04x`, 0xD800+(r>>10), 0xDC00+(r&0x3FF))
+		default:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		}
+	}
+	return b.String()
 }
 
 // cleanModel bounds a provider-reported model and percent-encodes any hidden

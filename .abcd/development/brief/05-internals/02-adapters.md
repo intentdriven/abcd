@@ -56,8 +56,11 @@ The client's own guarantees are the network path's. The base URL is pinned per
 provider block, plain HTTP is admitted only to this machine, and a redirect is
 never followed, so a provider cannot move the key or the brief elsewhere. Every
 response is bounded in size and every call in time. The key travels only as the
-bearer header of a request to the pinned address, and a provider's own error
-text is bounded, sanitised and scrubbed of the key before it reaches an error. A
+bearer header of a request to the pinned address. A provider's own text, its
+error and the model it reports, is decoded (JSON escapes undone, HTML character
+references resolved), bounded, sanitised and scrubbed of the key in every form an
+encoder gives it (literal, JSON-, HTML- and URL-escaped, quoted) before it
+reaches an error or a record, because a provider may echo what it was sent. A
 setting the protocol does not take is refused before the call, and the answer is
 judged by the caller's output contract, the one the host sub-agent's payload is
 judged by. The request is the host's brief in the protocol's two roles: the

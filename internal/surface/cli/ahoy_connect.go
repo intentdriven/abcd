@@ -21,6 +21,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -163,10 +164,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := oracle.Connect(context.Background(), req)
 			if err != nil {
-				msg := err.Error()
-				if req.Key != "" {
-					msg = strings.ReplaceAll(msg, req.Key, "[credential]")
-				}
+				// Every representation of the key, not only its literal form:
+				// the adapter scrubs first, and this is the last time.
+				msg := openaiapi.Scrub(err.Error(), req.Key)
 				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(msg))}
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchPending}, func(w io.Writer) {

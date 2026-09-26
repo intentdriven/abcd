@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -364,4 +365,134 @@ func TestAcceptedSettingsIsACopy(t *testing.T) {
 			t.Fatalf("AcceptedSettings admits %q, which the adapter itself sets", k)
 		}
 	}
+}
+
+// awkwardKey carries every character an encoder escapes: '/' (PHP's
+// json_encode), '<', '>', '&' and '\” (Go's HTML-safe JSON and HTML), '"'
+// and '\\' (every JSON encoder and Go's %q), '+' and ' ' (a URL's query) and
+// a non-ASCII letter (\u escapes and QuoteToASCII). A throwaway value, not a
+// real credential.
+const awkwardKey = `sk-aw/k+w<a>r&d'k"e\y é`
+
+// escapedForms are representations of awkwardKey a provider may echo, each
+// hand-written rather than derived from the code under test.
+// Every backslash below is written \x5c, so the escapes are the text a
+// provider sends rather than a Go escape.
+var escapedForms = []string{
+	awkwardKey,
+	"sk-aw\x5c/k+w<a>r&d'k\x5c\x22e\x5c\x5cy \u00e9",                     // PHP json_encode, unicode kept
+	"sk-aw\x5c/k+w<a>r&d'k\x5c\x22e\x5c\x5cy \x5cu00e9",                  // PHP json_encode default
+	"sk-aw/k+w\x5cu003ca\x5cu003er\x5cu0026d'k\x5c\x22e\x5c\x5cy \u00e9", // Go encoding/json
+	"sk-aw/k+w<a>r&d'k\x5c\x22e\x5c\x5cy \x5cu00e9",                      // Go %+q / QuoteToASCII
+	"sk-aw/k+w&lt;a&gt;r&amp;d&#39;k&#34;e\x5cy \u00e9",                  // html.EscapeString
+	"sk-aw%2Fk%2Bw%3Ca%3Er%26d%27k%22e%5Cy+%C3%A9",                       // url.QueryEscape
+	"sk-aw%2Fk+w%3Ca%3Er&d%27k%22e%5Cy%20%C3%A9",                         // url.PathEscape
+	"\x5cu0073\x5cu006b\x5cu002d\x5cu0061\x5cu0077",                      // every rune \u-escaped (prefix)
+	"&#115;&#107;&#45;&#97;&#119;",                                       // every rune a numeric entity (prefix)
+}
+
+// assertNoKeyForm fails when any representation of awkwardKey, or its
+// distinctive prefix, reaches text a caller could print or record.
+func assertNoKeyForm(t *testing.T, where, s string) {
+	t.Helper()
+	for _, f := range escapedForms {
+		if strings.Contains(s, f) {
+			t.Fatalf("%s carries the key as %q: %s", where, f, s)
+		}
+	}
+	for _, prefix := range []string{"sk-aw", "sk\x5cu002daw"} {
+		if strings.Contains(s, prefix) {
+			t.Fatalf("%s carries the key's prefix %q: %s", where, prefix, s)
+		}
+	}
+}
+
+// TestNoRepresentationOfTheKeySurvivesInAnError: a provider may echo the key
+// in any field, in any encoding its stack applies, and in a body that is not
+// JSON at all. Whatever the shape, the key reaches no error and no result.
+func TestNoRepresentationOfTheKeySurvivesInAnError(t *testing.T) {
+	var cases []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request, map[string]json.RawMessage)
+		want    string
+	}
+	add := func(name string, h func(http.ResponseWriter, *http.Request, map[string]json.RawMessage), want string) {
+		cases = append(cases, struct {
+			name    string
+			handler func(http.ResponseWriter, *http.Request, map[string]json.RawMessage)
+			want    string
+		}{name, h, want})
+	}
+	for i, f := range escapedForms[1:5] {
+		add(fmt.Sprintf("401 detail field, JSON form %d", i+1), status(401, `{"detail":"bad key `+f+`"}`), "HTTP 401")
+		add(fmt.Sprintf("401 error.message, JSON form %d", i+1), status(401, `{"error":{"message":"bad key `+f+`"}}`), "HTTP 401")
+		add(fmt.Sprintf("200 error beside the message, JSON form %d", i+1), status(200, `{"error":{"code":401,"key":"`+f+`"}}`), "reported an error")
+	}
+	add("401 every rune \\u-escaped", status(401, `{"detail":"`+jsonEscapeAll(awkwardKey)+`"}`), "HTTP 401")
+	add("401 HTML body", status(401, `<p>bad key `+escapedForms[5]+`</p>`), "HTTP 401")
+	add("401 HTML body, numeric entities", status(401, `<p>bad key `+htmlNumericAll(awkwardKey)+`</p>`), "HTTP 401")
+	add("401 query-escaped", status(401, `rejected GET /v1/models?key=`+escapedForms[6]), "HTTP 401")
+	add("401 path-escaped", status(401, `rejected /keys/`+escapedForms[7]), "HTTP 401")
+	add("contract quotes the answer", ok("m", awkwardKey), "output contract")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFake(t, tc.handler)
+			quoting := func(b []byte) error { return fmt.Errorf("want a verdict, got %q and %+q", b, b) }
+			_, err := mustClient(t, f.base(), awkwardKey).Complete(context.Background(), request(), quoting)
+			if err == nil {
+				t.Fatal("Complete succeeded; want a refusal")
+			}
+			assertNoKeyForm(t, "the error", err.Error())
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to name %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestTheReportedModelNeverCarriesTheKey: the model a provider reports is
+// recorded and quoted in a denylist refusal, so a provider that reports the
+// key as its model has it scrubbed like any other text it sends.
+func TestTheReportedModelNeverCarriesTheKey(t *testing.T) {
+	f := newFake(t, ok("vendor/"+awkwardKey, `{"verdict":"yes"}`))
+	res, err := mustClient(t, f.base(), awkwardKey).Complete(context.Background(), request(), jsonObject)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	assertNoKeyForm(t, "the reported model", res.ModelReported)
+	if !strings.HasPrefix(res.ModelReported, "vendor/") {
+		t.Fatalf("model reported = %q, want the provider's text around the key kept", res.ModelReported)
+	}
+}
+
+// TestScrubKeepsTextWithoutTheKey: the scrub removes the key and nothing
+// else, and an empty key scrubs nothing.
+func TestScrubKeepsTextWithoutTheKey(t *testing.T) {
+	if got := Scrub("rate limited: slow down", awkwardKey); got != "rate limited: slow down" {
+		t.Fatalf("Scrub changed text without the key: %q", got)
+	}
+	if got := Scrub("anything", ""); got != "anything" {
+		t.Fatalf("Scrub with no key = %q", got)
+	}
+	for _, f := range escapedForms[:8] {
+		if got := Scrub("x "+f+" y", awkwardKey); got != "x [credential] y" {
+			t.Fatalf("Scrub(%q) = %q", f, got)
+		}
+	}
+}
+
+func jsonEscapeAll(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		fmt.Fprintf(&b, `\u%04x`, r)
+	}
+	return b.String()
+}
+
+func htmlNumericAll(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		fmt.Fprintf(&b, "&#%d;", r)
+	}
+	return b.String()
 }
