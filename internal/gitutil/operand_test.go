@@ -74,3 +74,42 @@ func TestProveOperandDirAcceptsPlainAndOutsidePaths(t *testing.T) {
 		t.Errorf("a link outside every checkout was refused: %v", err)
 	}
 }
+
+// TestProveOperandDirAbsolutisesARelativeOperand: the proof is anchored on the
+// checkout the operand sits in, which a relative path's marker walk cannot
+// reach — it stops at "." — so the function absolutises its own input and no
+// caller can skip the proof by forgetting to (iss-2609262235543552). From a
+// subdirectory of a checkout, a link below the working directory and a link
+// reached by climbing out of it are both refused, and the checkout is named by
+// its own base name, never "..".
+func TestProveOperandDirAbsolutisesARelativeOperand(t *testing.T) {
+	repo, elsewhere := t.TempDir(), t.TempDir()
+	mkdirs(t, filepath.Join(repo, ".git"), filepath.Join(repo, "a"), filepath.Join(elsewhere, "x"))
+	if err := os.Symlink(elsewhere, filepath.Join(repo, "a", "alink")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(repo, "link")); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(filepath.Join(repo, "a"))
+	for _, c := range []struct{ operand, level string }{
+		{filepath.Join("alink", "x"), "a/alink"},
+		{filepath.Join("..", "link", "x"), "link"},
+	} {
+		err := ProveOperandDir(c.operand)
+		var oe *OperandError
+		if !errors.As(err, &oe) || !errors.Is(err, fsutil.ErrNotRealDir) {
+			t.Errorf("ProveOperandDir(%s) = %v; want an *OperandError wrapping ErrNotRealDir", c.operand, err)
+			continue
+		}
+		if oe.Level != c.level {
+			t.Errorf("ProveOperandDir(%s) refused level %q, want %q", c.operand, oe.Level, c.level)
+		}
+		if got, want := filepath.Base(oe.Checkout), filepath.Base(repo); got != want {
+			t.Errorf("ProveOperandDir(%s) named the checkout %q, want %q", c.operand, got, want)
+		}
+	}
+	if err := ProveOperandDir("."); err != nil {
+		t.Errorf("ProveOperandDir(.) inside a real checkout level = %v; want nil", err)
+	}
+}

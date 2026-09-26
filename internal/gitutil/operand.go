@@ -52,8 +52,18 @@ func (e *OperandError) Unwrap() error { return e.Err }
 // A refusal is an *OperandError whose Level is relative to its Checkout, which
 // is the checkout's absolute path; a caller reporting it names the checkout by
 // its base name, never the absolute path.
-func ProveOperandDir(abs string) error {
-	target := filepath.Clean(abs)
+//
+// The operand is absolutised against the working directory first, whatever
+// the caller passed: a relative path's marker walk ends at "." and never
+// reaches the checkout above it, which would accept a link the proof exists to
+// refuse, so the contract is held here rather than trusted to every caller
+// (iss-2609262235543552).
+func ProveOperandDir(operand string) error {
+	abs, err := filepath.Abs(operand)
+	if err != nil {
+		return err
+	}
+	target := abs
 	start := target
 	for {
 		base := RepoShapedRoot(start)
