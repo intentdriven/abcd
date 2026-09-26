@@ -165,6 +165,8 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 4. **A shipped intent never changes kind.** A rule discovered after the fact is filed as a discipline that supersedes it.
 5. **No phase rule** (ruled 2026-09-21, adr-2609212115255771): phases are retired, so the same-phase invariant this record carried is replaced by the blocker check above.
 
+Noted on 2026-09-26, not a ruling: row 1 of the closed spec spc-2609211859391533's steps table ("bundle plan, named, refused across phases") predates decision 5 and is left as written; it means refused across shelves.
+
 ## Open Questions
 
 _None open; decisions 2 to 4 settle the three this record carried._
