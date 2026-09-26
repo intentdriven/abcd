@@ -175,7 +175,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
 
 #### `abcd capture defer`
 
-Carry an open major or critical record past the current release cut (writes deferred_after + deferral_reason; stays in open/)
+Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.
 
 **Usage:** `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
 

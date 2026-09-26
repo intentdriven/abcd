@@ -48,6 +48,8 @@ var sentences = map[string]string{
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
+	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
+		"Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
 	"abcd capture disposition": "Answer one reading item with a disposition record: " +
 		"Writes the record keyed to the item; refuses a second answer without --supersedes.",
 	"abcd capture link": "Add or remove blocked_by edges on an issue: " +

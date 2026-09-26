@@ -4168,9 +4168,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// neither fixes nor declines it.
 	var deferAfter, deferReason string
 	deferCmd := &cobra.Command{
-		Use:   "defer <iss-N> --after <vX.Y.Z> --reason <text>",
-		Short: "Carry an open major or critical record past the current release cut (writes deferred_after + deferral_reason; stays in open/)",
-		Args:  cobra.ExactArgs(1),
+		Use:  "defer <iss-N> --after <vX.Y.Z> --reason <text>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {

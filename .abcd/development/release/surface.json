@@ -363,6 +363,7 @@
     {
       "path": "abcd capture defer",
       "hidden": false,
+      "sentence": "Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
       "flags": [
         {
           "name": "after",
