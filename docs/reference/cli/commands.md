@@ -44,7 +44,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run    print the detection result as its JSON envelope, whether or not --json is passed
-      --identity   check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --identity   check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
       --remote     report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
 
@@ -73,7 +73,7 @@ Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the n
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)
+      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`

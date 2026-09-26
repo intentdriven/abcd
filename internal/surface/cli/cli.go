@@ -2949,7 +2949,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 
 	ahoyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the detection result as its JSON envelope, whether or not --json is passed")
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
-		"check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)")
+		"check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
 		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
 	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote")
@@ -3034,7 +3034,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
-	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
+	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
