@@ -109,13 +109,16 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 	assembleCmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"write nothing; with --out the two artefacts still land in that directory")
 
-	var scribeJSON, contextPath string
+	var scribeJSON, contextPath, ingestDispositions string
 	ingestCmd := &cobra.Command{
-		Use:   "ingest --scribe-json <path>",
+		Use:   "ingest --scribe-json <path> --dispositions <path>",
 		Short: "Validate a scribe session's output and write what it transcribed",
 		Long: "Validate the JSON a scribe session returned and write its records through the capture verbs.\n\n" +
 			"The context the session was handed is proven first: it must hash to its parked manifest, and\n" +
-			"the output must cite that hash. Then the output is refused if the scribe authored anything —\n" +
+			"the output must cite that hash. The pair is parked where a scribe session could rewrite it, so\n" +
+			"--dispositions names the researcher's own text again, the file assemble was handed: the\n" +
+			"manifest's supplied hash and the context's supplied copy must both equal it, and every check\n" +
+			"below reads it. Then the output is refused if the scribe authored anything —\n" +
 			"a field outside the declared shapes, an item the supplied dispositions never name, a state or an\n" +
 			"admission the item's own line of the supplied text does not carry, or a ground, exit condition\n" +
 			"or surprise that does not stand verbatim in the supplied text once whitespace is folded — or if\n" +
@@ -125,7 +128,7 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 			"which apply their own redaction and refusals, the ordering gate included; the first refusal stops\n" +
 			"the ingest and names what landed before it. Fidelity flags and refusals are reported and never\n" +
 			"written. Once every write has landed the manifest is promoted beside the run, write-once.",
-		Example: "  abcd scribe ingest --scribe-json ./scribe-output.json --json",
+		Example: "  abcd scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return &exitError{Code: 2, Msg: "scribe ingest: this verb takes no positional argument; " +
@@ -138,11 +141,17 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "scribe ingest: --scribe-json <path> is required: the JSON " +
 					"the scribe session returned"}
 			}
+			if ingestDispositions == "" {
+				return &exitError{Code: 2, Msg: "scribe ingest: --dispositions <path> is required: the " +
+					"researcher's dispositions text assemble was handed, which every word the scribe carries is " +
+					"held to"}
+			}
 			cwd := mustCwd()
 			res, err := scribe.Ingest(scribe.IngestRequest{
-				RepoRoot:       captureRoot(cwd),
-				ScribeJSONPath: resolveAgainst(cwd, scribeJSON),
-				ContextPath:    resolveAgainst(cwd, contextPath),
+				RepoRoot:         captureRoot(cwd),
+				ScribeJSONPath:   resolveAgainst(cwd, scribeJSON),
+				ContextPath:      resolveAgainst(cwd, contextPath),
+				DispositionsPath: resolveAgainst(cwd, ingestDispositions),
 			})
 			if err != nil {
 				// A refusal after something landed discloses what landed, before it
@@ -160,6 +169,8 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	ingestCmd.Flags().StringVar(&scribeJSON, "scribe-json", "", "path to the JSON the scribe session returned")
+	ingestCmd.Flags().StringVar(&ingestDispositions, "dispositions", "",
+		"the researcher's dispositions text, the file assemble was handed")
 	ingestCmd.Flags().StringVar(&contextPath, "context", "",
 		"the context the session was handed, when assemble wrote it under --out\n"+
 			"(default: the local-tier scribe run directory of the output's run)")

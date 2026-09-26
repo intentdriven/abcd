@@ -74,6 +74,14 @@ until all of the following hold:
 
 - **The context is proven.** The context on disk hashes to its parked manifest,
   and the payload cites that hash.
+- **The supplied text is the researcher's.** The context and the manifest are
+  parked in the local tier, where a scribe session granted tools could rewrite
+  both and recompute every hash that binds them, so their agreement is no
+  witness to what the researcher wrote. The ingest therefore takes the
+  researcher's dispositions file again, the one assemble was handed and the
+  session never was, scrubs it as assemble did, and requires the manifest's
+  supplied hash and the context's supplied copy both to equal it. Every check
+  below reads that text.
 - **Nothing is authored.** The payload is decoded against closed shapes at every
   level, so a key the scribe may not author is refused by name with the entry it
   sat on. A disposition or an admission for an item the supplied text never names
@@ -121,6 +129,10 @@ renders what landed first.
   the obligation, and the separation check can only see what a host retained:
   where a host assembles context before anything is retained, the check reports
   the property unobserved and the scribe definition's protocol remains the gate.
+- The researcher's dispositions file is the ingest's one witness, and it is a
+  file the operator names. A scribe session that learns its path and rewrites
+  it before the ingest is outside what the verb can see; the host obligation
+  covers it, since the session is handed the context and nothing else.
 - The state check reads words, not sense. A line that names a state only to
   negate it ("rdi-N: not accepted") still carries it, and a line naming two
   states carries both, so the verb refuses a state the item's line does not
@@ -164,6 +176,7 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--context` | string |
+| `--dispositions` | string |
 | `--scribe-json` | string |
 
 <!-- surface-appendix:end -->

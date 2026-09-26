@@ -20,6 +20,7 @@ const groundA = "the constraint the reading names is real and binds the verb as 
 type session struct {
 	fixture
 	supplied string
+	dispPath string
 	res      AssembleResult
 }
 
@@ -31,11 +32,12 @@ func assembleSession(t *testing.T, position string, n int, supplied string) sess
 	for i, id := range f.items {
 		supplied = strings.ReplaceAll(supplied, "{"+string(rune('0'+i))+"}", id)
 	}
-	res, err := Assemble(AssembleRequest{RepoRoot: f.repo, Run: fixtureRun, DispositionsPath: supply(t, supplied)})
+	dispPath := supply(t, supplied)
+	res, err := Assemble(AssembleRequest{RepoRoot: f.repo, Run: fixtureRun, DispositionsPath: dispPath})
 	if err != nil {
 		t.Fatalf("Assemble: %v", err)
 	}
-	return session{fixture: f, supplied: supplied, res: res}
+	return session{fixture: f, supplied: supplied, dispPath: dispPath, res: res}
 }
 
 // out is a payload skeleton for the session: the envelope filled, every list
@@ -65,7 +67,7 @@ func (s session) writeRaw(t *testing.T, raw string) string {
 
 func (s session) ingest(t *testing.T, payloadPath string) (IngestResult, error) {
 	t.Helper()
-	return Ingest(IngestRequest{RepoRoot: s.repo, ScribeJSONPath: payloadPath})
+	return Ingest(IngestRequest{RepoRoot: s.repo, ScribeJSONPath: payloadPath, DispositionsPath: s.dispPath})
 }
 
 func (s session) ledger(t *testing.T) string {
@@ -522,5 +524,70 @@ func TestScribeIngestHoldsAnAdmissionToTheItemsLine(t *testing.T) {
 	}
 	if s.ledger(t) != before {
 		t.Fatal("a refused payload changed the ledger")
+	}
+}
+
+// TestScribeIngestAuthenticatesTheParkedPair: the parked context and manifest
+// sit where a scribe with tools can rewrite them, so neither is the witness to
+// what the researcher wrote. A scribe that rewrites the context's supplied text
+// to carry a ground of its own, and recomputes the manifest's hashes to match,
+// is refused, because the ingest re-reads the researcher's own dispositions
+// and holds the pair to them.
+func TestScribeIngestAuthenticatesTheParkedPair(t *testing.T) {
+	authored := "a ground the scribe wrote and the researcher never did"
+	for _, tc := range []struct {
+		name           string
+		rehashSupplied bool
+	}{
+		{"the manifest's supplied hash left stale", false},
+		{"the manifest's supplied hash recomputed", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := assembleSession(t, positionDetection, 1, "{0}: accepted — "+groundA+".\n")
+			before := s.ledger(t)
+			dir := filepath.Join(s.repo, filepath.FromSlash(DefaultRunDir), fixtureRun)
+
+			ctx := s.res.Context
+			ctx.Supplied.Dispositions = s.items[0] + ": accepted — " + authored + ".\n"
+			ctxRaw, err := encode(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := s.res.Manifest
+			m.ContextSHA256 = sha(ctxRaw)
+			if tc.rehashSupplied {
+				m.Supplied.DispositionsSHA256 = sha([]byte(ctx.Supplied.Dispositions))
+			}
+			mRaw, err := encode(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ContextFileName), ctxRaw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ManifestFileName), mRaw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			o := s.out()
+			o.ContextSHA256 = m.ContextSHA256
+			o.Dispositions = []OutDisposition{{Item: s.items[0], State: issueschema.DispositionAccepted, Grounds: authored}}
+			_, err = s.ingest(t, s.write(t, o))
+			if err == nil || !strings.Contains(err.Error(), "dispositions") {
+				t.Fatalf("a rewritten parked pair carrying a scribe-authored ground was not refused: %v", err)
+			}
+			if s.ledger(t) != before {
+				t.Fatal("a rewritten parked pair let a write through")
+			}
+		})
+	}
+
+	// The researcher's text is required: without it there is no witness.
+	s := assembleSession(t, positionDetection, 1, "{0}: accepted — "+groundA+".\n")
+	o := s.out()
+	o.Dispositions = []OutDisposition{{Item: s.items[0], State: issueschema.DispositionAccepted, Grounds: groundA}}
+	if _, err := Ingest(IngestRequest{RepoRoot: s.repo, ScribeJSONPath: s.write(t, o)}); err == nil ||
+		!strings.Contains(err.Error(), "dispositions") {
+		t.Fatalf("an ingest with no supplied dispositions was not refused: %v", err)
 	}
 }

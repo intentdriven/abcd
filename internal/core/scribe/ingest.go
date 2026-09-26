@@ -43,6 +43,11 @@ type IngestRequest struct {
 	// ContextPath is the context the session was handed; empty means the local-
 	// tier default for the payload's run. The manifest is read from beside it.
 	ContextPath string
+	// DispositionsPath is the researcher's dispositions text, the file assemble
+	// was handed. It is required: the parked pair sits where a scribe session
+	// with tools can rewrite it, so the verbatim checks read the researcher's
+	// own file, and the parked copy and the manifest's hash are held to it.
+	DispositionsPath string
 }
 
 // OutDisposition is one disposition the scribe transcribed.
@@ -155,6 +160,11 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if strings.TrimSpace(req.ScribeJSONPath) == "" {
 		return IngestResult{}, errors.New("scribe: no scribe output named")
 	}
+	if strings.TrimSpace(req.DispositionsPath) == "" {
+		return IngestResult{}, errors.New("scribe: no dispositions supplied; the ingest holds every word the " +
+			"scribe carries to the researcher's own dispositions text, the file assemble was handed, and the " +
+			"copy parked beside the context is no witness to it")
+	}
 	raw, err := fsutil.ReadGuarded(req.ScribeJSONPath, reading.MaxFileBytes)
 	if err != nil {
 		return IngestResult{}, fmt.Errorf("scribe: reading the scribe output: %w", err)
@@ -177,6 +187,10 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if err != nil {
 		return IngestResult{}, err
 	}
+	supplied, err := proveSupplied(req, ctx, m)
+	if err != nil {
+		return IngestResult{}, err
+	}
 	if err := requireCommittedRun(req.RepoRoot, out.Run); err != nil {
 		return IngestResult{}, err
 	}
@@ -187,7 +201,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if err != nil {
 		return IngestResult{}, err
 	}
-	if err := refuseAuthored(out, ctx.Supplied.Dispositions, items); err != nil {
+	if err := refuseAuthored(out, supplied, items); err != nil {
 		return IngestResult{}, err
 	}
 
@@ -366,6 +380,32 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 			"manifest %s; one session is over one run", echo(out.Run), ctx.Run, m.Run)
 	}
 	return ctx, m, nil
+}
+
+// proveSupplied authenticates the parked pair against the researcher's own
+// text. The context and the manifest are parked in the local tier, where a
+// scribe session granted tools can rewrite both and recompute every hash that
+// binds them, so their agreement proves nothing about what the researcher
+// wrote. The dispositions file the operator handed assemble is the one witness
+// the session was never given: it is re-read here, scrubbed exactly as assemble
+// scrubbed it, and the manifest's supplied hash and the context's supplied copy
+// must both equal it. What the verbatim checks then read is that text.
+func proveSupplied(req IngestRequest, ctx Context, m Manifest) (string, error) {
+	raw, err := fsutil.ReadGuarded(req.DispositionsPath, reading.MaxFileBytes)
+	if err != nil {
+		return "", fmt.Errorf("scribe: reading the supplied dispositions: %w", err)
+	}
+	supplied := scrub(req.RepoRoot, string(raw))
+	if got := sha256Hex([]byte(supplied)); got != m.Supplied.DispositionsSHA256 {
+		return "", fmt.Errorf("scribe: the supplied dispositions hash to %s and the parked manifest records %s, "+
+			"so the session was not assembled over this text, or the parked pair was rewritten; nothing is "+
+			"written", got, echo(m.Supplied.DispositionsSHA256))
+	}
+	if ctx.Supplied.Dispositions != supplied {
+		return "", fmt.Errorf("scribe: the context's copy of the supplied dispositions is not the researcher's " +
+			"text, so the parked pair was rewritten after assembly; nothing is written")
+	}
+	return supplied, nil
 }
 
 // refusePromoted refuses a run whose manifest is already beside it: the durable

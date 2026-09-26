@@ -26,7 +26,7 @@ import (
 var scribeOperands = map[string][]string{
 	"abcd scribe":          {},
 	"abcd scribe assemble": {"dispositions", "dry-run", "out", "run"},
-	"abcd scribe ingest":   {"context", "scribe-json"},
+	"abcd scribe ingest":   {"context", "dispositions", "scribe-json"},
 }
 
 // TestScribeOperandsArePinned walks the registered tree and holds each scribe
@@ -193,7 +193,7 @@ func TestScribeIngestRendersOnRefusal(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	code := Run([]string{"scribe", "ingest", "--scribe-json", p, "--json"}, &stdout, &stderr)
+	code := Run([]string{"scribe", "ingest", "--scribe-json", p, "--dispositions", disp, "--json"}, &stdout, &stderr)
 	if code != 2 {
 		t.Fatalf("a refused ingest exited %d, want 2\nstdout: %s\nstderr: %s", code, stdout.String(), stderr.String())
 	}

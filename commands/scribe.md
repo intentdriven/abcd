@@ -1,7 +1,7 @@
 ---
 name: scribe
 description: Build the ledger scribe's context from the ledger alone and ingest what the scribe transcribed, by invoking the abcd binary. assemble parks the context and a hashed manifest in the local tier and touches nothing durable; ingest validates the scribe's output, refuses anything the scribe authored, writes dispositions, admissions and surprises through the capture verbs, and promotes the manifest beside the run.
-argument-hint: "assemble --run <rdg-N> --dispositions <path> [--out <dir>] [--dry-run] | ingest --scribe-json <path> [--context <path>]"
+argument-hint: "assemble --run <rdg-N> --dispositions <path> [--out <dir>] [--dry-run] | ingest --scribe-json <path> --dispositions <path> [--context <path>]"
 ---
 
 # `/abcd:scribe` — the ledger scribe's context and ingest
@@ -88,15 +88,21 @@ context.
 ## Ingest
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" scribe ingest --scribe-json ./scribe-output.json --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json
 ```
 
-`--context` names the context when `assemble` wrote it under `--out`; the
-manifest is read from beside it. Nothing is written until all of the following
+`--dispositions` names the researcher's dispositions text again, the same file
+`assemble` was handed, and is required. `--context` names the context when
+`assemble` wrote it under `--out`; the manifest is read from beside it. Nothing is written until all of the following
 hold, and any failure exits 2 naming the field and the item:
 
 - **The context is proven**: it hashes to its parked manifest, and the payload
   cites that hash. A payload from another session is refused.
+- **The supplied text is the researcher's**: the parked context and manifest sit
+  where a scribe session with tools could rewrite them, so the manifest's
+  supplied hash and the context's supplied copy must both equal the file
+  `--dispositions` names, and every check below reads that file. Never hand
+  the scribe session that file's path.
 - **Nothing is authored**: a key outside the shapes above (a `resolution`, a
   `pattern`, a `position`, anything) is refused by name; a disposition or an
   admission for an item the supplied dispositions never name is refused; a

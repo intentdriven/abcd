@@ -1583,12 +1583,15 @@ abcd scribe assemble --run rdg-2609250000000001 --dispositions ./dispositions.md
 
 Validate a scribe session's output and write what it transcribed
 
-**Usage:** `abcd scribe ingest --scribe-json <path> [flags]`
+**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [flags]`
 
 Validate the JSON a scribe session returned and write its records through the capture verbs.
 
 The context the session was handed is proven first: it must hash to its parked manifest, and
-the output must cite that hash. Then the output is refused if the scribe authored anything —
+the output must cite that hash. The pair is parked where a scribe session could rewrite it, so
+--dispositions names the researcher's own text again, the file assemble was handed: the
+manifest's supplied hash and the context's supplied copy must both equal it, and every check
+below reads it. Then the output is refused if the scribe authored anything —
 a field outside the declared shapes, an item the supplied dispositions never name, a state or an
 admission the item's own line of the supplied text does not carry, or a ground, exit condition
 or surprise that does not stand verbatim in the supplied text once whitespace is folded — or if
@@ -1603,15 +1606,16 @@ written. Once every write has landed the manifest is promoted beside the run, wr
 **Flags:**
 
 ```
-      --context string       the context the session was handed, when assemble wrote it under --out
-                             (default: the local-tier scribe run directory of the output's run)
-      --scribe-json string   path to the JSON the scribe session returned
+      --context string        the context the session was handed, when assemble wrote it under --out
+                              (default: the local-tier scribe run directory of the output's run)
+      --dispositions string   the researcher's dispositions text, the file assemble was handed
+      --scribe-json string    path to the JSON the scribe session returned
 ```
 
 **Example:**
 
 ```
-abcd scribe ingest --scribe-json ./scribe-output.json --json
+abcd scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json
 ```
 
 ### `abcd site`
