@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
-	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/site"
 )
 
@@ -1322,7 +1322,21 @@ func sectionSpan(sections []site.Section, i, total int) (int, int) {
 
 // projectField extracts one named field from a record's text. Only a record is
 // ever projected, and a record is markdown, so the same scope holds here.
-func projectField(rel, doc, field string) (string, bool, error) {
+//
+// A principle's field is its statement and resolves by
+// projectPrincipleStatement alone. Every other kind's field resolves as a
+// heading section and otherwise as a frontmatter key. The principle takes no heading leg because a section
+// carries everything under it: a `## The rule` heading would send the reasons
+// and the bounds under a manifest naming the statement (iss-2609261039132350).
+func projectField(rel, doc, field string, kind Kind) (string, bool, error) {
+	if kind == KindPrinciple {
+		if field != lint.PrincipleStatementLabel {
+			return "", false, fmt.Errorf("reading: projecting %s from %s: a principle projects one field, %q",
+				field, rel, lint.PrincipleStatementLabel)
+		}
+		text, ok := projectPrincipleStatement(doc)
+		return text, ok, nil
+	}
 	body, offset := site.StripFrontmatter(doc)
 	sections, err := site.Sections(rel, body, offset)
 	if err != nil {
@@ -1336,9 +1350,6 @@ func projectField(rel, doc, field string) (string, bool, error) {
 		start, end := sectionSpan(sections, i, len(lines))
 		return trimBlankEdges(lines[min(start+1, len(lines)):min(end, len(lines))]), true, nil
 	}
-	if text, ok := labelledParagraph(sections, lines, field); ok {
-		return text, true, nil
-	}
 	fields := frontmatter.Fields(strings.Split(doc, "\n"))
 	if f, ok := fields[field]; ok && !frontmatter.IsNull(f.Value) {
 		return f.Value, true, nil
@@ -1346,34 +1357,34 @@ func projectField(rel, doc, field string) (string, bool, error) {
 	return "", false, nil
 }
 
-// labelledParagraph resolves a field as the first live paragraph opening with
-// the field in bold, `**<field>.**`, taken to the next blank line
-// (mdrecord.LabelledParagraph, the one reading the principles lint shares).
+// projectPrincipleStatement projects a principle's statement
+// (spc-2609020626042471): the labelled paragraph `**The rule.**` taken to the
+// next blank line, found by lint.FindPrincipleStatement, the one derivation
+// principle_claims judges too, so the gate and the projection read the same
+// text (iss-2609261039134673). An entry with no such paragraph contributes no
+// item.
 //
-// It is how a principle's statement is found (spc-2609020626042471): a
-// principle carries one heading, its H1, and a body of labelled paragraphs,
-// so its statement is a paragraph and not a section. Two things are done to
-// what it finds. The label is removed and the document's H1 title is placed
-// above the paragraph, because a rule without its name is not readable cold.
-// And every inline link is unwrapped to its label on the renderedTexts
-// precedent: a link target is a citation, the label is prose, and the
-// statement travels as knowledge while its citations stay behind.
-func labelledParagraph(sections []site.Section, lines []string, field string) (string, bool) {
-	start, end, ok := mdrecord.LabelledParagraph(lines, field)
+// Two things are done to what it finds. The label is removed and the H1 title
+// is placed above the paragraph, because a rule without its name is not
+// readable cold. And every labelled link, inline or reference-style, is
+// unwrapped to its label on the renderedTexts precedent: a link target is a
+// citation, the label is prose, and the statement travels as knowledge while
+// its citations stay behind. A link with no label to keep, a bare URL or an
+// autolink, is left for verifyPrincipleItem to refuse (iss-2609261039139464).
+func projectPrincipleStatement(doc string) (string, bool) {
+	lines := strings.Split(doc, "\n")
+	st, ok := lint.FindPrincipleStatement(lines)
 	if !ok {
 		return "", false
 	}
-	para := make([]string, 0, end-start)
-	for _, ln := range lines[start:end] {
+	para := make([]string, 0, st.End-st.Start)
+	for _, ln := range lines[st.Start:st.End] {
 		para = append(para, strings.TrimRight(ln, "\r"))
 	}
-	para[0] = strings.TrimLeft(strings.TrimPrefix(para[0], "**"+field+".**"), " \t")
-	body := strings.TrimSpace(mdLinkRe.ReplaceAllString(strings.Join(para, "\n"), "$1"))
-	for _, sec := range sections {
-		if sec.Level == 1 && strings.TrimSpace(sec.Title) != "" {
-			title := mdLinkRe.ReplaceAllString(normaliseHeadingTitle(sec.Title), "$1")
-			return "# " + title + "\n\n" + body, true
-		}
+	para[0] = strings.TrimLeft(strings.TrimPrefix(para[0], "**"+lint.PrincipleStatementLabel+".**"), " \t")
+	body := strings.TrimSpace(lint.UnwrapPrincipleLinks(strings.Join(para, "\n")))
+	if st.Title != "" {
+		return "# " + lint.UnwrapPrincipleLinks(st.Title) + "\n\n" + body, true
 	}
 	return body, true
 }

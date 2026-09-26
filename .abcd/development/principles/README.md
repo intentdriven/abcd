@@ -54,8 +54,10 @@ A key considered and declined is the literal `null`; an absent key is a claim
 not carried. Population is forward-only: an entry carrying none of the four keys
 is counted by the record lint as untyped (`principle_untyped`, a warning), and
 nothing backfills one. An entry carrying any of them carries all four
-(`principle_claims`, blocking), and its `**The rule.**` paragraph carries no
-record handle and no link, because a reading receives the H1 title and that
+(`principle_claims`, blocking), states its rule as a `**The rule.**`
+paragraph rather than a `## The rule` heading, and carries no record handle and
+no link of any shape (inline, reference-style, autolink or bare URL) in that
+paragraph or its H1 title, because a reading receives the title and that
 paragraph and nothing else. Evidence naming a scope condition is read against
 the condition's standing disposition: falsified blocks (`principle_falsified`),
 and narrowed, untested or unresolvable is reported (`principle_inheritance`).

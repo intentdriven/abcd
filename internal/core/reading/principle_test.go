@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
 // The knowledge record as a read object (spc-2609020626042471): a principle
@@ -47,7 +49,7 @@ func principleFixture(t *testing.T, rule string) string {
 // TestLabelledParagraphResolves: a field naming a label resolves as the first
 // paragraph opening with it, label removed, and nothing after it.
 func TestLabelledParagraphResolves(t *testing.T) {
-	text, ok, err := projectField(principleRel, principleDoc(defaultRule), "The rule")
+	text, ok, err := projectField(principleRel, principleDoc(defaultRule), "The rule", KindPrinciple)
 	if err != nil || !ok {
 		t.Fatalf("projectField(The rule) = %q, %v, %v", text, ok, err)
 	}
@@ -60,7 +62,7 @@ func TestLabelledParagraphResolves(t *testing.T) {
 		}
 	}
 	// A document without the paragraph contributes no item.
-	if _, ok, _ := projectField(principleRel, "# A principle\n\nProse only.\n", "The rule"); ok {
+	if _, ok, _ := projectField(principleRel, "# A principle\n\nProse only.\n", "The rule", KindPrinciple); ok {
 		t.Error("a document with no labelled paragraph projected one")
 	}
 }
@@ -68,7 +70,7 @@ func TestLabelledParagraphResolves(t *testing.T) {
 // TestLabelledParagraphCarriesTheTitle: a rule without its name is not readable
 // cold, so the H1 title is placed above the statement.
 func TestLabelledParagraphCarriesTheTitle(t *testing.T) {
-	text, _, _ := projectField(principleRel, principleDoc(defaultRule), "The rule")
+	text, _, _ := projectField(principleRel, principleDoc(defaultRule), "The rule", KindPrinciple)
 	if !strings.HasPrefix(text, "# Fix the detector\n\n"+principleStatement) {
 		t.Errorf("the projection does not open with the title above the statement: %q", text)
 	}
@@ -77,7 +79,7 @@ func TestLabelledParagraphCarriesTheTitle(t *testing.T) {
 // TestLinksUnwrapInTheStatement: a link target is a citation and the label is
 // prose, so the target stays behind and the label travels.
 func TestLinksUnwrapInTheStatement(t *testing.T) {
-	text, _, _ := projectField(principleRel, principleDoc(defaultRule), "The rule")
+	text, _, _ := projectField(principleRel, principleDoc(defaultRule), "The rule", KindPrinciple)
 	if strings.Contains(text, sentinelPrincipleLink) || strings.Contains(text, "](") {
 		t.Errorf("the link target travelled: %q", text)
 	}
@@ -256,5 +258,161 @@ func TestManifestAtTheOldSchemaVersionIsRefused(t *testing.T) {
 	}
 	if _, err := DecodeManifest([]byte(old)); err == nil {
 		t.Error("a manifest at schema version 10 decoded")
+	}
+}
+
+// typedPrincipleWith renders a typed principle whose body after the
+// frontmatter is given whole, for the shapes principleDoc does not write.
+func typedPrincipleWith(body string) string {
+	return "---\nid: prn-fix-the-detector\nclaim_type: causal\nreference: \"abcd lint\"\n" +
+		"comparison: \"Hand fixes against a detector.\"\nevidence: [itd-181]\n---\n\n" + body
+}
+
+// principleFixtureWith commits one principle document as given.
+func principleFixtureWith(t *testing.T, doc string) string {
+	t.Helper()
+	root := fixtureRepo(t)
+	writeFile(t, root, principleRel, doc)
+	gitCommitAll(t, root)
+	return root
+}
+
+// TestHeadingShapedStatementNeverTravels is the LEAKHEAD probe
+// (iss-2609261039132350): a principle's statement is the labelled paragraph
+// and nothing else, so a `## The rule` SECTION is never a statement. Written
+// alone it contributes no item; written above the paragraph, the paragraph is
+// what travels. Either way the section's Why and Bounds stay behind.
+func TestHeadingShapedStatementNeverTravels(t *testing.T) {
+	tail := "\n\n**Why.** LEAKHEAD-WHY.\n\n**Bounds.** LEAKHEAD-BOUNDS.\n"
+	for name, tc := range map[string]struct {
+		body     string
+		wantItem bool
+	}{
+		"heading alone":               {"# Fix the detector\n\n## The rule\n\n" + principleStatement + "." + tail, false},
+		"heading above the paragraph": {"# Fix the detector\n\n## The rule\n\n**The rule.** " + principleStatement + "." + tail, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := principleFixtureWith(t, typedPrincipleWith(tc.body))
+			for _, p := range []Position{PositionWidening, PositionEntailment, PositionDetection} {
+				res := assembleFixture(t, root, p)
+				text := bundleText(res.Bundle)
+				for _, gone := range []string{"LEAKHEAD-WHY", "LEAKHEAD-BOUNDS", "**Why.**"} {
+					if strings.Contains(text, gone) {
+						t.Errorf("at %s the bundle carries %q from the heading's section", p, gone)
+					}
+				}
+				n := 0
+				for _, it := range res.Manifest.Items {
+					if it.Path == principleRel {
+						n++
+					}
+				}
+				if tc.wantItem != (n == 1) || n > 1 {
+					t.Errorf("at %s the principle travelled as %d item(s), want item=%v", p, n, tc.wantItem)
+				}
+				if tc.wantItem && !strings.Contains(text, "# Fix the detector\n\n"+principleStatement) {
+					t.Errorf("at %s the labelled paragraph did not travel under its title: %q", p, text)
+				}
+			}
+		})
+	}
+}
+
+// TestReferenceLinksUnwrapInTheStatement (LEAKREFLABEL, iss-2609261039139464):
+// a reference-style link is a link whose target sits in a definition below,
+// so it is unwrapped to its label exactly as an inline link is, and neither
+// its brackets nor its definition travel.
+func TestReferenceLinksUnwrapInTheStatement(t *testing.T) {
+	root := principleFixtureWith(t, typedPrincipleWith("# Fix the detector\n\n**The rule.** "+principleStatement+
+		", as [the LEAKREFLABEL ruling][ruling] and [the second ruling][] say.\n\n"+
+		"[ruling]: https://example.com/LEAKREFTARGET\n[the second ruling]: https://example.com/LEAKREFTARGET\n"))
+	text := bundleText(assembleFixture(t, root, PositionDetection).Bundle)
+	if !strings.Contains(text, "as the LEAKREFLABEL ruling and the second ruling say.") {
+		t.Errorf("the reference links' labels did not travel as prose: %q", text)
+	}
+	for _, gone := range []string{"][", "LEAKREFTARGET", "[ruling]"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("the bundle carries %q of a reference link", gone)
+		}
+	}
+}
+
+// TestUnlabelledLinkInTheStatementRefuses (LEAKURL, LEAKAUTO,
+// iss-2609261039139464): a bare URL or an autolink has no label to keep, so
+// there is no prose to unwrap it to; the projection cannot send the statement
+// without its citation, and the assembly refuses and names both.
+func TestUnlabelledLinkInTheStatementRefuses(t *testing.T) {
+	for name, link := range map[string]string{
+		"bare URL":       "https://example.com/LEAKURL",
+		"www URL":        "www.example.com/LEAKURL",
+		"autolink":       "<https://example.com/LEAKAUTO>",
+		"email autolink": "<someone@example.com>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := principleFixtureWith(t, typedPrincipleWith("# Fix the detector\n\n**The rule.** "+
+				principleStatement+", as "+link+" says.\n"))
+			_, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionDetection, Target: "HEAD", DryRun: true})
+			if err == nil {
+				t.Fatalf("a principle whose statement carries %s assembled", link)
+			}
+			for _, want := range []string{principleRel, strings.Trim(link, "<>")} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal does not name %s: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
+// TestPrincipleReadersAgreeOnTheStatement: the assembler and the
+// principle_claims lint are two readers of one statement, and the lint is the
+// gate that runs first, so every typed principle the assembler refuses, or
+// sends without a statement, is one record-lint reported (iss-2609261039134673,
+// iss-2609261039132350). The reverse is not asserted: an inline or reference
+// link is refused by the lint and unwrapped by the projection, the stricter
+// reader sitting in front.
+func TestPrincipleReadersAgreeOnTheStatement(t *testing.T) {
+	cfg := lint.Config{Rules: map[string]lint.RuleConfig{
+		"record_schema": {Enabled: true, Severity: "blocker", RecordStores: map[string]string{
+			"prn": ".abcd/development/principles", "itd": ".abcd/development/intents"}},
+		"principle_claims": {Enabled: true, Severity: "blocker"},
+	}}
+	for name, body := range map[string]string{
+		"title handle":     "# Fix the detector after itd-79\n\n**The rule.** " + principleStatement + ".\n",
+		"title link":       "# Fix the [detector](https://example.com/x)\n\n**The rule.** " + principleStatement + ".\n",
+		"statement URL":    "# Fix the detector\n\n**The rule.** " + principleStatement + ", per https://example.com/x.\n",
+		"statement handle": "# Fix the detector\n\n**The rule.** " + principleStatement + ", per adr-1.\n",
+		"heading-shaped":   "# Fix the detector\n\n## The rule\n\n" + principleStatement + ".\n",
+		"clean":            "# Fix the detector\n\n**The rule.** " + principleStatement + ".\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := principleFixtureWith(t, typedPrincipleWith(body))
+			res, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionDetection, Target: "HEAD", DryRun: true})
+			missing := err == nil
+			if missing {
+				for _, it := range res.Manifest.Items {
+					if it.Path == principleRel {
+						missing = false
+					}
+				}
+			}
+			fs, lerr := lint.Lint(cfg, root)
+			if lerr != nil {
+				t.Fatal(lerr)
+			}
+			reported := false
+			for _, f := range fs {
+				if f.File == principleRel && f.RuleID == "principle_claims" {
+					reported = true
+				}
+			}
+			if (err != nil || missing) && !reported {
+				t.Errorf("the assembler refused or dropped the statement (err=%v, dropped=%v) and record-lint "+
+					"reported nothing", err, missing)
+			}
+			if name == "clean" && (err != nil || missing || reported) {
+				t.Errorf("a clean principle: err=%v dropped=%v reported=%v", err, missing, reported)
+			}
+		})
 	}
 }

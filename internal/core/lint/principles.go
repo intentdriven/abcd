@@ -103,10 +103,103 @@ var (
 	// principleEvidenceHandleRe is the record-handle half of evidence's grammar:
 	// the families a principle distils, spelled lower case and unpadded.
 	principleEvidenceHandleRe = regexp.MustCompile(`^(adr|itd|spc|iss|rdi)-([0-9]+)$`)
-	// statementLinkRe finds a markdown inline link, whose target is a citation
-	// however its label reads.
-	statementLinkRe = regexp.MustCompile(`\[[^\]]*\]\(([^)]*)\)`)
+	// statementLinkRe finds a link of any shape a principle's statement can
+	// carry, because a link target is a citation however its label reads
+	// (iss-2609261039139464): an inline link, a full or collapsed reference
+	// link, the `](target)` tail an inline link with brackets in its label
+	// leaves, a URI or email autolink, and a bare URL of the shapes GFM links
+	// unmarked. A shortcut reference `[label]` is not among them: without its
+	// definition it is literal text, and its label is prose either way.
+	statementLinkRe = regexp.MustCompile(`\[[^\]]*\]\([^)]*\)` +
+		`|\[[^\]]*\]\[[^\]]*\]` +
+		`|\]\([^)]*\)` +
+		`|<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*>` +
+		`|<[^\s<>@]+@[^\s<>@]+>` +
+		`|(?i:\b(?:https?|ftp)://|\bwww\.)[^\s<>]*`)
+	// statementLabelledLinkRe is the two link shapes that carry a label: an
+	// inline link and a full or collapsed reference link.
+	statementLabelledLinkRe = regexp.MustCompile(`\[([^\]]*)\](?:\([^)]*\)|\[[^\]]*\])`)
+	// principleTitleRe is an ATX H1; principleTitleCloseRe is its optional
+	// closing sequence, which is not part of the title.
+	principleTitleRe      = regexp.MustCompile(`^#[ \t]+(.*)$`)
+	principleTitleCloseRe = regexp.MustCompile(`[ \t]+#+[ \t]*$`)
 )
+
+// PrincipleStatement is where a principle's statement sits in its document:
+// the H1 title and the `**The rule.**` labelled paragraph, and nothing else.
+// A `## The rule` heading is NOT a statement (iss-2609261039132350): a
+// principle has one heading, its H1, and a section would carry everything
+// under it, the reasons and the bounds included.
+//
+// It is the one derivation of the statement. The reading assembler projects
+// it and principle_claims judges it, and two readers deriving it separately
+// are how a gate came to judge a paragraph while the projection sent a title
+// above it (iss-2609261039134673).
+type PrincipleStatement struct {
+	// Title is the H1 title with any closing hashes removed, and TitleLine its
+	// 0-based line; TitleLine is -1 when the document carries no H1.
+	Title     string
+	TitleLine int
+	// Start and End bound the paragraph's lines, [Start, End), 0-based, the
+	// label still on the first.
+	Start, End int
+}
+
+// FindPrincipleStatement locates a principle's statement in its lines (the
+// whole document, frontmatter included). ok is false when the document carries
+// no live `**The rule.**` paragraph, whatever headings it has.
+func FindPrincipleStatement(lines []string) (PrincipleStatement, bool) {
+	body := principleBodyStart(lines)
+	start, end, ok := mdrecord.LabelledParagraph(lines[body:], PrincipleStatementLabel)
+	if !ok {
+		return PrincipleStatement{}, false
+	}
+	st := PrincipleStatement{TitleLine: -1, Start: body + start, End: body + end}
+	mask := mdrecord.Mask(lines[body:])
+	for i, ln := range lines[body:] {
+		if i < len(mask) && mask[i] != 0 {
+			continue
+		}
+		m := principleTitleRe.FindStringSubmatch(strings.TrimRight(ln, "\r"))
+		if m == nil {
+			continue
+		}
+		if title := strings.TrimSpace(principleTitleCloseRe.ReplaceAllString(m[1], "")); title != "" && title != "#" {
+			st.Title, st.TitleLine = title, body+i
+			break
+		}
+	}
+	return st, true
+}
+
+// principleBodyStart is the first line after the leading frontmatter block, 0
+// when there is none: a YAML comment is a `#` line, and it is not a title.
+func principleBodyStart(lines []string) int {
+	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
+		return 0
+	}
+	for i := 1; i < len(lines); i++ {
+		if !strings.HasPrefix(lines[i], " ") && !strings.HasPrefix(lines[i], "\t") && frontmatter.IsDelimiter(lines[i]) {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// PrincipleLinkIn returns the first link of any shape the text carries, and
+// whether it carries one: the one answer both readers give to "does this
+// statement link?".
+func PrincipleLinkIn(text string) (string, bool) {
+	m := statementLinkRe.FindString(text)
+	return m, m != ""
+}
+
+// UnwrapPrincipleLinks replaces every labelled link with its label, on the
+// renderedTexts precedent: the target is a citation and the label is prose.
+// What it cannot unwrap, a link with no label, it leaves for PrincipleLinkIn.
+func UnwrapPrincipleLinks(text string) string {
+	return statementLabelledLinkRe.ReplaceAllString(text, "$1")
+}
 
 // principleRules names the four rules in dispatch order.
 var principleRules = []string{rulePrincipleUntyped, rulePrincipleClaims, rulePrincipleInheritance, rulePrincipleFalsified}
@@ -292,17 +385,36 @@ func (p principleCheck) judge(repoRoot string, r schemaRecord) ([]Finding, error
 	if err != nil {
 		return nil, err
 	}
+	// It is judged over exactly what the projection sends, the H1 title and
+	// the paragraph, found by the one derivation both readers share.
 	lines := strings.Split(string(content), "\n")
-	if start, end, ok := mdrecord.LabelledParagraph(lines, PrincipleStatementLabel); ok {
-		statement := strings.Join(lines[start:end], "\n")
-		if m := statementLinkRe.FindStringSubmatch(statement); m != nil {
-			claim(start+1, "the **"+PrincipleStatementLabel+".** paragraph carries a link to '"+m[1]+"'; the "+
-				"statement travels to a reading as knowledge and its citations stay behind as genealogy, so the "+
-				"link belongs in `evidence` or below the statement")
-		} else if id, ok := recordid.HandleInText(statement); ok {
-			claim(start+1, "the **"+PrincipleStatementLabel+".** paragraph carries the record handle '"+id+"'; the "+
-				"statement travels to a reading as knowledge and its citations stay behind as genealogy, so the "+
-				"handle belongs in `evidence` or below the statement")
+	st, ok := FindPrincipleStatement(lines)
+	if !ok {
+		claim(1, "carries no **"+PrincipleStatementLabel+".** paragraph, so a reading receives no statement of it; "+
+			"the statement is the paragraph opening with that label, and a `## "+PrincipleStatementLabel+
+			"` heading is not read as one, because a section carries the reasons and bounds under it")
+	} else {
+		parts := []struct {
+			what string
+			line int
+			text string
+		}{
+			{"title", st.TitleLine + 1, st.Title},
+			{"**" + PrincipleStatementLabel + ".** paragraph", st.Start + 1, strings.Join(lines[st.Start:st.End], "\n")},
+		}
+		for _, part := range parts {
+			if part.text == "" {
+				continue
+			}
+			if m, ok := PrincipleLinkIn(part.text); ok {
+				claim(part.line, "the "+part.what+" carries the link '"+m+"'; the statement travels to a reading as "+
+					"knowledge and its citations stay behind as genealogy, so the link belongs in `evidence` or "+
+					"below the statement")
+			} else if id, ok := recordid.HandleInText(part.text); ok {
+				claim(part.line, "the "+part.what+" carries the record handle '"+id+"'; the statement travels to a "+
+					"reading as knowledge and its citations stay behind as genealogy, so the handle belongs in "+
+					"`evidence` or below the statement")
+			}
 		}
 	}
 

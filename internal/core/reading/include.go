@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
 // AssemblerVersionCore is the hand-set semver of the assembly contract: the
@@ -344,10 +345,12 @@ var coldPositions = []Position{PositionWidening, PositionEntailment, PositionDet
 const PrincipleSource = ".abcd/development/principles"
 
 // PrincipleField is the one field a principle travels as: its statement, the
-// labelled paragraph `**The rule.**` with the H1 title above it (projectField's
-// labelled-paragraph resolution). Everything after it — the reasons, the
-// bounds, the promotion rung — and every frontmatter key stays behind.
-const PrincipleField = "The rule"
+// labelled paragraph `**The rule.**` with the H1 title above it
+// (projectPrincipleStatement, over the derivation principle_claims shares, so
+// the label is the lint's own constant). Everything after it — the reasons,
+// the bounds, the promotion rung — and every frontmatter key stays behind, and
+// a `## The rule` heading is never read as the statement.
+const PrincipleField = lint.PrincipleStatementLabel
 
 // CandidateSource is the ledger directory the candidate row reaches: the working
 // tier's readings store, one directory per run. It is the leaf bucket the
@@ -670,9 +673,11 @@ var Exclusions = []Exclusion{
 	},
 	{Rule: "absent from the positive walk", Signal: "file", Detail: ".abcd/work/DECISIONS.md"},
 	// A principle's citations. The projection keeps the statement and unwraps a
-	// link to its label, and verifyPrincipleItem refuses the assembly if a
-	// record handle survives into a principle item, so this is an assertion the
-	// assembler checks rather than a disclosure a reader trusts.
+	// labelled link, inline or reference-style, to its label, and
+	// verifyPrincipleItem refuses the assembly if a record handle or a link of
+	// any shape (a bare URL, an autolink) survives into a principle item, so this
+	// is an assertion the assembler checks rather than a disclosure a reader
+	// trusts.
 	{Rule: "the statement is knowledge and the citations are genealogy", Signal: "citation",
 		Detail: "record handles and links in a principle"},
 	// The local ledger tier. It was excluded from the first day and asserted by

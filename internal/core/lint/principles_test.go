@@ -305,6 +305,16 @@ func TestPrincipleStatementMayNotCite(t *testing.T) {
 		"record handle": "Fix the class, as adr-1 ruled.",
 		"markdown link": "Fix the class, as [the ruling](../decisions/adrs/0001-a.md) says.",
 		"condition":     "Fix the class while " + prnCondA + " holds.",
+		// Every link shape, not the inline one alone (iss-2609261039139464): a
+		// URL is a citation whatever markup carries it, and a reference-style
+		// link is a link whose target sits elsewhere.
+		"bare URL":            "Fix the class, as https://example.com/LEAKURL says.",
+		"bare www URL":        "Fix the class, as www.example.com/LEAKURL says.",
+		"autolink":            "Fix the class, as <https://example.com/LEAKAUTO> says.",
+		"email autolink":      "Fix the class, as <someone@example.com> says.",
+		"reference link":      "Fix the class, as [LEAKREFLABEL][ruling] says.",
+		"collapsed reference": "Fix the class, as [the ruling][] says.",
+		"nested-bracket link": "Fix the class, as [the [first] ruling](../decisions/adrs/0001-a.md) says.",
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
@@ -315,6 +325,47 @@ func TestPrincipleStatementMayNotCite(t *testing.T) {
 				t.Errorf("%s in the statement is not refused: %v", name, rulesOf(fs, filepath.Join(prnDir, "p.md")))
 			}
 		})
+	}
+}
+
+// TestPrincipleTitleMayNotCite: the statement a reading receives is the H1
+// title AND the paragraph, so the lint judges the title the projection sends
+// above the paragraph, and a citation there is refused by record-lint rather
+// than only by the assembler (iss-2609261039134673).
+func TestPrincipleTitleMayNotCite(t *testing.T) {
+	for name, title := range map[string]string{
+		"record handle": "A principle citing itd-79",
+		"markdown link": "A principle after [the ruling](../decisions/adrs/0001-a.md)",
+		"bare URL":      "A principle after https://example.com/LEAKURL",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			doc := strings.Replace(typedPrinciple("p", "causal", `"abcd lint"`, `"One against another."`, "[adr-1]",
+				"Fix the class, not the instance."), "# A principle\n", "# "+title+"\n", 1)
+			writeFile(t, root, prnDir+"/p.md", doc)
+			writeFile(t, root, "rec/decisions/adrs/0001-a.md", "---\nid: adr-1\n---\n# ADR-1\n")
+			fs := lintPrinciples(t, root)
+			if !findingWith(fs, filepath.Join(prnDir, "p.md"), rulePrincipleClaims, "title") {
+				t.Errorf("%s in the title is not refused: %v", name, rulesOf(fs, filepath.Join(prnDir, "p.md")))
+			}
+		})
+	}
+}
+
+// TestHeadingShapedPrincipleHasNoStatement: the statement is the labelled
+// paragraph and nothing else, in both readers (iss-2609261039132350). A typed
+// principle that writes it as a `## The rule` heading carries no statement the
+// projection can send, and principle_claims says so rather than passing a
+// principle no reading will ever receive.
+func TestHeadingShapedPrincipleHasNoStatement(t *testing.T) {
+	root := t.TempDir()
+	doc := strings.Replace(typedPrinciple("p", "causal", `"abcd lint"`, `"One against another."`, "[adr-1]",
+		"Fix the class, not the instance."), "**The rule.** ", "## The rule\n\n", 1)
+	writeFile(t, root, prnDir+"/p.md", doc)
+	writeFile(t, root, "rec/decisions/adrs/0001-a.md", "---\nid: adr-1\n---\n# ADR-1\n")
+	fs := lintPrinciples(t, root)
+	if !findingWith(fs, filepath.Join(prnDir, "p.md"), rulePrincipleClaims, "no **The rule.** paragraph") {
+		t.Errorf("a heading-shaped statement is not reported: %v", rulesOf(fs, filepath.Join(prnDir, "p.md")))
 	}
 }
 

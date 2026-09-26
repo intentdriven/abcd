@@ -1172,7 +1172,7 @@ func collect(repoRoot string, position Position, candidateRun string) ([]candida
 				continue
 			}
 			for i, field := range row.Fields {
-				text, ok, err := projectField(rel, doc, field)
+				text, ok, err := projectField(rel, doc, field, row.Kind)
 				if err != nil {
 					return nil, err
 				}
@@ -1199,8 +1199,9 @@ func collect(repoRoot string, position Position, candidateRun string) ([]candida
 // verifyPrincipleItem refuses a principle item that still carries a citation
 // after projection. The manifest asserts that a principle travels without its
 // record handles and links (the floor's citation entry); the projection keeps
-// only the statement and unwraps a link to its label, and this is what makes
-// the assertion checked rather than trusted — a statement that names a record
+// only the statement and unwraps a labelled link to its label, which leaves a
+// link with no label (a bare URL, an autolink) to refuse here, and this is what
+// makes the assertion checked rather than trusted — a statement that names a record
 // in its own words would otherwise ride into the bundle under a manifest saying
 // it had not.
 func verifyPrincipleItem(c candidate) error {
@@ -1212,9 +1213,11 @@ func verifyPrincipleItem(c candidate) error {
 			"statement, and the manifest asserts a principle travels without its citations; move the "+
 			"handle into the principle's evidence or below its statement", c.path, id)
 	}
-	if m := mdLinkRe.FindString(c.text); m != "" {
+	if m, ok := lint.PrincipleLinkIn(c.text); ok {
 		return fmt.Errorf("reading: the principle %s carries the link %s in its projected statement, "+
-			"and the manifest asserts a principle travels without its citations", c.path, m)
+			"and the manifest asserts a principle travels without its citations; a link with no label "+
+			"to keep, a bare URL or an autolink, belongs in the principle's evidence or below its statement",
+			c.path, m)
 	}
 	return nil
 }
