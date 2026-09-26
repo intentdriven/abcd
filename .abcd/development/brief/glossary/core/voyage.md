@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: The first `abcd disembark` against a source repository creates `~/.abcd/voyage/<source-root-sha>/`, keyed on that repository's root-commit SHA.
 ends_when: Never by abcd's hand — the log is append-only, outlives any single lifeboat, and is removed only if the operator deletes the directory.
-not_to_be_confused_with: core/lifeboat
+not_to_be_confused_with: [core/lifeboat, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -75,6 +75,7 @@ or a "sprint" (a time box, not a record of runs).
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [lifeboat](lifeboat.md) — the artefact (noun); a voyage is the record of producing it (verb)
 - [disembark](disembark.md) — the read-only, out-of-tree run that appends to the voyage log
 - [brief](brief.md) — the structure a disembark run grounds section by section; what it cannot

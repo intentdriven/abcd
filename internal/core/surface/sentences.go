@@ -26,6 +26,8 @@ var sentences = map[string]string{
 
 	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
 		"Writes nothing; refuses any argument or two modes at once.",
+	"abcd ahoy connect": "Verify a model provider with one call, then configure it: " +
+		"Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
 	"abcd ahoy doctor": "Report every install gap, user-scope state included: " +
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
@@ -132,17 +134,17 @@ var sentences = map[string]string{
 	"abcd history ingest": "Redact and store transcripts already on disk into a named repository: " +
 		"Writes that repository's store; refuses without --into.",
 	"abcd history list": "List this repository's stored transcripts, newest first: " +
-		"Writes nothing; refuses outside a git checkout.",
+		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 	"abcd history migrate": "Repair records filed under a composite session id: " +
-		"Writes the repaired records only with --apply; refuses outside a git checkout.",
+		"Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
 	"abcd history reconstruct": "Render one session and its sub-agents as one artefact plus telemetry: " +
 		"Writes both files into --out; refuses an --out that is not an existing directory.",
 	"abcd history separation": "Report whether any retained transcript held both a reading and the ledger of one run: " +
 		"Writes nothing; never refuses, exiting 1 naming each such transcript.",
 	"abcd history show": "Show one stored transcript's metadata and redacted body: " +
-		"Writes nothing; refuses an id the store does not hold.",
-	"abcd history staged": "List the transcripts that ended but are not yet redacted into the store: " +
-		"Writes nothing; refuses outside a git checkout.",
+		"Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
+	"abcd history staged": "List the ended transcripts not yet redacted into the store: " +
+		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 
 	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
 		"Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
@@ -202,6 +204,19 @@ var sentences = map[string]string{
 		"Writes its grounds only with --grounds; refuses malformed grounds.",
 	"abcd intent unhold": "Lift an intent's hold: " +
 		"Writes the removal of its held line; refuses a record not held.",
+
+	"abcd lab": "List this repository's labs with their pins, probe counts and halts: " +
+		"Writes nothing; refuses outside a git checkout.",
+	"abcd lab harvest": "Assemble a lab's harvest with its capture candidates: " +
+		"Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
+	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
+		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
+	"abcd lab preflight": "Run a lab's harness-isolation and dual-binary checks: " +
+		"Writes the preflight artefact, and a finding and halt on a failure; refuses an unknown lab.",
+	"abcd lab record": "Scaffold one probe record naming the artefact it observes: " +
+		"Writes the probe's files under state/probes/; refuses a halted lab or a probe already recorded.",
+	"abcd lab sweep": "Sweep a lab's documents for every retracted pattern: " +
+		"Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
 
 	"abcd launch": "Preview the public launch bundle, its secret scan, and the release gates: " +
 		"Writes only its pre-flight report, to the local tier; refuses without --dry-run.",

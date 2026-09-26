@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,10 +22,12 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Finding is one lint violation. File is repo-relative; Line is 1-based (0 when
@@ -179,6 +182,9 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		return nil, err
 	}
 
+	anchorsCfg, anchorsOn := cfg.Rules[ruleLinkAnchors]
+	anchorsOn = anchorsOn && anchorsCfg.Enabled
+	anchorSlugs := map[string]map[string]bool{}
 	linksCfg, linksOn := cfg.Rules["links_resolve"]
 	gitMetaCfg, gitMetaOn := cfg.Rules["no_git_metadata"]
 	brittleCfg, brittleOn := cfg.Rules["no_brittle_line_refs"]
@@ -219,6 +225,9 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 	}
 
+	// scanned is every file the per-root walk read with the whole token family,
+	// so the name-roots pass below never reports one twice.
+	scanned := map[string]bool{}
 	for _, root := range cfg.Roots {
 		// The walk reads committed files whose content AND paths a cloned repo
 		// controls through its committed .abcd/docs-lint.json / record-lint.json
@@ -250,11 +259,13 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			}
 			return nil, err
 		}
-		mdFiles, err := markdownFiles(rootAbs)
+		ignored := ignoredUnderRoot(repoRoot, root)
+		mdFiles, err := markdownFilesPruned(rootAbs, &ignored)
 		if err != nil {
 			return nil, err
 		}
 		for _, fileAbs := range mdFiles {
+			scanned[fileAbs] = true
 			realPath, err := containedRealPath(repoRoot, fileAbs)
 			if err != nil {
 				return nil, &configError{"file " + quote(repoRel(repoRoot, fileAbs)) + " " + err.Error() +
@@ -284,8 +295,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			if gitMetaOn {
 				findings = append(findings, checkGitMetadata(rel, lines, gitMetaCfg)...)
 			}
-			if linksOn {
+			// links_resolve's own `exempt` globs excuse a file from the link check
+			// alone — a tool-mandated mirror of a root file, whose links resolve
+			// from the root and not from the mirror's directory. It is not the
+			// content exemption: exempt_paths excuses how a record is written,
+			// this excuses where a copy is required to sit (iss-2609151150180583).
+			if linksOn && !matchesGlob(linksCfg.Exempt, filepath.ToSlash(rel)) {
 				findings = append(findings, checkLinks(rel, fileAbs, repoRoot, lines, mask, linksCfg)...)
+			}
+			if anchorsOn && !matchesGlob(anchorsCfg.Exempt, filepath.ToSlash(rel)) {
+				findings = append(findings, checkLinkAnchors(rel, fileAbs, repoRoot, lines, mask, anchorsCfg, anchorSlugs)...)
 			}
 			if brittleOn {
 				findings = append(findings, checkBrittleRefs(rel, lines, mask, brittleCfg)...)
@@ -319,7 +338,7 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 
 		if dirCfg, ok := cfg.Rules["directory_coverage"]; ok && dirCfg.Enabled {
-			dc, err := checkDirectoryCoverage(repoRoot, rootAbs, dirCfg)
+			dc, err := checkDirectoryCoverage(repoRoot, rootAbs, dirCfg, &ignored)
 			if err != nil {
 				return nil, err
 			}
@@ -359,6 +378,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, checkIntentImpact(tree, impactCfg)...)
 		}
 
+		if sotaCfg, ok := cfg.Rules[ruleIntentSOTA]; ok && sotaCfg.Enabled {
+			tree, err := scanIntents(intentsDirOf(sotaCfg))
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, checkIntentSOTA(tree, sotaCfg)...)
+		}
+
 		if specCfg, ok := cfg.Rules["spec_lifecycle"]; ok && specCfg.Enabled {
 			sl, err := checkSpecLifecycle(repoRoot, rootAbs, specCfg, cfg)
 			if err != nil {
@@ -382,6 +409,24 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			}
 			findings = append(findings, fs...)
 		}
+	}
+
+	// links_resolve's extra roots are walked for links alone, once, outside the
+	// per-root loop (iss-2608230752354927).
+	if linksOn && len(linksCfg.ExtraRoots) > 0 {
+		lx, err := checkLinksExtraRoots(repoRoot, linksCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, lx...)
+	}
+
+	if len(cfg.NameRoots) > 0 {
+		nf, err := lintNameRoots(cfg, repoRoot, scanned)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, nf...)
 	}
 
 	// stray_root_docs is repo-root scoped and non-recursive — independent of
@@ -497,6 +542,15 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, ds...)
 	}
 
+	// changelog_unreleased_empty reads the repo-root changelog, outside cfg.Roots.
+	if cuCfg, ok := cfg.Rules[ruleChangelogUnreleasedEmpty]; ok && cuCfg.Enabled {
+		cu, err := checkChangelogUnreleasedEmpty(repoRoot, cuCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, cu...)
+	}
+
 	// receipt_gate is the release-time verification of the semantic gates. It is
 	// disabled for ordinary development (a commit under review has no receipt yet)
 	// and armed only at release time with a target commit; it reads sha-keyed
@@ -565,6 +619,23 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		return nil, err
 	}
 	findings = append(findings, pr...)
+	// The record-families pair reads the glossary against its one map page and
+	// the record stores' frontmatter keys against the same page, all addressed
+	// repo-relative in the rules' own config, so each runs once here.
+	if gfCfg, ok := cfg.Rules[ruleGlossaryFamilyPointer]; ok && gfCfg.Enabled {
+		gf, err := checkGlossaryFamilyPointer(repoRoot, gfCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, gf...)
+	}
+	if fkCfg, ok := cfg.Rules[ruleRecordFamilyKey]; ok && fkCfg.Enabled {
+		fk, err := checkRecordFamilyKey(repoRoot, fkCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, fk...)
+	}
 
 	// record_provenance reads the same cross-store scan record_schema walks, so
 	// it runs once here rather than per root.
@@ -703,7 +774,7 @@ func checkContextStatusFree(repoRoot string, cfg RuleConfig) ([]Finding, error) 
 	}
 
 	fileAbs := filepath.Join(repoRoot, target)
-	content, err := os.ReadFile(fileAbs)
+	content, err := readRepoFile(repoRoot, target, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -903,7 +974,7 @@ func realSurfaces(repoRoot string, cfg RuleConfig) (map[string]bool, map[string]
 // mistaken for the registry. A missing file yields (nil, nil); a present file
 // with no such table yields an empty, non-nil slice.
 func parseSurfaceRegistry(repoRoot, registry string) ([]surfaceRow, error) {
-	content, err := os.ReadFile(filepath.Join(repoRoot, registry))
+	content, err := readRepoFile(repoRoot, registry, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -1074,7 +1145,26 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// presence in the content tree is the era marker — a receipt/commit that
 	// predates the manifest is judged by the pre-manifest rules only. Read it from
 	// repoRoot, the checked-out content tree the gate is armed against.
-	manifestBytes, manifestErr := os.ReadFile(filepath.Join(repoRoot, releaseGateManifestPath))
+	//
+	// Both this read and each receipt read below are fsutil.ReadGuardedInRoot
+	// through an os.Root opened on repoRoot: the reviews store and the manifest
+	// are committed and travel with a clone, so a FIFO at either path would hang
+	// the gate, and a receipt reached through a link would be judged as if the
+	// reviewers had written it — an out-of-tree forged PROMOTE satisfied the gate.
+	// Neither file is ever legitimately a link, so a symlinked leaf is refused
+	// rather than resolved (iss-2609012037127981). A link in the ANCESTRY is the
+	// other half: O_NOFOLLOW judges the leaf alone, and a committed
+	// `.abcd/work/reviews/<sha> -> /outside` carried the read out of the tree to
+	// a regular file it accepted. os.Root resolves every component inside the
+	// root on the descriptor it opens, so an ancestor that leaves the repository
+	// is an error at the read itself, with no window between a check and the open
+	// (iss-2609261016494611).
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return failClosed("receipt_gate cannot open the repository root: " + bareCause(err) + "; the release gate fails closed"), nil
+	}
+	defer root.Close()
+	manifestBytes, manifestErr := fsutil.ReadGuardedInRoot(root, releaseGateManifestPath, maxReceiptBytes)
 	var manifestEra bool
 	var expectedManifestHash, requiredTier string
 	switch {
@@ -1091,6 +1181,25 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		return failClosed("receipt_gate cannot read the release-gate manifest " + releaseGateManifestPath + ": " + manifestErr.Error()), nil
 	}
 
+	// The receipts directory comes out of the committed config, so it is held to
+	// the repository the way every other configured path is: lexically, and once
+	// symlinks in its ancestry are followed.
+	if err := containedRepoPath(dir); err != nil {
+		return failClosed("receipt_gate receipts_dir " + quote(dir) + " " + err.Error() + "; the release gate fails closed"), nil
+	}
+	if err := resolvedInsideRoot(repoRoot, filepath.Join(repoRoot, dir)); err != nil {
+		return failClosed("receipt_gate receipts_dir " + quote(dir) + " " + err.Error() + "; the release gate fails closed"), nil
+	}
+	// The commit directory is judged once, before any gate, so a link carrying it
+	// out of the tree is one finding that names the directory rather than one
+	// unreadable receipt per gate; the reads below refuse it again on their own.
+	commitRel := filepath.Join(dir, cfg.Commit)
+	if err := resolvedInsideRoot(repoRoot, filepath.Join(repoRoot, commitRel)); err != nil {
+		return []Finding{{File: commitRel, Line: 0, RuleID: "receipt_gate", Severity: cfg.Severity,
+			Message: "receipt_gate commit directory " + quote(commitRel) + " " + err.Error() +
+				"; a receipt the tree does not hold attests nothing, and the release gate fails closed"}}, nil
+	}
+
 	var out []Finding
 	add := func(rel, msg string) {
 		out = append(out, Finding{
@@ -1102,14 +1211,24 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			add(dir, "receipt_gate required gate name '"+gate+"' is not a safe path component; the release gate fails closed")
 			continue
 		}
-		rel := filepath.Join(dir, cfg.Commit, gate+".json")
-		data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+		rel := filepath.Join(commitRel, gate+".json")
+		data, err := fsutil.ReadGuardedInRoot(root, rel, maxReceiptBytes)
 		if err != nil {
 			if os.IsNotExist(err) {
 				add(rel, "no '"+gate+"' receipt for commit "+cfg.Commit+"; the semantic gate has not run (fail-closed)")
 				continue
 			}
-			return nil, err
+			// A receipt that cannot be read safely is a finding, not an aborted
+			// crawl: an armed gate with nothing valid to check is never a pass.
+			add(rel, "'"+gate+"' receipt cannot be read safely ("+guardedReason(err)+"); the release gate fails closed")
+			continue
+		}
+		// A repeated key is refused by name, never read last-wins: under the
+		// attestation model a receipt carrying two verdicts is illegible, whichever
+		// one encoding/json would keep (iss-131).
+		if err := jsonstrict.NoDuplicateKeys(data); err != nil {
+			add(rel, "'"+gate+"' receipt is refused: "+err.Error())
+			continue
 		}
 		var r receipt
 		if err := json.Unmarshal(data, &r); err != nil {
@@ -1366,7 +1485,7 @@ func checkGateLockstep(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 // look different. A missing file yields nil — the caller has already failed it
 // closed.
 func runbookGateList(repoRoot, rel string) ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	data, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -1400,7 +1519,7 @@ func runbookGateList(repoRoot, rel string) ([]string, error) {
 // alternate step form is not invisible. A missing file yields nil; the caller has
 // already failed it closed.
 func workflowStepNames(repoRoot, rel, job string, ignore []string) ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	data, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -1627,7 +1746,7 @@ func checkBrittleRefs(rel string, lines []string, mask []bool, cfg RuleConfig) [
 }
 
 // checkDirectoryCoverage implements check family E.
-func checkDirectoryCoverage(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding, error) {
+func checkDirectoryCoverage(repoRoot, rootAbs string, cfg RuleConfig, ignored *ignoredSet) ([]Finding, error) {
 	var out []Finding
 	err := filepath.WalkDir(rootAbs, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -1635,6 +1754,9 @@ func checkDirectoryCoverage(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 		}
 		if !d.IsDir() {
 			return nil
+		}
+		if ignored != nil && ignored.prunes(path, true) {
+			return filepath.SkipDir
 		}
 		rel := repoRel(repoRoot, path)
 		if matchesGlob(cfg.Exempt, rel) {
@@ -1669,6 +1791,9 @@ type intentRecord struct {
 	// preamble is the 1-based line the leading `---` sits on when something
 	// precedes it, 0 otherwise — the extraction half of the loader contract.
 	preamble int
+	// lines is the file's content split on newlines, kept for the rules that read
+	// an intent's body rather than its frontmatter (intent_sota).
+	lines []string
 }
 
 // intentTree is ONE scan of the intent buckets, shared by every rule that reads
@@ -1699,8 +1824,13 @@ func intentsDirOf(cfg RuleConfig) string {
 // soft (no records, no error), mirroring the rest of the record lint.
 func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 	intentsRoot := filepath.Join(rootAbs, intentsDir)
+	// Absent is soft; present-but-unreadable is a fault, as it is for the
+	// sibling scanners (iss-2608261533419897).
 	if _, err := os.Stat(intentsRoot); err != nil {
-		return intentTree{}, nil
+		if os.IsNotExist(err) {
+			return intentTree{}, nil
+		}
+		return intentTree{}, err
 	}
 
 	// Collect every intent id that exists as a file in any bucket, so the
@@ -1709,8 +1839,11 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 	// branches each allocating "the next free id" collide silently otherwise.
 	known := map[string]bool{}
 	idFiles := map[string][]string{}
-	_ = filepath.WalkDir(intentsRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+	if err := filepath.WalkDir(intentsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
 			return nil
 		}
 		if intentFileRe.MatchString(d.Name()) {
@@ -1719,7 +1852,9 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 			idFiles[id] = append(idFiles[id], path)
 		}
 		return nil
-	})
+	}); err != nil {
+		return intentTree{}, err
+	}
 
 	buckets, err := os.ReadDir(intentsRoot)
 	if err != nil {
@@ -1741,7 +1876,7 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 				continue
 			}
 			fileAbs := filepath.Join(bucketDir, e.Name())
-			content, err := os.ReadFile(fileAbs)
+			content, err := readRepoAbs(repoRoot, fileAbs, maxRepoFileBytes)
 			if err != nil {
 				return intentTree{}, err
 			}
@@ -1750,7 +1885,7 @@ func scanIntentTree(repoRoot, rootAbs, intentsDir string) (intentTree, error) {
 			fields := frontmatterFields(lines)
 			tree.records = append(tree.records, intentRecord{
 				rel: rel, bucket: bucket, name: e.Name(), fields: fields,
-				preamble: preambleLine(lines),
+				preamble: preambleLine(lines), lines: lines,
 			})
 		}
 	}
@@ -1931,7 +2066,7 @@ func scanIssueLedger(repoRoot, issuesDir string) (issueLedger, error) {
 	}
 
 	for _, p := range files {
-		content, err := os.ReadFile(p.abs)
+		content, err := readRepoAbs(repoRoot, p.abs, maxRepoFileBytes)
 		if err != nil {
 			return issueLedger{}, err
 		}
@@ -2131,7 +2266,10 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 		specsDir = "specs"
 	}
 	if _, err := os.Stat(filepath.Join(rootAbs, specsDir)); err != nil {
-		return nil, nil // missing specs/ is soft, mirroring intent_lifecycle
+		if os.IsNotExist(err) {
+			return nil, nil // missing specs/ is soft, mirroring intent_lifecycle
+		}
+		return nil, err // present but unreadable is a fault (iss-2608261533419897)
 	}
 
 	rootRel, err := filepath.Rel(repoRoot, rootAbs)
@@ -2172,7 +2310,57 @@ func checkSpecLifecycle(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([
 		}
 		out = append(out, validateSpec(spec.Path, spec.fields, knownIntent, intentSpecID, backLinkResolves, spec.preamble, cfg.Severity)...)
 	}
+	out = append(out, checkBucketAgreement(idx, cfg.Severity)...)
 	return out, nil
+}
+
+// checkBucketAgreement holds an intent's bucket and its specs' buckets to one
+// account of the same work (iss-2609181121522692): a planned intent has an open
+// spec to build against (a --remainder close mints the next one, so a planned
+// intent whose specs are all closed is a mis-filed record, not a partial
+// delivery), and a shipped intent has no spec left open (spec close moves the
+// intent to shipped/ only as its close-hook). Every other rule reads one record
+// at a time, so a merge whose rename detection filed a new planned intent's
+// spec into closed/, or the intent into shipped/ beside its open spec, passed
+// them all. The finding sits on the intent, the record whose folder is the
+// claim; an intent with no spec at all is intent_lifecycle's concern.
+func checkBucketAgreement(idx SpecLinkIndex, severity string) []Finding {
+	var out []Finding
+	for _, it := range idx.Intents {
+		if it.Bucket != "planned" && it.Bucket != "shipped" {
+			continue
+		}
+		specs := idx.SpecsForIntent(it.ID)
+		if len(specs) == 0 {
+			continue
+		}
+		var open, closed []string
+		for _, s := range specs {
+			id := s.ID
+			if id == "" {
+				id = filepath.Base(s.Path)
+			}
+			switch s.Bucket {
+			case "open":
+				open = append(open, id)
+			case "closed":
+				closed = append(closed, id)
+			}
+		}
+		sort.Strings(open)
+		sort.Strings(closed)
+		switch {
+		case it.Bucket == "planned" && len(open) == 0 && len(closed) > 0:
+			out = append(out, Finding{File: it.Path, Line: 1, RuleID: "spec_lifecycle", Severity: severity,
+				Message: "planned intent '" + it.ID + "' has no open spec: " + strings.Join(closed, ", ") +
+					" sit in closed/; a planned intent is built against an open spec, so either the spec was filed into closed/ by mistake or the intent belongs in shipped/"})
+		case it.Bucket == "shipped" && len(open) > 0:
+			out = append(out, Finding{File: it.Path, Line: 1, RuleID: "spec_lifecycle", Severity: severity,
+				Message: "shipped intent '" + it.ID + "' has a spec still open: " + strings.Join(open, ", ") +
+					"; spec close ships the intent, so either the spec belongs in closed/ or the intent in planned/"})
+		}
+	}
+	return out
 }
 
 // checkSpecIDUnique flags any spc-N id claimed by two or more spec-store files
@@ -2191,7 +2379,10 @@ func checkSpecIDUnique(repoRoot, rootAbs string, cfg RuleConfig, top Config) ([]
 		specsDir = "specs"
 	}
 	if _, err := os.Stat(filepath.Join(rootAbs, specsDir)); err != nil {
-		return nil, nil // missing specs/ is soft, mirroring spec_lifecycle
+		if os.IsNotExist(err) {
+			return nil, nil // missing specs/ is soft, mirroring spec_lifecycle
+		}
+		return nil, err // present but unreadable is a fault (iss-2608261533419897)
 	}
 	rootRel, err := filepath.Rel(repoRoot, rootAbs)
 	if err != nil {
@@ -2414,7 +2605,7 @@ func checkForbiddenSynonyms(repoRoot, rootAbs string, cfg RuleConfig) ([]Finding
 		if strings.HasPrefix(relSlash, glossaryPrefix) || hasAnyPrefix(relSlash, cfg.ExemptPrefixes) {
 			continue
 		}
-		content, err := os.ReadFile(fileAbs)
+		content, err := readRepoAbs(repoRoot, fileAbs, maxRepoFileBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -2646,6 +2837,8 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 type fmField struct {
 	value string
 	line  int
+	// spaced is frontmatter.Field.SpacedKey: whitespace before the colon.
+	spaced bool
 }
 
 // frontmatterFields returns the top-level keys of the leading YAML frontmatter
@@ -2668,7 +2861,7 @@ func frontmatterFields(lines []string) map[string]fmField {
 		lines = lines[start:]
 	}
 	for key, f := range frontmatter.Fields(lines) {
-		fields[key] = fmField{value: f.Value, line: f.Line + offset}
+		fields[key] = fmField{value: f.Value, line: f.Line + offset, spaced: f.SpacedKey}
 	}
 	return fields
 }
@@ -2804,7 +2997,8 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 		if _, err := os.Stat(rootAbs); err != nil {
 			return 0, err
 		}
-		files, err := markdownFiles(rootAbs)
+		ignored := ignoredUnderRoot(repoRoot, root)
+		files, err := markdownFilesPruned(rootAbs, &ignored)
 		if err != nil {
 			return 0, err
 		}
@@ -2814,6 +3008,63 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 }
 
 func markdownFiles(rootAbs string) ([]string, error) {
+	return markdownFilesPruned(rootAbs, nil)
+}
+
+// ignoredSet is the set of untracked paths git ignores beneath one lint root,
+// keyed repo-relative and slash-separated, a wholly ignored directory once with
+// its trailing slash (gitutil.IgnoredUnder). A gitignored path is by definition
+// not the repository's documentation, so the walks over a root prune it rather
+// than lint a cached clone or a build output that happens to sit under a root
+// (iss-2609151952353626). A committed file is never in it: git ignores no
+// tracked file.
+type ignoredSet struct {
+	repoRoot string
+	paths    map[string]bool
+}
+
+// ignoredUnderRoot asks git once for what it ignores under root. Outside a
+// repository, or with git unavailable, the set is empty: nothing is pruned.
+func ignoredUnderRoot(repoRoot, root string) ignoredSet {
+	set := ignoredSet{repoRoot: repoRoot, paths: map[string]bool{}}
+	for _, p := range gitutil.IgnoredUnder(repoRoot, filepath.ToSlash(root)) {
+		set.paths[p] = true
+	}
+	return set
+}
+
+// prunes reports whether the walk skips path: an ignored directory (and so
+// everything beneath it) or an ignored file.
+func (s ignoredSet) prunes(path string, isDir bool) bool {
+	if len(s.paths) == 0 {
+		return false
+	}
+	rel := filepath.ToSlash(repoRel(s.repoRoot, path))
+	if isDir {
+		return s.paths[rel+"/"]
+	}
+	return s.paths[rel]
+}
+
+// sorted lists the set, for the front doors that name what was pruned.
+func (s ignoredSet) sorted() []string {
+	out := make([]string, 0, len(s.paths))
+	for p := range s.paths {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// markdownFilesPruned is markdownFiles skipping what ignored prunes. A nil set
+// prunes nothing.
+func markdownFilesPruned(rootAbs string, ignored *ignoredSet) ([]string, error) {
+	return filesPruned(rootAbs, ignored, hasMarkdownExt)
+}
+
+// filesPruned walks rootAbs for the files whose name keep admits, skipping what
+// ignored prunes, sorted.
+func filesPruned(rootAbs string, ignored *ignoredSet, keep func(name string) bool) ([]string, error) {
 	var files []string
 	err := filepath.WalkDir(rootAbs, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -2829,7 +3080,13 @@ func markdownFiles(rootAbs string) ([]string, error) {
 			}
 			return err
 		}
-		if !d.IsDir() && hasMarkdownExt(d.Name()) {
+		if ignored != nil && ignored.prunes(path, d.IsDir()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.IsDir() && keep(d.Name()) {
 			files = append(files, path)
 		}
 		return nil
@@ -2839,6 +3096,24 @@ func markdownFiles(rootAbs string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+// PrunedInRoots names the gitignored paths the per-file walk over cfg's roots
+// prunes, repo-relative and sorted, a wholly ignored directory once with its
+// trailing slash. A front door reports them, so a lint that skipped a cached
+// clone says it did rather than reading as a smaller tree (loud-staging). The
+// roots are contained exactly as LintAt contains them.
+func PrunedInRoots(cfg Config, repoRoot string) ([]string, error) {
+	var out []string
+	for _, root := range cfg.Roots {
+		if err := containedRepoPath(root); err != nil {
+			return nil, &configError{"roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		out = append(out, ignoredUnderRoot(repoRoot, root).sorted()...)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func matchesAny(res []*regexp.Regexp, s string) bool {
@@ -2879,4 +3154,99 @@ func sortFindings(f []Finding) {
 		}
 		return f[i].Message < f[j].Message
 	})
+}
+
+// nameTokenPrefix is the id namespace of the name gate: the public banlist
+// layer's entries (banlist.PublicIDPrefix, restated because the banlist package
+// imports this one).
+const nameTokenPrefix = "names/"
+
+// lintNameRoots runs the name gate — the `names/` banned tokens alone — over
+// cfg.NameRoots (iss-279). A name ban is about the whole public surface, not
+// the documentation's writing, so it reads every text file there, markdown or
+// not; the rest of the token family stays a docs rule. Roots are contained and
+// gitignore-pruned exactly as the per-root walk's are, a file that walk already
+// read is not read twice, a binary file (a NUL in it) is not text, and
+// exempt_paths / exempt_if_status excuse a file here as they do there.
+func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Finding, error) {
+	var names []BannedToken
+	for _, t := range cfg.BannedTokens {
+		if strings.HasPrefix(t.ID, nameTokenPrefix) {
+			names = append(names, t)
+		}
+	}
+	checker, err := NewTokenChecker(names)
+	if err != nil || checker.Len() == 0 {
+		return nil, err
+	}
+	var out []Finding
+	for _, root := range cfg.NameRoots {
+		if err := containedRepoPath(root); err != nil {
+			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		rootAbs := filepath.Join(repoRoot, root)
+		if err := resolvedInsideRoot(repoRoot, rootAbs); err != nil {
+			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		if _, err := os.Stat(rootAbs); err != nil {
+			if os.IsNotExist(err) {
+				return nil, &configError{"name_roots entry " + quote(root) +
+					" does not exist; a configured root that does not resolve silently disarms the name gate for that tree — fix the list or create the tree"}
+			}
+			return nil, err
+		}
+		ignored := ignoredUnderRoot(repoRoot, root)
+		files, err := filesPruned(rootAbs, &ignored, func(string) bool { return true })
+		if err != nil {
+			return nil, err
+		}
+		for _, fileAbs := range files {
+			if scanned[fileAbs] {
+				continue
+			}
+			scanned[fileAbs] = true
+			rel := repoRel(repoRoot, fileAbs)
+			if contentExempt(rel, nil, cfg) {
+				continue
+			}
+			realPath, err := containedRealPath(repoRoot, fileAbs)
+			if err != nil {
+				return nil, &configError{"file " + quote(rel) + " " + err.Error() +
+					"; the lint reads only inside the repository"}
+			}
+			// A file the walk listed but cannot examine fails loud: a leak gate
+			// that passes a file it never read reports a tree it did not check
+			// (iss-2609252251320497). A non-regular leaf (a FIFO, a socket, a
+			// symlink resolving to a directory) is not a text file: git commits
+			// no FIFO or socket, and a symlinked directory publishes only its
+			// link, its target being read wherever a root reaches it.
+			st, err := os.Stat(realPath)
+			if err != nil {
+				return nil, errors.New("name_roots file " + quote(rel) + " cannot be examined (" + bareCause(err) +
+					"); the name gate refuses to pass a file it could not read")
+			}
+			if !st.Mode().IsRegular() {
+				continue
+			}
+			content, err := fsutil.ReadGuarded(realPath, citationPageSizeLimit)
+			if err != nil {
+				return nil, err
+			}
+			if strings.IndexByte(string(content), 0) >= 0 {
+				continue
+			}
+			lines := strings.Split(string(content), "\n")
+			if contentExempt(rel, frontmatterFields(lines), cfg) {
+				continue
+			}
+			mask := make([]bool, len(lines))
+			if hasMarkdownExt(fileAbs) {
+				mask = fenceMask(lines)
+			}
+			out = append(out, checker.lintLines(rel, lines, mask)...)
+		}
+	}
+	return out, nil
 }

@@ -20,3 +20,7 @@ A **step** is the unit below a spec (itd-2609212103565953): the spec's author li
 ## When to use
 
 When a spec is larger than one implementer can hold and land. Not as a task tracker: a step is a section of the design record, not a record of its own.
+
+## Related terms
+
+- [record families](record-families.md) — the one page that maps the record families and how they relate

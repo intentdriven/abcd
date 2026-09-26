@@ -845,6 +845,36 @@ func TestDuplicatePositionKeysAreRefused(t *testing.T) {
 	}
 }
 
+// TestKeysRepeatedInsideAPositionEntryAreRefused widens the review-evasion
+// refusal to every depth (iss-2609252251317108): a second "kinds" or "window"
+// inside a reviewed entry is read last-wins by the strict decoder exactly as a
+// second entry would be, and a case twin ("Kinds") is the same field to
+// encoding/json.
+func TestKeysRepeatedInsideAPositionEntryAreRefused(t *testing.T) {
+	entry := v2Entry("widening", `"brief-section"`, "", "", 10)
+	for name, body := range map[string]string{
+		"a second kinds":  strings.Replace(entry, `"kinds": ["brief-section"],`, `"kinds": ["brief-section"], "kinds": ["source", "test", "doc"],`, 1),
+		"a case twin":     strings.Replace(entry, `"kinds": ["brief-section"],`, `"kinds": ["brief-section"], "Kinds": ["source", "test", "doc"],`, 1),
+		"a nested repeat": strings.Replace(entry, `"tokens_est": 10,`, `"tokens_est": 10, "tokens_est": 999999,`, 1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if body == entry {
+				t.Fatal("fixture did not change the entry")
+			}
+			root := fixtureRepo(t)
+			writeFile(t, root, PresetConfigPath, v2Preset(body))
+			gitCommitAll(t, root)
+			_, err := LoadPresets(root)
+			if err == nil {
+				t.Fatal("an entry repeating a key loaded; the last would win silently")
+			}
+			if !strings.Contains(err.Error(), "more than once") {
+				t.Errorf("the refusal does not name the duplication: %v", err)
+			}
+		})
+	}
+}
+
 // TestRunRecordCarriesTheStatedBounds is the run record's `bounds` list
 // (spc-2609020626048722, "The stated bounds on the run record";
 // cond-2609021140329660 and cond-2609021140328523; divergence register 17 and

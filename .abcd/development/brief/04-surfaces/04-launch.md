@@ -75,9 +75,10 @@ checked-out tree, into an existing directory. Bound to the tag being released,
 it refuses (exit 1) unless the committed catalog pins exactly that archive's
 address and digest, and unless that address lies under the releasing
 repository's own release downloads for the tag — removing the archive on either
-refusal, so nothing unpinned can be published. `auto-release.yml` runs it on the
-pushed commit before the tag is made, and the release workflow runs it again on
-the tagged commit, each run bound to the repository the workflow runs in. Bound
+refusal, so nothing unpinned can be published. The release workflow runs it in
+its `verify` job, which the tag job needs, so on the `auto-release` path a
+refusal leaves no tag; its release job runs it again on the tagged commit before
+it publishes, each run bound to the repository the workflow runs in. Bound
 to the pin, the render leaves the dirty-tree gate to it — a payload file that
 differs from the commit changes the digest and refuses; unbound, it runs the
 gate, and an uncommitted change refuses the render.

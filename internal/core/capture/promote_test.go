@@ -704,7 +704,9 @@ const hostileGrounds = "pursued: the printed remedy must survive a \" quote, a '
 // arrive that way in an INTERACTIVE bash or zsh too, where `!word` expands
 // inside double quotes and the pasted remedy either fails or runs on text
 // nobody wrote. Single quotes are the one form a POSIX shell interprets nothing
-// inside, with an embedded quote spelled '\”.
+// inside, with an embedded quote spelled
+//
+//	'\''
 func TestShellQuotedIsInert(t *testing.T) {
 	for _, s := range []string{
 		"plain text",

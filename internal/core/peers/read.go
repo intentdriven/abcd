@@ -94,8 +94,8 @@ func read(root string, titles bool) (Report, error) {
 		return rep, fmt.Errorf("peers: reading this checkout's records: %w", err)
 	}
 	rep.here = here
-	defaultRef := resolveDefaultRef(root)
-	rep.DefaultRef = shortRef(defaultRef)
+	defaultRef := gitutil.DefaultRef(root)
+	rep.DefaultRef = gitutil.ShortRef(defaultRef)
 	merged := mergedBranches(root, defaultRef)
 
 	wts, err := listWorktrees(root)
@@ -566,36 +566,6 @@ func mergedBranches(root, defaultRef string) map[string]bool {
 		}
 	}
 	return set
-}
-
-// resolveDefaultRef is the ref a branch is judged merged into, as last fetched
-// and with no network: origin/HEAD's target, then the conventional names on the
-// remote, then the same names locally. "" when none resolves.
-func resolveDefaultRef(root string) string {
-	if out, err := gitutil.Run(root, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"); err == nil && strings.HasPrefix(out, "refs/remotes/origin/") && refExists(root, out) {
-		return out
-	}
-	names := []string{"main", "master", "trunk", "develop"}
-	for _, prefix := range []string{"refs/remotes/origin/", "refs/heads/"} {
-		for _, n := range names {
-			if refExists(root, prefix+n) {
-				return prefix + n
-			}
-		}
-	}
-	return ""
-}
-
-func refExists(root, ref string) bool {
-	_, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	return err == nil
-}
-
-func shortRef(ref string) string {
-	if s, ok := strings.CutPrefix(ref, "refs/remotes/"); ok {
-		return s
-	}
-	return strings.TrimPrefix(ref, "refs/heads/")
 }
 
 // realPath resolves symlinks so two spellings of one directory compare equal;

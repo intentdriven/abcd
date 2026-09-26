@@ -1,3 +1,5 @@
+> **Retired on 2026-09-21** (adr-2609212115255771): phases and milestones are no longer units of the record. Sequencing is dependencies plus the lifecycle shelves, rendered as the Now / Next / Later status block; the checkpoint is the derived release. This document stays as history and is not maintained.
+
 # Phase 8 — The closed loop
 
 ## Expectation

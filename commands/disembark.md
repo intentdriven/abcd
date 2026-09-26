@@ -1,7 +1,7 @@
 ---
 name: disembark
 description: "Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb."
-argument-hint: "<source-repo> <dest> | plan <source-repo> | probe <source-repo>"
+argument-hint: "pack <source-repo> <dest> | plan [<source-repo>] | probe [<source-repo>]"
 block: people
 ---
 
@@ -256,7 +256,8 @@ that route as `--route` to the ingest, which records it as an override. Without
 its payload flag a synthesis verb runs its deterministic mode, dispatches no
 agent, and refuses `--route`. The ingest's `--json` result carries a `route`
 receipt (`tier_asked`, `connection_tried`, `connection_used`, `fallback_reason`,
-`override`, `settings_sent`, `model_reported`) and its text a `route:` line;
+`override`, `settings_sent`, `model_reported`, and `provider_call`, null until a provider
+adapter answers the step) and its text a `route:` line;
 relay it with the result. When no configured provider can serve the tier, one
 stderr line says the step goes through the harness instead. A `--route` naming
 an agent this invocation does not dispatch, a tier outside the set, a connection

@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: disembark (`abcd disembark <source-repo> to <dest>`) writes the artefact to the operator-chosen destination; the source repository is never written to.
 ends_when: The lifeboat is unpacked by `/abcd:embark` into a target project, or discarded.
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -47,6 +47,7 @@ flow-control connotations in the abcd pipeline context).
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [voyage](voyage.md) — the lifeboat captures voyage knowledge at a point in time
 - [embark](../interview/embark.md) — the grill sub-verb term for the opening move; distinct
   from the `/abcd:embark` command that unpacks a lifeboat

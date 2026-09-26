@@ -221,3 +221,40 @@ func TestResolveOccasionResolvesASurpriseAsARegularFileOnly(t *testing.T) {
 		t.Errorf("a symlinked surprises store: err = %v, want ErrPathUnsafe", err)
 	}
 }
+
+// A symlinked item FILE is described the way the outstanding board describes it
+// — a path that is not a regular file — rather than as an id the ledger does
+// not hold, which sent the reader looking for a missing record that is plainly
+// there (iss-2608300848049813).
+func TestLocateNamesASymlinkedItemFileAsNotARegularFile(t *testing.T) {
+	_, ir := repo(t)
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "target.md"), "a")
+	if err := os.MkdirAll(filepath.Join(ir, "readings", "rdg-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "target.md"), filepath.Join(ir, "readings", "rdg-1", "rdi-11.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, _, err := Locate(ir, "rdi-11")
+	if !errors.Is(err, ErrPathUnsafe) || !strings.Contains(err.Error(), "not a regular file (a symlink, a directory, or a device)") {
+		t.Fatalf("a symlinked item file: err = %v, want ErrPathUnsafe naming it not a regular file", err)
+	}
+}
+
+// The disposition locator is the item locator's sibling and says the same.
+func TestLocateDispositionNamesASymlinkedFileAsNotARegularFile(t *testing.T) {
+	_, ir := repo(t)
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "target.md"), "a")
+	if err := os.MkdirAll(filepath.Join(ir, "dispositions", "rdi-11"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "target.md"), filepath.Join(ir, "dispositions", "rdi-11", "dsp-5.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, _, err := LocateDisposition(ir, "dsp-5")
+	if !errors.Is(err, ErrPathUnsafe) || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("a symlinked disposition file: err = %v, want ErrPathUnsafe naming it not a regular file", err)
+	}
+}

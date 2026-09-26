@@ -2032,12 +2032,12 @@ func TestABucketJoinReadsPaddingOffTheTargetsFilename(t *testing.T) {
 	}
 }
 
-// A target whose filename is not a bare handle is one the reader of the family
-// does not read at all, so no spelling of this join admits it and none is more
-// right than another. The gate says nothing rather than issuing a blocker whose
-// remedy the spelling leg would itself refuse. The divergence between this rule's
-// filename grammar and the report's is iss-2608300929274006's to close.
-func TestABucketJoinIsSilentOnATargetTheFamilysReaderDoesNotRead(t *testing.T) {
+// A reading item whose filename is not a bare handle is one no reader of the
+// family opens. It is refused at the walk, where the author can rename it, and
+// never enters the index, so the join naming it resolves to nothing and says so.
+// The gate once stood silent on both, because its filename grammar was looser
+// than the readers' (iss-2608300929274006).
+func TestABucketJoinOnASluggedItemFileIsRefusedAtTheFile(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "rec/.keep", "")
 	writeFile(t, root, "work/issues/readings/rdg-1/rdi-2-widen-the-frame.md",
@@ -2051,8 +2051,13 @@ func TestABucketJoinIsSilentOnATargetTheFamilysReaderDoesNotRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleRecordSchema); n != 0 {
-		t.Fatalf("no spelling admits a file the family's reader never reads, got %d finding(s): %+v", n, fs)
+	if !findingWith(fs, filepath.Join("work", "issues", "readings", "rdg-1", "rdi-2-widen-the-frame.md"),
+		ruleRecordSchema, "not a well-formed") {
+		t.Errorf("a slugged item file is read by nothing and must be refused at the file: %+v", fs)
+	}
+	if !findingWith(fs, filepath.Join("work", "issues", "admissions", "rdg-1", "adm-3.md"),
+		ruleRecordSchema, "not a record in the corpus") {
+		t.Errorf("the join naming it admits nothing and must say so: %+v", fs)
 	}
 }
 
@@ -2141,10 +2146,6 @@ func TestAnEmptyFlowMappingAndAnExplicitNullTagAreAbsences(t *testing.T) {
 //
 // An item whose file declares NO position reads the same way, because the report
 // compares the position it read — the empty string, there — against `widening`.
-//
-// The stand-down is the padding leg's: a target whose filename is not itself a
-// bare handle is a file the family's reader never opens, so no claim about what
-// the report does with it is available to make.
 func TestAnAdmissionNamingAnItemOutsideTheWideningPositionIsRefused(t *testing.T) {
 	root := admissionCorpus(t)
 	writeFile(t, root, "work/issues/readings/rdg-1/rdi-3.md",
@@ -2152,15 +2153,13 @@ func TestAnAdmissionNamingAnItemOutsideTheWideningPositionIsRefused(t *testing.T
 			"regime: registrative\npattern: a stated constraint\n---\n\n")
 	writeFile(t, root, "work/issues/readings/rdg-1/rdi-5.md",
 		"---\nschema_version: 1\nid: rdi-5\nrun: rdg-1\nmanifest: sha256:beef\n---\n\n")
-	writeFile(t, root, "work/issues/readings/rdg-1/rdi-7-widen-the-frame.md",
-		"---\nschema_version: 1\nid: rdi-7\nrun: rdg-1\nmanifest: sha256:beef\nposition: detection\n---\n\n")
 
 	adm := func(id, proposal string) string {
 		return "---\nschema_version: 1\nid: " + id + "\nrun: rdg-1\nproposal: " + proposal +
 			"\ngrounds: the configuration it admits is one the frame does not already hold\n---\n\n"
 	}
 	for _, c := range []struct{ id, proposal string }{
-		{"adm-2", "rdi-2"}, {"adm-3", "rdi-3"}, {"adm-5", "rdi-5"}, {"adm-7", "rdi-7"},
+		{"adm-2", "rdi-2"}, {"adm-3", "rdi-3"}, {"adm-5", "rdi-5"},
 	} {
 		writeFile(t, root, "work/issues/admissions/rdg-1/"+c.id+".md", adm(c.id, c.proposal))
 	}
@@ -2191,62 +2190,11 @@ func TestAnAdmissionNamingAnItemOutsideTheWideningPositionIsRefused(t *testing.T
 			t.Errorf("the finding on %s must name what the target's file says: %+v", c.file, fs)
 		}
 	}
-	// The widening control, and the file the family's reader never opens.
-	for _, name := range []string{"adm-2.md", "adm-7.md"} {
+	// The widening control.
+	for _, name := range []string{"adm-2.md"} {
 		if n := onFile(name); n != 0 {
 			t.Errorf("%s must draw no finding, got %d: %+v", name, n, fs)
 		}
-	}
-}
-
-// The bucket blocker's leading clause — this record is keyed on a pair nothing
-// queries — is true of every cross-bucket target. Its TAIL is not: it says the
-// item goes on being reported as unanswered, and the padding leg one block above
-// stands down on a target whose filename is not a bare handle precisely because
-// what reads the family never opens such a file. The report emits nothing at all
-// about `rdi-7-widen-the-frame.md`, so the operator was sent to find a report line
-// that does not exist (iss-2608301656193936).
-//
-// The tail is therefore appended on the same test the padding leg computes. The
-// two cases run together so the negative assertion cannot go vacuous: the control
-// pins the tail's current wording, so a rewording fails there before the
-// stand-down's absence can pass for nothing.
-func TestTheBucketBlockerClaimsAReportLineOnlyForAFileTheFamilyReads(t *testing.T) {
-	const tail = "goes on being reported as unanswered"
-	root := admissionCorpus(t)
-	// Read by the family: its filename is a bare handle.
-	writeFile(t, root, "work/issues/readings/rdg-9/rdi-8.md",
-		"---\nschema_version: 1\nid: rdi-8\nrun: rdg-9\nmanifest: sha256:beef\nposition: widening\n---\n\n")
-	// Never opened by the family: its filename carries a slug.
-	writeFile(t, root, "work/issues/readings/rdg-9/rdi-7-widen-the-frame.md",
-		"---\nschema_version: 1\nid: rdi-7\nrun: rdg-9\nmanifest: sha256:beef\nposition: widening\n---\n\n")
-
-	adm := func(id, proposal string) string {
-		return "---\nschema_version: 1\nid: " + id + "\nrun: rdg-1\nproposal: " + proposal +
-			"\ngrounds: the configuration it admits is one the frame does not already hold\n---\n\n"
-	}
-	writeFile(t, root, "work/issues/admissions/rdg-1/adm-8.md", adm("adm-8", "rdi-8"))
-	writeFile(t, root, "work/issues/admissions/rdg-1/adm-7.md", adm("adm-7", "rdi-7"))
-
-	fs, err := Lint(admissionSchemaConfig(), root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	read := filepath.Join("work", "issues", "admissions", "rdg-1", "adm-8.md")
-	unread := filepath.Join("work", "issues", "admissions", "rdg-1", "adm-7.md")
-
-	// Both are keyed on a pair nothing queries, so both are still blocked.
-	for _, rel := range []string{read, unread} {
-		if !findingWith(fs, rel, ruleRecordSchema, "keyed on a pair nothing ever queries") {
-			t.Errorf("a cross-bucket target is a finding whatever its filename: %s: %+v", rel, fs)
-		}
-	}
-	if !findingWith(fs, read, ruleRecordSchema, tail) {
-		t.Errorf("the family reads rdi-8.md, so the blocker may say the item %s: %+v", tail, fs)
-	}
-	if findingWith(fs, unread, ruleRecordSchema, tail) {
-		t.Errorf("nothing reads rdi-7-widen-the-frame.md, so no report line names it and the blocker "+
-			"must not say the item %s: %+v", tail, fs)
 	}
 }
 
@@ -2335,9 +2283,18 @@ func TestDuplicateKeyClaimIsScopedToThisRulesOwnScanner(t *testing.T) {
 		if !findingWith(fs, rel, ruleRecordSchema, "silence a blocker armed on the value the first hides") {
 			t.Errorf("the finding on %s keeps the account this rule can make: %+v", rel, fs)
 		}
-		for _, claim := range []string{"every record surface", "every disposition surface", "skipped", "refuses"} {
-			if findingWith(fs, rel, ruleRecordSchema, claim) {
-				t.Errorf("no reader of %s performs that, so the finding must not claim %q: %+v", rel, claim, fs)
+		// Scoped to the duplicate-key finding itself: another record_schema
+		// finding on these paths may say "refuses" truthfully about something
+		// else, and would trip this loop for a reason it does not name
+		// (iss-2608301901260461).
+		for _, f := range fs {
+			if f.File != rel || f.RuleID != ruleRecordSchema || !strings.Contains(f.Message, "duplicate top-level key") {
+				continue
+			}
+			for _, claim := range []string{"every record surface", "every disposition surface", "skipped", "refuses"} {
+				if strings.Contains(f.Message, claim) {
+					t.Errorf("no reader of %s performs that, so the duplicate-key finding must not claim %q: %+v", rel, claim, f)
+				}
 			}
 		}
 	}
@@ -2755,5 +2712,78 @@ func TestSurpriseOccasionMustResolve(t *testing.T) {
 	}
 	if n := countRule(fs, ruleRecordSchema); n != len(bad) {
 		t.Fatalf("expected exactly %d findings (the bad occasions), got %d: %+v", len(bad), n, fs)
+	}
+}
+
+// The padding and bucket legs say only what the walk establishes. They once
+// ended on "goes on being reported as unanswered", which is conditional in fact:
+// a widening item carrying a declined or held disposition IS answered, and the
+// legs never read a disposition. So they say, as the position leg does, that the
+// record counts for nothing and no line reports an answer was written for the
+// item it names (iss-2608301755006875).
+func TestTheJoinLegsClaimNothingAboutTheReportTheyDidNotRead(t *testing.T) {
+	const claim = "reported as unanswered"
+	const said = "no line reports that an answer was written"
+	adm := func(run, proposal string) string {
+		return "---\nschema_version: 1\nid: adm-3\nrun: " + run + "\nproposal: " + proposal +
+			"\ngrounds: the frame does not already hold it\n---\n\n"
+	}
+	for name, c := range map[string]struct{ dir, body string }{
+		"padding": {"rdg-1", adm("rdg-1", "rdi-2")},
+		"bucket":  {"rdg-9", adm("rdg-9", "rdi-02")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, "rec/.keep", "")
+			writeFile(t, root, "work/issues/readings/rdg-1/rdi-02.md",
+				"---\nschema_version: 1\nid: rdi-2\nrun: rdg-1\nmanifest: sha256:beef\nposition: widening\n"+
+					"regime: constitutive\npattern: a stated constraint\n---\n\n")
+			writeFile(t, root, "work/issues/readings/rdg-9/rdi-5.md",
+				"---\nschema_version: 1\nid: rdi-5\nrun: rdg-9\nmanifest: sha256:beef\nposition: widening\n"+
+					"regime: constitutive\npattern: a stated constraint\n---\n\n")
+			writeFile(t, root, "work/issues/admissions/"+c.dir+"/adm-3.md", c.body)
+			fs, err := Lint(admissionSchemaConfig(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rel := filepath.Join("work", "issues", "admissions", c.dir, "adm-3.md")
+			if findingWith(fs, rel, ruleRecordSchema, claim) {
+				t.Errorf("the %s leg asserts what the report says without reading it: %+v", name, fs)
+			}
+			if !findingWith(fs, rel, ruleRecordSchema, said) {
+				t.Errorf("the %s leg must say no line reports an answer was written: %+v", name, fs)
+			}
+		})
+	}
+}
+
+// A reading item and a disposition are read by their bare handle alone: the
+// report, the item locator and capture's disposition walk each open
+// `<run>/rdi-N.md` and `<item>/dsp-N.md` and nothing else. The gate held those
+// two families to the looser `<prefix>-<N>[-<slug>].md` grammar, so a hand-written
+// `rdi-2-widen-the-frame.md` passed it and was then invisible to every reader.
+// One grammar now: the readers', which the gate refuses anything else under
+// (iss-2608300929274006).
+func TestReadingItemAndDispositionFilenamesAreBareHandles(t *testing.T) {
+	root := admissionCorpus(t)
+	writeFile(t, root, "work/issues/readings/rdg-1/rdi-7-widen-the-frame.md",
+		"---\nschema_version: 1\nid: rdi-7\nrun: rdg-1\nmanifest: sha256:beef\nposition: widening\n"+
+			"regime: constitutive\npattern: a stated constraint\n---\n\n")
+	writeFile(t, root, "work/issues/dispositions/rdi-2/dsp-3-a-note.md",
+		"---\nschema_version: 1\nid: dsp-3\nitem: rdi-2\nstate: declined\n---\n\n")
+	fs, err := Lint(admissionSchemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{
+		filepath.Join("work", "issues", "readings", "rdg-1", "rdi-7-widen-the-frame.md"),
+		filepath.Join("work", "issues", "dispositions", "rdi-2", "dsp-3-a-note.md"),
+	} {
+		if !findingWith(fs, rel, ruleRecordSchema, "not a well-formed") {
+			t.Errorf("%s is read by no reader of its family and must be refused: %+v", rel, fs)
+		}
+	}
+	if findingWith(fs, filepath.Join("work", "issues", "readings", "rdg-1", "rdi-2.md"), ruleRecordSchema, "not a well-formed") {
+		t.Errorf("the bare-handle control must pass: %+v", fs)
 	}
 }

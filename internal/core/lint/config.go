@@ -38,6 +38,14 @@ type Config struct {
 	// (iss-39); the spec-store checks (spec_lifecycle, spec_id_unique) still skip an
 	// exempt file. record_schema is cross-store and never consults this at all.
 	ExemptPaths []string `json:"exempt_paths"`
+	// NameRoots are repo-relative directories or files the name gate — the
+	// banned_tokens whose id carries the `names/` prefix, the public banlist
+	// layer — reads in addition to Roots. Every text file there is read, not only
+	// markdown (a script names a project as readily as a page does), and only the
+	// `names/` family runs: the rest of the family is a writing rule for the
+	// documentation, and a name ban is about the whole public surface (iss-279).
+	// exempt_paths and exempt_if_status apply as they do under Roots.
+	NameRoots []string `json:"name_roots"`
 	// ExemptIfStatus lists leading-frontmatter status: values that likewise
 	// exempt a file from the content-authoring checks (e.g. superseded records).
 	ExemptIfStatus []string `json:"exempt_if_status"`
@@ -58,14 +66,17 @@ type BannedToken struct {
 	// non-empty: every ban must declare where its token is legitimately allowed.
 	AllowContext []string `json:"allow_context"`
 	// SkipCodeFences omits fenced-code lines from scanning. A nil pointer means
-	// the default (true); set false to also scan inside fences.
+	// the family's default: true for a documentation token, whose fenced example
+	// is not prose; false for a `names/` token, the name gate, which reaches the
+	// whole public surface, where a fence is published as readily as prose
+	// (iss-2609252251320133). Set it to override either default.
 	SkipCodeFences *bool `json:"skip_code_fences"`
 }
 
 // skipFences resolves the SkipCodeFences pointer to its effective value.
 func (t BannedToken) skipFences() bool {
 	if t.SkipCodeFences == nil {
-		return true
+		return !strings.HasPrefix(t.ID, nameTokenPrefix)
 	}
 	return *t.SkipCodeFences
 }
@@ -77,8 +88,18 @@ type RuleConfig struct {
 	Severity string `json:"severity"`
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
-	// Exempt is the directory_coverage glob allowlist.
+	// Exempt is a glob allowlist of repo-relative paths (filepath.Match, so `*`
+	// stays inside one directory). directory_coverage reads it for directories
+	// excused a README; links_resolve reads it for files whose links are not
+	// checked — a tool-mandated mirror of a root file, whose relative links
+	// resolve from the root and not from the mirror's directory — and over its
+	// ExtraRoots, for files whose links the extra walk skips.
 	Exempt []string `json:"exempt"`
+	// ExtraRoots are repo-relative trees links_resolve walks for links ALONE,
+	// beyond Roots: the working tier (.abcd/work) holds relative links in the issue
+	// ledger, DECISIONS.md and CONTEXT.md, and adding it to Roots would arm every
+	// content rule there too (iss-2608230752354927).
+	ExtraRoots []string `json:"extra_roots"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name
 	// the same directory share one scan of it. spec_lifecycle also reads it to
@@ -101,7 +122,9 @@ type RuleConfig struct {
 	// Registry is a rule's registry file, repo-relative. For persona_registry it
 	// is the persona roster (.abcd/development/personas.json); for
 	// surface_coverage it is the brief surface table
-	// (.abcd/development/brief/04-surfaces/README.md).
+	// (.abcd/development/brief/04-surfaces/README.md); for glossary_family_pointer
+	// and record_family_key it is the record-families page whose table is the
+	// closed set of families (default <glossary_dir>/core/record-families.md).
 	Registry string `json:"registry"`
 	// CommandsDir is the surface_coverage plugin-command directory (commands);
 	// each *.md file (README and BareCommand excepted) is a shipped command
@@ -181,7 +204,8 @@ type RuleConfig struct {
 	// GlossaryDir is the forbidden_synonyms (GL002) glossary directory, repo-relative
 	// (default .abcd/development/brief/glossary). The rule walks it for term files and
 	// reads each term's forbidden_synonyms frontmatter list — the glossary is the
-	// single source of truth for what a forbidden synonym is.
+	// single source of truth for what a forbidden synonym is. glossary_family_pointer
+	// and record_family_key read the same directory's term files.
 	GlossaryDir string `json:"glossary_dir"`
 	// Enforce is the forbidden_synonyms subset that GL002 mechanically gates. Each
 	// entry MUST be declared as a forbidden_synonym by some glossary term (the rule
@@ -360,42 +384,47 @@ func ArmAgentDiff(cfg Config, diffRange string) Config {
 // ArmedChecks, and runs nothing. A rule added to LintAt and not here is refused
 // the first time a config names it, which fails loud rather than green.
 var knownRules = map[string]bool{
-	"links_resolve":             true,
-	"no_git_metadata":           true,
-	"no_brittle_line_refs":      true,
-	"persona_registry":          true,
-	"directory_coverage":        true,
-	"intent_lifecycle":          true,
-	"intent_impact_valid":       true,
-	"spec_lifecycle":            true,
-	"spec_id_unique":            true,
-	"forbidden_synonyms":        true,
-	"stray_root_docs":           true,
-	"context_status_free":       true,
-	"surface_coverage":          true,
-	"index_drift":               true,
-	"receipt_gate":              true,
-	"gate_lockstep":             true,
-	"issue_id_unique":           true,
-	"issue_impact_valid":        true,
-	ruleAgentContract:           true,
-	ruleCitationFootnotes:       true,
-	ruleCitationCrosswalkRows:   true,
-	ruleCitationURLSyntax:       true,
-	ruleCitationSourcePolicy:    true,
-	ruleCitationBaseline:        true,
-	ruleContextCitationCurrency: true,
-	ruleCrossStoreIDClaim:       true,
-	ruleDeliveryState:           true,
-	ruleHarnessLeak:             true,
-	ruleProseCitationResolves:   true,
-	ruleReadingOutstanding:      true,
-	ruleRecordProvenance:        true,
-	rulePrincipleUntyped:        true,
-	rulePrincipleClaims:         true,
-	rulePrincipleInheritance:    true,
-	rulePrincipleFalsified:      true,
-	ruleRecordSchema:            true,
+	"links_resolve":              true,
+	ruleLinkAnchors:              true,
+	"no_git_metadata":            true,
+	"no_brittle_line_refs":       true,
+	"persona_registry":           true,
+	"directory_coverage":         true,
+	"intent_lifecycle":           true,
+	"intent_impact_valid":        true,
+	"spec_lifecycle":             true,
+	"spec_id_unique":             true,
+	"forbidden_synonyms":         true,
+	"stray_root_docs":            true,
+	"context_status_free":        true,
+	"surface_coverage":           true,
+	"index_drift":                true,
+	"receipt_gate":               true,
+	"gate_lockstep":              true,
+	"issue_id_unique":            true,
+	"issue_impact_valid":         true,
+	ruleAgentContract:            true,
+	ruleCitationFootnotes:        true,
+	ruleCitationCrosswalkRows:    true,
+	ruleCitationURLSyntax:        true,
+	ruleCitationSourcePolicy:     true,
+	ruleCitationBaseline:         true,
+	ruleContextCitationCurrency:  true,
+	ruleCrossStoreIDClaim:        true,
+	ruleDeliveryState:            true,
+	ruleHarnessLeak:              true,
+	ruleIntentSOTA:               true,
+	ruleChangelogUnreleasedEmpty: true,
+	ruleProseCitationResolves:    true,
+	ruleReadingOutstanding:       true,
+	ruleRecordProvenance:         true,
+	rulePrincipleUntyped:         true,
+	rulePrincipleClaims:          true,
+	rulePrincipleInheritance:     true,
+	rulePrincipleFalsified:       true,
+	ruleRecordSchema:             true,
+	ruleGlossaryFamilyPointer:    true,
+	ruleRecordFamilyKey:          true,
 }
 
 // validateRuleNames refuses a rule the lint does not run, enabled or not, and
@@ -526,7 +555,51 @@ func parseConfig(data []byte) (Config, error) {
 	if err := cfg.validateConfiguredPaths(); err != nil {
 		return Config{}, err
 	}
+	if err := cfg.validateArmedInputs(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// armedInputs names, per rule, the input paths the rule cannot check without.
+// Each rule returned clean on a blank one BEFORE its own fail-closed guards ran,
+// so an enabled rule with a blank input read as armed and checked nothing
+// (iss-336; surface_coverage is its sibling).
+var armedInputs = map[string][]struct {
+	key string
+	get func(RuleConfig) string
+}{
+	"gate_lockstep": {
+		{"runbook", func(r RuleConfig) string { return r.Runbook }},
+		{"workflow", func(r RuleConfig) string { return r.Workflow }},
+	},
+	"surface_coverage": {
+		{"registry", func(r RuleConfig) string { return r.Registry }},
+	},
+}
+
+// validateArmedInputs refuses an ENABLED rule whose required input path is
+// blank, naming the key. A disabled rule is not checked: it runs nothing on
+// purpose, and saying so is what enabled:false is for.
+func (c Config) validateArmedInputs() error {
+	names := make([]string, 0, len(armedInputs))
+	for name := range armedInputs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		rc, ok := c.Rules[name]
+		if !ok || !rc.Enabled {
+			continue
+		}
+		for _, in := range armedInputs[name] {
+			if strings.TrimSpace(in.get(rc)) == "" {
+				return &configError{"rule " + strconv.Quote(name) + " is enabled but its " + strconv.Quote(in.key) +
+					" is blank, so it would read as armed and check nothing; set " + strconv.Quote(in.key) + " or set \"enabled\": false"}
+			}
+		}
+	}
+	return nil
 }
 
 // configuredPath is one repo-relative location the config names, paired with the
@@ -614,6 +687,9 @@ func (c Config) validateConfiguredPaths() error {
 		// this check does not depend on validateRecordStores having already refused an
 		// unknown prefix — a reordering of parseConfig would otherwise leave an
 		// unknown store's path unjudged.
+		for _, r := range rc.ExtraRoots {
+			fields = append(fields, configuredPath{"extra_roots entry", r})
+		}
 		prefixes := make([]string, 0, len(rc.RecordStores))
 		for prefix := range rc.RecordStores {
 			prefixes = append(prefixes, prefix)

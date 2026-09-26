@@ -10,9 +10,12 @@ block: agents
 The native session-transcript store at
 `~/.abcd/transcripts/<root-sha>/records/`, keyed on this repo's root-commit SHA.
 The store is **user-level and self-creating**: it belongs to the machine rather
-than to any checkout, and the first capture makes it, so no install step stands
-between a wired hook and a stored transcript. `list`, `show` and `staged`
-**perform zero writes**; `capture` and `drain` are the write paths, and both
+than to any checkout, and the first verb to reach it makes it, so no install
+step stands between a wired hook and a stored transcript. `list`, `show` and
+`staged` **add nothing to the corpus**: they record no transcript and change no
+stored record. They are not side-effect-free, because every verb reaches the store
+through the one seam that creates it when it is absent and moves a legacy
+corpus into it (below). `capture` and `drain` are the write paths, and both
 redact on write — no live secret or absolute home path can survive into a
 record.
 
@@ -279,9 +282,9 @@ Repair the records written before the store had lineage fields, whose
 full session id is recovered from the record's **own body**, and a body that
 does not confirm the stored prefix leaves the record untouched and is reported.
 
-**It reports by default and writes only under `--apply`** — the store holds the
-only copy of these records, so present the report and let the user ask for the
-write. Re-running it is a no-op. `--sidecar-root` (or the declared
+**It reports by default and writes records only under `--apply`** — the store
+holds the only copy of these records, so present the report and let the user ask
+for the write. Re-running it is a no-op. `--sidecar-root` (or the declared
 `ingest_roots`) says where to look for the host's per-agent metadata; where it
 answers, the record gains its agent type, spawn depth, spawning tool call and
 parent agent, and where it does not, the record says its lineage is unknown

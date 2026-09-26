@@ -1212,3 +1212,36 @@ func answerLines(fs []Finding) []Finding {
 	}
 	return out
 }
+
+// The unsafe finding on an admissions path does not send the operator to a
+// second gate: core/capture reads no admission, so the clause saying `abcd
+// capture` refuses the same paths is true of the readings and dispositions trees
+// it was written for and false here (iss-2608301649337920).
+func TestAnUnsafeAdmissionsPathClaimsNoCaptureRefusal(t *testing.T) {
+	run, item := "rdg-2608300000000001", "rdi-2608300000000002"
+	root := readingLedger(t, run, item, "widening")
+	link := filepath.Join(root, filepath.FromSlash(".abcd/work/issues/admissions/rdg-2608300000000009"))
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	fs, err := Lint(readingOutstandingConfig(severityBlocker), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var named bool
+	for _, f := range fs {
+		if f.RuleID != ruleReadingOutstanding || !strings.Contains(f.Message, "did not read this") {
+			continue
+		}
+		named = true
+		if strings.Contains(f.Message, "abcd capture") {
+			t.Errorf("an admissions path names a capture refusal nobody performs: %s", f.Message)
+		}
+	}
+	if !named {
+		t.Fatalf("the unsafe admissions run must be named; findings: %+v", fs)
+	}
+}

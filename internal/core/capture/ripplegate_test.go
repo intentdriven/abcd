@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/record"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -131,7 +132,15 @@ func TestRippleGateConsumersHoldOnMintedIDs(t *testing.T) {
 	}
 
 	// Consumer 5 — the record-lint uniqueness, impact, and schema rules gate the
-	// mixed ledger clean: the armed detectors accept the scheme's output.
+	// mixed ledger clean: the armed detectors accept the scheme's output. The two
+	// seams cmd/record-lint registers are registered here too, so the schema rule
+	// runs every leg the gate runs rather than naming the ones it could not.
+	lint.SetIssueReader(capture.ReadRefusal)
+	lint.SetRecordBodyCheck(site.CheckRecordBody)
+	t.Cleanup(func() {
+		lint.SetIssueReader(nil)
+		lint.SetRecordBodyCheck(nil)
+	})
 	findings, err := lint.Lint(lint.Config{
 		Roots: []string{".abcd"},
 		Rules: map[string]lint.RuleConfig{

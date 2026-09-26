@@ -8,7 +8,7 @@ status: stable
 introduced_in: itd-4
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/record
+not_to_be_confused_with: [core/record, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -58,6 +58,7 @@ both are stores, neither is append-or-move over identified records.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [record](record.md) — what a ledger holds
 - [voyage](voyage.md) — the operations namespace the voyage ledger lives in
 - [construal](construal.md) — the framing statement whose history stays on the local ledger side

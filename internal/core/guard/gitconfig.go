@@ -394,8 +394,10 @@ func (c *gitConfigRead) add(key, value string) {
 // parseConfigParameters decodes GIT_CONFIG_PARAMETERS, the variable git uses to
 // pass `-c` settings to its own subprocesses and which it reads back on every
 // invocation. Both shipped spellings are handled: the original `'key=value'` and
-// the `'key'='value'` form git has written since 2.31. Values are single-quoted
-// with `'\”` escaping their own quote.
+// the `'key'='value'` form git has written since 2.31. Values are single-quoted,
+// and a quote inside one is escaped by closing, escaping and reopening:
+//
+//	'\''
 func parseConfigParameters(v string) map[string]string {
 	out := map[string]string{}
 	i := 0
@@ -434,8 +436,8 @@ func parseConfigParameters(v string) map[string]string {
 }
 
 // readSingleQuoted reads the single-quoted run starting at v[i], returning its
-// unquoted contents and the index just past the closing quote. `'\”` is git's
-// escape for a literal quote inside one.
+// unquoted contents and the index just past the closing quote. A literal quote
+// inside one is git's close-escape-reopen spelling (see parseConfigParameters).
 func readSingleQuoted(v string, i int) (string, int, bool) {
 	if i >= len(v) || v[i] != '\'' {
 		return "", i, false

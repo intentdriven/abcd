@@ -216,7 +216,18 @@
     },
     "links_resolve": {
       "enabled": true,
-      "severity": "blocker"
+      "severity": "blocker",
+      "extra_roots": [
+        ".abcd/work"
+      ],
+      "exempt": [
+        ".abcd/work/reviews/*",
+        ".abcd/work/reviews/*/*"
+      ]
+    },
+    "link_anchors": {
+      "enabled": true,
+      "severity": "warn"
     },
     "no_brittle_line_refs": {
       "enabled": true,
@@ -239,6 +250,11 @@
     "intent_impact_valid": {
       "enabled": true,
       "severity": "blocker",
+      "intents_dir": "intents"
+    },
+    "intent_sota": {
+      "enabled": true,
+      "severity": "warn",
       "intents_dir": "intents"
     },
     "issue_id_unique": {
@@ -421,6 +437,10 @@
         "iss35-brief-surface-crosscheck"
       ]
     },
+    "changelog_unreleased_empty": {
+      "enabled": true,
+      "severity": "blocker"
+    },
     "gate_lockstep": {
       "enabled": true,
       "severity": "blocker",
@@ -455,6 +475,29 @@
         "epic\u2192spec",
         "epic-to-spec"
       ]
+    },
+    "glossary_family_pointer": {
+      "enabled": true,
+      "severity": "blocker",
+      "glossary_dir": ".abcd/development/brief/glossary",
+      "registry": ".abcd/development/brief/glossary/core/record-families.md"
+    },
+    "record_family_key": {
+      "enabled": true,
+      "severity": "warn",
+      "glossary_dir": ".abcd/development/brief/glossary",
+      "registry": ".abcd/development/brief/glossary/core/record-families.md",
+      "record_stores": {
+        "adr": ".abcd/development/decisions/adrs",
+        "itd": ".abcd/development/intents",
+        "spc": ".abcd/development/specs",
+        "iss": ".abcd/work/issues",
+        "rdi": ".abcd/work/issues/readings",
+        "dsp": ".abcd/work/issues/dispositions",
+        "rdg": ".abcd/development/readings",
+        "adm": ".abcd/work/issues/admissions",
+        "srp": ".abcd/work/issues/surprises"
+      }
     }
   },
   "exempt_paths": [

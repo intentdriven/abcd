@@ -13,4 +13,4 @@ resolved_by:
   commit: "554f97f"
 ---
 
-principles/sota-per-intent.md links [adr-22](../decisions) and [adr-26](../decisions) to the decisions directory instead of the ADR files; links_resolve passes because the directory exists; the only two ID-labelled links in the record whose target does not match the id
+principles/sota-per-intent.md links `[adr-22](../decisions)` and `[adr-26](../decisions)` to the decisions directory instead of the ADR files; links_resolve passes because the directory exists; the only two ID-labelled links in the record whose target does not match the id

@@ -95,7 +95,7 @@ func checkOneIndex(repoRoot string, spec IndexSpec, i int, cfg RuleConfig) ([]Fi
 		}
 	}
 
-	data, err := os.ReadFile(filepath.Join(repoRoot, spec.Doc))
+	data, err := readRepoFile(repoRoot, spec.Doc, maxRepoFileBytes)
 	if err != nil {
 		return nil, &configError{"index_drift entry " + who + ": reading " + spec.Doc + ": " + err.Error()}
 	}

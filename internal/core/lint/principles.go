@@ -41,6 +41,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/condition"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
@@ -381,7 +382,10 @@ func (p principleCheck) judge(repoRoot string, r schemaRecord) ([]Finding, error
 
 	// The statement: the projection promises one free of genealogy, and a
 	// promise the assembler cannot keep is one this rule refuses first.
-	content, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(r.rel)))
+	// Read through the lint's guard, as every repository read here is: the path
+	// held inside the tree, the leaf's symlink resolved inside it, and the read
+	// bounded, so a FIFO or an endless device cannot hang the gate.
+	content, err := readRepoFile(repoRoot, filepath.ToSlash(r.rel), issueschema.RecordReadLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -573,7 +577,7 @@ func shippedConditions(repoRoot, intentsDir string) (map[string][]condCarrier, e
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || !e.Type().IsRegular() {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		data, err := readRepoAbs(repoRoot, filepath.Join(dir, e.Name()), issueschema.RecordReadLimit)
 		if err != nil {
 			return nil, err
 		}
