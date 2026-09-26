@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25: #728 macOS cancel"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/ci.yml"
-resolution: "The cli package's race-instrumented time comes down without dropping an assertion: the 9 MiB history capture and the surface-prose check run uninstrumented only (one goroutine each, asserted on both CI legs by the plain lane), ProseShapeClaims skips a path whose words the prose never spells, and recordid compiles its filename grammar once per family (iss-2609261943168303). Paired on one machine: cli under -race 410.1s to 186.1s, the whole go test -race ./internal/... lane 532.7s to 310.0s; cli plain unchanged within noise (user CPU 63.1s and 62.5s)."
+resolution: "The cli package's race-instrumented time comes down without dropping an assertion: the 9 MiB history capture and the surface-prose check run uninstrumented only (no goroutine of ours in either, asserted on both CI legs by the plain lane), ProseShapeClaims skips a path whose words the prose never spells, and recordid compiles its filename grammar once per family (iss-2609261943168303). Paired on one machine: cli under -race 410.1s to 186.1s, the whole go test -race ./internal/... lane 532.7s to 310.0s; cli plain unchanged within noise (user CPU 63.1s and 62.5s)."
 impact: internal
 resolved_by:
   commit: "bc435cdb2"
