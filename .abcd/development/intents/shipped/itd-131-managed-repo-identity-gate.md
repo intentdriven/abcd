@@ -9,6 +9,7 @@ builds_on: []
 related_intents: [itd-91]
 severity: major
 related_issues: [iss-62]
+impact: additive
 ---
 
 # The managed-repo identity gate: the human is the author of record on every commit, before the first one
@@ -195,4 +196,5 @@ None stated.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-8a6673e9bc8a -->
+Fidelity review OWED (receipt rcp-8a6673e9bc8a).
