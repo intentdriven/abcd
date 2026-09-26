@@ -33,8 +33,8 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
-	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
