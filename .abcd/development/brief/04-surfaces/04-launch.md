@@ -443,7 +443,8 @@ than a design target.
   that is absent, misspelled, or outside the ledger's enum. An unreadable grade
   has not been judged, and "not judged" must not read as "not serious".
 - **The waiver** is the frontmatter pair `deferred_after` plus
-  `deferral_reason`, both schema-accepted keys. `deferred_after` names the cut's
+  `deferral_reason`, both schema-accepted keys, written by the ledger's deferral
+  verb ([`06-capture.md`](06-capture.md)). `deferred_after` names the cut's
   **anchor** tag, not the version being derived, which is what makes a waiver
   single-use: the anchor moves at the next release and every waiver written
   against the old one lapses, so a deferred finding is re-asked rather than

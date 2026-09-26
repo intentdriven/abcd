@@ -192,7 +192,7 @@ func Link(req LinkRequest) (LinkResult, error) {
 		// In place, atomic — the file keeps its status directory. The write
 		// happens under the same lock as the re-read, so no checksum window
 		// exists between them.
-		if err := fsutil.WriteFileAtomicPreserveMode(src, []byte(newContent)); err != nil {
+		if err := writeLedgerFile(repoRoot, issuesRoot, src, []byte(newContent)); err != nil {
 			return err
 		}
 		result = LinkResult{ID: req.ID, Path: src, BlockedBy: next}

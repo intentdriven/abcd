@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // mintLockTimeout bounds how long CreateFromText waits for the intent-store mint
@@ -266,9 +267,13 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	if err != nil {
 		return Intent{}, err
 	}
-	opts.Title = rTitle
-	opts.PressRelease = rPress
-	opts.SeedBody = rBody
+	// Hidden runes — a bidi override, a zero-width rune, a C1 control, DEL — are
+	// percent-encoded at the same boundary, after redaction, with termsafe's one
+	// encoder for committed records (iss-2608301206073609). The title is one
+	// line; the press release and body keep their line structure.
+	opts.Title = termsafe.EncodeHiddenRunes(rTitle)
+	opts.PressRelease = termsafe.EncodeHiddenRunesBlock(rPress)
+	opts.SeedBody = termsafe.EncodeHiddenRunesBlock(rBody)
 
 	var created Intent
 	err = withIntentMintLock(repoRoot, func() error {

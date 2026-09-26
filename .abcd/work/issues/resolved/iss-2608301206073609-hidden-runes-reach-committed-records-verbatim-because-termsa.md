@@ -7,6 +7,10 @@ category: "security"
 source: "user-observation"
 found_during: "itd-179-round-2-security"
 found_at: "internal/termsafe/termsafe.go"
+resolution: "Hidden runes are percent-encoded at the record-write boundary: termsafe.EncodeHiddenRunesBlock for multi-line text and EncodeHiddenRunes for a single line, applied after redaction to the capture body, found_at and found_during, the resolution and wontfix note, every grounds entry through grounds.New and grounds.NewDerived, and the intent draft title, press release and body at CreateDraft."
+impact: fix
+resolved_by:
+  commit: "166d35ac"
 ---
 
 hidden runes reach committed records verbatim because termsafe.EncodeHiddenRunes is not applied at the record-write boundary
@@ -38,3 +42,7 @@ radius (every record-writing path), which is why it is captured open rather
 than folded into itd-179. Note the interaction: applying EncodeHiddenRunes at
 the grounds boundary would also close the invisibility half of
 iss-2608301206034359.
+
+## Grounds
+
+- pursued: no committed ledger or intent record can carry a bidi override or zero-width rune verbatim again; a record written through any of these verbs still holding one raw would show it wrong

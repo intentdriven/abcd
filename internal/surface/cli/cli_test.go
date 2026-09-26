@@ -660,7 +660,9 @@ func TestCaptureLinkWiredEndToEnd(t *testing.T) {
 	}
 
 	// Plain render: one line naming the id and the list after the write.
-	plain := string(runCLI(t, "capture", "link", r2.ID, "--unblock", r1.ID))
+	// The harness merges stderr, where every capture verb names the ledger it
+	// addressed (iss-2609202053570475); the render under test is stdout's.
+	plain := withoutLedgerLine(string(runCLI(t, "capture", "link", r2.ID, "--unblock", r1.ID)))
 	if n := strings.Count(strings.TrimRight(plain, "\n"), "\n"); n != 0 {
 		t.Fatalf("plain render is not one line:\n%s", plain)
 	}

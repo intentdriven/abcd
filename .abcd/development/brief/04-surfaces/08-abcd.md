@@ -45,7 +45,10 @@ form.
 and the concrete next move for its lifecycle state. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). A positional on the namespace root is not a `show` sub-verb, so the
-form stays inside the naming discipline.
+form stays inside the naming discipline. For an issue id it also names the
+checkout and branch whose ledger it read, as every ledger verb does: a stderr
+line in the plain render and a `ledger` member in the machine-readable one
+(iss-2609202053570475).
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is

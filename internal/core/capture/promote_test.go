@@ -758,22 +758,11 @@ func promoteOrphanRemedyRunsAsPrinted(t *testing.T, grounds string) {
 		t.Fatal("stamp into an unwritable ledger must fail")
 	}
 
-	const lead = "complete the link with `"
-	msg := err.Error()
-	start := strings.Index(msg, lead)
-	if start < 0 {
-		t.Fatalf("orphan report carries no remedy: %v", err)
-	}
-	rest := msg[start+len(lead):]
-	// The LAST backtick, not the first: the message delimits the remedy with
-	// backticks, and grounds may legitimately contain one — which the first-hit
-	// search truncated the remedy at, mid-argument (captured separately as the
-	// message's own ambiguity; the remedy runs correctly when copied whole).
-	end := strings.LastIndex(rest, "`")
-	if end < 0 {
-		t.Fatalf("remedy is not closed: %v", err)
-	}
-	words := shellWords(t, rest[:end])
+	// The remedy is read as the code span it is delimited as (remedySpan), by
+	// the CommonMark rule a renderer applies: grounds may carry a backtick, and
+	// the fence is chosen so they cannot close it (iss-2609020154474224).
+	span := remedySpan(t, err.Error(), "complete the link with ")
+	words := shellWords(t, span)
 	if len(words) < 4 || words[0] != "abcd" || words[1] != "capture" || words[2] != "promote" || words[3] != issID {
 		t.Fatalf("remedy is not `abcd capture promote %s ...`: %q", issID, words)
 	}
@@ -798,7 +787,7 @@ func promoteOrphanRemedyRunsAsPrinted(t *testing.T, grounds string) {
 	}
 	res, err := Promote(req)
 	if err != nil {
-		t.Fatalf("the remedy as printed refused: %v\nremedy: %s", err, rest[:end])
+		t.Fatalf("the remedy as printed refused: %v\nremedy: %s", err, span)
 	}
 	if !res.Linked || res.IntentID != req.LinkIntent {
 		t.Fatalf("the remedy must link the orphan draft, got %+v", res)

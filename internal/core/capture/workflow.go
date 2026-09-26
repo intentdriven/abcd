@@ -11,9 +11,11 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // mutationPreamble runs the idempotent pre-mutation steps: sweep orphan
@@ -26,7 +28,7 @@ import (
 // a commit's fill and delete a just-committed issue file.
 func mutationPreamble(repoRoot, issuesRoot string) error {
 	if err := withLedgerLock(repoRoot, issuesRoot, func() error {
-		return cleanOrphanPlaceholders(issuesRoot)
+		return cleanOrphanPlaceholders(repoRoot, issuesRoot)
 	}); err != nil {
 		return err
 	}
@@ -39,6 +41,13 @@ func mutationPreamble(repoRoot, issuesRoot string) error {
 func Capture(req CaptureRequest) (CaptureResult, error) {
 	repoRoot, issuesRoot, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
+		return CaptureResult{}, err
+	}
+	// The closed enumerations are judged as REQUEST members first, so a value
+	// the caller passed is refused in terms of the request and its accepted set
+	// rather than as malformed frontmatter the caller never wrote
+	// (iss-2608290810037524). Nothing has been written yet.
+	if err := validateRequestEnums(req); err != nil {
 		return CaptureResult{}, err
 	}
 	// A found_at that names a path must name one in THIS checkout
@@ -93,6 +102,16 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	// Hidden runes — a bidi override, a zero-width rune, a C1 control, DEL — are
+	// percent-encoded in the free text the record commits (iss-2608301206073609),
+	// with termsafe's one encoder for that boundary. It runs AFTER the slug is
+	// derived, because the slug derivation already drops them as separators and
+	// an encoded form would put its hex digits into the filename. The line feed
+	// and tab stay as they are: the body's structure is not a hidden rune, and a
+	// scalar carrying one is still refused by the serialiser as before.
+	req.Text = termsafe.EncodeHiddenRunesBlock(req.Text)
+	req.FoundAt = termsafe.EncodeHiddenRunesBlock(req.FoundAt)
+	req.FoundDuring = termsafe.EncodeHiddenRunesBlock(req.FoundDuring)
 
 	// The mint is timestamp-numeric (adr-45; mechanics per spc-33): it consults
 	// no maximum, so the refs-union scan the max+1 allocator needed (iss-115,
@@ -105,14 +124,36 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 
 	result, err := commitCapture(repoRoot, issuesRoot, req, issID, slugNorm, placeholder)
 	if err != nil {
-		_ = cancelReservation(placeholder)
+		_ = cancelReservation(repoRoot, issuesRoot, placeholder)
 		return CaptureResult{}, err
 	}
 	result.Redacted, result.Degraded = redacted, degraded
+	result.NoLocation = strings.TrimSpace(req.FoundAt) == ""
 	// Machine output carries a repo-relative locator, never an absolute
 	// developer-identity path (iss-81).
 	result.Path = fsutil.RepoRel(repoRoot, result.Path)
+	// The write says whether the record is committed: it never is yet, and a
+	// record held only as an untracked file reaches no other branch and no gate
+	// (iss-2609100508570527).
+	if set, ok := uncommittedLedgerPaths(repoRoot, issuesRoot); ok {
+		result.Uncommitted = set[filepath.ToSlash(result.Path)]
+	}
 	return result, nil
+}
+
+// validateRequestEnums refuses a severity, category or source outside its
+// closed vocabulary, naming the member and the accepted set — the same sets,
+// from core/issueschema, the record validator reads.
+func validateRequestEnums(req CaptureRequest) error {
+	switch {
+	case !validSeverities[req.Severity]:
+		return &FieldValueError{Field: "severity", Value: string(req.Severity), Accepted: issueschema.Severities}
+	case !validCategories[req.Category]:
+		return &FieldValueError{Field: "category", Value: string(req.Category), Accepted: issueschema.Categories}
+	case !validSources[req.Source]:
+		return &FieldValueError{Field: "source", Value: string(req.Source), Accepted: issueschema.Sources}
+	}
+	return nil
 }
 
 func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
@@ -209,7 +250,13 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		if checksum != emptyChecksum {
 			return fmt.Errorf("%w: placeholder %s changed since reservation", ErrChecksumMismatch, placeholder)
 		}
-		if werr := fsutil.WriteFileAtomicPreserveMode(placeholder, []byte(content)); werr != nil {
+		if ledgerRaceHook != nil {
+			ledgerRaceHook("write", placeholder)
+		}
+		// Written inside the ledger's os.Root (iss-2609012037143368): an ancestor
+		// swapped since the re-read above cannot carry the record out of the
+		// checkout.
+		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
 			return werr
 		}
 		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen}
@@ -316,7 +363,9 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 		if !reItdID.MatchString(req.ByIntent) {
 			return nil, fmt.Errorf("resolve: --intent %q does not match ^itd-[0-9]+$; nothing written", req.ByIntent)
 		}
-		if _, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.ByIntent); !ok {
+		if _, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.ByIntent); err != nil {
+			return nil, fmt.Errorf("resolve: --intent %s: %w; nothing written", req.ByIntent, err)
+		} else if !ok {
 			return nil, fmt.Errorf("resolve: --intent %s not found in the intent store; nothing written", req.ByIntent)
 		}
 	}
@@ -324,7 +373,9 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 		if !reSpcID.MatchString(req.BySpec) {
 			return nil, fmt.Errorf("resolve: --spec %q does not match ^spc-[0-9]+$; nothing written", req.BySpec)
 		}
-		if _, ok := findRecordFile(repoRoot, specStoreRelDirs(), req.BySpec); !ok {
+		if _, ok, err := findRecordFile(repoRoot, specStoreRelDirs(), req.BySpec); err != nil {
+			return nil, fmt.Errorf("resolve: --spec %s: %w; nothing written", req.BySpec, err)
+		} else if !ok {
 			return nil, fmt.Errorf("resolve: --spec %s not found in the spec store; nothing written", req.BySpec)
 		}
 	}
@@ -410,10 +461,22 @@ func restampField(fm map[string]any, issID, mode string) ([]kv, error) {
 	if mode == "" {
 		return nil, nil
 	}
-	if asString(fm[provenance.KeyOrigin]) == "" {
+	origin := asString(fm[provenance.KeyOrigin])
+	if origin == "" {
 		return nil, fmt.Errorf(
 			"%s carries no %s, so it predates disclosure and there is nothing to restamp: the pair is written together or not at all, and a lone %s is a state no command produces (nothing written — re-run without --production-mode)",
 			issID, provenance.KeyOrigin, provenance.KeyProductionMode)
+	}
+	// The origin is PARSED, not merely found present (iss-2608300941548519): a
+	// restamp beside an origin outside the vocabulary writes a pair no command
+	// produces, which is the state this gate exists to keep a command from
+	// writing. A record carrying a valid origin and no production_mode is the
+	// other half of that question, and it is allowed: the restamp completes it
+	// into the pair a command writes.
+	if _, err := provenance.ParseOrigin(origin); err != nil {
+		return nil, fmt.Errorf(
+			"%s carries %s %q, which is outside the vocabulary, so a restamp would write a pair no command produces: correct the %s first (nothing written — or re-run without --production-mode): %w",
+			issID, provenance.KeyOrigin, origin, provenance.KeyOrigin, err)
 	}
 	m, err := provenance.ParseMode(mode)
 	if err != nil {
@@ -482,6 +545,9 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		// redacted — before it is written into the record, never after, so no
 		// rewritten span can reach a field the validator has already passed.
 		redNote, redacted, degraded := redactLedgerText(rr, note)
+		// Hidden runes are encoded at the record boundary, as the capture body's
+		// are (iss-2608301206073609).
+		redNote = termsafe.EncodeHiddenRunesBlock(redNote)
 		newContent, err := setScalarField(content, field, redNote)
 		if err != nil {
 			return err
@@ -519,7 +585,7 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 			return err
 		}
 
-		if err := commitTransition(src, dst, newContent, checksum); err != nil {
+		if err := commitTransition(rr, ir, src, dst, newContent, checksum); err != nil {
 			return err
 		}
 		result = TransitionResult{ID: issID, Path: dst, FromStatus: StateOpen, ToStatus: target,
@@ -573,7 +639,7 @@ var removeSourceHook func(path string) error
 // dir, so a stranded copy could never again be transitioned without manual
 // repair. Rolling back restores the pre-call state (src present, dst absent)
 // so the caller can simply retry once the underlying failure clears.
-func commitTransition(src, dst, newContent, expected string) error {
+func commitTransition(repoRoot, issuesRoot, src, dst, newContent, expected string) error {
 	_, current, err := readWithChecksum(src)
 	if os.IsNotExist(err) {
 		return fmt.Errorf("%w: %s move source missing", ErrTransitionConflict, src)
@@ -584,15 +650,17 @@ func commitTransition(src, dst, newContent, expected string) error {
 	if current != expected {
 		return fmt.Errorf("%w: %s changed since it was read", ErrChecksumMismatch, src)
 	}
-	if err := fsutil.WriteFileAtomicPreserveMode(dst, []byte(newContent)); err != nil {
+	// The write and both removals resolve inside the ledger's os.Root
+	// (iss-2609012037143368).
+	if err := writeLedgerFile(repoRoot, issuesRoot, dst, []byte(newContent)); err != nil {
 		return err
 	}
-	removeSrc := os.Remove
+	removeSrc := func(p string) error { return removeLedgerFile(repoRoot, issuesRoot, p) }
 	if removeSourceHook != nil {
 		removeSrc = removeSourceHook
 	}
 	if err := removeSrc(src); err != nil && !os.IsNotExist(err) {
-		if rbErr := os.Remove(dst); rbErr != nil && !os.IsNotExist(rbErr) {
+		if rbErr := removeLedgerFile(repoRoot, issuesRoot, dst); rbErr != nil && !os.IsNotExist(rbErr) {
 			return fmt.Errorf("%w (rollback of %s also failed: %v)", err, dst, rbErr)
 		}
 		return err
@@ -622,6 +690,9 @@ func List(req ListRequest) (ListResult, error) {
 	sortIssues(issues)
 	prioritise(issues, openIDSet(ir))
 	relativiseLedgerPaths(repoRoot, issues, skipped)
+	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
+		markUncommitted(set, issues)
+	}
 	// A --json collection is an empty list, never bare null: a consumer that
 	// iterates the rows (the capture.md contract) errors on null.
 	if issues == nil {
@@ -668,6 +739,10 @@ func Status(req StatusRequest) (StatusResult, error) {
 	res.ResolvedCount = len(resolved)
 	res.WontfixCount = len(wontfix)
 	res.Skipped = append(append(append([]SkipRecord{}, skOpen...), skRes...), skWf...)
+	res.SkippedCount = len(res.Skipped)
+	// Every readable record, before the recent-open slice is cut, for the
+	// uncommitted count below.
+	every := append(append(append([]Issue{}, open...), resolved...), wontfix...)
 
 	// The same predicate List uses, over the scan already in hand: skOpen carries
 	// the records open/ holds and the reader refused, and they block too.
@@ -684,6 +759,13 @@ func Status(req StatusRequest) (StatusResult, error) {
 	}
 	res.RecentOpen = open
 	relativiseLedgerPaths(repoRoot, res.RecentOpen, res.Skipped)
+	// Uncommitted records are counted over every readable record and marked on
+	// the rows the board shows (iss-2609100508570527).
+	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
+		relativiseLedgerPaths(repoRoot, every, nil)
+		res.UncommittedCount = markUncommitted(set, every)
+		markUncommitted(set, res.RecentOpen)
+	}
 	return res, nil
 }
 
@@ -805,7 +887,7 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 				// frontmatter agreement, below in validateInvariants — but that is a
 				// judgement on a record, not the question of whether one exists.
 				if filepath.Ext(name) == ".md" && reIssNameClaim.MatchString(name) {
-					skipped = append(skipped, SkipRecord{Path: path, Error: fmt.Errorf(
+					skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerName, Error: fmt.Errorf(
 						"%w: filename %q is not a well-formed record name (iss-N[-slug].md)",
 						ErrInvariantViolation, name).Error()})
 				}
@@ -821,20 +903,20 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 			// surfaces already render, never a hang and never serialized.
 			content, err := readRecordGuarded(path)
 			if err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerRead, Error: err.Error()})
 				continue
 			}
 			fm, body, err := parseFrontmatterAndBody(content)
 			if err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerFrontmatter, Error: err.Error()})
 				continue
 			}
 			if err := validateStrict(fm); err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerSchema, Error: err.Error()})
 				continue
 			}
 			if err := validateInvariants(fm, sub, path); err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Error: err.Error()})
+				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerInvariant, Error: err.Error()})
 				continue
 			}
 			issues = append(issues, issueFromFrontmatter(fm, sub, path, body))

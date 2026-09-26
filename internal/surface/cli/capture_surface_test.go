@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The three tests below are iss-29's acceptance corpus for the
@@ -474,6 +477,132 @@ func TestCaptureStatusBoardRendersSkipped(t *testing.T) {
 	board := string(runCLI(t, "capture"))
 	if !strings.Contains(board, "skipped") || !strings.Contains(board, "iss-900-stripped.md") {
 		t.Fatalf("the status board must render the skipped roster:\n%s", board)
+	}
+}
+
+// TestCaptureStatusBoardCountsWhatItSkippedAndNamesTheLayer is the surface half
+// of iss-2609120452071388: the board's totals exclude a refused record, so the
+// header must count what it excluded beside what it counted, and each skipped
+// line must name the reader layer that refused it — the difference between a
+// record abcd wrote wrongly and a record the schema has outgrown.
+func TestCaptureStatusBoardCountsWhatItSkippedAndNamesTheLayer(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	runCLI(t, "capture", "a well formed observation", "--slug", "fine", "--json")
+	bad := filepath.Join(repo, ".abcd", "work", "issues", "open", "iss-901-hunted.md")
+	if err := os.WriteFile(bad, []byte(
+		"---\nschema_version: 1\nid: iss-901\nslug: hunted\nseverity: minor\ncategory: bug\nsource: autonomous-hunt\nfound_during: t\n---\n\nan issue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	board := string(runCLI(t, "capture"))
+	if !strings.Contains(board, "open 1 · resolved 0 · wontfix 0 · skipped 1") {
+		t.Fatalf("the board header must count the skipped record beside the totals:\n%s", board)
+	}
+	if !strings.Contains(board, "skipped .abcd/work/issues/open/iss-901-hunted.md (refused by the schema layer)") {
+		t.Fatalf("the skipped line must name the layer that refused the record:\n%s", board)
+	}
+
+	var env struct {
+		SkippedCount int `json:"skipped_count"`
+		Skipped      []struct {
+			Layer string `json:"layer"`
+		} `json:"skipped"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "--json"), &env); err != nil {
+		t.Fatal(err)
+	}
+	if env.SkippedCount != 1 || len(env.Skipped) != 1 || env.Skipped[0].Layer != "schema" {
+		t.Fatalf("--json must carry skipped_count and each skip's layer, got %+v", env)
+	}
+}
+
+// TestCaptureSaysTheRecordIsUncommitted is the surface half of
+// iss-2609100508570527: the write says the record is not in git yet, and the
+// status board marks the row and counts the uncommitted records.
+func TestCaptureSaysTheRecordIsUncommitted(t *testing.T) {
+	captureLedgerRepo(t)
+	out := string(runCLI(t, "capture", "a finding nobody has committed", "--slug", "loose"))
+	if !strings.Contains(out, "uncommitted: the record is not in git yet") {
+		t.Fatalf("the write does not say the record is uncommitted:\n%s", out)
+	}
+	board := string(runCLI(t, "capture"))
+	if !strings.Contains(board, "  loose [uncommitted]") {
+		t.Fatalf("the board does not mark the uncommitted row:\n%s", board)
+	}
+	if !strings.Contains(board, "1 record(s) not committed") {
+		t.Fatalf("the board does not count the uncommitted records:\n%s", board)
+	}
+}
+
+// TestCaptureDeferWritesTheWaiver is the surface half of iss-2609181223260994:
+// the verb is reachable from the CLI, writes the waiver onto an open major
+// record, and says the waiver lapses at the next re-anchor.
+func TestCaptureDeferWritesTheWaiver(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	tag := exec.Command("git", "-C", repo, "tag", "v0.2.0")
+	tag.Env = gittest.Env(t)
+	if out, err := tag.CombinedOutput(); err != nil {
+		t.Fatalf("git tag: %v (%s)", err, out)
+	}
+	var rec struct {
+		ID   string `json:"id"`
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "a major finding to carry", "--severity", "major", "--json"), &rec); err != nil {
+		t.Fatal(err)
+	}
+	out := string(runCLI(t, "capture", "defer", rec.ID, "--after", "v0.2.0", "--reason", "the fix lands with the next schema"))
+	if !strings.Contains(out, rec.ID+"  deferred past v0.2.0 (stays open)") || !strings.Contains(out, "lapses when the next release re-anchors") {
+		t.Fatalf("unexpected defer render:\n%s", out)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(rec.Path)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "deferred_after: v0.2.0") || !strings.Contains(string(body), "## Deferral ") {
+		t.Fatalf("the record does not carry the waiver:\n%s", body)
+	}
+	if _, err := runCLIErr(t, "capture", "defer", rec.ID, "--after", "v0.2.0"); err == nil {
+		t.Fatal("a deferral with no --reason must be refused")
+	}
+}
+
+// TestEveryCaptureVerbNamesTheLedgerItAddressed is iss-2609202053570475: the
+// ledger is per checkout, so a record filed in one worktree is "not found" in
+// another with nothing saying which ledger was read. Every capture verb names
+// the checkout and branch it addressed — on stderr in the text render, as a
+// `ledger` member in --json.
+func TestEveryCaptureVerbNamesTheLedgerItAddressed(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	runCLI(t, "capture", "a first observation for the ledger", "--slug", "first")
+
+	text := string(runCLI(t, "capture", "list", "--open"))
+	if !strings.Contains(text, "abcd capture: ledger of ") || !strings.Contains(text, "on branch main") {
+		t.Fatalf("the text render does not name the ledger it addressed:\n%s", text)
+	}
+	for _, args := range [][]string{
+		{"capture", "--json"},
+		{"capture", "list", "--open", "--json"},
+		{"capture", "another observation for the ledger", "--json"},
+	} {
+		var env struct {
+			Ledger struct {
+				Checkout string `json:"checkout"`
+				Branch   string `json:"branch"`
+			} `json:"ledger"`
+		}
+		out := runCLI(t, args...)
+		if err := json.Unmarshal(out, &env); err != nil {
+			t.Fatalf("%v: not JSON: %v\n%s", args, err, out)
+		}
+		if env.Ledger.Branch != "main" || !strings.HasSuffix(env.Ledger.Checkout, filepath.Base(repo)) {
+			t.Fatalf("%v: ledger member = %+v, want the checkout %s on main", args, env.Ledger, filepath.Base(repo))
+		}
+		if strings.Contains(string(out), "abcd capture: ledger of ") {
+			t.Fatalf("%v: the --json render also printed the text line", args)
+		}
 	}
 }
 
@@ -1136,5 +1265,98 @@ func TestCaptureFarMissProseStillWrites(t *testing.T) {
 	runCLI(t, "capture", "nosuchverb", "the", "release", "gate", "before", "cutting")
 	if n := ledgerIssueCount(t, repo); n != 1 {
 		t.Fatalf("prose after an unknown first word wrote %d issue(s), want 1", n)
+	}
+}
+
+// withoutLedgerLine drops the stderr line every capture verb's text render
+// writes naming the ledger it addressed, for a test whose harness merges stderr
+// into the render it asserts on.
+func withoutLedgerLine(s string) string {
+	var keep []string
+	for _, ln := range strings.SplitAfter(s, "\n") {
+		if !strings.HasPrefix(ln, "abcd capture: ledger of ") {
+			keep = append(keep, ln)
+		}
+	}
+	return strings.Join(keep, "")
+}
+
+// TestRecordDispatcherNamesTheLedgerForAnIssue: `abcd iss-N` reads the ledger
+// too, so it names the checkout and branch it read, like every capture verb
+// (iss-2609202053570475).
+func TestRecordDispatcherNamesTheLedgerForAnIssue(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	var rec struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "an observation to describe", "--json"), &rec); err != nil {
+		t.Fatal(err)
+	}
+	var env struct {
+		Ledger struct {
+			Branch string `json:"branch"`
+		} `json:"ledger"`
+	}
+	out := runCLI(t, rec.ID, "--json")
+	if err := json.Unmarshal(out, &env); err != nil || env.Ledger.Branch != "main" {
+		t.Fatalf("abcd %s --json names no ledger: %v\n%s", rec.ID, err, out)
+	}
+	if text := string(runCLI(t, rec.ID)); !strings.Contains(text, "abcd: ledger of ") {
+		t.Fatalf("abcd %s names no ledger in its text render:\n%s", rec.ID, text)
+	}
+}
+
+// TestCaptureWithoutFoundAtSaysNoLocationWasNamed is iss-2609231156260287:
+// a capture with no --found-at is legitimate and is written as before, but the
+// verb says the record names no location in this checkout — on stderr, and as
+// no_location in --json. A capture naming one says nothing of the kind.
+func TestCaptureWithoutFoundAtSaysNoLocationWasNamed(t *testing.T) {
+	captureLedgerRepo(t)
+	out := string(runCLI(t, "capture", "a process observation with no file", "--slug", "nowhere"))
+	if !strings.Contains(out, "names no location in this checkout") {
+		t.Fatalf("a capture with no --found-at did not say so:\n%s", out)
+	}
+	var res struct {
+		NoLocation bool `json:"no_location"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "another process observation here", "--json"), &res); err != nil || !res.NoLocation {
+		t.Fatalf("--json does not carry no_location: %v %+v", err, res)
+	}
+	if err := os.WriteFile("placed.go", []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	with := string(runCLI(t, "capture", "a finding about one file", "--found-at", "placed.go"))
+	if strings.Contains(with, "names no location") {
+		t.Fatalf("a capture naming a location still said it named none:\n%s", with)
+	}
+}
+
+// TestCaptureEnumRefusalNamesTheFlagAndItsSet is iss-2608290810037524: a
+// closed-set flag's refusal named the value and blamed "malformed
+// frontmatter" — a layer the caller never wrote. It names the flag and the
+// accepted set instead, for every closed enumeration on the capture path, and
+// writes nothing.
+func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	for _, c := range []struct{ flag, value, member string }{
+		{"--severity", "medium", "critical"},
+		{"--category", "test-flake", "future-work-seed"},
+		{"--source", "ci-signal", "agent-finding"},
+	} {
+		out, err := runCLIErr(t, "capture", "a finding with a guessed value", c.flag, c.value)
+		if err == nil {
+			t.Fatalf("%s %s was accepted:\n%s", c.flag, c.value, out)
+		}
+		msg := err.Error() + string(out)
+		if !strings.Contains(msg, c.flag+" \""+c.value+"\"") || !strings.Contains(msg, c.member) {
+			t.Errorf("%s refusal does not name the flag and its accepted set: %s", c.flag, msg)
+		}
+		if strings.Contains(msg, "malformed frontmatter") {
+			t.Errorf("%s refusal blames frontmatter the caller never wrote: %s", c.flag, msg)
+		}
+	}
+	if n := ledgerIssueCount(t, repo); n != 0 {
+		t.Fatalf("refused captures wrote %d record(s)", n)
 	}
 }

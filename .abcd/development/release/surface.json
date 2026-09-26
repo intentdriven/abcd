@@ -361,6 +361,27 @@
       ]
     },
     {
+      "path": "abcd capture defer",
+      "hidden": false,
+      "sentence": "Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
+      "flags": [
+        {
+          "name": "after",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture disposition",
       "hidden": false,
       "sentence": "Answer one reading item with a disposition record: Writes the record keyed to the item; refuses a second answer without --supersedes.",

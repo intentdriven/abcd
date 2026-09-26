@@ -7,6 +7,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -237,7 +238,24 @@ func NewRootCommand() *cobra.Command {
 					// (itd-2609091416295622): the consult runs only now.
 					return peerHeldRefusal(cwd, "", args[0], err)
 				}
-				return render(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
+				// An issue is read from this checkout's ledger, so the answer
+				// names that ledger as every capture verb does
+				// (iss-2609202053570475): the same id may sit in another
+				// worktree's ledger, in another state.
+				emit := render
+				if strings.HasPrefix(args[0], "iss-") {
+					if root, rerr := capture.LedgerRoot(cwd); rerr == nil {
+						if !asJSON {
+							id := ledgerIdentityOf(root)
+							fmt.Fprintf(cmd.ErrOrStderr(), "abcd: ledger of %s%s\n",
+								termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+						}
+						emit = func(w io.Writer, asJSON bool, v any, text func(io.Writer)) error {
+							return renderLedger(w, asJSON, root, v, text)
+						}
+					}
+				}
+				return emit(cmd.OutOrStdout(), asJSON, d, func(w io.Writer) {
 					// Title and link values come from record files a hostile
 					// clone can shape — sanitise before the terminal.
 					fmt.Fprintf(w, "%s (%s, %s) — %s\n", d.ID, d.Family, d.Status, termsafe.Sanitize(d.Title))
@@ -3397,7 +3415,86 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 	for _, note := range strayStoreNotes(cwd, root, capture.LedgerRelPath, "ledger") {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: %s\n", termsafe.Sanitize(note))
 	}
+	// The ledger is per checkout, so every verb says which one it addressed
+	// (iss-2609202053570475): a record filed in another worktree is otherwise
+	// "not found" here with nothing naming where "here" is. The text render
+	// says it on stderr, before the verb runs, so a refusal carries it too;
+	// --json carries it as the envelope's `ledger` member instead
+	// (renderLedger).
+	if asJSON, _ := cmd.Flags().GetBool("json"); !asJSON {
+		id := ledgerIdentityOf(root)
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: ledger of %s%s\n",
+			termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+	}
 	return root, nil
+}
+
+// ledgerIdentity names the checkout whose ledger a verb addressed and the
+// branch checked out there (iss-2609202053570475). The checkout is home-
+// relative where it can be, so the line carries no developer-identity path.
+type ledgerIdentity struct {
+	Checkout string `json:"checkout"`
+	Branch   string `json:"branch"`
+}
+
+// ledgerIdentityOf reads root's identity: its home-redacted path, and the
+// branch git reports ("HEAD" when detached, "" when git cannot answer).
+func ledgerIdentityOf(root string) ledgerIdentity {
+	// symbolic-ref answers on an unborn branch too, where rev-parse cannot; it
+	// fails only when HEAD is detached, which rev-parse then names.
+	branch, err := gitutil.Run(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		if head, herr := gitutil.Run(root, "rev-parse", "--abbrev-ref", "HEAD"); herr == nil {
+			branch = head
+		} else {
+			branch = ""
+		}
+	}
+	return ledgerIdentity{Checkout: fsutil.RedactHome(root), Branch: branch}
+}
+
+// branchPhrase renders the branch half of the identity line.
+func branchPhrase(branch string) string {
+	switch branch {
+	case "":
+		return " (branch unknown)"
+	case "HEAD":
+		return " (detached HEAD)"
+	}
+	return " on branch " + termsafe.Sanitize(branch)
+}
+
+// renderLedger is render for a capture verb: the --json envelope gains a
+// `ledger` member naming the checkout and branch addressed, appended after the
+// result's own members, and the text render is unchanged (captureLedgerRoot has
+// already said it on stderr).
+func renderLedger(w io.Writer, asJSON bool, root string, v any, text func(io.Writer)) error {
+	if !asJSON {
+		text(w)
+		return nil
+	}
+	body, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	ident, err := json.Marshal(ledgerIdentityOf(root))
+	if err != nil {
+		return err
+	}
+	if n := len(body); n >= 2 && body[0] == '{' && body[n-1] == '}' {
+		sep := ","
+		if n == 2 {
+			sep = ""
+		}
+		body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, body, "", "  "); err != nil {
+		return err
+	}
+	buf.WriteByte('\n')
+	_, err = w.Write(buf.Bytes())
+	return err
 }
 
 // strayStoreNotes names a record store sitting BELOW the checkout root, between
@@ -3496,14 +3593,23 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return render(cmd.OutOrStdout(), *asJSON, board, func(w io.Writer) {
-					fmt.Fprintf(w, "abcd capture — open %d · resolved %d · wontfix %d\n",
-						st.OpenCount, st.ResolvedCount, st.WontfixCount)
+				return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, board, func(w io.Writer) {
+					// A refused record is in none of the three totals, so the header
+					// counts it beside them (iss-2609120452071388): the reader sees
+					// what the board excluded in the same line as what it counted.
+					fmt.Fprintf(w, "abcd capture — open %d · resolved %d · wontfix %d%s\n",
+						st.OpenCount, st.ResolvedCount, st.WontfixCount, skippedTally(st.SkippedCount))
 					if len(st.RecentOpen) > 0 {
 						fmt.Fprintf(w, "recent open:\n")
 						for _, iss := range st.RecentOpen {
-							fmt.Fprintf(w, "  %s  %s  %s%s\n", iss.ID, iss.Severity, iss.Slug, blockedNote(iss))
+							fmt.Fprintf(w, "  %s  %s  %s%s%s\n", iss.ID, iss.Severity, iss.Slug, uncommittedNote(iss), blockedNote(iss))
 						}
+					}
+					// A record held only as an untracked or changed file is in no
+					// state to anyone but this checkout (iss-2609100508570527), so
+					// the board counts them rather than list them as equals.
+					if st.UncommittedCount > 0 {
+						fmt.Fprintf(w, "  %d record(s) not committed — no other branch, worktree or gate reads them until they are\n", st.UncommittedCount)
 					}
 					// The skipped roster, exactly as `capture list` renders it
 					// (iss-2608261437041050): a record the reader refuses is counted
@@ -3512,7 +3618,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					// the records it dropped. Path and Error echo the malformed file's
 					// own name and bytes, so both are sanitised before the terminal.
 					for _, sk := range st.Skipped {
-						fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+						fmt.Fprint(w, skippedLine(sk))
 					}
 					// Beside the skipped roster, and for the same reason it is
 					// there: a record the board does not name is one nobody is
@@ -3626,10 +3732,28 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// record must carry.
 			res, err := capture.Capture(req)
 			if err != nil {
+				// A closed-set value is the caller's flag, so the refusal names
+				// the flag and the set it accepts (iss-2608290810037524).
+				var fv *capture.FieldValueError
+				if errors.As(err, &fv) {
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: --%s %q is not accepted; accepted values: %s (nothing captured)",
+						fv.Field, fv.Value, enumHelp(fv.Accepted))}
+				}
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				// Folder membership is a status only once the file is committed
+				// (iss-2609100508570527): say so at the write, where it is cheap.
+				if res.Uncommitted {
+					fmt.Fprintf(w, "  uncommitted: the record is not in git yet — commit it, or no other branch, worktree or gate will see it\n")
+				}
+				// A nudge, never a refusal (iss-2609231156260287): a capture with
+				// no location is legitimate, and it is also the shape a finding
+				// filed into the wrong repository has.
+				if res.NoLocation {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: no --found-at given — the record names no location in this checkout, so nothing ties it to the repository it is filed into\n")
+				}
 				// Redaction alters what the caller filed, so it is never silent: the
 				// text on disk differs from the text handed in, and only the caller
 				// can judge whether the redacted record still says what they meant.
@@ -3682,14 +3806,14 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
 					fmt.Fprintf(w, "%s  %s  %s  %s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss))
 				}
 				for _, sk := range res.Skipped {
 					// Path and Error echo a malformed issue file's own name and content
 					// (err.Error() carries offending bytes), so sanitise before the terminal.
-					fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+					fmt.Fprint(w, skippedLine(sk))
 				}
 			})
 		},
@@ -3718,7 +3842,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
 					termsafe.Sanitize(res.Ref), res.OpenRecords, res.Commits, len(res.Rows))
 				for _, row := range res.Rows {
@@ -3732,7 +3856,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 						termsafe.Sanitize(top.Subject), moreEvidenceNote(len(row.Evidence)))
 				}
 				for _, sk := range res.Skipped {
-					fmt.Fprintf(w, "  skipped %s: %s\n", termsafe.Sanitize(sk.Path), termsafe.Sanitize(sk.Error))
+					fmt.Fprint(w, skippedLine(sk))
 				}
 				if len(res.Rows) > 0 {
 					fmt.Fprintf(w, "\nA mention is not a fix. Read the commit, then resolve what it fixed:\n"+
@@ -3770,7 +3894,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return groundsUsageError("resolve", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture resolve", res.RelinkError, "record-lint's links_resolve names each link left behind")
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s%s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path), resolvedByNote(res.ResolvedBy))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 				emitRelinked(w, res.Relinked)
@@ -3824,7 +3948,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				list := "[]"
 				if len(res.BlockedBy) > 0 {
 					list = "[" + strings.Join(res.BlockedBy, ", ") + "]"
@@ -3873,7 +3997,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return groundsUsageError("promote", err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
 				if res.Linked {
 					verb = "linked"
@@ -3916,7 +4040,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd capture migrate: " + err.Error()}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				mode := "report only — nothing was written; re-run with --apply to write"
 				if res.Applied {
 					mode = "applied"
@@ -3971,7 +4095,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s %s (%s) — %s\n",
 					res.ID, res.Item, res.State, res.Position, termsafe.Sanitize(res.Path))
 				if res.Redacted > 0 {
@@ -4021,7 +4145,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return groundsUsageError("wontfix", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path))
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 				emitRelinked(w, res.Relinked)
@@ -4036,6 +4160,38 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	wontfixCmd.Flags().StringVar(&wontfixProductionMode, "production-mode", "",
 		"restamp how this record's text was produced: "+provenance.ModeList()+" (default: leave the record's existing stamp alone; refused on a record that predates disclosure)")
 	captureCmd.AddCommand(wontfixCmd)
+
+	// defer — the release cut's waiver, written by a verb (iss-2609181223260994).
+	// The cut's finding guard reads deferred_after and deferral_reason; before
+	// this verb they were a hand edit of frontmatter that no validator saw. The
+	// record stays in open/: a deferral carries a finding past one cut, it
+	// neither fixes nor declines it.
+	var deferAfter, deferReason string
+	deferCmd := &cobra.Command{
+		Use:  "defer <iss-N> --after <vX.Y.Z> --reason <text>",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Defer(capture.DeferRequest{
+				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
+			})
+			if err != nil {
+				return err
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  deferred past %s (stays %s) — %s\n", res.ID, res.DeferredAfter, res.Status, termsafe.Sanitize(res.Path))
+				fmt.Fprintf(w, "  reason: %s\n", termsafe.Sanitize(res.DeferralReason))
+				fmt.Fprintf(w, "  the waiver lapses when the next release re-anchors; renew it then, or fix the finding\n")
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	deferCmd.Flags().StringVar(&deferAfter, "after", "", "the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)")
+	deferCmd.Flags().StringVar(&deferReason, "reason", "", "why the finding is carried past this cut rather than fixed (required)")
+	captureCmd.AddCommand(deferCmd)
 
 	return captureCmd
 }
@@ -4409,6 +4565,36 @@ func parseRecurs(raw string) ([]string, error) {
 		ids = append(ids, tok)
 	}
 	return ids, nil
+}
+
+// skippedTally is the board header's count of records the reader refused, or
+// "" when it refused none, so an untroubled ledger's header is unchanged.
+func skippedTally(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" · skipped %d (refused by the reader, in none of the totals)", n)
+}
+
+// skippedLine renders one refused ledger file: its path, the reader layer that
+// refused it, and the refusal (iss-2609120452071388). The layer is what tells a
+// reader whether the file or the reader is the side to fix. Path and Error echo
+// the file's own name and bytes, so both are sanitised before the terminal.
+func skippedLine(sk capture.SkipRecord) string {
+	layer := "the reader"
+	if sk.Layer != "" {
+		layer = "the " + string(sk.Layer) + " layer"
+	}
+	return fmt.Sprintf("  skipped %s (refused by %s): %s\n",
+		termsafe.Sanitize(sk.Path), layer, termsafe.Sanitize(sk.Error))
+}
+
+// uncommittedNote marks a board row whose record git reports as not committed.
+func uncommittedNote(iss capture.Issue) string {
+	if !iss.Uncommitted {
+		return ""
+	}
+	return " [uncommitted]"
 }
 
 // blockedNote renders the derived-priority annotation for a row: when the issue

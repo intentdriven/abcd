@@ -1,10 +1,12 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
@@ -158,7 +160,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	if into, err := promotedInto(repoRoot, req.ID, asStrList(fm["related_intents"]), ""); err != nil {
 		return PromoteResult{}, err
 	} else if into != "" {
-		return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, into)
+		return PromoteResult{}, fmt.Errorf("%s is %w to %s; refusing to promote twice", req.ID, ErrAlreadyPromoted, into)
 	}
 	// Establish that the RECORD can accept the append, before anything is minted.
 	// requireGrounds above already gated the grounds TEXT; what it cannot answer
@@ -190,7 +192,10 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		if !reItdID.MatchString(req.LinkIntent) {
 			return PromoteResult{}, fmt.Errorf("invalid itd-N identifier: %q", req.LinkIntent)
 		}
-		rel, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		rel, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		if err != nil {
+			return PromoteResult{}, fmt.Errorf("--intent %s: %w; nothing stamped", req.LinkIntent, err)
+		}
 		if !ok {
 			return PromoteResult{}, fmt.Errorf("%s not found in the intent store; nothing stamped", req.LinkIntent)
 		}
@@ -240,6 +245,9 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		path   string
 		status State
 	}
+	if beforePromoteStampHook != nil {
+		beforePromoteStampHook()
+	}
 	stampErr := withLedgerLock(repoRoot, issuesRoot, func() error {
 		src, status, err := findIssue(issuesRoot, req.ID)
 		if err != nil {
@@ -261,7 +269,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		if into, err := promotedInto(repoRoot, req.ID, related, itdID); err != nil {
 			return err
 		} else if into != "" {
-			return fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, into)
+			return fmt.Errorf("%s is %w to %s; refusing to promote twice", req.ID, ErrAlreadyPromoted, into)
 		}
 		newContent, err := setListField(content, "related_intents", appendUnique(related, itdID))
 		if err != nil {
@@ -286,7 +294,8 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		// In place, atomic — the file keeps its status directory (promotion is
 		// not resolution). The write happens under the same lock as the re-read,
 		// so no checksum window exists between them.
-		write := fsutil.WriteFileAtomicPreserveMode
+		// Inside the ledger's os.Root (iss-2609012037143368).
+		write := func(p string, data []byte) error { return writeLedgerFile(repoRoot, issuesRoot, p, data) }
 		if stampWriteHook != nil {
 			write = stampWriteHook
 		}
@@ -298,14 +307,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	})
 	if stampErr != nil {
 		if !linked {
-			// The mint already happened; report the orphan and the repair verb. The
-			// remedy carries the grounds this call was given: the issue route refuses
-			// without them, so a remedy that named only --intent refused on its own
-			// text for every orphan (iss-2609012037130181), and the repair stamps
-			// the same conjecture the failed promotion was pursuing.
-			return PromoteResult{}, fmt.Errorf(
-				"%w — the minted draft %s (%s) is orphaned; complete the link with `abcd capture promote %s --intent %s --grounds %s`",
-				stampErr, itdID, intentPath, req.ID, itdID, shellQuoted(g.String()))
+			return PromoteResult{}, orphanDraftError(stampErr, req.ID, itdID, intentPath, g)
 		}
 		return PromoteResult{}, stampErr
 	}
@@ -379,6 +381,64 @@ func appendUnique(list []string, id string) []string {
 	return append(out, id)
 }
 
+// orphanDraftError reports a promotion whose draft was minted and whose stamp
+// then failed, with the remedy that applies to WHY it failed.
+//
+// A stamp refused as already promoted means a concurrent promotion of the same
+// record won the race between the mint and the lock (iss-258). The link remedy
+// would itself be refused as already promoted, so the report says what is true
+// instead: the draft this call minted duplicates the winner's, and it is deleted
+// by hand. Every other failure leaves the draft orphaned, and the remedy is the
+// link that completes it.
+//
+// The link remedy carries the grounds this call was given, when it was given
+// any, so the repair stamps the same conjecture (iss-2609012037130181); a
+// promotion given none gets a remedy naming none (grounds are optional on the
+// issue route). It is delimited as a code span the command cannot close
+// (codeSpan), because the grounds are free prose and may carry a backtick
+// (iss-2609020154474224).
+func orphanDraftError(stampErr error, recordID, itdID, intentPath string, g *grounds.Grounds) error {
+	if errors.Is(stampErr, ErrAlreadyPromoted) {
+		return fmt.Errorf(
+			"%w — this promotion lost that race, so the draft it minted, %s (%s), duplicates it: delete the duplicate draft %s; linking it would be refused as already promoted",
+			stampErr, itdID, intentPath, intentPath)
+	}
+	cmd := "abcd capture promote " + recordID + " --intent " + itdID
+	if g != nil {
+		cmd += " --grounds " + shellQuoted(g.String())
+	}
+	return fmt.Errorf("%w — the minted draft %s (%s) is orphaned; complete the link with %s",
+		stampErr, itdID, intentPath, codeSpan(cmd))
+}
+
+// codeSpan delimits s as a CommonMark code span that s cannot close: the fence
+// is one backtick longer than the longest backtick run inside s, and a space
+// pads each end when s begins or ends with a backtick. What a renderer, a test
+// or a person reads between the fences is therefore always the whole of s.
+func codeSpan(s string) string {
+	longest, run := 0, 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '`' {
+			run++
+			if run > longest {
+				longest = run
+			}
+			continue
+		}
+		run = 0
+	}
+	fence := strings.Repeat("`", longest+1)
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		return fence + " " + s + " " + fence
+	}
+	return fence + s + fence
+}
+
+// beforePromoteStampHook, when non-nil, fires on the issue route between the
+// mint and the ledger-locked stamp — the window a concurrent promotion of the
+// same issue lands in. A test-only seam (nil in production) for iss-258.
+var beforePromoteStampHook func()
+
 // shellQuoted wraps s in SINGLE quotes for the shell a remedy is pasted into,
 // spelling an embedded quote the only way single quoting can ('\”: close,
 // escaped quote, reopen). It exists so the orphan remedy runs as printed: a
@@ -449,7 +509,7 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 	// A reading item carries no loose relation — only promote writes its
 	// related_intents — so any entry at all is the forward half of a promotion.
 	if existing := asStrList(fm["related_intents"]); len(existing) > 0 {
-		return PromoteResult{}, fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing[0])
+		return PromoteResult{}, fmt.Errorf("%s is %w to %s; refusing to promote twice", req.ID, ErrAlreadyPromoted, existing[0])
 	}
 	// The run half of the origin pair, taken from WHERE THE ITEM WAS FOUND: the
 	// item's bucket IS its run directory, which is the same join the provenance
@@ -479,7 +539,10 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		if !reItdID.MatchString(req.LinkIntent) {
 			return PromoteResult{}, fmt.Errorf("invalid itd-N identifier: %q", req.LinkIntent)
 		}
-		rel, ok := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		rel, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.LinkIntent)
+		if err != nil {
+			return PromoteResult{}, fmt.Errorf("--intent %s: %w; nothing stamped", req.LinkIntent, err)
+		}
 		if !ok {
 			return PromoteResult{}, fmt.Errorf("%s not found in the intent store; nothing stamped", req.LinkIntent)
 		}
@@ -550,7 +613,7 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 			return err
 		}
 		if existing := asStrList(fm["related_intents"]); len(existing) > 0 {
-			return fmt.Errorf("%s is already promoted to %s; refusing to promote twice", req.ID, existing[0])
+			return fmt.Errorf("%s is %w to %s; refusing to promote twice", req.ID, ErrAlreadyPromoted, existing[0])
 		}
 		// Re-read the standing answer HERE, not only in the pre-flight. A
 		// disposition landing between the two — an acceptance superseded by a
@@ -572,7 +635,8 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		if err := validateReadingStrict(newFM); err != nil {
 			return err
 		}
-		write := fsutil.WriteFileAtomicPreserveMode
+		// Inside the ledger's os.Root (iss-2609012037143368).
+		write := func(p string, data []byte) error { return writeLedgerFile(repoRoot, issuesRoot, p, data) }
 		if stampWriteHook != nil {
 			write = stampWriteHook
 		}
@@ -580,9 +644,7 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 	})
 	if stampErr != nil {
 		if !linked {
-			return PromoteResult{}, fmt.Errorf(
-				"%w — the minted draft %s (%s) is orphaned; complete the link with `abcd capture promote %s --intent %s`",
-				stampErr, itdID, intentPath, req.ID, itdID)
+			return PromoteResult{}, orphanDraftError(stampErr, req.ID, itdID, intentPath, nil)
 		}
 		return PromoteResult{}, stampErr
 	}

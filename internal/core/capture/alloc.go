@@ -33,6 +33,13 @@ var lockTimeout = 5 * time.Second
 // interleaving deterministically.
 var beforeOrphanRemoveHook func(cand string)
 
+// ledgerRaceHook, when non-nil, fires inside the windows a local racer could use
+// to redirect a ledger write: "mkdir" between one directory's check and its
+// creation, and "write" between a record's last re-read and its write. rel is
+// the repo-relative path about to be touched. A test-only seam (nil in
+// production) for iss-2609012037143368's detector.
+var ledgerRaceHook func(stage, rel string)
+
 // ensureLedgerDirs provisions issuesRoot and its status sub-directories, refusing
 // symlinked leaves AND symlinked ancestors. The list is issueschema.StatusDirs —
 // the same value the readers scan and the deterministic gates scope to, so a
@@ -74,10 +81,11 @@ func ensureLedgerDirs(repoRoot, issuesRoot string) error {
 // ledger is a state the readers already tolerate, and nothing can hide behind a
 // directory that is not there.
 //
-// The walk is modelled on memory.memoryDir (the GHSA-72rp fix) and carries the
-// same residue: the window between one segment's Lstat and its Mkdir is a
-// local-racer TOCTOU, closed only by opening the store as an os.Root, which is
-// the package-wide follow-up iss-2609012037143368 records.
+// The walk is modelled on memory.memoryDir (the GHSA-72rp fix). Its residue —
+// the window between one segment's Lstat and its Mkdir, a local-racer TOCTOU —
+// is closed by creating through an os.Root on the containment base
+// (iss-2609012037143368): a segment swapped in that window cannot carry the
+// store out of the checkout.
 //
 // An issuesRoot outside repoRoot is an operator-typed operand with no boundary
 // to walk from: group 1 is skipped (with create, its parent is provisioned with
@@ -106,37 +114,71 @@ func ledgerDirs(repoRoot, issuesRoot string, create bool) error {
 	for _, sub := range issueschema.StatusDirs {
 		dirs = append(dirs, filepath.Join(issuesRoot, sub))
 	}
-	for _, dir := range dirs {
-		if create {
-			if err := safeMkdirLeaf(dir); err != nil {
+	if !create {
+		for _, dir := range dirs {
+			if err := refuseSymlinkedDir(dir); err != nil {
 				return err
 			}
-			continue
 		}
-		if err := refuseSymlinkedDir(dir); err != nil {
+		return nil
+	}
+	// Created through ONE os.Root on the containment base (ledgerroot.go), so a
+	// segment swapped for a symlink between its check and the next mkdir cannot
+	// carry the store out of the checkout (iss-2609012037143368).
+	base := ledgerBase(repoRoot, issuesRoot)
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	for _, dir := range dirs {
+		rel, err := containedRel(base, dir)
+		if err != nil {
+			return err
+		}
+		if err := mapEscape(safeMkdirLeafIn(root, rel), dir); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// safeMkdirLeaf creates target if absent, then insists (via Lstat) that the
-// result is a real directory and not a symlink.
+// safeMkdirLeaf creates target if absent and insists it is a real directory,
+// resolved inside an os.Root on target's parent — the path-operand form, for a
+// caller holding an absolute path and no ledger roots (the reading families'
+// directories).
 func safeMkdirLeaf(target string) error {
-	fi, err := os.Lstat(target)
+	parent := filepath.Dir(target)
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return fmt.Errorf("%w: cannot open %s: %v", ErrPathUnsafe, parent, err)
+	}
+	defer root.Close()
+	return safeMkdirLeafIn(root, filepath.Base(target))
+}
+
+// safeMkdirLeafIn creates rel inside root if absent, then insists (via Lstat)
+// that the result is a real directory and not a symlink. The Lstat refuses a
+// committed symlink by name; the root refuses one swapped in afterwards that
+// points outside it.
+func safeMkdirLeafIn(root *os.Root, rel string) error {
+	fi, err := root.Lstat(rel)
+	if ledgerRaceHook != nil {
+		ledgerRaceHook("mkdir", rel)
+	}
 	if os.IsNotExist(err) {
-		if mkErr := os.Mkdir(target, 0o755); mkErr != nil && !os.IsExist(mkErr) {
-			return fmt.Errorf("%w: mkdir failed for %s: %v", ErrPathUnsafe, target, mkErr)
+		if mkErr := root.Mkdir(rel, 0o755); mkErr != nil && !os.IsExist(mkErr) {
+			return fmt.Errorf("%w: mkdir failed for %s: %v", ErrPathUnsafe, rel, mkErr)
 		}
-		fi, err = os.Lstat(target)
+		fi, err = root.Lstat(rel)
 		if err != nil {
-			return fmt.Errorf("%w: leaf disappeared after mkdir: %s", ErrPathUnsafe, target)
+			return fmt.Errorf("%w: leaf disappeared after mkdir: %s", ErrPathUnsafe, rel)
 		}
 	} else if err != nil {
-		return fmt.Errorf("%w: lstat failed for %s: %v", ErrPathUnsafe, target, err)
+		return fmt.Errorf("%w: lstat failed for %s: %v", ErrPathUnsafe, rel, err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
-		return fmt.Errorf("%w: not a real directory: %s", ErrPathUnsafe, target)
+		return fmt.Errorf("%w: not a real directory: %s", ErrPathUnsafe, rel)
 	}
 	return nil
 }
@@ -151,8 +193,12 @@ func withLedgerLock(repoRoot, issuesRoot string, fn func() error) error {
 	if err := ensureLedgerDirs(repoRoot, issuesRoot); err != nil {
 		return err
 	}
+	// The lock file is opened inside the ledger's os.Root, like every other
+	// ledger write (iss-2609012037143368).
 	lockPath := filepath.Join(issuesRoot, lockFilename)
-	err := fsutil.WithFileLock(lockPath, lockTimeout, fn)
+	err := withContainedRoot(ledgerBase(repoRoot, issuesRoot), lockPath, func(root *os.Root, rel string) error {
+		return fsutil.WithFileLockIn(root, rel, lockTimeout, fn)
+	})
 	switch {
 	case errors.Is(err, fsutil.ErrLockContention):
 		return fmt.Errorf("%w: could not acquire allocator lock within %s", ErrAllocatorContention, lockTimeout)
@@ -213,14 +259,12 @@ func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, er
 				return fmt.Errorf("%w: %s already exists in the ledger", ErrDuplicateIssueID, forceID)
 			}
 			target := filepath.Join(issuesRoot, "open", forceID+"-"+slug+".md")
-			fd, cErr := createPlaceholder(target)
-			if cErr != nil {
+			if cErr := createPlaceholder(repoRoot, issuesRoot, target); cErr != nil {
 				if os.IsExist(cErr) {
 					return fmt.Errorf("%w: %s appeared between scan and create", ErrDuplicateIssueID, forceID)
 				}
 				return cErr
 			}
-			syscall.Close(fd)
 			resID, resTarget = forceID, target
 			return nil
 		}
@@ -234,14 +278,12 @@ func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, er
 				continue
 			}
 			target := filepath.Join(issuesRoot, "open", issID+"-"+slug+".md")
-			fd, cErr := createPlaceholder(target)
-			if cErr != nil {
+			if cErr := createPlaceholder(repoRoot, issuesRoot, target); cErr != nil {
 				if os.IsExist(cErr) {
 					continue
 				}
 				return cErr
 			}
-			syscall.Close(fd)
 			resID, resTarget = issID, target
 			return nil
 		}
@@ -253,22 +295,23 @@ func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, er
 	return resID, resTarget, nil
 }
 
-// createPlaceholder does an O_EXCL|O_NOFOLLOW create of the placeholder file.
-func createPlaceholder(target string) (int, error) {
-	fd, err := syscall.Open(target, syscall.O_CREAT|syscall.O_EXCL|syscall.O_WRONLY|syscall.O_NOFOLLOW, 0o644)
-	if err != nil {
-		if err == syscall.ELOOP {
-			return -1, fmt.Errorf("%w: placeholder path is a symlink: %s", ErrPathUnsafe, target)
-		}
-		if err == syscall.EEXIST {
-			if fi, lerr := os.Lstat(target); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
-				return -1, fmt.Errorf("%w: placeholder path is a symlink: %s", ErrPathUnsafe, target)
+// createPlaceholder does an exclusive, no-follow create of the zero-byte
+// placeholder inside the ledger's os.Root. An existing entry is os.ErrExist,
+// unless it is a symlink, which is ErrPathUnsafe.
+func createPlaceholder(repoRoot, issuesRoot, target string) error {
+	return withContainedRoot(ledgerBase(repoRoot, issuesRoot), target, func(root *os.Root, rel string) error {
+		f, err := root.OpenFile(rel, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o644)
+		if err != nil {
+			if errors.Is(err, os.ErrExist) {
+				if fi, lerr := root.Lstat(rel); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+					return fmt.Errorf("%w: placeholder path is a symlink: %s", ErrPathUnsafe, target)
+				}
+				return os.ErrExist
 			}
-			return -1, os.ErrExist
+			return err
 		}
-		return -1, err
-	}
-	return fd, nil
+		return f.Close()
+	})
 }
 
 // issPresent reports whether issID exists in any status dir. It walks
@@ -294,8 +337,8 @@ func issPresent(issuesRoot, issID string) bool {
 
 // cancelReservation removes a zero-byte placeholder idempotently. It refuses a
 // symlinked or non-empty target (real content is the caller's transactional
-// responsibility).
-func cancelReservation(path string) error {
+// responsibility). The removal is resolved inside the ledger's os.Root.
+func cancelReservation(repoRoot, issuesRoot, path string) error {
 	fi, err := os.Lstat(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -312,15 +355,13 @@ func cancelReservation(path string) error {
 	if fi.Size() != 0 {
 		return fmt.Errorf("refusing to cancel non-empty placeholder (%d bytes): %s", fi.Size(), path)
 	}
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
+	return removeLedgerFile(repoRoot, issuesRoot, path)
 }
 
 // cleanOrphanPlaceholders sweeps zero-byte iss-N placeholders older than the
-// threshold from open/. Tolerates a virgin ledger. Refuses symlinked roots.
-func cleanOrphanPlaceholders(issuesRoot string) error {
+// threshold from open/. Tolerates a virgin ledger. Refuses symlinked roots. The
+// unlink is resolved inside the ledger's os.Root.
+func cleanOrphanPlaceholders(repoRoot, issuesRoot string) error {
 	fi, err := os.Lstat(issuesRoot)
 	if os.IsNotExist(err) {
 		return nil
@@ -374,7 +415,7 @@ func cleanOrphanPlaceholders(issuesRoot string) error {
 		if beforeOrphanRemoveHook != nil {
 			beforeOrphanRemoveHook(cand)
 		}
-		os.Remove(cand)
+		_ = removeLedgerFile(repoRoot, issuesRoot, cand)
 	}
 	return nil
 }

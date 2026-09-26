@@ -173,6 +173,19 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
+#### `abcd capture defer`
+
+Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.
+
+**Usage:** `abcd capture defer <iss-N> --after <vX.Y.Z> --reason <text> [flags]`
+
+**Flags:**
+
+```
+      --after string    the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)
+      --reason string   why the finding is carried past this cut rather than fixed (required)
+```
+
 #### `abcd capture disposition`
 
 Answer one reading item with a disposition record: Writes the record keyed to the item; refuses a second answer without --supersedes.

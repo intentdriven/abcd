@@ -16,6 +16,7 @@ package capture
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -129,6 +130,12 @@ type Issue struct {
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.
 	BlockedByOpen []string `json:"blocked_by_open,omitempty"`
+	// Uncommitted is true when git reports the record's file untracked or
+	// changed in this checkout (iss-2609100508570527): folder membership is a
+	// status signal only once the file is committed, so an uncommitted record is
+	// in no state to any other branch, worktree or gate. Derived at read time by
+	// Status and List, never stored; false when git cannot answer.
+	Uncommitted bool `json:"uncommitted,omitempty"`
 }
 
 // CaptureRequest is the input to Capture (append a new issue).
@@ -172,6 +179,16 @@ type CaptureResult struct {
 	// a finding's content without telling whoever filed it (loud-staging).
 	Redacted int    `json:"redacted,omitempty"`
 	Degraded string `json:"redaction_degraded,omitempty"`
+	// Uncommitted is true when git reports the record just written as not yet
+	// committed — always, in a checkout git answers for, since the file is new.
+	// It exists so the write can SAY the record reaches no other branch and no
+	// gate until it is committed (iss-2609100508570527).
+	Uncommitted bool `json:"uncommitted,omitempty"`
+	// NoLocation is true when the capture named no found_at: legitimate for a
+	// conceptual finding, and still worth saying, because nothing then ties the
+	// record to the repository it is filed into — the shape every misfiled
+	// record of iss-2609120511058115 had (iss-2609231156260287).
+	NoLocation bool `json:"no_location,omitempty"`
 }
 
 // ResolveRequest moves an open issue to resolved/.
@@ -265,10 +282,37 @@ type ListRequest struct {
 }
 
 // SkipRecord surfaces a corrupt/invalid ledger file without failing the scan.
+//
+// Layer names WHICH reader stage refused the file (iss-2609120452071388). A
+// skip reported as a bare error left the reader unable to tell whether the
+// writer or the validator was the side that was wrong: a name the grammar
+// refuses, a leaf the guarded read refuses, and a value the schema refuses are
+// three different defects with three different remedies.
 type SkipRecord struct {
-	Path  string `json:"path"`
-	Error string `json:"error"`
+	Path  string    `json:"path"`
+	Layer SkipLayer `json:"layer"`
+	Error string    `json:"error"`
 }
+
+// SkipLayer is the reader stage that refused a ledger file, in scan order.
+type SkipLayer string
+
+// The reader's stages, in the order a file meets them.
+const (
+	// SkipLayerName: the filename claims a record and is not a well-formed one.
+	SkipLayerName SkipLayer = "filename"
+	// SkipLayerRead: the guarded read refused the leaf (a FIFO, a symlink, an
+	// oversize body, an I/O error) — nothing about the record's content.
+	SkipLayerRead SkipLayer = "read"
+	// SkipLayerFrontmatter: the bytes do not parse as a frontmatter block.
+	SkipLayerFrontmatter SkipLayer = "frontmatter"
+	// SkipLayerSchema: the frontmatter parses and the issue schema refuses a
+	// key or value in it.
+	SkipLayerSchema SkipLayer = "schema"
+	// SkipLayerInvariant: schema-clean, and the record disagrees with where it
+	// sits — its filename, or the status folder holding it.
+	SkipLayerInvariant SkipLayer = "invariant"
+)
 
 // ListResult is Issues sorted ascending by numeric N plus a corrupt roster.
 type ListResult struct {
@@ -284,11 +328,35 @@ type StatusRequest struct {
 
 // StatusResult is the bare-invocation status snapshot (guaranteed no mutation).
 type StatusResult struct {
-	OpenCount     int          `json:"open_count"`
-	ResolvedCount int          `json:"resolved_count"`
-	WontfixCount  int          `json:"wontfix_count"`
-	RecentOpen    []Issue      `json:"recent_open"` // up to 10, newest first
-	Skipped       []SkipRecord `json:"skipped"`
+	OpenCount     int `json:"open_count"`
+	ResolvedCount int `json:"resolved_count"`
+	WontfixCount  int `json:"wontfix_count"`
+	// SkippedCount is the number of files that claim to be records and that
+	// none of the three totals counts, because the reader refused them. It is
+	// len(Skipped), carried as a count beside the others so the board states
+	// what it excluded next to what it counted (iss-2609120452071388).
+	SkippedCount int `json:"skipped_count"`
+	// UncommittedCount is the number of readable records across the three
+	// folders that git reports untracked or changed (iss-2609100508570527).
+	UncommittedCount int          `json:"uncommitted_count"`
+	RecentOpen       []Issue      `json:"recent_open"` // up to 10, newest first
+	Skipped          []SkipRecord `json:"skipped"`
+}
+
+// FieldValueError is a capture request member outside its closed vocabulary.
+// It names the member, the value and the accepted set, and nothing about
+// frontmatter: the value came from the caller's request, not from a record,
+// so the refusal speaks about the request (iss-2608290810037524). A front door
+// maps Field to its own spelling of the input — the CLI's flag of the same
+// name.
+type FieldValueError struct {
+	Field    string
+	Value    string
+	Accepted []string
+}
+
+func (e *FieldValueError) Error() string {
+	return fmt.Sprintf("capture: %s %q is not accepted; %s (nothing written)", e.Field, e.Value, acceptedValues(e.Accepted))
 }
 
 // Sentinel errors the surface maps to exit codes and messages. Core never
@@ -306,6 +374,10 @@ var (
 	ErrAllocatorContention = errors.New("allocator contention")
 	// ErrChecksumMismatch means a concurrent edit occurred during a transition.
 	ErrChecksumMismatch = errors.New("checksum mismatch")
+	// ErrAlreadyPromoted means the issue already names, and is named by, an
+	// intent other than the one this call is joining — refused rather than
+	// promoted twice.
+	ErrAlreadyPromoted = errors.New("already promoted")
 	// ErrGroundsRefused means the triage's grounds argument was absent, outside
 	// the closed vocabulary, malformed, or below the substance floor. It is one
 	// sentinel for every one of those because they are one thing to a caller —

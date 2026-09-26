@@ -7,6 +7,10 @@ category: "ux"
 source: "agent-observation"
 found_during: "intent-implementation-run"
 found_at: "internal/surface/cli"
+resolution: "capture judges --severity, --category and --source as request members before anything is written, refusing an unknown value with a FieldValueError the CLI renders as the flag, the value and the accepted set, never as malformed frontmatter; the help already named each vocabulary."
+impact: fix
+resolved_by:
+  commit: "5d085cbc"
 ---
 
 The capture verb refuses an unrecognised source value with a message that names neither the offending flag nor the accepted set, and blames the wrong layer: an invalid source produces a malformed-frontmatter error quoting the value, when the value came from a command-line flag and never reached any frontmatter the caller wrote. The accepted values are discoverable only by grepping existing records. The flag's help text lists no enumeration either. The same shape likely applies to category and to any other closed-set flag on this path. A closed set should be named in the refusal and in the help text.
@@ -56,3 +60,7 @@ stands. Note also that `test-flake` is
 in no vocabulary at all, so the list alone would have sent that session to pick
 a neighbour (`bug` or `observation`); whether the taxonomy wants a value for a
 flaky test is a separate question this record does not decide.
+
+## Grounds
+
+- pursued: an agent that guesses a vocabulary value recovers in one round trip from the refusal alone; a refusal still omitting the flag or the set would show it wrong

@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/core/issueschema/issueschema.go"
 deferred_after: "v0.8.0"
 deferral_reason: "The headline defect does not reproduce on this tree, and what remains of the record is not a bug fix. Every site that truncates a slug into a filename already trims the separator it cut against: capture roots.go, intent create.go and decide decide.go each wrap the truncation in a trim, and a sweep finds no fourth truncation site in the tree. Each deriver was run over 200000 adversarial inputs on a scratch copy, mixing separator runs, punctuation, non-ASCII and lengths either side of the 60-character budget, and none emitted a slug its own validator refuses. The three trims have stood since those functions were written, so the downstream record that prompted this was produced by something other than the current generator, which is consistent with its siblings carrying the source value autonomous-hunt that abcd capture would itself have refused. The three items that remain are real and none is contained: naming the members of the source and category flags in the help text, and making the status board say which layer refused a record it skipped, are user-facing surface changes that must not ship without a record, and deciding autonomous-hunt is a closed-vocabulary question this record routes to the product thinker rather than to an implementer. Waits on that vocabulary ruling, which is what the other two should land beside."
+resolution: "Slug truncation and the --help enums were already fixed at the base: recordid.Slug trims the separator it cuts against and enumHelp names the severity, category and source vocabularies in capture --help. This change built the remaining half: every skipped ledger file carries the reader layer that refused it, the status board counts skipped records beside its totals (skipped_count in --json), and a seeded property test pins that a derived slug always satisfies SlugRe. The autonomous-hunt vocabulary question is decomposed to iss-2609251151293535 for the product thinker."
+impact: additive
+resolved_by:
+  commit: "8c09f031"
 ---
 
 Reported from a downstream repository using abcd, where `abcd capture` (bare,
@@ -106,3 +110,7 @@ wrong guesses independently of it.
 - **Given** `capture --help`, **when** a caller reads it, **then** the legal
   values for `--source` and `--category` are named inline, as `--severity`
   already names its four.
+
+## Grounds
+
+- pursued: a reader shown a skipped record can now tell whether the writer or the schema is wrong; a skipped record whose layer is empty, or a board whose header omits a skip it lists, would show it wrong

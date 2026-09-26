@@ -24,6 +24,7 @@ binary.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `defer` | — | shipped |
 | `disposition` | — | shipped |
 | `link` | — | shipped |
 | `list` | — | shipped |
@@ -40,10 +41,19 @@ binary.
 wontfix counts, the most recent open issues, and a three-way routing hint that
 closes on the next move (capture it, shape it as an intent, or, for a big
 unproven idea, run the optional `abcd ideate` admission gauntlet). It creates,
-moves and mutates nothing.
+moves and mutates nothing. A file that claims to be a record and that the reader
+refuses is counted in none of the three totals, so the board counts it beside
+them and names, for each one, the reader layer that refused it: the filename,
+the guarded read, the frontmatter parse, the schema or the folder and filename
+invariants. The layer is what tells a reader whether the record or the reader is
+the side to fix (iss-2609120452071388). The board also counts the records git
+reports as untracked or changed and marks each such row: folder membership is a
+status only once the file is committed, so an uncommitted record is in no state to
+any other branch, worktree or gate (iss-2609100508570527).
 
 **`/abcd:capture "<text>"`** is the fast path: it appends a structured entry
-with an auto-assigned `iss-N` and writes it to `open/`. Provenance and taxonomy
+with an auto-assigned `iss-N` and writes it to `open/`, and says that the record
+is not committed yet whenever git reports it so, which for a new record is always. Provenance and taxonomy
 are caller-supplied flags. Severity, category, source and the found-during
 context each carry a default, so the fast path stays fast; the location, slug
 and dependency flags have none. The `origin` field is derived from the verb that
@@ -63,6 +73,10 @@ hold is the mechanical sign of a finding filed in the wrong place
 (iss-2609120511058115). A conceptual location, meaning anything that is not a
 lone path token, and an absent value are written as given. The check is made
 at capture only, so a record keeps the path it named when the tree later moves.
+An absent location is written as given and is not refused, but the verb says the
+record names no location in this checkout, so nothing ties it to the repository
+it is filed into: that is a nudge, not a gate, and it is the shape every
+misfiled record behind iss-2609120511058115 had (iss-2609231156260287).
 
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
@@ -159,6 +173,18 @@ it: an intent, a spec, or a commit sha. A fourth, the shipped-in release, is mig
 use only: it names the release that already carried the work, so the record
 stays out of the current cut.
 
+**Deferring** writes the release cut's waiver onto an open record
+(iss-2609181223260994): `deferred_after` naming the anchor tag, `deferral_reason`
+stating why, and a dated `## Deferral` section appended to the body, which is the
+part of the record a reader sees. The record stays in `open/`, because a deferral
+carries a finding past one cut and neither fixes nor declines it. Everything the
+cut's reader would not honour is refused at the write, with nothing written: a
+tag that is not the checkout's newest release tag, an empty reason, a record that
+is not open, and a record whose grade is neither `major` nor `critical`, which
+the guard never blocks on. The grade is judged before the tag. A record deferred
+past an earlier anchor is deferred again: the pair is replaced and a new section
+appended, so each cycle's deferral stays readable in the record.
+
 **Marking an issue wontfix** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
 text only: the token stays `declined`, because a wontfix **is** that non-action.
@@ -194,6 +220,14 @@ Two consequences follow, and both are stated to the caller rather than guessed.
   named on stderr and left exactly where it is.** A stray store is either a
   deliberate fixture or the residue of the defect above, and only the caller can
   tell those apart. Moving it would destroy the evidence of which it was.
+
+Every verb also says which checkout's ledger it addressed, and the record
+dispatcher says it for an issue id (iss-2609202053570475): one stderr line naming
+the checkout and its branch in the plain render, and a `ledger` member with
+`checkout` and `branch` in the machine-readable one. The checkout is written home-relative where
+it can be. A record filed in another worktree is invisible here, and a refusal
+that says "not found" without naming where it looked sends the reader to the
+wrong conclusion.
 
 ## 3. Ledger structure
 
@@ -233,10 +267,10 @@ resolved_by:               # optional structured pointer to what resolved it
 ---
 ```
 
-`deferred_after` and `deferral_reason` are the release cut's waiver pair, and no
-capture verb writes them: they are added by hand when a `major` or `critical`
-finding is to be carried past a cut open, and the changelog guard reads them.
-The waiver is granted for one cycle and lapses when the next release re-anchors.
+`deferred_after` and `deferral_reason` are the release cut's waiver pair. The
+deferral verb writes them when a `major` or `critical` finding is to be carried
+past a cut open, and the changelog guard reads them. The waiver is granted for
+one cycle and lapses when the next release re-anchors.
 [`04-launch.md`](04-launch.md) owns the rule they answer to.
 
 `lapsed_at` is transcribed from what the source states, never derived from the
@@ -258,6 +292,14 @@ resting on either answer is correct only until the setting moves; the command
 above is correct under both. Where a merge produces two reachable candidates,
 prefer the commit that carries the change over the merge commit, whose diff is
 the whole pull request rather than the fix.
+
+Free text is written losslessly but never invisibly. A bidi override, a
+zero-width rune, a C1 control, DEL or any other character a terminal would hide
+is percent-encoded as its UTF-8 bytes wherever a verb writes caller text into a
+record: the capture body and its location and context fields, a resolution or
+wontfix note, and every grounds entry, on this surface and in the intent drafts
+promotion and `abcd intent` mint. A line break and a tab in the body are left as
+they are, because they are its structure (iss-2608301206073609).
 
 The record body is free-form. One part of it is not, and it is where grounds
 land.
@@ -310,7 +352,9 @@ for ad-hoc scribbles.
   in its `related_issues`, appends the intent to the issue's `related_intents`,
   and leaves the issue in its folder; an issue already
   promoted is refused with the existing intent id, and a post-mint stamp failure
-  names the orphan draft and the repair flag.
+  names the orphan draft and the repair flag — or, when a concurrent promotion
+  of the same issue won the race, names the winner and says to delete the
+  duplicate draft (iss-258).
 - **Given** a reading item with no disposition, **when** the user records one,
   **then** a disposition record is written under
   `.abcd/work/issues/dispositions/`; a second answer to the same item is refused
@@ -371,7 +415,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture resolve`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -384,6 +428,15 @@ Sub-verbs: `abcd capture disposition`, `abcd capture link`, `abcd capture list`,
 | `--severity` | string |
 | `--slug` | string |
 | `--source` | string |
+
+### `abcd capture defer`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--after` | string |
+| `--reason` | string |
 
 ### `abcd capture disposition`
 

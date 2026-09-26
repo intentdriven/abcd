@@ -256,7 +256,7 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 		}
 		for _, p := range pending {
 			path := filepath.Join(runDir, p.id+".md")
-			if err := writeReadingRecord(path, []byte(p.content)); err != nil {
+			if err := writeReadingRecord(ledgerBase(repoRoot, issuesRoot), path, []byte(p.content)); err != nil {
 				// Name what LANDED. A bare error leaves the caller unable to say
 				// what is on disk, and a retry then mints fresh ids for the items
 				// that already wrote — duplicating them inside the run directory.
@@ -362,7 +362,7 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 		if err := refuseExistingRecord(path, id); err != nil {
 			return err
 		}
-		return fsutil.WriteFileAtomic(path, []byte(content), 0o644)
+		return writeContained(ledgerBase(repoRoot, issuesRoot), path, []byte(content))
 	})
 	if err != nil {
 		return DispositionResult{}, err
@@ -901,11 +901,11 @@ func recordIDs(records []ReadingRecordRef) []string {
 // deterministic mid-batch write failure, mirroring stampWriteHook in promote.go.
 var readingWriteHook func(path string, data []byte) error
 
-func writeReadingRecord(path string, data []byte) error {
+func writeReadingRecord(base, path string, data []byte) error {
 	if readingWriteHook != nil {
 		return readingWriteHook(path, data)
 	}
-	return fsutil.WriteFileAtomic(path, data, 0o644)
+	return writeContained(base, path, data)
 }
 
 // refuseExistingRecord fails a write whose target is already taken. The id space
