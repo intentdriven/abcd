@@ -191,12 +191,13 @@ lint-issues:
 	@bash scripts/check-issue-resolution.sh commits origin/main HEAD
 
 # Deterministic append-only gate for .abcd/work/DECISIONS.md
-# (iss-2608271804494867). The ledger declares itself append-only and newest-last,
-# and nothing enforced it; the five backwards date steps already in the file are
-# historical and are NOT repaired, because reordering a committed append-only log
-# is the one thing append-only forbids. Position, not date order, is the first
-# rule: a back-dated entry appended at the tail is honest, an entry written above
-# existing ones is not. Three rules, each per-commit against that commit's own
+# (iss-2608271804494867), in internal/core/lint (iss-2608291814575169). The
+# ledger declares itself append-only and newest-last, and nothing enforced it;
+# the backwards date steps already in the file are historical and are NOT
+# repaired, because reordering a committed append-only log is the one thing
+# append-only forbids. Position, not date order, is the first rule: a
+# back-dated entry appended at the tail is honest, an entry written above
+# existing ones is not. Four rules, each per-commit against that commit's own
 # parents:
 #
 #   DA001 position    — an added line lands after the last line the parent had.
@@ -206,13 +207,12 @@ lint-issues:
 #                        end-of-file, and its truncate-then-restore cousin, slip
 #                        past it entirely.
 #   DA003 merge authors nothing — a merge's ledger holds a line no more times
-#                        than its parents hold it between them. Merges cannot be
-#                        skipped (a forged resolution is an unchecked write path)
-#                        and DA001 cannot be applied to them (the ledger is
-#                        merge=union, and the driver's interleaving leaves the
-#                        result a tail extension of neither side), so the count
-#                        bound is what holds. Set membership alone was blind to a
-#                        merge that DUPLICATES a committed decision at the top.
+#                        than the merge base held it plus what each parent
+#                        added. Merges cannot be skipped (a forged resolution is
+#                        an unchecked write path) and DA001 cannot be applied to
+#                        them (the ledger is merge=union, and the driver's
+#                        interleaving leaves the result a tail extension of
+#                        neither side), so the count bound is what holds.
 #   DA004 the ledger is text — no commit introduces a NUL byte. One NUL makes git
 #                        call the file binary, which empties the diff of hunks and
 #                        silently disarms every rule above, permanently. The diffs
@@ -221,15 +221,17 @@ lint-issues:
 #
 # Both operations the gate legitimately refuses — redacting a leaked line, and
 # the ledger's own planned graduation to per-file decisions/ — are deliberate
-# gate-edit-and-review changes, not escape hatches: see the script's header.
+# gate-edit-and-review changes, not escape hatches: see the contract at the top
+# of internal/core/lint/decisionsappend.go.
 #
 # The cases run first, as in lint-reviews and lint-issues: a gate nobody has
-# watched fail is an enforcement claim with no evidence behind it. Needs full git
-# history, like its siblings: on a shallow checkout the script refuses (exit 2)
+# watched fail is an enforcement claim with no evidence behind it. They are the
+# TestDecisionsAppend* tests, which `go test ./...` also runs. Needs full git
+# history, like its siblings: on a shallow checkout the gate refuses (exit 2)
 # rather than read every append as a whole-file add.
 lint-decisions:
-	@bash scripts/check-decisions-append-cases.sh
-	@bash scripts/check-decisions-append.sh commits origin/main HEAD
+	@go test -count=1 -run 'TestDecisionsAppend' ./internal/core/lint/ ./cmd/record-lint/
+	@go run ./cmd/record-lint decisions-append origin/main HEAD
 
 # Deterministic docs-currency gate (itd-60): the same internal/core/lint engine,
 # driven over docs/ and the repo root via the transport-agnostic `abcd lint docs`

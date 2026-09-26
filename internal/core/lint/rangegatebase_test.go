@@ -174,7 +174,8 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 			// than assume the expression only ever yields a good one. Either
 			// shape counts: comparing against the placeholder, or asking git
 			// whether the commit exists.
-			if !strings.Contains(step.body, absentSHA) && !strings.Contains(step.body, "git cat-file -e") {
+			if !strings.Contains(step.body, absentSHA) && !strings.Contains(step.body, "git cat-file -e") &&
+				!delegatesBaseGuard(step.body) {
 				t.Errorf("%s line %d, step %q accepts whatever BASE_SHA holds without refusing an "+
 					"unusable base.\n\nA force-push leaves `github.event.before` as the all-zeroes "+
 					"placeholder or a rewritten sha that resolves to nothing, and the expression "+
@@ -199,6 +200,26 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 			"existing. A count below the floor means either the step parser lost its shape or a "+
 			"gate stopped being range-scoped, and both deserve a look.", rel, inScope, exempt)
 	}
+}
+
+// baseGuardingGates are the range gates that derive their own base through
+// gitutil.ResolveRangeBase — the one Go derivation of "is this base usable",
+// which announces a skip for an empty value or the all-zeroes placeholder and
+// refuses a sha that resolves to nothing. A step that hands BASE_SHA straight to
+// one of them has not skipped the guard; it has moved it where it is written
+// once and tested (TestResolveRangeBase, TestDecisionsAppendSkipsWithoutAUsableBase
+// and TestDecisionsAppendFaults). A gate joins this list only with such a test.
+var baseGuardingGates = []string{
+	"go run ./cmd/record-lint decisions-append \"$BASE_SHA\"",
+}
+
+func delegatesBaseGuard(body string) bool {
+	for _, g := range baseGuardingGates {
+		if strings.Contains(body, g) {
+			return true
+		}
+	}
+	return false
 }
 
 // withoutSubtree nulls every context path under a prefix — the payload subtree
