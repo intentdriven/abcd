@@ -134,7 +134,9 @@ each with its id; `outstanding`; every `fidelity_flags` entry, **unresolved** â€
 never pick one side of a flag, it is the researcher's to resolve; every
 `refusals` entry; and `manifest`, the promoted manifest beside the run, absent
 when the ingest landed no record. Flags
-and refusals are never written into a record.
+and refusals are never written into a record; in the JSON a hidden or
+terminal-control rune in either arrives percent-encoded (`%E2%80%AE`), so quote
+the value as it stands.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` â€” a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

@@ -207,3 +207,58 @@ func TestScribeIngestRendersOnRefusal(t *testing.T) {
 	}
 	_ = repo
 }
+
+// TestScribeIngestJSONEncodesHiddenRunes: refusals and fidelity flags are the
+// scribe's free text, carried back unresolved. The text render masks what it
+// quotes; the JSON render must not hand the same runes on raw, because
+// encoding/json leaves DEL, the C1 range, bidi overrides and zero-width runes
+// in place. They are percent-encoded through termsafe's JSON-boundary encoder.
+func TestScribeIngestJSONEncodesHiddenRunes(t *testing.T) {
+	_, item := scribeRepo(t)
+	disp := filepath.Join(t.TempDir(), "dispositions.md")
+	if err := os.WriteFile(disp, []byte(item+": not decided yet\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"scribe", "assemble", "--run", "rdg-2609250000000001", "--dispositions", disp, "--json"},
+		&stdout, &stderr); code != 0 {
+		t.Fatalf("assemble exited %d: %s", code, stderr.String())
+	}
+	var asm scribe.AssembleResult
+	if err := json.Unmarshal(stdout.Bytes(), &asm); err != nil {
+		t.Fatal(err)
+	}
+	bidi, c1, zw := string(rune(0x202e)), string(rune(0x9b)), string(rune(0x200b))
+	payload := map[string]any{
+		"_type": scribe.OutputType, "run": "rdg-2609250000000001", "context_sha256": asm.ContextSHA256,
+		"outstanding":    []string{item},
+		"refusals":       []map[string]any{{"subject": "a line" + bidi, "reason": "ambiguous" + c1 + "[2J"}},
+		"fidelity_flags": []map[string]any{{"first": "one" + zw, "second": "two" + bidi}},
+	}
+	raw, _ := json.Marshal(payload)
+	p := filepath.Join(t.TempDir(), "out.json")
+	if err := os.WriteFile(p, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"scribe", "ingest", "--scribe-json", p, "--dispositions", disp, "--json"},
+		&stdout, &stderr); code != 0 {
+		t.Fatalf("ingest exited %d: %s", code, stderr.String())
+	}
+	var res scribe.IngestResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("the JSON render does not parse: %v\n%s", err, stdout.String())
+	}
+	for _, s := range []string{res.Refusals[0].Subject, res.Refusals[0].Reason,
+		res.FidelityFlags[0].First, res.FidelityFlags[0].Second} {
+		for _, r := range []string{bidi, c1, zw} {
+			if strings.Contains(s, r) {
+				t.Errorf("the JSON render carries a hidden rune raw in %q", s)
+			}
+		}
+	}
+	if !strings.Contains(res.Refusals[0].Reason, "%C2%9B") {
+		t.Errorf("the C1 byte was not encoded losslessly: %q", res.Refusals[0].Reason)
+	}
+}

@@ -127,7 +127,9 @@ an admission whose ground differs from the standing acceptance's. The first
 refusal from any write stops the ingest and names what landed before it.
 
 Fidelity flags and refusals are carried into the result unresolved and never
-into a record. Once every write has landed, and when at least one record did,
+into a record. They are the scribe's free text, so the text render masks the
+terminal-control and hidden runes they carry and the JSON render percent-encodes
+them, keeping each value whole. Once every write has landed, and when at least one record did,
 the manifest is promoted beside the run through the reading store's one
 durable-tier writer, write-once. That
 directory is denied to every assembly by the exclusion floor, so the next

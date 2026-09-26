@@ -158,13 +158,13 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 				// A refusal after something landed discloses what landed, before it
 				// exits: the operator's handle on the partial state is the render.
 				if len(res.Landed()) > 0 {
-					_ = render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+					_ = render(cmd.OutOrStdout(), *asJSON, jsonSafeIngest(res), func(w io.Writer) {
 						renderScribeIngest(w, res)
 					})
 				}
 				return scribeRefusal("scribe ingest", err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, jsonSafeIngest(res), func(w io.Writer) {
 				renderScribeIngest(w, res)
 			})
 		},
@@ -208,6 +208,27 @@ func renderScribeAssemble(w io.Writer, res scribe.AssembleResult) {
 		fmt.Fprintln(w, "  dry run: nothing written")
 	}
 	fmt.Fprintln(w, "Hand the context, and nothing else, to a scribe session that is not a reading session.")
+}
+
+// jsonSafeIngest is the ingest result as the JSON render carries it. The
+// refusals and the fidelity flags are the scribe's free text, carried back
+// unresolved and validated by nothing, and encoding/json leaves DEL, the C1
+// range, bidi overrides and zero-width runes raw. The text render masks them;
+// the JSON render percent-encodes them through termsafe's JSON-boundary encoder,
+// so the value is kept whole and cannot reorder or drive a terminal that prints
+// it. Every other string in the result is an id or a state the ingest already
+// held to its grammar.
+func jsonSafeIngest(res scribe.IngestResult) scribe.IngestResult {
+	flags := make([]scribe.FidelityFlag, len(res.FidelityFlags))
+	for i, f := range res.FidelityFlags {
+		flags[i] = scribe.FidelityFlag{First: termsafe.EncodeHiddenRunes(f.First), Second: termsafe.EncodeHiddenRunes(f.Second)}
+	}
+	refusals := make([]scribe.Refusal, len(res.Refusals))
+	for i, r := range res.Refusals {
+		refusals[i] = scribe.Refusal{Subject: termsafe.EncodeHiddenRunes(r.Subject), Reason: termsafe.EncodeHiddenRunes(r.Reason)}
+	}
+	res.FidelityFlags, res.Refusals = flags, refusals
+	return res
 }
 
 // renderScribeIngest writes one ingest's text render. Every payload-derived
