@@ -60,11 +60,11 @@ func CheckLockstep(tree LockstepTree, repoRoot, versionLocationPath string) Lock
 		return unreadable(res, verr)
 	}
 
-	primaryDoc, err := loadJSON(filepath.Join(repoRoot, primaryPath))
+	primaryDoc, err := loadRepoJSON(repoRoot, primaryPath)
 	if err != nil {
 		return unreadable(res, "primary manifest not readable: "+err.Error())
 	}
-	marketplace, err := loadJSON(filepath.Join(repoRoot, marketplaceFile))
+	marketplace, err := loadRepoJSON(repoRoot, marketplaceFile)
 	if err != nil {
 		return unreadable(res, "marketplace.json not readable: "+err.Error())
 	}
@@ -94,6 +94,29 @@ func unreadable(res LockstepResult, detail string) LockstepResult {
 
 func loadJSON(path string) (any, error) {
 	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, pathFreeError(err)
+	}
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// loadRepoJSON reads a repo-relative JSON document through an os.Root opened on
+// repoRoot, so the read is contained by what the path resolves to rather than by
+// its spelling: ValidRelPath is lexical, and a committed symlink inside the
+// repository that points out of it would otherwise be read through. A symlink
+// that stays inside the repository still reads; one that leaves it is an error,
+// and the document outside is never read.
+func loadRepoJSON(repoRoot, rel string) (any, error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, pathFreeError(err)
+	}
+	defer root.Close()
+	data, err := root.ReadFile(filepath.FromSlash(rel))
 	if err != nil {
 		return nil, pathFreeError(err)
 	}
@@ -319,7 +342,7 @@ func CheckDeclaredLockstep(tree LockstepTree, repoRoot, versionLocationPath stri
 	if verr != "" {
 		return unreadable(res, verr)
 	}
-	primaryDoc, err := loadJSON(filepath.Join(repoRoot, primaryPath))
+	primaryDoc, err := loadRepoJSON(repoRoot, primaryPath)
 	if err != nil {
 		return unreadable(res, "primary manifest "+primaryPath+" not readable: "+err.Error())
 	}
@@ -330,7 +353,7 @@ func CheckDeclaredLockstep(tree LockstepTree, repoRoot, versionLocationPath stri
 	}
 	secondaries := make([]located, 0, len(files))
 	for _, f := range files {
-		doc, err := loadJSON(filepath.Join(repoRoot, filepath.FromSlash(f.Path)))
+		doc, err := loadRepoJSON(repoRoot, f.Path)
 		if err != nil {
 			return unreadable(res, "declared lockstep file "+f.Path+" not readable: "+err.Error())
 		}

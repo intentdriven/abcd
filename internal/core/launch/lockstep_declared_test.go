@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,5 +82,55 @@ func TestDeclaredLockstepWithNothingDeclaredIsAnHonestPass(t *testing.T) {
 	res = CheckDeclaredLockstep(TreeDev, root, filepath.Join(root, versionLocationRelPath), []LockstepFile{{Path: "a.json"}})
 	if !res.Unreadable || !strings.Contains(res.Detail, "version-location.json") {
 		t.Fatalf("result %+v, want unreadable naming version-location.json", res)
+	}
+}
+
+// A declared path is contained by what it resolves to, not by its spelling: a
+// committed symlink inside the repository that points out of it is refused as
+// unreadable, and the value outside is never read. A symlink that stays inside
+// the repository reads through.
+func TestDeclaredLockstepRefusesASymlinkThatLeavesTheRepository(t *testing.T) {
+	outside := t.TempDir()
+	writeFile(t, outside, "meta.json", `{"version":"9.9.9"}`)
+	root := declaredLockstepRepo(t, `{"version":"1.2.3"}`, `{"version":"1.2.3"}`)
+	if err := os.Symlink(filepath.Join(outside, "meta.json"), filepath.Join(root, "app", "escape.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("meta.json", filepath.Join(root, "app", "inside.json")); err != nil {
+		t.Fatal(err)
+	}
+	vl := filepath.Join(root, versionLocationRelPath)
+
+	res := CheckDeclaredLockstep(TreePublic, root, vl, []LockstepFile{{Path: "app/escape.json"}})
+	if !res.Unreadable || res.ExitCode != 2 || !strings.Contains(res.Detail, "app/escape.json") {
+		t.Fatalf("result %+v, want unreadable naming app/escape.json", res)
+	}
+	if strings.Contains(res.Detail, "9.9.9") || strings.Contains(res.Detail, outside) {
+		t.Errorf("the refusal carries what lies outside the repository: %s", res.Detail)
+	}
+
+	res = CheckDeclaredLockstep(TreePublic, root, vl, []LockstepFile{{Path: "app/inside.json"}})
+	if !res.OK {
+		t.Errorf("a symlink that stays inside the repository must read through: %+v", res)
+	}
+}
+
+// The primary manifest is held the same way, by both lockstep checks.
+func TestLockstepRefusesAPrimaryManifestThatLeavesTheRepository(t *testing.T) {
+	outside := t.TempDir()
+	writeFile(t, outside, "version.json", `{"version":"1.2.3"}`)
+	root := t.TempDir()
+	writeFile(t, root, versionLocationRelPath, `{"outcome":"accept","blocked":false,"manifest_path":"version.json","json_pointer":"/version"}`)
+	if err := os.Symlink(filepath.Join(outside, "version.json"), filepath.Join(root, "version.json")); err != nil {
+		t.Fatal(err)
+	}
+	vl := filepath.Join(root, versionLocationRelPath)
+	for name, res := range map[string]LockstepResult{
+		"CheckDeclaredLockstep": CheckDeclaredLockstep(TreePublic, root, vl, nil),
+		"CheckLockstep":         CheckLockstep(TreePublic, root, vl),
+	} {
+		if !res.Unreadable || res.ExitCode != 2 || !strings.Contains(res.Detail, "primary manifest") {
+			t.Errorf("%s: result %+v, want the primary manifest unreadable", name, res)
+		}
 	}
 }
