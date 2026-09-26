@@ -247,7 +247,9 @@ and the id, before the orphan sweep and before anything is staged. It is the gat
 the verdict ingest asks, reached through the same registration. Recording it would
 give the run an outcome, and the same run re-worded would then be refused as a
 rerun; left parked, it is ingested again once its prose describes the record
-rather than citing an id that does not exist.
+rather than citing an id that does not exist. Like every recorded refusal, it
+rolls back what an earlier, interrupted attempt at the same run left in the
+ledger, so a refused run leaves no reading records.
 
 Writes are staged. Nothing durable is written or deleted until the whole payload
 validates; the reading records land as one batch; and the run metadata is written
