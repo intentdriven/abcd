@@ -636,3 +636,22 @@ func stripANSI(s string) string {
 	}
 	return b.String()
 }
+
+// TestRoleBadgeWordsAreTheModeVocabulary (iss-2609260100396332): the role
+// badges carry mode's own "waiting on …" words rather than a copy of them, so
+// the badge and every other front door that names the owed person cannot drift
+// apart.
+func TestRoleBadgeWordsAreTheModeVocabulary(t *testing.T) {
+	for _, st := range []State{StateFacilitator, StateProductThinker} {
+		want := st.WaitingOn()
+		if want == "" {
+			t.Fatalf("%s.WaitingOn() is empty; a role state owes somebody an answer", st)
+		}
+		if got := renderBadge(st, Pair{}).Plain; got != want {
+			t.Errorf("badge for %s = %q, want mode's %q", st, got, want)
+		}
+	}
+	if got := StateManaged.WaitingOn(); got != "" {
+		t.Errorf("managed owes nobody, yet WaitingOn() = %q", got)
+	}
+}

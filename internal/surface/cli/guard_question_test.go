@@ -272,3 +272,29 @@ func TestModeVerbSetsTheLine(t *testing.T) {
 		}
 	}
 }
+
+// TestBadgeAndNoticeNameTheSamePerson (iss-2609260100396332): the badge and the
+// one-line notice `abcd mode` prints where no status surface exists are two
+// renderings of one fact, so they name the owed person in the same words. The
+// notice's "waiting on the …" must appear, whole, as the badge the line renders
+// for the same state.
+func TestBadgeAndNoticeNameTheSamePerson(t *testing.T) {
+	root := managedCheckout(t)
+	for _, st := range []mode.State{mode.Facilitator, mode.ProductThinker} {
+		notice := answerOwedNotice(st)
+		words := strings.TrimSuffix(strings.TrimPrefix(notice, "abcd: "), " — an answer is owed")
+		if words == notice || !strings.HasPrefix(words, "waiting on the ") {
+			t.Fatalf("%s: the notice %q does not have the expected shape", st, notice)
+		}
+		if err := mode.SetAt(root, st); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, err := runSplit(t, payloadFor(root), "statusline")
+		if err != nil {
+			t.Fatalf("statusline: %v\n%s", err, stderr)
+		}
+		if !strings.Contains(stdout, " "+words+" ") {
+			t.Errorf("%s: the notice says %q but the badge reads %q", st, words, stdout)
+		}
+	}
+}

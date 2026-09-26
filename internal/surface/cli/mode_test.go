@@ -154,7 +154,7 @@ func TestModeSetPrintsOneLineWhereNoSurfaceExists(t *testing.T) {
 		want     string
 	}{
 		{"no setting, product thinker", "", "product-thinker", "abcd: waiting on the product thinker — an answer is owed\n"},
-		{"no setting, facilitator", "", "facilitator", "abcd: waiting on the facilitator — an answer is owed\n"},
+		{"no setting, facilitator", "", "facilitator", "abcd: waiting on the technical facilitator — an answer is owed\n"},
 		{"no setting, managed", "", "managed", ""},
 		{"disabled setting, product thinker", `{"schema_version":1,"disabled":true}`, "product-thinker", "abcd: waiting on the product thinker — an answer is owed\n"},
 		{"enabled setting, product thinker", `{"schema_version":1}`, "product-thinker", ""},

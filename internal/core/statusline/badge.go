@@ -55,10 +55,14 @@ const (
 // and the label has to carry that where no colour does. The cost is width, and
 // width is the one thing the badge is allowed to spend: it is element one, so
 // it is what a narrow host keeps.
+//
+// The role labels are not written here: they are mode's own WaitingOn phrase,
+// the one seam that names the owed person, so the badge and the set form's
+// notice read the same words (iss-2609260100396332).
 var badgeWord = map[State]string{
 	StateManaged:        "abcd-managed",
-	StateFacilitator:    "waiting on the technical facilitator",
-	StateProductThinker: "waiting on the product thinker",
+	StateFacilitator:    StateFacilitator.WaitingOn(),
+	StateProductThinker: StateProductThinker.WaitingOn(),
 }
 
 // rolePairs are the two FIXED badge pairs, drawn from internal/livery's

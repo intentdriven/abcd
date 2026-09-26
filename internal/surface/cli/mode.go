@@ -128,9 +128,9 @@ func statusSurfaceInstalled() bool {
 // answerOwedNotice is the one line the set form prints where there is no
 // status surface: "" for a state that owes nobody an answer.
 func answerOwedNotice(st mode.State) string {
-	who := st.Addressee()
-	if who == "" {
+	waiting := st.WaitingOn()
+	if waiting == "" {
 		return ""
 	}
-	return "abcd: waiting on the " + who + " — an answer is owed"
+	return "abcd: " + waiting + " — an answer is owed"
 }
