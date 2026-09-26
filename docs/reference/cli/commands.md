@@ -1423,14 +1423,16 @@ File a draft intent from quoted text, or render the intent store's status bare: 
 
 #### `abcd intent audit`
 
-Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: Writes nothing; refuses an intent not shipped.
+List the owed fidelity reviews, drain them with --owed, or emit an intent's request: Writes nothing bare, an OWED stub otherwise; refuses an intent not shipped.
 
-**Usage:** `abcd intent audit [<itd-N>] | audit --issue-drift [--strict] [flags]`
+**Usage:** `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
 
 **Flags:**
 
 ```
       --issue-drift         walk the intent store and the issue ledger for promote joins that do not read the same from both ends (related_issues ↔ related_intents); warns on stderr, exits 0
+      --max int             with --owed: list at most n owed reviews (0: no cap); the summary names how many remain
+      --owed                drain the owed fidelity reviews: list them oldest shipped first and emit the oldest's request; writes (parks an OWED stub in a markerless intent, a committed record, and rewrites its request); runs no reviewer
       --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
       --strict              with --issue-drift: exit 1 when any finding is reported (the CI mode)
 ```

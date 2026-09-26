@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
@@ -197,14 +198,16 @@ func TestDescribeIntentLifecycleMoves(t *testing.T) {
 		t.Fatalf("planned+ready next move wrong: %v", d.NextMoves)
 	}
 
-	// shipped/ → none, audit state shown.
+	// shipped/ with no review marker → the review is owed, and the re-emit
+	// mints its receipt (itd-2609150819445595 decision 3: nothing is
+	// grandfathered). The per-state moves are TestDescribeShippedIntentReviewMoves.
 	intentFixture(t, repo, "shipped", "itd-4", "done",
 		"---\nid: itd-4\nslug: done\nspec_id: spc-3\nkind: standalone\nimpact: additive\n---\n\n# D\n")
 	d, err = Describe(repo, "itd-4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(d.NextMoves, " "), "none") {
+	if moves := strings.Join(d.NextMoves, " "); !strings.Contains(moves, "fidelity review owed") || !strings.Contains(moves, "abcd intent audit itd-4") {
 		t.Fatalf("shipped next move wrong: %v", d.NextMoves)
 	}
 
@@ -367,8 +370,8 @@ func TestDescribeUnknownIDFaults(t *testing.T) {
 func TestRecommendedVerbPathsClosed(t *testing.T) {
 	want := map[string]bool{
 		"intent plan": true, "intent ready": true, "intent link": true,
-		"intent unhold": true,
-		"spec close":    true, "capture promote": true, "capture resolve": true,
+		"intent unhold": true, "intent audit": true,
+		"spec close": true, "capture promote": true, "capture resolve": true,
 		"capture wontfix": true,
 	}
 	got := RecommendedVerbPaths()
@@ -744,4 +747,85 @@ func TestDescribeSkippedIssueMatchesTheRosterByNumber(t *testing.T) {
 			t.Fatalf("the sibling's own id must be named with its file, got: %v", err)
 		}
 	})
+}
+
+// shippedIntentWithNotes is a shipped intent whose Audit Notes hold notes.
+func shippedIntentWithNotes(id, notes string) string {
+	return "---\nid: " + id + "\nslug: done\nspec_id: spc-3\nkind: standalone\nimpact: additive\n---\n\n# D\n\n" +
+		"## Acceptance Criteria\n\n- ok\n\n## Audit Notes\n\n" + notes + "\n"
+}
+
+// TestDescribeShippedIntentReviewMoves: the dispatcher's next move for a shipped
+// intent reads the review marker through the intent store's one reader
+// (spc-2609202112205096 piece 3) in place of a flat "none".
+func TestDescribeShippedIntentReviewMoves(t *testing.T) {
+	cases := []struct {
+		name, notes string
+		want, never []string
+	}{
+		{
+			name:  "owed names the receipt and the re-emit",
+			notes: "<!-- abcd-review: OWED receipt=rcp-0000000000a1 -->\nFidelity review OWED (receipt rcp-0000000000a1).",
+			want:  []string{"fidelity review owed", "rcp-0000000000a1", "`abcd intent audit itd-4`"},
+			never: []string{"none"},
+		},
+		{
+			name:  "no marker is owed and the re-emit mints the receipt",
+			notes: "_Empty. Populated by intent-auditor when intent moves to shipped/._",
+			want:  []string{"fidelity review owed", "no receipt", "mints", "`abcd intent audit itd-4`"},
+		},
+		{
+			name:  "ingested owes nothing",
+			notes: "<!-- abcd-review: INGESTED receipt=rcp-0000000000b2 -->\nFidelity review — receipt rcp-0000000000b2.",
+			want:  []string{"none", "ingested", "rcp-0000000000b2"},
+			never: []string{"owed", "intent audit itd-4"},
+		},
+		{
+			name: "dead-lettered is unreviewed with its reason, not owed",
+			notes: "<!-- abcd-review: DEAD_LETTER receipt=rcp-0000000000c3 -->\n" +
+				"Fidelity review DEAD_LETTER (receipt rcp-0000000000c3): criterion ac-9 is unknown. " +
+				"Raw payload retained at .abcd/.work.local/reviews/rcp-0000000000c3.deadletter.json. All criteria recorded INCONCLUSIVE.",
+			want:  []string{"dead-lettered", "unreviewed", "rcp-0000000000c3", "criterion ac-9 is unknown"},
+			never: []string{"owed", ".work.local"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			repo := t.TempDir()
+			intentFixture(t, repo, "shipped", "itd-4", "done", shippedIntentWithNotes("itd-4", c.notes))
+			before := treeSnapshot(t, repo)
+			d, err := Describe(repo, "itd-4")
+			if err != nil {
+				t.Fatal(err)
+			}
+			moves := strings.Join(d.NextMoves, "\n")
+			for _, w := range c.want {
+				if !strings.Contains(moves, w) {
+					t.Errorf("next move lacks %q:\n%s", w, moves)
+				}
+			}
+			for _, n := range c.never {
+				if strings.Contains(moves, n) {
+					t.Errorf("next move carries %q:\n%s", n, moves)
+				}
+			}
+			assertZeroWrites(t, repo, before)
+		})
+	}
+}
+
+// TestReEmitCommandIsARecommendedVerb ties the intent store's re-emit command to
+// the closed verb list the live-tree anti-drift test walks, so the move the
+// dispatcher passes through cannot name a verb the tree does not hold.
+func TestReEmitCommandIsARecommendedVerb(t *testing.T) {
+	cmd := intent.ReEmitCommand("itd-4")
+	var found bool
+	for _, p := range RecommendedVerbPaths() {
+		if cmd == "abcd "+p+" itd-4" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("%q is not built from a recommended verb path %v", cmd, RecommendedVerbPaths())
+	}
 }

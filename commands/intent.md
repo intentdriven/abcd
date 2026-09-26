@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -23,12 +23,13 @@ invocation **performs zero writes**.
 ```
 
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
-and the intent↔spec links. The `intents` array lists every intent with its
-`id`, `title`, `bucket`, `ac_state` (`real` when its Acceptance Criteria hold
-at least one bullet, `seeded` when they are still the placeholder, so it cannot
-be planned yet) and `filed` (the date a timestamp id encodes; null for an
-ordinal id): a planning sweep reads it rather than opening the files. Nothing
-is created or moved by this invocation.
+the intent↔spec links, and `reviews_owed` — the shipped intents whose fidelity
+review is owed, the same total bare `intent audit` lists (below). The `intents`
+array lists every intent with its `id`, `title`, `bucket`, `ac_state` (`real`
+when its Acceptance Criteria hold at least one bullet, `seeded` when they are
+still the placeholder, so it cannot be planned yet) and `filed` (the date a
+timestamp id encodes; null for an ordinal id): a planning sweep reads it rather
+than opening the files. Nothing is created or moved by this invocation.
 
 **Every `intent` verb addresses the checkout's store, from anywhere in the
 tree.** The verb resolves the repository root before it reads or writes, so the
@@ -650,9 +651,25 @@ it (the one-sided-link remedy `ready` reports). Report the linked pair.
 ## Review / ingest
 
 ```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --json                               # list the owed fidelity reviews (read-only)
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed [--max <n>] --json            # drain them oldest first (see Drain below)
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit <itd-N> --json                       # re-emit a shipped intent's review request
 "${CLAUDE_PLUGIN_ROOT}/abcd" intent audit ingest --verdict-json <file> --json  # apply a host-produced verdict
 ```
+
+**Bare `intent audit` lists the debt and writes nothing.** Every `spec close`
+that ships an intent parks an OWED review marker, so a fidelity review is owed
+by construction. The listing reads the first marker of every intent in
+`shipped/` and returns one entry per shipped intent (`intent_id`, `state`,
+`receipt_id`, and `re_emit` where the review is owed), with the totals `owed`,
+`dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
+intent with no marker at all owes the review too, and its re-emit mints the
+receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
+with the reason the quarantine recorded, and is not counted as owed; an
+`INGESTED` one is not listed in the text form. Report the owed total and, for
+each owed intent, its receipt and its re-emit command. The listing names the
+re-emit, never the request file: the request lives in the gitignored local tier
+and may have been swept. It exits 0 whatever it finds; no gate reads it.
 
 An intent this checkout does not hold is refused; when a peer holds it (a
 sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
@@ -682,7 +699,7 @@ choose one. The section sits outside the hashed prompt, so it never moves
 `prompt_hash`. The request `spec close` emits when it ships an intent carries
 the same section; a routing table that cannot be read leaves that request
 without one, one stderr warning names `intent audit <itd-N>` as the re-emit that
-adds it, and the close stands. `--issue-drift` dispatches no agent and refuses `--route`. The
+adds it, and the close stands. The bare listing and `--issue-drift` dispatch no agent and refuse `--route`. The
 ingest's `--json` result carries a `route` receipt (`tier_asked`,
 `connection_tried`, `connection_used`, `fallback_reason`, `override`,
 `settings_sent`, `model_reported`) and its text a `route:` line; relay it with
@@ -708,6 +725,74 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+## Drain: pay the owed reviews, oldest first
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent audit --owed --max <n> --json
+```
+
+`--owed` is the bounded command that pays the review debt. It returns `queue`
+— the owed reviews, oldest shipped first (`shipped` is the day the intent
+entered `shipped/`, and `shipped_state` says which fact holds: `dated`;
+`uncommitted`, shipped in the working tree and not yet committed, with no day
+and last; or `unknown`, when the history could not be read, which leaves every
+day unknown and the queue in mint order), at most `max` of them — with `owed`, the whole total, and
+`remaining`, how many the cap left out. `next` names the oldest one's
+`request_path` and its `routing`: the command has just emitted that request,
+exactly as `intent audit <itd-N>` does — its routing section included, and a
+`--route intent-auditor=<tier>` override applied the same way — minting the
+receipt if the intent had none. An entry whose request cannot be emitted (a
+malformed `spec_id`, an unreadable file) carries `emit_error`, and `next` is
+the first entry after it that emits, so one bad record never blocks the drain;
+no `next` while `owed` is above zero means no listed entry could be emitted.
+It writes: the emit parks the OWED stub in a markerless intent, a committed
+record, so even a look leaves a diff; bare `intent audit` is the read-only
+listing. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+`--max` without `--owed` is refused, as are `--owed` with an intent id or with
+`--issue-drift`.
+
+Run the loop one audit at a time, never in parallel — the cap and the one
+auditor at a time are what bound the cost:
+
+1. **Check for an auditor first.** The `intent-auditor` agent must be in the
+   host's agent listing. When it is not, or its launch is refused, run no
+   audit: every entry stays owed, nothing is marked failed or dead-lettered for
+   want of a reviewer, and the summary says why nothing ran ("0 audited; 12
+   owed left owed: no intent-auditor available — <what the host said>"). A
+   refused launch part-way through stops the loop the same way, and the
+   summary names the entries it did not reach.
+2. **For each entry in `queue`, in order:** an entry carrying `emit_error`
+   is not audited — report it with its error, as needing a hand fix, and take
+   the next. Otherwise run `intent audit <itd-N> --json`, with the same
+   `--route` when the drain was given one (for the entry `next` names the
+   request is already written, and the re-emit is idempotent), hand the whole
+   request file to the `intent-auditor` agent, write the verdict it returns to
+   `.abcd/.work.local/scratch/`, and run
+   `intent audit ingest --verdict-json <file> --json`. The verdict lands exactly
+   as a single audit's does — the Audit Notes block, the receipt, the scope-
+   condition dispositions. Report the ingest's status, then take the next
+   entry; start the next audit only after this ingest has returned.
+3. **A NOT_MET verdict is captured, never fixed.** Every intent the drain
+   reaches has already shipped, so a criterion it did not meet is a finding
+   against delivered work: file it with
+   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup`,
+   naming the receipt, and continue the loop. The drain changes no code and
+   re-opens nothing; the fix round belongs to the build that owns the work. A
+   `dead_letter` ingest is reported with its reason and is listed apart by
+   bare `intent audit` from then on.
+4. **Summarise:** how many were audited, the ingest outcome of each, the
+   captures filed for NOT_MET (their ids), the entries skipped for an
+   `emit_error`, how many stay owed — the command's `remaining` plus any entry
+   the loop did not reach — and why the loop
+   stopped: the queue ran out, the cap was reached, or no auditor was
+   available.
+
+A host without this page drives the same pair by hand: the text form prints
+the ordered list and the `next:` request path, and after the verdict is
+ingested the next `--owed` run finds the queue one shorter. Nothing starts the
+drain on its own: the spec close still only parks the OWED marker, and no hook,
+gate or schedule runs a reviewer.
 
 ## Condition: disposition one scope condition from a reading or a delivery
 

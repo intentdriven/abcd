@@ -74,8 +74,12 @@ Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
 read). For an issue id the JSON also carries `ledger` — the `checkout` and
 `branch` whose ledger was read — because the same id can sit in another
-worktree's ledger in another state; name it when you report. A shape-matching id
-found in no store exits non-zero naming the stores
+worktree's ledger in another state; name it when you report. A shipped intent's
+move reads its fidelity-review marker: an owed review names its receipt and the
+re-emit command (`abcd intent audit <itd-N>`); a shipped intent with no marker
+owes one too, and the re-emit mints its receipt; a dead-lettered review is
+reported unreviewed with its reason; an ingested review leaves nothing to do. A
+shape-matching id found in no store exits non-zero naming the stores
 searched — unless a peer holds it (a sibling worktree or a local branch, see
 `/abcd:peers`), in which case the refusal names that peer's branch, path and
 folder instead; relay it, and do not recreate the record here. An issue whose

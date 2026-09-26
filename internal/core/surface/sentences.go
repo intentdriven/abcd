@@ -178,8 +178,8 @@ var sentences = map[string]string{
 
 	"abcd intent": "File a draft intent from quoted text, or render the intent store's status bare: " +
 		"Writes the draft into drafts/; refuses a lone word.",
-	"abcd intent audit": "Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: " +
-		"Writes nothing; refuses an intent not shipped.",
+	"abcd intent audit": "List the owed fidelity reviews, drain them with --owed, or emit an intent's request: " +
+		"Writes nothing bare, an OWED stub otherwise; refuses an intent not shipped.",
 	"abcd intent audit ingest": "Ingest an intent-audit verdict into the shipped intent: " +
 		"Writes its Audit Notes; refuses without --verdict-json.",
 	"abcd intent condition": "Read or disposition a shipped intent's scope conditions: " +

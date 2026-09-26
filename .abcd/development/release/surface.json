@@ -1441,10 +1441,24 @@
     {
       "path": "abcd intent audit",
       "hidden": false,
-      "sentence": "Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: Writes nothing; refuses an intent not shipped.",
+      "sentence": "List the owed fidelity reviews, drain them with --owed, or emit an intent's request: Writes nothing bare, an OWED stub otherwise; refuses an intent not shipped.",
       "flags": [
         {
           "name": "issue-drift",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "max",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "owed",
           "shorthand": "",
           "type": "bool",
           "required": false,

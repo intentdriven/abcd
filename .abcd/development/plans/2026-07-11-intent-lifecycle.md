@@ -7,7 +7,7 @@ verdict). The specification already lives across planned intents
 [itd-46](../intents/shipped/itd-46-abcd-intent-quoted-text-create-symmetric.md),
 [itd-48](../intents/planned/itd-48-intent-fidelity-reviewer-roles-2-3.md),
 [itd-50](../intents/planned/itd-50-loop-toward-acceptance.md),
-[itd-53](../intents/planned/itd-53-review-queue-auto-drain-fidelity-gate.md)) plus
+[itd-53](../intents/shipped/itd-53-review-queue-auto-drain-fidelity-gate.md)) plus
 `brief/04-surfaces/05-intent.md` and `intents/README.md`; this plan is the
 build-shaped synthesis, not a new spec.
 
