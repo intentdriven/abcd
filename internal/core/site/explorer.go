@@ -913,7 +913,7 @@ func (e *explorer) href(fromPath, target string) string {
 			}
 			return out
 		}
-		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository)
+		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository, e.c.rendersDocs())
 	}
 	// A relative target that is NOT markdown — a directory, a script, a
 	// configuration file. `siteHref` leaves those exactly as the record wrote

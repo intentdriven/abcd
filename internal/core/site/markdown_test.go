@@ -478,13 +478,18 @@ func TestSiteHref(t *testing.T) {
 			forge + "/blob/main/.abcd/development/decisions/adrs/0047-x.md#decision"},
 	}
 	for _, c := range cases {
-		if got := siteHref(c.dir, c.in, forge); got != c.want {
+		if got := siteHref(c.dir, c.in, forge, true); got != c.want {
 			t.Errorf("siteHref(%q, %q) = %q, want %q", c.dir, c.in, got, c.want)
 		}
 	}
 	// With no forge URL there is nothing to point at, and the record's own text
 	// is left exactly as written.
-	if got := siteHref("docs/explanation", "../../CONTRIBUTING.md", ""); got != "../../CONTRIBUTING.md" {
+	if got := siteHref("docs/explanation", "../../CONTRIBUTING.md", "", true); got != "../../CONTRIBUTING.md" {
 		t.Errorf("siteHref with no forge = %q, want the href unchanged", got)
+	}
+	// A site with no docs tree has no docs route to send a docs page to, so
+	// it goes to the forge's view like any other file.
+	if got := siteHref("docs/explanation", "roles.md#x", forge, false); got != forge+"/blob/main/docs/explanation/roles.md#x" {
+		t.Errorf("siteHref with no docs tree = %q, want the forge's view of the page", got)
 	}
 }

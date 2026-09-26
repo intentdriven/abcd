@@ -7,6 +7,7 @@ package site
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -885,5 +886,54 @@ func TestADefaultBranchTheForgeCannotNameFallsBackLoudly(t *testing.T) {
 				t.Errorf("the fallback is not named in the notes:\n%s", notes)
 			}
 		})
+	}
+}
+
+// TestASiteWithNoDocsBuildLinksNoDocsTree is iss-2609260928152365: a managed
+// repository's composition that declares no docs surface renders no /docs/
+// tree, so no page links the header's Docs entry or a docs route; a link to a
+// documentation page goes to the forge's view of it instead. A composition that
+// declares one (abcd's own) keeps both.
+func TestASiteWithNoDocsBuildLinksNoDocsTree(t *testing.T) {
+	h := newHarness(t)
+	h.repo.Write("docs/README.md", "# Example Site\n\nThe example repository's documentation.\n\n"+
+		"## Why\n\nBecause a test needs one, as [the guide](how-to/guide.md) says.\n")
+	h.repo.Write("docs/how-to/guide.md", "# Guide\n\nA guide.\n")
+	h.repo.Write(".claude-plugin/plugin.json", `{"name": "example-site", "repository": "https://github.com/example-owner/example-site"}`+"\n")
+	h.repo.Commit("a guide")
+	h.run(t)
+	build := func() map[string]string {
+		out := t.TempDir()
+		if _, err := Build(Request{RepoRoot: h.repo.Root(), OutDir: out, Stamp: fixtureStamp}); err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		return htmlPages(t, out)
+	}
+	docsLink := regexp.MustCompile(`href="/docs/[^"]*"`)
+	pages := build()
+	if !strings.Contains(pages["index.html"], "the guide") {
+		t.Fatal("the landing page does not carry the guide link this test follows")
+	}
+	for name, page := range pages {
+		if m := docsLink.FindString(page); m != "" {
+			t.Errorf("%s links %s, but this site renders no docs tree", name, m)
+		}
+	}
+	if !strings.Contains(pages["index.html"], `href="https://github.com/example-owner/example-site/blob/`) {
+		t.Errorf("the guide link does not go to the forge's view of the page")
+	}
+
+	// Declaring the docs surface brings the tree's links back.
+	m := string(mustRead(t, h.repo.Root(), ManifestRelPath))
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(m), &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["docs"] = map[string]string{"index": "docs/README.md"}
+	raw, _ := json.Marshal(doc)
+	h.repo.Write(ManifestRelPath, string(raw))
+	pages = build()
+	if !strings.Contains(pages["index.html"], `href="/docs/"`) || !strings.Contains(pages["index.html"], `href="/docs/how-to/guide/"`) {
+		t.Error("a composition declaring its docs surface lost the header's Docs link or the docs route")
 	}
 }

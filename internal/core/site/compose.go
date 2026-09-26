@@ -123,21 +123,29 @@ func (c *composer) renderer(p *docPage) *Renderer {
 		Image: func(src, alt string, at Source) (string, error) {
 			return c.assets.render(p.Dir, src, alt, at)
 		},
-		Link: func(href string, at Source) string { return siteHref(p.Dir, href, c.repo.Repository) },
+		Link: func(href string, at Source) string { return siteHref(p.Dir, href, c.repo.Repository, c.rendersDocs()) },
 	}
 }
+
+// rendersDocs reports whether this site serves a /docs/ tree. The tree is not
+// this build's output (the docs build writes it beside it), so the composition
+// is what says it is there: a `docs` block naming the index the docs surface
+// renders. Without one, nothing links the tree, the header's Docs entry
+// included, because every such link would 404.
+func (c *composer) rendersDocs() bool { return c.manifest.Docs.Index != "" }
 
 // siteHref maps a link as the record wrote it to a link the site serves.
 //
 // An absolute URL and an in-page fragment are already right. A repo-relative
-// markdown path under `docs/` becomes the docs route that renders it. A
-// repo-relative markdown path ANYWHERE ELSE — a record file, a root document —
-// has no page on this site yet, so it becomes the forge's own view of that file:
-// a link that works today, rather than a relative path that 404s the moment
-// somebody follows it. When the record explorer ships those targets get real
-// pages and this arm narrows; a broken link in the meantime is not an
+// markdown path under `docs/` becomes the docs route that renders it, when the
+// site renders a docs tree (docs). A repo-relative markdown path ANYWHERE ELSE
+// — a record file, a root document — or under `docs/` on a site with no docs
+// tree has no page on this site, so it becomes the forge's own view of that
+// file: a link that works today, rather than a relative path that 404s the
+// moment somebody follows it. When the record explorer ships those targets get
+// real pages and this arm narrows; a broken link in the meantime is not an
 // acceptable placeholder.
-func siteHref(pageDir, href, forge string) string {
+func siteHref(pageDir, href, forge string, docs bool) string {
 	switch {
 	case href == "",
 		strings.HasPrefix(href, "http://"),
@@ -152,7 +160,7 @@ func siteHref(pageDir, href, forge string) string {
 		return href
 	}
 	rel := path.Clean(path.Join(pageDir, target))
-	if !strings.HasPrefix(rel, "docs/") {
+	if !docs || !strings.HasPrefix(rel, "docs/") {
 		if forge == "" || !fsutil.ValidRelPath(rel) {
 			return href
 		}
@@ -331,7 +339,9 @@ func (c *composer) headerFor(active string) string {
 	}
 	b.WriteString(`<a href="/#` + escapeAttr(c.firstChapterAnchor()) + `">` + escapeText(c.ui.NavStory) + `</a>`)
 	b.WriteString(`<a href="/#` + escapeAttr(c.installChapterAnchor()) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
-	b.WriteString(`<a href="/docs/">` + escapeText(c.ui.NavDocs) + `</a>`)
+	if c.rendersDocs() {
+		b.WriteString(`<a href="/docs/">` + escapeText(c.ui.NavDocs) + `</a>`)
+	}
 	if c.manifest.Pages.resolve().explorer {
 		b.WriteString(`<a href="/record/"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
 	}

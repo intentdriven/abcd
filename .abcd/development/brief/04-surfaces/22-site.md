@@ -97,6 +97,13 @@ it with it, and switching the explorer off takes every explorer page. The landin
 page and the record pages carry the site, so a declaration switching either off
 beneath the explorer is refused.
 
+The documentation tree under `/docs/` is not among these pages: the docs build
+writes it beside them. The composition declaration's `docs` block says it is
+there, so the header's Docs entry and every link that reaches a documentation
+page's route appear only when that block names the docs index. Without it, a
+link to a documentation page goes to the forge's view of the file, like a link
+to any other file the site has no page for.
+
 ## The single-source rule
 
 No text is written for the website. The only words the generator may add are the
