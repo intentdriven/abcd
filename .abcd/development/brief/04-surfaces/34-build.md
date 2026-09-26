@@ -150,9 +150,11 @@ verbs are a draft (itd-2609091014076309), so the lane is a plain
 run id and the lane id are each held to their own shape, and the name they
 compose must be one path segment of letters, digits, `.`, `_` and `-`, not led
 by `-` or `.` and holding no `..`, so no component can leave the store. Every
-level of the store is made one at a time and proved a real directory, so a
-symlink anywhere in the chain refuses the step and nothing is made where it
-points; nothing beside the checkout, and nothing outside
+level of the store is made one at a time and proved a real directory that is
+the caller's alone (owned by the caller, writable by neither its group nor
+anyone else), and a level the step makes is made `0700`, so a symlink anywhere
+in the chain, or a level another account owns or can write, refuses the step
+before anything is made inside it; nothing beside the checkout, and nothing outside
 `~/.abcd/worktrees/<root-sha>/`, is created. Git runs in the isolated
 environment, with `--` before the path. Run again after a kill, the step finds
 the worktree git lists at the lane's path on the lane's branch and adopts it;
