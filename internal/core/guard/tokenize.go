@@ -96,7 +96,7 @@ type segment struct {
 // standard input (segment.piped). It names the run rather than copying it, so
 // recording one costs the same whatever it holds, and the question an entry
 // asks of it — does any of these commands match — is answered from a count the
-// list keeps per question (feedHit), so asking it of nested runs costs no more
+// list keeps per question (feed.hits), so asking it of nested runs costs no more
 // than asking it once of the whole list.
 type feed struct {
 	list   *segList
