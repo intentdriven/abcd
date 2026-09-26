@@ -8,7 +8,7 @@ status: draft
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/phase
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -65,6 +65,7 @@ term separately.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [intent](intent.md), [spec](spec.md), [brief](brief.md) — the record loop's three record kinds
 - [phase](phase.md) — the sequencing unit, not a stage of the loop
 - [disembark](disembark.md), [lifeboat](lifeboat.md) — the round-trip's two halves

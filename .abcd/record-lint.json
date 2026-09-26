@@ -436,6 +436,29 @@
         "epic\u2192spec",
         "epic-to-spec"
       ]
+    },
+    "glossary_family_pointer": {
+      "enabled": true,
+      "severity": "blocker",
+      "glossary_dir": ".abcd/development/brief/glossary",
+      "registry": ".abcd/development/brief/glossary/core/record-families.md"
+    },
+    "record_family_key": {
+      "enabled": true,
+      "severity": "warn",
+      "glossary_dir": ".abcd/development/brief/glossary",
+      "registry": ".abcd/development/brief/glossary/core/record-families.md",
+      "record_stores": {
+        "adr": ".abcd/development/decisions/adrs",
+        "itd": ".abcd/development/intents",
+        "spc": ".abcd/development/specs",
+        "iss": ".abcd/work/issues",
+        "rdi": ".abcd/work/issues/readings",
+        "dsp": ".abcd/work/issues/dispositions",
+        "rdg": ".abcd/development/readings",
+        "adm": ".abcd/work/issues/admissions",
+        "srp": ".abcd/work/issues/surprises"
+      }
     }
   },
   "exempt_paths": [

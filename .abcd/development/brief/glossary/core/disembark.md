@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -55,6 +55,7 @@ copy.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [lifeboat](lifeboat.md) — the artefact disembark packs, at a destination outside the source repo
 - [voyage](voyage.md) — the operations namespace at `~/.abcd/voyage/<source-root-sha>/` that
   records each disembark run

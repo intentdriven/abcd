@@ -202,14 +202,10 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 		// A shallow checkout's listing SUCCEEDS but holds only the tags that
 		// were fetched, so it is not the release set either
 		// (iss-2609251238184553).
-		if shallow, err := ShallowCheckout(req.RepoRoot); err != nil || shallow {
-			reason := "the checkout is shallow, so its tag listing may hold only the tags that were fetched"
-			if err != nil {
-				reason = "whether the checkout is shallow could not be read: " + err.Error()
-			}
+		if err := gitutil.RequireFullHistory(req.RepoRoot); err != nil {
 			return RetentionPlan{
 				Published: pub.Tag(), Line: pub.Line(), Refused: true,
-				RefusalReason: reason + ", and the plan cannot say what the release would prune — fetch the full history and tags first",
+				RefusalReason: "the tag listing is not known to be the release set (a shallow checkout's holds only the tags that were fetched), so the plan cannot say what the release would prune — fetch the full history and tags first: " + err.Error(),
 			}
 		}
 		existing = tags

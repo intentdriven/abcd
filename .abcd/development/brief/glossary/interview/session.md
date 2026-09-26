@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: The human invokes /abcd:intent grill with a target intent or brief section.
 ends_when: The PRD synthesis phase completes and the PRD file is written to disk.
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -49,5 +49,6 @@ always means a grill session.
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [embark](embark.md) — the opening move that initiates a session
 - [intent](../core/intent.md) — the primary target of a grill session

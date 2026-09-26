@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // graveyard_archaeology.go — Layer 1 of the graveyard (M4, adr-35): the Tier-0,
@@ -69,14 +71,13 @@ func gvReverts(ctx *SourceContext) []Finding {
 }
 
 // refIsSafe reports whether a repo-derived ref name is safe to hand git as a
-// positional argument: non-empty and not option-like (no leading '-'). The
-// lifeboat probe is designed to run over hostile/archived repositories, so a
-// crafted ref such as "-x" (a branch or an origin/HEAD target written straight
-// into .git/refs) must never reach git where it would parse as a flag — argument
-// injection. A legitimate branch name never begins with '-', so rejecting these
-// only drops hostile input.
+// positional argument — gitutil.RefIsSafe, the one definition. The lifeboat
+// probe is designed to run over hostile/archived repositories, so a crafted ref
+// such as "-x" (a branch or an origin/HEAD target written straight into
+// .git/refs) must never reach git where it would parse as a flag — argument
+// injection.
 func refIsSafe(ref string) bool {
-	return ref != "" && !strings.HasPrefix(ref, "-")
+	return gitutil.RefIsSafe(ref)
 }
 
 // defaultBranch resolves the branch unmerged work is measured against, without

@@ -8,7 +8,7 @@ status: stable
 introduced_in: itd-67
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/phase
+not_to_be_confused_with: [distribution/version, core/record-families]
 versions: null
 ---
 
@@ -46,5 +46,6 @@ condition).
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [version](version.md) — the semver string a release carries
 - [phase](../core/phase.md) — completing one may trigger a minor-version release

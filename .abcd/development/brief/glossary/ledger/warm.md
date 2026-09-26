@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: ledger/cold-reading
+not_to_be_confused_with: [ledger/cold-reading, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not use warm to mean sensitive or private. The construal as it presently stan
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [cold-reading](cold-reading.md)
 - [read-block](read-block.md), the wall that keeps warm material from a reading

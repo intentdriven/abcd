@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -45,5 +45,6 @@ the opening. Do not use "onboarding" (user-product connotations) or "introductio
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [session](session.md) — the full grill lifecycle that begins with embark
 - [intent](../core/intent.md) — the artefact the oracle reads during embark

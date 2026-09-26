@@ -44,6 +44,7 @@ specs).
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [intent](intent.md) — the human-authored document that a spec realises
 - [phase](phase.md) — the arc that bundles many specs
 

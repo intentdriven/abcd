@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: ledger/regime
+not_to_be_confused_with: [ledger/regime, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not call a position a phase or a step of the record's roadmap; those are deli
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [regime](regime.md)
 - [cold-reading](cold-reading.md)

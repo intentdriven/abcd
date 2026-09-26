@@ -195,6 +195,19 @@ var sentences = map[string]string{
 	"abcd intent unhold": "Lift an intent's hold: " +
 		"Writes the removal of its held line; refuses a record not held.",
 
+	"abcd lab": "List this repository's labs with their pins, probe counts and halts: " +
+		"Writes nothing; refuses outside a git checkout.",
+	"abcd lab harvest": "Assemble a lab's harvest with its capture candidates: " +
+		"Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
+	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
+		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
+	"abcd lab preflight": "Run a lab's harness-isolation and dual-binary checks: " +
+		"Writes the preflight artefact, and a finding and halt on a failure; refuses an unknown lab.",
+	"abcd lab record": "Scaffold one probe record naming the artefact it observes: " +
+		"Writes the probe's files under state/probes/; refuses a halted lab or a probe already recorded.",
+	"abcd lab sweep": "Sweep a lab's documents for every retracted pattern: " +
+		"Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
+
 	"abcd launch": "Preview the public launch bundle, its secret scan, and the release gates: " +
 		"Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
 	"abcd launch archive": "Render the release's plugin archive: " +

@@ -15,8 +15,12 @@ versions: null
 
 # bundle
 
-A **bundle** is a delivery grouping, not a sequencing one: two or three intents whose work is one change, planned together by `abcd intent plan itd-A itd-B --bundle <name>` (itd-34), sharing one spec and shipping together when it closes. A bundle says nothing about what comes before what; that is dependencies. A bundle cannot contain its own blocker.
+A **bundle** is a delivery grouping, not a sequencing one: two or three intents whose work is one change, sharing one spec and shipping together when it closes (itd-34, planned, plans them onto that spec in a single act). A bundle says nothing about what comes before what; that is dependencies. A bundle cannot contain its own blocker.
 
 ## When to use
 
 When two intents would be one pull request. Not as a phase in disguise: a bundle of ten is a sign the intents were cut wrong.
+
+## Related terms
+
+- [record families](record-families.md) — the one page that maps the record families and how they relate
