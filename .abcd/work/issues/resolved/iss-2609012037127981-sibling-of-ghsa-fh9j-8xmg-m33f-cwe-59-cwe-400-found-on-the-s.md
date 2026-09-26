@@ -9,7 +9,7 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/lint/lint.go"
-resolution: "checkReceiptGate reads each receipt and the release-gate manifest with fsutil.ReadGuarded under a 4 MiB cap on the unresolved path, so a symlinked leaf is refused outright, and an unreadable receipt is a fail-closed finding rather than an aborted crawl; receipts_dir is contained. TestReceiptGateRefusesUnsafeReceipts covers a FIFO receipt, a receipt symlinked to an out-of-tree PROMOTE, and a FIFO manifest. (An equivalent fix, 40bab2fe, sat on the unmerged fix/security-sweep-continued branch and never reached main.)"
+resolution: "checkReceiptGate reads each receipt and the release-gate manifest with fsutil.ReadGuarded under a 4 MiB cap on the unresolved path, so a symlinked leaf is refused outright, and an unreadable receipt is a fail-closed finding rather than an aborted crawl; receipts_dir is contained. TestReceiptGateRefusesUnsafeReceipts covers a FIFO receipt, a receipt symlinked to an out-of-tree PROMOTE, and a FIFO manifest. (An equivalent fix, 40bab2fe, sat on the unmerged fix/security-sweep-continued branch and never reached main.) Amended 2026-09-26: this fix guarded the leaf alone, so it met its grounds only for a symlinked receipt file. A symlinked commit directory (`.abcd/work/reviews/<sha>` linked out of the tree) or a symlinked release-gate directory still carried either read to an out-of-tree regular file it accepted, and a forged PROMOTE reached that way satisfied the gate; iss-2609261016494611 closes that half by reading both through an os.Root at the repository root."
 impact: fix
 resolved_by:
   commit: "b48fd584"
