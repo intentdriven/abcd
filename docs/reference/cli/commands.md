@@ -1508,7 +1508,7 @@ File a draft intent from quoted text, or render the intent store's status bare: 
 
 #### `abcd intent audit`
 
-List the owed fidelity reviews, drain them with --owed, or emit an intent's request: Writes nothing bare, an OWED stub otherwise; refuses an intent not shipped.
+List or drain owed fidelity reviews, emit an intent's request, or check issue drift: Writes an OWED stub only for --owed or an id; refuses an unshipped intent.
 
 **Usage:** `abcd intent audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] [flags]`
 

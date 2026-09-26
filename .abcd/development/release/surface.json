@@ -1552,7 +1552,7 @@
     {
       "path": "abcd intent audit",
       "hidden": false,
-      "sentence": "List the owed fidelity reviews, drain them with --owed, or emit an intent's request: Writes nothing bare, an OWED stub otherwise; refuses an intent not shipped.",
+      "sentence": "List or drain owed fidelity reviews, emit an intent's request, or check issue drift: Writes an OWED stub only for --owed or an id; refuses an unshipped intent.",
       "flags": [
         {
           "name": "issue-drift",
