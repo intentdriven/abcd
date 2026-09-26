@@ -33,7 +33,7 @@ type ArchiveEntry struct {
 // git could not list — no commit at rev, not a repository, git absent — and is
 // never reported as an empty tree.
 func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
-	out, err := isolatedGit(root, "ls-tree", "-r", "-z", "--full-tree", rev).Output()
+	out, err := isolatedGit(root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
 	if err != nil {
 		return nil, withStderr(err)
 	}

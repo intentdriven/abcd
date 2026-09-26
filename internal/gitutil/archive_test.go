@@ -81,6 +81,22 @@ func TestArchiveTreeAgreesWithGitArchive(t *testing.T) {
 	}
 }
 
+// TestArchiveTreeReadsAnOptionShapedRevisionAsARevision holds the positional
+// revision behind --end-of-options: a rev that looks like an option is looked
+// up as an object name and refused as one, never parsed as a flag.
+func TestArchiveTreeReadsAnOptionShapedRevisionAsARevision(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("fixture")
+	_, err := gitutil.ArchiveTree(r.Root(), "--name-only")
+	if err == nil {
+		t.Fatal("an option-shaped revision names no commit and must be refused")
+	}
+	if strings.Contains(err.Error(), "usage:") || !strings.Contains(err.Error(), "--name-only") {
+		t.Errorf("the revision was parsed as an option, not looked up as an object name: %v", err)
+	}
+}
+
 // archivedFiles lists the non-directory members of `git archive HEAD`.
 func archivedFiles(t *testing.T, r *gittest.Repo) []string {
 	t.Helper()
