@@ -4,10 +4,11 @@ Canonical reference for the lint engine in `internal/core/lint` — the determin
 
 ## 1. Lint coverage
 
-The lint engine lives in `internal/core/lint` (Go). It is driven by two armed, deterministic gates, each reading its own JSON rule config as the single source of truth for the armed rule set:
+The lint engine lives in `internal/core/lint` (Go). It is driven by two armed, deterministic tree gates, each reading its own JSON rule config as the single source of truth for the armed rule set, and by one history-range gate:
 
-- **Record-currency** (`cmd/record-lint`, config `.abcd/record-lint.json`) lints the markdown design record under `.abcd/development/` for drift: frontmatter and schema shape, resolvable cross-links, directory coverage, intent-lifecycle placement, retired or banned tokens, index-drift on generated regions, delivery-state agreement, citation currency, and record ids cited in record PROSE (`prose_citation_resolves`: an id written in a record's prose must name a record that exists, unless the author marks the line `<!-- record-lint: illustrative -->` or `<!-- record-lint: forward-looking -->`, or the id is carried by the ratcheting baseline `.abcd/prose-citations-baseline.json`; §1.1 says exactly what counts as prose). `make record-lint` runs it, and CI runs the same job on every push.
+- **Record-currency** (`cmd/record-lint`, config `.abcd/record-lint.json`) lints the markdown design record under `.abcd/development/` for drift: frontmatter and schema shape, a principle's typed claims and the scope conditions its evidence inherits, resolvable cross-links, directory coverage, intent-lifecycle placement, retired or banned tokens, index-drift on generated regions, delivery-state agreement, citation currency, and record ids cited in record PROSE (`prose_citation_resolves`: an id written in a record's prose must name a record that exists, unless the author marks the line `<!-- record-lint: illustrative -->` or `<!-- record-lint: forward-looking -->`, or the id is carried by the ratcheting baseline `.abcd/prose-citations-baseline.json`; §1.1 says exactly what counts as prose). `make record-lint` runs it, and CI runs the same job on every push.
 - **Docs-currency** (`abcd lint docs`, config `.abcd/docs-lint.json`) lints `docs/` and the repo-root prose for change-narration (past-tense drift such as "previously" or "formerly"), broken relative links, stray root markdown, host-name leakage, British-spelling drift, em-dash-in-list-item punctuation, and citation health. `make docs-lint` runs it, and CI runs it on the Linux leg.
+- **Decisions-append** (`cmd/record-lint decisions-append <base> <head>`, no config) checks every commit in a git range, merges included, against the append-only contract of `.abcd/work/DECISIONS.md`: DA001 an added line lands after the parent's last line, DA002 no committed line below the header is removed against any parent, DA003 a merge holds a line no more times than its merge base plus what each parent added, DA004 no commit introduces a NUL byte. The four ids are the gate's contract rather than configurable rules, and the contract, with the reasoning behind each rule, heads `internal/core/lint/decisionsappend.go`. The base is resolved once, through `gitutil.ResolveRangeBase`: an empty value or the all-zeroes placeholder is an announced skip, and a base that names no commit is refused. Exit 0 is clean or skipped, 1 a violation, 2 a range the gate could not judge (a shallow checkout, an unresolvable ref, a merge whose bound has no base to rest on). `make lint-decisions` runs it over `origin/main..HEAD` after its `TestDecisionsAppend*` cases, and CI runs it over the event's base.
 
 Each rule carries a severity (`blocker`, `warn`, or `info`) resolved from its config entry; the severity model is §2. A rule is enabled, disabled, or re-severitied by editing its config entry, so the armed set is always the JSON config, never this document.
 
@@ -20,7 +21,7 @@ The rule reads a record's free text, which is wider than its body and narrower t
 - **Frontmatter free text is prose.** The whole document is read, minus the frontmatter lines whose key is one of the typed cross-reference fields `record_schema` already resolves (and the indented block under such a key). Everything else above the `---` — `deferral_reason`, `found_during`, `resolution`, a `kind_notes` sentence — is a sentence someone wrote, and an id inside one must resolve like any other. A YAML comment after the value carries the line marker where a value must stay verbatim: `found_during: "…" # <!-- record-lint: illustrative -->`.
 - **A slug does not stop an id being an id.** `itd-160-dangling-….md` in a sentence cites `itd-160`. `links_resolve` judges markdown link *targets*, `[..](..)`, so a bare filename-shaped handle in prose reaches no other rule; treating the shape as a filename let an invented id go quiet under an appended slug. A placeholder written with a LETTER — `itd-N`, `spc-<id>`, `adr-NNNN` — is still not a citation and still needs no marker.
 - **Only triple-backtick fences are code.** A `~~~` fence is not recognised, and neither is four-space indented code: an id inside either is read as prose and must resolve or carry a marker. The rule fails toward asking rather than toward silence, and this is the one place an author meets that.
-- **Nine stores are scanned; four families resolve.** The `record_stores` config names nine roots so every record's prose is read, but only `adr`, `itd`, `iss` and `spc` are the cited-id grammar. An `rdi`, `dsp`, `rdg`, `adm` or `srp` id is not a citation to this rule and is checked by nothing here — those stores are in the list for the prose their files carry, not for their own ids.
+- **Ten stores are scanned; four families resolve.** The `record_stores` config names ten roots so every record's prose is read, but only `adr`, `itd`, `iss` and `spc` are the cited-id grammar. An `rdi`, `dsp`, `rdg`, `adm`, `srp` or `rfm` id is not a citation to this rule and is checked by nothing here — those stores are in the list for the prose their files carry, not for their own ids.
 
 The committed baseline `.abcd/prose-citations-baseline.json` carries the ids that predate the rule, one entry per id with a class and a note, and it ratchets down: an entry whose id resolves or that nothing cites any more is reported as spent (`prose_citation_baseline_stale`, `info`). An entry is a GLOBAL licence for its id, so a mention that can carry a line marker takes the marker instead.
 
@@ -38,14 +39,15 @@ Severity is a per-rule field in the owning JSON config (`.abcd/record-lint.json`
 
 ## 3. CI integration
 
-Two gates are armed today; the finer-grained tiers below them are design targets, not yet built.
+Three gates are armed today; the finer-grained tiers below them are design targets, not yet built.
 
-**Armed today.** Both gates run on every relevant change:
+**Armed today.** All three run on every relevant change:
 
 - **`make record-lint`** runs `cmd/record-lint` over the design record, and CI runs the same job on every push. It fails the build on any `blocker` finding.
 - **`make docs-lint`** runs `abcd lint docs` over `docs/` and the repo root, and CI runs it on the Linux leg. It fails on change-narration in a doc body, a broken relative link, a stray root markdown file, or any other `blocker`-severity rule.
+- **`make lint-decisions`** runs `cmd/record-lint decisions-append` over the commits a change adds, and CI's `record-lint` job runs it over the pull request's, merge-queue entry's or push's range. It fails on any DA001–DA004 finding, and refuses (exit 2) a range it cannot judge. Its exit grammar is its own (§1), not the tri-state below.
 
-Both gates read git-tracked bytes through `internal/core/lint` and honour the severity model in §2. Their exit code follows the standalone tri-state grammar — **blocker → 2, warn → 1, clean → 0** (an error dominates a warning; the tri-state lives in `internal/core/repolint`) — so a CI job that branches on the exit code treats any non-zero value as failure.
+The two tree gates read git-tracked bytes through `internal/core/lint` and honour the severity model in §2. Their exit code follows the standalone tri-state grammar — **blocker → 2, warn → 1, clean → 0** (an error dominates a warning; the tri-state lives in `internal/core/repolint`) — so a CI job that branches on the exit code treats any non-zero value as failure.
 
 **Design targets (not yet built).** These tiers are planned; the record describes them as intent, not as present reality:
 
@@ -53,7 +55,7 @@ Both gates read git-tracked bytes through `internal/core/lint` and honour the se
 - **A changed-lines PR tier** that lints only the lines a pull request changes against its merge base (never a blanket repo scan), so historical files are grandfathered and untouched legacy lines are never retroactively failed.
 - **A full-corpus tier** for checks that can only be verified against the whole record (for example a promote back-link between an intent and its source issue, which needs both files in view).
 
-Until those ship, the two armed gates above are the whole of CI's lint coverage: they run over the tracked record and docs on every push, not over a staged or changed-lines slice.
+Until those ship, the three armed gates above are the whole of CI's lint coverage: the two tree gates run over the tracked record and docs on every push, not over a staged or changed-lines slice, and the decisions-append gate over the commits the event adds.
 
 ## 4. Output format
 

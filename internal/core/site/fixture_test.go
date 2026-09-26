@@ -247,7 +247,8 @@ func (f *fixture) writeSources() {
       "adr": ".abcd/development/decisions/adrs",
       "itd": ".abcd/development/intents",
       "spc": ".abcd/development/specs",
-      "iss": ".abcd/work/issues"
+      "iss": ".abcd/work/issues",
+      "prn": ".abcd/development/principles"
     }}
   }
 }

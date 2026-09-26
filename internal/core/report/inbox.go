@@ -157,25 +157,74 @@ func ensureInbox() (string, error) {
 		return "", err
 	}
 	if err := fsutil.EnsureRealDirAll(home, inboxRelPath+"/"+promotedDirName, storeDirPerm); err != nil {
+		if refused := inboxNotRealDir(err); refused != nil {
+			return "", refused
+		}
 		return "", fmt.Errorf("cannot create the inbox: %w", err)
 	}
 	return dir, nil
 }
 
-// peekInbox returns the inbox directory, or "" when it does not exist yet. A
-// path occupied by anything but a real directory is refused.
+// inboxNotRealDir turns fsutil's not-a-real-directory error into the inbox's
+// refusal, naming the level that was refused — the home itself, ~/.abcd, the
+// inbox or its promoted folder — home-redacted, so the reader is sent to the
+// path that is wrong rather than to an inbox that may not exist
+// (iss-2609261106286306). It is a refusal (exit 2), not a failure: the inbox is
+// never read or written through anything but real directories
+// (iss-2609260552250826). Any other error is nil.
+func inboxNotRealDir(err error) error {
+	var pe *os.PathError
+	if !errors.Is(err, fsutil.ErrNotRealDir) || !errors.As(err, &pe) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s is not a real directory (a symlink or a file occupies it), and the inbox is never read or written through one; refusing",
+		ErrRefused, fsutil.RedactHome(pe.Path))
+}
+
+// peekInbox returns the inbox directory, or "" when it does not exist yet. It
+// refuses, level by level through the same fsutil walk ensureInbox creates by,
+// every path the filing verbs refuse: the home, ~/.abcd, the inbox and its
+// promoted folder must each be a real directory, so no verb reads through a
+// symlink that another would refuse to write through (iss-2609261106287078).
+//
+// One case reads as no inbox rather than a refusal: a symlink or a file at the
+// home or at ~/.abcd with no inbox behind it. There is nothing there to read,
+// and a machine whose ~/.abcd is a dotfiles symlink must not be told so at every
+// session start for an inbox it never had — the stance the rules loader takes on
+// ~/.abcd/rules.json behind a symlinked ~/.abcd. Filing into it is refused all
+// the same, because that would create the inbox through the link.
 func peekInbox() (string, error) {
-	_, dir, err := inboxDir()
+	home, dir, err := inboxDir()
 	if err != nil {
 		return "", err
 	}
-	if fsutil.IsRealDir(dir) {
-		return dir, nil
+	ok, err := fsutil.ProbeRealDirAll(home, inboxRelPath)
+	if err == nil && !ok {
+		return "", nil
 	}
-	if ok, _ := fsutil.ExistsNoFollow(dir); ok {
-		return "", fmt.Errorf("the inbox path is not a real directory (a symlink or a file occupies it); refusing")
+	if err == nil {
+		// The inbox stands; its promoted folder may be absent, never unreal.
+		if _, err = fsutil.ProbeRealDirAll(dir, promotedDirName); err == nil {
+			return dir, nil
+		}
 	}
-	return "", nil
+	refused := inboxNotRealDir(err)
+	if refused == nil {
+		return "", fmt.Errorf("cannot read the inbox: %w", err)
+	}
+	var pe *os.PathError
+	if errors.As(err, &pe) && isAncestor(pe.Path, dir) {
+		if behind, lerr := fsutil.ExistsNoFollow(dir); lerr == nil && !behind {
+			return "", nil
+		}
+	}
+	return "", refused
+}
+
+// isAncestor reports whether level is a directory strictly above path.
+func isAncestor(level, path string) bool {
+	rel, err := filepath.Rel(level, path)
+	return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }
 
 // Filed is where a report landed.

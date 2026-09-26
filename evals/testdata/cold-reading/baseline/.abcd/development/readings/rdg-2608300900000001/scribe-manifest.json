@@ -1,0 +1,6 @@
+{
+  "_type": "abcd.scribe.manifest/1",
+  "schema_version": 1,
+  "run": "rdg-2608300900000001",
+  "note": "ABCD-EVAL-SENTINEL-EXHAUST"
+}

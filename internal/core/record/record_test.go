@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
@@ -197,14 +198,16 @@ func TestDescribeIntentLifecycleMoves(t *testing.T) {
 		t.Fatalf("planned+ready next move wrong: %v", d.NextMoves)
 	}
 
-	// shipped/ → none, audit state shown.
+	// shipped/ with no review marker → the review is owed, and the re-emit
+	// mints its receipt (itd-2609150819445595 decision 3: nothing is
+	// grandfathered). The per-state moves are TestDescribeShippedIntentReviewMoves.
 	intentFixture(t, repo, "shipped", "itd-4", "done",
 		"---\nid: itd-4\nslug: done\nspec_id: spc-3\nkind: standalone\nimpact: additive\n---\n\n# D\n")
 	d, err = Describe(repo, "itd-4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(strings.Join(d.NextMoves, " "), "none") {
+	if moves := strings.Join(d.NextMoves, " "); !strings.Contains(moves, "fidelity review owed") || !strings.Contains(moves, "abcd intent audit itd-4") {
 		t.Fatalf("shipped next move wrong: %v", d.NextMoves)
 	}
 
@@ -367,9 +370,9 @@ func TestDescribeUnknownIDFaults(t *testing.T) {
 func TestRecommendedVerbPathsClosed(t *testing.T) {
 	want := map[string]bool{
 		"intent plan": true, "intent ready": true, "intent link": true,
-		"intent unhold": true,
-		"spec close":    true, "capture promote": true, "capture resolve": true,
-		"capture wontfix": true,
+		"intent unhold": true, "intent audit": true,
+		"spec close": true, "capture promote": true, "capture resolve": true,
+		"capture wontfix": true, "capture reframe": true,
 	}
 	got := RecommendedVerbPaths()
 	if len(got) != len(want) {
@@ -744,4 +747,240 @@ func TestDescribeSkippedIssueMatchesTheRosterByNumber(t *testing.T) {
 			t.Fatalf("the sibling's own id must be named with its file, got: %v", err)
 		}
 	})
+}
+
+// shippedIntentWithNotes is a shipped intent whose Audit Notes hold notes.
+func shippedIntentWithNotes(id, notes string) string {
+	return "---\nid: " + id + "\nslug: done\nspec_id: spc-3\nkind: standalone\nimpact: additive\n---\n\n# D\n\n" +
+		"## Acceptance Criteria\n\n- ok\n\n## Audit Notes\n\n" + notes + "\n"
+}
+
+// TestDescribeShippedIntentReviewMoves: the dispatcher's next move for a shipped
+// intent reads the review marker through the intent store's one reader
+// (spc-2609202112205096 piece 3) in place of a flat "none".
+func TestDescribeShippedIntentReviewMoves(t *testing.T) {
+	cases := []struct {
+		name, notes string
+		want, never []string
+	}{
+		{
+			name:  "owed names the receipt and the re-emit",
+			notes: "<!-- abcd-review: OWED receipt=rcp-0000000000a1 -->\nFidelity review OWED (receipt rcp-0000000000a1).",
+			want:  []string{"fidelity review owed", "rcp-0000000000a1", "`abcd intent audit itd-4`"},
+			never: []string{"none"},
+		},
+		{
+			name:  "no marker is owed and the re-emit mints the receipt",
+			notes: "_Empty. Populated by intent-auditor when intent moves to shipped/._",
+			want:  []string{"fidelity review owed", "no receipt", "mints", "`abcd intent audit itd-4`"},
+		},
+		{
+			name:  "ingested owes nothing",
+			notes: "<!-- abcd-review: INGESTED receipt=rcp-0000000000b2 -->\nFidelity review — receipt rcp-0000000000b2.",
+			want:  []string{"none", "ingested", "rcp-0000000000b2"},
+			never: []string{"owed", "intent audit itd-4"},
+		},
+		{
+			name: "dead-lettered is unreviewed with its reason, not owed",
+			notes: "<!-- abcd-review: DEAD_LETTER receipt=rcp-0000000000c3 -->\n" +
+				"Fidelity review DEAD_LETTER (receipt rcp-0000000000c3): criterion ac-9 is unknown. " +
+				"Raw payload retained at .abcd/.work.local/reviews/rcp-0000000000c3.deadletter.json. All criteria recorded INCONCLUSIVE.",
+			want:  []string{"dead-lettered", "unreviewed", "rcp-0000000000c3", "criterion ac-9 is unknown"},
+			never: []string{"owed", ".work.local"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			repo := t.TempDir()
+			intentFixture(t, repo, "shipped", "itd-4", "done", shippedIntentWithNotes("itd-4", c.notes))
+			before := treeSnapshot(t, repo)
+			d, err := Describe(repo, "itd-4")
+			if err != nil {
+				t.Fatal(err)
+			}
+			moves := strings.Join(d.NextMoves, "\n")
+			for _, w := range c.want {
+				if !strings.Contains(moves, w) {
+					t.Errorf("next move lacks %q:\n%s", w, moves)
+				}
+			}
+			for _, n := range c.never {
+				if strings.Contains(moves, n) {
+					t.Errorf("next move carries %q:\n%s", n, moves)
+				}
+			}
+			assertZeroWrites(t, repo, before)
+		})
+	}
+}
+
+// TestReEmitCommandIsARecommendedVerb ties the intent store's re-emit command to
+// the closed verb list the live-tree anti-drift test walks, so the move the
+// dispatcher passes through cannot name a verb the tree does not hold.
+func TestReEmitCommandIsARecommendedVerb(t *testing.T) {
+	cmd := intent.ReEmitCommand("itd-4")
+	var found bool
+	for _, p := range RecommendedVerbPaths() {
+		if cmd == "abcd "+p+" itd-4" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("%q is not built from a recommended verb path %v", cmd, RecommendedVerbPaths())
+	}
+}
+
+// The ledger families spc-2609020626040342 adds to the dispatcher: admissions
+// and surprises, with rfm admitted by the same edit and described by the reframe
+// spec (spc-2609020626048705); the reading families stay outside it.
+func TestIDReAdmitsTheThreeNewFamilies(t *testing.T) {
+	for _, id := range []string{"adm-1", "srp-2609251200001234", "rfm-3"} {
+		if !IDRe.MatchString(id) {
+			t.Errorf("IDRe refuses %s", id)
+		}
+	}
+}
+
+func TestIDReStillRefusesTheReadingFamilies(t *testing.T) {
+	for _, id := range []string{"rdi-1", "dsp-1", "rdg-1", "adm-", "ADM-1", "srp-1-slug"} {
+		if IDRe.MatchString(id) {
+			t.Errorf("IDRe admits %s, which stays outside the dispatcher", id)
+		}
+	}
+}
+
+// admissionLedger lays out a widening item, its accepted disposition and one
+// admission joining them, and returns the repo root.
+func admissionLedger(t *testing.T) string {
+	t.Helper()
+	repo := t.TempDir()
+	ledger := filepath.FromSlash(capture.LedgerRelPath)
+	write(t, repo, filepath.Join(ledger, "readings", "rdg-7", "rdi-11.md"),
+		"---\nschema_version: 1\nid: \"rdi-11\"\nrun: \"rdg-7\"\nposition: \"widening\"\n---\n")
+	write(t, repo, filepath.Join(ledger, "dispositions", "rdi-11", "dsp-21.md"),
+		"---\nschema_version: 1\nid: \"dsp-21\"\nitem: \"rdi-11\"\nstate: \"accepted\"\ndisposition_grounds: \"the frame is engaged\"\n---\n")
+	write(t, repo, filepath.Join(ledger, "admissions", "rdg-7", "adm-31.md"),
+		"---\nschema_version: 1\nid: \"adm-31\"\nrun: \"rdg-7\"\nproposal: \"rdi-11\"\ngrounds: \"the frame is engaged\"\n---\n")
+	return repo
+}
+
+// ac-8: `abcd adm-N` reports the record and the records it joins to — the run,
+// the proposal and its path, and the standing disposition — and emits no next
+// move. It writes nothing.
+func TestDescribeAdmission(t *testing.T) {
+	repo := admissionLedger(t)
+	before := treeSnapshot(t, repo)
+	d, err := Describe(repo, "adm-31")
+	if err != nil {
+		t.Fatalf("Describe(adm-31): %v", err)
+	}
+	if d.Family != "admission" || d.Status != "admitted" || d.Title != "the frame is engaged" {
+		t.Fatalf("description = %+v", d)
+	}
+	if want := filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "admissions", "rdg-7", "adm-31.md")); d.Path != want {
+		t.Errorf("path = %q, want %q", d.Path, want)
+	}
+	for k, want := range map[string]string{
+		"run": "rdg-7", "proposal": "rdi-11", "disposition": "dsp-21",
+		"proposal_path": filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "readings", "rdg-7", "rdi-11.md")),
+	} {
+		if d.Links[k] != want {
+			t.Errorf("links[%s] = %q, want %q", k, d.Links[k], want)
+		}
+	}
+	if len(d.NextMoves) != 0 {
+		t.Errorf("an admission emits no next move; got %v", d.NextMoves)
+	}
+	if _, err := Describe(repo, "adm-99"); err == nil || !strings.Contains(err.Error(), "adm-99") {
+		t.Errorf("an absent admission must fault naming it; got %v", err)
+	}
+	assertZeroWrites(t, repo, before)
+}
+
+// ac-8's surprise half: `abcd srp-N` reports the surprise, its body as the
+// title, and the occasion it joins to.
+func TestDescribeSurprise(t *testing.T) {
+	repo := admissionLedger(t)
+	write(t, repo, filepath.Join(filepath.FromSlash(capture.LedgerRelPath), "surprises", "srp-41.md"),
+		"---\nschema_version: 1\nid: \"srp-41\"\noccasioned_by: \"adm-31\"\n---\n\nthe proposal nobody expected ranked first\n")
+	before := treeSnapshot(t, repo)
+	d, err := Describe(repo, "srp-41")
+	if err != nil {
+		t.Fatalf("Describe(srp-41): %v", err)
+	}
+	if d.Family != "surprise" || d.Status != "recorded" || d.Title != "the proposal nobody expected ranked first" {
+		t.Fatalf("description = %+v", d)
+	}
+	if d.Links["occasioned_by"] != "adm-31" ||
+		d.Links["occasion_path"] != filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "admissions", "rdg-7", "adm-31.md")) {
+		t.Errorf("links = %v", d.Links)
+	}
+	if len(d.NextMoves) != 0 {
+		t.Errorf("a surprise emits no next move; got %v", d.NextMoves)
+	}
+	if _, err := Describe(repo, "srp-99"); err == nil || !strings.Contains(err.Error(), "srp-99") {
+		t.Errorf("an absent surprise must fault naming it; got %v", err)
+	}
+	assertZeroWrites(t, repo, before)
+}
+
+// ac-5 (spc-2609020626048705): `abcd rfm-N` reports the occasion, the
+// fingerprints and which surfaces moved. An open record says so and names the
+// verb that completes it; a complete one emits no next move. It writes nothing.
+func TestDescribeReframeReportsOccasionAndFingerprints(t *testing.T) {
+	repo := admissionLedger(t)
+	const (
+		a = "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+		b = "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+		c = "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6"
+		d = "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4"
+	)
+	dir := filepath.Join(filepath.FromSlash(capture.LedgerRelPath), "reframes")
+	head := "---\nschema_version: 1\nid: rfm-51\noccasioned_by: rdi-11\nconstrual_before: " + a +
+		"\nglossary_before: " + b + "\nscope_before: " + c + "\ngrounds: the reading sent us back to the frame\n"
+	write(t, repo, filepath.Join(dir, "rfm-51.md"),
+		head+"construal_after: "+d+"\nglossary_after: "+b+"\nscope_after: "+c+"\nchanged: [\"construal\"]\n---\n\n")
+	write(t, repo, filepath.Join(dir, "rfm-52.md"), strings.Replace(head, "rfm-51", "rfm-52", 1)+"---\n\n")
+	before := treeSnapshot(t, repo)
+
+	done, err := Describe(repo, "rfm-51")
+	if err != nil {
+		t.Fatalf("Describe(rfm-51): %v", err)
+	}
+	if done.Family != "reframe" || done.Status != "complete" || done.Title != "reframe occasioned by rdi-11" {
+		t.Fatalf("description = %+v", done)
+	}
+	want := map[string]string{
+		"occasioned_by": "rdi-11", "occasion_path": filepath.ToSlash(filepath.Join(capture.LedgerRelPath, "readings", "rdg-7", "rdi-11.md")),
+		"construal_before": a, "glossary_before": b, "scope_before": c,
+		"construal_after": d, "glossary_after": b, "scope_after": c, "changed": "construal",
+	}
+	for k, v := range want {
+		if done.Links[k] != v {
+			t.Errorf("links[%s] = %q, want %q", k, done.Links[k], v)
+		}
+	}
+	if len(done.NextMoves) != 0 {
+		t.Errorf("a complete reframe emits no next move; got %v", done.NextMoves)
+	}
+
+	open, err := Describe(repo, "rfm-52")
+	if err != nil {
+		t.Fatalf("Describe(rfm-52): %v", err)
+	}
+	if open.Status != "open" || open.Links["construal_before"] != a {
+		t.Fatalf("open description = %+v", open)
+	}
+	for _, k := range []string{"construal_after", "glossary_after", "scope_after", "changed"} {
+		if _, ok := open.Links[k]; ok {
+			t.Errorf("an open reframe links %s", k)
+		}
+	}
+	if len(open.NextMoves) != 1 || !strings.Contains(open.NextMoves[0], "`abcd capture reframe --complete rfm-52`") {
+		t.Errorf("open next moves = %v", open.NextMoves)
+	}
+	if _, err := Describe(repo, "rfm-99"); err == nil || !strings.Contains(err.Error(), "rfm-99") {
+		t.Errorf("an absent reframe must fault naming it; got %v", err)
+	}
+	assertZeroWrites(t, repo, before)
 }

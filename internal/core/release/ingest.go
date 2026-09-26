@@ -157,8 +157,6 @@ var (
 	// promptVersionRe validates the composing agent's prompt_version (itd-5), so a
 	// release record can be traced to the prompt that worded it.
 	promptVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
-	// unreleasedHeadingRe matches the insertion anchor.
-	unreleasedHeadingRe = regexp.MustCompile(`^## \[Unreleased\]\s*$`)
 )
 
 // ChangelogEntry is one composed changelog line — the untrusted input shape.
@@ -696,14 +694,10 @@ func insertSection(root string, section []string) (string, []byte, error) {
 	}
 	lines := strings.Split(string(data), "\n")
 
-	anchor := -1
-	for i, line := range lines {
-		if unreleasedHeadingRe.MatchString(strings.TrimRight(line, "\r")) {
-			anchor = i
-			break
-		}
-	}
-	if anchor < 0 {
+	// The anchor and its emptiness are read through the one predicate
+	// record-lint's changelog_unreleased_empty rule reads (iss-256).
+	anchor, firstEntry, found := changelog.UnreleasedSection(lines)
+	if !found {
 		return "", nil, fmt.Errorf("%s has no `## [Unreleased]` heading — that heading is where a derived "+
 			"section is inserted, and this writer will not guess where a release belongs", changelogFile)
 	}
@@ -715,12 +709,10 @@ func insertSection(root string, section []string) (string, []byte, error) {
 			break
 		}
 	}
-	for _, line := range lines[anchor+1 : end] {
-		if strings.TrimSpace(line) != "" {
-			return "", nil, fmt.Errorf("the `## [Unreleased]` section of %s is not empty — a derived cut never folds "+
-				"hand-written prose into a generated section; roll the existing entries into a dated heading "+
-				"once, by hand, and every cut after that is fully derived", changelogFile)
-		}
+	if firstEntry >= 0 {
+		return "", nil, fmt.Errorf("the `## [Unreleased]` section of %s is not empty — a derived cut never folds "+
+			"hand-written prose into a generated section; roll the existing entries into a dated heading "+
+			"once, by hand, and every cut after that is fully derived", changelogFile)
 	}
 	// The composer's prose reached a file whose first dated heading a CI workflow
 	// turns into a git tag, so assert the ONE line that matters is the one this

@@ -211,7 +211,7 @@ func resolveMentionsRef(repoRoot, want string) (string, error) {
 	}
 	// A ref beginning with '-' would reach git as a flag: argument injection. No
 	// legitimate ref name starts with one.
-	if ref == "" || strings.HasPrefix(ref, "-") {
+	if !gitutil.RefIsSafe(ref) {
 		return "", fmt.Errorf("cannot resolve a history to walk: no usable ref (%q)", ref)
 	}
 	// The probe's own error is deliberately not wrapped: `--quiet` suppresses

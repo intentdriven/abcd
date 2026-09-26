@@ -30,6 +30,7 @@ type fenceWriter struct {
 // the new reason. The default for a file this test names is to route it
 // through Read.
 var fenceWriters = map[string]fenceWriter{
+	"internal/adapter/openaiapi/client.go":          {3, "judges one model answer whole: unfence strips a single fence wrapping the entire answer, and refuses to when another delimiter sits inside; it reads no document and tracks no lines"},
 	"internal/adapter/scanner/scanner.go":           {1, "a comment quoting a regexp quantifier (`{36,}`); no delimiter is written or read"},
 	"internal/core/glossary/index.go":               {2, "a WRITER: RenderLayout wraps the generated layout tree in one fence; it reads no fences"},
 	"internal/core/history/reconstruct_render.go":   {1, "a WRITER: writeFenced opens a fence longer than any backtick run in the body, the floor of three; it reads no fences"},

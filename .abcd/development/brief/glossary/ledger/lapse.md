@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 
@@ -26,4 +26,5 @@ Do not capture a code defect as a lapse; a lapse is about the record's disciplin
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [warm](warm.md), the side the lapse log lives on

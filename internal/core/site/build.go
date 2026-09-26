@@ -376,9 +376,11 @@ func Build(req Request) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	// The principle store carries no frontmatter, so the lint scan cannot see
-	// it. It joins the graph here, and a repository that keeps none simply has
-	// none — the pages that would list them are omitted.
+	graph = withoutPrincipleNodes(graph)
+	// The principle store joins the graph here, from its files: the file name
+	// is the handle every page carries and the H1 is the title, and a
+	// repository that keeps none simply has none — the pages that would list
+	// them are omitted.
 	principles, err := LoadPrinciples(repoRoot, PrinciplesDir(lintCfg))
 	if err != nil {
 		return Result{}, err

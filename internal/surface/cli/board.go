@@ -8,6 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/report"
+	"github.com/intentdriven/abcd/internal/core/reviews"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -32,6 +33,11 @@ type boardOutput struct {
 	// Oracle is the model-tier routing, one row per agent, present only once a
 	// routing table is accepted (itd-2609170822093401); omitted otherwise.
 	Oracle []oracle.BoardRow `json:"oracle,omitempty"`
+	// Reviews is the staleness of every review folder under
+	// .abcd/work/reviews/, stalest first, with the threshold past which a row
+	// is flagged (itd-28); omitted when the tree holds none. The text render
+	// lists the dated reviews and folds the release receipts into one line.
+	Reviews *reviews.Board `json:"reviews,omitempty"`
 }
 
 // boardStatusline is the board's view of the row: the state the badge

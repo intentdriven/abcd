@@ -52,6 +52,20 @@ func TestDashWordBeforeCommandPositionReadsBothWays(t *testing.T) {
 		{`timeout $(true) 5 ` + push, VerdictBlock, "git-push-force"},
 		{`sudo "$(true)"-u root ` + push, VerdictBlock, "git-push-force"},
 
+		// An unknown dash-word before a wrapper's mandatory operand can print
+		// that operand too: unquoted, `--$(x)` splits into `--foreground 5`, so
+		// the word after it is the command (iss-2609260543090196).
+		{`timeout --$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`timeout -$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`timeout -k$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`timeout --kill-after=$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`timeout --$(x) 5 pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`chrt -$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`taskset -$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`flock -$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`chroot --$(x) pkill -f node`, VerdictBlock, "pkill-by-pattern"},
+		{`timeout -$(x) ` + push, VerdictBlock, "git-push-force"},
+
 		// A known option keeps its one reading.
 		{`sudo -u root git status`, VerdictAllow, ""},
 		{`git -C "$(git rev-parse --show-toplevel)" status`, VerdictAllow, ""},
@@ -332,12 +346,17 @@ func literalPositionsOf(fixture string) []string {
 }
 
 // unknownWrapperPrefixes spells every wrapper with each of its value flags as
-// an unknown dash-word and a value, and its mandatory operands after them.
+// an unknown dash-word and a value, and its mandatory operands after them. A
+// wrapper that takes operands is also spelled with an unknown dash-word and no
+// operands, since the word's output may be the operands (iss-2609260543090196).
 func unknownWrapperPrefixes() []string {
 	var out []string
 	for _, w := range sortedKeys(wrappers) {
 		operands := strings.Repeat(" 5", wrapperOperands[w])
 		out = append(out, w+" -$(echo x)"+operands, "$(echo "+w+")"+operands)
+		if wrapperOperands[w] > 0 {
+			out = append(out, w+" -$(echo x)", w+" --$(echo x)")
+		}
 		for _, vf := range wrapperValueFlags[w] {
 			dash := "-$(echo " + strings.TrimPrefix(vf, "-") + ")"
 			if strings.HasPrefix(vf, "--") {

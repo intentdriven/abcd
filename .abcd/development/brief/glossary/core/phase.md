@@ -26,9 +26,9 @@ phase is a document in `.abcd/development/roadmap/phases/` that opens with a pro
 expected to make true for the user.
 
 A phase sits between the [brief](../../README.md) (the whole project) and the
-[intent](intent.md) (one user-facing capability) on the question it answers — see the
-four-layer mental model in `brief/01-product/03-mental-model.md` and
-[adr-9](../../../decisions/adrs/0009-phase-as-product-layer.md).
+[intent](intent.md) (one user-facing capability) on the question it answers — see
+[adr-9](../../../decisions/adrs/0009-phase-as-product-layer.md); the layers that replace it are in
+`brief/01-product/03-mental-model.md`.
 
 ## Senses
 

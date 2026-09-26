@@ -1,7 +1,9 @@
 package lint
 
 // The cross-store family (cross_store_id_claim): a record id claimed by a
-// document that is not in the store that id belongs to.
+// document that is not in the store that id belongs to. A second arm, below,
+// names a reframe record sitting outside its store, which the cold reading
+// would otherwise receive (spc-2609020626048705).
 //
 // record_schema reasons across the stores, but only INSIDE them: a file outside
 // every configured store is not a malformed record to the engine, it is not a
@@ -34,12 +36,14 @@ package lint
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -98,7 +102,8 @@ func checkCrossStoreIDClaim(repoRoot string, cfg Config, rc RuleConfig) ([]Findi
 	for _, n := range graph.Nodes {
 		taken[canonRecordID(strings.ToLower(n.ID))] = true
 	}
-	if len(taken) == 0 {
+	reframeStore := strings.TrimSuffix(filepath.ToSlash(stores[issueschema.ReframeFamily]), "/")
+	if len(taken) == 0 && reframeStore == "" {
 		return nil, nil
 	}
 
@@ -134,6 +139,10 @@ func checkCrossStoreIDClaim(repoRoot string, cfg Config, rc RuleConfig) ([]Findi
 			continue
 		}
 		lines := strings.Split(string(content), "\n")
+		if f, ok := reframeOutsideStore(rel, lines, reframeStore, rc.Severity); ok {
+			out = append(out, f)
+			continue
+		}
 		if f, ok := crossStoreClaim(rel, lines, taken, rc.Severity); ok {
 			out = append(out, f)
 		}
@@ -235,6 +244,62 @@ func crossStoreClaim(rel string, lines []string, taken map[string]bool, severity
 			id + " is already held by a real record, so this file is a second document answering to one handle — " +
 			"every cross-reference and index that keys on it resolves to the other. Give the document its own " +
 			"identity (a title that claims no handle), or file it as a record in the store and let the id be minted",
+	}, true
+}
+
+// The reframe arm. A reframe record is warm at every reading position, and the
+// assembler keeps it out by the PATH of its store (spc-2609020626048705): a
+// reframe-shaped file anywhere else is a file like any other to the include
+// table, so a copy planted as a brief chapter reaches every cold reading with its
+// grounds and its body, and nothing else names it. Unlike the id-claim arm this
+// one fires on ONE signal, because the hazard is the content travelling, not a
+// collision with a held id: an rfm-N file name, an rfm id in the frontmatter, or
+// the reframe's own pair of keys — the occasion and a before fingerprint — which
+// no other record carries together.
+var (
+	reframeFileNameRe = regexp.MustCompile(`(?i)^rfm-\d+(?:[-.]|$)`)
+	reframeIDRe       = regexp.MustCompile(`(?i)^rfm-\d+$`)
+)
+
+// reframeOutsideStore judges one candidate outside every store. A file inside
+// a directory ending in the reframe store's own path is a nested tree's store —
+// a fixture repository, which every reading denies by its `.abcd` segment — and
+// is its own record, not a stray one.
+func reframeOutsideStore(rel string, lines []string, store, severity string) (Finding, bool) {
+	if store == "" || strings.HasSuffix(path.Dir(rel), "/"+store) {
+		return Finding{}, false
+	}
+	fields := frontmatterFields(lines)
+	var why string
+	var line int
+	switch {
+	case reframeFileNameRe.MatchString(path.Base(rel)):
+		why, line = "its name is a reframe record's ("+path.Base(rel)+")", 1
+	case reframeIDRe.MatchString(fieldValue(fields, "id")):
+		why, line = "its frontmatter claims the reframe id "+strings.ToLower(fieldValue(fields, "id")), fields["id"].line
+	default:
+		occ, hasOcc := fields["occasioned_by"]
+		if !hasOcc {
+			return Finding{}, false
+		}
+		for _, n := range issueschema.FrameSurfaceNames {
+			if _, ok := fields[n+"_before"]; ok {
+				why, line = "its frontmatter carries a reframe record's occasioned_by and "+n+"_before", occ.line
+				break
+			}
+		}
+		if why == "" {
+			return Finding{}, false
+		}
+	}
+	if line == 0 {
+		line = 1
+	}
+	return Finding{
+		File: rel, Line: line, RuleID: ruleCrossStoreIDClaim, Severity: severity,
+		Message: "a reframe record outside its store: " + why + ", but it does not sit in " + store + "/. " +
+			"A reframe is warm, and the cold reading keeps it out by that store's path alone, so a copy anywhere " +
+			"else reaches every cold reading with its grounds and body. Move it into the store, or remove it",
 	}, true
 }
 

@@ -143,6 +143,24 @@ func checkAgentContract(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		out = append(out, checkAgentTrustContract(repoRoot, dir, p, cfg.Severity)...)
 	}
 
+	// The layout is flat (agents/README.md): a prompt is agents/<name>.md and a
+	// subdirectory holds that agent's fixtures. A markdown file anywhere below the
+	// top level, outside a fixtures/ directory, is therefore a misfiled prompt,
+	// and it is refused rather than skipped: skipping it let a prompt opt out of
+	// the whole trust contract by choosing a directory (iss-2608281948289198).
+	misfiled, err := misfiledAgentPrompts(dirAbs)
+	if err != nil {
+		return nil, err
+	}
+	for _, rel := range misfiled {
+		out = append(out, Finding{
+			File: filepath.Join(dir, rel), Line: 1, RuleID: ruleAgentContract, Severity: cfg.Severity,
+			Message: "misfiled agent prompt: prompts live flat at " + dir + "/<name>.md, and a subdirectory holds only " +
+				"that agent's fixtures/; a markdown file here is read by no part of the trust contract — move it up " +
+				"to " + dir + "/ or into a fixtures/ directory",
+		})
+	}
+
 	changelogFindings, err := checkAgentChangelog(repoRoot, dir, prompts, cfg)
 	if err != nil {
 		return nil, err
@@ -467,4 +485,32 @@ func isTrueValue(v string) bool {
 		return true
 	}
 	return false
+}
+
+// misfiledAgentPrompts returns every markdown file below the top level of the
+// agents tree, relative to it, except those under a fixtures/ directory. A
+// symlinked directory is not entered (WalkDir does not follow links).
+func misfiledAgentPrompts(dirAbs string) ([]string, error) {
+	var out []string
+	err := filepath.WalkDir(dirAbs, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != dirAbs && d.Name() == "fixtures" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Dir(path) == dirAbs || !hasMarkdownExt(d.Name()) {
+			return nil
+		}
+		rel, err := filepath.Rel(dirAbs, path)
+		if err != nil {
+			return err
+		}
+		out = append(out, rel)
+		return nil
+	})
+	return out, err
 }

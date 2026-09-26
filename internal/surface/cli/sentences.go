@@ -124,3 +124,20 @@ func withDescription(page, sentence string) (string, error) {
 	}
 	return "", errors.New("the page's frontmatter has no description line to carry the sentence")
 }
+
+// applyExamples sets every command's Example from the manifest's worked
+// examples (iss-2609100508565741), indented the way cobra's usage template
+// prints an example block, so it renders under the verb's own --help and in
+// the generated CLI reference.
+func applyExamples(root *cobra.Command, lookup func(path string) (string, bool)) {
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		if e, ok := lookup(c.CommandPath()); ok {
+			c.Example = "  " + e
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(root)
+}

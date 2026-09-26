@@ -179,10 +179,11 @@ func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, ext
 	nodes := graph.Nodes
 	derived := map[string]bool{}
 	if len(extra) > 0 {
-		// The frontmatter-free stores (principles) join the graph here rather
-		// than in the lint scan: they carry no typed references, so they add
-		// nodes and nothing else, and the scan stays the one parser of the
-		// record's typed shape. They are MARKED, so a page can tell a field a
+		// The file-keyed stores (principles) join the graph here under the
+		// handle the site publishes them by: they carry no typed references, so
+		// they add nodes and nothing else, and the scan stays the one parser of
+		// the record's typed shape (the scan's own principle nodes are dropped
+		// before this, by withoutPrincipleNodes). They are MARKED, so a page can tell a field a
 		// record declared from one this build worked out from its file.
 		existing := make(map[string]bool, len(nodes))
 		for _, n := range nodes {

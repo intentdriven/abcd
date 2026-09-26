@@ -209,11 +209,22 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   audience-by-placement ratification (adr-53) and the guide's
   self-contained-sections rule.
   <https://docs.kapa.ai/improving/writing-best-practices>
+- **OpenAI's Chat Completions API** — the protocol the OpenAI-compatible API
+  adapter speaks (`internal/adapter/openaiapi`): the system and user messages a
+  host's brief is rendered into, the sampling fields a row may set, and the
+  `choices[0].message` answer read back, so any provider speaking it is
+  configuration and never code (itd-2609081951381895).
+  <https://platform.openai.com/docs/api-reference/chat>
 - **OpenAI Codex's sandbox/approval split** — the vocabulary adr-42 borrows for
   naming what a parse layer is: the OS-enforced sandbox is the boundary, the
   approval policy is "a workflow choice layered on top of" it, and the pattern
   engine carries no threat model.
   <https://github.com/openai/codex>
+- **OpenRouter** — the first aggregator the API adapter reaches, one
+  OpenAI-compatible address and one key serving many vendors' models, whose
+  reach is the reason adr-2609221009491186 makes every provider default-deny by
+  model under a vendor denylist (itd-2609081951381895).
+  <https://openrouter.ai/docs>
 - **PAUL (Plan-Apply-Unify Loop, Christopher Kahler, MIT)** — the
   mandatory-closure loop discipline whose four escalation states itd-1
   lifts into the intent lifecycle, alongside acceptance-criteria-first

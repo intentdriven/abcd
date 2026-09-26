@@ -577,3 +577,43 @@ func InAnyRange(ranges [][2]int, pos int) bool {
 	}
 	return false
 }
+
+// LabelledParagraph returns the [start, end) line bounds of the first live
+// paragraph whose first line opens with the bold label `**<label>.**`, and
+// whether one exists. The paragraph runs to the next blank line, the next live
+// heading, the next masked line, or the end of the file, whichever is first.
+//
+// It is the one notion of a labelled paragraph, shared by the record lint that
+// judges a principle's statement and the reading assembler that projects it
+// (spc-2609020626042471): a principle carries one heading, its H1, and a body
+// of labelled paragraphs (`**The rule.**`, `**Why.**`, `**Bounds.**`), so its
+// statement is found by label rather than by heading, and two readers of that
+// label that disagree are a gate refusing a paragraph the projection never
+// sends, or the reverse.
+//
+// A label inside a fence or an HTML comment is an example, not a statement, and
+// is never matched. The label must open the line: a paragraph that mentions
+// `**The rule.**` part-way through is not the rule.
+func LabelledParagraph(lines []string, label string) (start, end int, ok bool) {
+	mask := Mask(lines)
+	opener := "**" + label + ".**"
+	for i, ln := range lines {
+		if masked(mask, i) || !strings.HasPrefix(strings.TrimRight(ln, "\r"), opener) {
+			continue
+		}
+		// The paragraph must BEGIN here: a line directly continuing a previous
+		// paragraph is inside that paragraph, whatever it opens with.
+		if i > 0 && !masked(mask, i-1) && strings.TrimSpace(lines[i-1]) != "" && !IsHeading(lines[i-1]) {
+			continue
+		}
+		end = len(lines)
+		for j := i + 1; j < len(lines); j++ {
+			if masked(mask, j) || strings.TrimSpace(lines[j]) == "" || IsHeading(strings.TrimRight(lines[j], "\r")) {
+				end = j
+				break
+			}
+		}
+		return i, end, true
+	}
+	return 0, 0, false
+}

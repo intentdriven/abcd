@@ -149,8 +149,8 @@ single file answered, the index has failed and the claim is wrong.
   form — the same shape abcd itself carries, rather than a merge attribute
   scaffolded into its `.gitattributes`.
 - **Given** the new shape is in force, **when** the repository is inspected,
-  **then** the decisions-append gate (`scripts/check-decisions-append.sh`, rules
-  DA001–DA004) is gone, no CI job invokes it, `make preflight` does not run it,
+  **then** the decisions-append gate (`record-lint decisions-append`, rules
+  DA001–DA004, in `internal/core/lint/decisionsappend.go`) is gone, no CI job invokes it, `make preflight` does not run it,
   and nothing in the record or the conventions names it as a live gate — a folder
   of minted files has no mid-file position to police, so the gate is retired by
   the shape rather than disabled.

@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/oracle
+not_to_be_confused_with: [core/oracle, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -44,5 +44,6 @@ framing).
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [oracle](oracle.md) — the AI model that receives context through the transport
 - [intent](intent.md) — one of the artefact types transported for review

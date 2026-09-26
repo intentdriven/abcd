@@ -30,6 +30,7 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 | `list` | — | shipped |
 | `migrate` | — | shipped |
 | `reconstruct` | — | shipped |
+| `separation` | audit | shipped |
 | `show` | — | shipped |
 | `staged` | — | shipped |
 
@@ -63,6 +64,16 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 - **Draining** redacts and stores every staged transcript, then deletes the raw
   copy. It exits non-zero when anything failed, and this verb runs the backlog to
   completion where the session-start hook drains a bounded number.
+- **The separation check** reports whether any retained transcript held both a
+  reading and the ledger of one run, which brief invariant 15 forbids. Every
+  reading bundle and every scribe context carries a per-run context stamp; capture
+  records the stamps a transcript carried as metadata, and the check reads that
+  metadata and never a body. It names a transcript carrying the reading stamp and
+  the scribe stamp of one run and exits non-zero; otherwise it says the property
+  held for the runs it saw, or that it is unobserved when no retained transcript
+  carries a stamp, and never that it is clean
+  ([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the-ledger-and-a-per-run.md)).
+  The listing's text render ends with the same one line.
 
 - **Ingesting** — redact and store transcripts that are already on disk, at the
   paths given, and were never captured. The **destination repository is an
@@ -161,6 +172,15 @@ ones and bounds the pass by bytes as well as count, so a truncated pass stores
 the part that makes the rest legible. Whatever the budget leaves is reported
 rather than dropped, because a repo with a dozen missed sessions must not stall
 the user's first prompt.
+
+Because both staging entrypoints exit 0 on every path, the exit code cannot say
+whether a transcript was kept, and their error-stream line is prose rather than
+a contract. A programmatic caller asks for the machine-readable form, and each
+entrypoint then writes exactly one result line to its output stream on every
+path: whether the transcript was captured, how (newly staged, re-staged over
+older bytes, or already staged), which session and sub-agent it belongs to, and
+why nothing was captured when nothing was. The exit code stays 0, and without
+that request the output stream stays empty, the shape the host invokes.
 
 Session start is also the one moment abcd can tell a user about install trouble
 before they act on it, so the same hook carries a short notice channel: a
@@ -326,7 +346,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd history`
 
-Sub-verbs: `abcd history capture`, `abcd history discard`, `abcd history drain`, `abcd history ingest`, `abcd history list`, `abcd history migrate`, `abcd history reconstruct`, `abcd history show`, `abcd history staged`.
+Sub-verbs: `abcd history capture`, `abcd history discard`, `abcd history drain`, `abcd history ingest`, `abcd history list`, `abcd history migrate`, `abcd history reconstruct`, `abcd history separation`, `abcd history show`, `abcd history staged`.
 
 Flags: none.
 
@@ -389,6 +409,12 @@ Sub-verbs: none.
 | `--max-block-bytes` | int |
 | `--mode` | string |
 | `--out` | string |
+
+### `abcd history separation`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd history show`
 

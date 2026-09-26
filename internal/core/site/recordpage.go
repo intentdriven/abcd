@@ -137,16 +137,41 @@ func (e *explorer) renderMarkdownBody(rel string) (string, error) {
 		return "", err
 	}
 	text, consumed := StripFrontmatter(string(data))
-	secs, err := Sections(rel, text, consumed)
-	if err != nil {
-		return "", err
-	}
 	dir := path.Dir(rel)
 	r := &Renderer{
 		UI:    e.c.ui,
 		Refs:  LinkDefinitions(text),
 		Image: func(src, alt string, at Source) (string, error) { return e.c.assets.render(dir, src, alt, at) },
 		Link:  func(href string, at Source) string { return e.href(rel, href) },
+	}
+	return r.renderBody(rel, text, consumed)
+}
+
+// CheckRecordBody reports the construct a record's body carries that the site
+// renderer refuses, or nil when the body renders. It runs the same sections and
+// the same block renderer a record page is built with; only the link rewrite and
+// the image assets are neutral, because a record is checked here for its
+// markdown, not for where its links land. It exists so the record gate can
+// refuse, in the change that writes it, a body the site render would refuse at
+// the far end of preflight (iss-2608301350287219).
+func CheckRecordBody(rel, content string) error {
+	text, consumed := StripFrontmatter(content)
+	r := &Renderer{
+		Refs:  LinkDefinitions(text),
+		Image: func(src, alt string, at Source) (string, error) { return "", nil },
+		Link:  func(href string, at Source) string { return href },
+	}
+	_, err := r.renderBody(rel, text, consumed)
+	return err
+}
+
+// renderBody renders a record's text, its frontmatter already stripped
+// (consumed lines of it), as page body: the H1 dropped, every other heading
+// at its own level with its anchor, and each section's blocks.
+func (r *Renderer) renderBody(rel, text string, consumed int) (string, error) {
+	secs, err := Sections(rel, text, consumed)
+	if err != nil {
+		return "", err
 	}
 	var b strings.Builder
 	for _, s := range secs {

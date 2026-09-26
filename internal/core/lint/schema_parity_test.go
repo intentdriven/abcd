@@ -2,6 +2,7 @@ package lint
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -261,6 +262,11 @@ func TestIssueRecordShapeFlagsLapseWithoutLapsedAt(t *testing.T) {
 		// finding is its presence rather than its content (iss-2608300244489638).
 		{"block instant on a non-lapse", "iss-15-obs-d.md", blockValued("iss-15", "obs-d", "observation", "2026-08-28T00:00:00Z"), "spelled as an indented block"},
 		{"block instant on a lapse", "iss-16-lapse-h.md", blockValued("iss-16", "lapse-h", "lapse", "2026-08-28T00:00:00Z"), "spelled as an indented block"},
+		// The block-scalar HEADER spelling (`lapsed_at: |` over an indented
+		// instant) is a block too: the sibling shape's message, not a format
+		// complaint about the `|` byte (iss-2608301221402131).
+		{"block-scalar header on a non-lapse", "iss-17-obs-e.md", strings.Replace(blockValued("iss-17", "obs-e", "observation", "2026-08-28T00:00:00Z"), "lapsed_at:\n", "lapsed_at: |\n", 1), "spelled as an indented block"},
+		{"folded header on a lapse", "iss-18-lapse-i.md", strings.Replace(blockValued("iss-18", "lapse-i", "lapse", "2026-08-28T00:00:00Z"), "lapsed_at:\n", "lapsed_at: >-\n", 1), "spelled as an indented block"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

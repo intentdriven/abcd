@@ -641,6 +641,13 @@ func TestHooksPathArmedResolvesBothSides(t *testing.T) {
 	if hooksPathArmed(root) {
 		t.Error("a hooks path pointing somewhere else is not armed")
 	}
+	// git expands ~/ itself, so a home-relative spelling of the committed
+	// directory is armed too, never read as a path relative to the clone.
+	t.Setenv("HOME", filepath.Dir(root))
+	set("~/" + filepath.Base(root) + "/.githooks")
+	if !hooksPathArmed(root) {
+		t.Error("a ~/ hooks path git expands to the committed directory is armed just the same")
+	}
 }
 
 // TestMarkerIsRecognisedOnlyAsAWholeLine is security MAJ-1. The marker was matched

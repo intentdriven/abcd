@@ -58,9 +58,51 @@
           "hidden": false
         },
         {
+          "name": "providers",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "remote",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy connect",
+      "hidden": false,
+      "sentence": "Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
+      "flags": [
+        {
+          "name": "base-url",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "home",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "key",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "model",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -375,6 +417,20 @@
       ]
     },
     {
+      "path": "abcd capture admit",
+      "hidden": false,
+      "sentence": "Admit one widening proposal into its run's candidate set: Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
+      "flags": [
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture defer",
       "hidden": false,
       "sentence": "Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
@@ -564,6 +620,41 @@
       ]
     },
     {
+      "path": "abcd capture reframe",
+      "hidden": false,
+      "sentence": "Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
+      "flags": [
+        {
+          "name": "complete",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "occasioned-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "open",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture resolve",
       "hidden": false,
       "sentence": "Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
@@ -612,6 +703,20 @@
         },
         {
           "name": "spec",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture surprise",
+      "hidden": false,
+      "sentence": "Record one surprise a reading item, admission or disposition occasioned: Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
+      "flags": [
+        {
+          "name": "occasioned-by",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -994,7 +1099,7 @@
     {
       "path": "abcd history list",
       "hidden": false,
-      "sentence": "List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
       "flags": [
         {
           "name": "session",
@@ -1008,7 +1113,7 @@
     {
       "path": "abcd history migrate",
       "hidden": false,
-      "sentence": "Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.",
+      "sentence": "Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
       "flags": [
         {
           "name": "apply",
@@ -1055,15 +1160,21 @@
       ]
     },
     {
+      "path": "abcd history separation",
+      "hidden": false,
+      "sentence": "Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.",
+      "flags": []
+    },
+    {
       "path": "abcd history show",
       "hidden": false,
-      "sentence": "Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.",
+      "sentence": "Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
       "flags": []
     },
     {
       "path": "abcd history staged",
       "hidden": false,
-      "sentence": "List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
       "flags": [
         {
           "name": "all-repos",
@@ -1497,10 +1608,24 @@
     {
       "path": "abcd intent audit",
       "hidden": false,
-      "sentence": "Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: Writes nothing; refuses an intent not shipped.",
+      "sentence": "List or drain owed fidelity reviews, emit an intent's request, or check issue drift: Writes an OWED stub only for --owed or an id; refuses an unshipped intent.",
       "flags": [
         {
           "name": "issue-drift",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "max",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "owed",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1580,6 +1705,42 @@
       ]
     },
     {
+      "path": "abcd intent consistency",
+      "hidden": false,
+      "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
+      "flags": [
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd intent consistency ingest",
+      "hidden": false,
+      "block": "agents",
+      "sentence": "Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.",
+      "flags": [
+        {
+          "name": "findings-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent hold",
       "hidden": false,
       "sentence": "Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.",
@@ -1602,8 +1763,15 @@
     {
       "path": "abcd intent plan",
       "hidden": false,
-      "sentence": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.",
+      "sentence": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
       "flags": [
+        {
+          "name": "bundle",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "impact",
           "shorthand": "",
@@ -1635,9 +1803,90 @@
       ]
     },
     {
+      "path": "abcd intent reclassify",
+      "hidden": false,
+      "sentence": "Change an intent's kind, or retire it as superseded by a named successor: Writes the record and its successor together; refuses a shipped intent's kind change.",
+      "flags": [
+        {
+          "name": "bundle",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "kind",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent unhold",
       "hidden": false,
       "sentence": "Lift an intent's hold: Writes the removal of its held line; refuses a record not held.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "List this repository's labs with their pins, probe counts and halts: Writes nothing; refuses outside a git checkout.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab harvest",
+      "hidden": false,
+      "sentence": "Assemble a lab's harvest with its capture candidates: Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab mint",
+      "hidden": false,
+      "sentence": "Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
+      "flags": [
+        {
+          "name": "pin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab preflight",
+      "hidden": false,
+      "sentence": "Run a lab's harness-isolation and dual-binary checks: Writes the preflight artefact, and a finding and halt on a failure; refuses an unknown lab.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab record",
+      "hidden": false,
+      "sentence": "Scaffold one probe record naming the artefact it observes: Writes the probe's files under state/probes/; refuses a halted lab or a probe already recorded.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab sweep",
+      "hidden": false,
+      "sentence": "Sweep a lab's documents for every retracted pattern: Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
       "flags": []
     },
     {
@@ -2030,6 +2279,77 @@
       "block": "people",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
       "flags": []
+    },
+    {
+      "path": "abcd scribe",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd scribe assemble",
+      "hidden": false,
+      "sentence": "Build a scribe session's context from the ledger and supplied dispositions: Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+      "flags": [
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd scribe ingest",
+      "hidden": false,
+      "sentence": "Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
+      "flags": [
+        {
+          "name": "context",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "scribe-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd site",

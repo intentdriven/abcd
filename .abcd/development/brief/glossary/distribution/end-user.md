@@ -8,7 +8,7 @@ status: stable
 introduced_in: itd-67
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/persona
+not_to_be_confused_with: [core/persona, core/record-families]
 versions: null
 ---
 
@@ -43,5 +43,6 @@ Do not use "end-user" for a modelled archetype in an intent or brief — that is
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [persona](../core/persona.md) — the modelled archetype used in intents/briefs
 - [release](release.md) — what an end-user installs

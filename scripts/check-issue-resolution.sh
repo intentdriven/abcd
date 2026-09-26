@@ -78,6 +78,11 @@
 #          refused too, since an author who wrote it believes it armed; a line
 #          naming no id-shaped token is prose, and passes.
 #
+#   RS006  A record entering resolved/ or wontfix/ in the range whose resolution
+#          names a Go test (TestX) must name one some _test.go file defines at
+#          the head (iss-2609020716579024). Records already terminal are not
+#          re-read: a test renamed after the fact does not falsify a note.
+#
 #   RS003  Every resolved_by.commit already in the ledger must still be
 #          reachable. This is the drift detector, and it is not hypothetical:
 #          the repository allows merge, squash AND rebase, the method is a
@@ -86,7 +91,7 @@
 #          this landed; RS003 is what notices the day one is not.
 #
 # Usage:
-#   check-issue-resolution.sh commits <base-ref> <head-ref>   # RS001 + RS002 + RS004 + RS005
+#   check-issue-resolution.sh commits <base-ref> <head-ref>   # RS001 + RS002 + RS004 + RS005 + RS006
 #   check-issue-resolution.sh ledger [<ref>]                  # RS003 (default HEAD)
 #   check-issue-resolution.sh pr <title-file> <body-file>     # RS004 on the PR form
 #
@@ -667,9 +672,33 @@ check_commits() {
 		esac
 	done <<<"$changed"
 
+	# RS006 — a resolution that names a test names one that exists. The note is
+	# what every later reader trusts about how a fix was proved, and one was
+	# false: it named three tests for a guard none of them exercised
+	# (iss-2609020716579024). This is the cheap rung: each TestX the resolution
+	# field names must be defined by some _test.go file at head. Only records
+	# entering a terminal folder in this range are read, because a test renamed
+	# long after a record was closed does not make its note false when written.
+	local rs006=0
+	while IFS= read -r id; do
+		[ -n "$id" ] || continue
+		local rpath note name
+		rpath="$(record_path "$head" "$id")"
+		[ -n "$rpath" ] || continue
+		note="$(git show "$head:$rpath" 2>/dev/null | awk 'NR>1 && /^---$/{exit} /^resolution:/{print}')"
+		while IFS= read -r name; do
+			[ -n "$name" ] || continue
+			rs006=$((rs006 + 1))
+			if ! git grep -qE "^func ${name}\(" "$head" -- '*_test.go' 2>/dev/null; then
+				fail "RS006 $id's resolution names $name, which no _test.go file at $head defines. A resolution note is what later readers trust about how the fix was proved; name the test that exists, or say what proves the fix without naming one."
+			fi
+		done <<<"$(printf '%s\n' "$note" | grep -oE 'Test[A-Z][A-Za-z0-9_]*' | sort -u || true)"
+	done <<<"$closed"
+
 	if [ -n "${declared// /}" ]; then
 		echo "check-issue-resolution: RS001 checked$declared"
 	fi
+	echo "check-issue-resolution: RS006 checked $rs006 test name(s) in resolutions entering a terminal folder"
 	if [ -n "${delivered// /}" ]; then
 		echo "check-issue-resolution: RS005 checked$delivered"
 	fi

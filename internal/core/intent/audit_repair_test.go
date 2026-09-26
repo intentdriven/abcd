@@ -165,7 +165,7 @@ func TestIngestedAttestationLineCannotRePairACodeSpan(t *testing.T) {
 
 // TestIngestedEvidenceLineKeepsTheCleanedBytes pins the other half of the same
 // invariant: no embedding may REWRITE a cleaned field. renderEvidence used %q,
-// which doubles backslashes — so the cleaner's own `\“ escape came back as an
+// which doubles backslashes — so the cleaner's own backslash-backtick escape came back as an
 // escaped backslash followed by a LIVE backtick, putting an unpaired run into a
 // committed record and reopening exactly the re-pairing hole the cleaner closes.
 func TestIngestedEvidenceLineKeepsTheCleanedBytes(t *testing.T) {

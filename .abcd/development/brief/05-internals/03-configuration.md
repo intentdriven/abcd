@@ -65,6 +65,55 @@ There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `met
 block. This repository's own config carries four of these blocks — `docs`, `meta`,
 `oracle` and `repo` — which is what an unremarkable managed repo looks like.
 
+### The provider adapter's keys
+
+The OpenAI-compatible API adapter (itd-2609081951381895, adr-2609221009491186)
+reads four keys under `oracle` through the layered resolver, every one validated
+when the configuration is read and refused loudly, naming the file and the key,
+rather than skipped:
+
+```json
+{
+  "oracle": {
+    "api": {                             // MACHINE LAYER ONLY: ~/.abcd/config.json
+      "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",   // https, or http to this machine
+        "key": "openrouter",             // a credential NAME, resolved through the credential
+                                         //   source; omitted for a server that takes no key
+        "models": ["typesafe/jev-1.13"]  // the allowlist: the only models it may serve
+      }
+    },
+    "denylist": ["openai/*"],            // extends the bundled vendor denylist; repo or machine
+    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster
+    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } // a judgement type
+  }
+}
+```
+
+- **A provider block sits on the machine alone.** It names the address a key is
+  sent to, so a repository's `.abcd/config.json` declaring `oracle.api` is
+  refused: a checkout must never be able to aim the person's key at a server of
+  its choosing. `abcd ahoy connect` writes the block, after one verification
+  call, and it is the one write abcd makes to `~/.abcd/config.json`.
+- **The denylist is a union.** The bundled `anthropic/*` comes first, then each
+  layer's entries; an entry is a vendor prefix (`vendor/*`) or one model, and
+  matching ignores case, OpenRouter's `~` alias prefix and a `:variant` suffix.
+  No layer removes an entry, and no allowlist entry overrides one: a block
+  listing a denied model is refused, whatever else it lists.
+- **A route is `<provider>/<model>`.** A role or a judgement type pointed at a
+  model its provider does not list is refused naming the list, and one pointed at
+  a provider this machine has not configured is a diagnostic: the step stays on
+  the host, as it would with nothing configured (adr-25). A role outside the
+  roster is named and skipped, like an orphan routing row.
+- **The model a provider reports is held to the denylist too.** An aggregator
+  that answers with a denied model has substituted a frontier model; the answer
+  is discarded and the refusal names what it reported. Every call records the
+  provider, the model asked for and the model reported.
+
+Unconfigured, nothing changes: no provider block means no connection, and every
+delegated step runs on the host. No delegating verb sends a step to a configured
+provider yet; that dispatch is spc-2609251028149555's.
+
 ### Staged config keys
 
 No shipped code reads any of the keys below. None appears in any repository's
@@ -200,6 +249,39 @@ overwrite-with-backup model: abcd refuses unless the destination is absent, an
 empty directory, or one carrying a provenance file abcd itself wrote. See
 [`../04-surfaces/03-embark.md`](../04-surfaces/03-embark.md).
 
+## The lab store
+
+The lab store holds the evidence of labs: throwaway worlds pinned at one commit
+of a repository, run to answer one question
+([`../04-surfaces/31-lab.md`](../04-surfaces/31-lab.md), itd-2609212137128014).
+It is user-scope and keyed on the repository's root-commit SHA exactly as the
+transcript store is, and it is **never committed**:
+
+```
+~/.abcd/lab/
+  <root-sha>/
+    index.jsonl               one registry line per lab: id, pin, question
+    <lab-id>/                 one lab home: the intention, the snapshot, the lab's
+                              own HOME and binaries, probe records, findings,
+                              corrections, the preflight and sweep artefacts,
+                              the harvest
+```
+
+A lab id is `lab-<yymmddHHMMSS>-<pin7>`, the UTC mint time and the pin's first
+seven digits, and the exclusive creation of its home is what keeps two ids
+apart. Three properties are load-bearing:
+
+- **Evidence stays at the operator level, knowledge moves by ceremony.** A lab
+  touches private-tier material and must outlive any checkout it cites, so its
+  evidence never enters a repository; what a lab learns enters one only through
+  capture or a record that cites the lab, and the local ephemeral tier holds
+  pointers at most.
+- **It creates itself through one seam, never through a symlink**, on the
+  transcript store's discipline, private to the account, and every write inside a
+  lab home goes through a containment root opened on that home.
+- **Labs that predate the keyed layout are left alone.** Hand-run labs sit at the
+  top of the store with their own index; the verb neither reads nor writes them.
+
 ## The worktree store
 
 **Design target (itd-2609091014076309, `intents/drafts/`; unbuilt).** No
@@ -245,15 +327,19 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-staged worktree store, the run state an autonomous run's sessions share
+lab store, the staged worktree store, the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
-([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), machine config defaults (a later phase: every config read
-in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
-is read at all; the one machine setting read today is `load-limits`, the load
-check's two limits, read-only and never created, itd-2609231434459890), the
-external credentials adapters resolve by name in `credentials.json` (read-only,
-never created, refused unless it is a regular file this uid owns at mode 0600 —
-the interim source the credential store, itd-2609221017023290, replaces), the
+([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
+(its one reader is the provider adapter's, and its one write the provider block
+`ahoy connect` adds; every other config read resolves the repo-scope
+`.abcd/config.json`), the load check's two limits in `load-limits` (read-only and
+never created, itd-2609231434459890), the external credentials adapters resolve
+by name in `credentials.json` (refused unless it is a regular file this uid owns
+at mode 0600 that names each credential once, a repeated key or a case twin
+included; `ahoy connect` adds one name at a time and never replaces a stored
+value, holding the file's lock across the read and the write as the provider
+block's write holds `config.json`'s, so concurrent setups lose nothing — the
+interim source the credential store, itd-2609221017023290, replaces), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
 [the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later

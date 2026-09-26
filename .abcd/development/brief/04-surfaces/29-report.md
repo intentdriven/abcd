@@ -35,8 +35,9 @@ a flag and the filled report is a positional; neither is a sub-verb.
 - Bare `abcd report` opens the skeleton in `$VISUAL` or `$EDITOR` when both ends
   of the session are a terminal, from a private temporary file outside both
   repositories, and files what is saved. Without a terminal or an editor it
-  refuses and names the two other ways in. A refused edit keeps the file and
-  names it, so what the reporter wrote is never lost.
+  refuses and names the two other ways in. An edit that is refused, or fails
+  to file, keeps the file and names it, so what the reporter wrote is never
+  lost.
 
 ## The template
 
@@ -95,7 +96,9 @@ The inbox is a machine-scoped store beside the history, transcript, worktree,
 sources, labs and run stores. The sender key is the reporting repository's full
 root-commit SHA, the key those stores use; the stamp is the report id's digits.
 abcd derives the file name and writes the file by an exclusive create at mode
-0600, in a directory created one real level at a time at 0700. The stored file
+0600, in a directory created one real level at a time at 0700; a symlink or a
+file at any level is refused, naming that level
+([`30-inbox.md`](30-inbox.md)). The stored file
 is what the validator accepted, written back by abcd with the envelope it
 stamps: `received_at`, `sender_key`, and `sender_name`, the name of the
 repository's main checkout directory, so a worktree reports under its
@@ -113,11 +116,18 @@ abcd: 3 report(s) from 2 managed repositories wait in the inbox; `abcd inbox` li
 It carries counts only — no sender name and no word a report wrote — because
 the session-start stdout is injected into the session's context. The bare
 [`/abcd`](08-abcd.md) board carries the same count as its `inbox:` row. Both are
-silent when nothing waits.
+silent when nothing waits. Neither is silent when the inbox cannot be counted:
+the hook names the refusal in one line among its notices on stderr, and the
+board prints the same line on stderr in place of the row —
+`abcd: the inbox is not counted — ~/.abcd/inbox is not a real directory …`,
+naming the level refused, home-redacted — so a refused inbox never reads as an
+empty one.
 
 ## Exit codes
 
-`0` filed; `2` refused, with nothing filed. The JSON output holds on every path:
+`0` filed; `1` filing failed (the inbox cannot be created, every id drawn this
+second is taken, the write fails), with nothing filed; `2` refused, with nothing
+filed. After the editor ran, a failure names the kept file as a refusal does. The JSON output holds on every path:
 a refusal is the `{"abcd":"error",…}` envelope on stdout.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

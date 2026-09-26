@@ -468,9 +468,16 @@ func proseRecordFiles(repoRoot string, stores map[string]string) ([]string, erro
 // looks like the gate working. The refusal names the minimal valid document, so
 // an author who meant to carry nothing can write it in one line.
 func loadProseBaseline(repoRoot, rel string) (map[string]ProseBaselineEntry, error) {
-	abs := filepath.Join(repoRoot, filepath.FromSlash(rel))
-	data, err := fsutil.ReadGuarded(abs, proseBaselineSizeLimit)
+	// The path comes out of the committed config and the file is an exemption
+	// list, so a baseline read from outside the tree would disarm the gate with
+	// content the repository does not hold: it is read only inside the root, and
+	// never through a link (iss-2609261019593167).
+	data, err := readRepoLeaf(repoRoot, rel, proseBaselineSizeLimit)
 	if err != nil {
+		var ce *configError
+		if errors.As(err, &ce) {
+			return nil, &configError{ruleProseCitationResolves + ": baseline " + ce.Error()}
+		}
 		if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
 			return map[string]ProseBaselineEntry{}, nil
 		}

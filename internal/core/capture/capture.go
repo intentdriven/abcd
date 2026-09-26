@@ -396,6 +396,11 @@ var (
 	ErrMissingRequiredField = errors.New("missing required field")
 	// ErrPathUnsafe means the ledger root or a status dir is a symlink.
 	ErrPathUnsafe = errors.New("path unsafe")
+	// ErrNotCharacterised means a disposition or an admission was asked for at
+	// the widening position before a committed comparative run named the item's
+	// run. The design characterises first and admits second, and the refusal
+	// names the run it is waiting on (spc-2609020626040342).
+	ErrNotCharacterised = errors.New("not yet characterised")
 )
 
 // Field regexes mirroring issue.schema.json.
