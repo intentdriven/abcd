@@ -50,7 +50,7 @@ func (e *explorer) graphPage() (string, error) {
 	b.WriteString(` data-rel-builds-on="` + escapeAttr(ui.Relations.BuildsOn) + `"`)
 	if repo := e.c.repo.Repository; repo != "" {
 		b.WriteString(` data-blob="` + escapeAttr(forgeBlob(repo, "")) + `"`)
-		b.WriteString(` data-commits="` + escapeAttr(repo+"/commits/main/") + `"`)
+		b.WriteString(` data-commits="` + escapeAttr(forgeView(repo, "commits", "")) + `"`)
 	}
 	b.WriteString(`>`)
 

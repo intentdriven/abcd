@@ -933,7 +933,7 @@ func (e *explorer) href(fromPath, target string) string {
 		// for a confident 404.
 		return target
 	}
-	out := e.c.repo.Repository + "/" + kind + "/main/" + rel
+	out := forgeView(e.c.repo.Repository, kind, rel)
 	if frag != "" {
 		out += "#" + frag
 	}
@@ -954,7 +954,7 @@ func (e *explorer) forgeCommits(rel string) string {
 	if e.c.repo.Repository == "" {
 		return ""
 	}
-	return e.c.repo.Repository + "/commits/main/" + rel
+	return forgeView(e.c.repo.Repository, "commits", rel)
 }
 
 // nodesOfType is every record of one store, in the export's order.

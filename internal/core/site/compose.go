@@ -127,11 +127,17 @@ func (c *composer) renderer(p *docPage) *Renderer {
 	}
 }
 
-// forgeBlob is the forge's view of the repository file rel on the default
+// forgeView is the forge's view of kind ("blob" a file, "tree" a directory,
+// "commits" a path's history) for the repository path rel on the default
 // branch. HEAD names that branch whatever it is called: the build reads no
 // forge to learn the name, and a repository's default need not be main
-// (iss-2609261206437257).
-func forgeBlob(repo, rel string) string { return repo + "/blob/HEAD/" + rel }
+// (iss-2609261206437257, iss-2609261241126008). Every forge link into the
+// repository is built here, so none names a branch.
+func forgeView(repo, kind, rel string) string { return repo + "/" + kind + "/HEAD/" + rel }
+
+// forgeBlob is the forge's view of the repository file rel on the default
+// branch.
+func forgeBlob(repo, rel string) string { return forgeView(repo, "blob", rel) }
 
 // rendersDocs reports whether this site serves a /docs/ tree. The tree is not
 // this build's output (the docs build writes it beside it), so the composition
