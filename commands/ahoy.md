@@ -1,7 +1,7 @@
 ---
 name: ahoy
 description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
-argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply]"
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect]"
 block: people
 ---
 
@@ -12,10 +12,11 @@ harness-invoked row that `install` wires, is in the agents-and-hosts block of
 `abcd --help --agent`, and its line there names this page.
 
 Run abcd's install/update engine for the current repo and present the result.
-Bare invocation, its `--dry-run` and `--remote` modes, and the `doctor` sub-verb
-perform **zero writes**; `install`, `uninstall` and `remote apply` are the three
-that change something, and each says so before it runs — `remote apply` is the
-only one that changes state outside this machine, and it asks before it does.
+Bare invocation, its `--dry-run`, `--remote` and `--providers` modes, and the
+`doctor` sub-verb perform **zero writes**; `install`, `uninstall`, `remote apply`
+and `connect` are the four that change something, and each says so before it
+runs — `remote apply` is the only one that changes state outside this machine,
+and it asks before it does.
 A mode is a flag on the bare verb, one at a time; a distinct action is a
 sub-verb.
 
@@ -301,6 +302,51 @@ state takes no write, and a re-run rewrites nothing in the tree — and it stops
 at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
 thing abcd deliberately did not do, and the reason.
+
+## `--providers` and `connect` — the optional model provider
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --providers --json
+```
+
+Explains the optional OpenAI-compatible provider adapter and writes nothing. An
+aggregator (OpenRouter, for one) serves many vendors' models behind one address
+and one key, and a local OpenAI-compatible server is reached the same way. abcd
+would use one for decision models and cheap judgements pointed at it by name,
+never for a frontier model, which a bundled vendor denylist (`anthropic/*` at
+minimum) keeps on the host. Everything works without one: with no provider
+configured, every delegated step runs on the host. Relay `explanation`, each of
+`providers` with its `key_state` (`set`, `not set`, `none`, or a refusal; never
+the key), the `denylist`, the `routes`, every line of `diagnostics`, and the
+`key_homes` prose verbatim: it recommends the platform keychain in prose, and
+the choice stays the person's, so never present one home as the marked option.
+Relay `dispatch` too: no delegating verb sends a step to a provider yet, so a
+configured provider changes no step until provider dispatch lands.
+
+The bare board names the same adapter as an optional gap
+(`oracle_api.none_configured`) while none is configured, and a configuration the
+adapter refuses as `oracle_api.config_refused`, naming the file and the key.
+Declining is not running `connect`, and it changes nothing.
+
+```bash
+abcd ahoy connect <provider> --base-url <url> --model <model> [--model <model>…] --home abcd [--key <name>] < <a file holding only the key>
+```
+
+**This writes, under `~/.abcd/` alone.** It verifies the provider with one call
+to the first model listed, and only when that call succeeds writes the key into
+the owner-only `~/.abcd/credentials.json` and the provider block (the base URL,
+the key's name and the models, the allowlist) into `~/.abcd/config.json`.
+Nothing goes into the repository or the harness's settings, and a failed
+verification writes nothing. `--home none` sets up a server that takes no key.
+The `external` and `keychain` homes arrive with the credential store
+(itd-2609221017023290) and are refused, naming it, before any call.
+
+The key is read from stdin and nowhere else, and never from a terminal, where it
+would be echoed. **Never ask the person for the key and never pass it
+yourself**: it would enter this conversation. Give them the command to run in
+their own shell, with the key piped in from a file or a variable they hold, and
+relay the result — `verified` (the provider, the model asked for and the model
+it reported), each `wrote` path, and `dispatch`.
 
 ## `--dry-run` — the canonical detection envelope
 

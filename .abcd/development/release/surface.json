@@ -58,9 +58,51 @@
           "hidden": false
         },
         {
+          "name": "providers",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "remote",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy connect",
+      "hidden": false,
+      "sentence": "Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
+      "flags": [
+        {
+          "name": "base-url",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "home",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "key",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "model",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }

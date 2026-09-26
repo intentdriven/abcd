@@ -597,7 +597,8 @@ without one, one stderr warning names `intent audit <itd-N>` as the re-emit that
 adds it, and the close stands. `--issue-drift` dispatches no agent and refuses `--route`. The
 ingest's `--json` result carries a `route` receipt (`tier_asked`,
 `connection_tried`, `connection_used`, `fallback_reason`, `override`,
-`settings_sent`, `model_reported`) and its text a `route:` line; relay it with
+`settings_sent`, `model_reported`, and `provider_call`, null until a provider
+adapter answers the step) and its text a `route:` line; relay it with
 the result. When no configured provider can serve the tier, one stderr line says
 the step goes through the harness instead. A `--route` naming an agent this
 invocation does not dispatch, a tier outside the set, a connection this machine

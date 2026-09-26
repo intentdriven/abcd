@@ -43,9 +43,25 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 **Flags:**
 
 ```
-      --dry-run    print the detection result as its JSON envelope, whether or not --json is passed
-      --identity   check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
-      --remote     report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+      --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
+      --identity    check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
+      --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+```
+
+#### `abcd ahoy connect`
+
+Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.
+
+**Usage:** `abcd ahoy connect <provider> [flags]`
+
+**Flags:**
+
+```
+      --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
+      --home string         where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store
+      --key string          the credential's name (default: the provider's name)
+      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
 ```
 
 #### `abcd ahoy doctor`
