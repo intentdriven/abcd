@@ -252,7 +252,8 @@ in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
 is read at all; the one machine setting read today is `load-limits`, the load
 check's two limits, read-only and never created, itd-2609231434459890), the
 external credentials adapters resolve by name in `credentials.json` (read-only,
-never created, refused unless it is a regular file this uid owns at mode 0600 —
+never created, refused unless it is a regular file this uid owns at mode 0600
+that names each credential once, a repeated key or a case twin included —
 the interim source the credential store, itd-2609221017023290, replaces), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see

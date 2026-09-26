@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -98,6 +99,14 @@ func (m machine) Resolve(name string) (string, error) {
 		return "", fmt.Errorf("credential: %s is not owned by you, so it is not read", StorePath)
 	case err != nil:
 		return "", fmt.Errorf("credential: %s could not be read safely (mode 0600, owned by you, a regular file), so it is not read", StorePath)
+	}
+	// A repeated key, or a case twin encoding/json binds to the same entry, is
+	// read last-wins by the decoder, so a store naming one credential twice would
+	// resolve silently to whichever spelling came last. It is refused, and the
+	// refusal names neither spelling: a key is file content too
+	// (iss-2609260120380520).
+	if err := jsonstrict.NoDuplicateKeys(raw); err != nil {
+		return "", fmt.Errorf("credential: %s names one credential twice (a repeated key, or two spellings of one), so it is not read", StorePath)
 	}
 	var store map[string]string
 	if err := json.Unmarshal(raw, &store); err != nil {

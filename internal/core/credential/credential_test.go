@@ -112,3 +112,35 @@ func TestNoHomeIsNotSet(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNotSet", err)
 	}
 }
+
+// TestAStoreNamingACredentialTwiceIsRefused: encoding/json reads a repeated key
+// last-wins, and binds a case twin to the same entry, so a store naming one
+// credential twice would resolve to whichever spelling came last, silently. It
+// is refused, like every other store the reader cannot trust, and the refusal
+// echoes neither value nor key (iss-2609260120380520).
+func TestAStoreNamingACredentialTwiceIsRefused(t *testing.T) {
+	const other = "tok-other-value-not-a-real-secret"
+	for name, body := range map[string]string{
+		"exact repeat":   `{"hosting.cloudflare": "` + secretValue + `", "hosting.cloudflare": "` + other + `"}`,
+		"escaped repeat": `{"hosting.cloudflare": "` + secretValue + `", "hosting.cloudflare": "` + other + `"}`,
+		"case twin":      `{"hosting.cloudflare": "` + secretValue + `", "Hosting.Cloudflare": "` + other + `"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			writeStore(t, home, body, 0o600)
+			got, err := Machine(home).Resolve("hosting.cloudflare")
+			if err == nil {
+				t.Fatalf("a store naming a credential twice resolved (to the %s value)", map[bool]string{true: "first", false: "last"}[got == secretValue])
+			}
+			if errors.Is(err, ErrNotSet) {
+				t.Fatalf("a store naming a credential twice must be refused, not read as unset: %v", err)
+			}
+			msg := err.Error()
+			for _, leak := range []string{secretValue, other, "loudflare"} {
+				if strings.Contains(msg, leak) {
+					t.Fatalf("the refusal echoes %q: %s", leak, msg)
+				}
+			}
+		})
+	}
+}
