@@ -314,7 +314,13 @@ token names. Appending rather than setting is the point: a later triage route
 adds a bullet beside the one an earlier route recorded, and neither overwrites
 the other. The section is held by `internal/core/grounds` per adr-57, and
 `record_schema` blocks a frontmatter `grounds:` key by naming this section as
-where the value belongs.
+where the value belongs. It also blocks a top-level bullet in the section that
+does not parse as `- <token>: <text>`, on an issue or an intent record: the
+reader drops such a bullet, so a hand edit spelled `- rejected: …` would
+otherwise be no recorded ground to any surface while the record reads as
+carrying one. Which bullets the reader drops is `internal/core/grounds`'s own
+answer, so the gate and the reader cannot disagree about it, and a paragraph of
+prose under the heading is not a bullet and is not judged.
 
 **The grounds text is gated on substance, not only on grammar.** A value that
 parses as `<token>: <text>` is still refused, exit 2 and nothing written, unless

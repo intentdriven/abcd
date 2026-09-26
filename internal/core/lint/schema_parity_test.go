@@ -365,3 +365,46 @@ func TestRecordSchemaSilentOnAGroundsSection(t *testing.T) {
 		t.Fatalf("a record carrying its grounds in the body raised %d record_schema finding(s): %+v", n, fs)
 	}
 }
+
+// TestRecordSchemaReportsAMalformedGroundsBullet is the coverage the frontmatter
+// rule had and the section form lost (iss-2608301747001641). A malformed
+// `grounds:` value was a value the gate could judge; a malformed bullet under
+// `## Grounds` reads as prose, so the reader drops it and nothing says so. The
+// gate asks core/grounds's own reader which bullets it skipped — one derivation,
+// so a bullet the reader takes is never reported and one it drops always is.
+// Prose paragraphs under the heading, and a bullet a fence masks, stay silent:
+// the reader never offered them as entries.
+func TestRecordSchemaReportsAMalformedGroundsBullet(t *testing.T) {
+	const issues = "work/issues"
+	root := t.TempDir()
+	seedRecRoot(t, root)
+	writeFile(t, root, issues+"/resolved/iss-1-ok.md",
+		resolvedIssue("iss-1", "ok", "")+
+			"\n## Grounds\n\n"+
+			"- pursued: we expect the recorded reasoning to outlive the session\n"+
+			"- rejected: refusing the whole file, which would take every other domain down\n"+
+			"\nA paragraph of prose under the heading is not an entry and is not judged.\n\n"+
+			"```\n- planned: inside a fence, masked from every reader\n```\n")
+	writeFile(t, root, "rec/intents/drafts/itd-1-draft.md",
+		"---\nid: itd-1\nkind: null\nspec_id: null\n---\n# draft\n\n## Grounds\n\n- pursued without a colon at all\n")
+
+	fs, err := Lint(schemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleRecordSchema); n != 2 {
+		t.Fatalf("want one record_schema finding per malformed bullet (2), got %d: %+v", n, fs)
+	}
+	iss := filepath.Join(issues, "resolved", "iss-1-ok.md")
+	if !findingWith(fs, iss, ruleRecordSchema, "rejected") {
+		t.Errorf("the issue record's out-of-vocabulary bullet is not reported: %+v", fs)
+	}
+	for _, f := range fs {
+		if f.File == iss && f.RuleID == ruleRecordSchema && f.Line != 18 {
+			t.Errorf("the finding names line %d; the bullet is file line 18: %+v", f.Line, f)
+		}
+	}
+	if !findingWith(fs, filepath.Join("rec/intents/drafts", "itd-1-draft.md"), ruleRecordSchema, "pursued without a colon") {
+		t.Errorf("the intent record's colon-less bullet is not reported: %+v", fs)
+	}
+}
