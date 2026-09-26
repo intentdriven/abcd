@@ -6,7 +6,7 @@ package cli
 // `refresh` is the only place abcd dials out on behalf of documentation, and it
 // runs when a maintainer asks. `confirm` closes the manual queue that refresh
 // prints. Both live under `docs` because the baseline exists to serve
-// `docs lint` — the gate is the customer, these verbs are how it gets fed.
+// `lint docs` — the gate is the customer, these verbs are how it gets fed.
 
 import (
 	"fmt"
@@ -27,10 +27,9 @@ import (
 // `lint` does and the two verbs can never read different roots.
 func newCiteCommand(asJSON *bool) *cobra.Command {
 	citeCmd := &cobra.Command{
-		Use:   "cite",
-		Short: "Maintain the citation baseline the docs lint enforces offline",
-		Args:  cobra.NoArgs,
-		RunE:  helpRunE,
+		Use:  "cite",
+		Args: cobra.NoArgs,
+		RunE: helpRunE,
 	}
 	citeCmd.AddCommand(newCiteRefreshCommand(asJSON))
 	citeCmd.AddCommand(newCiteConfirmCommand(asJSON))
@@ -40,8 +39,7 @@ func newCiteCommand(asJSON *bool) *cobra.Command {
 func newCiteRefreshCommand(asJSON *bool) *cobra.Command {
 	var configPath, rootDir string
 	cmd := &cobra.Command{
-		Use:   "refresh",
-		Short: "Fetch every cited URL once and rewrite the committed citation baseline",
+		Use: "refresh",
 		Long: "Fetch every cited URL once and rewrite the committed citation baseline.\n\n" +
 			"This is the only abcd verb that reaches the network on behalf of documentation. " +
 			"Each URL gets exactly one bounded attempt; a failure is recorded as an outcome, " +
@@ -111,8 +109,7 @@ func renderRefresh(w io.Writer, res cite.RefreshResult) {
 func newCiteConfirmCommand(asJSON *bool) *cobra.Command {
 	var configPath, rootDir, receiptPath string
 	cmd := &cobra.Command{
-		Use:   "confirm [url...]",
-		Short: "Record that a human verified a cited URL the fetcher could not read",
+		Use: "confirm [url...]",
 		Long: "Record that a human verified a cited URL the fetcher could not read.\n\n" +
 			"Name the URLs directly, or pass --receipt with a receipt file. Both write the " +
 			"same dated manual entry: the baseline records THAT a human confirmed the " +
@@ -172,7 +169,7 @@ func addCiteFlags(cmd *cobra.Command, configPath, rootDir *string) {
 }
 
 // loadCiteConfig resolves the root and the docs-lint config the same way
-// `docs lint` does, so the refresh fetches exactly the set the gate enforces.
+// `lint docs` does, so the refresh fetches exactly the set the gate enforces.
 func loadCiteConfig(verb, rootDir, configPath string) (string, lint.Config, error) {
 	root := rootDir
 	if root == "" {

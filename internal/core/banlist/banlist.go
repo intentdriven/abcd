@@ -150,7 +150,7 @@ func validKey(key string) bool { return keyRe.MatchString(key) }
 
 // validPublicPattern checks a PUBLIC pattern through the linter's own compile path,
 // against the exact string that will be stored — the public layer's engine is Go's
-// regexp, because `abcd docs lint` is what enforces it, and a check against
+// regexp, because `abcd lint docs` is what enforces it, and a check against
 // anything else would be a check of a different thing. (The private layer's engine
 // is grep; see checkPattern.) The compile error is DISCARDED: Go's regexp errors
 // quote the expression, and one error path for both layers must never be the leak.

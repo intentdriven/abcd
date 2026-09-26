@@ -8,6 +8,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
@@ -20,17 +21,22 @@ func (r recordingFetcher) LatestTag() (string, error) {
 	return "v99.0.0", nil
 }
 
-// TestOnlyVersionCheckTouchesTheNetwork is the zero-network invariant (AC4,
+// TestOnlyUpdateCheckTouchesTheNetwork is the zero-network invariant (AC4,
 // adr-38 tier 1): every implicit path reaches the disk only, and the network is
-// touched exactly once, by the explicit --check.
-func TestOnlyVersionCheckTouchesTheNetwork(t *testing.T) {
+// touched exactly once, by the explicit `update --check` — which does what
+// `version --check` did (itd-2609212130136102) and never constructs the
+// updater that swaps a binary.
+func TestOnlyUpdateCheckTouchesTheNetwork(t *testing.T) {
 	var calls int32
 	orig := newReleaseFetcher
 	newReleaseFetcher = func() vintage.ReleaseFetcher { return recordingFetcher{&calls} }
-	t.Cleanup(func() { newReleaseFetcher = orig })
+	updaters := 0
+	origUpdater := newUpdater
+	newUpdater = func() *update.Updater { updaters++; return origUpdater() }
+	t.Cleanup(func() { newReleaseFetcher = orig; newUpdater = origUpdater })
 
 	// Every implicit path: none may fetch.
-	runCLI(t, "version")
+	runCLI(t, "--version")
 	runCLI(t, "ahoy")
 	if _, err := runCLIStdinErr(t, `{"cwd":"`+t.TempDir()+`"}`, "hook", "session-start"); err != nil {
 		t.Fatalf("session-start hook errored: %v", err)
@@ -40,9 +46,12 @@ func TestOnlyVersionCheckTouchesTheNetwork(t *testing.T) {
 	}
 
 	// The explicit check fetches exactly once and names its source.
-	out := runCLI(t, "version", "--check")
+	out := runCLI(t, "update", "--check")
 	if got := atomic.LoadInt32(&calls); got != 1 {
-		t.Fatalf("version --check fetched %d time(s), want exactly 1", got)
+		t.Fatalf("update --check fetched %d time(s), want exactly 1", got)
+	}
+	if updaters != 0 {
+		t.Fatalf("update --check constructed the updater %d time(s); the check swaps nothing", updaters)
 	}
 	if !strings.Contains(string(out), checkSource) {
 		t.Fatalf("check output did not name its source %q:\n%s", checkSource, out)
@@ -52,13 +61,13 @@ func TestOnlyVersionCheckTouchesTheNetwork(t *testing.T) {
 	}
 }
 
-// TestVersionCheckNamesTheNextStep pins the line itd-130 promised: when an
-// update is available, `version --check` says what to run next, and the verb it
+// TestUpdateCheckNamesTheNextStep pins the line itd-130 promised: when an
+// update is available, `update --check` says what to run next, and the verb it
 // names depends on the install shape the update verb itself classifies — the
 // swappable copy is pointed at `abcd update`, a plugin-root binary at the
 // host's plugin update. The classification is disk-only; the check's single
 // fetch stays the only network touch (iss-2609012111168872).
-func TestVersionCheckNamesTheNextStep(t *testing.T) {
+func TestUpdateCheckNamesTheNextStep(t *testing.T) {
 	var calls int32
 	origFetcher := newReleaseFetcher
 	newReleaseFetcher = func() vintage.ReleaseFetcher { return recordingFetcher{&calls} }
@@ -74,7 +83,7 @@ func TestVersionCheckNamesTheNextStep(t *testing.T) {
 	resolveUpdateTarget = func() ahoy.UpdateTarget {
 		return ahoy.UpdateTarget{Path: "/x/abcd", ResolvedPath: "/x/abcd", Kind: ahoy.UpdateTargetFile}
 	}
-	out := string(runCLI(t, "version", "--check"))
+	out := string(runCLI(t, "update", "--check"))
 	if !strings.Contains(out, "update available: v0.1.0 -> v99.0.0") {
 		t.Fatalf("expected the update verdict:\n%s", out)
 	}
@@ -88,7 +97,7 @@ func TestVersionCheckNamesTheNextStep(t *testing.T) {
 			NextStep string `json:"next_step"`
 		} `json:"check"`
 	}
-	if err := json.Unmarshal(runCLI(t, "version", "--check", "--json"), &got); err != nil {
+	if err := json.Unmarshal(runCLI(t, "update", "--check", "--json"), &got); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(got.Check.NextStep, "`abcd update`") {
@@ -98,7 +107,7 @@ func TestVersionCheckNamesTheNextStep(t *testing.T) {
 	resolveUpdateTarget = func() ahoy.UpdateTarget {
 		return ahoy.UpdateTarget{Path: "/x/abcd", Kind: ahoy.UpdateTargetPluginRoot}
 	}
-	out = string(runCLI(t, "version", "--check"))
+	out = string(runCLI(t, "update", "--check"))
 	if !strings.Contains(out, "next:      take a plugin update in the host") {
 		t.Errorf("a plugin-root install must be pointed at the host's plugin update:\n%s", out)
 	}

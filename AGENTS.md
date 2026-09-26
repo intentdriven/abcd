@@ -5,15 +5,17 @@
   Managed by abcd (Agent-Based Configuration for Development).
   Do NOT hand-edit content inside the abcd-managed fences — `/abcd:ahoy`
   silently overwrites this block on drift (per itd-3). Per-repo rule
-  customisation goes in <repo>/.abcd/rules.json instead.
+  customisation goes in <repo>/.abcd/rules.json instead, and machine-wide
+  customisation in ~/.abcd/rules.json.
 -->
 
 ## abcd rule loader
 
 This repository uses the abcd modular rules loader. On `UserPromptSubmit`, a hook
 recall-matches the prompt against keyword triggers declared in the plugin-bundled
-default domains and `<repo>/.abcd/rules.json`, and injects only the matched
-domain rules into context — instead of force-loading the full ruleset every turn.
+default domains, the machine's `~/.abcd/rules.json` and `<repo>/.abcd/rules.json`,
+and injects only the matched domain rules into context — instead of
+force-loading the full ruleset every turn.
 A prompt that matches no domain injects nothing (zero added tokens).
 
 - Inspect rules: `abcd rules` renders the active set; `abcd rules <DOMAIN>`
@@ -27,19 +29,37 @@ A prompt that matches no domain injects nothing (zero added tokens).
   diagnostic on stderr naming it — it would otherwise inject a heading-only
   block, which reads as a domain that says nothing. The rest of the file still
   loads; `{"state": "dormant"}` is the way to silence a domain deliberately.
-- Provenance: a domain the override names (rules replaced, state changed, or a
-  custom domain) renders as `## NAME (repo override)` wherever it appears: the
-  injected block, `abcd rules`, and the hook's diagnostic; `abcd rules --json`
-  carries `"source": "repo"` for it and `"source": "bundled"` for an untouched
-  default.
-- Kill switch: set `"disabled": true` at the top of `.abcd/rules.json`.
+- Machine-wide overrides: `~/.abcd/rules.json` takes the same schema and holds
+  the conventions shared by every repo on the machine. The layers apply in
+  order — bundled defaults, then `~/.abcd/rules.json`, then
+  `<repo>/.abcd/rules.json` — each replacing a field wholesale, so the repo wins
+  a field both set and a repo `dormant` state or kill switch holds against a
+  user layer. The file is read only when it is a regular file this account owns
+  that no one else can write, within 256 KiB; a file failing that, or failing to
+  parse or validate, fails the load loudly and the hook injects nothing. Absent,
+  it costs nothing and nothing is created; a `HOME` or `~/.abcd` this account
+  cannot search reads as absent. A dotfiles-symlinked `~/.abcd` can never host
+  a `rules.json`: the file is refused behind a symlinked `~/.abcd`, and only a
+  symlinked `~/.abcd` with no `rules.json` in it is spared, reading as absent.
+- Provenance: a domain an override names (rules replaced, state changed, or a
+  custom domain) renders as `## NAME (user override)` or
+  `## NAME (repo override)`, after the last layer that named it, wherever it
+  appears: the injected block, `abcd rules`, and the hook's diagnostic;
+  `abcd rules --json` carries `"source": "user"` or `"source": "repo"` for it
+  and `"source": "bundled"` for an untouched default.
+- Kill switch: set `"disabled": true` at the top of `.abcd/rules.json`; at the
+  top of `~/.abcd/rules.json` it silences every repo on the machine, and no repo
+  file re-enables it.
 - Foreign-uid roots: the loader and the shell guard read `.abcd/` from the
   repository root resolved for the session, never from a directory above the
   working tree. Where git cannot answer for that tree — a checkout owned by
   another uid, a container bind mount — the root is recovered from the `.git`
   marker instead, and a root the caller does not own is REFUSED: the session
-  falls back to its own working directory on the bundled defaults, and one line
-  on stderr names what was refused. Re-admit such a checkout deliberately, from
+  takes its own working directory as the root, nothing above it is read, and one
+  line on stderr names what was refused. The refusal bounds the walk, not the
+  working directory: a `.abcd/` there is still read, so a session started AT the
+  refused root reads that root's configuration, over `~/.abcd/rules.json` for
+  the rules. Re-admit such a checkout deliberately, from
   an account you control:
   `mkdir -p ~/.abcd && printf '%s\n' '<checkout>' >> ~/.abcd/trusted-roots`
   (one absolute path per line; `#` starts a comment). Only your home declares
@@ -102,6 +122,17 @@ go test ./...       # unit tests
 go test ./internal/core/                 # a single package
 go test -run TestStatus ./internal/core/ # a single test
 ```
+
+**A push is gated before it connects.** The committed `.githooks/pre-push` hook
+never runs the preflight: git opens a push's connection before it runs the hook,
+and a preflight inside it outlasted the transport's idle timeout, so the push
+reported success and moved nothing. `make preflight` ends by minting a receipt
+for HEAD instead, and only when the working tree matched HEAD — nothing staged,
+unstaged or untracked — both when the run began and when it ended, so the gates
+read exactly the tree CI checks out. The hook refuses a push whose new commit has
+no receipt. The sequence is: commit everything, `make preflight`, then a plain
+`git push`. A receipt minted in any worktree of the checkout counts, and a commit
+the remote already holds (a tag on a merged commit) needs none.
 
 **In a source checkout of abcd, every abcd invocation is `go run ./cmd/abcd
 <verb>` from the repo root** — never the plugin-root binary and never an `abcd`
@@ -285,7 +316,8 @@ irreversible; guessing downward costs nothing.**
   `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`, `site-render`),
   both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test ./...`, and `go test -race ./internal/...`. The load
+  `go vet ./...`, `go test ./...`, and
+  `go test -race -timeout 20m ./internal/...`. The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:
   it exits 0 whatever it finds. The eval
   lanes are named separately because their files carry a build tag, so
@@ -411,7 +443,11 @@ irreversible; guessing downward costs nothing.**
   class into every store-before-commit redactor, `abcd lint`'s privacy rule
   refuses either shape in any committed file, and the `harness_leak` lint rule
   refuses it in the record and the docs. One definition, three wired surfaces
-  (itd-152). A fourth exists as a primitive with no front door:
+  (itd-152). A commit message is judged by the check-direction front door onto
+  the same policy, `abcd lint outbound`, twice: the committed
+  `.githooks/commit-msg` hook refuses either shape before the commit exists, and
+  the attribution gate in CI judges every commit message of a pull request and
+  its body again. A fourth exists as a primitive with no front door:
   `scanner.ScrubOutbound` sanitises one outbound artefact and is covered by
   tests, but no command or plugin verb calls it, because `spc-45` deliberately
   scopes a forge client out. The three wired surfaces judge text that is already

@@ -56,6 +56,13 @@ var (
 // returned so callers can test os.IsNotExist / syscall.ELOOP; a non-regular or
 // oversize file returns ErrNotRegular / ErrTooBig.
 func ReadGuarded(path string, limit int64) ([]byte, error) {
+	return readGuarded(path, limit, nil)
+}
+
+// readGuarded is ReadGuarded, and when vetted is non-nil it also confirms on
+// the opened descriptor that the file is the one vetted describes (os.SameFile),
+// refusing a replacement with ErrDeclarationSwapped.
+func readGuarded(path string, limit int64, vetted os.FileInfo) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
@@ -67,6 +74,9 @@ func ReadGuarded(path string, limit int64) ([]byte, error) {
 	}
 	if !fi.Mode().IsRegular() {
 		return nil, ErrNotRegular
+	}
+	if vetted != nil && !os.SameFile(vetted, fi) {
+		return nil, ErrDeclarationSwapped
 	}
 	if fi.Size() > limit {
 		return nil, ErrTooBig
@@ -115,6 +125,9 @@ const (
 var (
 	ErrDeclarationWritable     = errors.New("fsutil: declaration is writable by group or other")
 	ErrDeclarationForeignOwner = errors.New("fsutil: declaration is not owned by this session's uid")
+	// ErrDeclarationSwapped: the file opened is not the one the guards judged
+	// (replaced between the vetting lstat and the open).
+	ErrDeclarationSwapped = errors.New("fsutil: declaration was replaced between its vetting and its read")
 )
 
 // ownerUID is the package's own view of OwnerUID, held as a var for the same
@@ -134,6 +147,12 @@ func SwapOwnerUIDForTest(fn func(string) (uint32, error)) (restore func()) {
 	ownerUID = fn
 	return func() { ownerUID = prev }
 }
+
+// declarationVetted runs between ReadDeclaration's vetting lstat and its open.
+// It does nothing in production; it is a var so a detector can rename a
+// different file into place inside that window, which a real race cannot be
+// relied on to hit, and so prove the read refuses what it did not vet.
+var declarationVetted = func(string) {}
 
 // ReadDeclaration is the guarded read for a HOME-SCOPED DECLARATION FILE — a
 // record in the caller's own home that re-admits something abcd would otherwise
@@ -156,9 +175,12 @@ func SwapOwnerUIDForTest(fn func(string) (uint32, error)) (restore func()) {
 // (iss-2609091927085132).
 //
 // The permission and owner checks run on an Lstat BEFORE the open, so a symlink
-// is judged as itself rather than through its target; ReadGuarded then re-opens
-// with O_NOFOLLOW and re-validates on its own descriptor, so the lstat→open
-// window cannot promote a swapped-in symlink into a read.
+// is judged as itself rather than through its target; the read then re-opens
+// with O_NOFOLLOW, re-validates on its own descriptor, and confirms with
+// os.SameFile that the descriptor is the file the lstat vetted, so the
+// lstat→open window can promote neither a swapped-in symlink nor a swapped-in
+// regular file into a read (a replacement is DeclarationUnreadable with
+// ErrDeclarationSwapped).
 //
 // The returned error is ALWAYS non-nil when the refusal is not DeclarationOK, so
 // a caller that inspects only the error still fails closed. Callers that need to
@@ -181,7 +203,8 @@ func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, erro
 	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
 		return nil, DeclarationForeignOwner, ErrDeclarationForeignOwner
 	}
-	raw, err := ReadGuarded(path, limit)
+	declarationVetted(path)
+	raw, err := readGuarded(path, limit, fi)
 	if err != nil {
 		return nil, DeclarationUnreadable, err
 	}

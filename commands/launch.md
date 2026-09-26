@@ -1,14 +1,21 @@
 ---
 name: launch
-description: Preview the public launch — the file bundle, the secret/PII scan, and the release gates — in dry-run mode, cut a release by deriving its version and composing its changelog and release page, render and verify the release's pinned plugin archive, and scaffold the changelog-driven release gate into a managed repo. The preview performs zero writes; `ship` writes the dated CHANGELOG heading, the RELEASE.md page and the archive pin and never publishes; `archive` writes one zip where it is told and never publishes; `scaffold` writes the release workflows and never publishes.
-argument-hint: "[--dry-run] | ship [--changelog-json <path>] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+block: people
 ---
 
 # `/abcd:launch` release preview and release cut
 
+`abcd --help` lists `launch` in the person's release group. `changelog`, the
+read-only preview of the same cut, is in the agents-and-hosts block of
+`abcd --help --agent`, and its line there names this page.
+
 Two flows over the abcd binary, kept apart on purpose:
 
-- **preview** (`dry-run`) — the bundle, the scan, and the gates. **Zero writes.**
+- **preview** (`dry-run`) — the bundle, the scan, and the pre-flight gates. Its
+  one write is its pre-flight report, under the gitignored
+  `.abcd/.work.local/logs/launch/`.
 - **ship** — the release cut: derive the version from what shipped, compose the
   changelog prose and the release page, write them. It writes the dated section
   of `CHANGELOG.md`, the release page `RELEASE.md`, and the outgoing page's copy
@@ -106,7 +113,7 @@ plugin — the update downloads the pinned archive of the release you just cut,
 which needs Claude Code v2.1.224 or later), then start a new session and check:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" version
+"${CLAUDE_PLUGIN_ROOT}/abcd" --version
 ```
 
 It should report the version you just released. If it still reports `dev` or the
@@ -135,10 +142,13 @@ Six failures are worth recognising, because each looks like something else.
   its environment secrets perfectly well, provided every caller above it passes
   `secrets: inherit` — measured on a canary secret, and pinned by
   `TestReleaseChainPassesSecretsAtEveryLevel`.
-- **The release job fails on `Semantic-gate receipts`.** The receipts do not
-  match the commit the workflow derived. The tag exists by then and the workflow
-  never moves a tag, so the version is consumed: it needs the tag deleted and the
-  release re-cut. Step 2 exists to catch this before the merge — run it.
+- **`verify` fails on `Semantic-gate receipts`.** The receipts do not match
+  the commit the workflow derived from the receipts directory. On the
+  `auto-release` path the gate runs before the tag, so nothing was tagged and the
+  version is still free: land a follow-up pull request carrying the missing or
+  corrected receipts, and its merge retries. A hand-pushed tag exists before the
+  gate runs, so there the version is consumed. Step 2 exists to catch this
+  before the merge — run it.
 - **`auto-release` fails in `detect`, on `Plugin archive reproduces the committed
   pin, before the tag`, and no tag appears.** The merged commit renders a
   different archive from the one the ship pinned — a payload file (`commands/`,
@@ -180,24 +190,97 @@ Then summarise the JSON for the user:
 - `version` — the version the release would carry.
 - `bundle.files` — the files the bundle would include (an array; report its length as the count).
 - `scan.hard_fails` — secret/PII findings that would block the release.
+  `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
+  present, counts the rest, and `scan.hard_fails` counts every one.
 - `smoke.ok` — whether the payload would install: both plugin manifests parse,
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.
+- `deep_smoke` — present only when the preview was run with `--deep-smoke`: the
+  installability smoke's deep tier. It materialises the payload in a private
+  temporary directory and re-runs the binary there as an isolated child
+  (`abcd launch smoke-pages`, hidden and operator-internal: its working
+  directory, `HOME` and `TMPDIR` are the throwaway tree), which renders every
+  declared command, skill and agent page's help and frontmatter. `deep_smoke.ok`
+  says whether every page loads; `deep_smoke.findings` names each page that
+  resolves on disk and would not load — a frontmatter block never closed, a line
+  that is not a YAML mapping entry, a duplicated key, bytes that are not UTF-8, a
+  skill with no name or description, a page with no help at all. Frontmatter is
+  read as YAML reads it: a value continued on indented lines, a quoted or
+  non-ASCII key, and a block closed by `...` all load. The tier costs a copy of
+  the payload and one child process. The cut always runs this tier; offer
+  `--deep-smoke` when the user wants the preview to say what the cut will.
+- `parity` — the file-level diff between this payload and the previous
+  release's. `parity.baseline` is the tag it was measured against (the newest
+  release tag, or the tag given with `--baseline <vX.Y.Z>`), `parity.source` how
+  that payload was read: `render-at-tag` (a fresh render of the tag in a private
+  temporary clone, from this checkout's own git objects), `release-asset` (the
+  tag's published plugin archive, fetched only with `--fetch-baseline`) or
+  `none` (no previous release: a first launch, and every path is `added`, with
+  `parity.note` saying why). A checkout missing the previous release's tag —
+  cloned without tags, shallow, or a fork or mirror whose newest tag is older
+  than the release `CHANGELOG.md` dates newest — is not a first launch and is
+  not measured against an older release: `parity.refused` names the release
+  `CHANGELOG.md` dates and the remedy (fetch the tags and history, or
+  `--fetch-baseline`, whose verified archive is then the only baseline, since
+  there is no tag to render at). Between a cut and its tag the checkout reads
+  the same way — `CHANGELOG.md` dates the release just cut, which has no tag
+  yet — so the preview refuses there too, naming the release as not tagged yet
+  and `--baseline <newest tag>`, which measures against the release before it;
+  the cut itself diffs before it writes its heading. `parity.entries` lists
+  every path `added`, `changed` or `removed` with its `digest` and
+  `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
+  version keys removed (`parity.normalised`), and against a release asset the
+  catalog, which the archive omits by construction, is named in
+  `parity.not_compared`. A render at the tag is a shared clone of this checkout
+  checked out at the tag in a private temporary directory, removed afterwards:
+  a few seconds and a working tree the size of the tag's, on every preview and
+  on every cut that renders a payload, which has no opt-out. A baseline that
+  cannot be read sets `parity.refused` with a `refusal_reason` and lands in
+  `would_refuse_on`; it is never an empty diff. A `--baseline` that is not a release tag in this checkout exits 2 by
+  name.
+  `--fetch-baseline` is the one network read the preview makes, and only on that
+  explicit ask: it fetches the tag's `checksums.txt` and plugin archive from the
+  repository `plugin.json` names, announces each fetch on stderr, refuses an
+  archive whose digest the release's own `checksums.txt` does not vouch for, and
+  falls back to a render at the tag, saying so, when the release publishes no
+  archive. Its connection honours no proxy or CA variable (`HTTPS_PROXY`,
+  `SSL_CERT_FILE` and their kin), as `abcd update`'s does, and every one that was
+  set is named in `parity.env_ignored`, on the plain preview, and in the refusal
+  when the fetch fails; the environment itself is left as it is. Never add the
+  flag on the user's behalf.
 - `gates` — every release gate and its disposition. Report the whole array,
-  not a summary: `ran` gates carry their measurement, `not_implemented` ones name
-  what is deferred, and `semantic-receipts` (`host-run`) reports which semantic
-  receipts are recorded for the candidate commit. That row is the one a release
-  fails on most expensively, so never omit it.
+  not a summary. Each row carries a `status` (`ran`; `not_armed` where the
+  repository has not adopted what the gate reads, such as the documentation
+  audit without a `.abcd/docs-lint.json`; `not_implemented`; `host-run`), a
+  one-line `detail`, a `tier` (`hard-fail` refuses, `warn` surfaces) and its
+  located `findings`. The pre-flight suite's rows are `marker-block`,
+  `change-narration`, `dirty-tree` (hard-fail) and `documentation-auditor`,
+  `hook-compliance` (warn). `semantic-receipts` (`host-run`) reports which
+  semantic receipts are recorded for the candidate commit. That row is the one a
+  release fails on most expensively, so never omit it.
 - `would_publish` — **always `false`** in a dry-run: this command previews and
-  never publishes, and two gates are Phase-5 deferred, so it is not a verdict on
-  the release. Read `gates` and `would_refuse_on` for that.
+  never publishes, so it is not a verdict on the release. Read `gates` and
+  `would_refuse_on` for that.
 - `lockstep` and `retention` — the manifest-lockstep result and the release
   retention plan. Both feed `would_refuse_on`, so a lockstep drift or a
   retention refusal is invisible to anyone who reads only the gate list.
-- `would_refuse_on` — if non-empty, the gates that would refuse, so the user
-  knows what to fix before a real launch.
+- `would_refuse_on` — if non-empty, every finding a cut would refuse on, from
+  every gate at once, so the user can fix them in one pass. A dirty working tree
+  is among them: the preview has no override, and the cut refuses one unless it
+  is passed `--allow-dirty`.
+- `warnings` — the warn-tier concerns. They refuse nothing, unless the
+  repository's `.abcd/config/launch-payload.json` sets `"strict_warnings": true`,
+  in which case each also appears in `would_refuse_on`.
+- `report_path` — where this preview's pre-flight report landed
+  (`preflight.json` and `preflight.md`), or `report_error` saying why it could
+  not be written.
 
 This is preview-only: publishing is not driven from this command.
+
+A repository with no `.abcd/config/launch-payload.json` has no plugin payload to
+preview. The preview says so and names the release path such a repository has:
+`launch scaffold`, `launch ship` writing the dated CHANGELOG heading, and the
+auto-release workflow. Relay that; it is not a misconfiguration.
 
 ## Ship — the release cut
 
@@ -208,9 +291,11 @@ delegated composition, a validating ingest.
 Those three steps write the CHANGELOG heading. They do **not** finish the
 release. Two host-run semantic passes must also run and record receipts, and the
 release branch has to carry them in a second commit — see *Semantic receipts*
-below. A branch that skips them merges and tags cleanly and then fails at
-`release.yml`'s fail-closed receipt gate, which is the most expensive place to
-find out: the tag is already created by then, and the workflow never moves a tag.
+below. A branch that skips them merges cleanly and then fails `release.yml`'s
+fail-closed receipt gate, which is the most expensive place to find out: the
+release run is spent, and the fix is another pull request. The emit step ends
+with this protocol as a numbered checklist, so the report you read before
+composing already says what follows it.
 
 ### 1. Emit the cut (deterministic, writes nothing)
 
@@ -227,6 +312,14 @@ that entered `shipped/` since the base tag; never an issue, an `impact: internal
 intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
 alone. Read-only preview of the same thing: `abcd changelog --json`.
+
+The emit render ends with the **receipts protocol**, a numbered checklist the
+binary composes from the committed `release.yml`: commit the roll, run each
+semantic gate the release job requires against that commit, key every receipt
+to its full sha, commit the receipts on top so the branch is exactly two
+commits, then run `launch receipts`. `--json` carries it as `receipts_protocol`
+(`required_gates`, `steps`). Relay it with the cut; in a repository whose release
+workflow arms no semantic gate it says no receipt is required.
 
 Exit codes gate the flow:
 
@@ -306,6 +399,29 @@ Never delete the record to clear the gate — the cut refuses under
 `deleted-finding` when you do — and never hand-edit `CHANGELOG.md` to route
 around a refusal.
 
+**Model-tier routing.** Both steps of `launch ship` dispatch the
+`release-changelog-composer` agent, and each resolves that agent's model tier
+before anything else runs: an invocation override, over the repository's
+`.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone. A
+ready cut's `--json` result carries the request block as a `routing` member
+(`agent`, `tier`, `fan_out`, `source`, `origin`, `override`, `connection`,
+`fallback`) and its text a `routing:` line: run the composer at that tier where
+the harness lets you choose one, and pass the same `--route` to the ingest step
+so its receipt records the override. The ingest's `--json` result carries a
+`route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
+`fallback_reason`, `override`, `settings_sent`, `model_reported`) and its text a
+`route:` line; relay it with the result. When no configured provider can serve
+the tier, one stderr line says the step goes through the harness instead. A
+`--route` naming an agent this invocation does not dispatch, a tier outside the
+set, a connection this machine has not configured, or a routing table that
+cannot be read exits 2 before anything is written. With no table accepted and no
+`--route`, the step asks for `host-decides` and nothing is printed.
+
 ### 2. Compose the prose (host-delegated)
 
 Run the **`release-changelog-composer`** agent
@@ -384,6 +500,29 @@ rolls the heading back — so a ship that exits non-zero leaves no release recor
 behind for the next attempt to trip over. Without the flag nothing is staged;
 `--payload-dir` on its own (no `--changelog-json`) is an operand error, because
 only a completed cut has a version to stamp.
+
+**The pre-flight gates run first.** A ship that renders a payload — it was
+given `--payload-dir`, or the repository publishes its plugin archive — runs
+the same gate suite the preview reports, before anything is written: the
+secret/PII scan, marker-block sanity, change narration in the shipped docs, the
+dirty tree, the installability smoke at both tiers (the deep tier always runs in
+the cut), the parity diff against the anchor tag, and the warn-tier rows. A file the bundler
+rejected stops it at once; otherwise it refuses with every finding from every
+gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as
+`preflight_report`. A working tree with uncommitted changes refuses unless the
+ship is passed `--allow-dirty`, which carries them into the cut and records the
+override, with every path it carried, in the report (`allowed_dirty` in
+`--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,
+and never the archive pin's refusal of an uncommitted payload file. On a ship
+that renders nothing it is an operand error, because there is no gate to
+waive. Relay the refusal and let the user decide; do not add `--allow-dirty` on
+their behalf. The ship's report, its `--json` (`parity`, `deep_smoke`) and its
+pre-flight report carry the parity diff and the deep tier's verdict. A page that
+would not load, or an anchor tag whose payload cannot be read, refuses the cut
+before anything is written. `--fetch-baseline` reads the anchor tag's published
+archive instead of rendering the tag, under the same verification the preview
+applies; like `--allow-dirty` it is an operand error on a ship that renders
+nothing, and it is the user's call, never yours.
 
 The binary re-derives the cut, then proves the prose describes it — the
 **completeness bijection**: the set of record ids the payload cites must equal
@@ -521,10 +660,17 @@ the commit it names, because adding it would change that commit's sha. So:
    archive move. This is what the reviewers read.
 2. **The receipts** — a commit recording the semantic verdicts that name commit 1.
 
-On merge, `release.yml` derives the content commit as `<merge>^2^` and finds its
-receipts in the released tree. A one-commit branch breaks this: the single commit
-is taken as the receipts commit, the gate arms against whatever preceded it, and
-no receipt names that commit.
+On merge, `release.yml` derives the content commit from the receipts directory
+of the released tree: of the commits on the released lineage that a
+`.abcd/work/reviews/<full-sha>/` directory names, the nearest one carrying this
+release's own CHANGELOG version. A directory carrying another version is passed
+over, so an earlier release's receipts never stand in for this one's and a
+batch-mate's receipts never shadow them. The released tree's newest release
+heading must be a dated `## [X.Y.Z] - <date>` heading: a pre-release or undated
+head, or a tree with no dated release, refuses, because there is no version to
+bind the receipts to.
+A one-commit branch breaks this: no receipt can name the commit that carries it,
+so the release has no receipts for its content and the gate refuses.
 
 ### Running the passes
 
@@ -550,33 +696,32 @@ around, and the receipts cannot be hand-written to unblock a release.
 
 ### Prove the gate before you merge
 
-`receipt_gate` runs inside the release job, which is **after** the tag is
-created. A refusal there does not block the release, it consumes the version: the
-workflow never moves a tag, and its recovery path rebuilds from the tagged
-commit, whose tree can never gain the missing receipts. Recovering means deleting
-a tag the machinery treats as immutable (recorded as `adr-52`, undecided).
-
-So reproduce the gate's verdict locally, on the release branch, while nothing is
-tagged. From the repository root:
+`receipt_gate` runs in `release.yml`'s `verify` job, on the merged commit. On
+the `auto-release` path that is before the tag, so a refusal leaves the version
+free — but it still spends the release run and needs another pull request to
+fix. So run the same gate on the release branch first, while nothing has merged:
 
 ```bash
-go run ./cmd/record-lint --release-gate <content-commit-sha> \
-  --require-gate docs-currency-reviewer \
-  --require-gate iss35-brief-surface-crosscheck
+"${CLAUDE_PLUGIN_ROOT}/abcd" launch receipts --json
 ```
 
-- `<content-commit-sha>` is the **full 40-character** sha of the commit the
-  receipts name, which on a correctly shaped release branch is the receipts
-  commit's parent (`git rev-parse HEAD^`). Use the full sha: an abbreviated one
-  is well-formed, finds no receipt, and makes the gate refuse as though the
-  semantic pass had never run.
-- `record-lint` is a repository-local program, not an installed binary. `go run
-  ./cmd/record-lint` is the invocation; there is no `record-lint` on `PATH`.
-- The required-gate names come from `release.yml`, which owns that list on
-  purpose. If they diverge, the workflow is right and this command is stale.
+It is the release job's receipt gate, not a model of it: it reads the
+required-gate names from the committed `release.yml` (which owns that list), derives
+the content commit from the receipts directory the way the release job does, and
+runs the release job's own check over it. It reads the working tree, so it
+refuses on an uncommitted receipt change — the release job reads the committed
+tree and would not see it.
 
-**Exit 0 means the release will pass the gate.** A non-zero exit names what is
-missing, and costs nothing to fix, because no tag exists yet.
+Exit codes:
+
+- **0** — the release job's receipt gate admits this state (or `release.yml` arms
+  no semantic gate, and nothing is required). Merge.
+- **1** — it would refuse. The report names each missing or non-PROMOTE receipt
+  and the full sha of the commit it must name (`commit`; `derived` says whether it
+  came from the receipts directory or is the roll at `HEAD`, before any receipt
+  exists). Relay `problems`, fix the receipts commit, and run it again. It costs
+  an amend; nothing has merged.
+- **2** — a structural fault (the repository or its workflow could not be read).
 
 ## Archive — the release's pinned plugin archive
 
@@ -597,7 +742,9 @@ catalog is left out of it, because the catalog is what names its digest.
   in `detect`, before the tag is made; the release workflow runs it again on the
   tagged commit in `verify`, before anything is built, and once more in the
   publish job, where the verified archive is the file it checksums, attests and
-  uploads.
+  uploads. With `--verify` the pin is the dirty-tree gate, since a payload file
+  that differs from the commit changes the digest; without it, an uncommitted
+  change in the working tree refuses the render (exit 2).
 - `--repository <owner/name>` refuses unless the archive's download address lies
   under that repository's
   `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared
@@ -628,15 +775,32 @@ already has the machinery). It **never publishes**.
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch scaffold --json
 ```
 
-It writes three files, wired to the repo's own default branch and Go version:
+It writes four files, wired to the repo's own default branch and Go version and
+to the check names its own pull-request CI reports:
 
-- `.github/workflows/release.yml` — verify → build → publish, the verify gate
-  armed against the reviewed **content** commit (`HEAD^2^` on the auto-release
-  merge path, `HEAD^` on a direct tag), so the first public release cannot hit the
-  receipt-vs-tag self-reference.
+- `.github/workflows/release.yml` — verify → build → publish. With semantic
+  gates configured, `verify` arms the receipt gate against the reviewed
+  **content** commit it derives from the receipts directory of the released
+  tree, so the first public release cannot hit the receipt-vs-tag
+  self-reference, and on a tag push it first refuses a tag that is not `v` plus
+  the released tree's newest dated CHANGELOG version (`record-lint
+  --released-version`, the reader the receipts are bound with), so a hand-pushed
+  tag cannot publish under another version's receipts.
 - `.github/workflows/auto-release.yml` — newest dated CHANGELOG heading → tag that
   commit → call `release.yml`. `GITHUB_TOKEN`-only, no personal access token.
-- `.abcd/development/release-gate/README.md` — the adr-37 runbook.
+- `.abcd/development/release-gate/README.md` — the adr-37 runbook, including the
+  merge gate: the repo's own pull-request check names, to require on the default
+  branch.
+- `.abcd/development/release-gate/check-reviews.sh` — the reviews charter (RD001):
+  dated review directories keep their shape, and the sha-keyed receipt
+  directories are exempt. The scaffolded `verify` job runs it.
+
+The check names come from the repo's workflows triggered by `pull_request` or
+`merge_group`; a name only a run knows (a matrix job, an expression-named job, a
+reusable-workflow call) is left out rather than guessed. Relay `ci_checks` and tell
+the operator to require them on the default branch — the scaffold holds no token
+and sets no branch protection. An empty `ci_checks` means no pull-request CI was
+found, and the runbook says so.
 
 The workflows come from one embedded template that abcd-cli's own release
 workflows are regenerated from (self-scaffold parity), so every abcd release
@@ -645,6 +809,13 @@ carries a `workflow_dispatch` **rehearsal**: run it green once before the first
 real release — it arms the full gate against a simulated changelog roll and
 reviewed-content commit, proves the gate admits, and publishes nothing (no tag,
 Release, or attestation).
+
+abcd's own tests audit every workflow profile it renders for duplicate keys and
+template injection. That audit is not a full zizmor stand-in for the bare
+profile a managed repo receives: action pinning, job permissions and credential
+handling are not checked there. Only abcd's own workflows run under zizmor in
+its CI. The scaffolded runbook says so. Tell the operator to run their workflow
+auditor over the written files.
 
 It is idempotent and fail-safe. Exit codes gate the flow:
 

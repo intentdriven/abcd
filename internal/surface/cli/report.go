@@ -33,8 +33,7 @@ var reportInteractive = func() bool { return term.IsTerminal(os.Stdin) && term.I
 func newReportCommand(asJSON *bool) *cobra.Command {
 	var template bool
 	cmd := &cobra.Command{
-		Use:   "report [<file>|-]",
-		Short: "File a defect report or an enhancement proposal about abcd into the inbox in your account",
+		Use: "report [<file>|-]",
 		Long: "File a written account about abcd itself, from a repository abcd manages, into\n" +
 			"the inbox in the user account's machine store (`~/.abcd/inbox/`). Nothing is\n" +
 			"written into this repository or into abcd's, and nothing becomes a record until\n" +
@@ -242,8 +241,7 @@ type inboxShowOutput struct {
 // one act that files anything.
 func newInboxCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "inbox",
-		Short: "Read the reports managed repositories filed back to abcd, and promote one to a capture",
+		Use: "inbox",
 		Long: "Read the reports repositories abcd manages filed with `abcd report`, from the\n" +
 			"inbox in the user account's machine store (`~/.abcd/inbox/`).\n\n" +
 			"Bare `abcd inbox` lists the waiting reports newest first, naming each sender\n" +
@@ -295,9 +293,8 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(&cobra.Command{
-		Use:   "show <id>",
-		Short: "Render one report whole (read-only)",
-		Args:  cobra.ExactArgs(1),
+		Use:  "show <id>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			e, err := report.Show(args[0])
 			if err != nil {
@@ -310,9 +307,8 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 	cmd.AddCommand(&cobra.Command{
-		Use:   "promote <id>",
-		Short: "File one report as a capture in abcd's own ledger, fingerprinted, never named",
-		Args:  cobra.ExactArgs(1),
+		Use:  "promote <id>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

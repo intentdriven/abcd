@@ -31,7 +31,7 @@ import (
 	"text/template"
 )
 
-//go:embed templates/release.yml.tmpl templates/auto-release.yml.tmpl templates/runbook.md.tmpl
+//go:embed templates/release.yml.tmpl templates/auto-release.yml.tmpl templates/runbook.md.tmpl templates/check-reviews.sh.tmpl
 var templatesFS embed.FS
 
 // Gate is one named verify-job step: a display name and the shell it runs. The
@@ -71,6 +71,13 @@ type Substitutions struct {
 	// (`--require-gate <name>`). Empty means no semantic detector is configured and
 	// the deterministic gates alone admit the release (spc-14 clean degradation).
 	SemanticGates []string
+	// CIChecks are the check names the managed repo's own pull-request CI
+	// reports (DeriveCIChecks): the merge gate the release roll passes through.
+	// The bare rendering names them in release.yml's verify header and lists them
+	// in the runbook as the contexts to require on DefaultBranch. Each is held to
+	// an injection-safe allowlist before it gets here. abcd's own rendering
+	// leaves this empty; its merge gate is ci.yml, described in its own runbook.
+	CIChecks []string
 }
 
 // Rendered is the file set a scaffold run produces, keyed by repo-relative path.
@@ -78,6 +85,8 @@ type Rendered struct {
 	ReleaseYML     []byte
 	AutoReleaseYML []byte
 	Runbook        []byte
+	// CheckReviews is the reviews-charter check (RD001) the bare verify job runs.
+	CheckReviews []byte
 }
 
 // Repo-relative destinations the scaffold writes. Fixed by the GitHub Actions
@@ -86,9 +95,14 @@ const (
 	ReleaseYMLPath     = ".github/workflows/release.yml"
 	AutoReleaseYMLPath = ".github/workflows/auto-release.yml"
 	RunbookPath        = ".abcd/development/release-gate/README.md"
+	// CheckReviewsPath is the scaffolded reviews-charter check (RD001, with the
+	// sha-keyed receipt directories exempt). It sits beside the runbook, in the
+	// release-gate directory the scaffold already owns, rather than in a scripts
+	// directory the managed repository may lay out its own way.
+	CheckReviewsPath = ".abcd/development/release-gate/check-reviews.sh"
 )
 
-// Render binds the three templates against subs and returns their bytes. A
+// Render binds the four templates against subs and returns their bytes. A
 // template parse or execute fault is a programming error in the embedded
 // templates, surfaced as an error rather than a panic.
 func Render(subs Substitutions) (Rendered, error) {
@@ -104,7 +118,11 @@ func Render(subs Substitutions) (Rendered, error) {
 	if err != nil {
 		return Rendered{}, err
 	}
-	return Rendered{ReleaseYML: rel, AutoReleaseYML: auto, Runbook: book}, nil
+	charter, err := renderOne("templates/check-reviews.sh.tmpl", subs)
+	if err != nil {
+		return Rendered{}, err
+	}
+	return Rendered{ReleaseYML: rel, AutoReleaseYML: auto, Runbook: book, CheckReviews: charter}, nil
 }
 
 // renderOne parses and executes a single embedded template with the `<%`/`%>`

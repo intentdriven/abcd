@@ -2,7 +2,7 @@
 
 > **One passage below is a design target; the rest describes what the binary
 > and the workflows do.** `abcd site build` renders the whole site, `abcd
-> site check` gates it, and the deploy workflow rides the release chain — but
+> lint site` gates it, and the deploy workflow rides the release chain — but
 > abcdev.app still serves the MkDocs rendering of `docs/` at its root, and
 > the first production deploy from a tag is what moves it. Both halves rest on
 > [adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md)
@@ -68,7 +68,7 @@ intents:
   record actually writes: nested lists, blockquotes with structure inside them,
   reference links, setext headings, rules, autolinks and CommonMark emphasis;
   anything still outside it is a build failure naming file and line.
-- **`abcd site check`** runs seven independent gates over a rendered tree —
+- **`abcd lint site`** runs seven independent gates over a rendered tree —
   the provenance audit over every rendered text node, the hero against the
   Identity block, docs-lint's banned tokens over composed text (the verbatim
   record rendering under `/record/` exempt, the attribution escape a

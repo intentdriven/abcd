@@ -9,9 +9,13 @@ var abcdSemanticGates = []string{"docs-currency-reviewer", "iss35-brief-surface-
 // generic Go leg (gofmt/build/vet/test/race). They render into both the verify
 // job and the runbook's numbered gate list from this one source, so the
 // gate_lockstep invariant (runbook list == workflow steps) holds by construction.
+//
+// The docs lint runs with --release-gate here, and only here: a citation past
+// its staleness threshold blocks a release, while ci.yml's commit-time lint
+// keeps it a warning (spc-17; iss-2609091801085579).
 var abcdExtraGates = []Gate{
 	{Name: "Record-lint (design-record drift gate)", Run: "go run ./cmd/record-lint"},
-	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd docs lint"},
+	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd lint docs --release-gate"},
 	{Name: "Reviews-charter discipline (RD001-RD003)", Run: "bash scripts/check-reviews.sh"},
 	{Name: "Smoke every command (self-discovering harness)", Run: "make smoke"},
 }
@@ -30,16 +34,25 @@ func AbcdSubstitutions() Substitutions {
 	}
 }
 
+// bareExtraGates are the deterministic verify steps a managed repo inherits
+// beyond the generic Go leg: the reviews-charter shape (RD001) the scaffold
+// writes beside the runbook, so a release's sha-keyed receipt directories are
+// held exempt by the same file that holds the dated reviews to their shape.
+var bareExtraGates = []Gate{
+	{Name: "Reviews-charter shape (RD001)", Run: "bash " + CheckReviewsPath},
+}
+
 // BareSubstitutions is the degraded fact set a managed repo with no semantic
-// detectors receives: the deterministic Go gates alone, a generic build, and no
-// host-run semantic gate (spc-14 clean degradation). DefaultBranch is the repo's
+// detectors receives: the deterministic Go gates and the reviews-charter shape,
+// a generic build, and no host-run semantic gate (spc-14 clean degradation).
+// CIChecks is the caller's to set from DeriveCIChecks. DefaultBranch is the repo's
 // own fact, derived by the caller; the Go toolchain is not a substitution at all,
 // because the rendered workflows read it out of the adopter's go.mod.
 func BareSubstitutions(defaultBranch string) Substitutions {
 	return Substitutions{
 		DefaultBranch: defaultBranch,
 		Abcd:          false,
-		ExtraGates:    nil,
+		ExtraGates:    bareExtraGates,
 		SemanticGates: nil,
 	}
 }

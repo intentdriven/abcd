@@ -15,7 +15,7 @@ import (
 // TestVersionJSON proves the CLI -> core -> JSON round-trip the Phase 0 exit
 // criterion requires.
 func TestVersionJSON(t *testing.T) {
-	out := runCLI(t, "version", "--json")
+	out := runCLI(t, "--version", "--json")
 
 	var got map[string]any
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -30,7 +30,7 @@ func TestVersionJSON(t *testing.T) {
 }
 
 func TestVersionText(t *testing.T) {
-	out := runCLI(t, "version")
+	out := runCLI(t, "--version")
 	if !strings.HasPrefix(string(out), "abcd ") {
 		t.Fatalf("text output = %q, want it to start with \"abcd \"", out)
 	}
@@ -739,7 +739,7 @@ const docsLintConfig = `{
   }
 }`
 
-// TestDocsLintRootFlagFlagsDrift proves `docs lint --root/--config` runs layer 1
+// TestDocsLintRootFlagFlagsDrift proves `lint docs --root/--config` runs layer 1
 // over an arbitrary tree: a change-narration token, a broken cross-link, and a
 // stray top-level markdown each surface as a blocker and drive a non-zero exit.
 func TestDocsLintRootFlagFlagsDrift(t *testing.T) {
@@ -759,7 +759,7 @@ func TestDocsLintRootFlagFlagsDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runCLIErr(t, "docs", "lint", "--json", "--config", cfg, "--root", root)
+	out, err := runCLIErr(t, "lint", "docs", "--json", "--config", cfg, "--root", root)
 	if err == nil {
 		t.Fatalf("expected non-zero exit on blockers, got nil\n%s", out)
 	}
@@ -806,7 +806,7 @@ func TestDocsLintCleanTreePasses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runCLIErr(t, "docs", "lint", "--json", "--config", cfg, "--root", root)
+	out, err := runCLIErr(t, "lint", "docs", "--json", "--config", cfg, "--root", root)
 	if err != nil {
 		t.Fatalf("clean tree should pass, got error: %v\n%s", err, out)
 	}

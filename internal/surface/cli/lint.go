@@ -22,9 +22,8 @@ import (
 func newLintCommand(asJSON *bool) *cobra.Command {
 	var rootDir string
 	cmd := &cobra.Command{
-		Use:   "lint",
-		Short: "Check this repo against the working conventions (read-only)",
-		Args:  cobra.NoArgs,
+		Use:  "lint",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir := rootDir
 			if dir == "" {
@@ -85,6 +84,12 @@ func newLintCommand(asJSON *bool) *cobra.Command {
 	// that applies rules about form in the lint bucket. See lint_outbound.go for
 	// why the outbound policy's session-URL half cannot be gated in shell.
 	cmd.AddCommand(newLintOutboundCommand(asJSON))
+	// The targets (itd-2609212130136102): each runs one check on its own, as its
+	// old spelling did — `docs lint`, `site check`, bare `identity` — and bare
+	// `lint` runs every one that judges the repository through its rules.
+	cmd.AddCommand(newLintDocsCommand(asJSON))
+	cmd.AddCommand(newLintSiteCommand(asJSON))
+	cmd.AddCommand(newLintIdentityCommand(asJSON))
 	return cmd
 }
 

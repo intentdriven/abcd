@@ -88,12 +88,29 @@ func commandSurface(cmd *cobra.Command) []surface.Command {
 	out := []surface.Command{{
 		Path:   cmd.CommandPath(),
 		Hidden: cmd.Hidden,
-		Flags:  commandFlags(cmd),
+		// The help placement (itd-146): recorded so a regroup is visible in
+		// the committed tree even though it changes no invocation.
+		Group:    helpGroup(cmd),
+		Block:    helpBlock(cmd),
+		Sentence: commandSentence(cmd),
+		// A moved spelling's successor (itd-2609212130136102), so the move is
+		// written down in the committed tree beside the stub it leaves.
+		MovedTo: movedTo(cmd),
+		Flags:   commandFlags(cmd),
 	}}
 	for _, child := range cmd.Commands() {
 		out = append(out, commandSurface(child)...)
 	}
 	return out
+}
+
+// commandSentence is the sentence the manifest declares for cmd
+// (itd-2609212113220149), recorded so a reworded sentence is visible in the
+// committed tree and gated by its drift test. A command the manifest declares
+// none for, which is every hidden command, records nothing.
+func commandSentence(cmd *cobra.Command) string {
+	s, _ := surface.SentenceFor(cmd.CommandPath())
+	return s
 }
 
 // commandFlags reads the flags a command declares itself — its own flags plus the

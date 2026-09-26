@@ -7,7 +7,7 @@ Canonical reference for the lint engine in `internal/core/lint` — the determin
 The lint engine lives in `internal/core/lint` (Go). It is driven by two armed, deterministic gates, each reading its own JSON rule config as the single source of truth for the armed rule set:
 
 - **Record-currency** (`cmd/record-lint`, config `.abcd/record-lint.json`) lints the markdown design record under `.abcd/development/` for drift: frontmatter and schema shape, resolvable cross-links, directory coverage, intent-lifecycle placement, retired or banned tokens, index-drift on generated regions, delivery-state agreement, citation currency, and record ids cited in record PROSE (`prose_citation_resolves`: an id written in a record's prose must name a record that exists, unless the author marks the line `<!-- record-lint: illustrative -->` or `<!-- record-lint: forward-looking -->`, or the id is carried by the ratcheting baseline `.abcd/prose-citations-baseline.json`; §1.1 says exactly what counts as prose). `make record-lint` runs it, and CI runs the same job on every push.
-- **Docs-currency** (`abcd docs lint`, config `.abcd/docs-lint.json`) lints `docs/` and the repo-root prose for change-narration (past-tense drift such as "previously" or "formerly"), broken relative links, stray root markdown, host-name leakage, British-spelling drift, em-dash-in-list-item punctuation, and citation health. `make docs-lint` runs it, and CI runs it on the Linux leg.
+- **Docs-currency** (`abcd lint docs`, config `.abcd/docs-lint.json`) lints `docs/` and the repo-root prose for change-narration (past-tense drift such as "previously" or "formerly"), broken relative links, stray root markdown, host-name leakage, British-spelling drift, em-dash-in-list-item punctuation, and citation health. `make docs-lint` runs it, and CI runs it on the Linux leg.
 
 Each rule carries a severity (`blocker`, `warn`, or `info`) resolved from its config entry; the severity model is §2. A rule is enabled, disabled, or re-severitied by editing its config entry, so the armed set is always the JSON config, never this document.
 
@@ -43,7 +43,7 @@ Two gates are armed today; the finer-grained tiers below them are design targets
 **Armed today.** Both gates run on every relevant change:
 
 - **`make record-lint`** runs `cmd/record-lint` over the design record, and CI runs the same job on every push. It fails the build on any `blocker` finding.
-- **`make docs-lint`** runs `abcd docs lint` over `docs/` and the repo root, and CI runs it on the Linux leg. It fails on change-narration in a doc body, a broken relative link, a stray root markdown file, or any other `blocker`-severity rule.
+- **`make docs-lint`** runs `abcd lint docs` over `docs/` and the repo root, and CI runs it on the Linux leg. It fails on change-narration in a doc body, a broken relative link, a stray root markdown file, or any other `blocker`-severity rule.
 
 Both gates read git-tracked bytes through `internal/core/lint` and honour the severity model in §2. Their exit code follows the standalone tri-state grammar — **blocker → 2, warn → 1, clean → 0** (an error dominates a warning; the tri-state lives in `internal/core/repolint`) — so a CI job that branches on the exit code treats any non-zero value as failure.
 

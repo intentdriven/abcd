@@ -80,14 +80,14 @@ once. Human-paired (the §4 gate is manual by design).
    (major) — guard hook fails open past 1 MiB of stdin. Autonomous-eligible.
 5. **[iss-210](../../work/issues/resolved/iss-210-lone-token-subverb-guess-writes-a-record.md)**
    (major) — a lone mistyped token writes a ledger record. Autonomous-eligible.
-6. **[iss-195](../../work/issues/open/iss-195-scanner-openended-heuristic-cost-regression-on-network-patterns.md)**
+6. **[iss-195](../../work/issues/resolved/iss-195-scanner-openended-heuristic-cost-regression-on-network-patterns.md)**
    (minor) — the rigid/open-ended heuristic sends every IPv4/IPv6 match through
    the backward search. Fix-eligible by the 2026-08-08 ruling (it escaped the
    adjacency shelving: a cost bug, not a window-truncation bug).
    Autonomous-eligible.
-7. **[iss-147](../../work/issues/open/iss-147-guard-load-reads-abcd-guard-json-from-the-working-tree-so-a.md)**
+7. **[iss-147](../../work/issues/resolved/iss-147-guard-load-reads-abcd-guard-json-from-the-working-tree-so-a.md)**
    (minor) — working-tree guard config is an instant disarm.
-8. **[iss-148](../../work/issues/open/iss-148-guard-registry-coverage-gaps-found-while-wiring-itd-103-regi.md)**
+8. **[iss-148](../../work/issues/resolved/iss-148-guard-registry-coverage-gaps-found-while-wiring-itd-103-regi.md)**
    (minor) — registry coverage gaps; every entry lands fixture-first per the
    v0.5.0 plan's rule.
 9. **[iss-174](../../work/issues/open/iss-174-rules-override-withholds-bundled-default-upgrades.md)**

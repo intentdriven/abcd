@@ -31,8 +31,7 @@ import (
 // decided".
 func newDecideCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   `decide "<title>"`,
-		Short: "Mint a decision record (ADR) and lay its skeleton",
+		Use: `decide "<title>"`,
 		Long: "Mint an architecture decision record: allocate its id through the shared record-id\n" +
 			"seam and write the store's skeleton under .abcd/development/decisions/adrs/.\n\n" +
 			"The id is `adr-<yymmddHHMMSS><rrrr>` and the filename is ordered by that stamp, so two\n" +

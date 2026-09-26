@@ -199,10 +199,7 @@ func TestGuardCheckOversizedCandidateIsAFault(t *testing.T) {
 // verb's own definition of a fault — not an answer.
 func TestGuardCheckRefusesToAnswerFromADisabledRegistry(t *testing.T) {
 	dir := guardRepo(t)
-	cfg := `{"schema_version":1,"disabled":true,"entries":{}}`
-	if err := os.WriteFile(filepath.Join(dir, ".abcd", "guard.json"), []byte(cfg), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	commitGuardConfig(t, dir, `{"schema_version":1,"disabled":true,"entries":{}}`)
 	stdout, stderr, code := runGuard("", "guard", "check", "--command", "cd scratch && rm -rf *")
 
 	if code != 2 {

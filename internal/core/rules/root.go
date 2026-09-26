@@ -64,9 +64,9 @@ var ownerUID = fsutil.OwnerUID
 //   - iss-2609020219198779 — the user-scope ~/.abcd when the home directory is
 //     ITSELF a git working tree (dotfiles-in-home). The toplevel for a session
 //     in a non-repo directory beneath such a home is the home, so ~/.abcd
-//     governs it. Closing it needs a decision on whether a home-directory
-//     toplevel is a legitimate configuration scope (spc-23 plans a user layer
-//     that would make it one).
+//     governs it as the REPO layer as well as the user layer (spc-23), and its
+//     guard.json and config.json with it. Closing it needs a decision on
+//     whether a home-directory toplevel is a legitimate repo-scope root.
 //
 // "Not a repository" and "a repository git will not answer for" are DIFFERENT
 // outcomes and only the first resolves to cwd with no walk. abcd runs git under
@@ -254,10 +254,10 @@ func foreignOwnerRefusal(marker, cwd string) []string {
 	return append(notes, fmt.Sprintf(
 		"rules: REFUSED %s as this session's configuration root — %s, and git would not answer for it, "+
 			"so %s and .abcd/guard.json there were NOT read and nothing above %s governs this session "+
-			"(injected rules, the loader kill switch and the hazard registry all fall back to the bundled defaults). "+
+			"(injected rules and the loader kill switch fall back to the bundled defaults under the user scope's %s, the hazard registry to the bundled defaults). "+
 			"If that checkout really is yours to trust — a foreign-uid checkout, a container bind mount, a shared CI checkout — "+
 			"declare it once, from an account you control: mkdir -p ~/.abcd && printf '%%s\\n' '%s' >> %s",
-		termsafe.Sanitize(marker), because, RepoRelPath, termsafe.Sanitize(cwd),
+		termsafe.Sanitize(marker), because, RepoRelPath, termsafe.Sanitize(cwd), UserDisplayPath,
 		termsafe.Sanitize(marker), TrustedRootsDisplay))
 }
 

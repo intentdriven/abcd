@@ -20,7 +20,7 @@ PR #99) — scaffold `release.yml`/`auto-release.yml` (armed against the reviewe
 content commit), the runbook, and the sha-keyed-receipt/RD001 interop into a
 managed repo, so its first public release cannot hit the self-reference abcd-cli
 paid to discover. Backing intent:
-[`../intents/planned/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md`](../intents/planned/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md).
+[`../intents/planned/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md`](../intents/shipped/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md).
 
 **NOT yet run-ready — readiness gates (a drain burst must check these first and
 SKIP-with-reason if unmet, per the protocol's skip filter):**

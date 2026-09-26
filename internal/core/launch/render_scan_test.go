@@ -23,13 +23,13 @@ func TestRenderPayloadSecretRefuses(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "payload")
 
 	// PrecheckPayload performs zero writes and must already refuse.
-	if _, err := PrecheckPayload(root, dest); !errors.Is(err, ErrPayloadScanRefused) {
+	if _, err := PrecheckPayload(root, dest, PrecheckOptions{Dirty: DirtySkip}); !errors.Is(err, ErrPayloadScanRefused) {
 		t.Fatalf("PrecheckPayload must refuse on a secret in an included file, got %v", err)
 	}
 
 	// RenderPayload must refuse rather than materialise the secret.
 	res, err := RenderPayload(PayloadRenderRequest{
-		RepoRoot: root, Dest: dest, Version: "0.4.0", Entry: sampleEntry(),
+		RepoRoot: root, Dest: dest, Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 	})
 	if !errors.Is(err, ErrPayloadScanRefused) {
 		t.Fatalf("RenderPayload must refuse on a payload secret with ErrPayloadScanRefused, got err=%v res=%+v", err, res)
@@ -51,7 +51,7 @@ func TestRenderPayloadCleanTreeStillRenders(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "payload")
 
 	res, err := RenderPayload(PayloadRenderRequest{
-		RepoRoot: root, Dest: dest, Version: "0.4.0", Entry: sampleEntry(),
+		RepoRoot: root, Dest: dest, Version: "0.4.0", Entry: sampleEntry(), Dirty: DirtySkip,
 	})
 	if err != nil {
 		t.Fatalf("render must still succeed on a clean tree after the scan gate: %v", err)

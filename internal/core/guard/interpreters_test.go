@@ -72,15 +72,21 @@ func TestShellFamilyIsSharedNotRelisted(t *testing.T) {
 			t.Errorf("classifySegment does not treat %q as an interpreter: `%s -c <blocker>` got %q",
 				shell, shell, got.Verdict)
 		}
-		// pipesIntoInterpreter: reached only from INSIDE an inspected payload, so
-		// the candidate has to be a `-c` string that itself pipes into a shell. A
-		// top-level `echo x | sh` is allowed on every version and would pin
-		// nothing. Piped content cannot be followed, so it must warn loudly rather
-		// than read as clearance.
-		piped := `sh -c "echo hi | ` + shell + `"`
-		if got := guardVerdict(t, piped); got.Verdict != VerdictWarn {
-			t.Errorf("pipesIntoInterpreter does not know %q: %q got %q, want warn — "+
-				"the guard cannot follow what the interpreter reads", shell, piped, got.Verdict)
+		// readsScriptFromStdin: a shell reading its script from a pipe runs
+		// text the guard read as data, at the top level and inside a payload
+		// alike, so both are refused (iss-2609251640462464).
+		for _, piped := range []string{`echo hi | ` + shell, `sh -c "echo hi | ` + shell + `"`} {
+			if got := guardVerdict(t, piped); got.Verdict != VerdictBlock || got.EntryID != interpreterStreamEntryID {
+				t.Errorf("readsScriptFromStdin does not know %q: %q got %q via %q, want block via %q — "+
+					"the guard cannot follow what the interpreter reads", shell, piped, got.Verdict, got.EntryID, interpreterStreamEntryID)
+			}
+		}
+		// pipesIntoInterpreter: a payload piping into a shell that runs a script
+		// FILE is not refused, but the guard cannot follow what it hands the
+		// script, so it warns loudly rather than reading as clearance.
+		warned := `sh -c "echo hi | ` + shell + ` script.sh"`
+		if got := guardVerdict(t, warned); got.Verdict != VerdictWarn {
+			t.Errorf("pipesIntoInterpreter does not know %q: %q got %q, want warn", shell, warned, got.Verdict)
 		}
 	}
 }

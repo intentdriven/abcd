@@ -584,7 +584,8 @@ func walkLifeboatFiles(root *os.Root) ([]string, error) {
 //     ReadDir(-1) + sort before the callback ever saw an entry) before the cap
 //     applies. Exceeding perDir in a single directory refuses the lifeboat.
 //
-// It descends through a sub-root per directory (os.Root.OpenRoot), so a chain
+// It descends through a sub-root per directory (openWalkDir, which refuses a
+// directory swapped for a FIFO without blocking — iss-337), so a chain
 // costs O(entries) rather than O(entries × depth) while the os.Root containment
 // guarantee the FS() walk had survives unchanged. Unlike the probe, every bound
 // is FATAL rather than a silent truncation: manifest verification needs the
@@ -618,7 +619,7 @@ func walkLifeboatFilesBounded(root *os.Root, limit, perDir, maxDepth int) ([]str
 				if depth+1 >= maxDepth {
 					return fmt.Errorf("lifeboat nesting at %q exceeds the %d-level cap", rel, maxDepth)
 				}
-				sub, err := dirRoot.OpenRoot(name)
+				sub, err := openWalkDir(dirRoot, name)
 				if err != nil {
 					return err
 				}

@@ -22,6 +22,7 @@ func main() {
 	rootPath := flag.String("root", "", "repo root to lint (default: git toplevel, or cwd)")
 	releaseGate := flag.String("release-gate", "", "arm the receipt_gate rule for a release: fail closed unless a PROMOTE semantic-pass receipt exists for this commit sha (release-time only; a CI workflow supplies the sha)")
 	deriveContentSha := flag.Bool("derive-content-sha", false, "print the reviewed content commit the release's semantic gate must arm against, derived from the receipts directory of the released tree (iss-355: HEAD-ancestry misresolves under a batched merge queue); fails closed with no output on a wrong or absent receipts directory")
+	releasedVersion := flag.Bool("released-version", false, "print the release version the released tree (HEAD) names, read strictly from its CHANGELOG.md's newest release heading by the reader --derive-content-sha binds the receipts with; the release workflow compares it with the pushed tag (iss-2609251945586202); fails closed with no output on a missing CHANGELOG.md, no dated release, or an unreadable newest heading")
 	var requireGates multiFlag
 	flag.Var(&requireGates, "require-gate", "a required semantic gate name for --release-gate (repeatable); overrides the config list so the workflow, not the in-tree file, is the trust root")
 	agentDiff := flag.String("agent-diff", "", "a git revision or revision range (e.g. origin/main...HEAD); arms agent_contract's per-agent changelog sub-check over that diff, which is otherwise a no-op because it asks whether a CHANGE announced itself")
@@ -39,6 +40,26 @@ func main() {
 	// batched merge-queue push cannot make it resolve an unrelated PR's commit
 	// (iss-355). It fails closed: any error prints to stderr and exits non-zero
 	// with nothing on stdout, so the caller never arms the gate with a guess.
+	// --released-version is the same kind of standalone mode: it prints the
+	// version the released tree names and exits. The tag comparison stays in the
+	// workflow, which holds the tag; the CHANGELOG reading stays here, in the one
+	// strict reader, so no second reader of the heading exists to drift from the
+	// one the receipts are bound with (changelog.datedHeadingRe).
+	if *releasedVersion {
+		released, err := gitutil.Run(root, "rev-parse", "--verify", "HEAD^{commit}")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "record-lint: resolve HEAD:", scrubPaths(err, root))
+			os.Exit(2)
+		}
+		v, err := lint.ReleasedVersion(root, released)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "record-lint:", scrubPaths(err, root))
+			os.Exit(2)
+		}
+		fmt.Println(v)
+		return
+	}
+
 	if *deriveContentSha {
 		released, err := gitutil.Run(root, "rev-parse", "--verify", "HEAD^{commit}")
 		if err != nil {

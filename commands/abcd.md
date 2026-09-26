@@ -1,6 +1,6 @@
 ---
 name: abcd
-description: Top-level where-am-i status board and record-id dispatch. Bare `/abcd` renders a read-only snapshot of the current directory; `/abcd <record-id>` (iss-N, itd-N, spc-N, adr-N) reports what that record is and the next move. Strictly read-only.
+description: "Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument."
 argument-hint: "[<record-id>]"
 ---
 
@@ -44,6 +44,18 @@ When reports from managed repositories wait in the user account's inbox, the
 board carries an `inbox` object (`reports`, `senders`), rendered as an `inbox:`
 line. Relay the count and point at `/abcd:inbox`, which lists them; the field is
 omitted when nothing waits.
+
+Once a model-tier routing table is accepted — `.abcd/config/oracle-routing.json`
+in the repository or `~/.abcd/oracle-routing.json` on the machine — the board
+carries an `oracle` array, one object per agent (`agent`, `winner`, `layers`,
+each layer with `layer`, `origin`, `tier` and `fan_out`), rendered as an
+`oracle:` heading and one line per agent: every layer that holds a row as
+`layer=tier`, highest precedence first, the one that applies marked `*`. Relay
+the agents whose winning row is not the bundled one. The field is omitted when
+no table is accepted, and every delegated step then runs through the harness at
+`host-decides`. An orphan row (a name that is no agent) and a fan-out clamped
+to the agent's ceiling are reported on stderr; a routing file that cannot be
+read omits the lines and says why there.
 
 ## Record-id dispatch
 

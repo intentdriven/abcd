@@ -1,19 +1,26 @@
 ---
 name: ahoy
-description: Detect and repair abcd's install/update state for the current repo — folder kind, plugin-root status, and outstanding gaps — by invoking the abcd binary. Bare invocation performs zero writes.
-argument-hint: "[install | uninstall | doctor | dry-run | remote]"
+description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply]"
+block: people
 ---
 
 # `/abcd:ahoy` install/update detector
 
-Run abcd's install/update engine for the current repo and present the result.
-Bare invocation and the `doctor`, `dry-run` and `remote` sub-verbs perform **zero
-writes**; `install`, `uninstall` and `remote apply` are the three that change
-something, and each says so before it runs — `remote apply` is the only one that
-changes state outside this machine, and it asks before it does.
+`abcd --help` lists `ahoy` in the person's set-up group. `statusline`, the
+harness-invoked row that `install` wires, is in the agents-and-hosts block of
+`abcd --help --agent`, and its line there names this page.
 
-Read `$ARGUMENTS` for the sub-verb. No argument, or `status`, is the bare
-read-only detection pass below.
+Run abcd's install/update engine for the current repo and present the result.
+Bare invocation, its `--dry-run` and `--remote` modes, and the `doctor` sub-verb
+perform **zero writes**; `install`, `uninstall` and `remote apply` are the three
+that change something, and each says so before it runs — `remote apply` is the
+only one that changes state outside this machine, and it asks before it does.
+A mode is a flag on the bare verb, one at a time; a distinct action is a
+sub-verb.
+
+Read `$ARGUMENTS` for the sub-verb or the mode. No argument, or `status`, is the
+bare read-only detection pass below.
 
 ## Bare — read-only detection
 
@@ -111,7 +118,7 @@ category present — often several — and every line after the last one you sup
 reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
-safe-autocreate, config-change, status-line, user-state, plugin-owned), so a
+safe-autocreate, config-change, status-line, oracle-routing, user-state, plugin-owned), so a
 scripted stream of specific answers lines up with them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
@@ -132,8 +139,9 @@ that must not block and must not prompt, close stdin or pre-answer everything:
 
 `--yes` approves every resolvable category but never adopts the optional
 git-identity pin, because the pin records whatever git identity is currently
-configured, and never wires the status line (below), because that rewrites a
-harness-wide setting. When the result carries `optional_skipped`, report it and
+configured, never wires the status line (below), because that rewrites a
+harness-wide setting, and never accepts a model-tier routing table (below),
+because a table decides which model every delegated step asks for. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
 
 **The house-style question.** When the install seeds `.abcd/docs-lint.json`,
@@ -171,6 +179,24 @@ it under `optional_skipped`; `yes |` answers it (and keeps every element on). A
 does not parse, is refused with a note and nothing is written on either side.
 `ahoy uninstall` restores the previous command. The line can be switched off
 or reconfigured at any time in `~/.abcd/statusline.json`.
+
+**The model-tier routing offer.** abcd ships a proposal for the model tier and
+fan-out bound each of its agents deserves (`frontier` for the verdicts a person
+reads, `economy` for the rest), and none of it applies until it is accepted.
+While `~/.abcd/oracle-routing.json` is absent the install renders the proposal
+as a table, one row per agent with its tier and fan-out, in one question;
+consent writes it there, owner-only. A second, separate question offers the same
+table for the repository at `.abcd/config/oracle-routing.json`, which is
+committed, applies to everyone working in the repository, and wins over each
+machine's table. Present the table and relay the user's answer to each question;
+never answer them for the user. Declining writes nothing and records nothing, so
+the next install offers again; `--yes` skips both offers and reports
+`oracle_routing.machine_offered` and `oracle_routing.repo_offered` under
+`optional_skipped`; `yes |` accepts both. Either file can be edited row by row
+afterwards, and the bare `abcd` board shows which layer each agent's row comes
+from. With no provider configured every step still runs through the harness,
+which is asked for the tier. `ahoy uninstall` leaves both files, because they
+are the user's configuration.
 
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed
@@ -221,10 +247,10 @@ Report the folder kind, the detection-gap count, and the audit-gap count, then
 the per-gap detail from the JSON. This is the sub-verb to reach for when the bare
 render says a repo is healthy and the user's experience says otherwise.
 
-## `remote` — the repo's GitHub security settings
+## `--remote` — the repo's GitHub security settings
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy remote --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --remote --json
 ```
 
 Reports GitHub's two native secret-scanning toggles on the repository this
@@ -276,23 +302,23 @@ at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
 thing abcd deliberately did not do, and the reason.
 
-## `dry-run` — the canonical detection envelope
+## `--dry-run` — the canonical detection envelope
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy dry-run
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --dry-run
 ```
 
 Renders the canonical `DetectionResult` JSON envelope and writes nothing — the
-same pass `install` would apply, shown rather than applied. `dry-run` always
+same pass `install` would apply, shown rather than applied. `--dry-run` always
 emits JSON, so it needs no `--json` flag. Use it when the user wants to see
 exactly what an install would do before letting it run.
 
-## Scoping note: `identity-check` is CLI-only
+## Scoping note: `--identity` is CLI-only
 
-`abcd ahoy identity-check` exits non-zero when the git commit identity diverges
+`abcd ahoy --identity` exits non-zero when the git commit identity diverges
 from the committed pin. It exists to be wired into a pre-commit hook or CI, where
 its exit code is the whole point, so it stays a bare-CLI entrypoint rather than a
-plugin sub-verb; report it only if a user asks how the identity gate fails
+plugin mode; report it only if a user asks how the identity gate fails
 closed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

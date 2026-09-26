@@ -6,13 +6,16 @@ binary's banner. Then one of them is improved. `/abcd:identity` records the
 canonical wording in one place, tells the maintainer which surfaces have drifted
 away from it, and prints the exact diff that would bring each back.
 
-The bare form and the rendered diff are **strictly read-only**. Initialisation
+The report and the rendered diff are **strictly read-only**. Initialisation
 is the single write path, and it runs once, at onboarding.
 
-It answers a different question from `/abcd:lint`. `lint` reports whether the
-repo conforms to the working conventions as a whole and runs the positioning
-check as one rule among them; `identity` is where a maintainer looks at the canon
-itself and at what a fix would read like.
+The report — the block and every surface held to it — is the identity target
+of the one lint ([`16-lint.md`](16-lint.md), itd-2609212130136102), because
+looking at whether the surfaces still say the block is a check; for one release
+the bare `abcd identity` answers with it and exits non-zero. Bare `abcd lint` runs the
+same check as one rule among the working conventions; `identity` keeps the two
+verbs that go beyond a check, the proposed correction and the recording of the
+block.
 
 ## Sub-verbs
 
@@ -80,9 +83,10 @@ reads as a broken check rather than as a missing tagline.
 
 ## Behaviour
 
-Bare, the verb prints the block and every surface's verdict, read-only. Its
-render prints a unified diff per drifted surface and writes nothing. Its
-initialiser records the block and the pointer to it.
+The lint's identity report prints the block and every surface's verdict, read-only,
+and exits `0` even when it reports drift: it is a status render, and the gate is
+bare `abcd lint`. The render prints a unified diff per drifted surface and
+writes nothing. The initialiser records the block and the pointer to it.
 
 Comparison is by normalised containment: markup, dashes, line wrapping, and case
 are folded away, so a tagline bolded mid-sentence or wrapped across two lines is
@@ -134,6 +138,8 @@ the recorded three-variant tagline drift this check exists to catch.
 _Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
 
 ### `abcd identity`
+
+Bare, it moved to `abcd lint identity`.
 
 Sub-verbs: `abcd identity init`, `abcd identity render`.
 
