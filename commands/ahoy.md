@@ -167,7 +167,11 @@ piped answer stream has one question fewer); never pass it without the user's
 answer. The result's `changes` reports what ran and whether
 its verify passed; a no, a failed step or a missing package manager is a `notes`
 line ending in what the capability continues on (`continuing on the native
-secret scanner`). `--yes` never installs a tool, and a run with `CI` set
+secret scanner`). The step runs in its own process group, bounded at 15
+minutes, and a timeout kills that group; a process the step moves out of the
+group (`setsid`) escapes the kill and can outlive the run, so abcd stops
+waiting on its output 10 seconds after the step ends and reports a step that
+left one behind as failed. `--yes` never installs a tool, and a run with `CI` set
 installs none and is not asked. A name that is not a tool `ahoy install` checks
 for is refused, naming the ones it does.
 

@@ -116,8 +116,8 @@ func Install(name string, capability Capability, confirm Confirm, guard string) 
 }
 
 const (
-	// installTimeout bounds a package manager run; a timed-out step's whole
-	// process group is killed through its own handle.
+	// installTimeout bounds a package manager run; a timed-out step's process
+	// group is killed through its own handle (runArgv names what that misses).
 	installTimeout = 15 * time.Minute
 	// verifyTimeout bounds the verify command.
 	verifyTimeout = 30 * time.Second
@@ -137,8 +137,8 @@ const (
 //     guarded tree, lexically and after symlinks.
 //
 // The step then runs as an argv (no shell), with stdin closed, in its own
-// process group, bounded in time; the verify command follows under the same
-// rules.
+// process group, bounded in time (runArgv names the one limit of that bound's
+// kill); the verify command follows under the same rules.
 func (in *Installer) Install(name string, capability Capability, confirm Confirm) Result {
 	e := explainFor(name, capability, in.GOOS)
 	r := Result{Tool: name, OnDecline: e.OnDecline}
@@ -253,11 +253,25 @@ func (in *Installer) admit(name string) (string, error) {
 	return resolved, nil
 }
 
+// pipeGrace is how long runArgv keeps reading a step's output once the step
+// has exited or been killed. It bounds the one wait the group kill cannot end:
+// a descendant that left the step's process group still holds the output pipe.
+var pipeGrace = 10 * time.Second
+
 // runArgv is the production runner: the argv is executed directly (no shell),
 // stdin is the null device so a package manager cannot stop to ask, the working
 // directory is the temporary directory rather than the repository, and the
-// child leads its own process group so a timeout kills everything it started
-// through this handle and nothing else.
+// child leads its own process group so a timeout kills that group through this
+// handle and nothing else.
+//
+// The kill reaches the step's process group, not every process the step
+// started: a descendant that moves itself into another group or session
+// (setsid, setpgid) is out of its reach and outlives the step. Such a
+// descendant can also keep the step's output pipe open, and reading until that
+// pipe closes would make the time bound unbounded, so the wait for output ends
+// pipeGrace after the step itself exits or is killed (cmd.WaitDelay), and a
+// step that exited cleanly while leaving such a process behind is reported as
+// a failure that says so.
 func runArgv(ctx context.Context, argv []string) ([]byte, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = os.TempDir()
@@ -267,6 +281,7 @@ func runArgv(ctx context.Context, argv []string) ([]byte, error) {
 	cmd.Stdout = w
 	cmd.Stderr = w
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.WaitDelay = pipeGrace
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -274,6 +289,10 @@ func runArgv(ctx context.Context, argv []string) ([]byte, error) {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err := <-done:
+		if errors.Is(err, exec.ErrWaitDelay) {
+			err = fmt.Errorf("exited, but a process it started left its process group and still held its output "+
+				"%s later; abcd stopped waiting for it, and it may still be running", pipeGrace)
+		}
 		return buf.Bytes(), err
 	case <-ctx.Done():
 		// The group is the one this child leads (Setpgid), addressed through

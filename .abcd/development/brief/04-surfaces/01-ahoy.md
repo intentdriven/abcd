@@ -367,7 +367,14 @@ own question tool got; the approve-everything flag never installs a tool, and a
 run with `CI` set never installs one and is not asked. What runs is the
 registry's fixed argv for the platform, never a shell string and never a command
 composed from input, and only when the package manager resolves on `PATH`
-outside the repository (`internal/core/tools`).
+outside the repository (`internal/core/tools`). The step runs in a process group
+of its own, bounded at 15 minutes (its verify at 30 seconds), and a timeout kills
+that group through the handle abcd holds. The kill has one limit: a process the
+step moves into another group or session (`setsid`, `setpgid`) is out of its
+reach and can outlive the run. abcd stops reading output 10 seconds after the
+step exits or is killed, so such a process holding the output open cannot hold
+the run past its bound, and a step that exits cleanly while leaving one behind
+is reported as failed, saying so.
 
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
