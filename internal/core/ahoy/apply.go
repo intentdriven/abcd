@@ -410,13 +410,21 @@ func (a *applyCtx) stepIdentityPin() {
 	if a.autoYes || !a.approved[ConfigChange] || !a.has(OptionalPinGapID) {
 		return
 	}
+	// Each way of recording nothing is said, not dropped (iss-2609260057127611).
 	eff, err := identity.EffectiveIdentity(a.cwd)
-	if err != nil || eff.Name == "" || eff.Email == "" {
+	if err != nil {
+		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git's user.name and user.email could not be read: " + errText(err))
 		return
 	}
-	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err == nil {
-		a.note(writeIdentityPin, identity.PinRelPath)
+	if eff.Name == "" || eff.Email == "" {
+		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git has no user.name and user.email set here; set them and run abcd ahoy install again")
+		return
 	}
+	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err != nil {
+		a.refuse("could not record who commits to this repository in " + identity.PinRelPath + ": " + errText(err))
+		return
+	}
+	a.note(writeIdentityPin, identity.PinRelPath)
 }
 
 func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
@@ -698,17 +706,22 @@ func (a *applyCtx) stepVisibility(cfg *InstallConfig) {
 		return
 	}
 	wrote, err := applyVisibilityBlock(a.cwd, cfg.Visibility)
-	if err == nil && wrote {
+	if err != nil {
+		// Said, not dropped (iss-2609260057127611): without the block git is not
+		// told which abcd files stay on this machine.
+		a.refuse("could not write abcd's block into .gitignore: " + errText(err) + "; git is not told which abcd files stay on this machine")
+		return
+	}
+	if wrote {
 		a.note(writeGitignore, filepath.Join(a.cwd, ".gitignore"))
 	}
 	// A narrowed public fence is said out loud (iss-255): the reader must learn
 	// that the committed record tiers stay published, from the receipt rather
-	// than from a later surprise in git status. Gated on the write succeeding —
-	// a refused .gitignore holds no fence, and the note must not assert one.
-	if err == nil {
-		if _, narrowed := effectiveVisibilityEntries(a.cwd, cfg.Visibility); narrowed {
-			a.refuse("visibility is public, but .abcd/ holds tracked files — an ignore rule cannot untrack committed records, so the .abcd/ fence covers only the local tier (.abcd/.work.local/; the memory/ snapshot fence is kept) and the committed record tiers remain published")
-		}
+	// than from a later surprise in git status. Reached only when the write
+	// succeeded — a refused .gitignore holds no fence, and the note must not
+	// assert one.
+	if _, narrowed := effectiveVisibilityEntries(a.cwd, cfg.Visibility); narrowed {
+		a.refuse("visibility is public, but .abcd/ holds tracked files — an ignore rule cannot untrack committed records, so the .abcd/ fence covers only the local tier (.abcd/.work.local/; the memory/ snapshot fence is kept) and the committed record tiers remain published")
 	}
 }
 
@@ -921,7 +934,12 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 	}
 	for _, name := range markerTargets(target) {
 		path := filepath.Join(a.cwd, name)
-		if wrote, ok := installMarkerFile(path); ok && wrote {
+		wrote, err := installMarkerFile(path)
+		if err != nil {
+			a.refuse("could not write abcd's block into " + name + ": " + errText(err) + "; the file is left as it was")
+			continue
+		}
+		if wrote {
 			a.note(writeConventionsBlock, path)
 		}
 	}
@@ -929,7 +947,12 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 	// so a target change (e.g. both -> claude_md, or -> skip) leaves no orphan.
 	for _, name := range a.markerRetract {
 		path := filepath.Join(a.cwd, name)
-		if wrote, ok := removeMarkerFile(path); ok && wrote {
+		wrote, err := removeMarkerFile(path)
+		if err != nil {
+			a.refuse("could not remove abcd's block from " + name + ", which you no longer chose: " + errText(err) + "; the file is left as it was")
+			continue
+		}
+		if wrote {
 			a.note(writeConventionsBlockRemoved, path)
 		}
 	}
@@ -1440,9 +1463,9 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 	// Marker: clean both surfaces regardless of the current docs.target.
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
 		path := filepath.Join(abs, name)
-		if wrote, ok := removeMarkerFile(path); ok && wrote {
+		if wrote, err := removeMarkerFile(path); err == nil && wrote {
 			receipt.Marker.Removed = append(receipt.Marker.Removed, name)
-		} else if !ok {
+		} else if err != nil {
 			receipt.Marker.Skipped = append(receipt.Marker.Skipped, name)
 		}
 	}
