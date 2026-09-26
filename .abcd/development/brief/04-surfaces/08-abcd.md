@@ -137,11 +137,17 @@ review names the commit it read in its summary's frontmatter
 keyed by the commit it gates, so its name is its pin. Per pin the board counts
 the commits the default branch has moved since (`git rev-list --count
 <pin>..<default>`, the default branch resolved as the peers reader resolves it,
-HEAD where none does) and flags a row past twenty for a re-run. The text render
-carries a `reviews:` heading — how many folders, how many flagged, the branch
-counted against — and one line per folder, stalest first: `!` on a flagged row,
-the count, the pin's short sha, and the folder, or `receipt:` and the gates it
-holds. A review of a spec carries the spec's id in its folder name,
+HEAD where none does) and flags a row past twenty. The text render carries a
+`reviews:` heading — how many dated reviews, how many flagged, the branch
+counted against, and the instruction to re-run those marked `!` when any is —
+and one line per dated review, stalest first: `!` on a flagged row, the count,
+the pin's short sha, and the folder. The release receipts follow as one
+`receipts:` line, not a row apiece: a receipt gates the release it names and is
+never re-run, and RD002 keeps every one, so each release adds a receipt that
+stays past the threshold for good. The line gives how many receipts there are,
+how far behind the default branch the oldest release gated is, and how many
+receipt pins this history does not hold, and points to the JSON, which lists
+each. A review of a spec carries the spec's id in its folder name,
 `<YYYY-MM-DD>-<spc-N>-<slug>/`, and the row reads it from there. A pin this
 history does not hold (a sha a squash or a rewrite left behind) is
 `unreachable` and a folder from before the pin rule is `unpinned`; neither is
