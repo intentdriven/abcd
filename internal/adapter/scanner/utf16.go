@@ -21,6 +21,14 @@ import (
 // so the person-key rule (metadataFields) judges a short name by the raw bytes
 // before it — a PDF's "/Author (" stands right before the mark.
 //
+// A PDF writer may also spell the same string in hex, <FEFF005A...>, which
+// never puts the UTF-16 bytes in the file at all. The hex pairs of such a
+// string are decoded to bytes, each mapped to the raw offset of its first
+// digit, and the bytes are handed to the same view (pdfHexView); that needs
+// no escape grammar (iss-2609261909108726). A string written with octal
+// escapes inside parentheses (\376\377...) does, and stays with
+// iss-2609261831352258.
+//
 // A run without a mark (EXIF's XPAuthor tag, a legacy binary document) is not
 // read: telling UTF-16 from chance bytes there needs the structure the text
 // sits in, which is iss-2609261659051539's IFD reader, not a decode.
@@ -124,29 +132,111 @@ func utf16TextRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsMark(r) || unicode.IsDigit(r) || unicode.IsPunct(r) || unicode.IsSpace(r)
 }
 
-// utf16Findings scans the UTF-16 view of data with the byte rules and re-homes
-// each finding onto the raw bytes: Line and Column name the raw position of
+// pdfHexView returns the UTF-16 text of every PDF hex string in data whose
+// bytes open with a byte-order mark: the digits between '<' and '>' (white
+// space between them skipped, an odd last digit standing for its byte's high
+// nibble) decoded to bytes and read by utf16View, with each decoded byte of
+// the text mapped to the raw offset of the first hex digit of its code unit
+// (a separator to the closing '>'). A '<' that opens a dictionary ("<<") or
+// meets any other byte before its '>' opens no hex string, and the walk goes
+// on from the byte that ended it, so every raw byte is read at most twice.
+func pdfHexView(data []byte) (decodedView, bool) {
+	var text []byte
+	var pos []int
+	var raw []byte
+	var off []int
+	for i := 0; i < len(data); i++ {
+		if data[i] != '<' {
+			continue
+		}
+		if i+1 < len(data) && data[i+1] == '<' {
+			i++
+			continue
+		}
+		raw, off = raw[:0], off[:0]
+		hi, hiAt, closed := -1, 0, false
+		j := i + 1
+		for ; j < len(data); j++ {
+			c := data[j]
+			if c == '>' {
+				closed = true
+				break
+			}
+			if isPDFSpace(c) {
+				continue
+			}
+			if !isHexDigit(c) {
+				break
+			}
+			if hi < 0 {
+				hi, hiAt = int(hexNibble(c)), j
+				continue
+			}
+			raw = append(raw, byte(hi<<4)|hexNibble(c))
+			off = append(off, hiAt)
+			hi = -1
+		}
+		scanMeter.charge(stageUTF16, j-i)
+		if !closed {
+			i = j - 1
+			continue
+		}
+		i = j
+		if hi >= 0 {
+			raw = append(raw, byte(hi<<4))
+			off = append(off, hiAt)
+		}
+		if len(raw) < 2 || !(raw[0] == 0xfe && raw[1] == 0xff || raw[0] == 0xff && raw[1] == 0xfe) {
+			continue
+		}
+		v, ok := utf16View(raw)
+		if !ok {
+			continue
+		}
+		off = append(off, j)
+		for k := 0; k < len(v.text); k++ {
+			text = append(text, v.text[k])
+			pos = append(pos, off[v.posMap[k]])
+		}
+	}
+	if len(text) == 0 {
+		return decodedView{}, false
+	}
+	return decodedView{text: string(text), posMap: append(pos, len(data))}, true
+}
+
+// isPDFSpace reports whether c is one of the six bytes PDF reads as white
+// space, which a hex string may carry between its digits.
+func isPDFSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == 0
+}
+
+// utf16Findings scans the UTF-16 views of data (the marked runs as written, and
+// those a PDF hex string spells) with the byte rules and re-homes each finding
+// onto the raw bytes: Line and Column name the raw position of
 // the value's first code unit (meta's line starts), while Matched and the
 // snippet stay the decoded text, so the short-name length rule counts the
 // name's own bytes rather than its zero-interleaved spelling, and a serialized
 // finding masks the name as it reads.
 func (s *Scanner) utf16Findings(data []byte, id Identity, secrets []Pattern, logical string, meta *metadataFields) []Finding {
-	v, ok := utf16View(data)
-	if !ok {
-		return nil
-	}
-	starts := lineStarts([]byte(v.text))
 	var out []Finding
-	for _, f := range scanText(v.text, id, secrets, s.identSev, logical, true) {
-		if f.Line < 1 || f.Line > len(starts) {
+	for _, view := range []func([]byte) (decodedView, bool){utf16View, pdfHexView} {
+		v, ok := view(data)
+		if !ok {
 			continue
 		}
-		at := starts[f.Line-1] + f.Column - 1
-		if at < 0 || at >= len(v.text) {
-			continue
+		starts := lineStarts([]byte(v.text))
+		for _, f := range scanText(v.text, id, secrets, s.identSev, logical, true) {
+			if f.Line < 1 || f.Line > len(starts) {
+				continue
+			}
+			at := starts[f.Line-1] + f.Column - 1
+			if at < 0 || at >= len(v.text) {
+				continue
+			}
+			f.Line, f.Column = meta.position(v.posMap[at])
+			out = append(out, f)
 		}
-		f.Line, f.Column = meta.position(v.posMap[at])
-		out = append(out, f)
 	}
 	return out
 }

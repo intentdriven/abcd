@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf16"
@@ -110,6 +111,9 @@ func TestUTF16ViewWorkIsLinear(t *testing.T) {
 		{"short runs", append(utf16Bytes("ab", true), 0, 0)},
 		{"short names by a key", append([]byte("/Author ("), append(utf16Bytes("Zedqx", true), ')', ' ')...)},
 		{"one long run", utf16Bytes("Zedqx ", false)[2:]},
+		{"short names in PDF hex strings", []byte("/Author " + pdfHex(utf16Bytes("Zedqx", true), false, 0) + " ")},
+		{"hex strings that never close", []byte("<0a1b ")},
+		{"one long astral run", utf16Bytes("😀Zedqx", false)[2:]},
 	}
 	for _, s := range shapes {
 		t.Run(s.name, func(t *testing.T) {
@@ -165,5 +169,66 @@ func TestUTF16RunContinuesPastAnAstralCharacter(t *testing.T) {
 	lone := []byte{0xfe, 0xff, 0x00, 'a', 0x00, 'b', 0xd8, 0x3d, 0x00, 'c', 0x00, 'd'}
 	if v, ok := utf16View(lone); !ok || v.text != "ab\n" {
 		t.Errorf("a lone high surrogate: view %q, want the run before it alone", v.text)
+	}
+}
+
+// pdfHex spells b as a PDF hex string: the digits between angle brackets,
+// upper- or lower-case, with a space after every group of digits when group > 0
+// (PDF readers skip white space inside a hex string).
+func pdfHex(b []byte, lower bool, group int) string {
+	digits := fmt.Sprintf("%X", b)
+	if lower {
+		digits = strings.ToLower(digits)
+	}
+	if group > 0 {
+		var spaced strings.Builder
+		for i := 0; i < len(digits); i += group {
+			spaced.WriteString(digits[i:min(i+group, len(digits))])
+			spaced.WriteByte(' ')
+		}
+		digits = spaced.String()
+	}
+	return "<" + digits + ">"
+}
+
+// TestPDFHexTextStringIsRead pins iss-2609261909108726: a PDF writer that
+// spells a UTF-16 text string in hex (<FEFF...>) never puts the UTF-16 bytes
+// in the file, so the UTF-16 view had nothing to read and the caller's name in
+// such an /Author raised nothing at any length. The hex pairs are decoded to
+// bytes and handed to the same view, and each finding is judged by the raw
+// bytes before its first hex digit, so a short name after /Author is kept and
+// one with no person key in reach is still dropped. The names are fake.
+func TestPDFHexTextStringIsRead(t *testing.T) {
+	id := synthIdentity()
+	cases := []struct {
+		name, identity, body string
+		want                 bool
+	}{
+		{"multi-word name, upper-case hex", id.GitUserName,
+			"%PDF-1.7\n<< /Author " + pdfHex(utf16Bytes(id.GitUserName, true), false, 0) + " >>\n", true},
+		{"non-ASCII name, lower-case hex with spaces", "Zoë Qüxbar",
+			"%PDF-1.7\n<</Author" + pdfHex(utf16Bytes("Zoë Qüxbar", true), true, 8) + ">>\n", true},
+		{"short name behind /Author", "Zedqx",
+			"%PDF-1.7\n<< /Title (deck) /Author " + pdfHex(utf16Bytes("Zedqx", true), false, 0) + " >>\n", true},
+		{"short name with no person key in reach", "Zedqx",
+			"%PDF-1.7\n<< /Title " + pdfHex(utf16Bytes("scanned "+strings.Repeat("q", 100)+" Zedqx", true), false, 0) + " >>\n", false},
+		// An odd count of digits: the last one stands for its byte's high
+		// nibble, so "...002>" ends the string with the unit 0020, a space.
+		{"odd count of digits", id.GitUserName,
+			"%PDF-1.7\n<< /Author " + strings.TrimSuffix(pdfHex(utf16Bytes(id.GitUserName+" ", true), false, 0), "0>") + "> >>\n", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			sc, err := New(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sc.identity = Identity{GitUserName: c.identity}
+			res := scanOne(t, sc, "deck.pdf", writeFile(t, root, "deck.pdf", c.body))
+			if got := hasKind(res.Findings, kindRealName); got != c.want {
+				t.Errorf("real_name reported = %v, want %v: %+v", got, c.want, res.Findings)
+			}
+		})
 	}
 }
