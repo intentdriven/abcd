@@ -671,7 +671,7 @@ func TestTheWorkflowInterpolatesNothingIntoAShell(t *testing.T) {
 			t.Errorf("line %d interpolates into a shell: %s", i+1, trimmed)
 		}
 	}
-	for _, want := range []string{"environment: site-render", "environment: site\n", "branches: [main]", "persist-credentials: false"} {
+	for _, want := range []string{"environment: site-render", "environment: site\n", "persist-credentials: false"} {
 		if !strings.Contains(string(wf), want) {
 			t.Errorf("the workflow lacks %q", want)
 		}
@@ -743,6 +743,66 @@ func TestAWorkflowRunFromAForkNeverRenders(t *testing.T) {
 	} {
 		if !strings.Contains(string(wf), want) {
 			t.Errorf("the render job's gate lacks %q", want)
+		}
+	}
+}
+
+// TestTheWorkflowFiresOnEveryReleasePath: on a repository `launch scaffold`
+// laid out, auto-release runs release.yml by workflow_call, so no run named
+// `release` exists for it; a hand-pushed tag's `release` run has the TAG as its
+// head branch; and a release made with the workflow's own token fires no
+// `release: published`. So the workflow_run entry names both release
+// workflows, filters no branch in the trigger (a branch filter drops the tag),
+// and admits the default branch or a v-tag inside the render job's gate.
+func TestTheWorkflowFiresOnEveryReleasePath(t *testing.T) {
+	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(wf), "\n")
+	block := func(start string, end func(string) bool) string {
+		var out []string
+		in := false
+		for _, l := range lines {
+			if !in {
+				in = strings.TrimRight(l, " ") == start
+				continue
+			}
+			if end(l) {
+				break
+			}
+			out = append(out, l)
+		}
+		if !in {
+			t.Fatalf("the workflow has no %q", start)
+		}
+		return strings.Join(out, "\n")
+	}
+	on := block("on:", func(l string) bool { return l != "" && l[0] != ' ' && l[0] != '#' })
+	wantNames := []string{"release", "auto-release"}
+	if !strings.Contains(on, "    workflows: ["+strings.Join(wantNames, ", ")+"]") {
+		t.Errorf("the workflow_run entry does not name %v:\n%s", wantNames, on)
+	}
+	if strings.Contains(on, "branches:") {
+		t.Errorf("the trigger filters branches, which drops a tag-push release run:\n%s", on)
+	}
+	for _, name := range wantNames {
+		src, err := os.ReadFile(filepath.Join("..", "launch", "scaffold", "templates", name+".yml.tmpl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first, _, _ := strings.Cut(string(src), "\n"); first != "name: "+name {
+			t.Errorf("the scaffolded %s workflow is named %q, not the %q the site workflow listens for", name, first, name)
+		}
+	}
+	gate := block("    if: >-", func(l string) bool { return strings.HasPrefix(l, "    runs-on:") })
+	for _, want := range []string{
+		"github.event.workflow_run.head_branch == 'trunk'",
+		"startsWith(github.event.workflow_run.head_branch, 'v')",
+		"github.event.workflow_run.head_repository.full_name == github.repository",
+	} {
+		if !strings.Contains(gate, want) {
+			t.Errorf("the render job's gate lacks %q:\n%s", want, gate)
 		}
 	}
 }

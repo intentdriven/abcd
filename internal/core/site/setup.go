@@ -317,8 +317,8 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		res.Remaining = append([]string{"commit the written files and push them to " + branch + ": `git add " +
 			strings.Join(paths, " ") + "`"}, res.Remaining...)
 	}
-	res.Notes = append(res.Notes, "the site renders and deploys on the next published release; "+
-		"`gh workflow run site.yml` deploys the latest one now")
+	res.Notes = append(res.Notes, "the site renders and deploys on the next published release, whether a person or "+
+		"the release workflows publish it; `gh workflow run site.yml` deploys the latest one now")
 
 	switch {
 	case refused:

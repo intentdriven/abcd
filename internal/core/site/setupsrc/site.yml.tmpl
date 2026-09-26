@@ -13,10 +13,16 @@ name: site
 # Three entry points, one path:
 #
 #   release: published    a release published by a person or a personal token.
-#   workflow_run          the `release` workflow finishing on <% .DefaultBranch %>. A
-#                         release created with the workflow's own GITHUB_TOKEN
-#                         fires no `release` event, so the release workflow's
-#                         completion is what carries those releases here.
+#   workflow_run          the `release` or `auto-release` workflow finishing on
+#                         <% .DefaultBranch %> or on a v-tag. A release created with
+#                         the workflow's own GITHUB_TOKEN fires no `release`
+#                         event, so a release workflow's completion is what
+#                         carries those releases here: `auto-release` runs on
+#                         every push to <% .DefaultBranch %> and calls `release` inside
+#                         its own run, and a hand-pushed tag runs `release` with
+#                         the tag as its head branch. A completion that
+#                         released nothing redeploys the latest release over
+#                         itself, which changes nothing.
 #   workflow_dispatch     a redeploy by hand; an empty tag means the latest
 #                         published release.
 #
@@ -34,9 +40,8 @@ on:
   release:
     types: [published]
   workflow_run:
-    workflows: [release]
+    workflows: [release, auto-release]
     types: [completed]
-    branches: [<% .DefaultBranch %>]
   workflow_dispatch:
     inputs:
       tag:
@@ -56,17 +61,21 @@ permissions:
 
 jobs:
   render:
-    # A workflow_run fires for the release workflow's runs whatever triggered
-    # them, and its branch filter matches a head branch a fork can name. Only a
-    # successful run of this repository's own release, not of a pull request,
-    # reaches the render. Nothing from the triggering run is used either way:
-    # the tag is resolved from the repository's published releases.
+    # A workflow_run fires for the release workflows' runs whatever triggered
+    # them, and a head branch is a name a fork can choose. Only a successful
+    # run of this repository's own release workflows, not of a pull request,
+    # on the default branch or a v-tag (the trigger filters no branch, because
+    # a tag-push run's head branch is the tag), reaches the render. Nothing
+    # from the triggering run is used either way: the tag is resolved from the
+    # repository's published releases.
     if: >-
       ${{ github.event_name != 'workflow_run' || (
           github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event != 'pull_request' &&
           github.event.workflow_run.event != 'pull_request_target' &&
-          github.event.workflow_run.head_repository.full_name == github.repository) }}
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.head_branch == '<% .DefaultBranch %>' ||
+           startsWith(github.event.workflow_run.head_branch, 'v'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: site-render
