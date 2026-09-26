@@ -13,8 +13,10 @@
 // capture and intent stores, and both of those call this package; a leaf
 // package is what lets every caller reach it without an import cycle.
 //
-// The package reads nothing, writes nothing and never prints. Its callers
-// gather the candidate texts under their own locks and write the links.
+// The scorer reads nothing, writes nothing and never prints; the one read in
+// the package is LoadConfig, through the layered configuration reader. Its
+// callers gather the candidate texts under their own locks and write the
+// links.
 package match
 
 import (
