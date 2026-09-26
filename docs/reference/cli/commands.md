@@ -1232,11 +1232,14 @@ A retraction is a sweep, not an edit. Every correction line in corrections.md
 names a literal that must be absent from the lab's own documents; the sweep
 searches them all for it — the pattern, not the instance — and lists every
 place it still stands. The snapshot, the lab's HOME and binaries, transcripts
-and probe records are not swept: they are the world and the instruments, not
-claims. The result is written to state/sweep.md. An unapplied correction, or
-one too short to mean anything, fails the sweep: exit 1, the lab halted and
-the refusal recorded as a gate finding that names corrections by number, so
-it never becomes an instance itself. A sweep that passes lifts that halt.
+and each probe's five capture files are not swept: they are the world and the
+instruments, not claims; a probe's record.md is prose, and is swept. The
+result is written to state/sweep.md. An unapplied correction, one too short
+to mean anything, or — while any correction is recorded — a document the
+sweep could not read (too large, binary, or not a regular file; each listed
+by path) fails the sweep: exit 1, the lab halted and the refusal recorded as
+a gate finding that names corrections by number, so it never becomes an
+instance itself. A sweep that passes lifts that halt.
 
 ### `abcd launch`
 

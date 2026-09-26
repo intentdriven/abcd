@@ -171,11 +171,14 @@ func newLabSweepCommand(asJSON *bool) *cobra.Command {
 			"names a literal that must be absent from the lab's own documents; the sweep\n" +
 			"searches them all for it — the pattern, not the instance — and lists every\n" +
 			"place it still stands. The snapshot, the lab's HOME and binaries, transcripts\n" +
-			"and probe records are not swept: they are the world and the instruments, not\n" +
-			"claims. The result is written to state/sweep.md. An unapplied correction, or\n" +
-			"one too short to mean anything, fails the sweep: exit 1, the lab halted and\n" +
-			"the refusal recorded as a gate finding that names corrections by number, so\n" +
-			"it never becomes an instance itself. A sweep that passes lifts that halt.",
+			"and each probe's five capture files are not swept: they are the world and the\n" +
+			"instruments, not claims; a probe's record.md is prose, and is swept. The\n" +
+			"result is written to state/sweep.md. An unapplied correction, one too short\n" +
+			"to mean anything, or — while any correction is recorded — a document the\n" +
+			"sweep could not read (too large, binary, or not a regular file; each listed\n" +
+			"by path) fails the sweep: exit 1, the lab halted and the refusal recorded as\n" +
+			"a gate finding that names corrections by number, so it never becomes an\n" +
+			"instance itself. A sweep that passes lifts that halt.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := labRoot("abcd lab sweep")
