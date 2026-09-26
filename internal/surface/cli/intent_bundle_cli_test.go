@@ -58,8 +58,8 @@ func TestIntentPlanBundleCLIRefusesWithoutAName(t *testing.T) {
 	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "--bundle") {
 		t.Fatalf("several intents without --bundle must exit 2 naming the flag: %v", err)
 	}
-	if _, err := runCLIErr(t, "intent", "plan", "itd-10", "--bundle", "solo"); exitCodeOf(err) != 2 {
-		t.Fatalf("--bundle on one intent must exit 2: %v", err)
+	if _, err := runCLIErr(t, "intent", "plan", "itd-10", "--bundle", "solo"); exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "two or more intents") {
+		t.Fatalf("--bundle on one intent must exit 2, saying a bundle has two or more: %v", err)
 	}
 	for _, rel := range []string{"itd-10-alpha.md", "itd-11-beta.md"} {
 		if _, err := os.Stat(filepath.Join(repo, cliDrafts, rel)); err != nil {

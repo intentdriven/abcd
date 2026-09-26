@@ -263,3 +263,52 @@ func TestReadySeesTheSecondBundleMemberAsLinked(t *testing.T) {
 		}
 	}
 }
+
+// --remainder on a bundle's shared spec is refused before anything is minted
+// or moved: a remainder is one intent's follow-on, and a bundle ships whole.
+func TestReconcileBundleRefusesARemainder(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+	writeFile(t, root, draftsDir+"/itd-11-beta.md", draftWithAC("itd-11", "beta"))
+	planned, err := PlanBundle(root, []string{"itd-10", "itd-11"}, BundleOptions{Bundle: "alpha-beta", Impact: "additive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Reconcile(root, planned.Spec.ID, "", RemainderRequest{Slug: "the-rest"})
+	if err == nil || !strings.Contains(err.Error(), "--remainder") {
+		t.Fatalf("--remainder on a bundle spec must be refused naming the flag: %v", err)
+	}
+	if n := specCount(t, root); n != 1 {
+		t.Errorf("a refused remainder must mint nothing: %d specs", n)
+	}
+	for _, rel := range []string{"itd-10-alpha.md", "itd-11-beta.md"} {
+		if _, err := os.Stat(filepath.Join(root, plannedDir, rel)); err != nil {
+			t.Errorf("%s must stay planned: %v", rel, err)
+		}
+	}
+}
+
+// A member back in drafts/ when its bundle's spec closes is refused, naming it
+// and its bucket, before any member moves.
+func TestReconcileBundleRefusesADraftMember(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+	writeFile(t, root, draftsDir+"/itd-11-beta.md", draftWithAC("itd-11", "beta"))
+	planned, err := PlanBundle(root, []string{"itd-10", "itd-11"}, BundleOptions{Bundle: "alpha-beta", Impact: "additive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(root, plannedDir, "itd-11-beta.md"), filepath.Join(root, draftsDir, "itd-11-beta.md")); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Reconcile(root, planned.Spec.ID, "", RemainderRequest{})
+	if err == nil || !strings.Contains(err.Error(), "itd-11") || !strings.Contains(err.Error(), "drafts") {
+		t.Fatalf("a draft member must refuse the close, naming it and its bucket: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, plannedDir, "itd-10-alpha.md")); err != nil {
+		t.Errorf("the planned member must not ship: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, planned.Spec.Path)); err != nil {
+		t.Errorf("the shared spec must stay open: %v", err)
+	}
+}
