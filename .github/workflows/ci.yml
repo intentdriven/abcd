@@ -529,10 +529,19 @@ jobs:
           fi
           bash scripts/check-issue-resolution.sh commits "$BASE_SHA" HEAD
 
+      # The decisions-append gate is Go (internal/core/lint, through
+      # `record-lint decisions-append`), so this job needs the toolchain go.mod
+      # declares — the same one every other Go step here resolves.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
       # Same shape again for the decisions ledger. The cases first, for the same
-      # reason.
+      # reason: the TestDecisionsAppend* suite, each case a fixture the gate must
+      # refuse or pass.
       - name: Decisions-append gate can fail (cases)
-        run: bash scripts/check-decisions-append-cases.sh
+        run: go test -count=1 -run 'TestDecisionsAppend' ./internal/core/lint/ ./cmd/record-lint/
 
       # DA001-DA004 over the pull request's own range: every line the range adds
       # to .abcd/work/DECISIONS.md landed after the last line its parent had
@@ -543,16 +552,14 @@ jobs:
       # to read). Merges are checked, not skipped — a forged conflict resolution
       # appears in no single-parent commit — including the merge the QUEUE
       # itself makes, which only a merge_group run has in range at all. Same
-      # chain as the two steps above, argued at the record-lint step.
+      # chain as the two steps above, argued at the record-lint step. The
+      # unusable-base guard is not restated here: the gate derives its base once,
+      # in Go (gitutil.ResolveRangeBase), announcing a skip for an empty value or
+      # the all-zeroes placeholder and refusing a sha that resolves to nothing.
       - name: Decisions ledger is append-only (DA001-DA004)
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
-        run: |
-          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            echo "decisions-append: no usable base ref for this event — the range check is skipped."
-            exit 0
-          fi
-          bash scripts/check-decisions-append.sh commits "$BASE_SHA" HEAD
+        run: go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD
 
   # Self-discovering smoke harness (evals/): builds the binary, walks the Cobra
   # command tree in-process, and runs every command's --help plus the read-only

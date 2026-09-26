@@ -423,13 +423,9 @@ func RunCapped(root string, maxBytes int, args ...string) (string, error) {
 // runBounded is the shared body: run git with stdout and stderr bounded, and
 // report whether stdout was cut short.
 func runBounded(root string, maxBytes int, args ...string) (string, bool, error) {
-	cmd := isolatedGit(root, args...)
-	w := &capWriter{remaining: maxBytes}
-	e := &capWriter{remaining: 4096}
-	cmd.Stdout = w
-	cmd.Stderr = e
-	if err := cmd.Run(); err != nil {
-		return "", w.overflowed, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+	out, overflowed, err := runBoundedBytes(root, maxBytes, args...)
+	if err != nil {
+		return "", overflowed, err
 	}
 	// Trim the trailing side only. Leading bytes are content: a NUL-separated
 	// listing (-z) starts with its first entry, and a whole-buffer TrimSpace
@@ -437,5 +433,20 @@ func runBounded(root string, maxBytes int, args ...string) (string, bool, error)
 	// form exists precisely so such names survive. Every consumer parses
 	// per-line, per-field, or per-NUL and tolerates a leading space; none may
 	// lose one.
-	return strings.TrimRight(string(w.buf), " \t\r\n"), w.overflowed, nil
+	return strings.TrimRight(string(out), " \t\r\n"), overflowed, nil
+}
+
+// runBoundedBytes is the untrimmed body runBounded and RunCappedBytes share:
+// run git with stdout and stderr bounded, return stdout verbatim, and report
+// whether it was cut short.
+func runBoundedBytes(root string, maxBytes int, args ...string) ([]byte, bool, error) {
+	cmd := isolatedGit(root, args...)
+	w := &capWriter{remaining: maxBytes}
+	e := &capWriter{remaining: 4096}
+	cmd.Stdout = w
+	cmd.Stderr = e
+	if err := cmd.Run(); err != nil {
+		return nil, w.overflowed, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+	}
+	return w.buf, w.overflowed, nil
 }
