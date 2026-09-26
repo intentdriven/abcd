@@ -25,15 +25,16 @@ repo whose stamp says it is current.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `connect` | — | shipped |
 | `doctor` | — | shipped |
 | `install` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 
 
-Bare `/abcd:ahoy` shows read-only status and mutates nothing. Three read-only
-modes of the same act — the dry run, the identity check and the remote report —
-are flags on the bare verb rather than sub-verbs, one at a time, and the
+Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
+modes of the same act — the dry run, the identity check, the remote report and
+the provider board — are flags on the bare verb rather than sub-verbs, one at a time, and the
 appendix lists them. A sub-verb is a distinct action, a flag a mode of the same
 one (itd-2609212130136102). For one release each
 mode's retired sub-verb spelling answers with its flag and exits non-zero, and
@@ -76,6 +77,17 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
   machine.** See below.
 - **The identity check** exits non-zero when the git commit identity does not
   match the repo's identity pin. Read-only, CLI-only, for an operator or CI.
+- **The provider board** explains the optional OpenAI-compatible
+  provider adapter (itd-2609081951381895): what an aggregator is, that abcd
+  would use one for decision models and cheap judgements pointed at it by name,
+  and that everything works without one, because with no provider configured
+  every delegated step runs on the host. It lists the providers configured on
+  this machine, whether each one's key resolves (never the key), the vendor
+  denylist in force, the roles and judgement types pointed at a provider, and
+  where a key can live, the keychain recommended in the prose and never as a
+  marked option. The bare board carries the same explanation as an optional,
+  advisory gap while no provider is configured.
+- **The provider setup** sets one provider up, and writes. See below.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
 namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
@@ -104,6 +116,35 @@ the API host explicitly, so an ambient host variable cannot send the write to an
 endpoint the origin never named, and the call goes through the caller's own
 authenticated identity: abcd never holds a token.
 
+### The provider setup
+
+The setup takes the provider's name, its base URL, its first allowlist (every
+model it may serve) and where its key lives. It verifies the provider with one
+call to the first model listed and, only when that call succeeds, writes the key
+and then the provider block, both under `~/.abcd/`: the key into the owner-only
+`credentials.json`, the block (base URL, the key's name, the models) into
+`config.json`. A failed verification writes nothing. Nothing reaches the
+repository or the harness's settings. Every fault the configuration read would
+refuse (a denylisted or malformed model, a base URL that is plain HTTP to
+another machine, a provider already configured, a key name already holding a
+different value) is refused before the call, so a setup that cannot finish is
+never billed.
+
+The key arrives on stdin and nowhere else. A flag would leave it in the process
+listing and the shell history, the install prompter echoes every answer into its
+transcript, a host's question tool would put it in an agent's context, and a
+terminal would echo it as it is typed, so stdin from a terminal is refused. For
+the same reason the walkthrough is this sub-verb, which the person runs with the
+key piped in, rather than a question the install pass asks: declining is not
+running it, and changes nothing.
+
+Of the three homes a key may live in, the setup builds the abcd-only one. The
+environment-variable-or-external-tool home and the platform keychain arrive with
+the credential store (itd-2609221017023290); asked for either, the setup refuses
+naming it. A fourth answer, no key, sets up a local server that takes none.
+No delegating verb sends a step to a configured provider until provider dispatch
+lands (spc-2609251028149555), and both the board and the setup say so.
+
 ## What abcd manages — repos and `~/.abcd/`
 
 abcd manages exactly one kind of folder, a **repository**, and keeps one
@@ -129,7 +170,11 @@ user-scope directory for machine-local state.
   inbox/                         reports managed repositories filed back to abcd,
                                  <received-stamp>-<sender-key>.md; promoted/ keeps
                                  the ones filed as captures (itd-2609221656361680)
-  config.json                    machine config defaults (a later phase)
+  config.json                    the machine layer of the layered configuration,
+                                 read-only except for the provider blocks
+                                 (oracle.api.<provider>) the provider setup writes,
+                                 and the only file a provider block may sit in;
+                                 that write holds .config.json.lock beside it
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
   sources/                       the local sources corpus /abcd:ingest and /abcd:consult
@@ -139,9 +184,12 @@ user-scope directory for machine-local state.
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
   credentials.json               external credentials by name (a hosting token for
-                                 setting up a site), mode 0600, read-only; abcd never
-                                 creates it. The interim source the credential store
-                                 replaces (itd-2609221017023290)
+                                 setting up a site, a provider's key), mode 0600;
+                                 only the provider setup writes it, one new name at
+                                 a time, never replacing a stored value, holding
+                                 .credentials.json.lock beside it across the read
+                                 and the write. The interim source the credential
+                                 store replaces (itd-2609221017023290)
   rules.json                     the machine's rule conventions, the user layer
                                  between the bundled domains and each repo's
                                  .abcd/rules.json, read-only; abcd never creates it
@@ -536,13 +584,25 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
 
 | Flag | Type |
 |---|---|
 | `--dry-run` | bool |
 | `--identity` | bool |
+| `--providers` | bool |
 | `--remote` | bool |
+
+### `abcd ahoy connect`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--base-url` | string |
+| `--home` | string |
+| `--key` | string |
+| `--model` | stringArray |
 
 ### `abcd ahoy doctor`
 

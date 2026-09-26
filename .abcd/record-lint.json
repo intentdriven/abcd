@@ -216,7 +216,18 @@
     },
     "links_resolve": {
       "enabled": true,
-      "severity": "blocker"
+      "severity": "blocker",
+      "extra_roots": [
+        ".abcd/work"
+      ],
+      "exempt": [
+        ".abcd/work/reviews/*",
+        ".abcd/work/reviews/*/*"
+      ]
+    },
+    "link_anchors": {
+      "enabled": true,
+      "severity": "warn"
     },
     "no_brittle_line_refs": {
       "enabled": true,
@@ -239,6 +250,11 @@
     "intent_impact_valid": {
       "enabled": true,
       "severity": "blocker",
+      "intents_dir": "intents"
+    },
+    "intent_sota": {
+      "enabled": true,
+      "severity": "warn",
       "intents_dir": "intents"
     },
     "issue_id_unique": {
@@ -401,6 +417,10 @@
         "docs-currency-reviewer",
         "iss35-brief-surface-crosscheck"
       ]
+    },
+    "changelog_unreleased_empty": {
+      "enabled": true,
+      "severity": "blocker"
     },
     "gate_lockstep": {
       "enabled": true,

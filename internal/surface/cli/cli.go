@@ -278,7 +278,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -575,6 +575,11 @@ type docsLintResult struct {
 	NothingChecked bool `json:"nothing_checked"`
 	// Warning says that nothing was checked, and why. Empty otherwise.
 	Warning string `json:"warning,omitempty"`
+	// Pruned names the gitignored paths under the roots the lint did not read,
+	// a wholly ignored directory once with its trailing slash. A gitignored path
+	// is not the repository's documentation (iss-2609151952353626), and a lint
+	// that skipped one says so rather than reading as a smaller tree.
+	Pruned []string `json:"pruned,omitempty"`
 }
 
 // docsLintNothingCheckedWarning returns the loud warning for a lint that
@@ -698,7 +703,11 @@ func newLintDocsCommand(asJSON *bool) *cobra.Command {
 			if configPath != "" {
 				ref = configPath
 			}
-			res := docsLintResult{Findings: findings, Blockers: blockers, Checks: cfg.ArmedChecks(), Documents: documents}
+			pruned, err := lint.PrunedInRoots(cfg, root)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "lint docs: " + scrubPaths(err)}
+			}
+			res := docsLintResult{Findings: findings, Blockers: blockers, Checks: cfg.ArmedChecks(), Documents: documents, Pruned: pruned}
 			res.Warning = docsLintNothingCheckedWarning(res.Checks, documents, cfg.Roots, ref)
 			res.NothingChecked = res.Warning != ""
 			// A lint that checked nothing is WARNED about loudly, on stderr in
@@ -724,6 +733,10 @@ func newLintDocsCommand(asJSON *bool) *cobra.Command {
 				if res.Checks == 0 {
 					fmt.Fprintf(w, "abcd lint docs — no rules configured in %s: nothing was checked\n", termsafe.Sanitize(ref))
 					return
+				}
+				if len(pruned) > 0 {
+					fmt.Fprintf(w, "abcd lint docs — skipped %d gitignored path(s) under the roots: %s\n",
+						len(pruned), termsafe.Sanitize(strings.Join(pruned, ", ")))
 				}
 				fmt.Fprintf(w, "abcd lint docs — %d finding(s), %d blocker(s)\n", len(findings), blockers)
 			}); err != nil {
@@ -1652,8 +1665,12 @@ func newHookCommand() *cobra.Command {
 			// else. It goes to STDOUT, where the session reads it, because it
 			// is counts only — no sender name and no word a report wrote, which
 			// is what the paragraph below keeps off that channel.
-			if g := inboxGreeting(); g != "" {
+			// An inbox that cannot be counted says so among the notices, on
+			// stderr: the reason names a path, and stdout carries counts only.
+			if g, n := inboxGreeting(); g != "" {
 				fmt.Fprintln(cmd.OutOrStdout(), g)
+			} else if n != "" {
+				notices = append(notices, n)
 			}
 			if len(notices) == 0 {
 				return nil
@@ -2874,7 +2891,7 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 // remote report — are flags rather than sub-verbs (itd-2609212130136102): a
 // sub-verb is a distinct action, a flag a mode of the same one.
 func newAhoyCommand(asJSON *bool) *cobra.Command {
-	var dryRun, identityMode, remoteMode bool
+	var dryRun, identityMode, remoteMode, providersMode bool
 	ahoyCmd := &cobra.Command{
 		Use:  "ahoy",
 		Args: cobra.NoArgs,
@@ -2890,6 +2907,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return runAhoyIdentity(cmd, cwd)
 			case remoteMode:
 				return runAhoyRemote(cmd, cwd, *asJSON)
+			case providersMode:
+				return runAhoyProviders(cmd, cwd, *asJSON)
 			}
 			res, err := ahoy.DryRun(cwd)
 			if err != nil {
@@ -2921,6 +2940,16 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  citations:   %s\n", termsafe.Sanitize(citations))
 				}
 				fmt.Fprintf(w, "  gaps:        %d\n", len(res.Gaps))
+				// The provider adapter's explanation (itd-2609081951381895
+				// criterion 6): optional, and named so a person meets it here.
+				for _, g := range res.Gaps {
+					switch g.ID {
+					case ahoy.ProviderAdapterGapID:
+						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")
+					case ahoy.ProviderAdapterRefusedGapID:
+						fmt.Fprintf(w, "  provider:    configuration refused — %s\n", termsafe.Sanitize(g.Detail))
+					}
+				}
 				if res.FolderKind != ahoy.UnmanagedFolder {
 					fmt.Fprintf(w, "  guard:       %s\n", guardHealthLine(*res.Guard))
 					for i, line := range banlistHealthLines(*res.Banlist) {
@@ -2949,7 +2978,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		"check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
 		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
-	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote")
+	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
+		"explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live")
+	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote", "providers")
 
 	// install
 	var (
@@ -3095,6 +3126,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(movedStub("dry-run", "abcd ahoy --dry-run"))
 	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 
 	return ahoyCmd
 }

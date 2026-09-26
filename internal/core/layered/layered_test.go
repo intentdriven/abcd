@@ -118,6 +118,9 @@ func TestMalformedFileRefusesNeverDefaults(t *testing.T) {
 		{"top level not an object", `[1,2]`, "not a JSON object", false},
 		{"duplicate key", `{"pace":{"work_minutes":1,"work_minutes":500}}`, "more than once", false},
 		{"duplicate top-level key", `{"pace":{},"pace":{"work_minutes":1}}`, "more than once", true},
+		{"case twin of a key", `{"pace":{"work_minutes":1,"Work_Minutes":500}}`, "more than once", false},
+		{"case twin of a top-level key", `{"pace":{},"PACE":{"work_minutes":1}}`, "more than once", true},
+		{"repeat inside an array element", `{"pace":{"list":[{"k":1,"k":2}]}}`, "more than once", false},
 		{"trailing content", `{"pace":{}} {"pace":{}}`, "trailing", false},
 	}
 	for _, tc := range cases {

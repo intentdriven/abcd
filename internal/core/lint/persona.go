@@ -3,22 +3,23 @@ package lint
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-// personaAttrRe matches a press-release quote attribution: `said <Name>,`.
-// The trailing comma anchors the persona-attribution form ("said Kira, a
-// maintainer") and keeps ordinary prose ("as we said above") out of scope.
+// personaAttrRe matches a press-release quote attribution: `said <Name>,` or
+// `says <Name>,` — the two verbs the release page's verbatim-quote check
+// accepts, so neither check can be passed by the verb the other reads
+// (iss-2609231715081185). The trailing comma anchors the persona-attribution
+// form ("said Kira, a product thinker") and keeps ordinary prose ("as we said
+// above") out of scope.
 // The name class is Unicode-wide (letters, marks, apostrophes, hyphens) so
 // compound and non-ASCII names (O'Brien, Anne-Marie, Zoë) cannot slip past
 // as silent non-matches.
-var personaAttrRe = regexp.MustCompile(`\bsaid (\p{Lu}[\p{L}\p{M}'’-]*),`)
+var personaAttrRe = regexp.MustCompile(`\b(?:said|says) (\p{Lu}[\p{L}\p{M}'’-]*),`)
 
 // PersonaAttribution returns the first persona name text attributes words to
-// in the `said <Name>,` form the persona_registry rule reads, and whether it
+// in the `said <Name>,` or `says <Name>,` form the persona_registry rule reads, and whether it
 // found one. The release page refuses one in headline prose, where no quote is
 // verified against its source.
 func PersonaAttribution(text string) (string, bool) {
@@ -36,7 +37,7 @@ func loadPersonaRoster(repoRoot, rel string) (map[string]bool, error) {
 	if rel == "" {
 		return nil, fmt.Errorf("persona_registry: rule enabled but \"registry\" is not set")
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot, rel))
+	data, err := readRepoFile(repoRoot, rel, maxRepoFileBytes)
 	if err != nil {
 		return nil, fmt.Errorf("persona_registry: reading roster %s: %w", rel, err)
 	}

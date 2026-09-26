@@ -355,3 +355,25 @@ func groundsEntries(body string) []string {
 func acceptedValues(vals []string) string {
 	return "accepted values: " + strings.Join(vals, " | ")
 }
+
+// ReadRefusal reports the error the ledger's read path would skip a committed
+// record with, or nil when it reads the record: the same parse, the same strict
+// schema validation and the same folder/filename invariants List runs, in that
+// order. status is the status directory the record sits in and path its file
+// path (only the basename is read).
+//
+// It exists so record-lint's record_schema gate refuses exactly the records this
+// reader refuses, by asking the reader rather than re-deriving its grammar: a
+// record the reader skips is invisible to every capture surface while it still
+// sits in the ledger, and each private copy of the grammar the gate carried drifted
+// from this one somewhere (iss-2608300205044566, iss-2608300244483405).
+func ReadRefusal(content, status, path string) error {
+	fm, _, err := parseFrontmatterAndBody(content)
+	if err != nil {
+		return err
+	}
+	if err := validateStrict(fm); err != nil {
+		return err
+	}
+	return validateInvariants(fm, State(status), path)
+}

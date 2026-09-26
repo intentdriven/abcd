@@ -278,6 +278,10 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	// The real docs-lint.json roots are ["docs", "README.md"]; both must resolve
 	// now that an unresolvable configured root fails loud (GitHub #360).
 	writeFile(t, root, "README.md", "# readme\n")
+	// Its name_roots must resolve too (iss-279).
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
+		writeFile(t, root, r, "# t\n")
+	}
 	writeFile(t, root, "docs/named.md", "# t\n\nRun this in Claude Code.\n")
 	writeFile(t, root, "docs/allowed.md", "# t\n\n<!-- docs-lint: allow --> Claude Code is named deliberately.\n")
 	writeFile(t, root, "docs/clean.md", "# t\n\nUse the agent harness.\n")

@@ -66,6 +66,19 @@ already carries one: it renders as verb-managed, and a removal would take it.
 Read the prefix as the place the verb writes, not as proof of what wrote an
 entry.
 
+The prefix is also the gate's reach. The rest of the `banned_tokens` family is
+a writing rule for the documentation and reads the configuration's `roots`; a
+name ban is about the whole public surface, so the `names/` entries alone also
+read the configuration's `name_roots`, every text file there and not only
+markdown, with `exempt_paths` excusing a historical tree as it does under
+`roots`. Wherever it runs, a `names/` entry also reads inside fenced code
+blocks, which the rest of the family skips by default: a fenced example is not
+prose, but a fence is published as readily as prose, so an entry that means to
+skip fences declares `skip_code_fences: true`. This repository's `name_roots` are `.abcd`, `AGENTS.md`,
+`CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
+configuration itself (whose entries spell every ban), the research data and the
+review archive.
+
 ## The private store's format is declared, not guessed
 
 The store's first line decides how the whole file is read. A store whose first

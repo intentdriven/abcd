@@ -43,9 +43,25 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 **Flags:**
 
 ```
-      --dry-run    print the detection result as its JSON envelope, whether or not --json is passed
-      --identity   check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
-      --remote     report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+      --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
+      --identity    check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
+      --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+```
+
+#### `abcd ahoy connect`
+
+Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.
+
+**Usage:** `abcd ahoy connect <provider> [flags]`
+
+**Flags:**
+
+```
+      --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
+      --home string         where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store
+      --key string          the credential's name (default: the provider's name)
+      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
 ```
 
 #### `abcd ahoy doctor`
@@ -834,7 +850,7 @@ Redact and store transcripts already on disk into a named repository: Writes tha
 
 #### `abcd history list`
 
-List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.
+List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.
 
 **Usage:** `abcd history list [flags]`
 
@@ -846,7 +862,7 @@ List this repository's stored transcripts, newest first: Writes nothing; refuses
 
 #### `abcd history migrate`
 
-Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.
+Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.
 
 **Usage:** `abcd history migrate [flags]`
 
@@ -873,13 +889,13 @@ Render one session and its sub-agents as one artefact plus telemetry: Writes bot
 
 #### `abcd history show`
 
-Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.
+Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.
 
 **Usage:** `abcd history show <session-id-or-filename>`
 
 #### `abcd history staged`
 
-List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.
+List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.
 
 **Usage:** `abcd history staged [flags]`
 
@@ -1803,7 +1819,9 @@ records, commits and URLs, never at a location on a machine. abcd names the
 file from the time and this repository's root-commit key; the verb prints the
 report's id and where it landed.
 
-Exit 2 on a refusal, with nothing filed.
+Exit 2 on a refusal, with nothing filed. Exit 1 when filing fails (the inbox
+cannot be created, every id drawn this second is taken, the write fails), with
+nothing filed. After the editor ran, both name where what was written is kept.
 
 **Flags:**
 

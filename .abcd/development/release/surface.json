@@ -58,9 +58,51 @@
           "hidden": false
         },
         {
+          "name": "providers",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "remote",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy connect",
+      "hidden": false,
+      "sentence": "Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
+      "flags": [
+        {
+          "name": "base-url",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "home",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "key",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "model",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -980,7 +1022,7 @@
     {
       "path": "abcd history list",
       "hidden": false,
-      "sentence": "List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
       "flags": [
         {
           "name": "session",
@@ -994,7 +1036,7 @@
     {
       "path": "abcd history migrate",
       "hidden": false,
-      "sentence": "Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.",
+      "sentence": "Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
       "flags": [
         {
           "name": "apply",
@@ -1043,13 +1085,13 @@
     {
       "path": "abcd history show",
       "hidden": false,
-      "sentence": "Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.",
+      "sentence": "Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
       "flags": []
     },
     {
       "path": "abcd history staged",
       "hidden": false,
-      "sentence": "List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
       "flags": [
         {
           "name": "all-repos",
