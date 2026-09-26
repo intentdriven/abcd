@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/site/compose.go"
-resolution: "every forge file link the site renders names blob/HEAD, the repository's default branch whatever it is called, through one forgeBlob helper"
+resolution: "every forge link the site renders into the repository names HEAD, the repository's default branch whatever it is called: a file blob/HEAD, a directory tree/HEAD, a history commits/HEAD, all through one forgeView helper (the directory and history links completed under iss-2609261241126008)"
 impact: fix
 resolved_by:
   commit: "2563473b"
