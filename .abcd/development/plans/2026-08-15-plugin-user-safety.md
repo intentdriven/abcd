@@ -90,7 +90,7 @@ once. Human-paired (the §4 gate is manual by design).
 8. **[iss-148](../../work/issues/resolved/iss-148-guard-registry-coverage-gaps-found-while-wiring-itd-103-regi.md)**
    (minor) — registry coverage gaps; every entry lands fixture-first per the
    v0.5.0 plan's rule.
-9. **[iss-174](../../work/issues/open/iss-174-rules-override-withholds-bundled-default-upgrades.md)**
+9. **[iss-174](../../work/issues/resolved/iss-174-rules-override-withholds-bundled-default-upgrades.md)**
    (minor) — a repo's rules override silently withholds bundled security
    upgrades.
 
