@@ -41,6 +41,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -2995,6 +2996,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		docsTarget    string
 		oracleBackend string
 		scanDeep      string
+		installTools  []string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3008,7 +3010,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := ahoy.Install(cwd, opts, newPrompter(cmd))
+			named, err := installToolNames(installTools)
+			if err != nil {
+				return err
+			}
+			p := newPrompter(cmd)
+			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
+			opts.ApproveDependency = len(named) > 0
+			res, err := ahoy.Install(cwd, opts, p)
 			if err != nil {
 				return err
 			}
@@ -3061,6 +3070,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)")
 	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
+	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall
@@ -3348,6 +3358,57 @@ func optionalSkipReason(id string) string {
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
 	}
 	return ""
+}
+
+// installToolNames validates the --install-tool names against the tools
+// `ahoy install` checks for, refusing any other with the names it accepts.
+func installToolNames(names []string) (map[string]bool, error) {
+	accepted := map[string]bool{}
+	for _, n := range ahoy.DependencyTools {
+		accepted[n] = true
+	}
+	named := map[string]bool{}
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if !accepted[n] {
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --install-tool %q is not a tool ahoy install checks for; it checks for %s (nothing read, nothing written)",
+				termsafe.Sanitize(n), strings.Join(ahoy.DependencyTools, ", "))}
+		}
+		named[n] = true
+	}
+	return named, nil
+}
+
+// toolConfirm is the CLI's answer to the explain-then-install question
+// (itd-63). It is deliberately narrower than the category prompter: a piped
+// answer approves categories (iss-167), but installing a program is asked only
+// of a person at a terminal, or answered by naming the tool with
+// --install-tool, which is how a host relays the answer its own question tool
+// got. --yes never installs a tool. Every no carries the way to say yes.
+func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm {
+	return func(e tools.Explanation) tools.Answer {
+		if named[e.Tool] {
+			return tools.Answer{Yes: true, Why: "named with --install-tool"}
+		}
+		if yes {
+			return tools.Answer{Why: "--yes never installs a tool; name it with --install-tool " + e.Tool + ", or run without --yes at a terminal"}
+		}
+		sp, ok := p.(*stdinPrompter)
+		if !ok || !sp.tty {
+			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal, or with --install-tool " + e.Tool}
+		}
+		for _, line := range e.Lines() {
+			fmt.Fprintln(w, termsafe.Sanitize(line))
+		}
+		fmt.Fprintf(w, "Install %s now by running %s? [y/N] ", e.Tool, e.StepText())
+		line, _ := sp.r.ReadString('\n')
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
+		}
+		return tools.Answer{Why: "answered no at the terminal"}
+	}
 }
 
 // newPrompter returns the stdin-reading prompter. On a terminal it is the

@@ -52,3 +52,27 @@ each with a test that the explanation appears and the default holds on a no.
 | 3 unknown tool: generic text, gap captured | scope 1 |
 | 4 the safety gate routes through it | scope 3 |
 | 5 no host dependency | scope 2 |
+
+## Close note
+
+Delivered on 2026-09-26 against the tree as it stands, which differs from the
+record this spec was written from in two places:
+
+- **The safety gate's missing-scanner path** (criterion 4) belongs to itd-62,
+  which is still a draft: no gate on the default branch always blocks on a
+  missing scanner. The one fail-closed missing-scanner path there is the
+  history store's, for a repository that armed the gitleaks adapter
+  (`internal/adapter/gitleaks`, opt-in since the 2026-07-24 ruling that made
+  the native scanner the default). Its refusal now carries the registry's
+  explanation (`tools.Missing`), and `ahoy install` offers the install, as a
+  required tool, for exactly that repository.
+- **The guard's and the launch's tool checks** (scope 3) do not exist: the
+  guard runs no external tool, and the launch scans are native (itd-65). There
+  was nothing to reroute, and nothing was invented.
+
+The other callers are rerouted: `ahoy`'s dependency gap and install step, and
+the missing-`gh` refusal of `ahoy remote` and `site setup`. The trufflehog gap
+was removed rather than routed (iss-2609261447331434): nothing runs trufflehog.
+The unknown-tool gap (criterion 3) is captured, not composed: the explanation
+names it as abcd's own and carries the `abcd capture` line that records it,
+and a test fails on any tool ahoy names that the registry lacks.

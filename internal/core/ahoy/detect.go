@@ -9,7 +9,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/core/identity"
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // Enumerations for config-value validation.
@@ -87,7 +89,7 @@ func Detect(cwd string) (DetectionResult, error) {
 	var gaps []Gap
 	gaps = append(gaps, detectPluginRoot(pluginOK)...)
 	if kind != UnmanagedFolder {
-		gaps = append(gaps, detectDependencies()...)
+		gaps = append(gaps, detectDependencies(abs)...)
 		gaps = append(gaps, detectSkeleton(abs)...)
 		gaps = append(gaps, detectLocalTier(abs)...)
 		gaps = append(gaps, detectIdentity(identity, idx)...)
@@ -188,23 +190,43 @@ func detectPluginRoot(ok bool) []Gap {
 	}}
 }
 
-func detectDependencies() []Gap {
-	var gaps []Gap
-	if !onPath("gitleaks") {
-		gaps = append(gaps, Gap{
-			ID: "deps.gitleaks_missing", Category: Dependency, Scope: "machine",
-			Title: "gitleaks not on PATH", Detail: "gitleaks enables a deeper secret scan.",
-			FixHint: "brew install gitleaks", Required: false, Resolvable: true,
-		})
+// DependencyTools names the tools detectDependencies checks for, and so the
+// tools `ahoy install --install-tool` can name: the front door refuses any
+// other, since no gap would ever put it to the question.
+var DependencyTools = []string{"gitleaks"}
+
+// detectDependencies names each external tool a capability here would use and
+// cannot find, with the tool registry's explanation rather than a bare command
+// (itd-63). gitleaks is the one ahoy checks: optional over the native secret
+// scanner, and REQUIRED in a repository that armed it in
+// .abcd/config/gitleaks.json, whose transcript capture refuses without it. An
+// armed repository that names an existing binary by path has no gap: the
+// adapter judges that path itself, and a refusal there is not a missing tool.
+//
+// trufflehog is not offered: nothing in abcd runs it (iss-2609261447331434),
+// and a gap asking a person to install a program abcd never uses is not an
+// explanation anyone can act on.
+func detectDependencies(cwd string) []Gap {
+	capability := tools.TranscriptScan
+	if cfg, err := gitleaks.LoadConfig(cwd); err == nil && cfg.Enabled {
+		capability = tools.TranscriptScanArmed
+		if p := strings.TrimSpace(cfg.Path); p != "" && fileExists(p) {
+			return nil
+		}
 	}
-	if !onPath("trufflehog") {
-		gaps = append(gaps, Gap{
-			ID: "deps.trufflehog_missing", Category: Dependency, Scope: "machine",
-			Title: "trufflehog not on PATH", Detail: "trufflehog enables deep secret scanning when scan.deep=true.",
-			FixHint: "brew install trufflehog", Required: false, Resolvable: true,
-		})
+	if onPath("gitleaks") {
+		return nil
 	}
-	return gaps
+	e := tools.Explain("gitleaks", capability)
+	return []Gap{{
+		ID: "deps.gitleaks_missing", Category: Dependency, Scope: "machine",
+		Title:      "gitleaks not on PATH",
+		Detail:     string(e.Requirement) + " for " + e.CapabilityName + "; without it: " + e.WithoutIt + ".",
+		FixHint:    e.StepText() + " (abcd ahoy install explains it and runs it only on your yes)",
+		Required:   e.Requirement == tools.Required,
+		Resolvable: true,
+		Tool:       &e,
+	}}
 }
 
 func onPath(tool string) bool {
