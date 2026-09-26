@@ -196,3 +196,88 @@ func TestDecisionsNamingMatchesWholeIDs(t *testing.T) {
 		t.Fatalf("decisionsNaming = %q", got)
 	}
 }
+
+// TestABriefRenderedAgainRendersTheBaseNotTheWorktree: the brief says it was
+// rendered at the lane's base, so it is read from the base commit's objects,
+// not the lane worktree's files. A brief rendered again after the implementer
+// edited, committed, moved and deleted the record in its worktree carries the
+// base's text, byte for byte the first rendering.
+func TestABriefRenderedAgainRendersTheBaseNotTheWorktree(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanceTo(t, repo, start.RunID, StepImplement)
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lane := st.Lanes[0]
+	briefPath := filepath.Join(repo.Root(), filepath.FromSlash(lane.Brief))
+	first, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wt := lane.Worktree
+	write := func(rel, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(wt, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git := func(args ...string) {
+		t.Helper()
+		repo.Git(append([]string{"-C", wt}, args...)...)
+	}
+	// Committed on the lane branch: a rewritten spec and ADR.
+	write(specRel, specWithSteps("")+"\nIMPLEMENTER'S SPEC EDIT\n")
+	write(adrRel, "---\nid: adr-27\nstatus: accepted\n---\n# IMPLEMENTER'S ADR TITLE\n")
+	git("add", "-A")
+	git("commit", "-q", "-m", "the implementer's commit")
+	// Uncommitted: the intent moved on, AGENTS.md gone, the log rewritten.
+	if err := os.MkdirAll(filepath.Join(wt, ".abcd", "development", "intents", "shipped"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git("mv", plannedRel, ".abcd/development/intents/shipped/itd-10-alpha.md")
+	if err := os.Remove(filepath.Join(wt, "AGENTS.md")); err != nil {
+		t.Fatal(err)
+	}
+	write(DecisionsLogRel, "- 2026-09-27 — IMPLEMENTER'S DECISION on itd-10.\n")
+
+	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
+	if _, err := briefStep(c, &lane); err != nil {
+		t.Fatalf("the brief renders the base whatever the worktree holds: %v", err)
+	}
+	again, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(again), "IMPLEMENTER'S") {
+		t.Fatalf("the brief carries the implementer's tree under the base's label:\n%s", again)
+	}
+	if string(again) != string(first) {
+		t.Fatalf("the brief rendered again is the base's brief:\nfirst:\n%s\nagain:\n%s", first, again)
+	}
+}
+
+// TestABriefSourceTheBaseHoldsAsASymlinkIsRefused: a record the base commits
+// as a link (mode 120000) is not read through, whatever it points at.
+func TestABriefSourceTheBaseHoldsAsASymlinkIsRefused(t *testing.T) {
+	repo := briefRepo(t, "")
+	if err := os.Symlink("/etc/hosts", filepath.Join(repo.Root(), "AGENTS.md")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("add", "AGENTS.md")
+	repo.Commit("a linked AGENTS.md")
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanceTo(t, repo, start.RunID, StepBrief)
+	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	if r := mustRefusal(t, err); r.Step != string(StepBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
+		t.Fatalf("want the linked AGENTS.md refused: %+v", r)
+	}
+}

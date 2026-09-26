@@ -159,8 +159,10 @@ the worktree git lists at the lane's path on the lane's branch and adopts it;
 anything else at that path is refused and left as it is.
 
 **The brief** (piece 5; criterion 3). The brief is rendered from the lane's
-base, the worktree just made, so the implementer reads the record its branch
-builds on: the intent and the spec whole, the conventions of `AGENTS.md` (its
+base commit, read out of git's objects rather than the worktree's files, so the
+implementer reads the record its branch builds on, and a brief rendered again
+after the implementer edited, committed or removed a file in the worktree is
+still the base's: the intent and the spec whole, the conventions of `AGENTS.md` (its
 section between `<!-- working-conventions … -->` and
 `<!-- /working-conventions -->` when it marks one, the whole file when it does
 not), and the decisions the intent cites (each ADR id in the intent, with its
@@ -170,7 +172,8 @@ at, then gives the lane (the spec step it builds, the worktree, the branch) and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
 directory. An intent the default branch does not carry as planned, a spec not
-open there, or no `AGENTS.md` is refused rather than briefed from elsewhere.
+open there, or no `AGENTS.md` is refused rather than briefed from elsewhere, and
+so is a source the base holds as a link or past its size cap.
 The brief is written atomically, mode `0600`.
 
 **The receipt** (piece 7; criterion 4). The implement step hands the lane to a

@@ -11,19 +11,21 @@ package loop
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/decide"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
-	"github.com/intentdriven/abcd/internal/core/record"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The files of a lane's directory, .abcd/.work.local/run/<run-id>/<lane-id>/.
@@ -105,7 +107,7 @@ func briefStep(c Context, lane *Lane) (Outcome, error) {
 			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
 			"the worktree step makes it; restore the run's state file")
 	}
-	src, err := readBriefSources(lw.Path, c.State, lane)
+	src, err := readBriefSources(c.RepoRoot, c.State, lane)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -131,90 +133,241 @@ func briefStep(c Context, lane *Lane) (Outcome, error) {
 		rel, c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions), shortSHA(lane.BaseSHA))}, nil
 }
 
-// readBriefSources reads what a brief is rendered from out of the lane's
-// worktree. The lane is built off the default branch, so a record the default
-// branch does not carry — an intent planned only on another branch, a spec not
-// open there, no AGENTS.md — is refused rather than briefed from elsewhere.
-func readBriefSources(worktree string, st State, lane *Lane) (briefSources, error) {
+// readBriefSources reads what a brief is rendered from out of the lane's base
+// commit — git's objects, not the lane worktree's files — so the brief is the
+// base it names however often it is rendered: an implementer's edit, commit,
+// move or deletion in the worktree never reaches it. The lane is built off the
+// default branch, so a record the base does not carry — an intent planned only
+// on another branch, a spec not open there, no AGENTS.md — is refused rather
+// than briefed from elsewhere.
+func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, error) {
 	var src briefSources
+	if !gitutil.IsFullSHA(lane.BaseSHA) {
+		return src, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("the lane records no base commit to read the record at (%s)", quoteOrNone(lane.BaseSHA)),
+			"the worktree step records it; restore the run's state file")
+	}
 	base := "the lane's base (" + lane.Branch + " at " + shortSHA(lane.BaseSHA) + ")"
-	corpus, err := intent.Load(worktree)
+	at := baseTree{root: repoRoot, sha: lane.BaseSHA}
+
+	it, err := at.record(intent.IntentsRelDir, "itd", st.Intent)
 	if err != nil {
 		return src, fmt.Errorf("reading the intents at %s: %w", base, err)
 	}
-	it, ok := corpus.Lookup(st.Intent)
-	if !ok || it.Bucket != "planned" {
+	if len(it) != 1 || it[0].folder != intent.BucketPlanned {
 		where := "does not carry it"
-		if ok {
-			where = "holds it in " + it.Bucket + "/"
+		if len(it) > 0 {
+			where = "holds it in " + folders(it)
 		}
 		return src, refuse(string(StepBrief), "", lane.ID,
 			fmt.Sprintf("%s is not planned at %s: the default branch %s", st.Intent, base, where),
 			"land the intent's planning on the default branch first; a lane is built off the default branch")
 	}
-	store, err := spec.Load(worktree)
+	sp, err := at.record(spec.SpecsRelDir, "spc", st.Spec)
 	if err != nil {
 		return src, fmt.Errorf("reading the specs at %s: %w", base, err)
 	}
-	sp, ok := store.Lookup(st.Spec)
-	if !ok || sp.Status != "open" {
+	if len(sp) != 1 || sp[0].folder != spec.StatusOpen {
 		return src, refuse(string(StepBrief), "", lane.ID,
 			fmt.Sprintf("%s is not open at %s", st.Spec, base),
 			"land the spec on the default branch first; a lane is built off the default branch")
 	}
-	root, err := os.OpenRoot(worktree)
-	if err != nil {
-		return src, fmt.Errorf("opening the lane's worktree: %w", err)
-	}
-	defer root.Close()
 
-	read := func(rel string, limit int64) ([]byte, error) {
-		b, err := fsutil.ReadGuardedInRoot(root, rel, limit)
+	read := func(e baseEntry, limit int64) ([]byte, error) {
+		b, err := at.blob(e, limit)
 		if err != nil {
-			return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s cannot be read at %s: %v", rel, base, err),
-				"the brief reads regular files within their caps; restore "+rel+" on the default branch")
+			return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s cannot be read at %s: %v", e.path, base, err),
+				"the brief reads regular files within their caps; restore "+e.path+" on the default branch")
 		}
 		return b, nil
 	}
-	intentText, err := read(it.Path, maxRecordBytes)
+	intentText, err := read(it[0], maxRecordBytes)
 	if err != nil {
 		return src, err
 	}
-	specText, err := read(sp.Path, maxRecordBytes)
+	specText, err := read(sp[0], maxRecordBytes)
 	if err != nil {
 		return src, err
 	}
-	agents, err := fsutil.ReadGuardedInRoot(root, ConventionsFile, maxRecordBytes)
-	if errors.Is(err, fs.ErrNotExist) {
+	agentsEntry, found, err := at.file(ConventionsFile)
+	if err != nil {
+		return src, fmt.Errorf("reading %s at %s: %w", ConventionsFile, base, err)
+	}
+	if !found {
 		return src, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s holds no %s, so the lane has no conventions to be briefed with", base, ConventionsFile),
 			"write the repository's conventions into "+ConventionsFile+" on the default branch (`abcd prepare-this-repo` sets one up)")
-	} else if err != nil {
-		return src, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s cannot be read at %s: %v", ConventionsFile, base, err),
-			"the brief reads a regular file within its cap; restore "+ConventionsFile+" on the default branch")
 	}
-	src.intentPath, src.intentText = it.Path, string(intentText)
-	src.specPath, src.specText = sp.Path, string(specText)
+	agents, err := read(agentsEntry, maxRecordBytes)
+	if err != nil {
+		return src, err
+	}
+	src.intentPath, src.intentText = it[0].path, string(intentText)
+	src.specPath, src.specText = sp[0].path, string(specText)
 	src.conventions, src.conventionsFrom = conventionsSection(string(agents))
 
 	ids := adrCiteRe.FindAllString(src.intentText, -1)
 	slices.Sort(ids)
-	for _, id := range slices.Compact(ids) {
-		a := citedADR{ID: id}
-		if d, err := record.Describe(worktree, id); err == nil {
-			a.ID, a.Title, a.Path, a.Found = d.ID, d.Title, d.Path, true
+	var adrs []baseEntry
+	if len(ids) > 0 {
+		if adrs, err = at.list(decide.ADRsRelDir+"/", false); err != nil {
+			return src, fmt.Errorf("reading the ADRs at %s: %w", base, err)
 		}
-		src.adrs = append(src.adrs, a)
 	}
-	log, err := fsutil.ReadGuardedInRoot(root, DecisionsLogRel, maxDecisionsBytes)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-	case err != nil:
-		return src, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s cannot be read at %s: %v", DecisionsLogRel, base, err),
-			"the brief reads a regular file within its cap; restore "+DecisionsLogRel+" on the default branch")
-	default:
+	for _, id := range slices.Compact(ids) {
+		src.adrs = append(src.adrs, at.describeADR(adrs, id))
+	}
+	logEntry, found, err := at.file(DecisionsLogRel)
+	if err != nil {
+		return src, fmt.Errorf("reading %s at %s: %w", DecisionsLogRel, base, err)
+	}
+	if found {
+		log, err := read(logEntry, maxDecisionsBytes)
+		if err != nil {
+			return src, err
+		}
 		src.decisions = decisionsNaming(string(log), st.Intent, st.Spec)
 	}
 	return src, nil
+}
+
+// baseTree reads the record out of one commit's objects through the isolated
+// git environment, every listing and every blob under a cap.
+type baseTree struct {
+	root, sha string
+}
+
+// baseEntry is one file of the base commit as git's tree lists it.
+type baseEntry struct {
+	mode, kind, object, path string
+	size                     int64
+	// folder is the record's status folder, for an entry record found.
+	folder string
+}
+
+// maxBaseListing caps one listing of the base commit's tree.
+const maxBaseListing = 8 << 20
+
+// list is `git ls-tree -l` of the base at path: a file names itself, and
+// "dir/" names the directory's entries, one level deep unless recursive.
+func (b baseTree) list(path string, recursive bool) ([]baseEntry, error) {
+	args := []string{"ls-tree", "-l", "-z", "--full-tree"}
+	if recursive {
+		args = append(args, "-r")
+	}
+	out, err := gitutil.RunCapped(b.root, maxBaseListing, append(args, b.sha, "--", path)...)
+	if err != nil {
+		return nil, err
+	}
+	var entries []baseEntry
+	for _, rec := range strings.Split(out, "\x00") {
+		if rec == "" {
+			continue
+		}
+		meta, p, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(meta) // <mode> <type> <object> <size>
+		if !ok || len(f) != 4 {
+			return nil, fmt.Errorf("git ls-tree returned a record it does not document: %q", rec)
+		}
+		e := baseEntry{mode: f[0], kind: f[1], object: f[2], path: p, size: -1}
+		if n, err := strconv.ParseInt(f[3], 10, 64); err == nil {
+			e.size = n
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// file is the base's entry at rel, and whether the base carries anything
+// there.
+func (b baseTree) file(rel string) (baseEntry, bool, error) {
+	entries, err := b.list(rel, false)
+	if err != nil || len(entries) == 0 {
+		return baseEntry{}, false, err
+	}
+	for _, e := range entries {
+		if e.path == rel {
+			return e, true, nil
+		}
+	}
+	return baseEntry{}, false, nil
+}
+
+// record finds id among the family's record files under dir at the base, by
+// the id its filename claims (recordid.SplitRecordFilename, the one splitter
+// the ledger and the record gates share), with the status folder each copy
+// sits in.
+func (b baseTree) record(dir, family, id string) ([]baseEntry, error) {
+	entries, err := b.list(dir+"/", true)
+	if err != nil {
+		return nil, err
+	}
+	var found []baseEntry
+	for _, e := range entries {
+		rest, ok := strings.CutPrefix(e.path, dir+"/")
+		folder, name, ok2 := strings.Cut(rest, "/")
+		if !ok || !ok2 || strings.Contains(name, "/") {
+			continue
+		}
+		if got, _, ok := recordid.SplitRecordFilename(family, name); ok && recordid.SameID(got, id) {
+			e.folder = folder
+			found = append(found, e)
+		}
+	}
+	return found, nil
+}
+
+// blob is the content of a regular file the base carries, refused when the
+// base holds a link or anything but a file there, or when it passes limit.
+func (b baseTree) blob(e baseEntry, limit int64) ([]byte, error) {
+	if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
+		return nil, fmt.Errorf("the base holds it as mode %s %s, not a regular file", e.mode, e.kind)
+	}
+	if e.size < 0 || e.size > limit {
+		return nil, fmt.Errorf("it is %d bytes, past the %d-byte cap", e.size, limit)
+	}
+	out, err := gitutil.RunCapped(b.root, int(limit), "cat-file", "blob", e.object)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
+}
+
+// describeADR is the cited ADR as the base holds it, routed by the id its
+// filename claims and confirmed by its frontmatter id, as record.Describe
+// routes and confirms one on disk; titled by its first heading.
+func (b baseTree) describeADR(entries []baseEntry, id string) citedADR {
+	canonical := recordid.CanonADRID(id)
+	for _, e := range entries {
+		name := strings.TrimPrefix(e.path, decide.ADRsRelDir+"/")
+		if canonical == "" || strings.Contains(name, "/") || !strings.HasSuffix(name, ".md") || recordid.ADRFileID(name) != canonical {
+			continue
+		}
+		data, err := b.blob(e, maxRecordBytes)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(data), "\n")
+		if recordid.CanonADRID(strings.Trim(strings.TrimSpace(frontmatter.Fields(lines)["id"].Value), `"'`)) != canonical {
+			continue
+		}
+		title := strings.TrimSuffix(name, ".md")
+		for _, ln := range lines {
+			if t, ok := strings.CutPrefix(ln, "# "); ok {
+				title = strings.TrimSpace(t)
+				break
+			}
+		}
+		return citedADR{ID: canonical, Title: title, Path: e.path, Found: true}
+	}
+	return citedADR{ID: id}
+}
+
+// folders names the status folders a record's copies sit in.
+func folders(entries []baseEntry) string {
+	var fs []string
+	for _, e := range entries {
+		fs = append(fs, e.folder+"/")
+	}
+	return strings.Join(fs, " and ")
 }
 
 // conventionsSection returns the working-conventions section of an AGENTS.md
