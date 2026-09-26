@@ -140,8 +140,11 @@ renders what landed first.
 
 ## Disclosed limits
 
-- The context is assembled from the ledger as it stands on disk. A scribe that
-  needs ledger content the working tree does not hold is outside this scope.
+- The context is assembled from the ledger as it stands in the working tree,
+  uncommitted records included, where the intent's scope condition speaks of
+  committed ledger content; which of the two moves is recorded as a question
+  owed (iss-2609261056373310). A scribe that needs ledger content the working
+  tree does not hold is outside this scope.
 - The verb cannot enforce what a host hands a session. The plugin surface states
   the obligation, and the separation check can only see what a host retained:
   where a host assembles context before anything is retained, the check reports
@@ -155,6 +158,12 @@ renders what landed first.
   outstanding items, promotes nothing, so the records the first attempt wrote
   have no promoted manifest beside the run; the parked one still names the
   context they came from.
+- The verbatim check is a substring test over the whole supplied text once
+  whitespace is folded. It proves every word was already there, not that the
+  words answer the item they are filed under: a ground may be another item's
+  remark, or a run of words that crosses from one item's line into the next.
+  The state and the admission are held to the item's own line; a ground is held
+  to the text.
 - The state check reads words, not sense. A line that names a state only to
   negate it ("rdi-N: not accepted") still carries it, and a line naming two
   states carries both, so the verb refuses a state the item's line does not
