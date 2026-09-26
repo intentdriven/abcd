@@ -508,6 +508,20 @@ func (r schemaRecord) valueEmpty(field string, f fmField) bool {
 	return isAbsentValue(f.value)
 }
 
+// blockValue returns the value a key carries on the indented lines below it,
+// and whether it carries one there: a key whose own line is empty, or holds
+// only a block-scalar header (`|`, `>-`), over a non-empty block. It is the
+// block half of valueEmpty's question, for the legs that must tell a
+// block-spelled value from a same-line one.
+func (r schemaRecord) blockValue(field string, f fmField) (string, bool) {
+	v := strings.TrimSpace(f.value)
+	if v != "" && !blockScalarIndicatorRe.MatchString(v) {
+		return "", false
+	}
+	block := r.blocks[field]
+	return block, strings.TrimSpace(block) != ""
+}
+
 // recordRef is one handle read out of a cross-reference field.
 type recordRef struct {
 	prefix string
@@ -596,7 +610,11 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// speak store-wide, must leave the consequence to the leg that established it
 		// (iss-2608301308369559). The content legs therefore run FIRST and mark what
 		// they spoke about, so nobody has to keep a second list of which fields those
-		// are, and a leg added later is covered by having said something.
+		// are, and a leg added later is covered by having said something. Every leg
+		// marks what it reported even where another leg also covers the field:
+		// `id: ""` is present to the filename leg and blank to the required-fields
+		// leg, so the id mark is what keeps one value to one finding, and
+		// TestFilenameLegsMarkWhatTheyJudged pins both marks (iss-2608301634520703).
 		judged := map[string]bool{}
 		before := len(out)
 		out = append(out, checkRecordFilename(r, cfg.Severity, judged)...)
@@ -957,12 +975,12 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 //
 // The second is PRESENCE: a target that is not in the corpus joins nothing.
 //
-// The fourth is the POSITION, where the join declares one: what reads such a join
+// The third is the POSITION, where the join declares one: what reads such a join
 // consults it only for a target at that position, so a target at any other is
 // never queried and the record counts for nothing — the third coordinate of the
 // pair the run and spelling axes already close (iss-2608301649339636).
 //
-// The third is the BUCKET. A target that is in the corpus but in ANOTHER BUCKET
+// The fourth is the BUCKET. A target that is in the corpus but in ANOTHER BUCKET
 // joins something nobody will ever look for: what reads that family keys what it
 // finds on the PAIR — the bucket the record is filed under, and the target it
 // names — so a record reaching across buckets is keyed on a pair no reader
@@ -1090,7 +1108,9 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 						" is keyed on a pair nothing ever queries: it counts for nothing, and no line reports " +
 						"that an answer was written for the " + target.noun() + " it names",
 				})
-				continue
+				// No continue: a target both at the wrong position and in another
+				// bucket is reported on both counts, so the author converges in one
+				// round rather than two (iss-2608301808197261).
 			}
 		}
 		// The bucket obligation, where the join declares one. The target is of the
@@ -1337,9 +1357,14 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	// the sibling of the list case, and the same silent invisibility
 	// (iss-2608300234599781). What the block SAYS is not parsed: it is present, and
 	// it is no instant, which is the whole of the finding.
+	//
+	// The block is read through r.blockValue, the accessor the required-field
+	// check's valueEmpty shares, so a block-scalar HEADER (`lapsed_at: |` over an
+	// indented instant) is a block here too, and gets the block message rather
+	// than a format complaint about the header byte (iss-2608301221402131).
 	fromBlock := false
-	if hasLapseField && lapsedAt == "" && strings.TrimSpace(lapseField.value) == "" {
-		if block := r.blocks["lapsed_at"]; block != "" {
+	if hasLapseField {
+		if block, ok := r.blockValue("lapsed_at", lapseField); ok {
 			lapsedAt, fromBlock = block, true
 		}
 	}
@@ -1588,6 +1613,13 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 					}
 					out = append(out, Finding{
 						File: rel, Line: dup.Line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
+					})
+				}
+				for _, n := range setextUnderlineLines(lines) {
+					out = append(out, Finding{
+						File: rel, Line: n, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+						Message: "a bare `---` directly under a paragraph line is a setext underline, not a thematic break: it renders line " +
+							strconv.Itoa(n-1) + " as a heading nobody wrote; put a blank line above it, or remove it",
 					})
 				}
 				fields := frontmatterFields(lines)
@@ -2142,4 +2174,35 @@ func checkIssueBodyRenders(r schemaRecord, severity string) []Finding {
 		Message: "the record body carries markdown the site renderer refuses (" + err.Error() +
 			"); site-render fails on it — rewrite the construct inside the renderer's subset (a fenced block for code)",
 	}}
+}
+
+// setextUnderlineRe is a `---` run that CommonMark reads as a setext heading's
+// underline when it sits directly under a paragraph line.
+var setextUnderlineRe = regexp.MustCompile(`^ {0,3}-{3,}[ \t]*$`)
+
+// notParagraphRe is a line that opens a block other than a paragraph, under
+// which a `---` is a thematic break rather than an underline: an ATX heading, a
+// blockquote, a list item, a table row, an HTML line, or an indented line (a
+// list continuation or indented code).
+var notParagraphRe = regexp.MustCompile(`^(?:\s{4}|\t| {0,3}(?:#|>|[-*+](?:\s|$)|\d+[.)](?:\s|$)|\||<))`)
+
+// setextUnderlineLines returns the 1-based lines of a record body where a bare
+// `---` sits directly under a paragraph line, so a capture that meant a
+// thematic break renders the paragraph above it as a heading
+// (iss-2608221342508878). Fenced lines are the example text they look like.
+func setextUnderlineLines(lines []string) []int {
+	start := frontmatterBodyStart(lines)
+	mask := fenceMask(lines)
+	var out []int
+	for i := start + 1; i < len(lines); i++ {
+		if mask[i] || mask[i-1] || !setextUnderlineRe.MatchString(lines[i]) {
+			continue
+		}
+		prev := lines[i-1]
+		if strings.TrimSpace(prev) == "" || notParagraphRe.MatchString(prev) || setextUnderlineRe.MatchString(prev) {
+			continue
+		}
+		out = append(out, i+1)
+	}
+	return out
 }

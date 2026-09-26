@@ -7,6 +7,10 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-189-delta-ruthless"
 found_at: "internal/core/lint/schema.go"
+resolution: "checkRecordJoins' godoc ordinals follow the code, iss-2608301744300631 names !!null, and commands/capture.md lists the two proposal join refusals."
+impact: internal
+resolved_by:
+  commit: "6eed91a6"
 ---
 
 three nits from the itd-189 delta ruthless review including a godoc whose ordinals no longer match the code order
@@ -24,3 +28,7 @@ rather than by re-opening a review.
 3. `commands/capture.md` lists the `grounds` and `proposal` refusals that hold
    today but not the two join refusals now armed on `proposal`: a target in
    another run, and a target outside the widening position.
+
+## Grounds
+
+- pursued: a reader following the godoc meets the legs in the order numbered and capture.md names every refusal record_schema arms on proposal; a refusal the page omits would show it wrong

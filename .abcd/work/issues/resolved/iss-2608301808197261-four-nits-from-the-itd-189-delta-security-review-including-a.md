@@ -7,6 +7,10 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-189-delta-security"
 found_at: "internal/core/lint/schema.go"
+resolution: "bucketField is pinned in the required set, the position and bucket legs report together, a zero-width-only value is blank, and an undefined alias is pinned as refused."
+impact: fix
+resolved_by:
+  commit: "85fae525"
 ---
 
 four nits from the itd-189 delta security review including an unpinned bucket field stand down and a zero width space passing the gate
@@ -30,3 +34,7 @@ review.
    this character elsewhere.
 4. `grounds: *a`, an alias to an undefined anchor, passes the gate; a strict YAML
    parser errors on it.
+
+## Grounds
+
+- pursued: an admission cross-position and cross-bucket gets both findings, and grounds of only U+200B or an undefined alias is refused; a single finding or a green zero-width grounds would show it wrong

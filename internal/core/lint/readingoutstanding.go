@@ -197,6 +197,12 @@ type ContestedItem struct {
 	Path string `json:"path"`
 	// Standing is every standing id, sorted — the whole fault, not a sample.
 	Standing []string `json:"standing"`
+	// Illegible names the standing ids whose record no reader can read. The
+	// prescribed hand repair — write supersedes_disposition into the records no
+	// longer meant to stand — is inert on such a record, whose supersession is
+	// discarded with the rest of its frontmatter, so the reader has to know
+	// which ones need their frontmatter repaired first (iss-2608300848049813).
+	Illegible []string `json:"illegible,omitempty"`
 }
 
 // Empty reports whether there is nothing outstanding — the ordinary state of a
@@ -236,7 +242,11 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 		if os.IsNotExist(err) {
 			return report, nil
 		}
-		return report, err
+		report.Unsafe = append(report.Unsafe, UnsafePath{
+			Path:   filepath.ToSlash(filepath.Join(issuesDir, issueschema.ReadingsDir)),
+			Reason: unreadableReason(err),
+		})
+		return report, nil
 	}
 	// The dispositions family root answers for every item below, so a link there
 	// silently empties the standing set of ALL of them — every item would read as
@@ -271,7 +281,14 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 		}
 		entries, err := os.ReadDir(runDir)
 		if err != nil {
-			return OutstandingReadings{}, err
+			// A run the walk cannot list is a path it did not read, on the same
+			// terms as a file it cannot read — never an abort of the whole report
+			// (iss-2608300848049813).
+			report.Unsafe = append(report.Unsafe, UnsafePath{
+				Path:   filepath.ToSlash(filepath.Join(issuesDir, issueschema.ReadingsDir, run.Name())),
+				Reason: unreadableReason(err),
+			})
+			continue
 		}
 		for _, e := range entries {
 			m := readingItemFileRe.FindStringSubmatch(e.Name())
@@ -320,7 +337,7 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			case len(answer.contested) > 1:
 				report.Contested = append(report.Contested, ContestedItem{
 					Item: item, Run: run.Name(), Path: filepath.ToSlash(rel),
-					Standing: answer.contested,
+					Standing: answer.contested, Illegible: answer.illegible,
 				})
 			case answer.standing == nil:
 				// A widening proposal carrying an admission is answered: the
@@ -568,6 +585,8 @@ type itemAnswer struct {
 	standing *standingRecord
 	// contested is every standing id when more than one stands.
 	contested []string
+	// illegible is the contested ids whose record no reader can read.
+	illegible []string
 	// cyclic reports records present with none standing — a supersession cycle.
 	cyclic bool
 	// holds is every standing record that is a hold, so an exit condition is
@@ -594,7 +613,12 @@ func standingDisposition(issuesRoot, issuesDir, item string) (itemAnswer, error)
 		if os.IsNotExist(err) {
 			return answer, nil
 		}
-		return answer, err
+		// Unlistable is unknown, not unanswered, and not an abort either.
+		answer.unsafe = append(answer.unsafe, UnsafePath{
+			Path:   filepath.ToSlash(filepath.Join(issuesDir, issueschema.DispositionsDir, item)),
+			Reason: unreadableReason(err),
+		})
+		return answer, nil
 	}
 	var records []issueschema.DispositionRecord
 	byID := map[string]issueschema.DispositionRecord{}
@@ -650,6 +674,11 @@ func standingDisposition(issuesRoot, issuesDir, item string) (itemAnswer, error)
 		// judgement, and there is nothing here to make it from; choosing one would
 		// publish a verdict the ledger does not contain.
 		answer.contested = standing
+		for _, id := range standing {
+			if !byID[id].WellFormed {
+				answer.illegible = append(answer.illegible, id)
+			}
+		}
 		return answer, nil
 	}
 
@@ -712,10 +741,21 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 		})
 	}
 	for _, c := range report.Contested {
+		illegible := map[string]bool{}
+		for _, id := range c.Illegible {
+			illegible[id] = true
+		}
+		named := make([]string, len(c.Standing))
+		for i, id := range c.Standing {
+			named[i] = id
+			if illegible[id] {
+				named[i] = id + " (not well-formed: repair its frontmatter first, since a supersession written into it is discarded with the rest)"
+			}
+		}
 		out = append(out, Finding{
 			File: c.Path, Line: 1, RuleID: ruleReadingOutstanding, Severity: severityInfo,
 			Message: c.Item + " (run " + c.Run + ") has " + strconv.Itoa(len(c.Standing)) +
-				" standing answers, none superseding another: " + strings.Join(c.Standing, ", ") +
+				" standing answers, none superseding another: " + strings.Join(named, ", ") +
 				". Which one is in force is a judgement the ledger does not contain, so nothing here picks one. " +
 				"`abcd capture disposition " + c.Item + "` refuses until exactly one stands: write " +
 				"`supersedes_disposition` into the records that are no longer meant to stand, by hand — a new " +

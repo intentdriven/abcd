@@ -1,6 +1,9 @@
 package frontmatter
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // Emptiness is what a frontmatter scalar carries, decided by the CLASS of YAML
 // node it spells rather than by the literal it is written with.
@@ -83,9 +86,9 @@ func IsEmptyValue(raw string) bool { return EmptinessOf(raw) != Populated }
 // enumerating these spellings lists a bare alias among the values that carry
 // nothing here.
 func EmptinessOf(raw string) Emptiness {
-	v := strings.TrimSpace(raw)
+	v := trimBlank(raw)
 	rest, hadProperties := stripNodeProperties(v)
-	rest = strings.TrimSpace(rest)
+	rest = trimBlank(rest)
 
 	if rest == "" {
 		// Properties and nothing else is an EMPTY node, which is a null the
@@ -105,10 +108,22 @@ func EmptinessOf(raw string) Emptiness {
 	if isEmptyFlow(rest, '[', ']') || isEmptyFlow(rest, '{', '}') {
 		return EmptyCollection
 	}
-	if inner, quoted := stripOneQuotePair(rest); quoted && strings.TrimSpace(inner) == "" {
+	if inner, quoted := stripOneQuotePair(rest); quoted && trimBlank(inner) == "" {
 		return EmptyString
 	}
 	return Populated
+}
+
+// trimBlank trims whitespace and the zero-width runes around a value. A value
+// that is only a zero-width space renders as nothing and states nothing, as a
+// blank does, but strings.TrimSpace keeps it (it trims U+00A0 and not U+200B),
+// so a gate asking "does this carry anything" read it as carried
+// (iss-2608301808197261). The set is termsafe's zero-width set, whose
+// predicate is unexported there.
+func trimBlank(s string) string {
+	return strings.TrimFunc(s, func(r rune) bool {
+		return unicode.IsSpace(r) || r == 0x200B || r == 0x200C || r == 0x200D || r == 0xFEFF
+	})
 }
 
 // stripNodeProperties removes the YAML node properties in front of a scalar — a

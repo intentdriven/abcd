@@ -197,7 +197,7 @@ func validatePage(cut Cut, p *PressReleasePayload, rs *reasons) validatedPage {
 			rs.add(ReasonEmptyProse, at+".text", "the headline citing %s has no prose", strings.Join(ids, ", "))
 		}
 		if name, found := lint.PersonaAttribution(h.Text); ok && found {
-			rs.add(ReasonBlockquote, at+".text", "the headline attributes words to %q (`said <Name>,`), which only a verified quote may do; "+
+			rs.add(ReasonBlockquote, at+".text", "the headline attributes words to %q (`said <Name>,` or `says <Name>,`), which only a verified quote may do; "+
 				"carry the quote in quotes, or drop the attribution", termsafe.Sanitize(name))
 		}
 		out.headlines = append(out.headlines, Headline{Records: ids, Text: text})

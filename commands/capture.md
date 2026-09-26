@@ -442,15 +442,20 @@ declined proposal is not a third record: it is the disposition above in its
 and no `srp-N`, and the command-side refusal is the next iteration's. What holds
 today is the committed-tree gate: `record_schema` refuses an admission whose
 `grounds` carries no value on the key's own line, an admission with no
-`proposal`, a surprise whose `occasioned_by` names a record the corpus does not
-hold, and either record filed in the other's store.
+`proposal`, an admission whose `proposal` names an item filed under another run
+or an item at a position other than widening, a surprise whose `occasioned_by`
+names a record the corpus does not hold, and either record filed in the other's
+store.
 Carrying no value is judged by the kind of YAML node the value is, not by the
 literal it is spelled with, so there is no list to fall outside of: empty,
-whitespace, quoted-empty, quoted-whitespace, an empty flow collection (`[]`,
-`{}`), a YAML null however it is written (`~`, `null`, `!!null`, `!!null null`,
-`!<tag:yaml.org,2002:null>`), a node that is nothing but a tag, an anchor or an
-alias (`!!str ''`, `!!seq []`, `&anchor`, `*alias`), and a block scalar holding
-nothing all carry nothing alike. A trailing comment is stripped before the value
+whitespace (a non-breaking space and the zero-width runes included),
+quoted-empty, quoted-whitespace, an empty flow collection (`[]`, `{}`), a YAML
+null however it is written (`~`, `null`, `Null`, `NULL`, `!!null`, `!!null
+null`, `!<tag:yaml.org,2002:null>`), a node that is nothing but a tag or an
+anchor (`!!str ''`, `!!seq []`, `&anchor`), and a block scalar holding nothing
+all carry nothing alike. An alias (`*alias`) is refused too, because the gate
+reads one line at a time and cannot resolve it; to a full YAML reader an alias
+to a defined anchor carries that anchor's value, so spell the value out. A trailing comment is stripped before the value
 is judged, so it hides none of them.
 `abcd lint` reports a widening proposal carrying neither an admission nor a
 decline, at `info`.

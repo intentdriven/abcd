@@ -7,6 +7,10 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-189-round-4-builder"
 found_at: "internal/core/lint/schema.go"
+resolution: "A test walks the declared stores and asserts every one declaring a bucketField also declares buckets."
+impact: internal
+resolved_by:
+  commit: "85fae525"
 ---
 
 the bucketField implies a bucketed store rule is asserted in prose only so a flat store declaring one would report filed under empty
@@ -26,3 +30,7 @@ asymmetry iss-2608301519254240 was raised about one leg away.
 
 Cheap close: a test walking the declared stores and asserting that every one
 declaring a `bucketField` also declares buckets.
+
+## Grounds
+
+- pursued: a flat store declaring a bucketField turns TestEveryStoreDeclaringABucketFieldDeclaresBuckets red; a store added that way with the test green would show it wrong
