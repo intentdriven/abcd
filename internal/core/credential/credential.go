@@ -173,8 +173,13 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 		changed, werr = setLocked(home, dir, name, value)
 		return werr
 	})
-	if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
-		return false, fmt.Errorf("credential: %s is being written by another abcd, or its lock could not be taken, so nothing was written; retry", StorePath)
+	switch {
+	case errors.Is(err, fsutil.ErrLockContention):
+		return false, fmt.Errorf("credential: %s is being written by another abcd, so nothing was written; retry", StorePath)
+	case errors.Is(err, fsutil.ErrLockPathUnsafe):
+		// A retry cannot cure a symlinked or non-regular lock, so the
+		// refusal names it rather than reading as contention.
+		return false, fmt.Errorf("credential: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", storeLockFileName)
 	}
 	return changed, err
 }

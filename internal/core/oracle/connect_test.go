@@ -306,3 +306,41 @@ func TestConcurrentConnectsOfOneProviderWriteOneBlock(t *testing.T) {
 		t.Fatalf("%d concurrent setups of one provider reported success; want exactly one", n)
 	}
 }
+
+// TestConnectNamesAnUnsafeConfigLockRatherThanContention: a lock beside
+// ~/.abcd/config.json that is a symlink is refused, and the refusal says so;
+// it is not the contention message, because retrying cannot cure a symlink.
+// The symlink's target is never created and no block is written.
+func TestConnectNamesAnUnsafeConfigLockRatherThanContention(t *testing.T) {
+	p := newProvFake(t, 200, chat("local-model", "ok"))
+	f := newFx(t)
+	dir := filepath.Join(f.roots.Home, ".abcd")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Symlink(target, filepath.Join(dir, configLockFileName)); err != nil {
+		t.Fatal(err)
+	}
+	req := connectReq(f, p.base())
+	req.Provider, req.Home, req.Key = "desk", KeyHomeNone, ""
+	_, err := Connect(context.Background(), req)
+	if err == nil {
+		t.Fatal("Connect succeeded through a symlinked lock")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "retry") || strings.Contains(msg, "another abcd") {
+		t.Fatalf("err = %v, want the unsafe lock named, not contention", err)
+	}
+	if !strings.Contains(msg, "~/.abcd/"+configLockFileName) || !strings.Contains(msg, "not a regular file") {
+		t.Fatalf("err = %v, want it to name the lock and that it is not a regular file", err)
+	}
+	if strings.Contains(msg, f.roots.Home) {
+		t.Fatalf("err = %v carries the home path", err)
+	}
+	for _, name := range []string{target, machineFile(f, "config.json")} {
+		if _, statErr := os.Lstat(name); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("%s was created", name)
+		}
+	}
+}

@@ -234,8 +234,13 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	err := fsutil.WithFileLock(filepath.Join(filepath.Dir(p), configLockFileName), configLockTimeout, func() error {
 		return writeProviderBlockLocked(p, name, block)
 	})
-	if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
-		return fmt.Errorf("oracle adapter: %s is being written by another abcd, or its lock could not be taken, so the provider block was not written; retry", origin)
+	switch {
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("oracle adapter: %s is being written by another abcd, so the provider block was not written; retry", origin)
+	case errors.Is(err, fsutil.ErrLockPathUnsafe):
+		// A retry cannot cure a symlinked or non-regular lock, so the
+		// refusal names it rather than reading as contention.
+		return fmt.Errorf("oracle adapter: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and the provider block was not written; remove it, and the next setup creates it afresh", configLockFileName)
 	}
 	return err
 }

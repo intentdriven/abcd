@@ -183,3 +183,39 @@ func TestConcurrentSetsKeepEveryEntry(t *testing.T) {
 		}
 	}
 }
+
+// TestSetMachineNamesAnUnsafeLockRatherThanContention: a lock beside the
+// store that is a symlink is refused, and the refusal says so; it is not the
+// contention message, because retrying cannot cure a symlink. The symlink's
+// target is never created and nothing is written.
+func TestSetMachineNamesAnUnsafeLockRatherThanContention(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".abcd")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Symlink(target, filepath.Join(dir, storeLockFileName)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := SetMachine(home, "openrouter", secretValue)
+	if err == nil {
+		t.Fatal("SetMachine succeeded through a symlinked lock")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "retry") || strings.Contains(msg, "another abcd") {
+		t.Fatalf("err = %v, want the unsafe lock named, not contention", err)
+	}
+	if !strings.Contains(msg, "~/.abcd/"+storeLockFileName) || !strings.Contains(msg, "not a regular file") ||
+		!strings.Contains(msg, "nothing was written") {
+		t.Fatalf("err = %v, want it to name the lock, that it is not a regular file, and that nothing was written", err)
+	}
+	if strings.Contains(msg, home) {
+		t.Fatalf("err = %v carries the home path", err)
+	}
+	for _, p := range []string{target, filepath.Join(dir, StoreFileName)} {
+		if _, statErr := os.Lstat(p); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("%s was created", p)
+		}
+	}
+}
