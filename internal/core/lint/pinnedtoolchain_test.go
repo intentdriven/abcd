@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -140,5 +141,57 @@ func TestPinnedToolchainResolverRefusesAnEmptyDeclaration(t *testing.T) {
 	if got.code != 2 || !strings.Contains(got.stderr, "declares no") {
 		t.Fatalf("an empty declaration exited %d, want 2 naming the missing go line.\nstderr:\n%s",
 			got.code, got.stderr)
+	}
+}
+
+// TestPreflightRunsTheDeclaredToolchain holds every Go step of `make preflight`
+// to the toolchain go.mod declares (iss-2609261850045839). CI's setup-go
+// installs that release and every Go step runs on it, while preflight ran the
+// go on PATH — so on a newer machine a test asserting standard-library wording
+// passed preflight and failed CI (pull request 728). Preflight exports
+// GOTOOLCHAIN from the same go.mod read the format gate uses, and runs the
+// format gate — whose resolver refuses, naming the skew, when the toolchain
+// cannot be fetched — before any other gate, so nothing is judged on a
+// toolchain that was never resolved. One resolver, not a second: the Makefile
+// resolves a GOROOT nowhere but through the script.
+func TestPreflightRunsTheDeclaredToolchain(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	makefile := readRepoFile(t, root, "Makefile")
+	workflow := readRepoFile(t, root, ".github/workflows/ci.yml")
+
+	const export = "preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)"
+	if !strings.Contains(makefile, export) {
+		t.Errorf("the Makefile does not declare %q.\n\n"+
+			"Without it preflight builds, vets and tests on the go on PATH while CI uses the "+
+			"release go.mod declares, and a green preflight vouches for nothing CI's toolchain "+
+			"would say differently.", export)
+	}
+	if n := strings.Count(makefile, "go env GOROOT"); n != 0 {
+		t.Errorf("the Makefile resolves a GOROOT itself (%d `go env GOROOT`); the resolver is "+
+			"scripts/pinned-toolchain.sh alone, or the format gate and the Go steps can come to "+
+			"disagree about which toolchain is declared", n)
+	}
+
+	// The format gate CI runs, derived from CI's own step as the format test does.
+	step, ok := workflowStepBlock(workflow, formatStepName)
+	if !ok {
+		t.Fatalf(".github/workflows/ci.yml defines no %q step", formatStepName)
+	}
+	m := regexp.MustCompile(`\bmake ([a-z][a-z-]*)\b`).FindStringSubmatch(step)
+	if m == nil {
+		t.Fatalf("the %q step runs no `make <target>`", formatStepName)
+	}
+	format := m[1]
+	recipe, ok := makeRecipe(makefile, format)
+	if !ok || !strings.Contains(recipe, "scripts/pinned-toolchain.sh") {
+		t.Errorf("the `%s:` recipe does not resolve its toolchain through scripts/pinned-toolchain.sh:\n\n%s",
+			format, recipe)
+	}
+	prereqs := preflightPrereqs(t, root)
+	if len(prereqs) < 2 || prereqs[1] != format {
+		t.Errorf("preflight's prerequisites are %v; the format gate %q must come second, straight "+
+			"after the load check (a warning that judges nothing): it is CI's gate too, and its "+
+			"resolver is what refuses, naming the skew, before any gate runs on a toolchain that "+
+			"could not be fetched", prereqs, format)
 	}
 }

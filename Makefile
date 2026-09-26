@@ -12,7 +12,8 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 
 # The Go toolchain version go.mod declares, read from the declaration rather
 # than spelled here: a second spelling is a second thing to bump, and the one
-# that falls behind is the one nothing runs. Drives the format gate below.
+# that falls behind is the one nothing runs. Drives the format gate and every
+# Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
 .PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
@@ -80,7 +81,8 @@ evals-cold-reading:
 # env GOROOT` fetches and caches the declared toolchain if the machine lacks it,
 # then reports where it landed, and the gofmt under that GOROOT is the one CI
 # runs. `fmt` applies the same binary, so the remedy and the diagnosis can never
-# disagree.
+# disagree, and `preflight` runs this gate before any other and then exports the
+# same GOTOOLCHAIN to every Go step it makes (see below).
 #
 # It REFUSES rather than falling back when the toolchain cannot be resolved
 # (offline, or the fetch declined). A fallback would print a filename judged by
@@ -264,14 +266,15 @@ scaffold-sync-check:
 
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
-# warning, never a failure: load-check), then the six lint gates
+# warning, never a failure: load-check), then the format gate (fmt-check), the
+# six lint gates
 # (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
 # docs-lint), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
-# and race-enabled internal tests natively. CI's check job runs those same four
-# Go steps plus the `fmt-check` format gate this target does not, so run
-# `make fmt-check` separately before pushing. Host-native `go build` (not the
+# and race-enabled internal tests natively — every Go step on the toolchain
+# go.mod declares, which is the one CI's check job runs those same four Go
+# steps and its format gate on. Host-native `go build` (not the
 # cross-compiling build target) because it mirrors CI.
 #
 # The eval lanes are prerequisites because the untagged `go test ./...` step
@@ -288,7 +291,7 @@ scaffold-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
-preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test ./...
@@ -318,6 +321,17 @@ endif
 # exported variable reaches the target's prerequisites and recipe, and not a
 # prerequisite run on its own.
 preflight: export ABCD_LOAD_CHECKED := preflight
+
+# Every Go step preflight makes — its own recipe lines and every go run and go
+# test its prerequisites make — runs on the toolchain go.mod declares, the one
+# CI's setup-go installs, never the go on PATH (iss-2609261850045839). A test
+# that asserts standard-library wording passed preflight on a newer local go and
+# failed CI (pull request 728). The go on PATH switches to the declared release
+# and puts its bin first on PATH for anything it runs, so a `go` a test execs is
+# the declared one too. `fmt-check` runs second, straight after the load check,
+# and its resolver (scripts/pinned-toolchain.sh) refuses, naming the skew, when
+# the release cannot be fetched, before any gate runs on it.
+preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 
 # The load check (itd-2609231434459890): reads the machine's load and process
 # table once and warns about programs left running and extreme load. It exits 0

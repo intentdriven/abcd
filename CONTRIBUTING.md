@@ -49,13 +49,15 @@ inbound = outbound statement is the whole of it.
   time — review attention is the scarce resource this protects.
 - **Local gates.** `make preflight` runs the load check first (load-check, a
   warning, never a failure), then the same build, vet, test and race
-  steps locally, together with the lint-reviews, lint-issues, lint-decisions,
-  record-lint, issue-drift,
+  steps locally, together with the fmt-check format gate, the lint-reviews,
+  lint-issues, lint-decisions, record-lint, issue-drift,
   docs-lint and site-render gates and both tagged eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles
-  neither) — but not the format gate, so run `make fmt-check` before pushing
-  (it runs the gofmt from the toolchain `go.mod` declares, which is the one CI
-  runs; `make fmt` applies it). The repository
+  neither). Every Go step it makes runs on the toolchain `go.mod` declares,
+  which is the one CI runs, and the format gate runs that toolchain's gofmt
+  (`make fmt` applies it); when the declared toolchain cannot be fetched,
+  preflight refuses and names the skew rather than falling back to the `go` on
+  PATH. The repository
   ships its hooks in [`.githooks/`](.githooks/); they are per-machine opt-in —
   run `git config core.hooksPath .githooks` once per clone to arm the
   pre-commit name guard, the commit-msg outbound check (it refuses a live

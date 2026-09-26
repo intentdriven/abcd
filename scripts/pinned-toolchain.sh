@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# The one resolver for the Go toolchain go.mod declares (iss-2609081953452204).
-# Prints the declared toolchain's GOROOT on stdout and nothing else; every
-# diagnostic goes to stderr.
+# The one resolver for the Go toolchain go.mod declares (iss-2609081953452204,
+# iss-2609261850045839). Prints the declared toolchain's GOROOT on stdout and
+# nothing else; every diagnostic goes to stderr.
 #
 #   scripts/pinned-toolchain.sh <version>     # e.g. 1.26.7, read from go.mod by the caller
 #
 # `GOTOOLCHAIN=go<version> go env GOROOT` fetches and caches the declared
 # toolchain if the machine lacks it, then reports where it landed. The format
-# gate runs the gofmt under that root, which is the one CI's setup-go installs
-# from go.mod.
+# gate runs the gofmt under that root, and `make preflight`, which runs the
+# format gate before any other gate, exports the same GOTOOLCHAIN to every Go
+# step it makes, so the gofmt that judges the tree and the go that builds and
+# tests it are the one toolchain CI's setup-go installs from go.mod.
 #
 # It REFUSES (exit 2) rather than falling back when the toolchain cannot be
 # resolved (offline, or the fetch declined). A fallback would judge the tree
