@@ -76,10 +76,11 @@ evals-cold-reading:
 # neither direction is visible in the output, which names a file and never says
 # which toolchain judged it.
 #
-# `GOTOOLCHAIN=go<version> go env GOROOT` fetches and caches the declared
-# toolchain if the machine lacks it, then reports where it landed; the gofmt
-# under that GOROOT is the one CI runs. `fmt` applies the same binary, so the
-# remedy and the diagnosis can never disagree.
+# scripts/pinned-toolchain.sh is the one resolver: `GOTOOLCHAIN=go<version> go
+# env GOROOT` fetches and caches the declared toolchain if the machine lacks it,
+# then reports where it landed, and the gofmt under that GOROOT is the one CI
+# runs. `fmt` applies the same binary, so the remedy and the diagnosis can never
+# disagree.
 #
 # It REFUSES rather than falling back when the toolchain cannot be resolved
 # (offline, or the fetch declined). A fallback would print a filename judged by
@@ -89,26 +90,7 @@ evals-cold-reading:
 define pinned_gofmt
 	@set -eu; \
 	version='$(GO_TOOLCHAIN_VERSION)'; \
-	if [ -z "$$version" ]; then \
-		echo "gofmt: REFUSING — go.mod declares no \`go <version>\` line, so the format gate has no toolchain to resolve." >&2; \
-		exit 2; \
-	fi; \
-	local_version="$$(go env GOVERSION 2>/dev/null || echo unknown)"; \
-	if ! goroot="$$(GOTOOLCHAIN=go$$version go env GOROOT 2>&1)" || [ ! -x "$$goroot/bin/gofmt" ]; then \
-		echo "gofmt: REFUSING to judge this tree." >&2; \
-		echo "gofmt:   go.mod declares go$$version; the go on PATH is $$local_version." >&2; \
-		echo "gofmt:   the go$$version toolchain could not be resolved (the fetch needs network):" >&2; \
-		echo "$$goroot" | sed 's/^/gofmt:     /' >&2; \
-		echo "gofmt:   NOT falling back to the gofmt on PATH — a different gofmt version judges this" >&2; \
-		echo "gofmt:   tree differently, so the fallback would name files CI considers correct." >&2; \
-		exit 2; \
-	fi; \
-	resolved="$$("$$goroot/bin/go" version 2>/dev/null | awk '{print $$3}')"; \
-	if [ "$$resolved" != "go$$version" ]; then \
-		echo "gofmt: REFUSING — go.mod declares go$$version, but the resolved toolchain reports $$resolved." >&2; \
-		echo "gofmt:   GOTOOLCHAIN did not switch, so the gate would run the wrong gofmt." >&2; \
-		exit 2; \
-	fi; \
+	goroot="$$(scripts/pinned-toolchain.sh "$$version")" || exit 2; \
 	case '$(1)' in \
 	check) \
 		unformatted="$$("$$goroot/bin/gofmt" -l .)"; \
