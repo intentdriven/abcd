@@ -867,7 +867,8 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		// %22) leaves a hex word-char before a literal token, defeating the
 		// leading \b so the raw scan above never fires. Scan bounded
 		// percent-decoded copies of the line and map every hit back to its raw
-		// byte span, so Redact masks the live token where it sits on disk.
+		// byte span, so Redact masks the live token where it sits on disk. The
+		// same pass reads the line's JSON-escape layers (jsonescape.go).
 		findings = append(findings, decodedLineFindings(patterns, probes, junctions, matchers, id2sev, line, lineno, file)...)
 	}
 	findings = dedupFindings(findings)

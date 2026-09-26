@@ -42,6 +42,8 @@ const (
 	stageIdentity = "identity"
 	// stagePercent is each percent-decode pass over the line.
 	stagePercent = "percent"
+	// stageJSONEscape is each JSON-unescape layer decoded from the line.
+	stageJSONEscape = "json_escape"
 )
 
 // costMeter records per-stage scan work. The zero value charges nothing.

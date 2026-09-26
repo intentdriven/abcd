@@ -88,6 +88,13 @@ var meterFixtures = []meterFixture{
 	}},
 	{"other_homes", Identity{}, rep("/home/bob/x ")},                  // abcd-audit:allow
 	{"shared_home_traversal", Identity{}, rep("/Users/Shared/../x ")}, // abcd-audit:allow
+	// The JSON-escape layers (jsonescape.go): each layer is one more scan of
+	// the line, so a line dense in escapes, in nested escapes and in
+	// escaped homes must still cost a constant number of passes.
+	{"json_escaped_other_homes", Identity{}, rep(`\/home\/zqa\/x\n`)},
+	{"json_unicode_escaped_own_homes", meterNamedID, rep(`/Users/zq8home/x `)},
+	{"json_nested_escape_runs", meterNamedID, rep(`\\\\\\\"\\\\n`)},
+	{"json_tokens_after_escapes", Identity{}, rep(`\n` + "ghp_" + strings.Repeat("a", 36))},
 }
 
 // TestScanLineWorkIsLinear is the cost-class guard for the whole of a line's

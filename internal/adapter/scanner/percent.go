@@ -39,10 +39,25 @@ const maxPercentDecodePasses = 3
 // leak surviving into a committed memory/intent/capture artifact
 // (iss-2608270720336165).
 func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctionSet, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
-	decoded, posMap := percentDecodeBounded(rawLine)
-	if posMap == nil {
-		return nil // nothing was percent-encoded; the raw scan already covers it
+	var out []Finding
+	if decoded, posMap := percentDecodeBounded(rawLine); posMap != nil {
+		out = viewFindings(patterns, probes, junctions, matchers, id2sev, rawLine, decodedView{decoded, posMap}, lineno, file)
 	}
+	// The JSON-escape views (jsonescape.go): the same scan over each layer of
+	// the line's JSON string escapes, mapped back the same way, so a value an
+	// escape hid from an anchor or spelled with escaped bytes is found where
+	// it sits on disk (iss-2609261647358395, iss-2609251639263391).
+	for _, v := range jsonEscapeLayers(rawLine) {
+		out = append(out, viewFindings(patterns, probes, junctions, matchers, id2sev, rawLine, v, lineno, file)...)
+	}
+	return out
+}
+
+// viewFindings runs every detector over one decoded view of rawLine and maps
+// each hit back to the raw bytes it came from. A view with nothing decoded in
+// it is never handed here; the raw scan already covers the raw line.
+func viewFindings(patterns []Pattern, probes []matcher, junctions junctionSet, matchers identityMatchers, id2sev map[string]Severity, rawLine string, v decodedView, lineno int, file string) []Finding {
+	decoded, posMap := v.text, v.posMap
 	var out []Finding
 	for _, m := range scanAllPatterns(patterns, probes, junctions, decoded) {
 		cp := patterns[m.patIdx]
