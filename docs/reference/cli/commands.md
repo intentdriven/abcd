@@ -1194,6 +1194,122 @@ Lift an intent's hold: Writes the removal of its held line; refuses a record not
 
 **Usage:** `abcd intent unhold <itd-N>`
 
+### `abcd lab`
+
+List this repository's labs with their pins, probe counts and halts: Writes nothing; refuses outside a git checkout.
+
+**Usage:** `abcd lab`
+
+A lab is a throwaway world pinned at one commit of this repository, run to
+answer one question. Its evidence lives at the operator level, in
+~/.abcd/lab/<root-sha>/<lab-id>/ (the same root-commit key the transcript
+store uses), and its knowledge enters the record only through capture:
+nothing any lab verb does writes into the repository.
+
+Bare `abcd lab` lists this repository's labs, read-only: each lab's pin,
+probe count, and whether a gate holds it halted.
+
+A gate refusal halts the lab and is recorded as a finding in its findings
+log rather than adapted around: the preflight and the retraction sweep exit 1
+on a refusal, write their artefact, and hold the lab halted — no probe is
+recorded — until the same gate passes again. The finding stays.
+
+Exit 2 on a refusal of the request itself (no checkout, an unknown lab, a bad
+name or question); nothing is written on any of them.
+
+#### `abcd lab harvest`
+
+Assemble a lab's harvest with its capture candidates: Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.
+
+**Usage:** `abcd lab harvest <lab-id>`
+
+Assemble harvest/harvest.md from INTENTION.md, the findings log and the probe
+records, in the lifeboat's section shape: intention, method, findings that
+worked, findings still open, candidates, coverage. Each finding cites its probe
+records by path; each product finding is listed as a capture candidate with
+the capture line that files it, found during the lab, and flagged where no
+refutation was attempted. Nothing is filed.
+
+No claim outlives its input: a finding citing no probe record or evidence
+file, or one missing or incomplete, is listed and the harvest refuses (exit 1,
+nothing written). A hand-written harvest.md is never overwritten. A halted lab
+is still harvested, its gate findings first.
+
+#### `abcd lab mint`
+
+Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.
+
+**Usage:** `abcd lab mint <question> [flags]`
+
+Mint a lab for one question. The lab home is created under this repository's
+lane of the lab store with a registry line; the snapshot is a standalone
+clone of this repository detached at the pin (HEAD unless --pin names
+another commit), made with no hook firing and with its remote cut, so
+nothing done in the lab world reaches this checkout. INTENTION.md,
+findings.md, corrections.md and amendments.md are scaffolded, with the
+lifecycle mapped onto the home. Nothing is written into the repository.
+
+**Flags:**
+
+```
+      --pin string   the commit the snapshot is pinned at (default HEAD)
+```
+
+#### `abcd lab preflight`
+
+Run a lab's harness-isolation and dual-binary checks: Writes the preflight artefact, and a finding and halt on a failure; refuses an unknown lab.
+
+**Usage:** `abcd lab preflight <lab-id>`
+
+Run the preflight against a lab's home and write it to state/preflight.md.
+
+Harness isolation: the lab's own HOME holds no link out of the lab; the
+snapshot is a standalone clone (not a linked worktree, borrowing no object
+store) descending from the pin; it has no remote; and the hooks path a
+session in it would run, with the operator's global configuration in force,
+resolves inside the lab.
+
+Dual binary: bin/abcd is a regular file (never a link to an operator-level
+installation) whose embedded vintage — read without running it — is the
+pin, unmodified; it is the same binary the first passing preflight pinned,
+since the work binary is never rebuilt; and bin/abcd-test, when present, is a
+separate file.
+
+A failed check halts the lab naming it: exit 1, the refusal recorded as a
+gate finding. A preflight that passes lifts that halt.
+
+#### `abcd lab record`
+
+Scaffold one probe record naming the artefact it observes: Writes the probe's files under state/probes/; refuses a halted lab or a probe already recorded.
+
+**Usage:** `abcd lab record <lab-id> <probe>`
+
+Scaffold the record one probe writes before any harvest may cite it:
+input, argv, exit, stdout and stderr, empty, and record.md naming the
+artefact observed (the work binary's vintage and sha256, when there is one).
+The verb runs nothing: the probe's command is run by whoever runs the lab, with
+its output redirected into the scaffold. A probe is recorded once and never
+overwritten; a re-run is a new probe. Refused on a halted lab.
+
+#### `abcd lab sweep`
+
+Sweep a lab's documents for every retracted pattern: Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.
+
+**Usage:** `abcd lab sweep <lab-id>`
+
+A retraction is a sweep, not an edit. Every correction line in corrections.md
+names a literal that must be absent from the lab's own documents; the sweep
+searches them all for it — the pattern, not the instance — and lists every
+place it still stands. The snapshot, the lab's HOME and binaries, transcripts
+and each probe's five capture files are not swept: they are the world and the
+instruments, not claims; a probe's record.md is prose, and is swept. The
+result is written to state/sweep.md. An unapplied correction, one too short
+to mean anything, or — while any correction is recorded — a document the
+sweep could not read (too large, binary, or not a regular file; each listed
+by path) fails the sweep: exit 1, the lab halted and the refusal recorded as
+a gate finding that names corrections by number, so it never becomes an
+instance itself. A sweep that passes lifts that halt.
+
 ### `abcd launch`
 
 Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.

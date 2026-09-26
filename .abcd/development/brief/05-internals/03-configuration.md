@@ -200,6 +200,39 @@ overwrite-with-backup model: abcd refuses unless the destination is absent, an
 empty directory, or one carrying a provenance file abcd itself wrote. See
 [`../04-surfaces/03-embark.md`](../04-surfaces/03-embark.md).
 
+## The lab store
+
+The lab store holds the evidence of labs: throwaway worlds pinned at one commit
+of a repository, run to answer one question
+([`../04-surfaces/31-lab.md`](../04-surfaces/31-lab.md), itd-2609212137128014).
+It is user-scope and keyed on the repository's root-commit SHA exactly as the
+transcript store is, and it is **never committed**:
+
+```
+~/.abcd/lab/
+  <root-sha>/
+    index.jsonl               one registry line per lab: id, pin, question
+    <lab-id>/                 one lab home: the intention, the snapshot, the lab's
+                              own HOME and binaries, probe records, findings,
+                              corrections, the preflight and sweep artefacts,
+                              the harvest
+```
+
+A lab id is `lab-<yymmddHHMMSS>-<pin7>`, the UTC mint time and the pin's first
+seven digits, and the exclusive creation of its home is what keeps two ids
+apart. Three properties are load-bearing:
+
+- **Evidence stays at the operator level, knowledge moves by ceremony.** A lab
+  touches private-tier material and must outlive any checkout it cites, so its
+  evidence never enters a repository; what a lab learns enters one only through
+  capture or a record that cites the lab, and the local ephemeral tier holds
+  pointers at most.
+- **It creates itself through one seam, never through a symlink**, on the
+  transcript store's discipline, private to the account, and every write inside a
+  lab home goes through a containment root opened on that home.
+- **Labs that predate the keyed layout are left alone.** Hand-run labs sit at the
+  top of the store with their own index; the verb neither reads nor writes them.
+
 ## The worktree store
 
 **Design target (itd-2609091014076309, `intents/drafts/`; unbuilt).** No
@@ -245,7 +278,7 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-staged worktree store, the run state an autonomous run's sessions share
+lab store, the staged worktree store, the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), machine config defaults (a later phase: every config read
 in the binary resolves the repo-scope `.abcd/config.json`, and no home-scope one
