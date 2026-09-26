@@ -7,10 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-fix-delta-ruthless"
 found_at: "internal/core/grounds/record.go"
-resolution: "No triage verb locks out a record whose body leaves a comment or fence open: read, resolve and promote without --grounds already acted; wontfix now moves the record without its derived declined: entry and warns naming the construct and body line (TestEveryTriageRouteActsOnALockedBody, TestCaptureWontfixActsOnALockedBody, both watched red). Supplied grounds over such a body still refuse naming the construct and line, per the 2026-08-30 ruling that the guard is correct; capture-time validation and a repair verb stay rejected per 2026-08-31."
-impact: fix
-resolved_by:
-  commit: "cee142d6"
+wontfix_reason: "Declined on the product thinker's ruling of 2026-08-31 (DECISIONS.md, ruling 3): the guard is correct and the hand edit is the accepted repair, so a triage verb that would append a grounds entry below an unclosed comment or fence refuses rather than landing an entry no reader can see. What the fix/drain-record-reading branch still improved: the refusal, which already named the construct, its body line and the opener's text, now also says the exit, close or remove the opener in a text editor and re-run. A record-body repair verb, if wanted, is its own intent, as the ruling says."
 ---
 
 an unclosed comment or fence in an issue body still locks the record out of every triage verb and no open record tracks it
@@ -84,4 +81,4 @@ text editor, which is a real cost even if it is not a lockout.
 
 ## Grounds
 
-- pursued: every triage verb either acts on a locked-body record or refuses naming the construct and line; a verb that refuses with no way through except a hand edit would show it wrong
+- declined: refusing is correct because an entry appended below an unclosed opener cannot be read back; an operator unable to repair the record from the refusal message alone would show it wrong
