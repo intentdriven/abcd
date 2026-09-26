@@ -263,8 +263,9 @@ const (
 // exports one lands a mis-attributed commit a config-only check would wave
 // through), then the role's own author.name / author.email config key, which git
 // ranks ahead of user.* (iss-2609261454332615), then user.name / user.email.
-// Config keys follow git's local > global > system layering. An unset name or
-// email yields an empty field, not an error.
+// Config keys follow git's layering: command-line configuration (`git -c`, as a
+// hook inherits it), then local, global and system. An unset name or email
+// yields an empty field, not an error.
 func EffectiveIdentity(root string) (Effective, error) {
 	return effective(root, RoleAuthor)
 }
@@ -317,12 +318,7 @@ func resolveField(root, envKey string, keys ...string) (string, error) {
 // failure (git absent, not a repo) is returned.
 func gitConfig(root, key string) (string, error) {
 	cmd := exec.Command("git", "-C", root, "config", "--get", key)
-	// Scrub repo-selection and config-injection env vars, but keep global config:
-	// this reads the caller's real user.name/user.email (which live in ~/.gitconfig)
-	// to enforce the commit-identity gate, so full IsolatedEnv would blind it.
-	// Scrubbing still stops an inherited GIT_DIR redirecting the read at another repo
-	// and an injected GIT_CONFIG_* forging the identity the gate is meant to verify.
-	cmd.Env = gitutil.ScrubbedEnv()
+	cmd.Env = commitConfigEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
@@ -331,6 +327,41 @@ func gitConfig(root, key string) (string, error) {
 		return "", fmt.Errorf("git config %s: %w", key, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// commitConfigEnv is the environment the identity read runs git under: the
+// configuration git will commit with, and nothing that points it elsewhere.
+//
+// It starts from gitutil.ScrubbedEnv, which keeps the caller's global config
+// (where user.name/user.email usually live, so full IsolatedEnv would blind the
+// gate) and drops the repo-selection variables, so an inherited GIT_DIR cannot
+// redirect the read at another repository. It also drops the legacy GIT_CONFIG
+// file variable, which only `git config` reads and `git commit` ignores.
+//
+// This reader is the one exception to that scrub: it puts back
+// GIT_CONFIG_PARAMETERS and the GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/
+// GIT_CONFIG_VALUE_n form (iss-2609261614306830). The caller that matters is
+// git itself. `git -c committer.name=X commit` hands its hooks exactly these
+// variables, and git commits with them, so they are the commit's real
+// configuration, not an injection. Scrubbing them made `abcd ahoy --identity`
+// in a hook report the configured identity as ok while git stamped X. The
+// scrub's other reason, that an injected value could forge the identity the
+// gate verifies, does not hold for this reader: it already honours
+// GIT_AUTHOR_*/GIT_COMMITTER_*, which any process able to set these variables
+// can set as well, and a `git config --get` read executes nothing a parameter
+// names. Every other ScrubbedEnv caller keeps the scrub. The redaction probe
+// especially keeps it, because there a displacing value hides the real
+// identity instead of reporting it.
+func commitConfigEnv() []string {
+	env := gitutil.ScrubbedEnv()
+	for _, kv := range os.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		if key == "GIT_CONFIG_PARAMETERS" || key == "GIT_CONFIG_COUNT" ||
+			strings.HasPrefix(key, "GIT_CONFIG_KEY_") || strings.HasPrefix(key, "GIT_CONFIG_VALUE_") {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 // Check resolves the effective author and committer, loads the pin, and
