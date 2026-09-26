@@ -127,6 +127,46 @@ func TestGuardQuestionGateFailsOpenLoud(t *testing.T) {
 	}
 }
 
+// TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet
+// (iss-2609260100382261): a refusal whose remedy cannot run refuses forever.
+// With the tier present but not writable the mode reads managed, and `abcd
+// mode` would fail on permission denied, so the gate does not refuse: it lets
+// the question run on the loud status, names why, and leaves nothing behind.
+func TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("a read-only directory does not refuse root")
+	}
+	root := managedCheckout(t)
+	tier := filepath.Join(root, filepath.FromSlash(mode.TierRelPath))
+	if err := os.Chmod(tier, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(tier, 0o700) })
+
+	if _, _, err := runSplit(t, "", "mode", "facilitator"); err == nil {
+		t.Fatal("precondition: `abcd mode facilitator` succeeded on a read-only tier")
+	}
+	_, stderr, code := runGuard(questionCall(t, root), "guard", "hook")
+	if code != 1 {
+		t.Fatalf("a question whose remedy cannot run must fail open loud (exit 1); got %d (stderr %q)", code, stderr)
+	}
+	for _, want := range []string{"NOT CHECKED", "UNGATED", "cannot be set"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the fail-open must say %q; stderr = %q", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, questionRefusal) {
+		t.Errorf("the gate still named a remedy that cannot run; stderr = %q", stderr)
+	}
+	ents, err := os.ReadDir(tier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 0 {
+		t.Errorf("the gate left residue in the tier: %v", ents)
+	}
+}
+
 // TestPromptHookResetsTheModeAfterAQuestion is criterion 4: the next human
 // message after an admitted question resets the mode to managed, clears the
 // marker and says so in one stderr line; a message with no question open

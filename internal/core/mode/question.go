@@ -17,6 +17,8 @@ package mode
 // through an os.Root so a symlinked ancestor cannot walk it out of the checkout.
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -31,8 +33,9 @@ import (
 const QuestionOpenRelPath = TierRelPath + "/question_open"
 
 // HasTier reports whether repoRoot holds the local-ephemeral tier as a real
-// directory — the same test SetAt applies before it writes, so a caller that
-// gates on it gates on exactly "the verb can set the state here".
+// directory — the same presence test SetAt applies before it writes. It says
+// the tier is HERE, not that it can be written: a read-only tier passes it.
+// A caller that needs "the verb can set the state here" asks CanSet.
 func HasTier(repoRoot string) bool {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
@@ -116,4 +119,56 @@ func ResetOnAnswer(repoRoot string) (bool, error) {
 		return false, fmt.Errorf("clearing the question marker at %s: %w", QuestionOpenRelPath, err)
 	}
 	return true, nil
+}
+
+// probePrefix names the probe file CanSet creates and removes. It sits beside
+// the atomic writer's own temp names in the tier and is never left behind.
+const probePrefix = ".mode-probe-"
+
+// CanSet reports whether SetAt could record a state in repoRoot right now, and
+// why not when it could not. It is the question gate's check before it names
+// `abcd mode` as the remedy for a refused question: a refusal whose remedy
+// cannot run refuses forever (iss-2609260100382261).
+//
+// It probes what the write needs rather than what the permission bits say:
+// the tier is a real directory (ErrNoLocalTier otherwise, as SetAt refuses),
+// nothing stands at the store's path that the writer's rename cannot replace,
+// and a file can be created in the tier — the atomic writer's first step. The
+// probe file is removed before CanSet returns, so a successful probe leaves the
+// tier as it found it, and a failed create leaves nothing to remove. Creating
+// is the test because it is what fails on a read-only mount, an unwritable
+// directory and a foreign owner alike, where a mode-bit check answers only the
+// second.
+func CanSet(repoRoot string) error {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return fmt.Errorf("opening the checkout to probe %s: %w", StoreName, err)
+	}
+	defer root.Close()
+	if !tierIn(root) {
+		return fmt.Errorf("%w: %s/ is not a directory in this checkout, so there is nowhere for %s to live",
+			ErrNoLocalTier, TierRelPath, StoreName)
+	}
+	if fi, err := root.Lstat(FileRelPath); err == nil && fi.IsDir() {
+		return fmt.Errorf("%s at %s is a directory, which the writer cannot replace", StoreName, FileRelPath)
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("inspecting %s at %s: %w", StoreName, FileRelPath, err)
+	}
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Errorf("naming the probe for %s: %w", StoreName, err)
+	}
+	probe := TierRelPath + "/" + probePrefix + hex.EncodeToString(buf[:])
+	f, err := root.OpenFile(probe, os.O_WRONLY|os.O_CREATE|os.O_EXCL, storePerm)
+	if err != nil {
+		return fmt.Errorf("%s/ is not writable, so %s cannot be recorded here: %w", TierRelPath, StoreName, err)
+	}
+	closeErr := f.Close()
+	if err := root.Remove(probe); err != nil {
+		return fmt.Errorf("removing the probe %s: %w", probe, err)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing the probe %s: %w", probe, closeErr)
+	}
+	return nil
 }

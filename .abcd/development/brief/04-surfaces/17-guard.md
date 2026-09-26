@@ -83,7 +83,10 @@ resets the state to managed on the next human message and clears the marker.
 Where the badge does not show, a question is not the gate's business and runs
 silently. A state file or marker the gate cannot read or write is not a
 decision: the question runs and the hook says so on exit 1, the same
-fail-open-loud contract below. The manifest's pre-tool-use matcher names the
+fail-open-loud contract below. So is a tier `abcd mode` cannot write — a
+read-only mount, a directory the session's user does not own: the refusal's
+remedy could not run there, so the gate probes that the verb could set the
+state before it refuses, and where it could not, the question runs on exit 1. The manifest's pre-tool-use matcher names the
 shell tool and the question tool, and nothing else.
 
 ## Fail-open-loud

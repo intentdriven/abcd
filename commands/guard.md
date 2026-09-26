@@ -76,7 +76,10 @@ instead of the registry. In a repository abcd manages, a question asked while
 refusal names `abcd mode product-thinker` and `abcd mode facilitator`: set the
 one that names whom you are asking, then ask again. An admitted question is
 marked open in `.abcd/.work.local/question_open`, and the next human message
-resets the state to `managed`. Elsewhere a question runs unchecked.
+resets the state to `managed`. Where `abcd mode` could not write the state —
+a local tier that is not writable — the question runs with a loud `NOT
+CHECKED` warning rather than a refusal nobody could answer. Elsewhere a
+question runs unchecked.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, an unparsable command line, a registry that

@@ -56,7 +56,10 @@ const questionRefusal = "Blocked by the abcd guard (question tool): the mode rea
 // the host's blocking status, and a mode that names somebody admits the
 // question and marks it open for the reset. A store or marker the gate cannot
 // read or write is not a decision: the question runs and the gate says so on the
-// loud, non-blocking status, the guard's fail-open-loud contract.
+// loud, non-blocking status, the guard's fail-open-loud contract. A tier the
+// verb cannot write is the same case seen from the refusal's side: the refusal
+// names `abcd mode` as its remedy, and a remedy that cannot run would hold the
+// question refused forever, so there too the question runs, loudly.
 func questionGate(cmd *cobra.Command, cwd string) error {
 	stderr := cmd.ErrOrStderr()
 	root, err := mode.Root(cwd)
@@ -68,6 +71,12 @@ func questionGate(cmd *cobra.Command, cwd string) error {
 		return questionFailOpen(stderr, "the mode store could not be read (%s)", err)
 	}
 	if st == mode.Managed {
+		// A refusal whose remedy cannot run would refuse this question
+		// forever (iss-2609260100382261), so the gate refuses only where the
+		// verb it names could set the state.
+		if err := mode.CanSet(root); err != nil {
+			return questionFailOpen(stderr, "the mode reads managed but cannot be set here, so `abcd mode` could not answer a refusal (%s)", err)
+		}
 		fmt.Fprintln(stderr, questionRefusal)
 		return &exitError{Code: 2}
 	}

@@ -117,3 +117,66 @@ func TestResetOnAnswerOutsideAManagedTree(t *testing.T) {
 		t.Fatalf("the reset created .abcd/: %v", err)
 	}
 }
+
+// tierEntries lists the tier's names, for proving a probe leaves no residue.
+func tierEntries(t *testing.T, tier string) []string {
+	t.Helper()
+	ents, err := os.ReadDir(tier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(ents))
+	for _, e := range ents {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// TestCanSetProbesWhatTheVerbNeeds (iss-2609260100382261): the gate names
+// `abcd mode` as the remedy for a refused question, so it must know the verb
+// could actually run here. CanSet answers exactly that — the tier is a real,
+// writable directory and nothing stands at the store's path that the verb's
+// rename could not replace — and it leaves nothing behind in the tier either
+// way.
+func TestCanSetProbesWhatTheVerbNeeds(t *testing.T) {
+	root := newRepo(t)
+	if err := mode.CanSet(root); !errors.Is(err, mode.ErrNoLocalTier) {
+		t.Fatalf("CanSet without the tier = %v, want ErrNoLocalTier", err)
+	}
+
+	tier := makeTier(t, root)
+	if err := mode.CanSet(root); err != nil {
+		t.Fatalf("CanSet on a writable tier = %v, want nil", err)
+	}
+	if got := tierEntries(t, tier); len(got) != 0 {
+		t.Fatalf("the probe left residue in the tier: %v", got)
+	}
+
+	if os.Geteuid() == 0 {
+		t.Log("running as root: a read-only directory does not refuse root, so the unwritable leg is skipped")
+	} else {
+		if err := os.Chmod(tier, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(tier, 0o700) })
+		if err := mode.CanSet(root); err == nil {
+			t.Fatal("CanSet on a read-only tier = nil; the verb cannot write there")
+		}
+		if err := mode.SetAt(root, mode.Facilitator); err == nil {
+			t.Fatal("precondition: SetAt succeeded on a read-only tier, so the probe's premise is wrong")
+		}
+		if err := os.Chmod(tier, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if got := tierEntries(t, tier); len(got) != 0 {
+			t.Fatalf("a failed probe left residue in the tier: %v", got)
+		}
+	}
+
+	if err := os.Mkdir(storePath(root), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.CanSet(root); err == nil {
+		t.Fatal("CanSet with a directory at the store's path = nil; the verb's rename cannot replace it")
+	}
+}
