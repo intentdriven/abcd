@@ -9,6 +9,14 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/barerender.go"
+resolution: "The statusline exception's reason and the brief's Bare invocation paragraph say bare renders the row in a managed repository with or without the payload, and prints nothing of abcd's own anywhere else."
+impact: internal
+resolved_by:
+  commit: "17a12898"
 ---
 
 barerender's exception list gives statusline the reason 'with no payload there is no row to render', which is false: bare abcd statusline with stdin at /dev/null renders a row and exits 0, so it is not an exception to the bare-render property.
+
+## Grounds
+
+- pursued: bare abcd statusline with empty stdin renders the row in a managed repository (TestStatuslineEmptyStdinStillRendersTheBadge) and prints nothing in the unmanaged scratch repository the bare-render test uses; a managed-repository bare call that rendered no row would show the new reason wrong
