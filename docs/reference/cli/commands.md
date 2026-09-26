@@ -189,7 +189,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
 
 Answer one reading item with a disposition record: Writes the record keyed to the item; refuses a second answer without --supersedes.
 
-**Usage:** `abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> [--grounds <text>] [--exit-condition <text>] [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]`
+**Usage:** `abcd capture disposition <rdi-N> --state <accepted|rejected|declined|held> (--grounds <text>, or --exit-condition <text> when held) [--supersedes <dsp-N>] [--recurs <rdi-N,...>] [flags]`
 
 **Flags:**
 
@@ -701,7 +701,7 @@ Redact and store one raw session transcript from a file or stdin: Writes one rec
 
 Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.
 
-**Usage:** `abcd history discard <staged-filename> [flags]`
+**Usage:** `abcd history discard <staged-filename> --yes [flags]`
 
 **Flags:**
 

@@ -3942,7 +3942,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	var dispState, dispGrounds, dispExit, dispSupersedes, dispRecurs string
 	var dispHoldFrame, dispHoldMoscow string
 	dispositionCmd := &cobra.Command{
-		Use:  "disposition <rdi-N> --state <accepted|rejected|declined|held> [--grounds <text>] [--exit-condition <text>] [--supersedes <dsp-N>] [--recurs <rdi-N,...>]",
+		Use:  "disposition <rdi-N> --state <accepted|rejected|declined|held> (--grounds <text>, or --exit-condition <text> when held) [--supersedes <dsp-N>] [--recurs <rdi-N,...>]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)

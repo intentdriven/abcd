@@ -67,3 +67,24 @@ func TestASingleUnmetFlagKeepsTheVerbsOwnRefusal(t *testing.T) {
 		t.Fatalf("want the verb's own --impact refusal, got %v", err)
 	}
 }
+
+// TestUseLinesDeclareWhatTheVerbRequires is iss-2609260002152124: a Use line
+// that brackets a flag the verb always refuses without is a usage line, a
+// worked-example check and an aggregated refusal all reading too small a
+// requirement set. A conditional requirement sits in parentheses, which declare
+// no single requirement.
+func TestUseLinesDeclareWhatTheVerbRequires(t *testing.T) {
+	if got := usageRequirements("disposition <rdi-N> --state <s> (--grounds <t>, or --exit-condition <t> when held)"); !reflect.DeepEqual(got, [][]string{{"--state"}}) {
+		t.Fatalf("a parenthesised conditional group must declare no requirement, got %v", got)
+	}
+	root := NewRootCommand()
+	discard := findByPath(root, []string{"history", "discard"})
+	if discard == nil || !reflect.DeepEqual(usageRequirements(discard.Use), [][]string{{"--yes"}}) {
+		t.Errorf("history discard refuses without --yes, and its Use line must say so: %q", discard.Use)
+	}
+	disp := findByPath(root, []string{"capture", "disposition"})
+	if disp == nil || !strings.Contains(disp.Use, "--grounds") || strings.Contains(disp.Use, "[--grounds") ||
+		strings.Contains(disp.Use, "[--exit-condition") {
+		t.Errorf("capture disposition requires --grounds (or --exit-condition when held), and its Use line must not bracket either as optional: %q", disp.Use)
+	}
+}

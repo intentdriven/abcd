@@ -27,8 +27,10 @@ import (
 // loosened: every refusal that fired before fires now, only its message grows.
 
 // usageRequirements returns the flags a Use line declares required: each flag
-// written outside square and angle brackets, one group per flag, and one group
-// holding every alternative of a `--a|--b` spelling (one of them is required).
+// written outside square, angle and round brackets, one group per flag, and one
+// group holding every alternative of a `--a|--b` spelling (one of them is
+// required). Round brackets hold a conditional requirement (`(--grounds <t>, or
+// --exit-condition <t> when held)`), which no single call can be judged by.
 // A Use line offering whole alternative forms (`audit [<itd-N>] | audit
 // --issue-drift`) declares no single requirement set, so it yields none.
 func usageRequirements(use string) [][]string {
@@ -38,10 +40,10 @@ func usageRequirements(use string) [][]string {
 	)
 	for i, r := range use {
 		switch r {
-		case '[', '<':
+		case '[', '<', '(':
 			depth++
 			continue
-		case ']', '>':
+		case ']', '>', ')':
 			if depth > 0 {
 				depth--
 			}
