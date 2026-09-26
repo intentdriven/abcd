@@ -106,57 +106,24 @@ func PlanBundle(repoRoot string, ids []string, opts BundleOptions) (BundleResult
 			}
 		}
 	}
-	corpus, err := Load(repoRoot)
-	if err != nil {
-		return BundleResult{}, err
-	}
-	members := make([]*bundleMember, 0, len(ids))
-	for _, id := range ids {
-		it, ok := corpus.Lookup(id)
-		if !ok {
-			return BundleResult{}, fmt.Errorf("intent: %s not found in any bucket", id)
-		}
-		if it.Bucket != BucketDrafts {
-			return BundleResult{}, fmt.Errorf("intent: %s is in %s, not drafts; a bundle is planned from drafts, and a planned record joins one through `abcd intent reclassify --kind bundle-member` (nothing moved)", it.ID, it.Bucket)
-		}
-		if err := refuseIfHeld(it, "plan"); err != nil {
-			return BundleResult{}, err
-		}
-		if !slugRe.MatchString(it.Slug) {
-			return BundleResult{}, fmt.Errorf("intent: %s has slug %q which must be kebab-case", it.ID, it.Slug)
-		}
-		if !frontmatter.IsNull(it.SpecID) {
-			return BundleResult{}, fmt.Errorf("intent: %s is a draft with spec_id %q already set (half-planned); refusing to plan", it.ID, it.SpecID)
-		}
-		if !frontmatter.IsNull(it.Kind) && it.Kind != KindStandalone && it.Kind != KindBundleMember {
-			return BundleResult{}, fmt.Errorf("intent: %s has kind %q; only a standalone or bundle-member draft is planned as a bundle (nothing moved)", it.ID, it.Kind)
-		}
-		if it.Bundle != "" && it.Bundle != name {
-			return BundleResult{}, fmt.Errorf("intent: %s already names bundle %q, not %q (nothing moved)", it.ID, it.Bundle, name)
-		}
-		members = append(members, &bundleMember{it: it, draftAbs: filepath.Join(repoRoot, it.Path)})
-	}
-	// A name another record already carries names ANOTHER bundle: planning into
-	// it would merge two bundles' members under one name with two specs.
-	for _, other := range corpus.Intents {
-		if other.Bundle != name {
-			continue
-		}
-		inBundle := false
-		for _, m := range members {
-			if m.it.ID == other.ID {
-				inBundle = true
-			}
-		}
-		if !inBundle {
-			return BundleResult{}, fmt.Errorf("intent: bundle name %q is already carried by %s (%s); name this bundle something else (nothing moved)", name, other.ID, other.Path)
-		}
-	}
-
-	var sp spec.Spec
+	var (
+		sp      spec.Spec
+		members []*bundleMember
+	)
 	if err := withIntentMintLock(repoRoot, func() error {
-		// Every judgement is made on the bytes read HERE, under the lock, and
-		// before the mint, so a refusal leaves nothing minted.
+		// Every judgement is made on what is read HERE, under the lock, and
+		// before the mint, so a refusal leaves nothing minted: the corpus the
+		// members and the name are judged on included. Judged on a corpus
+		// loaded before the lock, a second plan taking the same name in the
+		// window went unseen, and two plans named one bundle with two specs
+		// (iss-2609261215159796).
+		corpus, err := Load(repoRoot)
+		if err != nil {
+			return err
+		}
+		if members, err = stageBundleMembers(repoRoot, corpus, ids, name); err != nil {
+			return err
+		}
 		for _, m := range members {
 			content, err := readIntentRefusingHold(m.draftAbs, m.it.Path, m.it.ID, "plan")
 			if err != nil {
@@ -228,11 +195,62 @@ func PlanBundle(repoRoot string, ids []string, opts BundleOptions) (BundleResult
 		it.Path = m.plannedRel
 		res.Members = append(res.Members, PlanResult{Intent: it, Spec: sp, ConditionsStamped: m.stamped, ImpactStamped: m.impact})
 	}
-	res.Relinked, err = relink.Repoint(repoRoot, moves)
+	relinked, err := relink.Repoint(repoRoot, moves)
+	res.Relinked = relinked
 	if err != nil {
 		res.RelinkError = err.Error()
 	}
 	return res, nil
+}
+
+// stageBundleMembers looks every member up in corpus and makes the judgements
+// the corpus decides: each is a plannable draft that names no other bundle,
+// and the bundle's name is one no record outside the bundle already carries.
+// PlanBundle calls it under the store lock, on a corpus loaded there.
+func stageBundleMembers(repoRoot string, corpus Corpus, ids []string, name string) ([]*bundleMember, error) {
+	members := make([]*bundleMember, 0, len(ids))
+	for _, id := range ids {
+		it, ok := corpus.Lookup(id)
+		if !ok {
+			return nil, fmt.Errorf("intent: %s not found in any bucket", id)
+		}
+		if it.Bucket != BucketDrafts {
+			return nil, fmt.Errorf("intent: %s is in %s, not drafts; a bundle is planned from drafts, and a planned record joins one through `abcd intent reclassify --kind bundle-member` (nothing moved)", it.ID, it.Bucket)
+		}
+		if err := refuseIfHeld(it, "plan"); err != nil {
+			return nil, err
+		}
+		if !slugRe.MatchString(it.Slug) {
+			return nil, fmt.Errorf("intent: %s has slug %q which must be kebab-case", it.ID, it.Slug)
+		}
+		if !frontmatter.IsNull(it.SpecID) {
+			return nil, fmt.Errorf("intent: %s is a draft with spec_id %q already set (half-planned); refusing to plan", it.ID, it.SpecID)
+		}
+		if !frontmatter.IsNull(it.Kind) && it.Kind != KindStandalone && it.Kind != KindBundleMember {
+			return nil, fmt.Errorf("intent: %s has kind %q; only a standalone or bundle-member draft is planned as a bundle (nothing moved)", it.ID, it.Kind)
+		}
+		if it.Bundle != "" && it.Bundle != name {
+			return nil, fmt.Errorf("intent: %s already names bundle %q, not %q (nothing moved)", it.ID, it.Bundle, name)
+		}
+		members = append(members, &bundleMember{it: it, draftAbs: filepath.Join(repoRoot, it.Path)})
+	}
+	// A name another record already carries names ANOTHER bundle: planning into
+	// it would merge two bundles' members under one name with two specs.
+	for _, other := range corpus.Intents {
+		if other.Bundle != name {
+			continue
+		}
+		inBundle := false
+		for _, m := range members {
+			if m.it.ID == other.ID {
+				inBundle = true
+			}
+		}
+		if !inBundle {
+			return nil, fmt.Errorf("intent: bundle name %q is already carried by %s (%s); name this bundle something else (nothing moved)", name, other.ID, other.Path)
+		}
+	}
+	return members, nil
 }
 
 // refuseBundleBlocker refuses a bundle one of whose members names another in

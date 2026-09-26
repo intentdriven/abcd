@@ -28,9 +28,10 @@ package intent
 // (decision 3), so a planned member whose spec is its bundle's shared spec does
 // not leave it by a kind change.
 //
-// Every write is made under the intent store's mint lock from bytes read under
-// it, every refusal fires before the first write, and a failure part way
-// through puts back every file already written.
+// One acquisition of the intent store's mint lock holds the whole verb: the
+// corpus every judgement reads is loaded under it and every write is made from
+// bytes read under it, every refusal fires before the first write, and a
+// failure part way through puts back every file already written.
 
 import (
 	"fmt"
@@ -133,34 +134,62 @@ func Reclassify(repoRoot, intentID string, req ReclassifyRequest) (ReclassifyRes
 	if _, err := time.Parse(time.DateOnly, date); err != nil {
 		return ReclassifyResult{}, fmt.Errorf("intent: date %q must be YYYY-MM-DD (nothing written)", date)
 	}
-	corpus, err := Load(repoRoot)
-	if err != nil {
-		return ReclassifyResult{}, err
-	}
-	it, ok := corpus.Lookup(intentID)
-	if !ok {
-		return ReclassifyResult{}, fmt.Errorf("intent: %s not found in any bucket", intentID)
-	}
-	if req.Kind == KindDiscipline {
-		if it.Bucket == BucketShipped {
-			return ReclassifyResult{}, fmt.Errorf("intent: %s is shipped, and a shipped intent never changes kind; a rule found after the fact is filed as a new discipline — file a discipline that supersedes it, then `abcd intent reclassify %s --kind superseded --by <that discipline> --reason \"…\"` (nothing written)", it.ID, it.ID)
+	// The corpus is loaded, and every judgement made on it, under the store
+	// lock the write takes: the bundle's other namers a join depends on, the
+	// survivor a supersession writes to, the successor and the record's own
+	// kind. Judged on a corpus loaded before the lock, a reclassify landing in
+	// the window went unseen — a join into a bundle its last other namer had
+	// just left, or a supersession leaving a member alone with no line saying
+	// so (iss-2609261215159796).
+	var res ReclassifyResult
+	if err := withIntentMintLock(repoRoot, func() error {
+		corpus, err := Load(repoRoot)
+		if err != nil {
+			return err
 		}
-		return ReclassifyResult{}, fmt.Errorf("intent: reclassify writes no discipline — a discipline is a `## Rule` record on disciplines/, not a relabelled %s record; file a discipline that supersedes it, then `abcd intent reclassify %s --kind superseded --by <that discipline> --reason \"…\"` (nothing written)", it.Bucket, it.ID)
-	}
-	if it.Bucket == BucketSuperseded {
-		return ReclassifyResult{}, fmt.Errorf("intent: %s is already superseded (nothing written)", it.ID)
-	}
-	if err := refuseIfHeld(it, "reclassify"); err != nil {
+		it, ok := corpus.Lookup(intentID)
+		if !ok {
+			return fmt.Errorf("intent: %s not found in any bucket", intentID)
+		}
+		if req.Kind == KindDiscipline {
+			if it.Bucket == BucketShipped {
+				return fmt.Errorf("intent: %s is shipped, and a shipped intent never changes kind; a rule found after the fact is filed as a new discipline — file a discipline that supersedes it, then `abcd intent reclassify %s --kind superseded --by <that discipline> --reason \"…\"` (nothing written)", it.ID, it.ID)
+			}
+			return fmt.Errorf("intent: reclassify writes no discipline — a discipline is a `## Rule` record on disciplines/, not a relabelled %s record; file a discipline that supersedes it, then `abcd intent reclassify %s --kind superseded --by <that discipline> --reason \"…\"` (nothing written)", it.Bucket, it.ID)
+		}
+		if it.Bucket == BucketSuperseded {
+			return fmt.Errorf("intent: %s is already superseded (nothing written)", it.ID)
+		}
+		if err := refuseIfHeld(it, "reclassify"); err != nil {
+			return err
+		}
+		reason, redacted, err := reclassifyReason(repoRoot, req)
+		if err != nil {
+			return err
+		}
+		if req.Kind == KindSuperseded {
+			res, err = supersede(repoRoot, corpus, it, req.By, reason, redacted, date)
+		} else {
+			res, err = changeKind(repoRoot, corpus, it, req, reason, redacted, date)
+		}
+		return err
+	}); err != nil {
 		return ReclassifyResult{}, err
 	}
-	reason, redacted, err := reclassifyReason(repoRoot, req)
+	if res.ToKind != KindSuperseded {
+		return res, nil
+	}
+	// After the lock, as every close's repoint is: the record has moved and the
+	// supersession stands, so what follows is reported, never raised.
+	if store, err := spec.Load(repoRoot); err == nil {
+		res.OpenSpecs = specIDs(store.OpenSpecsForIntent(res.IntentID))
+	}
+	relinked, err := relink.Repoint(repoRoot, []relink.Move{{From: res.Moved[0].From, To: res.Moved[0].To, MovedNow: true}})
+	res.Relinked = relinked
 	if err != nil {
-		return ReclassifyResult{}, err
+		res.RelinkError = err.Error()
 	}
-	if req.Kind == KindSuperseded {
-		return supersede(repoRoot, corpus, it, req.By, reason, redacted, date)
-	}
-	return changeKind(repoRoot, corpus, it, req, reason, redacted, date)
+	return res, nil
 }
 
 // reclassifyReason redacts and validates the reason: required for a
@@ -191,7 +220,8 @@ func reclassifyReason(repoRoot string, req ReclassifyRequest) (string, int, erro
 
 // changeKind is the standalone ↔ bundle-member change on a draft or planned
 // record: the shelf stays, the kind and bundle are rewritten, and the change is
-// appended to the history.
+// appended to the history. Reclassify calls it under the store lock, with the
+// corpus loaded there.
 func changeKind(repoRoot string, corpus Corpus, it Intent, req ReclassifyRequest, reason string, redacted int, date string) (ReclassifyResult, error) {
 	switch it.Bucket {
 	case BucketDrafts, BucketPlanned:
@@ -246,7 +276,7 @@ func changeKind(repoRoot string, corpus Corpus, it Intent, req ReclassifyRequest
 	}
 
 	abs := filepath.Join(repoRoot, it.Path)
-	if err := withIntentMintLock(repoRoot, func() error {
+	if err := func() error {
 		content, err := readIntentRefusingHold(abs, it.Path, it.ID, "reclassify")
 		if err != nil {
 			return err
@@ -259,7 +289,7 @@ func changeKind(repoRoot string, corpus Corpus, it Intent, req ReclassifyRequest
 			return err
 		}
 		return writeIntentFile(abs, it.Path, updated)
-	}); err != nil {
+	}(); err != nil {
 		return ReclassifyResult{}, err
 	}
 	return ReclassifyResult{
@@ -277,7 +307,9 @@ type pendingWrite struct {
 }
 
 // supersede retires it to superseded/ and writes both directions of the link
-// and the survivor line in one all-or-nothing write.
+// and the survivor line in one all-or-nothing write. Reclassify calls it under
+// the store lock, with the corpus loaded there, so the survivor set is the one
+// the write finds.
 func supersede(repoRoot string, corpus Corpus, it Intent, by, reason string, redacted int, date string) (ReclassifyResult, error) {
 	if by == "" {
 		return ReclassifyResult{}, fmt.Errorf("intent: --kind superseded needs --by <itd-M|adr-N>, the record that supersedes %s (nothing written)", it.ID)
@@ -317,7 +349,7 @@ func supersede(repoRoot string, corpus Corpus, it Intent, by, reason string, red
 	recAbs := filepath.Join(repoRoot, it.Path)
 	var writes []*pendingWrite
 	moved := false
-	if err := withIntentMintLock(repoRoot, func() error {
+	if err := func() error {
 		recContent, err := readIntentRefusingHold(recAbs, it.Path, it.ID, "reclassify")
 		if err != nil {
 			return err
@@ -376,7 +408,7 @@ func supersede(repoRoot string, corpus Corpus, it Intent, by, reason string, red
 		}
 		moved = true
 		return nil
-	}); err != nil {
+	}(); err != nil {
 		if moved {
 			_ = os.Rename(filepath.Join(repoRoot, dstRel), recAbs)
 		}
@@ -396,13 +428,6 @@ func supersede(repoRoot string, corpus Corpus, it Intent, by, reason string, red
 	}
 	if survivor.ID != "" {
 		res.Written = append(res.Written, survivor.Path)
-	}
-	if store, err := spec.Load(repoRoot); err == nil {
-		res.OpenSpecs = specIDs(store.OpenSpecsForIntent(it.ID))
-	}
-	res.Relinked, err = relink.Repoint(repoRoot, []relink.Move{{From: it.Path, To: dstRel, MovedNow: true}})
-	if err != nil {
-		res.RelinkError = err.Error()
 	}
 	return res, nil
 }
