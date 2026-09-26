@@ -66,6 +66,9 @@ type segment struct {
 	// output (payloadRefsOf, fixedOutputSegment), so no verdict the unknown
 	// reading reaches is lost.
 	literal map[int]wordLiteral
+	// fromFixedOutput records a segment fixedOutputSegment built: another
+	// reading of the segment carrying the output, not another command.
+	fromFixedOutput bool
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built

@@ -559,7 +559,9 @@ substitution bash runs, in a here-document body there too. A
 document's text, and an unquoted one as the words bash splits its
 document into, at every layer, each joined to any text written
 beside it in the same word, as bash joins it; a backtick spelling with
-no backslash in it is read the same way. Two `sh -c` or `eval` layers are
+no backslash in it is read the same way. On a line where another command
+names IFS an unquoted one is blocked (ifs-split-unread), because the
+guard splits on the default IFS only. Two `sh -c` or `eval` layers are
 followed; a payload nested deeper is blocked.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device
@@ -581,6 +583,8 @@ stands — as the program's name, as a flag (`--$VAR`), or inside an
 interpreter payload (an execute-a-string payload IS read — `sh -c`,
 `env -S`; one the guard cannot read is warned or, for `env -S`, blocked),
 because the guard sees the variable, not what the shell expands it to,
+an IFS the shell already holds when the line starts (every line is read
+from the default IFS),
 a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),

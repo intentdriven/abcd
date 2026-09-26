@@ -99,7 +99,9 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"document's text, and an unquoted one as the words bash splits its\n" +
 			"document into, at every layer, each joined to any text written\n" +
 			"beside it in the same word, as bash joins it; a backtick spelling with\n" +
-			"no backslash in it is read the same way. Two `sh -c` or `eval` layers are\n" +
+			"no backslash in it is read the same way. On a line where another command\n" +
+			"names IFS an unquoted one is blocked (ifs-split-unread), because the\n" +
+			"guard splits on the default IFS only. Two `sh -c` or `eval` layers are\n" +
 			"followed; a payload nested deeper is blocked.\n" +
 			"`$(( … ))` is an expression, not commands. A shell reading\n" +
 			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
@@ -121,6 +123,8 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
 			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
 			"because the guard sees the variable, not what the shell expands it to,\n" +
+			"an IFS the shell already holds when the line starts (every line is read\n" +
+			"from the default IFS),\n" +
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +

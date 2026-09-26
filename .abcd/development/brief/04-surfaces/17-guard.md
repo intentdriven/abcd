@@ -210,7 +210,10 @@ substitution unquoted runs the words its document splits into, the first and
 last joined to whatever is written against it in its word, and is read as those
 words wherever it stands and at every payload layer, so a document whose text is another such substitution is read
 too; the words are never read again as a command line, as bash never reads
-them. The guard follows two execute-a-string layers and refuses a payload
+them. On a line where another command names IFS such an output is refused,
+because the guard splits on the default IFS only and does not work out which
+assignment reaches which expansion; a prefix assignment, which does not reach
+its own command's expansion, is read as the default split. The guard follows two execute-a-string layers and refuses a payload
 nested deeper, whatever it holds, because it has stopped reading it. An ANSI-C string ends at its
 closing quote, found before any escape is decoded, and at its first NUL, as bash
 ends it. An arithmetic expansion is an expression, not commands. A shell reading its script from a pipe, a here-document or a
@@ -235,7 +238,8 @@ would be, which is read as an operand because that is how a commit message or a
 branch name is spelled every day; one behind a wrapper flag the per-wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
-prefix; a payload inside a non-shell interpreter such as `python -c`, which is
+prefix; an IFS the shell already holds when the line starts, since every line
+is read from the default IFS; a payload inside a non-shell interpreter such as `python -c`, which is
 one opaque token and today a silent allow; and any dangerous form no entry
 describes. Nor does an allow see through a parameter expansion that carries no
 substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's

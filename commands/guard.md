@@ -207,7 +207,12 @@ word (`$(…)x`, or a second such substitution), and those words are read as bas
 builds them: as the command in command position, as operands after it, and at
 every payload layer the guard follows, so a document whose own text is
 `$(cat <<'F' … F)` is read too. Text written in the word is not split, as bash
-does not split it, and an assignment's value is not split either. The words are never
+does not split it, and an assignment's value is not split either. On a command
+line where any other command names IFS (`IFS=x;`, `export IFS=x`), an unquoted
+fixed output is a **block** (`ifs-split-unread`): the guard splits on the default
+IFS only, and refuses rather than work out which assignment reaches which
+expansion. A prefix assignment (`IFS=x $(…)`) does not reach its own command's
+expansion, and is read as the default split. The words are never
 read again as a command line, as bash never reads them, so a `;` or a `$(` in
 them stays a word. The guard follows two execute-a-string layers, an `sh -c` or
 `eval` inside another; a payload nested deeper is a **block**
@@ -266,7 +271,8 @@ mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
 form **is** read), a parameter expansion that carries no substitution (`$VAR`,
 `${VAR:-git}`) wherever it stands — as the program's name, as a flag
 (`--$VAR`), or inside a payload the guard reads — because the guard sees the
-variable, not what the shell expands it to, a hazard inside a non-shell interpreter's payload (`python -c`,
+variable, not what the shell expands it to, an IFS the shell already holds when
+the line starts (every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes.

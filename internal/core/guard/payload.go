@@ -42,6 +42,11 @@ const (
 	interpreterStreamEntryID = "interpreter-reads-stream"
 
 	familyInterpreterStream = "interpreter stream"
+
+	// ifsSplitEntryID is the reserved id an unquoted fixed output is refused
+	// under on a command line that names IFS (ifsSplitSignal). No registry
+	// entry may claim it.
+	ifsSplitEntryID = "ifs-split-unread"
 )
 
 // payloadSignal is a synthetic verdict raised for a payload with no registry
@@ -166,7 +171,67 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 			}
 		}
 	}
+	if splitAfterIFS(out) {
+		signals = append(signals, ifsSplitSignal())
+	}
 	return out, signals
+}
+
+// splitAfterIFS reports whether a segment carrying an unquoted fixed output
+// shares the command line, at any payload layer, with another segment that
+// names IFS (review7-guard finding 2). fixedOutputSegment splits an output on
+// the default IFS, and an assignment in a command of its own — `IFS=x;`,
+// `export IFS=x`, `read IFS`, one in an outer layer an `eval` runs under —
+// changes the split for every expansion after it, a loop's earlier ones too.
+// Modelling which assignment reaches which expansion costs more than refusing
+// the line, so any other segment that names IFS in any word counts; the
+// carrier's own words do not, nor the segment its words make, because a
+// prefix assignment (`IFS=x $(…)`) does not reach its own command's
+// expansion in bash.
+func splitAfterIFS(segs []segment) bool {
+	carrying := make([]bool, len(segs))
+	carriers := 0
+	for i, s := range segs {
+		for _, lit := range s.literal {
+			if lit.split && !s.fromFixedOutput {
+				carrying[i] = true
+				carriers++
+				break
+			}
+		}
+	}
+	if carriers == 0 {
+		return false
+	}
+	// With two carriers or more every segment naming IFS is beside one of
+	// them; with one, any naming segment but the carrier itself.
+	for i, s := range segs {
+		if s.fromFixedOutput || (carriers == 1 && carrying[i]) {
+			continue
+		}
+		for _, tok := range s.tokens {
+			tally(len(tok))
+			if strings.Contains(tok, "IFS") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ifsSplitSignal is the fail-closed verdict for an unquoted fixed output on a
+// command line that names IFS: the words bash splits the output into are not
+// the ones the guard read, and they are the command that runs.
+func ifsSplitSignal() payloadSignal {
+	return payloadSignal{
+		id:      ifsSplitEntryID,
+		verdict: VerdictBlock,
+		family:  familySubstitution,
+		reason: "This command line names IFS and runs the words an unquoted substitution's here-document output splits into. " +
+			"The guard splits that output on the default IFS only, so the words the shell runs may not be the ones it read.",
+		successor: "Quote the substitution, or write the command out in full, " +
+			"so the words the shell runs are ones the guard has read.",
+	}
 }
 
 const (
@@ -324,7 +389,7 @@ func fixedOutputSegment(s segment) (segment, bool) {
 	if !split {
 		return segment{}, false
 	}
-	out := segment{chain: s.chain, braceGroup: s.braceGroup, stdinStream: s.stdinStream}
+	out := segment{chain: s.chain, braceGroup: s.braceGroup, stdinStream: s.stdinStream, fromFixedOutput: true}
 	var globs []bool
 	for i, tok := range s.tokens {
 		lit, fixed := s.literal[i]
