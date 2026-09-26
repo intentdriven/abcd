@@ -223,16 +223,19 @@ func TestBinaryScanKeepsLongIdentityRulesDropsShortOnes(t *testing.T) {
 }
 
 // TestRealNameOnBytesByLiteralShape: real_name is kept on bytes when the
-// literal cannot collide by chance — 8+ characters or more than one word — and
-// dropped for a short single token.
+// literal cannot collide by chance — 8+ bytes or more than one word — and a
+// short single token is kept where it stands in a metadata field that names a
+// person, and dropped as chance noise everywhere else
+// (iss-2609090934372160; TestShortRealNameOnBytesIsKeptInAMetadataField).
 func TestRealNameOnBytesByLiteralShape(t *testing.T) {
 	cases := []struct {
-		name string
-		keep bool
+		name, body string
+		keep       bool
 	}{
-		{"Zed Q Eight", true}, // multi-word
-		{"Zedquinta", true},   // long single token
-		{"Zedqx", false},      // short single token: noise on bytes
+		{"Zed Q Eight", "/Author (Zed Q Eight)", true},   // multi-word
+		{"Zedquinta", "/Title (Zedquinta)", true},        // long single token, any field
+		{"Zedqx", "/Author (Zedqx)", true},               // short single token in an author field
+		{"Zedqx", "/Title (Zedqx) /Producer (x)", false}, // short single token in no person field
 	}
 	for _, c := range cases {
 		root := t.TempDir()
@@ -241,11 +244,62 @@ func TestRealNameOnBytesByLiteralShape(t *testing.T) {
 			t.Fatal(err)
 		}
 		sc.identity = Identity{GitUserName: c.name}
-		abs := writeFile(t, root, "deck.pdf", "%PDF-1.4\n/Author ("+c.name+")\n")
+		abs := writeFile(t, root, "deck.pdf", "%PDF-1.4\n"+c.body+"\n")
 		res := scanOne(t, sc, "deck.pdf", abs)
 		if got := hasKind(res.Findings, kindRealName); got != c.keep {
-			t.Errorf("real_name %q on bytes: fired=%v want %v (%+v)", c.name, got, c.keep, res.Findings)
+			t.Errorf("real_name %q in %q on bytes: fired=%v want %v (%+v)", c.name, c.body, got, c.keep, res.Findings)
 		}
+	}
+}
+
+// TestShortRealNameOnBytesIsKeptInAMetadataField is iss-2609090934372160's
+// detector. A short single-token name is a hard_fail real_name in text, and
+// the byte scan dropped it everywhere as chance noise, so the same name in a
+// document's author metadata shipped unreported. It is kept where a metadata
+// key that names a person stands just before it — a PDF /Author entry, an
+// XMP dc:creator (pretty-printed across lines, as XMP writers lay it out), a
+// PNG tEXt Author chunk, an OOXML cp:lastModifiedBy inside a zip — and the
+// same token incidental to binary content, however often it occurs, still
+// raises nothing, so the byte report is not flooded.
+func TestShortRealNameOnBytesIsKeptInAMetadataField(t *testing.T) {
+	const name = "Zedqx"
+	kept := map[string][]byte{
+		"deck.pdf":  []byte("%PDF-1.7\n1 0 obj\n<< /Author (" + name + ") /Title (q3) >>\nendobj\n"),
+		"xmp.pdf":   []byte("%PDF-1.7\n<x:xmpmeta>\n   <dc:creator>\n      <rdf:Seq>\n         <rdf:li>" + name + "</rdf:li>\n"),
+		"shot.png":  append([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0btEXtAuthor\x00"), []byte(name+"\x00\x00\x00\x00IEND")...),
+		"props.zip": zipOf(t, "docProps/core.xml", []byte(`<cp:coreProperties><cp:lastModifiedBy>`+name+`</cp:lastModifiedBy></cp:coreProperties>`)),
+	}
+	for logical, body := range kept {
+		root := t.TempDir()
+		sc, err := New(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc.identity = Identity{GitUserName: name}
+		res := scanOne(t, sc, logical, writeFile(t, root, logical, string(body)))
+		if !hasKind(res.Findings, kindRealName) || res.HardFails == 0 {
+			t.Errorf("%s: a short name in a person metadata field was not a hard_fail real_name: %+v", logical, res.Findings)
+		}
+	}
+
+	// Incidental: the token a hundred times over in binary content, and once
+	// just past the reach of an author key, raises nothing.
+	var noise bytes.Buffer
+	noise.WriteString("\x89PNG\r\n\x1a\n")
+	for i := 0; i < 100; i++ {
+		noise.Write([]byte{0x00, byte(i), 0xff, 0x7f})
+		noise.WriteString(" " + name + " ")
+	}
+	noise.WriteString("Author\x00" + strings.Repeat("\x01", 200) + " " + name + " ")
+	root := t.TempDir()
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc.identity = Identity{GitUserName: name}
+	res := scanOne(t, sc, "noise.png", writeFile(t, root, "noise.png", noise.String()))
+	if hasKind(res.Findings, kindRealName) {
+		t.Errorf("a short name incidental to binary content was reported: %d findings", len(res.Findings))
 	}
 }
 
