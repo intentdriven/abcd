@@ -1360,3 +1360,31 @@ func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 		t.Fatalf("refused captures wrote %d record(s)", n)
 	}
 }
+
+// TestCaptureWontfixActsOnALockedBody is the surface half of
+// iss-2608301908270888: ordinary prose can carry a `<!--` nothing closes, and
+// capture writes it verbatim into the body, where it masks every line below it.
+// Wontfix derives a `declined:` entry that cannot read back there, so it refused
+// on every attempt and the only exit was a hand edit. It now lands, and says on
+// stderr which construct and line kept the entry out.
+func TestCaptureWontfixActsOnALockedBody(t *testing.T) {
+	_ = captureLedgerRepo(t)
+	var m struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the <!-- abcd-review marker is stale", "--json"), &m); err != nil || m.ID == "" {
+		t.Fatalf("capture envelope unreadable: %v", err)
+	}
+	stdout, stderr, err := runCLISplit(t, "capture", "wontfix", m.ID, "superseded by the loader rewrite")
+	if err != nil {
+		t.Fatalf("wontfix over a locked body refused: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "open -> wontfix") {
+		t.Fatalf("wontfix did not report the move: %s", stdout)
+	}
+	for _, frag := range []string{"WARNING", "HTML comment", "body line 2", "wontfix_reason"} {
+		if !strings.Contains(stderr, frag) {
+			t.Fatalf("stderr does not name %q, so the missing entry is silent: %s", frag, stderr)
+		}
+	}
+}

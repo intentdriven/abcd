@@ -310,9 +310,15 @@ Promotion, resolving and marking wontfix write the conjecture they were given in
 append-only `## Grounds` section in the record body, one top-level bullet per
 entry in the form `- <token>: <text>`. A wontfix that was given no grounds at
 all still gets a bullet, because a wontfix is the non-action the `declined`
-token names. Appending rather than setting is the point: a later triage route
-adds a bullet beside the one an earlier route recorded, and neither overwrites
-the other. The section is held by `internal/core/grounds` per adr-57, and
+token names. The one exception is a body that leaves an HTML comment or a fence
+open: the opener masks every line below it, so no appended bullet can be read.
+That wontfix still moves the record, writes no bullet, and warns naming the
+construct and its body line, because the bullet would only have copied the
+reason `wontfix_reason` already holds. Grounds the operator supplies over such
+a body are refused on every route, naming the same construct and line.
+
+Appending rather than setting is the point: a later triage route adds a bullet
+beside the one an earlier route recorded, and neither overwrites the other. The section is held by `internal/core/grounds` per adr-57, and
 `record_schema` blocks a frontmatter `grounds:` key by naming this section as
 where the value belongs. It also blocks a top-level bullet in the section that
 does not parse as `- <token>: <text>`, on an issue or an intent record: the

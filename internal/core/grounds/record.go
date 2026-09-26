@@ -264,15 +264,33 @@ func AppendToRecord(content string, g Grounds) (string, error) {
 func readBackRefusal(body string, got, want int) error {
 	lines := strings.Split(body, "\n")
 	if i, flag, ok := mdrecord.Unclosed(lines); ok {
-		return fmt.Errorf(
-			"the record's body leaves %s open: the opener is body line %d, %q. An unclosed opener runs "+
-				"to end of file, so every line below it — the appended entry included — is masked and "+
-				"does not read back. Close it or remove it; the grounds text is not the fault; nothing written",
-			maskConstruct(flag), i+1, strings.TrimRight(lines[i], "\r"))
+		return &UnclosedBodyError{Construct: maskConstruct(flag), Line: i + 1, Text: strings.TrimRight(lines[i], "\r")}
 	}
 	return fmt.Errorf(
 		"the appended grounds entry does not read back (%d entries after the append, expected %d); "+
 			"nothing written", got, want)
+}
+
+// UnclosedBodyError is the refusal AppendToRecord raises when the record's body
+// leaves an opener unclosed, so a caller can tell this cause from the others
+// without matching on the message. It carries what the message says: the
+// construct as the record spells it, the opener's BODY-relative line, and the
+// opener's text. A caller whose entry is a derived copy of a value the record
+// already holds can then land the rest of its write without the entry, and say
+// why (iss-2608301908270888); a caller whose entry the operator supplied still
+// refuses.
+type UnclosedBodyError struct {
+	Construct string
+	Line      int
+	Text      string
+}
+
+func (e *UnclosedBodyError) Error() string {
+	return fmt.Sprintf(
+		"the record's body leaves %s open: the opener is body line %d, %q. An unclosed opener runs "+
+			"to end of file, so every line below it — the appended entry included — is masked and "+
+			"does not read back. Close it or remove it; the grounds text is not the fault; nothing written",
+		e.Construct, e.Line, e.Text)
 }
 
 // maskConstruct names a mask flag the way the record spells it, so the operator
