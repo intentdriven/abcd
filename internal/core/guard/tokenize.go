@@ -1570,19 +1570,18 @@ func backtickText(text string, inDoubleQuotes bool) (out string, changed bool) {
 	tally(len(text))
 	var b []byte
 	for i := 0; i < len(text); i++ {
-		if text[i] == '\\' && i+1 < len(text) {
-			switch n := text[i+1]; {
-			case n == '$' || n == '`' || n == '\\' || (inDoubleQuotes && n == '"'):
+		c := text[i]
+		if c == '\\' && i+1 < len(text) {
+			if n := text[i+1]; n == '$' || n == '`' || n == '\\' || (inDoubleQuotes && n == '"') {
 				if b == nil {
 					b = append(make([]byte, 0, len(text)), text[:i]...)
 				}
-				b = append(b, n)
 				i++
-				continue
+				c = n
 			}
 		}
 		if b != nil {
-			b = append(b, text[i])
+			b = append(b, c)
 		}
 	}
 	if b == nil {
