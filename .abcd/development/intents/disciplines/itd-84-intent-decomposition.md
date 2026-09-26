@@ -62,7 +62,7 @@ gate is the documented protocol, announced as not-yet-automated (loud-staging).
 
 **Delivered rung: the capture-time candidate pass.** The lexical shortlist of
 rule 2 runs at filing, delivered by
-[itd-2609212137116617](../planned/itd-2609212137116617-a-new-capture-or-draft-is-matched-against-the-record-before.md):
+[itd-2609212137116617](../shipped/itd-2609212137116617-a-new-capture-or-draft-is-matched-against-the-record-before.md):
 `capture` and the quoted-text intent create match the new text against every
 open and resolved issue and every intent, write each likely double onto the new
 record as a typed `duplicates` or `refines` link, never refuse the write, and
