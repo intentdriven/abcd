@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -524,6 +525,10 @@ type schemaRecord struct {
 	// which hands it to the ledger reader itself rather than re-deriving its
 	// grammar.
 	content string
+	// malformedGrounds are the bullets under the record's `## Grounds` heading
+	// that core/grounds's reader skips, read once at scan time from the bytes the
+	// scan already holds (iss-2608301747001641).
+	malformedGrounds []grounds.Malformed
 }
 
 // scalar decodes a frontmatter value the way this record's own reader does. The
@@ -696,6 +701,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			out = append(out, checkIssueReaderParity(r, cfg.Severity)...)
 		}
 		out = append(out, checkIssueBodyRenders(r, cfg.Severity)...)
+		out = append(out, checkRecordGroundsBullets(r, cfg.Severity)...)
 
 		// Cross-references: a named record must be in the corpus, or declared
 		// retired by the record that replaced it.
@@ -1346,6 +1352,43 @@ func checkRecordBucketField(r schemaRecord, severity string) []Finding {
 	}}
 }
 
+// groundsStores are the stores whose records carry a `## Grounds` section: the
+// issue record at its triage routes and the intent record at its readiness gate,
+// both written through core/grounds.
+var groundsStores = map[string]bool{"iss": true, "itd": true}
+
+// checkRecordGroundsBullets reports every bullet under a record's `## Grounds`
+// heading that the reader skips (iss-2608301747001641).
+//
+// A malformed `grounds:` frontmatter value was a value this rule could judge. The
+// section form lost that: the reader takes the bullets that parse and reads the
+// rest as prose, so a hand-typed `- rejected: …` is not an entry to any surface
+// and nothing says so. Which bullets were skipped is core/grounds's answer, from
+// the same walk its reader takes, so this rule can report neither a bullet the
+// reader counts nor miss one it drops. The grammar alone is judged — token,
+// colon, text — and not the substance floor, because the ledger's reader does not
+// apply the floor either and a wontfix stamps its entry from a reason the floor
+// never governed. A paragraph of prose under the heading is not a bullet and is
+// not judged.
+//
+// The verbs never write such a bullet, so this stops no triage; it reports a
+// hand edit the reader would silently drop.
+func checkRecordGroundsBullets(r schemaRecord, severity string) []Finding {
+	if !groundsStores[r.store.prefix] {
+		return nil
+	}
+	var out []Finding
+	for _, m := range r.malformedGrounds {
+		out = append(out, Finding{
+			File: r.rel, Line: m.Line, RuleID: ruleRecordSchema, Severity: severity,
+			Message: "a bullet under `## " + grounds.Heading + "` does not parse (" + m.Err.Error() +
+				"), so the reader drops it and it is no recorded ground to any surface; write it as `- " +
+				grounds.UsageSpelling() + ": <text>`, or make it a prose paragraph if it is not an entry",
+		})
+	}
+	return out
+}
+
 // checkIssueRecordShape mirrors capture's validateStrict shape checks for the
 // ISSUE store: enum membership (severity/category/source) and the kebab-slug
 // check. The third of them, the additionalProperties:false unknown-key check, is
@@ -1762,6 +1805,8 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 					refs:    recordRefsOf(lines, fields),
 					blocks:  frontmatterBlocksOf(lines, fields),
 					content: string(content),
+
+					malformedGrounds: grounds.MalformedIn(string(content)),
 				})
 			}
 			return nil

@@ -321,6 +321,12 @@ already refuses to act without, so a second one here would reach no record.
 `--grounds "declined: <text>"` overrides that text for the case where the
 conjecture and the user-facing reason are not the same sentence.
 The token there stays `declined`: a wontfix IS the non-action that value names.
+When the record's body leaves an HTML comment or a fence open, every line below
+the opener is masked and no appended entry can be read, so a wontfix with no
+`--grounds` still moves the record, writes no `declined:` entry, and warns on
+stderr naming the construct and its body line; the reason is on the record in
+`wontfix_reason`. Grounds you supply over such a body are refused with the same
+construct and line, and so are promote's and resolve's: close the opener first.
 
 **Ask for the expectation and its falsifier.** "Promoted it because it is next"
 restates the decision and records nothing; "promoted it because we expect a

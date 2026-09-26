@@ -7,8 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-fix-delta-ruthless"
 found_at: "internal/core/grounds/record.go"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Does the record-body repair verb belong in the errata intent (M25), or its own?"
+resolution: "No triage verb locks out a record whose body leaves a comment or fence open: read, resolve and promote without --grounds already acted; wontfix now moves the record without its derived declined: entry and warns naming the construct and body line (TestEveryTriageRouteActsOnALockedBody, TestCaptureWontfixActsOnALockedBody, both watched red). Supplied grounds over such a body still refuse naming the construct and line, per the 2026-08-30 ruling that the guard is correct; capture-time validation and a repair verb stay rejected per 2026-08-31."
+impact: fix
+resolved_by:
+  commit: "cee142d6"
 ---
 
 an unclosed comment or fence in an issue body still locks the record out of every triage verb and no open record tracks it
@@ -79,3 +81,7 @@ own intent rather than a fix bolted onto a shipped one.
 
 Stays OPEN at minor: the tool still stops mid-workflow and hands the operator a
 text editor, which is a real cost even if it is not a lockout.
+
+## Grounds
+
+- pursued: every triage verb either acts on a locked-body record or refuses naming the construct and line; a verb that refuses with no way through except a hand edit would show it wrong

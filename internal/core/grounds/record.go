@@ -46,9 +46,8 @@ func Body(content string) string {
 
 // Heading is the section a record carries its grounds under. It is spelled once
 // for the two that have to agree: the writer that creates the section and the
-// reader that locates it, across both record families. Record-lint names the
-// section in a remedy as literal prose, because core/lint does not import this
-// package and one message is not a reason to (iss-2608301836222858).
+// reader that locates it, across both record families, and record-lint names it
+// in its remedies from here.
 const Heading = "Grounds"
 
 // headingRe matches the `## Grounds` heading at any heading depth.
@@ -58,9 +57,9 @@ var headingRe = regexp.MustCompile(`^#{1,6}\s+` + Heading + `\s*$`)
 // written. It is the single reader every consumer asks, so no two of them can
 // disagree about what an entry is.
 //
-// A bullet that does not parse is not an entry: it is prose under the heading,
-// and reporting it as a malformed ground would put a gate verdict on a sentence
-// somebody wrote for a human.
+// A bullet that does not parse is not an entry, and the reader says nothing
+// about it: a reader has no verdict to give. The record gate does, and asks
+// MalformedIn, the other half of the same walk, which bullets were skipped.
 //
 // It checks the GRAMMAR and stops there, which is what lets the ledger use it. A
 // wontfix stamps its grounds from a reason whose own contract is merely
@@ -69,19 +68,74 @@ var headingRe = regexp.MustCompile(`^#{1,6}\s+` + Heading + `\s*$`)
 // visibly carries one. A consumer that claims the floor asks for
 // ParseSectionAboveFloor instead.
 func ParseSection(content string) []Grounds {
+	var out []Grounds
+	for _, b := range sectionBullets(content) {
+		if b.err == nil {
+			out = append(out, b.g)
+		}
+	}
+	return out
+}
+
+// sectionBullet is one top-level bullet under the `## Grounds` heading, read
+// through the grammar: the entry when it parses, the refusal when it does not.
+type sectionBullet struct {
+	line int // 0-based line of the bullet in the text read
+	text string
+	g    Grounds
+	err  error
+}
+
+// sectionBullets is the ONE walk of the section, and ParseSection and
+// MalformedIn are its two halves: the bullets that parse, and the ones that do
+// not. Spelled once so the gate that reports a dropped bullet and the reader that
+// drops it cannot disagree about which bullets those are.
+func sectionBullets(content string) []sectionBullet {
 	lines := strings.Split(content, "\n")
 	mask := mdrecord.Mask(lines)
 	start, end, ok := mdrecord.SectionLineRangeIn(lines, mask, headingRe)
 	if !ok {
 		return nil
 	}
-	var out []Grounds
+	var out []sectionBullet
 	for _, b := range mdrecord.BulletBlocks(lines, mask, start, end) {
-		g, err := Parse(blockText(lines, b))
-		if err != nil {
-			continue
+		text := blockText(lines, b)
+		g, err := Parse(text)
+		out = append(out, sectionBullet{line: b.Start, text: text, g: g, err: err})
+	}
+	return out
+}
+
+// Malformed is a top-level bullet under a record's `## Grounds` heading that the
+// grammar refuses, so ParseSection does not take it as an entry.
+type Malformed struct {
+	// Line is the bullet's 1-based line in the record FILE.
+	Line int
+	// Text is the bullet folded onto one line, its `- ` marker removed.
+	Text string
+	// Err is the grammar's refusal.
+	Err error
+}
+
+// MalformedIn names every top-level bullet under the `## Grounds` heading of a
+// record FILE that the reader skips, with its file line.
+//
+// It is the gate's half of the reader's contract. ParseSection declines a bullet
+// that does not parse and says nothing, which is right for a reader with no
+// verdict to give and wrong for the record as a whole: a malformed `grounds:`
+// frontmatter value was a value a gate could judge, and moving grounds into the
+// section made a malformed one silently absent (iss-2608301747001641). A bullet
+// in the section is an entry attempt — the section is the verbs' append-only
+// list — while a paragraph of prose under the heading is not a bullet and is
+// never named here.
+func MalformedIn(file string) []Malformed {
+	head, body := frontmatter.Split(file)
+	offset := strings.Count(head, "\n")
+	var out []Malformed
+	for _, b := range sectionBullets(body) {
+		if b.err != nil {
+			out = append(out, Malformed{Line: offset + b.line + 1, Text: b.text, Err: b.err})
 		}
-		out = append(out, g)
 	}
 	return out
 }
@@ -210,15 +264,33 @@ func AppendToRecord(content string, g Grounds) (string, error) {
 func readBackRefusal(body string, got, want int) error {
 	lines := strings.Split(body, "\n")
 	if i, flag, ok := mdrecord.Unclosed(lines); ok {
-		return fmt.Errorf(
-			"the record's body leaves %s open: the opener is body line %d, %q. An unclosed opener runs "+
-				"to end of file, so every line below it — the appended entry included — is masked and "+
-				"does not read back. Close it or remove it; the grounds text is not the fault; nothing written",
-			maskConstruct(flag), i+1, strings.TrimRight(lines[i], "\r"))
+		return &UnclosedBodyError{Construct: maskConstruct(flag), Line: i + 1, Text: strings.TrimRight(lines[i], "\r")}
 	}
 	return fmt.Errorf(
 		"the appended grounds entry does not read back (%d entries after the append, expected %d); "+
 			"nothing written", got, want)
+}
+
+// UnclosedBodyError is the refusal AppendToRecord raises when the record's body
+// leaves an opener unclosed, so a caller can tell this cause from the others
+// without matching on the message. It carries what the message says: the
+// construct as the record spells it, the opener's BODY-relative line, and the
+// opener's text. A caller whose entry is a derived copy of a value the record
+// already holds can then land the rest of its write without the entry, and say
+// why (iss-2608301908270888); a caller whose entry the operator supplied still
+// refuses.
+type UnclosedBodyError struct {
+	Construct string
+	Line      int
+	Text      string
+}
+
+func (e *UnclosedBodyError) Error() string {
+	return fmt.Sprintf(
+		"the record's body leaves %s open: the opener is body line %d, %q. An unclosed opener runs "+
+			"to end of file, so every line below it — the appended entry included — is masked and "+
+			"does not read back. Close it or remove it; the grounds text is not the fault; nothing written",
+		e.Construct, e.Line, e.Text)
 }
 
 // maskConstruct names a mask flag the way the record spells it, so the operator

@@ -580,3 +580,31 @@ func TestNewDerivedRefusesWhatTheSiteRendererRefuses(t *testing.T) {
 		t.Errorf("NewDerived refused a terse reason that renders: %v", err)
 	}
 }
+
+// TestMalformedInIsTheReadersComplement: MalformedIn names exactly the top-level
+// bullets under `## Grounds` that ParseSection skips, with their FILE line, so a
+// gate built on it reports what the reader drops and nothing else
+// (iss-2608301747001641). Prose, a masked bullet, a bullet under another heading
+// and a frontmatter comment are not entries the reader offered, and stay silent.
+func TestMalformedInIsTheReadersComplement(t *testing.T) {
+	file := "---\nid: iss-1\n# Grounds\n---\n\nan issue\n\n## Grounds\n\n" +
+		"- pursued: " + conjecture + "\n" + // line 10: an entry
+		"- rejected: refusing the whole file\n" + // line 11: out of vocabulary
+		"- pursued\n" + // line 12: no colon
+		"\nprose under the heading\n\n" +
+		"```\n- planned: masked\n```\n\n" +
+		"## Later\n\n- planned: another section\n"
+	got := MalformedIn(file)
+	if len(got) != 2 {
+		t.Fatalf("MalformedIn = %+v, want the two bullets the reader skips", got)
+	}
+	if got[0].Line != 11 || !strings.HasPrefix(got[0].Text, "rejected:") || got[0].Err == nil {
+		t.Errorf("first = %+v, want line 11, the rejected bullet, with the grammar's refusal", got[0])
+	}
+	if got[1].Line != 12 || got[1].Text != "pursued" {
+		t.Errorf("second = %+v, want line 12, the colon-less bullet", got[1])
+	}
+	if n := len(ParseSection(Body(file))); n != 1 {
+		t.Errorf("ParseSection read %d entries, want the one well-formed bullet", n)
+	}
+}

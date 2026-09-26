@@ -4400,6 +4400,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return groundsUsageError("wontfix", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
+			// A body that masks every appended line takes the wontfix without its
+			// derived entry; the move stands and the gap is said out loud
+			// (iss-2608301908270888).
+			if res.GroundsNotWritten != "" {
+				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd capture wontfix — the record moved, but %s\n", termsafe.Sanitize(res.GroundsNotWritten))
+			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s -> %s — %s\n", res.ID, res.FromStatus, res.ToStatus, termsafe.Sanitize(res.Path))
 				emitRedactionNote(w, res.Redacted, res.Degraded)

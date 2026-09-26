@@ -219,3 +219,64 @@ func TestAFrontmatterCommentMarkerDoesNotBlindTheRecord(t *testing.T) {
 		t.Fatalf("the recorded ground = %q, want %q", got, testGrounds)
 	}
 }
+
+// TestEveryTriageRouteActsOnALockedBody is iss-2608301908270888. A body carrying
+// an opener nothing closes masks every line below it, so no appended grounds
+// entry can read back. Resolve and promote record grounds only when given them,
+// so without --grounds they already act; wontfix stamped a `declined:` entry
+// DERIVED from its reason and so refused on every attempt, and the only exit was
+// a hand edit. A derived entry is a copy of the reason the record already
+// carries in wontfix_reason, so the wontfix now lands without it and says, in
+// the result, which construct and line kept it out. Grounds the operator SUPPLIES
+// are still refused, naming the same line: the operator asked for a record the
+// reader could not show them.
+func TestEveryTriageRouteActsOnALockedBody(t *testing.T) {
+	for _, lock := range []struct {
+		name  string
+		apply func(t *testing.T, ir, issID string)
+		frag  string
+	}{
+		{"unclosed fence", openFence, "fenced code block"},
+		{"unclosed comment", func(t *testing.T, ir, issID string) {
+			rewriteIssue(t, ir, issID, func(s string) string {
+				return strings.TrimRight(s, "\n") + "\n\nthe loader drops rules when the <!-- abcd-review marker is stale\n"
+			})
+		}, "HTML comment"},
+	} {
+		t.Run(lock.name+"/wontfix derives", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			res, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID, Reason: "superseded by the loader rewrite"})
+			if err != nil {
+				t.Fatalf("Wontfix over a locked body refused: %v", err)
+			}
+			if res.ToStatus != StateWontfix {
+				t.Fatalf("Wontfix moved the record to %q, want wontfix", res.ToStatus)
+			}
+			if !strings.Contains(res.GroundsNotWritten, lock.frag) || !strings.Contains(res.GroundsNotWritten, "body line") {
+				t.Fatalf("the result does not say which construct and line kept the entry out: %q", res.GroundsNotWritten)
+			}
+			iss := readIssue(t, ir, issID)
+			if iss.WontfixReason != "superseded by the loader rewrite" {
+				t.Fatalf("the reason is not on the record: %+v", iss)
+			}
+		})
+		t.Run(lock.name+"/wontfix with supplied grounds", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			_, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID,
+				Reason: "superseded by the loader rewrite", Grounds: "declined: the rewrite retires the loader this record is about"})
+			if err == nil || !strings.Contains(err.Error(), lock.frag) || !strings.Contains(err.Error(), "body line") {
+				t.Fatalf("Wontfix with supplied grounds over a locked body = %v, want a refusal naming the construct and line", err)
+			}
+		})
+		t.Run(lock.name+"/resolve without grounds", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			if _, err := Resolve(ResolveRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID,
+				Resolution: "closed by the fix under review", Impact: "fix"}); err != nil {
+				t.Fatalf("Resolve without grounds over a locked body refused: %v", err)
+			}
+		})
+	}
+}
