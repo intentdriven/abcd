@@ -32,6 +32,8 @@ var bareRenderExceptions = map[string]string{
 		"(exit 1) naming the flag, because publishing is not wired",
 	"report": "it files a report from a file or the editor, so bare opens the editor on " +
 		"a terminal and refuses (exit 2) anywhere else",
+	"scribe": "a parent whose sub-verbs act on a named reading run or on a scribe's " +
+		"returned output; with no operand it has no state of its own to render, so bare prints its sub-verbs",
 	"statusline": "its row belongs to a managed repository: there bare renders it with or " +
 		"without the payload (TestStatuslineEmptyStdinStillRendersTheBadge), and anywhere else, " +
 		"this test's scratch repository included, abcd has no row and bare prints nothing of " +

@@ -57,10 +57,26 @@ no table is accepted, and every delegated step then runs through the harness at
 to the agent's ceiling are reported on stderr; a routing file that cannot be
 read omits the lines and says why there.
 
+When review folders sit under `.abcd/work/reviews/`, the board carries a
+`reviews` object (`threshold`, `default_ref`, `rows`). Each row names the
+folder (`folder`, `kind` — `review` or `receipt` — `scope`, and `spec` when the
+folder is a spec's review), the commit it read (`review_of_commit`), and how
+many commits the default branch has moved since (`commits_since`); `stale` is
+true past the threshold of twenty. A row whose `state` is `unreachable` names a
+commit this history no longer holds, and one that is `unpinned` predates the pin
+rule; neither has a count. The text render is a `reviews:` heading and one line
+per dated review, stalest first, a stale one marked `!`, then one `receipts:`
+line: a release receipt gates the release it names and is never re-run, so the
+line gives how many receipts there are, how far behind the oldest release it
+gated is, and how many pins this history no longer holds, and `--json` lists
+each receipt as a row. Relay the reviews marked `!` as reviews to re-run before
+they are trusted, and a receipt's count as how old that release is, not as work
+to do. The field is omitted when the tree holds no folder.
+
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is
-my next move*. A positional matching `^(iss|itd|spc|adr)-[0-9]+$` locates the
+my next move*. A positional matching `^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$` locates the
 record in its store — any status folder or bucket — and renders it read-only:
 
 ```bash
@@ -72,7 +88,15 @@ Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 `superseded_by` as present; `intents` is every member a bundle's shared spec lists), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
-read). For an issue id the JSON also carries `ledger` — the `checkout` and
+read). An admission (`adm-N`) and a surprise (`srp-N`) have no folder, so their
+`status` is `admitted` or `recorded`; an admission's `links` are its `run`,
+`proposal`, `proposal_path` and the standing `disposition`, a surprise's are
+`occasioned_by` and `occasion_path`, and neither carries a next move. A reframe
+(`rfm-N`) reads `open` or `complete`; its `links` are `occasioned_by`,
+`occasion_path`, the three `*_before` fingerprints and, once complete, the three
+`*_after` fingerprints and `changed`, and an open one's next move is
+`capture reframe --complete <rfm-N>`. The reading families
+(`rdi-N`, `dsp-N`, `rdg-N`) are not dispatched. For an issue id the JSON also carries `ledger` — the `checkout` and
 `branch` whose ledger was read — because the same id can sit in another
 worktree's ledger in another state; name it when you report. A shipped intent's
 move reads its fidelity-review marker: an owed review names its receipt and the

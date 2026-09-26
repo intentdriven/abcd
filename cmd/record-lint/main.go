@@ -12,12 +12,28 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
+// init registers the issue ledger's reader and the site renderer's body check
+// with the lint, so record_schema refuses exactly the issue records capture
+// refuses and skips, and the bodies the site render refuses.
+func init() {
+	lint.SetIssueReader(capture.ReadRefusal)
+	lint.SetRecordBodyCheck(site.CheckRecordBody)
+}
+
 func main() {
+	// The decisions-append mode is a range check, not a tree lint: its own
+	// positional arguments, its own exit polarities (decisionsappend.go).
+	if len(os.Args) > 1 && os.Args[1] == "decisions-append" {
+		os.Exit(runDecisionsAppend(os.Args[2:], resolveRoot(), os.Stdout, os.Stderr))
+	}
+
 	configPath := flag.String("config", "", "path to record-lint.json (default: <root>/.abcd/record-lint.json)")
 	rootPath := flag.String("root", "", "repo root to lint (default: git toplevel, or cwd)")
 	releaseGate := flag.String("release-gate", "", "arm the receipt_gate rule for a release: fail closed unless a PROMOTE semantic-pass receipt exists for this commit sha (release-time only; a CI workflow supplies the sha)")
@@ -108,6 +124,14 @@ func main() {
 		os.Exit(2)
 	}
 
+	// A gitignored path under a root is not the record; the lint pruned it, and
+	// says so (iss-2609151952353626).
+	if pruned, err := lint.PrunedInRoots(cfg, root); err == nil {
+		if note := prunedNote(pruned); note != "" {
+			fmt.Fprintln(os.Stderr, termsafe.Sanitize(note))
+		}
+	}
+
 	blockers := 0
 	for _, f := range findings {
 		fmt.Println(renderFinding(f, root))
@@ -188,4 +212,14 @@ func resolveRoot() string {
 		return wd
 	}
 	return "."
+}
+
+// prunedNote names the gitignored paths the lint pruned under its roots, or ""
+// when it pruned none. It goes to stderr: stdout is one finding per line.
+func prunedNote(pruned []string) string {
+	if len(pruned) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("record-lint: skipped %d gitignored path(s) under the roots: %s",
+		len(pruned), strings.Join(pruned, ", "))
 }

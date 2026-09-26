@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 )
 
 // TestExcludedFieldsNeverReachTheBundle is itd-183's first criterion: given a
@@ -202,6 +204,14 @@ func TestBundleCarriesNoRepositoryPath(t *testing.T) {
 	res := assembleFixture(t, root, PositionWidening)
 
 	skeleton := res.Bundle
+	// The context stamp carries separators and is not a location: it is a token
+	// sessionkind parses exactly, naming a kind, a run id and a digest. It is
+	// held to that grammar here and then set aside, so the rest of the structure
+	// is still judged for any separator at all.
+	if _, ok := sessionkind.Parse(skeleton.ContextStamp); !ok {
+		t.Fatalf("the bundle's context_stamp %q is not a stamp", skeleton.ContextStamp)
+	}
+	skeleton.ContextStamp = ""
 	skeleton.Items = nil
 	for _, it := range res.Bundle.Items {
 		it.Text = ""
@@ -233,6 +243,10 @@ func TestBundleCarriesNoRepositoryPath(t *testing.T) {
 		t.Fatalf("assemble at comparative: %v", err)
 	}
 	cSkeleton := comparative.Bundle
+	if _, ok := sessionkind.Parse(cSkeleton.ContextStamp); !ok {
+		t.Fatalf("the comparative bundle's context_stamp %q is not a stamp", cSkeleton.ContextStamp)
+	}
+	cSkeleton.ContextStamp = ""
 	cSkeleton.Items = nil
 	candidates := 0
 	for _, it := range comparative.Bundle.Items {
@@ -283,15 +297,9 @@ func TestWalkIsLexicographicAndByteStable(t *testing.T) {
 	first := assembleFixture(t, root, PositionEntailment)
 	second := assembleFixture(t, root, PositionEntailment)
 
-	a, err := EncodeBundle(first.Bundle)
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	b, err := EncodeBundle(second.Bundle)
-	if err != nil {
-		t.Fatalf("encode: %v", err)
-	}
-	if string(a) != string(b) {
+	// The two runs carry two run ids, so their stamps differ in the run segment
+	// and nowhere else (adr-2609021016275803).
+	if !identicalButForRun(t, first.Bundle, second.Bundle) {
 		t.Error("two assemblies of one state produced different bundles")
 	}
 

@@ -117,7 +117,7 @@ var consistencyRubricRules = []string{
 // release, the scope (in and out), the decisions, and a discipline's rule. It
 // matches a level-two heading only; the section runs to the next heading of
 // level one or two, so its sub-headings travel with it.
-var consistencyHeadingRe = regexp.MustCompile(`(?i)^##\s+(press release|what[’']s in scope\b.*|what[’']s out of scope\b.*|decisions\b.*|(the )?rule)\s*$`)
+var consistencyHeadingRe = regexp.MustCompile(`(?i)^##\s+(press release|what[\x{2019}']s in scope\b.*|what[\x{2019}']s out of scope\b.*|decisions\b.*|(the )?rule)\s*$`)
 
 // h2Re and h12Re bound a level-two section.
 var (
@@ -1116,7 +1116,7 @@ func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date s
 		fmt.Fprintf(&b, "\n### %d. %s\n\n", r.Number, free(r.Summary))
 		fmt.Fprintf(&b, "- class: %s · severity: %s · ledger: %s\n", r.ClassLabel(), r.Severity, r.IssueID)
 		for j, e := range r.Ends {
-			fmt.Fprintf(&b, "- end %c: `%s` — “%s”\n", 'A'+j, endLocation(e), free(e.Quote))
+			fmt.Fprintf(&b, "- end %c: `%s` — \u201c%s\u201d\n", 'A'+j, endLocation(e), free(e.Quote))
 		}
 		fmt.Fprintf(&b, "\n%s\n", free(r.Explanation))
 	}

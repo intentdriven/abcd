@@ -199,7 +199,9 @@ func TestSpecLintRefusesEveryRecordTheLoaderRefuses(t *testing.T) {
 func TestSpecLintAcceptsWhatTheLoaderAccepts(t *testing.T) {
 	root := t.TempDir()
 	const rel = ".abcd/development/specs/open/spc-99-foo.md"
-	writeFile(t, root, ".abcd/development/intents/shipped/itd-10-alpha.md",
+	// The intent is planned: an open spec beside a shipped intent is the
+	// bucket disagreement spec_lifecycle refuses (iss-2609181121522692).
+	writeFile(t, root, ".abcd/development/intents/planned/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nkind: standalone\nspec_id: spc-99\n---\n# ok\n")
 	writeFile(t, root, rel, "---\nid: spc-99\nslug: foo\nintent: itd-10\n---\n# foo\n")
 

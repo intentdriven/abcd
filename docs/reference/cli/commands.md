@@ -43,9 +43,31 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 **Flags:**
 
 ```
-      --dry-run    print the detection result as its JSON envelope, whether or not --json is passed
-      --identity   check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
-      --remote     report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+      --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
+      --identity    check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
+      --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+```
+
+#### `abcd ahoy connect`
+
+Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.
+
+**Usage:** `abcd ahoy connect <provider> [flags]`
+
+**Flags:**
+
+```
+      --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
+      --home string         where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store
+      --key string          the credential's name (default: the provider's name)
+      --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
+```
+
+**Example:**
+
+```
+abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none
 ```
 
 #### `abcd ahoy doctor`
@@ -185,6 +207,24 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
+#### `abcd capture admit`
+
+Admit one widening proposal into its run's candidate set: Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.
+
+**Usage:** `abcd capture admit <rdi-N> --grounds "<why>" [flags]`
+
+**Flags:**
+
+```
+      --grounds string   why the proposal is admitted (free text, held to the grounds floor; on a standing acceptance it must be that acceptance's ground)
+```
+
+**Example:**
+
+```
+abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"
+```
+
 #### `abcd capture defer`
 
 Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.
@@ -306,6 +346,27 @@ Graduate an issue or an accepted reading item into an intent draft: Writes the d
 abcd capture promote iss-2609010000000001
 ```
 
+#### `abcd capture reframe`
+
+Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.
+
+**Usage:** `abcd capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why>" [--open] | --complete <rfm-N> [flags]`
+
+**Flags:**
+
+```
+      --complete string        the open reframe record (rfm-N) to finish once the rewrite is committed
+      --grounds string         why the frame moved (free text, held to the grounds floor)
+      --occasioned-by string   the record that occasioned the reframe: a reading item (rdi-N), a disposition (dsp-N) or a surprise (srp-N)
+      --open                   record the first half before the rewrite is committed; complete it after with --complete
+```
+
+**Example:**
+
+```
+abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open
+```
+
 #### `abcd capture resolve`
 
 Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.
@@ -328,6 +389,24 @@ Move an open issue to resolved/, naming what fixed it: Writes the moved record; 
 
 ```
 abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix
+```
+
+#### `abcd capture surprise`
+
+Record one surprise a reading item, admission or disposition occasioned: Writes one srp-N record; refuses an unresolved occasion or a text below the floor.
+
+**Usage:** `abcd capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> "<what was unexpected>" [flags]`
+
+**Flags:**
+
+```
+      --occasioned-by string   the record that occasioned it: a reading item (rdi-N), an admission (adm-N) or a disposition (dsp-N)
+```
+
+**Example:**
+
+```
+abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"
 ```
 
 #### `abcd capture wontfix`
@@ -942,7 +1021,7 @@ Redact and store transcripts already on disk into a named repository: Writes tha
 
 #### `abcd history list`
 
-List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.
+List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.
 
 **Usage:** `abcd history list [flags]`
 
@@ -954,7 +1033,7 @@ List this repository's stored transcripts, newest first: Writes nothing; refuses
 
 #### `abcd history migrate`
 
-Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.
+Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.
 
 **Usage:** `abcd history migrate [flags]`
 
@@ -985,9 +1064,15 @@ Render one session and its sub-agents as one artefact plus telemetry: Writes bot
 abcd history reconstruct 0123abcd-session
 ```
 
+#### `abcd history separation`
+
+Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.
+
+**Usage:** `abcd history separation`
+
 #### `abcd history show`
 
-Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.
+Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.
 
 **Usage:** `abcd history show <session-id-or-filename>`
 
@@ -999,7 +1084,7 @@ abcd history show 0123abcd-session
 
 #### `abcd history staged`
 
-List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.
+List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.
 
 **Usage:** `abcd history staged [flags]`
 
@@ -1615,6 +1700,152 @@ Lift an intent's hold: Writes the removal of its held line; refuses a record not
 abcd intent unhold itd-2609010000000001
 ```
 
+### `abcd lab`
+
+List this repository's labs with their pins, probe counts and halts: Writes nothing; refuses outside a git checkout.
+
+**Usage:** `abcd lab`
+
+A lab is a throwaway world pinned at one commit of this repository, run to
+answer one question. Its evidence lives at the operator level, in
+~/.abcd/lab/<root-sha>/<lab-id>/ (the same root-commit key the transcript
+store uses), and its knowledge enters the record only through capture:
+nothing any lab verb does writes into the repository.
+
+Bare `abcd lab` lists this repository's labs, read-only: each lab's pin,
+probe count, and whether a gate holds it halted.
+
+A gate refusal halts the lab and is recorded as a finding in its findings
+log rather than adapted around: the preflight and the retraction sweep exit 1
+on a refusal, write their artefact, and hold the lab halted — no probe is
+recorded — until the same gate passes again. The finding stays.
+
+Exit 2 on a refusal of the request itself (no checkout, an unknown lab, a bad
+name or question); nothing is written on any of them.
+
+#### `abcd lab harvest`
+
+Assemble a lab's harvest with its capture candidates: Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.
+
+**Usage:** `abcd lab harvest <lab-id>`
+
+Assemble harvest/harvest.md from INTENTION.md, the findings log and the probe
+records, in the lifeboat's section shape: intention, method, findings that
+worked, findings still open, candidates, coverage. Each finding cites its probe
+records by path; each product finding is listed as a capture candidate with
+the capture line that files it, found during the lab, and flagged where no
+refutation was attempted. Nothing is filed.
+
+No claim outlives its input: a finding citing no probe record or evidence
+file, or one missing or incomplete, is listed and the harvest refuses (exit 1,
+nothing written). A hand-written harvest.md is never overwritten. A halted lab
+is still harvested, its gate findings first.
+
+**Example:**
+
+```
+abcd lab harvest lab-260901000000-0123abc
+```
+
+#### `abcd lab mint`
+
+Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.
+
+**Usage:** `abcd lab mint <question> [flags]`
+
+Mint a lab for one question. The lab home is created under this repository's
+lane of the lab store with a registry line; the snapshot is a standalone
+clone of this repository detached at the pin (HEAD unless --pin names
+another commit), made with no hook firing and with its remote cut, so
+nothing done in the lab world reaches this checkout. INTENTION.md,
+findings.md, corrections.md and amendments.md are scaffolded, with the
+lifecycle mapped onto the home. Nothing is written into the repository.
+
+**Flags:**
+
+```
+      --pin string   the commit the snapshot is pinned at (default HEAD)
+```
+
+**Example:**
+
+```
+abcd lab mint "does the snapshot keep the checkout's hooks from firing?"
+```
+
+#### `abcd lab preflight`
+
+Run a lab's harness-isolation and dual-binary checks: Writes the preflight artefact, and a finding and halt on a failure; refuses an unknown lab.
+
+**Usage:** `abcd lab preflight <lab-id>`
+
+Run the preflight against a lab's home and write it to state/preflight.md.
+
+Harness isolation: the lab's own HOME holds no link out of the lab; the
+snapshot is a standalone clone (not a linked worktree, borrowing no object
+store) descending from the pin; it has no remote; and the hooks path a
+session in it would run, with the operator's global configuration in force,
+resolves inside the lab.
+
+Dual binary: bin/abcd is a regular file (never a link to an operator-level
+installation) whose embedded vintage — read without running it — is the
+pin, unmodified; it is the same binary the first passing preflight pinned,
+since the work binary is never rebuilt; and bin/abcd-test, when present, is a
+separate file.
+
+A failed check halts the lab naming it: exit 1, the refusal recorded as a
+gate finding. A preflight that passes lifts that halt.
+
+**Example:**
+
+```
+abcd lab preflight lab-260901000000-0123abc
+```
+
+#### `abcd lab record`
+
+Scaffold one probe record naming the artefact it observes: Writes the probe's files under state/probes/; refuses a halted lab or a probe already recorded.
+
+**Usage:** `abcd lab record <lab-id> <probe>`
+
+Scaffold the record one probe writes before any harvest may cite it:
+input, argv, exit, stdout and stderr, empty, and record.md naming the
+artefact observed (the work binary's vintage and sha256, when there is one).
+The verb runs nothing: the probe's command is run by whoever runs the lab, with
+its output redirected into the scaffold. A probe is recorded once and never
+overwritten; a re-run is a new probe. Refused on a halted lab.
+
+**Example:**
+
+```
+abcd lab record lab-260901000000-0123abc bare-status
+```
+
+#### `abcd lab sweep`
+
+Sweep a lab's documents for every retracted pattern: Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.
+
+**Usage:** `abcd lab sweep <lab-id>`
+
+A retraction is a sweep, not an edit. Every correction line in corrections.md
+names a literal that must be absent from the lab's own documents; the sweep
+searches them all for it — the pattern, not the instance — and lists every
+place it still stands. The snapshot, the lab's HOME and binaries, transcripts
+and each probe's five capture files are not swept: they are the world and the
+instruments, not claims; a probe's record.md is prose, and is swept. The
+result is written to state/sweep.md. An unapplied correction, one too short
+to mean anything, or — while any correction is recorded — a document the
+sweep could not read (too large, binary, or not a regular file; each listed
+by path) fails the sweep: exit 1, the lab halted and the refusal recorded as
+a gate finding that names corrections by number, so it never becomes an
+instance itself. A sweep that passes lifts that halt.
+
+**Example:**
+
+```
+abcd lab sweep lab-260901000000-0123abc
+```
+
 ### `abcd launch`
 
 Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
@@ -1992,7 +2223,9 @@ records, commits and URLs, never at a location on a machine. abcd names the
 file from the time and this repository's root-commit key; the verb prints the
 report's id and where it landed.
 
-Exit 2 on a refusal, with nothing filed.
+Exit 2 on a refusal, with nothing filed. Exit 1 when filing fails (the inbox
+cannot be created, every id drawn this second is taken, the write fails), with
+nothing filed. After the editor ran, both name where what was written is kept.
 
 **Flags:**
 
@@ -2019,6 +2252,95 @@ rules replaced, its state changed, or a custom domain declared — renders as
 block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.
+
+### `abcd scribe`
+
+Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.
+
+**Usage:** `abcd scribe`
+
+Build the ledger scribe's context and ingest what the scribe returns.
+
+The scribe transcribes a reading run's records and the researcher's dispositions into the
+ledger's declared shapes, and authors nothing. Its context is the reading assembler's exact
+inverse: ledger content only, drawn from the issue ledger's own directories, and the
+researcher's supplied text. `assemble` builds it with a manifest of every path passed;
+`ingest` validates the scribe's output and refuses anything the scribe authored.
+
+#### `abcd scribe assemble`
+
+Build a scribe session's context from the ledger and supplied dispositions: Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.
+
+**Usage:** `abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]`
+
+Build the context one scribe session is handed, for one ingested reading run.
+
+The context is positive inclusion at directory grain: the issue ledger's own directories
+(its reading records, dispositions, admissions, surprises and reframes, and its three status
+directories), derived from the ledger's directory list, and the researcher's dispositions
+text read whole. Nothing else is walked, and an item outside that list is refused whatever
+route it arrived by. The run must be ingested: its records come from the store, never from
+a raw reading output handed over again.
+
+The context and a manifest naming every path passed, by hash, are parked in the local tier
+(or under --out, which may not be a directory a reading's include table reaches). Nothing in
+the durable record is touched. Both carry the scribe's per-run context stamp.
+
+**Flags:**
+
+```
+      --dispositions string   the researcher's dispositions text, read whole and carried verbatim
+      --dry-run               write nothing; with --out the two artefacts still land in that directory
+      --out string            an empty or absent directory the context and the manifest are written to
+                              (default: the local-tier scribe run directory)
+      --run string            the ingested reading run the session transcribes for (rdg-N)
+```
+
+**Example:**
+
+```
+abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md
+```
+
+#### `abcd scribe ingest`
+
+Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.
+
+**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [flags]`
+
+Validate the JSON a scribe session returned and write its records through the capture verbs.
+
+The context the session was handed is proven first: it must hash to its parked manifest, and
+the output must cite that hash. The pair is parked where a scribe session could rewrite it, so
+--dispositions names the researcher's own text again, the file assemble was handed: the
+manifest's supplied hash and the context's supplied copy must both equal it, and every check
+below reads it. Then the output is refused if the scribe authored anything —
+a field outside the declared shapes, an item the supplied dispositions never name, a state or an
+admission the item's own line of the supplied text does not carry, or a ground, exit condition
+or surprise that does not stand verbatim in the supplied text once whitespace is folded — or if
+it passes over an unanswered item of the run in silence. Nothing is written until all of that
+holds.
+
+Dispositions, admissions and surprises are then written in that order through the capture verbs,
+which apply their own redaction and refusals, the ordering gate included; the first refusal stops
+the ingest and names what landed before it. Fidelity flags and refusals are reported and never
+written. Once every write has landed, and when at least one record did, the manifest is promoted
+beside the run, write-once; an ingest that lands no record leaves the run open.
+
+**Flags:**
+
+```
+      --context string        the context the session was handed, when assemble wrote it under --out
+                              (default: the local-tier scribe run directory of the output's run)
+      --dispositions string   the researcher's dispositions text, the file assemble was handed
+      --scribe-json string    path to the JSON the scribe session returned
+```
+
+**Example:**
+
+```
+abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md
+```
 
 ### `abcd site`
 

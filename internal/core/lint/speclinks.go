@@ -175,7 +175,7 @@ func ScanSpecLinks(repoRoot, intentsDir, specsDir string, top Config) (SpecLinkI
 		if d.IsDir() || !intentFileRe.MatchString(d.Name()) {
 			return nil
 		}
-		content, rerr := os.ReadFile(path)
+		content, rerr := readRepoAbs(repoRoot, path, maxRepoFileBytes)
 		if rerr != nil {
 			return rerr
 		}
@@ -220,7 +220,7 @@ func ScanSpecLinks(repoRoot, intentsDir, specsDir string, top Config) (SpecLinkI
 				continue
 			}
 			fileAbs := filepath.Join(specsRoot, bucket, e.Name())
-			content, err := os.ReadFile(fileAbs)
+			content, err := readRepoAbs(repoRoot, fileAbs, maxRepoFileBytes)
 			if err != nil {
 				return SpecLinkIndex{}, err
 			}

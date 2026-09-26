@@ -73,6 +73,17 @@ type ReceiptRoute struct {
 	// ModelReported is the payload's own model field, "" when it names none
 	// (requiring it is itd-2609180517121254's).
 	ModelReported string `json:"model_reported"`
+	// ProviderCall is the call through a provider adapter that produced the
+	// payload: the provider, the model asked for and the model the provider
+	// reported (itd-2609081951381895 criterion 5). null on the harness leg.
+	ProviderCall *CallRecord `json:"provider_call"`
+}
+
+// WithCall returns the receipt carrying the provider call that produced its
+// payload.
+func (rr ReceiptRoute) WithCall(c CallRecord) ReceiptRoute {
+	rr.ProviderCall = &c
+	return rr
 }
 
 // Receipt returns the route's receipt block, with the model the payload

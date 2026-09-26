@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD003).
+# Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD004).
 #
 # Stopgap: enforces the machine-checkable half of the reviews-folder charter
 # until these codes are implemented in `internal/core/lint` (Go). The semantic
 # half (provenance discriminator, "not a shadow backlog") is not mechanisable
-# and stays a convention. See:
-#   .abcd/development/brief/05-internals/06-lint.md  (RD family)
-#   .abcd/work/reviews/README.md                     (the charter)
+# and stays a convention. This script is where the RD codes are defined; the
+# charter they enforce is .abcd/work/reviews/README.md.
 set -euo pipefail
 
 # Every git probe below is fail-closed: a swallowed error reads exactly like a
@@ -62,6 +61,16 @@ note() { echo "  $1" >&2; }
 for d in "$ROOT"/*/; do
   [ -d "$d" ] || continue
   base="$(basename "$d")"
+  # A review folder, and the summary in it, is committed content, never a
+  # pointer elsewhere: the board does not follow a symlinked entry
+  # (internal/core/reviews.Read), so a symlinked folder is not on it at all and
+  # a symlinked summary reads as unpinned. `[ -d ]` and `[ -f ]` follow a
+  # symlink, so the gate asks `[ -L ]` first rather than vouch for either.
+  if [ -L "${d%/}" ]; then
+    note "RD001 $d — a review folder is a directory, not a symlink"
+    fail=1
+    continue
+  fi
   # Semantic-gate receipt directories are sha-keyed (.abcd/work/reviews/<40-hex>/
   # <gate>.json, iss-35) — a distinct artifact class from the dated human-review
   # dirs this charter governs, with their own integrity check (the receipt_gate
@@ -70,8 +79,76 @@ for d in "$ROOT"/*/; do
   printf '%s' "$base" | grep -Eq '^[0-9a-f]{40}$' && continue
   printf '%s' "$base" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$' \
     || { note "RD001 $d — directory name must be <YYYY-MM-DD>-<kebab-scope>"; fail=1; }
+  if [ -L "${d}00-summary.md" ]; then
+    note "RD001 $d — 00-summary.md is a symlink; the summary is a regular file"
+    fail=1
+    continue
+  fi
   [ -f "${d}00-summary.md" ] \
-    || { note "RD001 $d — missing required 00-summary.md"; fail=1; }
+    || { note "RD001 $d — missing required 00-summary.md"; fail=1; continue; }
+  # RD004 — the pin (itd-28): the summary's leading frontmatter block names the
+  # commit the review read, `review_of_commit: <full sha>`, so the status board
+  # can say how far the default branch has moved since. The reading is the
+  # board's own (internal/core/reviews.Pin): a block opened on line 1 and closed
+  # by the next `---`, the first `review_of_commit` key in it, and a bare full
+  # object name in git's lowercase hex, optionally followed by a comment. A
+  # folder from before the rule is named as legacy and not refused; the legacy
+  # set is closed, and a folder added after the rule cannot join it.
+  case "$base" in
+  2026-07-06-plan-consistency | 2026-07-07-roadmap-consistency | 2026-08-19-pr-294-null-predicate)
+    echo "  RD004 legacy $d — predates the review_of_commit pin; named, not refused"
+    continue
+    ;;
+  esac
+  # The board reads at most maxSummaryBytes of a summary (1 MiB,
+  # internal/core/reviews) and shows a larger one unpinned, so the gate
+  # refuses it rather than reading a pin the board never will.
+  size=$(($(wc -c <"${d}00-summary.md")))
+  if [ "$size" -gt 1048576 ]; then
+    note "RD004 $d — 00-summary.md is $size bytes, past the 1 MiB the board reads a summary within"
+    fail=1
+    continue
+  fi
+  pin_line=""
+  lineno=0
+  opened=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    lineno=$((lineno + 1))
+    line="${line%$'\r'}"
+    [ "$lineno" -eq 1 ] && line="${line#$'\xef\xbb\xbf'}"
+    trimmed="${line%"${line##*[! $'\t']}"}"
+    if [ "$lineno" -eq 1 ]; then
+      [ "$trimmed" = "---" ] || break
+      opened=1
+      continue
+    fi
+    if [ "$trimmed" = "---" ]; then
+      opened=2
+      break
+    fi
+    if [ -z "$pin_line" ] && printf '%s' "$line" | grep -Eq '^review_of_commit[ 	]*:'; then
+      pin_line="$line"
+    fi
+  done <"${d}00-summary.md"
+  # bash `read` drops a NUL byte (3.2 truncates the line at it), so the loop
+  # above can see a clean block where reviews.Pin sees none. The block is lines
+  # 1..lineno, the closing fence included; any NUL in those bytes is refused.
+  nul=0
+  if [ "$opened" -eq 2 ]; then
+    block_bytes=$(($(head -n "$lineno" "${d}00-summary.md" | wc -c)))
+    text_bytes=$(($(head -n "$lineno" "${d}00-summary.md" | LC_ALL=C tr -d '\000' | wc -c)))
+    [ "$block_bytes" -eq "$text_bytes" ] || nul=1
+  fi
+  if [ "$nul" -ne 0 ]; then
+    note "RD004 $d — 00-summary.md's frontmatter carries a NUL byte, which the board reads as no pin"
+    fail=1
+  elif [ "$opened" -ne 2 ] || [ -z "$pin_line" ]; then
+    note "RD004 $d — 00-summary.md names no review_of_commit in its frontmatter (the full sha of the commit the review read)"
+    fail=1
+  elif ! printf '%s' "$pin_line" | grep -Eq '^review_of_commit[ 	]*:[ 	]*([0-9a-f]{40}|[0-9a-f]{64})([ 	]+#.*)?[ 	]*$'; then
+    note "RD004 $d — review_of_commit is not a bare full sha in lowercase hex"
+    fail=1
+  fi
 done
 
 # RD002 — append-only: no post-creation modify/rename/delete in committed
@@ -118,7 +195,7 @@ for f in "${files[@]:-}"; do
 done
 
 if [ "$fail" -ne 0 ]; then
-  echo "check-reviews: FAILED — reviews-charter discipline (RD001-RD003)" >&2
+  echo "check-reviews: FAILED — reviews-charter discipline (RD001-RD004)" >&2
   exit 1
 fi
-echo "check-reviews: OK — $ROOT (${#files[@]} review files), RD001-RD003 clean"
+echo "check-reviews: OK — $ROOT (${#files[@]} review files), RD001-RD004 clean"

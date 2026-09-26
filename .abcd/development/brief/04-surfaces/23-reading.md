@@ -103,6 +103,21 @@ The table is Go data, rendered into the readings family's charter under a test
 holding the two to each other. The exclusion floor rides in every manifest, each
 entry with the signal by which a reader detects it.
 
+**The knowledge record travels as statements**
+([adr-2609021016270132](../../decisions/adrs/2609021016270132-the-principles-family-is-a-declared-record-store-whose-entri.md)).
+The principles family is admitted at the widening, entailment and detection
+positions and projected to one field: each principle's H1 title above its
+`**The rule.**` paragraph, with every inline or reference-style link unwrapped to
+its label. A `## The rule` heading is never read as the statement, and a principle
+with no such paragraph contributes no item. Its four claim keys and its citations
+stay behind, and the floor asserts both; an assembly whose principle item still
+carries a record handle, a bare URL or an autolink is refused rather than stamped,
+and record-lint's `principle_claims` judges a typed principle's title and
+paragraph by the same reading first. The
+table admits the family, and a committed entry naming the `principle` kind is what
+hands it to a run; the committed entries name no such kind, so no reading
+receives the knowledge record until one does.
+
 ## Two artefacts, and where they land
 
 Assembly writes the assembled input and the manifest as two separate files: the

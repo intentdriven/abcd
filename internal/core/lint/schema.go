@@ -25,6 +25,7 @@ package lint
 // exact defect the broad exemption used to hide).
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 const ruleRecordSchema = "record_schema"
@@ -81,9 +83,14 @@ var (
 	// named for the run that minted it; a disposition directory is named for the
 	// ITEM it answers, which is what makes the status signal one directory probe
 	// rather than a folder-membership question.
-	readingItemFileNumRe = recordid.FilenameNumRe(issueschema.ReadingItemFamily)
+	//
+	// An item and a disposition are held to the bare-handle grammar their readers
+	// open them by (recordid.BareFilenameNumRe): no reader of either family opens a
+	// slugged file, so passing one here passed a record nothing reads
+	// (iss-2608300929274006).
+	readingItemFileNumRe = recordid.BareFilenameNumRe(issueschema.ReadingItemFamily)
 	readingRunFileNumRe  = recordid.FilenameNumRe(issueschema.ReadingRunFamily)
-	dispositionFileNumRe = recordid.FilenameNumRe(issueschema.DispositionFamily)
+	dispositionFileNumRe = recordid.BareFilenameNumRe(issueschema.DispositionFamily)
 	readingRunBucketRe   = regexp.MustCompile(`^` + issueschema.ReadingRunFamily + `-[0-9]+$`)
 	dispositionBucketRe  = regexp.MustCompile(`^` + issueschema.ReadingItemFamily + `-[0-9]+$`)
 	// The step-2 families' filename grammars. An admission is bucketed by the
@@ -92,6 +99,13 @@ var (
 	// it carries rather than by a directory.
 	admissionFileNumRe = recordid.FilenameNumRe(issueschema.AdmissionFamily)
 	surpriseFileNumRe  = recordid.FilenameNumRe(issueschema.SurpriseFamily)
+	// The reframe store is flat for the surprise store's reason: a reframe is
+	// keyed by the occasion and the fingerprints it carries (spc-2609020626048705).
+	reframeFileNumRe = recordid.FilenameNumRe(issueschema.ReframeFamily)
+	// The principles family is SLUG-KEYED (adr-2609021016270132): a principle's
+	// filename stem is its identity and it carries no ordinal, so the pattern
+	// captures the whole kebab stem where the numbered stores capture a number.
+	principleFileRe = regexp.MustCompile(`^([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
 	// A YAML block-scalar header and nothing else: `|`, `>`, with the chomping and
 	// indentation indicators the spelling allows (`|-`, `>+`, `|2-`). A key
 	// carrying one holds its value on the lines BELOW it, so the same-line scanner
@@ -201,11 +215,12 @@ type recordStore struct {
 	// all three legs made the ADR store claim a refusal nobody performs
 	// (iss-2608301656200729). That leg reads readerRefusesDuplicateKey instead.
 	//
-	// The two stores this cycle added have no such reader: the only reader of
-	// admission records honours one carrying nothing but its run and its proposal
-	// (reading_outstanding_test.go), and no reader of surprise records exists at
-	// all — so a message telling their authors the record is skipped and invisible
-	// sends them to look for a refusal nobody performs (iss-2608301411010342).
+	// The two stores this cycle added have no such reader: the outstanding report
+	// honours an admission carrying nothing but its run and its proposal
+	// (reading_outstanding_test.go), and the record dispatcher reads both families
+	// leniently and skips neither — so a message telling their authors the record
+	// is skipped and invisible sends them to look for a refusal nobody performs
+	// (iss-2608301411010342).
 	// Where it is false each leg states what the malformation IS, which is true of
 	// every store, and stops there.
 	readerFailsClosed bool
@@ -239,6 +254,13 @@ type recordStore struct {
 	// field, so a disagreement is the record contradicting itself about which set
 	// it joined. Empty means the store makes no such double claim.
 	bucketField string
+	// slugKeyed declares a store whose records are keyed by their filename stem
+	// rather than by an ordinal: the handle is `<prefix>-<stem>`, fileNumRe's
+	// submatch 1 is the stem, and the store issues no number and so has no
+	// allocation high-water mark. The principles family is the one such store
+	// (adr-2609021016270132): its entries are prose files keyed by filename, and
+	// minting ordinals for them would cost every existing reference its handle.
+	slugKeyed bool
 }
 
 // recordJoin is one keying field a store declares, with what the join is FOR —
@@ -305,6 +327,18 @@ type recordJoin struct {
 	// join that ALSO declares sameBucketAs; declared alone it would be inert, which
 	// TestEveryJoinTargetPositionIsADeclaredPosition refuses.
 	targetPosition string
+	// oneOf names the CLOSED set of families this join's value must be a handle
+	// of, verbatim, for a join whose value may name one of several families.
+	// Empty means the join declares no such set.
+	//
+	// The surprise's `occasioned_by` is the one such join: an rdi-N, adm-N or
+	// dsp-N and nothing else (spc-2609020626040342). It used to admit a
+	// consequence named in prose, so a prose value passed the gate while the
+	// surprise verb refuses it — a hand-written record joined to nothing. The set
+	// is issueschema's one declaration (SurpriseOccasionFamilies), so the verb and
+	// this gate cannot disagree about it. A value in the set then resolves on the
+	// ordinary presence leg below.
+	oneOf []string
 }
 
 // bucketed reports whether the store holds its records in lifecycle
@@ -408,8 +442,30 @@ var recordStores = []recordStore{
 		requiredFields: issueschema.SurpriseRequired, knownFields: issueschema.SurpriseKnown,
 		joins: []recordJoin{{
 			field: "occasioned_by",
-			why:   "a surprise is keyed to whatever occasioned it, and a join naming nothing joins nothing",
+			why:   "a surprise is keyed to the record that occasioned it, and a join naming nothing joins nothing",
+			oneOf: issueschema.SurpriseOccasionFamilies,
 		}}},
+	// The reframe record (spc-2609020626048705). Its schema comes from
+	// core/issueschema's one declaration, its occasion is a closed join over
+	// the families the verb resolves, and checkReframeRecordShape judges what
+	// the required-fields leg cannot: each fingerprint's shape, the after half
+	// together or not at all, and `changed` drawn from the three surface names.
+	{prefix: "rfm", noun: "reframe", nodeType: "reframe",
+		fileNumRe: reframeFileNumRe, fileFamily: "rfm", filename: "rfm-<N>.md",
+		requiredFields: issueschema.ReframeRequired, knownFields: issueschema.ReframeKnown,
+		joins: []recordJoin{{
+			field: "occasioned_by",
+			why:   "a reframe is keyed to the reading record that occasioned it, and a join naming nothing joins nothing",
+			oneOf: issueschema.ReframeOccasionFamilies,
+		}}},
+	// The principles family (adr-2609021016270132, spc-2609020626042471): flat,
+	// slug-keyed, and declaring no required set here, because an untyped entry —
+	// a prose file with no frontmatter, which is every entry the family held when
+	// it was declared — is a legal state. What a typed entry must carry is judged
+	// by principle_claims (principles.go), which reads the four claim keys this
+	// rule does not; the one key this rule judges is the id, against the stem.
+	{prefix: "prn", noun: "principle", nodeType: "principle",
+		fileNumRe: principleFileRe, filename: "<slug>.md", slugKeyed: true},
 }
 
 // storeByPrefix returns the code-side store for a prefix.
@@ -436,9 +492,12 @@ func recordStorePrefixes() map[string]bool {
 // schemaRecord is one record file as the schema rule sees it: which store and
 // bucket hold it, the id number its FILENAME claims, and its frontmatter.
 type schemaRecord struct {
-	rel    string
-	store  recordStore
-	num    int
+	rel   string
+	store recordStore
+	num   int
+	// slug is the filename stem of a record in a slug-keyed store, and empty for
+	// every numbered one; num is zero where slug is set.
+	slug   string
 	bucket string
 	// title is the record's H1, or — for a store whose records carry none, the
 	// issue ledger — its first body line. The schema rule never reads it; it is
@@ -459,10 +518,33 @@ type schemaRecord struct {
 	// plainly carries on the following lines, and goes green on a record the
 	// reader refuses and skips (iss-2608300234599781).
 	blocks map[string]string
+	// content is the file as read, kept for the issue store's reader-parity leg,
+	// which hands it to the ledger reader itself rather than re-deriving its
+	// grammar.
+	content string
 }
 
-// handle renders the record's prose handle (adr-12, itd-47).
+// scalar decodes a frontmatter value the way this record's own reader does. The
+// issue ledger's reader (capture's decodeScalar) unquotes a double-quoted value
+// and reverses its escapes and keeps a single-quoted one as the token it spells,
+// quotes and all, so the issue store's legs judge that string; the other stores'
+// readers strip either quote pair, which issueScalar mirrors. Judging an issue
+// value with the lenient decoder put `severity: 'minor'` green on a record the
+// reader refuses and `severity: "min\or"` red on one it reads
+// (iss-2608300205044566, iss-2608300234598982).
+func (r schemaRecord) scalar(value string) string {
+	if r.store.prefix == "iss" {
+		return readerScalar(value)
+	}
+	return issueScalar(value)
+}
+
+// handle renders the record's prose handle (adr-12, itd-47), or for a
+// slug-keyed store the prefix and the filename stem (prn-fix-the-detector).
 func (r schemaRecord) handle() string {
+	if r.store.slugKeyed {
+		return r.store.prefix + "-" + r.slug
+	}
 	return r.store.prefix + "-" + strconv.Itoa(r.num)
 }
 
@@ -480,6 +562,20 @@ func (r schemaRecord) valueEmpty(field string, f fmField) bool {
 		return strings.TrimSpace(r.blocks[field]) == ""
 	}
 	return isAbsentValue(f.value)
+}
+
+// blockValue returns the value a key carries on the indented lines below it,
+// and whether it carries one there: a key whose own line is empty, or holds
+// only a block-scalar header (`|`, `>-`), over a non-empty block. It is the
+// block half of valueEmpty's question, for the legs that must tell a
+// block-spelled value from a same-line one.
+func (r schemaRecord) blockValue(field string, f fmField) (string, bool) {
+	v := strings.TrimSpace(f.value)
+	if v != "" && !blockScalarIndicatorRe.MatchString(v) {
+		return "", false
+	}
+	block := r.blocks[field]
+	return block, strings.TrimSpace(block) != ""
 }
 
 // recordRef is one handle read out of a cross-reference field.
@@ -501,6 +597,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	out = append(out, unregisteredIssueSeams(records, cfg)...)
 
 	// index: what the corpus HAS. highWater: the highest id each store has ever
 	// issued, as far as the corpus can show.
@@ -513,10 +610,18 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// (iss-2608270908346940). For the prose-handle stores the id-unique rules
 	// (issue_id_unique, intent_lifecycle, spec_id_unique) catch the frontmatter-id
 	// collision; the ADR store has no such rule, so this is its only guard.
-	index := map[recordRef]schemaRecord{}
+	//
+	// The index keys on the RENDERED handle, not on (prefix, ordinal): a
+	// slug-keyed store issues no ordinal, so keying on the pair would read every
+	// principle as prn-0 and report a clean store as thirty collisions. For a
+	// numbered store the rendered handle is the prefix-N string the pair spelled,
+	// so nothing about those stores moves; for the slug-keyed store it is
+	// prn-<stem>, which a filename-keyed directory can only hold once, so the leg
+	// reports nothing there today and stands guard over a second such store.
+	index := map[string]schemaRecord{}
 	highWater := map[string]int{}
 	for _, r := range records {
-		ref := recordRef{r.store.prefix, r.num}
+		ref := r.handle()
 		if first, dup := index[ref]; dup {
 			out = append(out, Finding{
 				File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: cfg.Severity,
@@ -526,7 +631,8 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		} else {
 			index[ref] = r
 		}
-		if r.num > highWater[r.store.prefix] {
+		// A slug-keyed store issues no ordinals and so has no high-water mark.
+		if !r.store.slugKeyed && r.num > highWater[r.store.prefix] {
 			highWater[r.store.prefix] = r.num
 		}
 	}
@@ -569,22 +675,32 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// speak store-wide, must leave the consequence to the leg that established it
 		// (iss-2608301308369559). The content legs therefore run FIRST and mark what
 		// they spoke about, so nobody has to keep a second list of which fields those
-		// are, and a leg added later is covered by having said something.
+		// are, and a leg added later is covered by having said something. Every leg
+		// marks what it reported even where another leg also covers the field:
+		// `id: ""` is present to the filename leg and blank to the required-fields
+		// leg, so the id mark is what keeps one value to one finding, and
+		// TestFilenameLegsMarkWhatTheyJudged pins both marks (iss-2608301634520703).
 		judged := map[string]bool{}
+		before := len(out)
 		out = append(out, checkRecordFilename(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordFilenameSlug(r, cfg.Severity, judged)...)
 		out = append(out, checkIssueRecordShape(r, cfg.Severity, judged)...)
+		out = append(out, checkReframeRecordShape(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordRequiredFields(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordUnknownFields(r, cfg.Severity)...)
 		out = append(out, checkRecordJoins(r, index, retired, cfg)...)
 		out = append(out, checkRecordBucketField(r, cfg.Severity)...)
+		if len(out) == before {
+			out = append(out, checkIssueReaderParity(r, cfg.Severity)...)
+		}
+		out = append(out, checkIssueBodyRenders(r, cfg.Severity)...)
 
 		// Cross-references: a named record must be in the corpus, or declared
 		// retired by the record that replaced it.
 		for _, field := range recordRefFields {
 			f := r.fields[field]
 			for _, h := range r.refs[field] {
-				if _, ok := index[h]; ok || retired[h] {
+				if _, ok := index[h.String()]; ok || retired[h] {
 					continue
 				}
 				add(r.rel, f.line, field+" names '"+h.String()+"', which is not a record in the corpus and no record declares it superseded; a cross-reference is a claim that the record exists")
@@ -596,7 +712,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// resolvable everywhere else in the corpus.
 		sup := r.fields["supersedes"]
 		for _, h := range r.refs["supersedes"] {
-			if _, ok := index[h]; ok {
+			if _, ok := index[h.String()]; ok {
 				continue
 			}
 			if h.num >= 1 && h.num <= highWater[h.prefix] {
@@ -618,7 +734,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		for _, h := range targets {
-			target, ok := index[h]
+			target, ok := index[h.String()]
 			if !ok {
 				add(r.rel, sb.line, "superseded_by names '"+h.String()+"', which is not a record in the corpus; a successor decision must be present")
 				continue
@@ -639,7 +755,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	for _, r := range records {
 		sup := r.fields["supersedes"]
 		for _, h := range r.refs["supersedes"] {
-			target, ok := index[h]
+			target, ok := index[h.String()]
 			if !ok {
 				continue
 			}
@@ -670,7 +786,24 @@ func checkRecordFilename(r schemaRecord, severity string, judged map[string]bool
 		return nil
 	}
 	want := r.handle()
-	got := issueScalar(f.value)
+	got := r.scalar(f.value)
+	// A slug-keyed store's handle carries the stem verbatim, so it is compared as
+	// the string it is: there is no ordinal to parse and no padding to forgive.
+	if r.store.slugKeyed {
+		if got == want {
+			return nil
+		}
+		line := f.line
+		if line == 0 {
+			line = 1
+		}
+		mark(judged, "id")
+		return []Finding{{
+			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity,
+			Message: "filename claims id '" + want + "' but frontmatter declares '" + got +
+				"'; a " + r.noun() + " is keyed by its filename, so its id is '" + r.store.prefix + "-' and the stem of " + r.store.filename,
+		}}
+	}
 	// Compared as a PARSED handle, not as a string: `adr-0012` and `adr-12` are one
 	// id written two ways (the rest of the rule already compares numerically), and
 	// a string comparison would report the record's own zero-padded spelling as a
@@ -741,6 +874,11 @@ func mark(judged map[string]bool, field string) {
 // filename grammar to match belongs on that record, because it changes what the
 // gate refuses across all four stores.
 func checkRecordFilenameSlug(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	// A slug-keyed store's filename IS its slug and it carries no slug property to
+	// disagree with; its one identity question is the id, asked above.
+	if r.store.slugKeyed {
+		return nil
+	}
 	f := r.fields["slug"]
 	// isNull, not isAbsentValue, for checkRecordFilename's reason: an empty slug
 	// is a value that disagrees, and the stores that would otherwise catch it
@@ -752,7 +890,7 @@ func checkRecordFilenameSlug(r schemaRecord, severity string, judged map[string]
 	if !ok {
 		return nil
 	}
-	got := issueScalar(f.value)
+	got := r.scalar(f.value)
 	if fnSlug == got {
 		return nil
 	}
@@ -856,8 +994,8 @@ func checkRecordRequiredFields(r schemaRecord, severity string, judged map[strin
 // — invisible to every surface of its own family while it still sits in the store.
 // That second account is gated on readerFailsClosed for the reason the
 // missing-property account is: the admission reader COUNTS a record carrying an
-// unknown key, and no reader of surprise records exists at all
-// (iss-2608301519254418).
+// unknown key, and the one reader of surprise records — the record dispatcher —
+// reads them leniently and skips none (iss-2608301519254418).
 func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 	if r.store.knownFields == nil {
 		return nil
@@ -928,25 +1066,25 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 //
 // The second is PRESENCE: a target that is not in the corpus joins nothing.
 //
-// The fourth is the POSITION, where the join declares one: what reads such a join
+// The third is the POSITION, where the join declares one: what reads such a join
 // consults it only for a target at that position, so a target at any other is
 // never queried and the record counts for nothing — the third coordinate of the
 // pair the run and spelling axes already close (iss-2608301649339636).
 //
-// The third is the BUCKET. A target that is in the corpus but in ANOTHER BUCKET
+// The fourth is the BUCKET. A target that is in the corpus but in ANOTHER BUCKET
 // joins something nobody will ever look for: what reads that family keys what it
 // finds on the PAIR — the bucket the record is filed under, and the target it
 // names — so a record reaching across buckets is keyed on a pair no reader
 // queries. It is declared per join AND per target family (sameBucketAs), because
 // that pair-keying is a property of the family and the message names it.
 //
-// Prose is legitimate and stays silent WHERE THE JOIN DECLARES NO FAMILY. A
-// surprise is keyed to whatever occasioned it — a detection, an admission, or a
-// consequence that has no id — so only a value that is a record handle of a store
-// this scan reads is resolved. A handle a record declares it PRUNED is resolved
+// Prose is legitimate and stays silent WHERE THE JOIN DECLARES NO FAMILY AND NO
+// CLOSED SET: only a value that is a record handle of a store this scan reads is
+// resolved. A surprise's occasion is NOT such a join — it declares its closed set
+// (oneOf), so a prose occasion is a finding (spc-2609020626040342). A handle a record declares it PRUNED is resolved
 // too, on the same terms the cross-reference loop resolves it, so one rule gives
 // one answer about it.
-func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
+func checkRecordJoins(r schemaRecord, index map[string]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
 	var out []Finding
 	for _, join := range r.store.joins {
 		f := r.fields[join.field]
@@ -980,6 +1118,17 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			})
 			continue
 		}
+		// The closed set, where the join declares one: the value must be verbatim a
+		// handle of one of its families, so prose and a fourth family are findings
+		// rather than the silence an undeclared join gives them.
+		if len(join.oneOf) > 0 && !spellsHandleOfAny(join.oneOf, value) {
+			out = append(out, Finding{
+				File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+				Message: join.field + " declares '" + value + "', which is not a handle of " + handleList(join.oneOf) +
+					" (lower case with nothing around it); " + join.why,
+			})
+			continue
+		}
 		m := anyHandleFullRe.FindStringSubmatch(value)
 		if m == nil {
 			continue
@@ -996,7 +1145,7 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			continue
 		}
 		ref := recordRef{prefix, num}
-		target, ok := index[ref]
+		target, ok := index[ref.String()]
 		if !ok {
 			// A handle a record declares it PRUNED resolves to that declaration rather
 			// than to a file, exactly as the cross-reference loop in checkRecordSchema
@@ -1021,22 +1170,22 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 		// spelling admits is therefore decided by the file, not by the join, and it
 		// is read off the file.
 		//
-		// A target whose filename is not itself a bare handle is left in the silence
-		// it had: the reader of the family does not read such a file at all, so no
-		// spelling of this join admits it and none is more right than another. That
-		// divergence between this rule's filename grammar and the report's is
-		// iss-2608300929274006's to close.
-		stemIsHandle := false
+		// Every target that reaches here has a bare-handle filename: the item store
+		// is held to the readers' grammar, recordid.BareFilenameNumRe, so a slugged
+		// item file is refused at the walk and never enters the index, and the join
+		// naming it is the not-in-the-corpus finding above. The stand-down this leg
+		// and the two below once kept for such a file has no case left to cover
+		// (iss-2608300929274006).
 		if join.sameBucketAs != "" {
 			stem := strings.TrimSuffix(filepath.Base(target.rel), ".md")
-			stemIsHandle = spellsHandleOf(join.sameBucketAs, stem)
-			if stemIsHandle && value != stem {
+			if value != stem {
 				out = append(out, Finding{
 					File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity,
 					Message: join.field + " declares '" + value + "' while the " + target.noun() +
 						" it names is filed as '" + filepath.Base(target.rel) + "'; what reads this " + r.noun() +
 						" matches the value as written against the name that file carries, so this spelling admits " +
-						"nothing and the " + target.noun() + " it names goes on being reported as unanswered",
+						"nothing: it counts for nothing, and no line reports that an answer was written for the " +
+						target.noun() + " it names",
 				})
 				continue
 			}
@@ -1045,10 +1194,8 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 		// coordinate of the pair, beside the run the record is filed under and the
 		// spelling of the value: what reads this join consults it only for a target at
 		// the declared position, so a target at any other is never queried and the
-		// record counts for nothing. It is asked only where the target's filename is a
-		// bare handle, for the padding leg's reason one block above — what reads the
-		// family never opens such a file, so its position decides nothing.
-		if join.targetPosition != "" && stemIsHandle {
+		// record counts for nothing.
+		if join.targetPosition != "" {
 			posField := target.fields["position"]
 			if pos := issueScalar(posField.value); pos != join.targetPosition {
 				declares := "declares position '" + pos + "'"
@@ -1063,7 +1210,9 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 						" is keyed on a pair nothing ever queries: it counts for nothing, and no line reports " +
 						"that an answer was written for the " + target.noun() + " it names",
 				})
-				continue
+				// No continue: a target both at the wrong position and in another
+				// bucket is reported on both counts, so the author converges in one
+				// round rather than two (iss-2608301808197261).
 			}
 		}
 		// The bucket obligation, where the join declares one. The target is of the
@@ -1080,18 +1229,15 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			"' while this " + r.noun() + " is filed under '" + r.bucket +
 			"'; what reads that family keys it on the pair — the bucket it is filed under and the " +
 			target.noun() + " it names — so this " + r.noun() +
-			" is keyed on a pair nothing ever queries and counts for nothing"
-		// The tail names a REPORT LINE, so it is appended only where the target's
-		// filename is a bare handle — the same test the padding leg makes one block
-		// above, and for the same reason: what reads the family never opens a file
-		// whose name is not one, and emits nothing at all about that target. The
-		// leading clause is true of every cross-bucket target, so the finding stands
-		// either way; sending the operator to find a line that does not exist is what
-		// does not (iss-2608301656193936).
-		if stemIsHandle {
-			msg += ", and the " + target.noun() +
-				" it names goes on being reported as unanswered with no sign that an answer was written"
-		}
+			" is keyed on a pair nothing ever queries and counts for nothing" +
+			", and no line reports that an answer was written for the " + target.noun() + " it names"
+		// The tail says only what the walk establishes, as the position leg does:
+		// no line reports an answer written by THIS record. It once said the item
+		// "goes on being reported as unanswered", which is false for an item a
+		// declined or held disposition answers, and this leg reads no disposition
+		// (iss-2608301755006875). It holds for every target that reaches here,
+		// because only a bare-handle item file enters the index
+		// (iss-2608300929274006).
 		out = append(out, Finding{
 			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
 		})
@@ -1121,6 +1267,26 @@ func spellsHandleOf(family, value string) bool {
 		}
 	}
 	return true
+}
+
+// spellsHandleOfAny reports whether value is verbatim a handle of one of
+// families.
+func spellsHandleOfAny(families []string, value string) bool {
+	for _, f := range families {
+		if spellsHandleOf(f, value) {
+			return true
+		}
+	}
+	return false
+}
+
+// handleList renders a family set as the handles a message names.
+func handleList(families []string) string {
+	names := make([]string, 0, len(families))
+	for _, f := range families {
+		names = append(names, f+"-<N>")
+	}
+	return strings.Join(names, ", ")
 }
 
 // joinFamilyNoun renders the record kind a join's declared family holds, for the
@@ -1241,7 +1407,7 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		if !present || isNull(strings.TrimSpace(f.value)) {
 			continue
 		}
-		v := issueScalar(f.value)
+		v := r.scalar(f.value)
 		if !inSet(v, e.set) {
 			add(e.field, f.line, "invalid "+e.field+" '"+v+"'; capture refuses a value outside {"+strings.Join(e.set, ", ")+"} and skips the record")
 		}
@@ -1250,7 +1416,7 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	// Kebab-slug: the slug becomes a filename, and capture refuses any other shape
 	// — a blank one included, for the reason the enums above are judged blank.
 	if f, present := r.fields["slug"]; present && !isNull(strings.TrimSpace(f.value)) {
-		v := issueScalar(f.value)
+		v := r.scalar(f.value)
 		if !issueschema.SlugRe.MatchString(v) {
 			add("slug", f.line, "invalid slug '"+v+"'; a slug is kebab-case (lower-case alphanumerics joined by single hyphens) and capture refuses any other shape")
 		}
@@ -1303,7 +1469,7 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	lapseField, hasLapseField := r.fields["lapsed_at"]
 	lapsedAt := ""
 	if hasLapseField && !isNull(strings.TrimSpace(lapseField.value)) {
-		lapsedAt = strings.TrimSpace(issueScalar(lapseField.value))
+		lapsedAt = strings.TrimSpace(r.scalar(lapseField.value))
 	}
 	// A key whose own line carries no value may still carry one, on the indented
 	// lines below it. The shared scanner is a same-line scanner, so it reports that
@@ -1313,9 +1479,14 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 	// the sibling of the list case, and the same silent invisibility
 	// (iss-2608300234599781). What the block SAYS is not parsed: it is present, and
 	// it is no instant, which is the whole of the finding.
+	//
+	// The block is read through r.blockValue, the accessor the required-field
+	// check's valueEmpty shares, so a block-scalar HEADER (`lapsed_at: |` over an
+	// indented instant) is a block here too, and gets the block message rather
+	// than a format complaint about the header byte (iss-2608301221402131).
 	fromBlock := false
-	if hasLapseField && lapsedAt == "" && strings.TrimSpace(lapseField.value) == "" {
-		if block := r.blocks["lapsed_at"]; block != "" {
+	if hasLapseField {
+		if block, ok := r.blockValue("lapsed_at", lapseField); ok {
 			lapsedAt, fromBlock = block, true
 		}
 	}
@@ -1361,13 +1532,11 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 // value, and eating it down to nothing puts a missing-property blocker on a
 // property the record plainly carries.
 //
-// On QUOTING the parity is incomplete, and that is a KNOWN GAP rather than a
-// claim: this strips a single-quote pair, capture's decodeScalar unquotes only
-// double quotes, so `severity: 'minor'` is green here and refused there. The
-// divergence is pre-existing and cuts across every shape check that reads a
-// scalar, which is why it is recorded as iss-2608300205044566 — naming this
-// function as the one place to fix it — rather than closed from inside a change
-// about required fields.
+// On QUOTING this is the lenient decoder the reading-family readers share (they
+// strip either quote pair). The issue ledger's reader keeps a single-quoted value
+// as written and decodes a double-quoted one's escapes, so the issue store's legs
+// decode through schemaRecord.scalar, which picks readerScalar for that store
+// (iss-2608300205044566).
 func issueScalar(value string) string {
 	v := strings.TrimSpace(value)
 	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
@@ -1382,12 +1551,14 @@ func issueScalar(value string) string {
 // escaping reversed; anything else — a single-quoted value included — is the bare token it
 // spells, quote characters and all.
 //
-// It exists beside issueScalar rather than replacing it because the two answer
-// different questions. issueScalar compares an enum leniently, where a
-// single-quoted `severity: 'minor'` is a spelling nobody needs a finding about.
-// A free-text value is different: the quote character survives into the value the
-// reader parses, so a gate that strips it judges a string that never existed
-// (iss-2608300927577163).
+// It exists beside issueScalar rather than replacing it because the stores'
+// readers differ: the issue ledger's reader decodes exactly this way, so every
+// issue-store leg reads a value through it (schemaRecord.scalar) — a single-quoted
+// `severity: 'minor'` is the string 'minor' to that reader, out of enum, and the
+// record is skipped — while the reading-family readers strip either quote pair,
+// which issueScalar mirrors. For a free-text value the quote character survives
+// into the value the reader parses, so a gate that strips it judges a string that
+// never existed (iss-2608300927577163).
 func readerScalar(value string) string {
 	v := strings.TrimSpace(value)
 	if len(v) >= 2 && strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`) {
@@ -1429,7 +1600,18 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 		if dir == "" {
 			continue
 		}
+		// The store paths come out of the committed config, so a cloned repo
+		// controls them: held inside the repository lexically and once symlinks
+		// in their ancestry are followed, as every other configured path is.
+		if err := containedRepoPath(dir); err != nil {
+			return nil, nil, &configError{ruleRecordSchema + ": store " + quote(dir) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
 		storeAbs := filepath.Join(repoRoot, filepath.FromSlash(dir))
+		if err := resolvedInsideRoot(repoRoot, storeAbs); err != nil {
+			return nil, nil, &configError{ruleRecordSchema + ": store " + quote(dir) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
 		entries, err := os.ReadDir(storeAbs)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -1455,6 +1637,18 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 			}
 			for _, e := range es {
 				rel := filepath.Join(bucketRel, e.Name())
+				// A link that is not a markdown entry is the undeclared
+				// subdirectory's twin: a symlink DirEntry is not a directory, so
+				// it fell past the leg below and the suffix test dropped it with
+				// nothing said. It is named and never followed. A markdown link
+				// stays with the record legs, which refuse it through the guarded
+				// read (iss-2609261152282753).
+				if e.Type()&fs.ModeSymlink != 0 && !hasMarkdownExt(e.Name()) {
+					if !strings.HasPrefix(e.Name(), ".") {
+						add(rel, linkedSubdirMessage(store, bucket, e.Name()))
+					}
+					continue
+				}
 				if e.IsDir() {
 					// A bucket (and a flat store) holds its records DIRECTLY. A
 					// directory inside one is a lifecycle nobody declared, and every
@@ -1476,13 +1670,29 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 						"); the filename is the handle every cross-reference resolves through")
 					continue
 				}
-				num, err := strconv.Atoi(m[1])
-				if err != nil {
-					continue
+				num, slug := 0, ""
+				if store.slugKeyed {
+					slug = m[1]
+				} else {
+					n, err := strconv.Atoi(m[1])
+					if err != nil {
+						continue
+					}
+					num = n
 				}
-				content, err := os.ReadFile(filepath.Join(bucketAbs, e.Name()))
+				// fsutil.ReadGuarded on the unresolved leaf, as the reading walk in
+				// readingoutstanding.go reads the same trees: a record is never
+				// legitimately a link, so a symlinked one is refused rather than
+				// followed (its target's frontmatter would otherwise surface in lint
+				// output), a FIFO cannot hang the gate, and an oversized file is not
+				// read. The refusal is a finding on the file, not an aborted crawl,
+				// so the gate and the report decline the same records
+				// (iss-2608301203521317).
+				content, err := fsutil.ReadGuarded(filepath.Join(bucketAbs, e.Name()), issueschema.RecordReadLimit)
 				if err != nil {
-					return err
+					add(rel, store.noun+" record cannot be read safely ("+guardedReason(err)+
+						"); the gate neither follows nor reads it, so nothing it holds is checked")
+					continue
 				}
 				lines := strings.Split(string(content), "\n")
 				// A duplicated top-level key is malformed to every record consumer, but the
@@ -1499,7 +1709,8 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				// The refusal half is gated on readerRefusesDuplicateKey rather than on
 				// readerFailsClosed, because the two come apart on this malformation
 				// alone: the admission reader COUNTS a record carrying a duplicated key,
-				// no reader of surprise records exists, and the ADR dispatcher — which
+				// the record dispatcher reads surprise records with the lenient scanner
+				// on its first value, and the ADR dispatcher — which
 				// does validate the id — reads the frontmatter with the lenient scanner
 				// and never sees the second line, so naming a refusal on any of the three
 				// sends the author looking for one nobody performs (iss-2608301519254418,
@@ -1533,16 +1744,25 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 						File: rel, Line: dup.Line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
 					})
 				}
+				for _, n := range setextUnderlineLines(lines) {
+					out = append(out, Finding{
+						File: rel, Line: n, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+						Message: "a bare `---` directly under a paragraph line is a setext underline, not a thematic break: it renders line " +
+							strconv.Itoa(n-1) + " as a heading nobody wrote; put a blank line above it, or remove it",
+					})
+				}
 				fields := frontmatterFields(lines)
 				records = append(records, schemaRecord{
-					rel:    rel,
-					store:  store,
-					num:    num,
-					bucket: bucket,
-					title:  recordTitle(lines),
-					fields: fields,
-					refs:   recordRefsOf(lines, fields),
-					blocks: frontmatterBlocksOf(lines, fields),
+					rel:     rel,
+					store:   store,
+					num:     num,
+					slug:    slug,
+					bucket:  bucket,
+					title:   recordTitle(lines),
+					fields:  fields,
+					refs:    recordRefsOf(lines, fields),
+					blocks:  frontmatterBlocksOf(lines, fields),
+					content: string(content),
 				})
 			}
 			return nil
@@ -1561,6 +1781,30 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 
 		for _, e := range entries {
 			rel := filepath.Join(storeRel, e.Name())
+			// A declared bucket that is a link is named, never skipped. A symlink
+			// DirEntry is not a directory, so without this it fell to the markdown
+			// suffix test below and a whole lifecycle state went unchecked with
+			// nothing said (iss-2609261133371466). It is not followed either: the
+			// reading walk refuses a linked directory, capture's allocator refuses
+			// a linked open/, and the release cut reads git trees, where a link is
+			// one blob that ls-tree never descends.
+			if e.Type()&fs.ModeSymlink != 0 && store.declaresBucket(e.Name()) {
+				add(rel, "declared bucket '"+e.Name()+"' is a link; nothing in it is checked")
+				continue
+			}
+			// Any other link the suffix test below would drop is an undeclared
+			// bucket that is also a link: named once, and nothing behind it read.
+			// It is exempt exactly where a real directory is — a dot-name is
+			// tooling state, and a configured store root is scanned by its own
+			// store — and a markdown link stays with the store-root record leg
+			// (iss-2609261152282753).
+			if e.Type()&fs.ModeSymlink != 0 && !strings.HasSuffix(e.Name(), ".md") {
+				if !strings.HasPrefix(e.Name(), ".") && !nestedRoots[e.Name()] {
+					add(rel, "'"+e.Name()+"' is a link and not a declared "+store.noun+" bucket ("+store.bucketDesc()+
+						"); nothing behind it is checked, and an undeclared bucket is a lifecycle state no rule reads")
+				}
+				continue
+			}
 			if e.IsDir() {
 				// A dot-directory is tooling state (an editor's, a scanner's), never
 				// a lifecycle the record authored — the record's own buckets are all
@@ -1648,6 +1892,18 @@ func undeclaredSubdirMessage(store recordStore, bucket, name string) string {
 	}
 	return "lifecycle bucket '" + bucket + "' holds records directly, so subdirectory '" + name +
 		"' is undeclared; records inside it are read by no rule"
+}
+
+// linkedSubdirMessage names a link that sits where records should. It is
+// undeclaredSubdirMessage's twin for an entry the walk does not follow, so it
+// says the link is undeclared without claiming what it points at.
+func linkedSubdirMessage(store recordStore, bucket, name string) string {
+	if bucket == "" {
+		return "the " + store.noun + " store is flat, so link '" + name +
+			"' is undeclared; nothing behind it is checked"
+	}
+	return "lifecycle bucket '" + bucket + "' holds records directly, so link '" + name +
+		"' is undeclared; nothing behind it is checked"
 }
 
 // isAbsentValue reports whether a frontmatter value says "nothing here".
@@ -1934,4 +2190,223 @@ func refsContain(refs []recordRef, want recordRef) bool {
 		}
 	}
 	return false
+}
+
+// checkReframeRecordShape judges a reframe record's values the way the reframe
+// writer's validateReframeStrict does (spc-2609020626048705), so a record
+// written by hand is refused where a written one would be: every fingerprint a
+// 64-hex SHA-256, the after half — the three after fingerprints and `changed` —
+// present together or not at all, and `changed` a non-empty list drawn from the
+// three surface names. An ABSENT required value is the required-fields leg's
+// business, so a blank is skipped here.
+func checkReframeRecordShape(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	if r.store.prefix != issueschema.ReframeFamily {
+		return nil
+	}
+	var out []Finding
+	add := func(field string, line int, msg string) {
+		if line == 0 {
+			line = 1
+		}
+		mark(judged, field)
+		out = append(out, Finding{
+			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity, Message: msg,
+		})
+	}
+	present := 0
+	for _, n := range issueschema.FrameSurfaceNames {
+		for _, half := range []string{"_before", "_after"} {
+			f, ok := r.fields[n+half]
+			if !ok {
+				continue
+			}
+			if half == "_after" {
+				present++
+			}
+			if isNull(strings.TrimSpace(f.value)) {
+				continue
+			}
+			if v := issueScalar(f.value); !issueschema.ValidFingerprint(v) {
+				add(n+half, f.line, n+half+" '"+v+"' is not a 64-hex SHA-256 fingerprint; the reframe writer "+
+					"records each surface's content fingerprint in that shape and nothing else")
+			}
+		}
+	}
+	ch, hasChanged := r.fields["changed"]
+	if hasChanged {
+		present++
+	}
+	if present != 0 && present != len(issueschema.FrameSurfaceNames)+1 {
+		line := ch.line
+		if !hasChanged {
+			line = 1
+		}
+		add("changed", line, "a reframe's after half is the three after fingerprints and `changed` together, "+
+			"or none of them while the record is open; this record carries part of it")
+	}
+	if hasChanged {
+		v := strings.TrimSpace(ch.value)
+		inner, isList := strings.CutPrefix(v, "[")
+		inner, closed := strings.CutSuffix(inner, "]")
+		switch {
+		case !isList || !closed:
+			add("changed", ch.line, "changed '"+v+"' is not an inline list of the surfaces that moved")
+		case strings.TrimSpace(inner) == "":
+			add("changed", ch.line, "changed is empty; a completed reframe in which no surface moved records no reframe")
+		default:
+			for _, item := range strings.Split(inner, ",") {
+				name := issueScalar(strings.TrimSpace(item))
+				if !issueschema.ValidFrameSurface(name) {
+					add("changed", ch.line, "changed names '"+name+"', which is not one of the frame's surfaces ("+
+						strings.Join(issueschema.FrameSurfaceNames, ", ")+")")
+				}
+			}
+		}
+	}
+	return out
+}
+
+// checkIssueReaderParity is the backstop under the issue store's legs: when none
+// of them found anything, it asks capture's ledger reader itself whether it
+// reads the record, and reports the refusal it would skip the record with. The
+// legs above re-derive the reader's grammar one property at a time, and every
+// shape they did not re-derive was lint-green on a record the reader refuses and
+// skips, invisible to every capture surface while it sat in the ledger: a stray
+// indented line after a key, a key whose only continuation is an indented
+// comment, a key led by a Unicode space, a schema_version other than the integer
+// 1, a list where a string belongs (iss-2608300244483405, iss-2608300234598982,
+// iss-2608301519255156). It runs only when the legs are silent, so a defect they
+// name is named once, in their words.
+func checkIssueReaderParity(r schemaRecord, severity string) []Finding {
+	if r.store.prefix != "iss" {
+		return nil
+	}
+	if issueReadRefusal == nil {
+		return nil
+	}
+	err := issueReadRefusal(r.content, r.bucket, r.rel)
+	if err == nil {
+		return nil
+	}
+	return []Finding{{
+		File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: severity,
+		Message: "capture's ledger reader refuses this record (" + err.Error() +
+			") and skips it, so it is invisible to every capture surface while it sits in the ledger",
+	}}
+}
+
+// issueReadRefusal is the ledger reader's verdict on one committed issue record:
+// the error it would skip the record with, or nil. It is capture.ReadRefusal,
+// registered by the front doors that run this gate (cmd/record-lint, and the CLI
+// for `abcd lint`), because this package cannot import core/capture: capture's
+// own tests import this package, and Go refuses the cycle. A caller that
+// registers nothing runs every other leg and not this backstop, and
+// unregisteredIssueSeams names the omission in a finding; the front-door tests
+// pin that both register it.
+var issueReadRefusal func(content, status, path string) error
+
+// SetIssueReader registers the issue ledger's reader for the record_schema
+// reader-parity leg. Pass capture.ReadRefusal.
+func SetIssueReader(fn func(content, status, path string) error) {
+	issueReadRefusal = fn
+}
+
+// recordBodyCheck is the site renderer's verdict on one record body: the
+// construct it refuses, or nil. It is site.CheckRecordBody, registered by the
+// front doors for the reason issueReadRefusal is: core/site imports this package.
+var recordBodyCheck func(rel, content string) error
+
+// SetRecordBodyCheck registers the site renderer's body check for the
+// record_schema body leg. Pass site.CheckRecordBody.
+func SetRecordBodyCheck(fn func(rel, content string) error) {
+	recordBodyCheck = fn
+}
+
+// unregisteredIssueSeams names the issue-store seams no front door registered.
+// Two legs over the issue store — reader parity and the body render — are asked
+// of functions this package cannot import, so a caller that registers neither
+// runs every other leg and those two not at all. Skipping them silently let a
+// new front door lose both checks with no signal; an armed rule that reads issue
+// records now says, in one finding on the store, which seam is missing. Nothing
+// is said over a store with no records, where the skipped legs would ask
+// nothing.
+func unregisteredIssueSeams(records []schemaRecord, cfg RuleConfig) []Finding {
+	var missing []string
+	if issueReadRefusal == nil {
+		missing = append(missing, "the ledger reader (lint.SetIssueReader, the reader-parity leg)")
+	}
+	if recordBodyCheck == nil {
+		missing = append(missing, "the site renderer's body check (lint.SetRecordBodyCheck, the body leg)")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	verb, what, which := " is", "that leg", "it"
+	if len(missing) > 1 {
+		verb, what, which = " are", "those legs", "them"
+	}
+	for _, r := range records {
+		if r.store.prefix != "iss" {
+			continue
+		}
+		return []Finding{{
+			File: cfg.RecordStores["iss"], Line: 0, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+			Message: "record_schema reads issue records, and " + strings.Join(missing, " and ") + verb +
+				" not registered by the front door running it, so " + what + " did not run on any of them; " +
+				"register " + which + " where the gate is wired, as cmd/record-lint and the CLI do",
+		}}
+	}
+	return nil
+}
+
+// checkIssueBodyRenders refuses an issue record whose body the site renderer
+// cannot render. The record is a site input, and the first gate that read a body
+// as markdown was site-render, at the far end of preflight: `abcd capture`
+// accepts any body, so a construct the renderer refuses (an indented code block,
+// raw HTML) was committed and found by whoever next ran the whole gate rather than
+// by its author (iss-2608301350287219). The renderer is asked, not re-derived.
+func checkIssueBodyRenders(r schemaRecord, severity string) []Finding {
+	if r.store.prefix != "iss" || recordBodyCheck == nil {
+		return nil
+	}
+	err := recordBodyCheck(filepath.ToSlash(r.rel), r.content)
+	if err == nil {
+		return nil
+	}
+	return []Finding{{
+		File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: severity,
+		Message: "the record body carries markdown the site renderer refuses (" + err.Error() +
+			"); site-render fails on it — rewrite the construct inside the renderer's subset (a fenced block for code)",
+	}}
+}
+
+// setextUnderlineRe is a `---` run that CommonMark reads as a setext heading's
+// underline when it sits directly under a paragraph line.
+var setextUnderlineRe = regexp.MustCompile(`^ {0,3}-{3,}[ \t]*$`)
+
+// notParagraphRe is a line that opens a block other than a paragraph, under
+// which a `---` is a thematic break rather than an underline: an ATX heading, a
+// blockquote, a list item, a table row, an HTML line, or an indented line (a
+// list continuation or indented code).
+var notParagraphRe = regexp.MustCompile(`^(?:\s{4}|\t| {0,3}(?:#|>|[-*+](?:\s|$)|\d+[.)](?:\s|$)|\||<))`)
+
+// setextUnderlineLines returns the 1-based lines of a record body where a bare
+// `---` sits directly under a paragraph line, so a capture that meant a
+// thematic break renders the paragraph above it as a heading
+// (iss-2608221342508878). Fenced lines are the example text they look like.
+func setextUnderlineLines(lines []string) []int {
+	start := frontmatterBodyStart(lines)
+	mask := fenceMask(lines)
+	var out []int
+	for i := start + 1; i < len(lines); i++ {
+		if mask[i] || mask[i-1] || !setextUnderlineRe.MatchString(lines[i]) {
+			continue
+		}
+		prev := lines[i-1]
+		if strings.TrimSpace(prev) == "" || notParagraphRe.MatchString(prev) || setextUnderlineRe.MatchString(prev) {
+			continue
+		}
+		out = append(out, i+1)
+	}
+	return out
 }

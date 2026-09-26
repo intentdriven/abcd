@@ -114,8 +114,36 @@ func checkRecordProvenance(repoRoot string, cfg Config, rc RuleConfig) ([]Findin
 	for _, r := range records {
 		out = append(out, provenanceFindings(r, runOf, forwardOf, rc.Severity)...)
 		out = append(out, heldFindings(r, rc.Severity)...)
+		out = append(out, spacedKeyFindings(r, rc.Severity)...)
 	}
 	return out, nil
+}
+
+// spacedKeyFindings reports a command-written key spelled with whitespace
+// before its colon (`held :`, `origin\t:`). The scanner normalises the key and
+// every reader honours it, but no write path produces the spelling, and a
+// remover that matches the verb's exact spelling (`intent unhold`) cannot find
+// it, so the only signal was that verb's refusal (iss-2609210748122003). The
+// keys judged are the ones this rule already treats as a command's write: the
+// disclosure pair on every record, and the hold on an intent.
+func spacedKeyFindings(r schemaRecord, severity string) []Finding {
+	keys := []string{provenance.KeyOrigin, provenance.KeyProductionMode}
+	if r.store.prefix == "itd" {
+		keys = append(keys, heldKey)
+	}
+	var out []Finding
+	for _, key := range keys {
+		f, ok := r.fields[key]
+		if !ok || !f.spaced {
+			continue
+		}
+		out = append(out, Finding{
+			File: r.rel, Line: f.line, RuleID: ruleRecordProvenance, Severity: severity,
+			Message: "`" + key + "` is spelled with a space before its colon; the command that writes it writes `" + key +
+				":`, and a verb that edits the line matches that spelling only, so this is a state no command produced" + handEditResidual,
+		})
+	}
+	return out
 }
 
 // heldKey is the intent hold's frontmatter key. The intent store spells it
@@ -124,9 +152,9 @@ func checkRecordProvenance(repoRoot string, cfg Config, rc RuleConfig) ([]Findin
 // half — what a legal value IS — lives in frontmatter.ScalarString, which both
 // sides call. The match is exact and case-sensitive: a `Held:`, `HELD:` or
 // `"held":` key is read by nothing and reported by nothing, because the store
-// declares no closed key list for an unknown key to fall outside of; the
+// declares no closed key list for an unknown key to fall outside of. The
 // hand-spelled `held :` (a space before the colon), which the scanner
-// normalises and every reader honours, is iss-2609210748122003.
+// normalises and every reader honours, is reported by spacedKeyFindings.
 const heldKey = "held"
 
 // heldBuckets are the buckets `abcd intent hold` acts on. A legal hold

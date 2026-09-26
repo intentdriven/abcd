@@ -217,6 +217,14 @@ prd_grandfathered: null  # true = pre-spc-3 planned intent; GR002+GL005 suppress
 
 - <Reference + one line on the relation>
 
+## SOTA
+
+> _Required once planned (per [sota-per-intent](../principles/sota-per-intent.md); `intent_sota` warns on a planned intent without it). The existing alternatives, each one's rough maturity, and the path taken: 1 adopt the alternative, 2 a native floor with a seam for it, 3 bespoke with no swap possible._
+
+- <Alternative — maturity>
+
+**Path:** <1, 2 or 3, and why>
+
 ## Open Questions
 
 - <Bullet — anything not yet decided>

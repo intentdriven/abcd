@@ -1,7 +1,7 @@
 ---
 name: history
 description: "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb."
-argument-hint: "list [--session <id>] | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest [<path>...] | migrate | reconstruct <session-id>"
+argument-hint: "list [--session <id>] | separation | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest [<path>...] | migrate | reconstruct <session-id>"
 block: agents
 ---
 
@@ -10,9 +10,12 @@ block: agents
 The native session-transcript store at
 `~/.abcd/transcripts/<root-sha>/records/`, keyed on this repo's root-commit SHA.
 The store is **user-level and self-creating**: it belongs to the machine rather
-than to any checkout, and the first capture makes it, so no install step stands
-between a wired hook and a stored transcript. `list`, `show` and `staged`
-**perform zero writes**; `capture` and `drain` are the write paths, and both
+than to any checkout, and the first verb to reach it makes it, so no install
+step stands between a wired hook and a stored transcript. `list`, `show` and
+`staged` **add nothing to the corpus**: they record no transcript and change no
+stored record. They are not side-effect-free, because every verb reaches the store
+through the one seam that creates it when it is absent and moves a legacy
+corpus into it (below). `capture` and `drain` are the write paths, and both
 redact on write — no live secret or absolute home path can survive into a
 record.
 
@@ -88,6 +91,37 @@ whenever the user asks what a session did, or what one of its agents did — a
 sub-agent's record holds the full session id, so the session identifier alone is
 enough and no filtering by hand is needed. An empty result names the session it
 found nothing for, so a mistyped id never reads as a repo with no transcripts.
+
+The text listing ends with the session-separation line described under
+Separation, computed over the whole store whatever the listing selected. The
+JSON stays an array of records and carries no such line.
+
+## Separation
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history separation --json
+```
+
+Report whether any retained transcript held both a reading and the ledger of
+one run. Every reading bundle and every scribe context carries a per-run context
+stamp naming its kind, its run and a digest of what it holds; capture records
+the stamps a transcript carried as metadata, and this check reads that metadata
+and never a body. It says one of three things, and say which to the user:
+
+- **`violations`** non-empty: each names a record `file`, its `session_id` and
+  the `run` whose reading stamp and scribe stamp it carries. The verb exits 1.
+  That session held both halves of the wall, which is what the scribe verb and
+  the reading verb exist to keep apart.
+- **Held for what was seen**: no retained transcript carries two stamps of one
+  run. Report the `runs` it saw and how many of the `transcripts` were
+  `stamped`; it is a statement about those, not about every session that ever
+  ran.
+- **`unobserved`** true: the store holds no transcript, or none carrying a
+  stamp. Report the `reason` and never call it clean. A host that assembles a
+  session's context before anything is retained is outside this check's reach,
+  and there the scribe definition's protocol remains the gate.
+
+Read-only; exits 0 unless a violation was found.
 
 ## Show
 
@@ -248,9 +282,9 @@ Repair the records written before the store had lineage fields, whose
 full session id is recovered from the record's **own body**, and a body that
 does not confirm the stored prefix leaves the record untouched and is reported.
 
-**It reports by default and writes only under `--apply`** — the store holds the
-only copy of these records, so present the report and let the user ask for the
-write. Re-running it is a no-op. `--sidecar-root` (or the declared
+**It reports by default and writes records only under `--apply`** — the store
+holds the only copy of these records, so present the report and let the user ask
+for the write. Re-running it is a no-op. `--sidecar-root` (or the declared
 `ingest_roots`) says where to look for the host's per-agent metadata; where it
 answers, the record gains its agent type, spawn depth, spawning tool call and
 parent agent, and where it does not, the record says its lineage is unknown

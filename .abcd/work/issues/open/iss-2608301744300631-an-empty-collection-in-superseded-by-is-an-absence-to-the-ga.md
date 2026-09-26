@@ -20,12 +20,12 @@ no handle, and it tests absence with `isAbsentValue` — deliberately, because
 empty flow collections are an absence to the gate and draw no finding.
 
 `record.describeADR` does not share that predicate. It gates the link on
-`sup != "" && !frontmatter.IsNull(sup)`, and neither `[]` nor `{}` is in the
-YAML null set, so it renders `Links["superseded_by"] = "[]"` — a successor link
+`sup != "" && !frontmatter.IsNull(sup)`, and none of `[]`, `{}` or `!!null`
+is in the YAML null set, so it renders `Links["superseded_by"] = "[]"` — a successor link
 whose target is a bracket pair. One record, two readings: the gate says the ADR
 names no successor and the dispatcher shows one.
 
-The `[]` half is pre-existing; the `{}` half arrived with the widening, which
+The `[]` half is pre-existing; the `{}` and `!!null` halves arrived with the widening, which
 made the two spellings agree with each other rather than with the dispatcher.
 Both are the same defect and neither is separately fixable, because the
 disagreement is between the two predicates and not between the two spellings.

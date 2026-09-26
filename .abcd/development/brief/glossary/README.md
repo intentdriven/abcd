@@ -38,8 +38,9 @@ JSON-schema file for it.
 | `definition` | string (≥10 chars) | Precise, unambiguous definition |
 | `aliases` | array | Acceptable alternative names |
 | `forbidden_synonyms` | array | Words that MUST NOT substitute for this term |
-| `status` | enum | `draft`, `stable`, or `deprecated` |
+| `status` | enum | `draft`, `stable`, `deprecated`, or `superseded` (a retired term that names its successor) |
 | `introduced_in` | string | Version or intent ID when this term was coined |
+| `not_to_be_confused_with` | string\|array | The terms a reader confuses with this one, each as `<context>/<term>`, a scalar or an inline list. On every entry but the record-families page, at least one member names a family row on [record-families](core/record-families.md) or the page itself (`core/record-families`): that member is how the entry points at the one map. |
 
 ### Optional Frontmatter Fields
 
@@ -47,7 +48,6 @@ JSON-schema file for it.
 |-------|------|-------------|
 | `starts_when` | string\|null | Condition/event that initiates this concept (lifecycle terms) |
 | `ends_when` | string\|null | Condition/event that concludes this concept (lifecycle terms) |
-| `not_to_be_confused_with` | string\|null | Related term that is commonly confused with this one |
 | `versions` | array\|null | Version history records for the term definition |
 
 ### Constraints
@@ -56,6 +56,8 @@ JSON-schema file for it.
 - When `status` is `stable` and either `starts_when` or `ends_when` is set, both must be
   present and non-null.
 - `bounded_context` must match the name of the parent directory.
+- `not_to_be_confused_with` names at least one family on the record-families page, or the page
+  itself, on every entry but that page.
 
 ---
 
@@ -120,7 +122,7 @@ glossary/
 
 ## Enforcement
 
-Two mechanical checks read this directory. Neither is a full schema validator — the field tables
+Four mechanical checks read this directory. None is a full schema validator — the field tables
 above are the shape's specification, and conformance to them is a review responsibility.
 
 - **`GL002` forbidden synonyms** (`internal/core/lint`, run by the record-lint gate — `go run
@@ -130,6 +132,18 @@ above are the shape's specification, and conformance to them is a review respons
   are common English words: a repo opts words in through the `forbidden_synonyms` rule in its
   `.abcd/record-lint.json`, and a word the glossary does not forbid is refused as a configuration
   error. This repo currently enforces one — `epic` (itd-43) — via that rule's `enforce` list.
+- **`glossary_family_pointer`** (`internal/core/lint`, run by the record-lint gate). The rule reads
+  the family table on [record-families](core/record-families.md) as the closed set of families,
+  then refuses a term file whose `not_to_be_confused_with` names nothing on that page: no family
+  row, and not the page itself. A retired word such as `core/phase`, a term with no row, `null` and
+  an absent key all point nowhere. The template carries `core/record-families`, so a new entry
+  starts pointing at the map.
+- **`record_family_key`** (`internal/core/lint`, run by the record-lint gate). The rule reads the
+  frontmatter keys of every record store and reports, as a warning and never a refusal, a key that
+  names a family the page does not define. A key names a family when one of its words is a grouping
+  word this glossary knows: a superseded entry's term or alias, or a forbidden synonym of a family
+  entry (`grandfathered_at_phase` names `phase`). A word the glossary does not know is not read as
+  a family.
 - **The index drift gate** (`internal/core/glossary`, run by `go test ./internal/core/glossary/`).
   The Directory Layout and Term Index blocks above and below are rendered from the term files; the
   test fails the build when the committed README no longer matches what the directory holds. A term

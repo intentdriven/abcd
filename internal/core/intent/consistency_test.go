@@ -307,7 +307,7 @@ func TestConsistencyIngestWritesTheDatedReport(t *testing.T) {
 		"- receipt: " + em.ReceiptID,
 		"premise contradiction", "sequencing impossibility",
 		"`" + cxPlanned + ":12`", "`" + cxShipped + ":16`", "`" + cxBrief + ":5`",
-		"“" + cxQuotePlanned + "”", "“" + cxQuoteShipped + "”", "“" + cxQuoteBrief + "”",
+		"\u201c" + cxQuotePlanned + "\u201d", "\u201c" + cxQuoteShipped + "\u201d", "\u201c" + cxQuoteBrief + "\u201d",
 		"iss-901 (filed)", "iss-902 (filed)",
 	} {
 		if !strings.Contains(s, want) {

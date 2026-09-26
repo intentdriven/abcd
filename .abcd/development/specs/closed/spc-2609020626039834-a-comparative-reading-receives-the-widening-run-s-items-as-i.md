@@ -71,7 +71,7 @@ the exported durable-tier writer; the definition's Object section; the eval
 rows, plants and counts; the plugin page and the brief chapter.
 
 Out: Admission itself and the verb that writes it, which are
-[spc-2609020626040342](../open/spc-2609020626040342-an-admission-and-a-surprise-are-written-by-a-verb-and-the-or.md)'s,
+[spc-2609020626040342](spc-2609020626040342-an-admission-and-a-surprise-are-written-by-a-verb-and-the-or.md)'s,
 including the gate in the shared disposition writer that holds the ruled
 ordering; any characterisation performed by the assembler; a candidate set
 drawn from more than one run; the preset file's own version, which

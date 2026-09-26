@@ -34,3 +34,30 @@ rungs. Record-shaped work may declare a degenerate ladder (principle = MVP,
 or topping out at MVP). Two rules: articulate the full ladder for every
 candidate, and never fabricate an absent rung. Provenance:
 [`../research/notes/2026-07-09-practice-mvp-tool-extraction.md`](../research/notes/2026-07-09-practice-mvp-tool-extraction.md).
+
+**Typed claims.** The family is a declared record store
+([adr-2609021016270132](../decisions/adrs/2609021016270132-the-principles-family-is-a-declared-record-store-whose-entri.md)):
+an entry's handle is `prn-<filename stem>`, and an entry may open with a
+frontmatter block declaring what kind of claim it makes and what it rests on.
+
+```yaml
+---
+id: prn-<filename stem>
+claim_type: causal        # criterion, causal or context (mechanism reads as causal)
+reference: "abcd lint"    # a record handle, or a double-quoted surface name
+comparison: "What was compared to produce it, in one sentence."
+evidence: [itd-181, cond-2608311949582375]   # record handles and scope-condition identities
+---
+```
+
+A key considered and declined is the literal `null`; an absent key is a claim
+not carried. Population is forward-only: an entry carrying none of the four keys
+is counted by the record lint as untyped (`principle_untyped`, a warning), and
+nothing backfills one. An entry carrying any of them carries all four
+(`principle_claims`, blocking), states its rule as a `**The rule.**`
+paragraph rather than a `## The rule` heading, and carries no record handle and
+no link of any shape (inline, reference-style, autolink or bare URL) in that
+paragraph or its H1 title, because a reading receives the title and that
+paragraph and nothing else. Evidence naming a scope condition is read against
+the condition's standing disposition: falsified blocks (`principle_falsified`),
+and narrowed, untested or unresolvable is reported (`principle_inheritance`).

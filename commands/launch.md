@@ -149,29 +149,27 @@ Six failures are worth recognising, because each looks like something else.
   corrected receipts, and its merge retries. A hand-pushed tag exists before the
   gate runs, so there the version is consumed. Step 2 exists to catch this
   before the merge — run it.
-- **`auto-release` fails in `detect`, on `Plugin archive reproduces the committed
-  pin, before the tag`, and no tag appears.** The merged commit renders a
-  different archive from the one the ship pinned — a payload file (`commands/`,
-  `agents/`, `hooks/`, `scripts/`, `docs/`, the README or the plugin manifest)
-  changed between the ship and the merge, most often because the merge queue
-  batched the release pull request with another one — or the pinned address is
-  not this repository's release, because `plugin.json`'s `repository` names
-  another one. Nothing was tagged, so the version is still free. Land a
-  follow-up pull request that fixes `main`: set the pin's `sha256` in
-  `.claude-plugin/marketplace.json` to the rendered digest the refusal names (or
-  revert the payload change), or correct `repository`. Its merge re-runs
-  `detect`, which tags once the proof passes. Until then the catalog on `main`
-  names an archive that does not exist, so installs and updates fail closed, as
-  in the approval window.
-- **`verify` fails on `Plugin archive reproduces the committed pin`.** The same
-  proof, made again on the tagged commit. On the `auto-release` path it passed
-  before the tag, so this is rare there; a hand-pushed tag has no earlier proof.
-  The tag exists, so the version is consumed. Catch it before the merge instead:
-  in a source checkout of the release branch,
+- **`verify` fails on `Plugin archive reproduces the committed pin`.** The
+  commit renders a different archive from the one the ship pinned — a payload
+  file (`commands/`, `agents/`, `hooks/`, `scripts/`, `docs/`, the README or the
+  plugin manifest) changed between the ship and the merge, most often because
+  the merge queue batched the release pull request with another one — or the
+  pinned address is not this repository's release, because `plugin.json`'s
+  `repository` names another one. On the `auto-release` path the proof runs in
+  `release.yml`'s `verify` job, which the tag job needs, so nothing was tagged
+  and the version is still free. Land a follow-up pull request that fixes
+  `main`: set the pin's `sha256` in `.claude-plugin/marketplace.json` to the
+  rendered digest the refusal names (or revert the payload change), or correct
+  `repository`. Its merge re-runs `auto-release`, which tags once the proof
+  passes. Until then the catalog on `main` names an archive that does not
+  exist, so installs and updates fail closed, as in the approval window. A
+  hand-pushed tag exists before `verify` runs, so there the version is
+  consumed. Catch it before the merge instead: in a source checkout of the
+  release branch,
   `go run ./cmd/abcd launch archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
   naming the repository the tag will be pushed to, exits 0 when the release
   will pass. Without `--repository` a pin whose address names another
-  repository passes locally and is refused after the tag, consuming the version.
+  repository passes locally and is refused in `verify`.
 - **A new release never starts, and an older run sits `Waiting` forever.**
   Release runs are serialised, so one parked run blocks every later one. Cancel
   the stale run from its page (**Cancel workflow**), and the queued one starts.
@@ -414,7 +412,8 @@ ready cut's `--json` result carries the request block as a `routing` member
 the harness lets you choose one, and pass the same `--route` to the ingest step
 so its receipt records the override. The ingest's `--json` result carries a
 `route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
-`fallback_reason`, `override`, `settings_sent`, `model_reported`) and its text a
+`fallback_reason`, `override`, `settings_sent`, `model_reported`, and `provider_call`, null until a provider
+adapter answers the step) and its text a
 `route:` line; relay it with the result. When no configured provider can serve
 the tier, one stderr line says the step goes through the harness instead. A
 `--route` naming an agent this invocation does not dispatch, a tier outside the

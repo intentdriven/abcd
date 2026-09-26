@@ -44,8 +44,11 @@ import "regexp"
 // ---------------------------------------------------------------------------
 
 const (
-	// PrinciplesSchemaVersion stamps principles.json.
-	PrinciplesSchemaVersion = 1
+	// PrinciplesSchemaVersion stamps principles.json. It is 2 since every entry
+	// carries claim_type, reference and comparison beside its evidence
+	// (adr-2609021016270132, spc-2609020626042471); a payload at 1 is refused as
+	// unsupported, so a consumer sees the change by the version.
+	PrinciplesSchemaVersion = 2
 	// PressReleaseSchemaVersion stamps press-release.json.
 	PressReleaseSchemaVersion = 1
 	// ReviewSchemaVersion stamps review/review-<manifest12>.json.
@@ -111,10 +114,21 @@ func (v ReviewVerdict) Valid() bool { return reviewVerdictEnum[v] }
 // Principle is one distilled principle — both the untrusted delegated input shape
 // and the written output shape. Principle (the prose) is sanitised and
 // marker-neutralised before it is written into the lifeboat.
+//
+// The three claim keys beside Evidence are the record's principle keys
+// (adr-2609021016270132): claim_type (criterion, causal or context), reference
+// (the entity the principle is about) and comparison (what was compared to
+// produce it). They are pointers so a declined claim is carried as a JSON null
+// rather than omitted, and they are never omitempty: an absent key and a null
+// one are different claims, and the validator reads the payload raw to tell
+// them apart.
 type Principle struct {
 	ID         string     `json:"id"`
 	Principle  string     `json:"principle"`
 	Confidence Confidence `json:"confidence"`
+	ClaimType  *string    `json:"claim_type"`
+	Reference  *string    `json:"reference"`
+	Comparison *string    `json:"comparison"`
 	Evidence   []string   `json:"evidence"`
 }
 

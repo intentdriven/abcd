@@ -64,7 +64,7 @@ import (
 
 // appendOnly names the committed logs no rewrite may touch: the decision log,
 // whose gate refuses a removed line below its header (DA002 in
-// scripts/check-decisions-append.sh), and the reviews folder, whose gate
+// internal/core/lint/decisionsappend.go), and the reviews folder, whose gate
 // refuses any change to a file after it is created (RD002 in
 // scripts/check-reviews.sh).
 var appendOnly = map[string]bool{

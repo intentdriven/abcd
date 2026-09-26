@@ -20,7 +20,6 @@
 package rules
 
 import (
-	"bytes"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -34,6 +33,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"syscall"
@@ -394,7 +394,7 @@ func parseLayer(data []byte, display string) (RuleSet, error) {
 	// diagnostic — an easy state to reach after a merge (iss-2608261550498779).
 	// A token-level scan before the unmarshal refuses it loudly, mirroring
 	// capture/parse.go's duplicate-key refusal (adapted to JSON's token stream).
-	if err := checkNoDuplicateKeys(data); err != nil {
+	if err := jsonstrict.NoDuplicateKeys(data); err != nil {
 		return RuleSet{}, fmt.Errorf("rules: %s: %w", display, err)
 	}
 	var over RuleSet
@@ -445,74 +445,6 @@ func dropRulelessDomains(rs RuleSet) RuleSet {
 				"give it at least one rule, or set \"state\": \"dormant\" to silence a domain deliberately", file, name))
 	}
 	return rs
-}
-
-// checkNoDuplicateKeys walks the JSON token stream and refuses any object that
-// carries a repeated key at any nesting level (the domains map and the domain
-// objects alike). It runs before the unmarshal precisely because encoding/json
-// would otherwise collapse the duplicate silently. The stdlib decoder enforces a
-// max nesting depth, so no separate depth guard is needed.
-func checkNoDuplicateKeys(data []byte) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	tok, err := dec.Token()
-	if err != nil {
-		// A malformed or empty document is left for the unmarshal to report.
-		return nil
-	}
-	return checkDupValue(dec, tok)
-}
-
-// checkDupValue recursively verifies the value whose opening token is tok. For an
-// object it tracks the keys seen at that level; for an array it descends into each
-// element. Scalars terminate. Any read error is swallowed as nil so the richer
-// json.Unmarshal error remains the one the caller surfaces.
-func checkDupValue(dec *json.Decoder, tok json.Token) error {
-	delim, ok := tok.(json.Delim)
-	if !ok {
-		return nil // scalar
-	}
-	switch delim {
-	case '{':
-		seen := map[string]bool{}
-		for dec.More() {
-			kt, err := dec.Token()
-			if err != nil {
-				return nil
-			}
-			key, ok := kt.(string)
-			if !ok {
-				return nil
-			}
-			if seen[key] {
-				return fmt.Errorf("duplicate key %q (last-wins is silent — refusing)", key)
-			}
-			seen[key] = true
-			vt, err := dec.Token()
-			if err != nil {
-				return nil
-			}
-			if err := checkDupValue(dec, vt); err != nil {
-				return err
-			}
-		}
-		if _, err := dec.Token(); err != nil { // closing '}'
-			return nil
-		}
-	case '[':
-		for dec.More() {
-			vt, err := dec.Token()
-			if err != nil {
-				return nil
-			}
-			if err := checkDupValue(dec, vt); err != nil {
-				return err
-			}
-		}
-		if _, err := dec.Token(); err != nil { // closing ']'
-			return nil
-		}
-	}
-	return nil
 }
 
 // Merge overlays over onto base. Domain fields are per-field: a field set on the

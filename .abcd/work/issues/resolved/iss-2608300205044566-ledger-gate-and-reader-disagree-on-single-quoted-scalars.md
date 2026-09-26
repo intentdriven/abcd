@@ -1,0 +1,20 @@
+---
+schema_version: 1
+id: "iss-2608300205044566"
+slug: "ledger-gate-and-reader-disagree-on-single-quoted-scalars"
+severity: "minor"
+category: "bug"
+source: "impl-review"
+found_during: "itd-182 build, 2026-08-30"
+found_at: "internal/core/lint/schema.go (issueScalar), internal/core/capture (decodeScalar)"
+resolution: "record_schema's issue-store legs decode values as capture's reader does (schemaRecord.scalar), and a reader-parity leg calls capture.ReadRefusal on any issue record the other legs pass, registered by cmd/record-lint and the CLI. TestRecordSchemaAgreesWithTheLedgerReader asserts each case against the reader itself; TestRecordLintRegistersTheLedgerReader and TestCLIRegistersTheLedgerReader pin the wiring."
+impact: fix
+resolved_by:
+  commit: "35600e96"
+---
+
+The committed-ledger gate and the ledger reader disagree on single-quoted scalars: issueScalar in the record-lint issue-shape check strips single quotes, capture's decodeScalar does not, so a hand-authored single-quoted value (severity: 'minor', lapsed_at: '2026-08-28T00:00:00Z') is lint-green while the reader refuses and skips the record invisibly. Pre-existing on unmodified code; every issue-shape check that reads a scalar inherits it, so the fix belongs in issueScalar and moves four checks at once.
+
+## Grounds
+
+- pursued: record_schema and capture's ledger reader give one verdict on every committed issue record; a record capture list skips that record-lint passes, or the reverse, would show it wrong

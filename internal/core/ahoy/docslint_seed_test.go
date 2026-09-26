@@ -135,6 +135,10 @@ var deliberateSeedOmissions = map[string]string{
 	"citation_url_syntax":     "abcd's citation apparatus",
 	"citation_source_policy":  "abcd's citation apparatus",
 	"citation_baseline":       "abcd's citation apparatus",
+	// The heading-anchor check lands warn-first in abcd's own tree (iss-303);
+	// it is seeded once it has run there, not into every prepared repository
+	// on its first release.
+	"link_anchors": "warn-first in abcd's own tree before it is seeded",
 }
 
 // deliberatelyOmitted reports whether a canonical token id or rule name is named

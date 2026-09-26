@@ -526,13 +526,15 @@ func gitattributesPinsHookEOL(cwd string, root *os.Root) bool {
 
 // hooksPathArmed reports whether this clone's LOCAL git config points core.hooksPath
 // at the committed hooks directory. `--local` reads only .git/config, so the probe's
-// own `-c core.hooksPath=…` isolation cannot answer for it.
+// own `-c core.hooksPath=…` isolation cannot answer for it. `--type=path` makes git
+// expand `~/`, `~user/` and `%(prefix)/` as it does when it runs a hook, so the
+// value judged is the directory git would use, never its spelling.
 //
 // A false answer is deliberately weak evidence: the hooks path can also be armed by
 // a user-level dispatcher this never sees, so no surface may turn it into "the guard
 // is not running" — only into "arm it like this".
 func hooksPathArmed(cwd string) bool {
-	out, err := gitutil.Run(cwd, "config", "--local", "--get", "core.hooksPath")
+	out, err := gitutil.Run(cwd, "config", "--local", "--type=path", "--get", "core.hooksPath")
 	if err != nil {
 		return false
 	}

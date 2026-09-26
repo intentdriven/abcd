@@ -30,6 +30,7 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 | `list` | — | shipped |
 | `migrate` | — | shipped |
 | `reconstruct` | — | shipped |
+| `separation` | audit | shipped |
 | `show` | — | shipped |
 | `staged` | — | shipped |
 
@@ -63,6 +64,16 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 - **Draining** redacts and stores every staged transcript, then deletes the raw
   copy. It exits non-zero when anything failed, and this verb runs the backlog to
   completion where the session-start hook drains a bounded number.
+- **The separation check** reports whether any retained transcript held both a
+  reading and the ledger of one run, which brief invariant 15 forbids. Every
+  reading bundle and every scribe context carries a per-run context stamp; capture
+  records the stamps a transcript carried as metadata, and the check reads that
+  metadata and never a body. It names a transcript carrying the reading stamp and
+  the scribe stamp of one run and exits non-zero; otherwise it says the property
+  held for the runs it saw, or that it is unobserved when no retained transcript
+  carries a stamp, and never that it is clean
+  ([adr-2609021016275803](../../decisions/adrs/2609021016275803-no-session-holds-both-a-reading-and-the-ledger-and-a-per-run.md)).
+  The listing's text render ends with the same one line.
 
 - **Ingesting** — redact and store transcripts that are already on disk, at the
   paths given, and were never captured. The **destination repository is an
@@ -335,7 +346,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd history`
 
-Sub-verbs: `abcd history capture`, `abcd history discard`, `abcd history drain`, `abcd history ingest`, `abcd history list`, `abcd history migrate`, `abcd history reconstruct`, `abcd history show`, `abcd history staged`.
+Sub-verbs: `abcd history capture`, `abcd history discard`, `abcd history drain`, `abcd history ingest`, `abcd history list`, `abcd history migrate`, `abcd history reconstruct`, `abcd history separation`, `abcd history show`, `abcd history staged`.
 
 Flags: none.
 
@@ -398,6 +409,12 @@ Sub-verbs: none.
 | `--max-block-bytes` | int |
 | `--mode` | string |
 | `--out` | string |
+
+### `abcd history separation`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd history show`
 

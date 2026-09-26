@@ -293,6 +293,51 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 				}
 			},
 		},
+		// The fixture's item is a detection, so the checkout's ledger answers with
+		// the position refusal; a subdirectory ledger would not know the item.
+		"admit": {
+			args: func(_ []string, item string) []string {
+				return []string{"capture", "admit", item, "--grounds", "the configuration engages the frame it widens", "--json"}
+			},
+			check: func(t *testing.T, _ string, _ []string, item string, out []byte, err error) {
+				if err == nil || !strings.Contains(string(out)+err.Error(), "is a detection item") {
+					t.Fatalf("capture admit %s from the subdirectory did not read the checkout's item: %v\n%s", item, err, out)
+				}
+			},
+		},
+		// The reframe verb resolves its occasion in the checkout's ledger before
+		// it reads git: the seeded item is found there and refused only because no
+		// commit holds it yet, which a ledger resolved anywhere else could not say.
+		"reframe": {
+			args: func(_ []string, item string) []string {
+				return []string{"capture", "reframe", "--occasioned-by", item, "--grounds",
+					"the reading sent the researcher back to the frame", "--open", "--json"}
+			},
+			check: func(t *testing.T, _ string, _ []string, item string, out []byte, err error) {
+				if err == nil || !strings.Contains(string(out)+err.Error(), item+" is not committed") {
+					t.Fatalf("capture reframe --occasioned-by %s from the subdirectory did not resolve the checkout's item: %v\n%s", item, err, out)
+				}
+			},
+		},
+		"surprise": {
+			args: func(_ []string, item string) []string {
+				return []string{"capture", "surprise", "--occasioned-by", item, "the tension ran the other way from the one expected", "--json"}
+			},
+			check: func(t *testing.T, repo string, _ []string, item string, out []byte, err error) {
+				if err != nil {
+					t.Fatalf("capture surprise from the subdirectory: %v\n%s", err, out)
+				}
+				var res struct {
+					Path string `json:"path"`
+				}
+				if jerr := json.Unmarshal(out, &res); jerr != nil {
+					t.Fatalf("capture surprise --json: not JSON: %v\n%s", jerr, out)
+				}
+				if _, serr := os.Stat(filepath.Join(repo, filepath.FromSlash(res.Path))); serr != nil {
+					t.Errorf("the surprise reported at %q is not in the checkout ledger: %v", res.Path, serr)
+				}
+			},
+		},
 		"disposition": {
 			args: func(_ []string, item string) []string {
 				return []string{"capture", "disposition", item, "--state", "accepted",

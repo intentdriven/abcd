@@ -41,8 +41,15 @@ and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
 form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
-`spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
-and the concrete next move for its lifecycle state. Bare answers *what can I
+`spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
+record is, where it lives, and the concrete next move for its lifecycle state.
+An admission and a surprise are the issue ledger's two folderless families
+(spc-2609020626040342): their status reads `admitted` and `recorded`, their links
+are the records they join to, and neither has a next move. A reframe record
+(`rfm-N`, spc-2609020626048705) reads `open` until its after half is written and
+`complete` after; its links are its occasion, the before fingerprints and, once
+complete, the after fingerprints and the surfaces that changed, and an open one's
+next move is its completion. The reading families have no record dispatch. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). For a shipped intent the move is its fidelity-review state, read by
 the intent store's one reader of the review marker (itd-2609150819445595): an
@@ -128,7 +135,8 @@ when reports from managed repositories wait in the user account's inbox, the tex
 render carries an `inbox:` line — `3 report(s) from 2 managed repositories` — and
 the JSON an `inbox` object with `reports` and `senders`. It is the same count the
 session-start greeting says ([`29-report.md`](29-report.md)); it names no sender,
-and it is absent when nothing waits.
+and it is absent when nothing waits. An inbox that cannot be counted has no row:
+one line on stderr names the refusal instead.
 
 **The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
 model-tier routing once a table is accepted, at the repository
@@ -143,6 +151,39 @@ absent and every delegated step runs through the harness at `host-decides`. An
 orphan row and a clamped fan-out are reported on stderr, and a routing file that
 cannot be read omits the lines with its reason there; the board itself never
 fails on one.
+
+**The reviews block** (itd-28, spc-2609211854150455) says how stale each
+review has become. Every folder under `.abcd/work/reviews/` is a row: a dated
+review names the commit it read in its summary's frontmatter
+(`review_of_commit: <full sha>`), and a semantic-gate receipt directory is
+keyed by the commit it gates, so its name is its pin. Per pin the board counts
+the commits the default branch has moved since (`git rev-list --count
+<pin>..<default>`, the default branch resolved as the peers reader resolves it,
+HEAD where none does) and flags a row past twenty. The text render carries a
+`reviews:` heading — how many dated reviews, how many flagged, the branch
+counted against, and the instruction to re-run those marked `!` when any is —
+and one line per dated review, stalest first: `!` on a flagged row, the count,
+the pin's short sha, and the folder. The release receipts follow as one
+`receipts:` line, not a row apiece: a receipt gates the release it names and is
+never re-run, and RD002 keeps every one, so each release adds a receipt that
+stays past the threshold for good. The line gives how many receipts there are,
+how far behind the default branch the oldest release gated is, and how many
+receipt pins this history does not hold, and points to the JSON, which lists
+each. A review of a spec carries the spec's id in its folder name,
+`<YYYY-MM-DD>-<spc-N>-<slug>/`, and the row reads it from there. A pin this
+history does not hold (a sha a squash or a rewrite left behind) is
+`unreachable` and a folder from before the pin rule is `unpinned`; neither is
+counted, and both come after the counted rows. The JSON carries a `reviews`
+object with `threshold`, `default_ref` and `rows`, each row `folder`, `kind`
+(`review` or `receipt`), `scope`, `spec` when the name carries one,
+`review_of_commit`, `state` (`pinned`, `unreachable`, `unpinned`),
+`commits_since` (null unless pinned) and `stale`. The block is absent when the
+tree holds no folder, and a tree that cannot be read omits it with the reason
+on stderr. The reader is `internal/core/reviews`; the reviews-charter gate's
+`RD004` refuses a dated review filed without the pin, and `RD001` and `RD004`
+refuse the summaries the reader treats as no pin — a symlink, one past 1 MiB,
+one with a NUL byte in its frontmatter — so every row after the rule can be
+counted.
 
 ## The board itself is not built
 

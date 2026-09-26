@@ -16,14 +16,19 @@ import "sort"
 // Ids and values are placeholders of the right shape, and names come from the
 // reserved example namespace (examples-use-reserved-identifiers).
 var examples = map[string]string{
+	"abcd ahoy connect": "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none",
+
 	"abcd banlist add":    "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'",
 	"abcd banlist remove": "abcd banlist remove --private acme-internal",
 
+	"abcd capture admit":       `abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"`,
 	"abcd capture defer":       `abcd capture defer iss-2609010000000001 --after v0.1.0 --reason "the fix needs the parser rewrite that lands next cycle"`,
 	"abcd capture disposition": `abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"`,
 	"abcd capture link":        "abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002",
 	"abcd capture promote":     "abcd capture promote iss-2609010000000001",
+	"abcd capture reframe":     `abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open`,
 	"abcd capture resolve":     `abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix`,
+	"abcd capture surprise":    `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`,
 	"abcd capture wontfix":     `abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"`,
 
 	"abcd decide": `abcd decide "Record ids are minted from a timestamp"`,
@@ -67,6 +72,12 @@ var examples = map[string]string{
 	"abcd intent reclassify":         `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`,
 	"abcd intent unhold":             "abcd intent unhold itd-2609010000000001",
 
+	"abcd lab harvest":   "abcd lab harvest lab-260901000000-0123abc",
+	"abcd lab mint":      `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`,
+	"abcd lab preflight": "abcd lab preflight lab-260901000000-0123abc",
+	"abcd lab record":    "abcd lab record lab-260901000000-0123abc bare-status",
+	"abcd lab sweep":     "abcd lab sweep lab-260901000000-0123abc",
+
 	"abcd launch archive": "abcd launch archive --out dist",
 
 	"abcd memory ask":    `abcd memory ask "why do record ids carry a timestamp?"`,
@@ -74,6 +85,9 @@ var examples = map[string]string{
 
 	"abcd reading assemble": "abcd reading assemble --position widening --target HEAD",
 	"abcd reading ingest":   "abcd reading ingest --reading-json reading.json",
+
+	"abcd scribe assemble": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
+	"abcd scribe ingest":   "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",
 
 	"abcd spec close": "abcd spec close spc-2609010000000001",
 }
