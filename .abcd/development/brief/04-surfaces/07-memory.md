@@ -44,11 +44,13 @@ surface contract: what the user types and what happens.
 
 **Bare `/abcd:memory`** renders the store's state and nothing else: how many
 pages there are by class, when the last ingest happened, the recent
-contradictions, and per-source quotation-budget headroom. It never mutates and
-never rebuilds an index. The JSON render carries one element the text render
-drops, a `drift` list saying that the catalogue or the contradictions register
-no longer hash-matches what the store's pages would render, so a reader knows
-the numbers are stale rather than wrong. Headroom is read-only in the same
+contradictions, per-source quotation-budget headroom, and drift. It never
+mutates and never rebuilds an index. Drift is a line saying that the catalogue
+or the contradictions register no longer hash-matches what the store's pages
+would render, naming `abcd memory ingest` as the verb that rebuilds it, so a
+reader knows the numbers are stale rather than wrong; the text board prints
+each line in the words the JSON's `drift` list carries, and a current store
+prints none. Headroom is read-only in the same
 spirit: a fresh index shows per-source warn and block headroom, a drifted one
 says to run the lint, and an absent or unreadable one says the headroom is
 unavailable rather than guessing at it.

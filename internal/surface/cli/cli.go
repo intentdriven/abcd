@@ -4700,6 +4700,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 				if st.LastIngest != "" {
 					fmt.Fprintf(w, "  last ingest: %s\n", termsafe.Sanitize(st.LastIngest))
 				}
+				// Drift is the board's one call to action, and it is printed in the
+				// words the JSON carries (iss-2609091647582259).
+				for _, line := range st.Drift {
+					fmt.Fprintf(w, "  %s\n", line)
+				}
 				for _, line := range st.Contradictions {
 					fmt.Fprintf(w, "  contradiction: %s\n", termsafe.Sanitize(line))
 				}

@@ -29,8 +29,10 @@ of the checkout's store.
 ```
 
 Summarise the JSON: `pages` and `by_class` (page count per source class),
-`last_ingest`, any `contradictions`, and per-source `headroom` lines. The bare
-render never rebuilds or mutates the coverage index.
+`last_ingest`, any `contradictions`, per-source `headroom` lines, and every
+`drift` line verbatim — each says the index or the contradictions register is
+stale and names the ingest that rebuilds it. The bare render never rebuilds or
+mutates the coverage index.
 
 ## Ingest a source
 
