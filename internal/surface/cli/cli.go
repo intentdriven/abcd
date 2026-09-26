@@ -278,7 +278,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr())}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -295,6 +295,7 @@ func NewRootCommand() *cobra.Command {
 					fmt.Fprintf(w, "  inbox:      %s — `abcd inbox`\n", inboxTallyText(*board.Inbox))
 				}
 				renderBoardOracle(w, board.Oracle)
+				renderBoardReviews(w, board.Reviews)
 			})
 		},
 	}
@@ -322,6 +323,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
+	root.AddCommand(newLabCommand(&asJSON))
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))

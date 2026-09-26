@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/brief
+not_to_be_confused_with: [core/brief, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -67,6 +67,7 @@ with every repository checkout and release source archive, never inside a built 
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [brief](brief.md) — the living root document, not a record in the filed-and-identified sense
 - [intent](intent.md), [spec](spec.md) — two of the families
 - [ledger](ledger.md) — the working-tier issue ledger is a record family with a store's name

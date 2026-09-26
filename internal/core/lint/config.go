@@ -122,7 +122,9 @@ type RuleConfig struct {
 	// Registry is a rule's registry file, repo-relative. For persona_registry it
 	// is the persona roster (.abcd/development/personas.json); for
 	// surface_coverage it is the brief surface table
-	// (.abcd/development/brief/04-surfaces/README.md).
+	// (.abcd/development/brief/04-surfaces/README.md); for glossary_family_pointer
+	// and record_family_key it is the record-families page whose table is the
+	// closed set of families (default <glossary_dir>/core/record-families.md).
 	Registry string `json:"registry"`
 	// CommandsDir is the surface_coverage plugin-command directory (commands);
 	// each *.md file (README and BareCommand excepted) is a shipped command
@@ -202,7 +204,8 @@ type RuleConfig struct {
 	// GlossaryDir is the forbidden_synonyms (GL002) glossary directory, repo-relative
 	// (default .abcd/development/brief/glossary). The rule walks it for term files and
 	// reads each term's forbidden_synonyms frontmatter list — the glossary is the
-	// single source of truth for what a forbidden synonym is.
+	// single source of truth for what a forbidden synonym is. glossary_family_pointer
+	// and record_family_key read the same directory's term files.
 	GlossaryDir string `json:"glossary_dir"`
 	// Enforce is the forbidden_synonyms subset that GL002 mechanically gates. Each
 	// entry MUST be declared as a forbidden_synonym by some glossary term (the rule
@@ -416,6 +419,8 @@ var knownRules = map[string]bool{
 	ruleReadingOutstanding:       true,
 	ruleRecordProvenance:         true,
 	ruleRecordSchema:             true,
+	ruleGlossaryFamilyPointer:    true,
+	ruleRecordFamilyKey:          true,
 }
 
 // validateRuleNames refuses a rule the lint does not run, enabled or not, and

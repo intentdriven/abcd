@@ -1627,6 +1627,52 @@
       "flags": []
     },
     {
+      "path": "abcd lab",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "List this repository's labs with their pins, probe counts and halts: Writes nothing; refuses outside a git checkout.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab harvest",
+      "hidden": false,
+      "sentence": "Assemble a lab's harvest with its capture candidates: Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab mint",
+      "hidden": false,
+      "sentence": "Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
+      "flags": [
+        {
+          "name": "pin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd lab preflight",
+      "hidden": false,
+      "sentence": "Run a lab's harness-isolation and dual-binary checks: Writes the preflight artefact, and a finding and halt on a failure; refuses an unknown lab.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab record",
+      "hidden": false,
+      "sentence": "Scaffold one probe record naming the artefact it observes: Writes the probe's files under state/probes/; refuses a halted lab or a probe already recorded.",
+      "flags": []
+    },
+    {
+      "path": "abcd lab sweep",
+      "hidden": false,
+      "sentence": "Sweep a lab's documents for every retracted pattern: Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
+      "flags": []
+    },
+    {
       "path": "abcd launch",
       "hidden": false,
       "group": "release",

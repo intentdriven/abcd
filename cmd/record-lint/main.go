@@ -28,6 +28,12 @@ func init() {
 }
 
 func main() {
+	// The decisions-append mode is a range check, not a tree lint: its own
+	// positional arguments, its own exit polarities (decisionsappend.go).
+	if len(os.Args) > 1 && os.Args[1] == "decisions-append" {
+		os.Exit(runDecisionsAppend(os.Args[2:], resolveRoot(), os.Stdout, os.Stderr))
+	}
+
 	configPath := flag.String("config", "", "path to record-lint.json (default: <root>/.abcd/record-lint.json)")
 	rootPath := flag.String("root", "", "repo root to lint (default: git toplevel, or cwd)")
 	releaseGate := flag.String("release-gate", "", "arm the receipt_gate rule for a release: fail closed unless a PROMOTE semantic-pass receipt exists for this commit sha (release-time only; a CI workflow supplies the sha)")

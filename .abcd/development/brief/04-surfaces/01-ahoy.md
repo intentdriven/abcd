@@ -159,6 +159,9 @@ user-scope directory for machine-local state.
                                  (adr-2609091248201071, superseding adr-2609090717039680)
   voyage/<root-sha>/             disembark/embark operations log, never committed
                                  (adr-35)
+  lab/<root-sha>/<lab-id>/       one lab's evidence: snapshot, probe records, findings,
+                                 harvest; index.jsonl beside the homes registers them,
+                                 never committed (itd-2609212137128014)
   worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
                                  (NOT BUILT — itd-2609091014076309)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one

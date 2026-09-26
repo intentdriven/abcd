@@ -134,6 +134,39 @@ orphan row and a clamped fan-out are reported on stderr, and a routing file that
 cannot be read omits the lines with its reason there; the board itself never
 fails on one.
 
+**The reviews block** (itd-28, spc-2609211854150455) says how stale each
+review has become. Every folder under `.abcd/work/reviews/` is a row: a dated
+review names the commit it read in its summary's frontmatter
+(`review_of_commit: <full sha>`), and a semantic-gate receipt directory is
+keyed by the commit it gates, so its name is its pin. Per pin the board counts
+the commits the default branch has moved since (`git rev-list --count
+<pin>..<default>`, the default branch resolved as the peers reader resolves it,
+HEAD where none does) and flags a row past twenty. The text render carries a
+`reviews:` heading — how many dated reviews, how many flagged, the branch
+counted against, and the instruction to re-run those marked `!` when any is —
+and one line per dated review, stalest first: `!` on a flagged row, the count,
+the pin's short sha, and the folder. The release receipts follow as one
+`receipts:` line, not a row apiece: a receipt gates the release it names and is
+never re-run, and RD002 keeps every one, so each release adds a receipt that
+stays past the threshold for good. The line gives how many receipts there are,
+how far behind the default branch the oldest release gated is, and how many
+receipt pins this history does not hold, and points to the JSON, which lists
+each. A review of a spec carries the spec's id in its folder name,
+`<YYYY-MM-DD>-<spc-N>-<slug>/`, and the row reads it from there. A pin this
+history does not hold (a sha a squash or a rewrite left behind) is
+`unreachable` and a folder from before the pin rule is `unpinned`; neither is
+counted, and both come after the counted rows. The JSON carries a `reviews`
+object with `threshold`, `default_ref` and `rows`, each row `folder`, `kind`
+(`review` or `receipt`), `scope`, `spec` when the name carries one,
+`review_of_commit`, `state` (`pinned`, `unreachable`, `unpinned`),
+`commits_since` (null unless pinned) and `stale`. The block is absent when the
+tree holds no folder, and a tree that cannot be read omits it with the reason
+on stderr. The reader is `internal/core/reviews`; the reviews-charter gate's
+`RD004` refuses a dated review filed without the pin, and `RD001` and `RD004`
+refuse the summaries the reader treats as no pin — a symlink, one past 1 MiB,
+one with a NUL byte in its frontmatter — so every row after the rule can be
+counted.
+
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in

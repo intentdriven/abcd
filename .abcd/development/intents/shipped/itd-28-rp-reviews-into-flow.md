@@ -112,13 +112,23 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 1. **Pin and staleness only.** The review store, the two-stage redaction and the pre-commit verifier this record first described are dropped: the dated review folders and the gate receipts are the store, and the scanner is the scrub.
 2. **The staleness view is on the status board**, flagged past twenty commits.
 
+Settled by the implementer on 2026-09-26 (autonomous run A), where the record left the point open:
+
+3. **Where the pin is written.** No abcd verb files a dated review folder: the semantic-gate receipts are abcd's only writer under `.abcd/work/reviews/`, and they pin by directory name (spec scope 1). The intent-audit ingest writes its request to the local tier and its verdict into the intent's Audit Notes, never into the reviews tree, so criterion 1 does not reach it and its record format is unchanged. The dated folders are commissioned (the charter's provenance rule), so the charter's summary template carries `review_of_commit` and the gate refuses its absence; a future abcd writer of a dated folder writes the key the charter shows.
+4. **Legacy is a closed set of names, not a cut-off date.** The three dated folders filed before the rule are named in the gate; a date cut-off would admit a backdated folder filed after it.
+5. **Where the code lives.** The spec's approach names `internal/core/record` and `internal/core/positioning`; neither reads the reviews tree nor composes the board. The charter rules live in `scripts/check-reviews.sh`, so `RD004` sits there beside `RD001`; the reader is `internal/core/reviews` and the board's block is composed in `internal/surface/cli` beside its other blocks. The gate and the board read the key one way (a bare lowercase full sha in the leading frontmatter block), watched both ways by the gate's cases.
+6. **What the board counts.** Receipt directories are rows as well as dated folders. The count is against the default branch as the peers reader resolves it (remote-tracking first), moved into `gitutil.DefaultRef` so the two cannot differ, and HEAD where none resolves. A pin the history does not hold is `unreachable` and a pre-rule folder `unpinned`; both are listed uncounted after the counted rows.
+7. **The spec id in the name is a convention the board reads, not a gate rule** (criterion 3): nothing in a folder but its name says it reviewed a spec, so there is nothing for a gate to check it against.
+8. **The scrub is CI's full-history `gitleaks` pass** (criterion 4): the pre-commit hook is the name guard and `abcd lint`'s privacy rule deliberately leaves API-key shapes out, so the scanner that refuses a secret in a review is the CI job; a scratch commit of a token-shaped string in a review summary was reported by `gitleaks git` under the repository's `.gitleaks.toml`.
+
 ## Open Questions
 
 _None open; the hook-coverage and the danger-threshold questions this record carried fall away with the store, and the threshold is decision 2._
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-9945c0269d6c -->
+Fidelity review OWED (receipt rcp-9945c0269d6c).
 
 ## References
 

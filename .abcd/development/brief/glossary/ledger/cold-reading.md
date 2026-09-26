@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: ledger/warm
+not_to_be_confused_with: [ledger/warm, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not call a cold reading a review or an audit: a review weighs and recommends,
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [warm](warm.md), the researcher's reserved reasoning the reading is blind to
 - [position](position.md), the four places a reading is commissioned at
