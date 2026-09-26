@@ -435,13 +435,16 @@ func specOf(st State) string {
 }
 
 // samePath reports whether two paths name the same file, a relative one read
-// against the checkout root.
+// against the checkout root. Each is compared by its real path, so a checkout
+// reached through a symlinked spelling (the caller's working directory) and
+// the resolved one git names as the root are the same place
+// (iss-2609261534097255).
 func samePath(repoRoot, a, b string) bool {
 	abs := func(p string) string {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(repoRoot, filepath.FromSlash(p))
 		}
-		return filepath.Clean(p)
+		return fsutil.RealExistingPath(filepath.Clean(p))
 	}
 	return a != "" && abs(a) == abs(b)
 }

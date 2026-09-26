@@ -697,3 +697,41 @@ func TestRefusalRendersStepReasonAndRemedy(t *testing.T) {
 		t.Fatalf("Error() = %q", got)
 	}
 }
+
+// TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited: the host may
+// reach the checkout through a symlinked spelling of its path (macOS's /var
+// and /tmp are symlinks) while the loop's root is git's resolved toplevel; the
+// receipt the lane awaits is the same file under either spelling, and is
+// taken rather than refused as "not at the path given" (iss-2609261534097255).
+func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[StepName]int{}}
+	var res StepResult
+	for range 3 {
+		if res, err = Advance(repo.Root(), start.RunID, f.steps(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if res.Awaiting == nil {
+		t.Fatalf("want the lane awaiting: %+v", res)
+	}
+	if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "checkout")
+	if err := os.Symlink(repo.Root(), link); err != nil {
+		t.Fatal(err)
+	}
+	via := filepath.Join(link, filepath.Base(res.Awaiting.Receipt))
+	got, err := Receipt(repo.Root(), start.RunID, via, f.steps(), Options{})
+	if err != nil {
+		t.Fatalf("the awaited receipt named through a symlinked path is the same receipt: %v", err)
+	}
+	if got.Performed != StepImplement {
+		t.Fatalf("the receipt completes the step: %+v", got)
+	}
+}
