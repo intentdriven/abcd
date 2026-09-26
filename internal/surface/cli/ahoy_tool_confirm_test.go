@@ -3,6 +3,10 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -86,5 +90,81 @@ func TestInstallToolRefusesAnUnknownName(t *testing.T) {
 				t.Errorf("refusal lacks %q: %v", want, err)
 			}
 		}
+	}
+}
+
+// toolFreePath leaves git on PATH (the install reads the checkout) and nothing
+// else, so neither gitleaks nor a package manager is found and no install
+// step can ever run from this test.
+func toolFreePath(t *testing.T) {
+	t.Helper()
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(gitBin, filepath.Join(dir, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("CI", "")
+}
+
+func installNotes(t *testing.T, out []byte) (notes, declined []string) {
+	t.Helper()
+	var res struct {
+		Notes              []string `json:"notes"`
+		DeclinedCategories []string `json:"declined_categories"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatalf("install output not JSON: %v\n%s", err, out)
+	}
+	return res.Notes, res.DeclinedCategories
+}
+
+// TestAhoyInstallPipedYesExplainsAndKeepsTheNativeScanner is the end-to-end
+// no: `yes | abcd ahoy install` approves every category, and the missing
+// gitleaks is explained and left uninstalled, loudly, on the native scanner.
+func TestAhoyInstallPipedYesExplainsAndKeepsTheNativeScanner(t *testing.T) {
+	hermeticRepo(t)
+	toolFreePath(t)
+	out, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 12), "ahoy", "install", "--allow-stale-binary", "--json")
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
+	}
+	notes, _ := installNotes(t, out)
+	joined := strings.Join(notes, "\n")
+	for _, want := range []string{
+		"dependency: gitleaks — optional for",
+		"install step (Homebrew): brew install gitleaks",
+		"gitleaks not installed (no terminal to ask at",
+		"continuing on the native secret scanner",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("notes lack %q:\n%s", want, joined)
+		}
+	}
+}
+
+// TestAhoyInstallNamedToolReachesTheStep is the host's relayed yes end to
+// end: with stdin closed, --install-tool answers the dependency question and
+// the install is attempted; here the package manager is absent, so the
+// result says so and nothing ran.
+func TestAhoyInstallNamedToolReachesTheStep(t *testing.T) {
+	hermeticRepo(t)
+	toolFreePath(t)
+	out, errOut, err := runCLIPipedStdinSplit(t, "", "ahoy", "install", "--adopt", "--allow-stale-binary", "--install-tool", "gitleaks", "--json")
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
+	}
+	notes, declined := installNotes(t, out)
+	for _, c := range declined {
+		if c == "dependency" {
+			t.Fatalf("--install-tool did not answer the dependency question: declined %v", declined)
+		}
+	}
+	joined := strings.Join(notes, "\n")
+	if !strings.Contains(joined, "Homebrew (brew) is not on PATH") || !strings.Contains(joined, "continuing on the native secret scanner") {
+		t.Fatalf("the named install did not reach the step, or was silent:\n%s", joined)
 	}
 }

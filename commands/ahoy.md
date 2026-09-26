@@ -161,8 +161,10 @@ run
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --install-tool <tool> --json
 ```
 
-`--install-tool` is the relayed yes, for the named tool only; never pass it
-without the user's answer. The result's `changes` reports what ran and whether
+`--install-tool` is the relayed yes, for the named tool only, and it also
+answers the `dependency` category's question, which is then not asked (so a
+piped answer stream has one question fewer); never pass it without the user's
+answer. The result's `changes` reports what ran and whether
 its verify passed; a no, a failed step or a missing package manager is a `notes`
 line ending in what the capability continues on (`continuing on the native
 secret scanner`). `--yes` never installs a tool, and a run with `CI` set

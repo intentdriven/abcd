@@ -161,6 +161,11 @@ type InstallOptions struct {
 	// --install-tool. Nil is a no for every tool, so a caller that asks nothing
 	// installs nothing. The category approval never stands in for it.
 	ConfirmTool tools.Confirm
+	// ApproveDependency answers the dependency category's question yes without
+	// asking it: the front door sets it when the person named a tool to
+	// install (--install-tool), which is that answer given in advance. Every
+	// other category is still asked, or pre-answered, as before.
+	ApproveDependency bool
 }
 
 // InstallResult is the outcome of Install.

@@ -2985,6 +2985,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			}
 			p := newPrompter(cmd)
 			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
+			opts.ApproveDependency = len(named) > 0
 			res, err := ahoy.Install(cwd, opts, p)
 			if err != nil {
 				return err

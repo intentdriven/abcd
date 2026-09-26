@@ -204,3 +204,32 @@ func TestEveryToolAhoyNamesIsRegistered(t *testing.T) {
 		t.Errorf("a gap names %q, which DependencyTools omits", n)
 	}
 }
+
+// TestNamedToolApprovesTheDependencyCategory: naming a tool to install is the
+// answer to the dependency question, so a host relaying it with no stdin
+// reaches the step; every other category is still asked (and here declined).
+func TestNamedToolApprovesTheDependencyCategory(t *testing.T) {
+	gaps := []Gap{
+		{ID: "deps.gitleaks_missing", Category: Dependency, Resolvable: true},
+		{ID: "skeleton.config_missing", Category: SafeAutocreate, Resolvable: true},
+	}
+	p := &recordingPrompter{}
+	approved, declined := resolveApproval(gaps, InstallOptions{ApproveDependency: true}, p)
+	asked := p.asked
+	if !approved[Dependency] {
+		t.Fatalf("a named tool did not approve the dependency category (declined %v)", declined)
+	}
+	for _, q := range asked {
+		if strings.Contains(q, string(Dependency)) {
+			t.Errorf("the dependency question was still asked: %v", asked)
+		}
+	}
+	if approved[SafeAutocreate] || len(asked) != 1 {
+		t.Errorf("the other categories were not left to their own answers: approved %v asked %v", approved, asked)
+	}
+
+	approved, _ = resolveApproval(gaps, InstallOptions{ApproveDependency: true, ApprovedCategories: map[GapCategory]bool{}}, &recordingPrompter{})
+	if !approved[Dependency] {
+		t.Fatal("an explicit category subset dropped the named tool's approval")
+	}
+}

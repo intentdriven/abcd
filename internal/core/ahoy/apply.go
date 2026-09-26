@@ -1746,10 +1746,16 @@ func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCatego
 		}
 	default:
 		for _, c := range presentInPromptOrder(present) {
+			if c == Dependency && opts.ApproveDependency {
+				continue // answered by the named tool; approved below
+			}
 			if p.Confirm("Apply " + string(c) + " changes?") {
 				approved[c] = true
 			}
 		}
+	}
+	if opts.ApproveDependency && present[Dependency] {
+		approved[Dependency] = true
 	}
 	var declined []string
 	for c := range present {
