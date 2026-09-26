@@ -123,8 +123,12 @@ then ratified ADRs, then everything else read for understanding only.
   against hand-editing, and both keep the markers detection finds an adopted
   repository by (the product thinker's ruling of 2026-09-23).
 - **Never commit downstream assets.** Anything tooling will later provide
-  (persona data, lint-config JSON, content copied from the abcd record) is
-  applied, not copied. Only content about the target repository is committed.
+  (persona data, lint-config JSON copied in by hand, content copied from the
+  abcd record) is applied, not copied. Only content about the target repository
+  is committed. The config files `abcd ahoy install` seeds, `.abcd/docs-lint.json`
+  among them, are not downstream assets: each is the repository's own once it is
+  written (the docs-lint config carries its banned-names family and its
+  house-style answer), and the gates read it on every commit, so it is committed.
 - **Privacy.** A `private-names.txt`, if present, is read-only context for the
   audit and never reproduced in any committed or published artefact.
 - **No secret-pattern hooks.** No hook this command scaffolds carries a
