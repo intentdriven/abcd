@@ -9,7 +9,7 @@ description: >-
   file:line evidence pointer. Role 2 (cross-document): reads the assembled
   brief-and-intents corpus and emits one findings JSON naming each contradiction
   between two documents, both ends quoted verbatim.
-prompt_version: 0.4.1
+prompt_version: 0.5.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [intent_audit, intent_consistency]
