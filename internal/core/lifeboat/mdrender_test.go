@@ -149,3 +149,24 @@ func TestBlockValueNeverDefinesALinkReference(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockValueKeepsABalancedLeadingCodeSpan (iss-2609262237415400): the
+// cleaner shelters a tag inside a code span, which holds only while the value
+// is parsed as the string it was cleaned as. Escaping a balanced leading span's
+// opening backtick kills the span and republishes the tag as live HTML; only
+// an unbalanced leading run opens a fence, and that one is still escaped.
+func TestBlockValueKeepsABalancedLeadingCodeSpan(t *testing.T) {
+	got := mdBlock("`<details>` everything after this is concealed")
+	html, err := siteRender(t, got)
+	if err != nil {
+		t.Fatalf("mdBlock = %q renders as live markup: %v", got, err)
+	}
+	if !strings.Contains(html, "<code>&lt;details&gt;") {
+		t.Errorf("mdBlock = %q rendered as %q; want the tag sheltered inside a code span", got, html)
+	}
+	for _, s := range []string{"```go unclosed fence", "`stray opener"} {
+		if got := mdBlock(s); !strings.HasPrefix(got, `\`) {
+			t.Errorf("mdBlock(%q) = %q, want the unbalanced leading run escaped", s, got)
+		}
+	}
+}
