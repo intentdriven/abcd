@@ -1,6 +1,7 @@
 package reading
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,28 +68,107 @@ func TestAttributeMaskStaysOnItsOwnLine(t *testing.T) {
 	}
 }
 
-// TestRawHeadingScanStaysLinearInTheOpenerCount: the bound scan materialised
-// every candidate bound in the whole remainder of the document for every heading
-// opener, though it breaks at the first hard one. That is quadratic with a large
-// constant, and a committed markdown file up to the size cap the assembler sets
-// did not finish — a silent hang, which is the one staging a fail-closed floor
-// cannot afford. The bound is generous: the walk is milliseconds and the
-// materialising scan was minutes.
+// TestRawHeadingScanStaysLinearInTheOpenerCount: the raw heading scan finishes
+// in time linear in the document over every shape of opener run, not only the
+// cheap one.
+//
+// Three shapes, because each was once the expensive one:
+//
+//   - openers that each close at once. The bound scan materialised every
+//     candidate bound in the whole remainder for every opener, and a committed
+//     markdown file up to the size cap did not finish. At the cap the line each
+//     opener names was also counted from the top of the document, once per
+//     opener.
+//   - openers that never close, with no h-tag and no blank line anywhere
+//     (iss-2608301421382564). Each title ran to the end of the document, so the
+//     scan rendered the whole remainder once per opener: 4 000 openers took
+//     13.5 s and 8 000 took 57 s, where the closed shape above took 0.1 s. The
+//     test covered only the closed shape, so its name over-claimed.
+//   - openers that all share one bound far below them. Each title is bounded,
+//     so nothing refuses the shape as unbounded, and each is still read over
+//     most of the document.
+//
+// The last two are refusals as well as costs: a title that is never bounded is
+// refused rather than read, and titles that overlap past the floor's read budget
+// are refused rather than read in quadratic time. The bound is generous: the
+// linear scan is milliseconds.
 func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
-	var b strings.Builder
-	b.WriteString("# A spec\n\n")
-	for range 8000 {
-		b.WriteString("<h2>Ordinary heading</h2>\n")
-	}
-	doc := b.String()
 	headings := map[string]bool{"Audit Notes": true}
-	start := time.Now()
-	if err := verifyRedaction("spc-x.md", doc, doc, nil, headings); err != nil {
-		t.Fatalf("the scan refused an ordinary document: %v", err)
+	build := func(opener string, n int, tail string) string {
+		var b strings.Builder
+		b.WriteString("# A spec\n\n")
+		for range n {
+			b.WriteString(opener)
+		}
+		b.WriteString(tail)
+		return b.String()
 	}
-	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Errorf("the raw heading scan took %s over %d openers; it materialises the whole "+
-			"bound list per opener", elapsed, 8000)
+	closedAtCap := (MaxFileBytes - 64) / len("<h2>Ordinary heading</h2>\n")
+	cases := []struct {
+		name   string
+		doc    string
+		refuse string
+	}{
+		{"closed openers up to the size cap", build("<h2>Ordinary heading</h2>\n", closedAtCap, ""), ""},
+		{"unclosed openers with no bound", build(`<p role="heading">x`, 8000, ""), "never closed"},
+		{"unclosed openers sharing one far bound", build(`<p role="heading">x`, 8000, "</p>\n"), "read budget"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			start := time.Now()
+			err := verifyRedaction("spc-x.md", c.doc, c.doc, nil, headings)
+			elapsed := time.Since(start)
+			switch {
+			case c.refuse == "" && err != nil:
+				t.Fatalf("the scan refused an ordinary document: %v", err)
+			case c.refuse != "" && err == nil:
+				t.Fatalf("the scan admitted a run of openers it cannot read in linear time")
+			case c.refuse != "" && !strings.Contains(err.Error(), c.refuse):
+				t.Errorf("the refusal does not name %q: %v", c.refuse, err)
+			}
+			if elapsed > 10*time.Second {
+				t.Errorf("the raw heading scan took %s over a %d-byte document; it reads each "+
+					"title over the remainder, or counts each line from the top", elapsed, len(c.doc))
+			}
+		})
+	}
+}
+
+// TestIndexedHeadingBoundsAgreeWithTheWalk: the bound index answers exactly what
+// the walk from each opener answered, in every reading the scan takes, including
+// the masked reading where an opener's own `>` is blanked and a bound match can
+// straddle it — the one case the index hands back to the walk — and including
+// element names that fold under Go's case folding but not under lower-casing
+// (the long s, the Kelvin sign).
+func TestIndexedHeadingBoundsAgreeWithTheWalk(t *testing.T) {
+	docs := []string{
+		"<h2>Audit Notes</h2>\n\n<h3><em>x</em> y</h3>",
+		"<h2>\n\nAudit Notes</h2>\n<h2>never closed\n",
+		"<p role=\"heading\">a</P><div role=heading>b\n\nc</div><h4 id=x>d",
+		"<h2 title=\"<h3>\"\n\n>Audit Notes</h2>",
+		"<!--\n<h2\n>\n--> <h2>x</h2>",
+		"<!-- <h2>a <h3>b --> <h2>c\n\n</h2>",
+		"<\u017fpan role=\"heading\">Audit Notes</span> <bloc\u212a role=heading>x</block>",
+		"<h2 a=\"x\ny\">z</h2>\r\n\r\n<h1>w",
+	}
+	for _, doc := range docs {
+		lineBounded, _ := maskMarkupData(doc, true)
+		unbounded, _ := maskMarkupData(doc, false)
+		readings := []string{doc, lineBounded, unbounded}
+		for _, found := range readings {
+			for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(found, -1) {
+				name := openerName(found, open)
+				for _, r := range readings {
+					budget := newTitleReadBudget(len(r))
+					got, gotBounded := indexRawHeadingBounds(r).titleEnds(open[1], name, budget)
+					want, wantBounded, _ := walkRawHeadingBounds(r[open[1]:], name)
+					if !slices.Equal(got, want) || gotBounded != wantBounded {
+						t.Errorf("opener %q at %d over %q: the index says %v (bounded %v), the walk %v (bounded %v)",
+							found[open[0]:open[1]], open[1], r, got, gotBounded, want, wantBounded)
+					}
+				}
+			}
+		}
 	}
 }
 
