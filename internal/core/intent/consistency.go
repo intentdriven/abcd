@@ -855,10 +855,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	}
 	want := consistencyPolicyFor(consistencyPromptBody(c, rcp))
 	if p.Policy.RubricHash != want.RubricHash || p.Policy.PromptHash != want.PromptHash {
-		return consistencyReview{}, fmt.Errorf("intent: findings %s carry policy hashes this request never issued; refusing to ingest.\n"+
-			"  rubric_hash: got %s, issued %s\n  prompt_hash: got %s, issued %s\n"+
-			"Echo the two values the request's Provenance block states, rather than computing a hash yourself.",
-			rcp, p.Policy.RubricHash, want.RubricHash, p.Policy.PromptHash, want.PromptHash)
+		return consistencyReview{}, issuedPolicyRefusal("findings payload", rcp, p.Policy, want, "abcd intent consistency"+scopeArg(scope))
 	}
 	if strings.TrimSpace(p.Verifier.ID) == "" {
 		return consistencyReview{}, fmt.Errorf("intent: verifier.id is required; refusing to ingest")

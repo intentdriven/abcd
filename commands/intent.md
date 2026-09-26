@@ -918,8 +918,9 @@ Then run the pass, one request at a time:
 
 The ingest validates before it writes anything. It refuses, with nothing
 written: a receipt no request here was issued for, a corpus that moved since the
-request (re-emit and run the pass again), provenance hashes the request did not
-state, a class or severity outside its set, an end whose path is not a corpus
+request (re-emit and run the pass again), provenance hashes the host does not
+issue for the receipt (likewise: a request an earlier binary wrote no longer
+matches, so re-emit and run the pass again), a class or severity outside its set, an end whose path is not a corpus
 document or whose quote is not in it (twelve characters at least), and a
 finding with fewer or more than two ends or one that repeats another. A scoped
 run also refuses a finding with no end in its intent.

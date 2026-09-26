@@ -1039,13 +1039,27 @@ func checkIssuedPolicy(repoRoot string, raw []byte, it Intent, rcp, content stri
 	}
 	// Both values are sha256-shaped by the guard above, so quoting them back
 	// cannot carry payload prose into the message.
-	return fmt.Errorf("intent: verdict %s carries policy hashes this receipt never issued; refusing to ingest.\n"+
+	return issuedPolicyRefusal("verdict", rcp, got, want, "abcd intent audit "+it.ID)
+}
+
+// issuedPolicyRefusal is the one wording of a refusal for policy hashes the
+// host did not issue for receipt rcp, shared by the fidelity and consistency
+// ingests. Its remedy is always the re-emit, reemit being the verb as it is
+// spelled for that receipt: the likeliest writer of such a payload is an
+// auditor that echoed a request an earlier binary wrote, so telling it to echo
+// the Provenance block again names a remedy it has already followed
+// (iss-2609262104070666). Both hash pairs must be sha256-shaped by the caller,
+// so quoting them cannot carry payload prose into the message.
+func issuedPolicyRefusal(payload, rcp string, got verdictPolicy, want auditPolicy, reemit string) error {
+	return fmt.Errorf("intent: %s %s carries policy hashes this receipt never issued; refusing to ingest.\n"+
 		"  rubric_hash: got %s, issued %s\n"+
 		"  prompt_hash: got %s, issued %s\n"+
 		"The host computes both and writes them into the request's Provenance block: rubric_hash is sha256 over the "+
 		"rubric the request states, prompt_hash is sha256 over the request's prompt body (everything above that block). "+
-		"Re-emit with `abcd intent audit %s` and echo the two values it writes, rather than computing a hash yourself.",
-		rcp, got.RubricHash, want.RubricHash, got.PromptHash, want.PromptHash, it.ID)
+		"A request an earlier binary wrote states values this one no longer issues, so echoing it again cannot pass. "+
+		"Re-emit with `%s`, run the pass again from the request it writes, and echo the two values that request states, "+
+		"rather than computing a hash yourself.",
+		payload, rcp, got.RubricHash, want.RubricHash, got.PromptHash, want.PromptHash, reemit)
 }
 
 // readVerdictFile reads the untrusted verdict payload behind fsutil.ReadGuarded
