@@ -415,6 +415,11 @@ func NewRootCommand() *cobra.Command {
 	// clean-ish gate pass: usage errors exit 2, like every usage error abcd raises
 	// itself. Flag-parse errors route through FlagErrorFunc; argument errors come
 	// from each command's Args validator — wrap both across the whole tree (B13).
+	// A refusal names every unmet requirement the verb's Use line declares at
+	// once (requirements.go, iss-2609100531051385). Before the generic tagging,
+	// which would otherwise hand it cobra's positional error already coded and
+	// indistinguishable from a validator's own chosen refusal.
+	aggregateUsageRequirements(root)
 	markUsageErrorsExitTwo(root)
 	// AFTER the generic tagging, which sets a FlagErrorFunc on every command: the
 	// banlist verbs need one that does NOT quote the offending token, because for
