@@ -40,8 +40,11 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 	}
 	var shippedOn intent.ShippedOn
 	if h, herr := site.LoadHistory(repoRoot); herr != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent audit --owed: the shipped days are unknown (%s); the queue falls to mint order\n",
-			termsafe.Sanitize(herr.Error()))
+		// The walk's error carries git's own stderr, which can name an absolute
+		// path inside the repository, so it is scrubbed as a refusal is before
+		// the one print site masks it (iss-2609261327506636).
+		diagnosticLine(cmd.ErrOrStderr(), "abcd intent audit --owed: the shipped days are unknown (%s); the queue falls to mint order",
+			scrubPaths(herr))
 	} else {
 		shippedOn = h.EnteredBucket
 	}

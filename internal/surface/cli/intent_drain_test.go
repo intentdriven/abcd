@@ -273,6 +273,43 @@ func TestIntentAuditOwedUnreadableHistoryIsUnknown(t *testing.T) {
 	}
 }
 
+// TestIntentAuditOwedHistoryNoticeScrubsPaths (iss-2609261327506636): the
+// notice that the shipped days are unknown carries git's own stderr, which can
+// name an absolute path inside the repository; it reaches the terminal through
+// the same path scrubbing as every refusal, never raw.
+func TestIntentAuditOwedHistoryNoticeScrubsPaths(t *testing.T) {
+	repo := drainRepo(t)
+	// An alternates entry naming a missing absolute directory makes git name
+	// that path on stderr, and a corrupt HEAD commit makes the walk fail.
+	missing := filepath.Join(repo, "no-such-objects")
+	writeRepoFile(t, repo, ".git/objects/info/alternates", missing+"\n")
+	head := exec.Command("git", "-C", repo, "rev-parse", "HEAD")
+	head.Env = gittest.Env(t)
+	out, err := head.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := strings.TrimSpace(string(out))
+	obj := filepath.Join(repo, ".git", "objects", sha[:2], sha[2:])
+	if err := os.Chmod(obj, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(obj, []byte("not a zlib stream"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr, err := runCLISplit(t, "intent", "audit", "--owed")
+	if err != nil {
+		t.Fatalf("an unreadable history must not refuse the drain: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "shipped days are unknown") || !strings.Contains(stderr, "no-such-objects") {
+		t.Fatalf("stderr must say the days are unknown and carry git's reason: %q", stderr)
+	}
+	if strings.Contains(stderr, repo) {
+		t.Fatalf("the history notice names the repository's absolute path %s: %q", repo, stderr)
+	}
+}
+
 // TestIntentAuditOwedBadHeadDoesNotBlock (iss-2609252052386874): the oldest
 // owed intent's request cannot be emitted (its spec_id carries no number); the
 // drain lists it with its error, exits 0, and emits the next entry's request.
