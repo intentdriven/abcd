@@ -207,5 +207,55 @@ kept as the record of that routing, not as scope this intent delivered:
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-80414ddf96b9 -->
-Fidelity review OWED (receipt rcp-80414ddf96b9).
+<!-- abcd-review: INGESTED receipt=rcp-80414ddf96b9 -->
+Fidelity review — receipt rcp-80414ddf96b9 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:420fede6b8a9ca127ff19d7173a9d26718dc6e8ee0c6d9a33022efa0451feb9c
+Input attestations: diff:internal/core/intent/consistency.go, internal/core/capture/consistency.go, internal/surface/cli/intent_consistency.go, commands/intent.md (Consistency section) at BASE 4ce401c5 (tree 376356ce669156f45b423eb7858a952ffeb0f9d6); live `go run ./cmd/abcd intent consistency --json` on that tree on 2026-09-26@-;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the ingest renders .abcd/work/reviews/< date>-consistency/00-summary.md with review_of_commit pinned to the commit the emit read and one row per finding with both ends quoted and located; TestConsistencyIngestWritesTheDatedReport asserts the path, the pin and the ends, and TestIntentConsistencyRunsEndToEnd drives it through the CLI
+  evidence: internal/core/intent/consistency.go:679 — "reportRel := ReviewsShelfRelDir + "/" + dirName + "/00-summary.md""
+  evidence: internal/core/intent/consistency.go:1060 — "fmt.Fprintf(&b, "---\nreview_of_commit: %s\n", rv.Commit)"
+  evidence: internal/core/intent/consistency.go:277 — "func headCommit(repoRoot string) (string, error)"
+  evidence: internal/core/intent/consistency_test.go:276 — "TestConsistencyIngestWritesTheDatedReport"
+  evidence: internal/surface/cli/intent_consistency_test.go:79 — "TestIntentConsistencyRunsEndToEnd"
+- ac-2 — MET: capture.IngestConsistency files one issue per finding with the report as its evidence and answers Linked: true when an open record already names either end, and the intent core records the link on the row instead of filing twice; TestConsistencyIngestLinksAFindingTheLedgerHolds pins it
+  evidence: internal/core/capture/consistency.go:22 — "func IngestConsistency(repoRoot string, payload []byte, date string) (intent.ConsistencyIngestResult, error)"
+  evidence: internal/core/capture/consistency.go:37 — "return intent.ConsistencyFiling{IssueID: id, Linked: true}, nil"
+  evidence: internal/core/intent/consistency.go:689 — "if filing.Linked {"
+  evidence: internal/core/intent/consistency_test.go:330 — "TestConsistencyIngestLinksAFindingTheLedgerHolds"
+- ac-3 — MET: assembleConsistency scopes to the named intent and the prompt body says so, the rubric requires every finding to have an end in that intent, and the scoped emit and ingest are tested in core and through the CLI
+  evidence: internal/core/intent/consistency.go:315 — "if scope != ConsistencyScopeCorpus {"
+  evidence: internal/core/intent/consistency.go:471 — "- scope: %s (%s against the rest of the corpus)"
+  evidence: internal/core/intent/consistency.go:111 — "scoped run: when the scope is one intent, every finding has at least one end in that intent"
+  evidence: internal/core/intent/consistency_test.go:247 — "TestConsistencyEmitScopesToOneIntent"
+  evidence: internal/core/intent/consistency_test.go:354 — "TestConsistencyIngestScopedRun"
+  evidence: internal/surface/cli/intent_consistency_test.go:122 — "TestIntentConsistencyScopedAndRefusals"
+- ac-4 — MET: the emit assembles the corpus and writes only the local-tier request and corpus files (a live emit on the BASE tree changed nothing under git), the ingest validates the returned findings and refuses with nothing written, the tree-unchanged assertion is in the ingest test, and the judgement is a host pass over the request as the intent-audit shape is
+  evidence: internal/core/intent/consistency.go:221 — "fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".request.md"), []byte(doc), 0o644)"
+  evidence: internal/core/intent/consistency_test.go:187 — "TestConsistencyEmitAssemblesTheCorpusAndWritesOnlyTheLocalTier"
+  evidence: internal/core/intent/consistency_test.go:317 — "AC 4: the brief and the intents are unchanged."
+  evidence: internal/core/intent/consistency_test.go:385 — "TestConsistencyIngestRefusesWithNothingWritten"
+  evidence: commands/intent.md:868 — "intent consistency --json # the brief and every intent"
+
+Gap audit:
+- honoured:
+  - the consistency pass (Role 2) is a working command surface, on the CLI and the plugin page
+    evidence: internal/surface/cli/intent_consistency.go:26 — "Use: "consistency [< itd-N>]""
+    evidence: commands/intent.md:865 — "## Consistency: where do two records contradict each other?"
+  - a report and a capture per finding, deduplicated against the ledger (decision 2)
+    evidence: internal/core/capture/consistency.go:13 — "with the report as its evidence, and a finding an open record already holds"
+  - the report pins the commit it read and marks a dirty corpus
+    evidence: internal/core/intent/consistency.go:504 — "- review_of_commit: %s"
+    evidence: internal/core/intent/consistency_test.go:590 — "TestConsistencyADirtyCorpusIsMarkedDirty"
+- diverged:
+  - the press release promised Role 3 (kind classification) and `/abcd:intent shape` as a working surface; decision 1 moved the shape role to itd-34's kinds lint, and no `shape` verb exists on the CLI or the page
+    evidence: commands/intent.md:4 — "audit [< itd-N>] | audit --owed [--max < n>] | audit --issue-drift [--strict] | consistency [< itd-N>]"
+    evidence: .abcd/development/intents/shipped/itd-48-intent-fidelity-reviewer-roles-2-3.md:52 — "The consistency pass only."
+  - the reviews shelf holds no report produced by this pass: the verb shipped without a first whole-corpus run, so the Mechanism's conjecture (the pass finds contradictions the ledger does not hold) is unexercised; the two consistency-named reports on the shelf predate the verb and were hand-written
+    evidence: .abcd/work/reviews/2026-07-07-roadmap-consistency/00-summary.md:1 — "# Roadmap-Consistency Review - Consolidated Summary"
+    evidence: internal/core/intent/consistency.go:70 — "const ReviewsShelfRelDir = ".abcd/work/reviews""
+- missing: (none)
