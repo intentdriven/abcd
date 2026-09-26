@@ -202,3 +202,8 @@ scope captured here — NOT active spc-33 work:
 ## Grounds
 
 - pursued: the autonomous run builds forty-eight intents against this corpus, and a contradiction between two of them is a stop condition it cannot resolve; we expect the first whole-corpus pass to find contradictions the ledger does not hold; shown wrong if it finds none
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-80414ddf96b9 -->
+Fidelity review OWED (receipt rcp-80414ddf96b9).
