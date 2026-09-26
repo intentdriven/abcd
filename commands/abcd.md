@@ -15,7 +15,8 @@ Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" --json
 ```
 
-Then summarise the JSON for the user: the directory, whether it is a git repo,
+Then summarise the JSON for the user: the directory (`dir`, with the home
+directory written as `~`), whether it is a git repo,
 whether the abcd development record is present, and which `.abcd/` work tiers
 exist.
 
