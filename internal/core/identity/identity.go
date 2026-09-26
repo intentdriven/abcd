@@ -1,5 +1,6 @@
-// Package identity checks that the git author identity a commit would use in a
-// managed repo matches the identity pinned in .abcd/config/identity.json.
+// Package identity checks that the git author and committer identities a commit
+// would use in a managed repo match the identity pinned in
+// .abcd/config/identity.json, and recognises a machine identity in either role.
 //
 // It is the single source of truth for the iss-62 managed-repo identity gate:
 // `ahoy doctor` surfaces a divergence as a detection gap, and the installed
@@ -81,20 +82,43 @@ func (s Status) String() string {
 	}
 }
 
-// Result carries the comparison outcome and both identities for reporting.
+// Result carries the comparison outcome and the identities for reporting.
+//
+// Status and Effective describe the AUTHOR, with the meaning they have always
+// had. The committer is reported beside them rather than folded into Status, so
+// every existing reader of the author statuses reads exactly what it did.
 type Result struct {
 	Status    Status
 	Pin       Pin
 	Effective Effective
 	Reason    string
+
+	// Committer is the committer identity git would stamp (EffectiveCommitter).
+	Committer Effective
+	// CommitterDiverges reports a committer that differs from the author and is
+	// not the pinned identity either: a GIT_COMMITTER_* override, a committer.*
+	// config key, or an author override the committer does not share. A
+	// committer that is the same wrong identity as the author is not reported
+	// again — the author status already says so, and one fix mends both.
+	CommitterDiverges bool
+	// CommitterReason says what diverges, for the person reading the gap.
+	CommitterReason string
+
+	// AuthorIsTool and CommitterIsTool report a machine identity in that role
+	// (IsToolIdentity), pinned or not: the routine case, made visible.
+	AuthorIsTool    bool
+	CommitterIsTool bool
 }
 
 // Blocks reports whether a pre-commit hook should refuse the commit. A mismatch
-// or an unset identity blocks; a match, or an un-pinned (opted-out) repo, does
-// not — an absent pin must never break commits in a repo that has not adopted
-// the gate.
+// or an unset author identity blocks, and so does a committer that diverges from
+// the pin; a match, or an un-pinned (opted-out) repo, does not — an absent pin
+// must never break commits in a repo that has not adopted the gate.
 func (r Result) Blocks() bool {
-	return r.Status == StatusMismatch || r.Status == StatusUnset
+	if r.Status == StatusMismatch || r.Status == StatusUnset {
+		return true
+	}
+	return r.Status != StatusNoPin && r.CommitterDiverges
 }
 
 // LoadPin reads .abcd/config/identity.json. It returns (pin, true, nil) when the
@@ -245,6 +269,15 @@ func EffectiveIdentity(root string) (Effective, error) {
 	return effective(root, RoleAuthor)
 }
 
+// EffectiveCommitter returns the committer identity git would stamp on a commit
+// in root, resolved exactly as EffectiveIdentity resolves the author:
+// GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL first, then committer.name /
+// committer.email, then user.name / user.email. An unset field is empty, never
+// fabricated.
+func EffectiveCommitter(root string) (Effective, error) {
+	return effective(root, RoleCommitter)
+}
+
 // effective resolves one role's identity field by field, with the precedence
 // git itself applies: GIT_<ROLE>_NAME / GIT_<ROLE>_EMAIL, then <role>.name /
 // <role>.email, then user.name / user.email. It deliberately does NOT ask
@@ -300,7 +333,8 @@ func gitConfig(root, key string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// Check resolves the effective identity, loads the pin, and compares them.
+// Check resolves the effective author and committer, loads the pin, and
+// compares them.
 func Check(root string) (Result, error) {
 	pin, pinned, err := LoadPin(root)
 	if err != nil {
@@ -310,17 +344,50 @@ func Check(root string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	committer, err := EffectiveCommitter(root)
+	if err != nil {
+		return Result{}, err
+	}
+	res := authorResult(pin, pinned, eff)
+	res.Committer = committer
+	res.CommitterDiverges, res.CommitterReason = committerDivergence(pin, pinned, eff, committer)
+	res.AuthorIsTool = eff != (Effective{}) && IsToolIdentity(RoleAuthor, eff.Name, eff.Email)
+	res.CommitterIsTool = committer != (Effective{}) && IsToolIdentity(RoleCommitter, committer.Name, committer.Email)
+	return res, nil
+}
+
+// authorResult is the author half of Check, unchanged in meaning.
+func authorResult(pin Pin, pinned bool, eff Effective) Result {
 	if !pinned {
-		return Result{Status: StatusNoPin, Effective: eff, Reason: "no " + PinRelPath + "; repo has not adopted the identity gate"}, nil
+		return Result{Status: StatusNoPin, Effective: eff, Reason: "no " + PinRelPath + "; repo has not adopted the identity gate"}
 	}
 	if eff.Name == "" || eff.Email == "" {
-		return Result{Status: StatusUnset, Pin: pin, Effective: eff, Reason: "git author identity is not configured (user.name/user.email)"}, nil
+		return Result{Status: StatusUnset, Pin: pin, Effective: eff, Reason: "git author identity is not configured (user.name/user.email)"}
 	}
 	if eff.Name != pin.Name || eff.Email != pin.Email {
 		return Result{
 			Status: StatusMismatch, Pin: pin, Effective: eff,
 			Reason: fmt.Sprintf("commit identity %q <%s> does not match the pin %q <%s>", eff.Name, eff.Email, pin.Name, pin.Email),
-		}, nil
+		}
 	}
-	return Result{Status: StatusOK, Pin: pin, Effective: eff}, nil
+	return Result{Status: StatusOK, Pin: pin, Effective: eff}
+}
+
+// committerDivergence is the committer half: a committer that differs from the
+// author, unless it is the pinned identity (then the author is the one that is
+// wrong, and the author status says so).
+func committerDivergence(pin Pin, pinned bool, author, committer Effective) (bool, string) {
+	if committer == author {
+		return false, ""
+	}
+	if pinned && committer.Name == pin.Name && committer.Email == pin.Email {
+		return false, ""
+	}
+	if committer.Name == "" || committer.Email == "" {
+		return true, fmt.Sprintf("git committer identity is not configured, while the author is %q <%s>", author.Name, author.Email)
+	}
+	if pinned {
+		return true, fmt.Sprintf("committer %q <%s> does not match the pin %q <%s>", committer.Name, committer.Email, pin.Name, pin.Email)
+	}
+	return true, fmt.Sprintf("committer %q <%s> differs from the author %q <%s>", committer.Name, committer.Email, author.Name, author.Email)
 }
