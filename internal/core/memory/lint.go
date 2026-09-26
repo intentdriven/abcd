@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -718,11 +719,14 @@ func findingsToMaps(findings []Finding) []any {
 const LintReportHeading = "abcd memory lint"
 
 // renderLintReportMD renders report.md, the local-tier file an operator opens in
-// a pager. Every free-text field — the store path, each finding's file, message
-// and suggestion — goes through termsafe.Sanitize, the primitive the CLI render
-// applies to the same findings: a degraded-scanner MR001 message carries a
-// pattern name read from the per-repo pii.json, and a finding's file is a name
-// the store holds, so either can carry a control sequence (iss-2609020239068243).
+// a pager or a markdown viewer. Every free-text field — the store path, each
+// finding's code, file, message and suggestion — goes through
+// termsafe.CleanProseLine, which masks a control sequence as Sanitize does
+// (iss-2609020239068243) and also neutralises an HTML opener and link syntax,
+// and the store path and each file are set off with termsafe.CodeSpan: a
+// degraded-scanner MR001 message carries a pattern name read from the per-repo
+// pii.json, and a finding's file is a name the store holds, so either can carry
+// markdown as well as a control sequence (iss-2609262148072415).
 func renderLintReportMD(fields map[string]any) string {
 	summary, _ := fields["summary"].(map[string]any)
 	cov, _ := fields["coverage_index"].(map[string]any)
@@ -730,7 +734,7 @@ func renderLintReportMD(fields map[string]any) string {
 		"# " + LintReportHeading + " — curator health-check",
 		"",
 		fmt.Sprintf("Generated: %v", fields["generated_at"]),
-		"Store: " + termsafe.Sanitize(fmt.Sprintf("%v", fields["store_path"])),
+		"Store: " + termsafe.CodeSpan(termsafe.CleanProseLine(fmt.Sprintf("%v", fields["store_path"]), math.MaxInt)),
 		fmt.Sprintf("Summary: %d blocker(s), %d warning(s), %d info(s)",
 			toInt(summary["blockers"]), toInt(summary["warnings"]), toInt(summary["infos"])),
 	}
@@ -757,13 +761,19 @@ func renderLintReportMD(fields map[string]any) string {
 				if f["severity"] != sev {
 					continue
 				}
-				loc := termsafe.Sanitize(fmt.Sprintf("%v", f["file"]))
+				// The file is set off with termsafe.CodeSpan and every prose field
+				// goes through CleanProseLine: Sanitize alone leaves an HTML comment
+				// opener or link syntax live in a markdown file
+				// (iss-2609262148072415).
+				loc := termsafe.CleanProseLine(fmt.Sprintf("%v", f["file"]), math.MaxInt)
 				if line := toInt(f["line"]); line != 0 {
 					loc += fmt.Sprintf(":%d", line)
 				}
-				lines = append(lines, fmt.Sprintf("- [%s] %v %s — %s", sev, f["code"], loc, termsafe.Sanitize(fmt.Sprintf("%v", f["message"]))))
+				lines = append(lines, fmt.Sprintf("- [%s] %s %s — %s", sev,
+					termsafe.CleanProseLine(fmt.Sprintf("%v", f["code"]), math.MaxInt), termsafe.CodeSpan(loc),
+					termsafe.CleanProseLine(fmt.Sprintf("%v", f["message"]), math.MaxInt)))
 				if sug, _ := f["suggestion"].(string); sug != "" {
-					lines = append(lines, "  fix: "+termsafe.Sanitize(sug))
+					lines = append(lines, "  fix: "+termsafe.CleanProseLine(sug, math.MaxInt))
 				}
 			}
 		}
