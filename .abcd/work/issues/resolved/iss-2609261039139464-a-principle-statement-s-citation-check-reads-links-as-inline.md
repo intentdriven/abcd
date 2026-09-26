@@ -15,7 +15,7 @@ resolved_by:
   commit: "a5f5a266662ed258f549a49a4847a391e68fd9f6"
 ---
 
-A principle statement's citation check reads links as inline [label](target) only: a bare URL, an autolink <https://...> and a reference-style [label][ref] travel into the bundle raw and the lint is silent on all three, while the manifest's exclusion row asserts record handles and links in a principle stay behind.
+A principle statement's citation check reads links as inline `[label](target)` only: a bare URL, an autolink `<https://...>` and a reference-style `[label][ref]` travel into the bundle raw and the lint is silent on all three, while the manifest's exclusion row asserts record handles and links in a principle stay behind.
 
 ## Grounds
 
